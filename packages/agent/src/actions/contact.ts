@@ -87,6 +87,8 @@ const ACTIVITY_DEFAULT_LIMIT = 50;
 const ACTIVITY_MAX_LIMIT = 100;
 
 interface ContactParams {
+  action?: ContactOp | "accept" | "reject";
+  subaction?: ContactOp;
   op?: ContactOp;
   // Common
   entityId?: string;
@@ -126,7 +128,6 @@ interface ContactParams {
   // merge
   candidateId?: string;
   mergeWith?: string;
-  action?: "accept" | "reject";
   // activity
   since?: string;
   offset?: number;
@@ -533,7 +534,7 @@ async function handleSearch(
 
     const header = `Search results for "${query}" | ${snapshot.people.length} contacts found`;
     const footer =
-      "\nUse op:read with an entityId to see full details (facts, conversations, relationships).";
+      "\nUse action=read with an entityId to see full details (facts, conversations, relationships).";
 
     return {
       text: `${header}\n${"─".repeat(60)}\n${lines.join("\n")}\n${footer}`,
@@ -1446,7 +1447,7 @@ async function handleLink(
 
   if (!entityA || !entityB) {
     return fail(
-      "CONTACT link needs two entity IDs. Use op:search to find them first.",
+      "CONTACT link needs two entity IDs. Use action=search to find them first.",
       "INVALID_PARAMETERS",
       "link",
     );
@@ -1905,7 +1906,7 @@ export const contactAction: Action = {
     "FOLLOW_UP_CONTACT",
   ],
   description:
-    "Manage Rolodex contacts and entity identities. Op-based dispatch — provide an `op` parameter:\n" +
+    "Manage Rolodex contacts and entity identities. Action-based dispatch — provide an `action` parameter:\n" +
     "  create   — create a new contact (name required; optional email/phone/notes/categories/tags).\n" +
     "  read     — load full identity, facts, recent conversations, and relationships by entityId or name.\n" +
     "  search   — search contacts by name/handle/platform; line-numbered results.\n" +
@@ -1916,12 +1917,18 @@ export const contactAction: Action = {
     "  activity — paginated activity timeline for the Rolodex.\n" +
     "  followup — schedule a follow-up with a contact (scheduledAt + name/entityId; optional reason/priority/message).",
   descriptionCompressed:
-    "manage Rolodex contacts; op-based dispatch (create read search update delete link merge activity followup)",
+    "manage Rolodex contacts; action=create|read|search|update|delete|link|merge|activity|followup",
   parameters: [
     {
-      name: "subaction",
-      description: `Operation: ${CONTACT_OPS.join(", ")}.`,
+      name: "action",
+      description: `Contact operation: ${CONTACT_OPS.join(", ")}.`,
       required: true,
+      schema: { type: "string" as const, enum: [...CONTACT_OPS] },
+    },
+    {
+      name: "op",
+      description: "Legacy alias for action.",
+      required: false,
       schema: { type: "string" as const, enum: [...CONTACT_OPS] },
     },
     {
@@ -2157,7 +2164,14 @@ export const contactAction: Action = {
     options?: HandlerOptions,
   ): Promise<boolean> => {
     registerEntitySearchCategory(runtime);
-    if (readOp(getParams(options).op) === "followup") return true;
+    {
+      const params = getParams(options);
+      if (
+        readOp(params.action ?? params.subaction ?? params.op) === "followup"
+      ) {
+        return true;
+      }
+    }
     return (
       hasContextSignalSyncForKey(message, state, "search_entity") ||
       hasContextSignalSyncForKey(message, state, "link_entity")
@@ -2171,10 +2185,10 @@ export const contactAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = getParams(options);
-    const op = readOp(params.op);
+    const op = readOp(params.action ?? params.subaction ?? params.op);
     if (!op) {
       return fail(
-        `op is required and must be one of ${CONTACT_OPS.join(", ")}.`,
+        `action is required and must be one of ${CONTACT_OPS.join(", ")}.`,
         "INVALID",
       );
     }

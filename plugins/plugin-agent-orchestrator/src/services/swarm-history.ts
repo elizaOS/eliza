@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 export type HistoryEntryType =
   | "task_registered"
@@ -63,10 +63,7 @@ export class SwarmHistory {
   private mutex = new WriteMutex();
 
   constructor(stateDir?: string) {
-    const dir =
-      stateDir ||
-      process.env.ELIZA_STATE_DIR ||
-      path.join(os.homedir(), ".eliza");
+    const dir = stateDir || resolveStateDir();
     this.filePath = path.join(dir, "swarm-history.jsonl");
   }
 

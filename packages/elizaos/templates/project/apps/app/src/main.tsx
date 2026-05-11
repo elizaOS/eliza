@@ -1,23 +1,30 @@
-import "@elizaos/app-core";
-
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { StatusBar, Style } from "@capacitor/status-bar";
+import { Agent } from "@elizaos/capacitor-agent";
+import { Desktop } from "@elizaos/capacitor-desktop";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   App,
   type AppBootConfig,
+  AppProvider,
   applyForceFreshOnboardingReset,
   applyLaunchConnectionFromUrl,
+  applyUiTheme,
   type BrandingConfig,
   CharacterEditor,
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   client,
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
   dispatchAppEvent,
+  ErrorBoundary,
   getBootConfig,
   initializeCapacitorBridge,
   initializeStorageBridge,
@@ -26,6 +33,7 @@ import {
   installLocalProviderCloudPreferencePatch,
   isDetachedWindowShell,
   isElectrobunRuntime,
+  loadUiTheme,
   resolveWindowShellRoute,
   SHARE_TARGET_EVENT,
   setBootConfig,
@@ -34,20 +42,7 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-} from "@elizaos/app-core";
-import {
-  AppProvider,
-  applyUiTheme,
-  DESKTOP_TRAY_MENU_ITEMS,
-  DesktopOnboardingRuntime,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
-  loadUiTheme,
-} from "@elizaos/app-core";
-import { Agent } from "@elizaos/capacitor-agent";
-import { Desktop } from "@elizaos/capacitor-desktop";
-import { ErrorBoundary } from "@elizaos/ui";
+} from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { ELIZA_ENV_ALIASES } from "./brand-env";
@@ -420,7 +415,6 @@ function mountReactApp(): void {
             </div>
           ) : (
             <>
-              <DesktopOnboardingRuntime />
               <DesktopSurfaceNavigationRuntime />
               <DesktopTrayRuntime />
               <App />

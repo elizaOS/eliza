@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-steward",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -16,15 +16,15 @@
     }
   },
   "dependencies": {
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-wallet": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "@noble/curves": "2.2.0",
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/web3.js": "1.98.4",
     "@stwd/sdk": "^0.8.1",
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-wallet": "workspace:*",
-    "@elizaos/ui": "workspace:*",
     "ethers": "^6.16.0",
     "lucide-react": "^1.0.0",
     "viem": "^2.48.8"

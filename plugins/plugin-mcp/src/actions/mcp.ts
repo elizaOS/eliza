@@ -394,11 +394,11 @@ export const mcpAction: Action = {
     "ACCESS_MCP_RESOURCE",
   ],
   description:
-    "Single MCP entry point. Use op=call_tool to invoke an MCP tool, op=read_resource to read an MCP resource. Cloud runtimes also accept op=search_actions and op=list_connections.",
+    "Single MCP entry point. Use action=call_tool to invoke an MCP tool, action=read_resource to read an MCP resource. Cloud runtimes also accept action=search_actions and action=list_connections.",
   descriptionCompressed: "MCP call_tool read_resource search_actions list_connections",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "MCP operation: call_tool | read_resource | search_actions | list_connections",
       required: false,
       schema: {
@@ -414,44 +414,45 @@ export const mcpAction: Action = {
     },
     {
       name: "toolName",
-      description: "For op=call_tool: optional exact MCP tool name to call.",
+      description: "For action=call_tool: optional exact MCP tool name to call.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "arguments",
-      description: "For op=call_tool: optional JSON arguments to pass to the selected MCP tool.",
+      description:
+        "For action=call_tool: optional JSON arguments to pass to the selected MCP tool.",
       required: false,
       schema: { type: "object" },
     },
     {
       name: "uri",
-      description: "For op=read_resource: exact MCP resource URI to read.",
+      description: "For action=read_resource: exact MCP resource URI to read.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "query",
       description:
-        "Natural-language description of the tool call or resource to select; for op=search_actions, the keyword query.",
+        "Natural-language description of the tool call or resource to select; for action=search_actions, the keyword query.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "platform",
-      description: "For op=search_actions: filter results to a single connected platform.",
+      description: "For action=search_actions: filter results to a single connected platform.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "limit",
-      description: "For op=search_actions: maximum results to return.",
+      description: "For action=search_actions: maximum results to return.",
       required: false,
       schema: { type: "number" },
     },
     {
       name: "offset",
-      description: "For op=search_actions: skip first N results for pagination.",
+      description: "For action=search_actions: skip first N results for pagination.",
       required: false,
       schema: { type: "number" },
     },
@@ -470,7 +471,7 @@ export const mcpAction: Action = {
     callback?: HandlerCallback
   ): Promise<ActionResult> => {
     const opts = readOptions(options);
-    const requested = normalizeOp(opts.op ?? opts.operation);
+    const requested = normalizeOp(opts.action ?? opts.subaction ?? opts.op ?? opts.operation);
     const op = requested ?? inferOpFromText(textOf(message)) ?? "call_tool";
 
     if (op === "read_resource") {

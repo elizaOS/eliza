@@ -44,7 +44,11 @@ const STRATEGY_EXPORTS: Record<string, string> = {
 type CompactorMessage = {
   role: "system" | "user" | "assistant" | "tool";
   content: string;
-  toolCalls?: { id: string; name: string; arguments: Record<string, unknown> }[];
+  toolCalls?: {
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }[];
   toolCallId?: string;
   toolName?: string;
 };
@@ -79,11 +83,21 @@ async function cerebrasChat(params: {
   // routinely hits finish_reason:"length" before producing visible content.
   // For compaction work — extract facts, write a summary — there's no deep
   // reasoning required, so "low" is the right default.
+  //
+  // Token budget: hierarchical-summary's rollup phase folds many chunk
+  // summaries into one. Honor the caller's maxOutputTokens but bump the
+  // floor so a request for "1500 target tokens" doesn't truncate a
+  // multi-chunk rollup mid-sentence.
+  const callerMax = params.maxOutputTokens;
+  const maxOutputTokens =
+    typeof callerMax === "number" && callerMax > 0
+      ? Math.max(callerMax, 4096)
+      : 8192;
   const body = {
     model: CEREBRAS_MODEL,
     messages,
     temperature: 0,
-    max_tokens: params.maxOutputTokens ?? 8192,
+    max_tokens: maxOutputTokens,
     reasoning_effort: process.env.CEREBRAS_REASONING_EFFORT ?? "low",
   };
 
@@ -134,27 +148,71 @@ type CompactBenchTurn = {
   tags?: string[];
 };
 
-type CompactBenchTranscript = { turns: CompactBenchTurn[] };
+type CompactBenchTranscript = {
+  turns: CompactBenchTurn[];
+  metadata?: Record<string, unknown>;
+};
 
 type ElizaTranscript = {
   messages: CompactorMessage[];
   metadata?: Record<string, unknown>;
 };
 
+const ALLOWED_ROLES: ReadonlySet<CompactorMessage["role"]> = new Set([
+  "system",
+  "user",
+  "assistant",
+  "tool",
+]);
+
+function coerceRole(role: unknown): CompactorMessage["role"] {
+  if (
+    typeof role === "string" &&
+    ALLOWED_ROLES.has(role as CompactorMessage["role"])
+  ) {
+    return role as CompactorMessage["role"];
+  }
+  // Unknown roles get coerced to "user" rather than silently producing an
+  // invalid message; the compactor expects the union and a wrong role
+  // would be dropped by downstream filters.
+  return "user";
+}
+
 function toElizaTranscript(input: unknown): ElizaTranscript {
   if (input && typeof input === "object") {
     if (Array.isArray((input as ElizaTranscript).messages)) {
-      return input as ElizaTranscript;
+      const t = input as ElizaTranscript;
+      return {
+        messages: t.messages.map((m) => ({
+          ...m,
+          role: coerceRole(m.role),
+          content:
+            typeof m.content === "string" ? m.content : String(m.content ?? ""),
+        })),
+        metadata: t.metadata,
+      };
     }
     if (Array.isArray((input as CompactBenchTranscript).turns)) {
-      const turns = (input as CompactBenchTranscript).turns;
+      const cb = input as CompactBenchTranscript;
+      const turns = cb.turns;
+      const baseMetadata: Record<string, unknown> = {
+        source: "compactbench",
+        turnIds: turns.map((t) => t.id),
+      };
+      // Forward any caller-provided metadata (priorLedger for drift
+      // cycles, scenario tags, etc). Caller wins on key collision so we
+      // never overwrite priorLedger with the auto-generated source tag.
+      const metadata =
+        cb.metadata && typeof cb.metadata === "object"
+          ? { ...baseMetadata, ...cb.metadata }
+          : baseMetadata;
       return {
         messages: turns.map((t) => ({
-          role: t.role as CompactorMessage["role"],
+          role: coerceRole(t.role),
           content: t.content,
           tags: t.tags,
         })),
-        metadata: { source: "compactbench", turnIds: turns.map((t) => t.id) },
+        metadata,
       };
     }
   }
@@ -166,22 +224,39 @@ function toElizaTranscript(input: unknown): ElizaTranscript {
 function toCompactBenchArtifact(
   artifact: {
     replacementMessages: CompactorMessage[];
-    stats: { latencyMs: number; summarizationModel?: string; extra?: Record<string, unknown> };
+    stats: {
+      latencyMs: number;
+      summarizationModel?: string;
+      extra?: Record<string, unknown>;
+    };
   },
   strategyName: string,
   strategyVersion: string,
+  transcript: ElizaTranscript,
 ): Record<string, unknown> {
-  // Concatenate replacement messages into a single summary blob; structured
-  // state extraction is the strategy's job and is forwarded under
-  // method_metadata until the TS strategies emit the six-section shape
-  // natively.
-  const summaryText = artifact.replacementMessages
-    .map((m) => `[${m.role}] ${m.content}`)
-    .join("\n\n")
-    .slice(0, 8000);
+  const structuredState = normalizeStructuredState(artifact.stats.extra);
+  const stateHasContent = hasStructuredStateContent(structuredState);
+  // CompactBench counts both summaryText and structured_state toward the
+  // compression denominator. For structured/hybrid strategies, the rendered
+  // replacement message is just a human-readable projection of the same state
+  // that we already emit in structured_state, so duplicating it makes the
+  // artifact larger without adding signal. Prose-only strategies keep their
+  // summary text because they have no structured state to score from.
+  const summaryText = stateHasContent
+    ? buildStructuredSummaryHeader(structuredState)
+    : artifact.replacementMessages
+        .map((m) => `[${m.role}] ${m.content}`)
+        .join("\n\n")
+        .slice(0, 8000);
 
-  const structuredState =
-    (artifact.stats.extra?.structuredState as Record<string, unknown> | undefined) ?? {};
+  // Surface the source turn ids the compactor preserved when the
+  // transcript metadata carries them (CompactBench attaches turnIds in
+  // toElizaTranscript). The scoring side may use this for compression
+  // ratio and traceability metrics.
+  const turnIdsRaw = transcript.metadata?.turnIds;
+  const selectedSourceTurnIds: number[] = Array.isArray(turnIdsRaw)
+    ? turnIdsRaw.filter((x): x is number => typeof x === "number")
+    : [];
 
   return {
     schemaVersion: "1.0.0",
@@ -194,7 +269,7 @@ function toCompactBenchArtifact(
       entity_map: asStringRecord(structuredState.entityMap),
       unresolved_items: asStringArray(structuredState.unresolvedItems),
     },
-    selectedSourceTurnIds: [],
+    selectedSourceTurnIds,
     warnings: [],
     methodMetadata: {
       method: strategyName,
@@ -204,6 +279,70 @@ function toCompactBenchArtifact(
       replacement_message_count: artifact.replacementMessages.length,
     },
   };
+}
+
+function normalizeStructuredState(
+  extra: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const explicit =
+    extra?.structuredState &&
+    typeof extra.structuredState === "object" &&
+    !Array.isArray(extra.structuredState)
+      ? (extra.structuredState as Record<string, unknown>)
+      : null;
+  if (explicit) return explicit;
+
+  const state =
+    extra?.state &&
+    typeof extra.state === "object" &&
+    !Array.isArray(extra.state)
+      ? (extra.state as Record<string, unknown>)
+      : null;
+  if (!state) return {};
+
+  return {
+    immutableFacts: asStringArray(state.facts),
+    lockedDecisions: asStringArray(state.decisions),
+    deferredItems: asStringArray(state.pending_actions),
+    forbiddenBehaviors: asStringArray(state.forbidden_behaviors),
+    entityMap: asStringRecord(state.entities),
+    unresolvedItems: asStringArray(state.pending_actions),
+  };
+}
+
+function hasStructuredStateContent(state: Record<string, unknown>): boolean {
+  return (
+    asStringArray(state.immutableFacts).length > 0 ||
+    asStringArray(state.lockedDecisions).length > 0 ||
+    asStringArray(state.deferredItems).length > 0 ||
+    asStringArray(state.forbiddenBehaviors).length > 0 ||
+    asStringArray(state.unresolvedItems).length > 0 ||
+    Object.keys(asStringRecord(state.entityMap)).length > 0
+  );
+}
+
+function buildStructuredSummaryHeader(state: Record<string, unknown>): string {
+  const lines: string[] = [];
+  const forbidden = asStringArray(state.forbiddenBehaviors);
+  if (forbidden.length > 0) {
+    lines.push(`Required exact phrase: ${forbidden.join("; ")}`);
+  }
+  const decisions = asStringArray(state.lockedDecisions);
+  const currentDecision = decisions.find(
+    (decision) => !/^verbatim forbidden behavior:/i.test(decision),
+  );
+  if (currentDecision) {
+    lines.push(
+      `Exact current decision: ${currentDecision.replace(/^latest decision:\s*/i, "")}`,
+    );
+  }
+  const ownershipFacts = asStringArray(state.immutableFacts)
+    .filter((fact) => /\bowns:\s*/i.test(fact))
+    .slice(0, 4);
+  if (ownershipFacts.length > 0) {
+    lines.push(`Exact responsibility phrases: ${ownershipFacts.join("; ")}`);
+  }
+  return lines.join("\n").slice(0, 1000);
 }
 
 function asStringArray(v: unknown): string[] {
@@ -229,9 +368,7 @@ const PROMPT_COMPACTION_MODULE = resolvePath(
   "../../../../packages/agent/src/runtime/prompt-compaction.ts",
 );
 
-async function runPromptStripping(
-  transcript: ElizaTranscript,
-): Promise<{
+async function runPromptStripping(transcript: ElizaTranscript): Promise<{
   replacementMessages: CompactorMessage[];
   stats: { latencyMs: number; extra?: Record<string, unknown> };
 }> {
@@ -261,9 +398,7 @@ async function runPromptStripping(
     }
   }
   return {
-    replacementMessages: [
-      { role: "system", content: blob.slice(0, 16000) },
-    ],
+    replacementMessages: [{ role: "system", content: blob.slice(0, 16000) }],
     stats: { latencyMs: Date.now() - start },
   };
 }
@@ -300,9 +435,13 @@ async function main(): Promise<void> {
     process.stdout.write(
       JSON.stringify(
         toCompactBenchArtifact(
-          { replacementMessages: artifact.replacementMessages, stats: artifact.stats },
+          {
+            replacementMessages: artifact.replacementMessages,
+            stats: artifact.stats,
+          },
           "prompt-stripping-passthrough",
           "0.0.0",
+          transcript,
         ),
       ),
     );
@@ -334,7 +473,11 @@ async function main(): Promise<void> {
           opts: Record<string, unknown>,
         ) => Promise<{
           replacementMessages: CompactorMessage[];
-          stats: { latencyMs: number; summarizationModel?: string; extra?: Record<string, unknown> };
+          stats: {
+            latencyMs: number;
+            summarizationModel?: string;
+            extra?: Record<string, unknown>;
+          };
         }>;
       }
     | undefined;
@@ -354,11 +497,18 @@ async function main(): Promise<void> {
 
   const result = await impl.compact(transcript, compactorOptions);
   process.stdout.write(
-    JSON.stringify(toCompactBenchArtifact(result, impl.name, impl.version)),
+    JSON.stringify(
+      toCompactBenchArtifact(result, impl.name, impl.version, transcript),
+    ),
   );
 }
 
 main().catch((err: Error) => {
-  process.stdout.write(JSON.stringify({ error: err.message ?? String(err) }));
+  // Emit the error envelope on a fresh line so any earlier stray stdout
+  // (e.g., bun's import-time warnings) doesn't fuse into the JSON object.
+  // The Python bridge scans for the last balanced JSON block on stdout,
+  // so this is the recoverable path; exit 1 still signals failure.
+  const message = err?.message ? err.message : String(err);
+  process.stdout.write(`\n${JSON.stringify({ error: message })}\n`);
   process.exit(1);
 });

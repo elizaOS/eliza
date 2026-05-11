@@ -49,7 +49,9 @@ function fakeMmap(id: string, opts: { evictThrows?: Error } = {}): FakeMmap {
   return region;
 }
 
-function fakeResource(id: string): RefCountedResource & { releaseCalls: number } {
+function fakeResource(
+  id: string,
+): RefCountedResource & { releaseCalls: number } {
   const r = {
     id,
     releaseCalls: 0,
@@ -223,7 +225,9 @@ describe("VoiceLifecycle", () => {
       expect(["ram-pressure", "mmap-fail"]).toContain(thrown.code);
     }
     expect(lc.current().kind).toBe("voice-error");
-    // Partial acquisition rolled back — registry is empty.
+    // Partial acquisition rolled back — mapped pages are evicted first
+    // and registry refs are released.
+    expect(tts.evictCalls).toBe(1);
     expect(reg.size()).toBe(0);
   });
 
@@ -306,8 +310,6 @@ describe("SharedResourceRegistry", () => {
 
   it("release of unknown id throws — no silent leak", async () => {
     const reg = new SharedResourceRegistry();
-    await expect(reg.release("ghost")).rejects.toThrow(
-      /unknown resource/,
-    );
+    await expect(reg.release("ghost")).rejects.toThrow(/unknown resource/);
   });
 });

@@ -33,6 +33,8 @@ const SEARCH_LEVELS: readonly LogLevel[] = [
 ] as const;
 
 interface LogsParams {
+  action?: LogsOp;
+  subaction?: LogsOp;
   op?: LogsOp;
   // search-only
   source?: string;
@@ -265,7 +267,7 @@ export const logsAction: Action = {
     "CONFIGURE_LOGGING",
   ],
   description:
-    "Polymorphic log control: op='search' tails the in-memory log buffer (filterable by source/level/tag/since), op='delete' clears that buffer, op='set_level' overrides the per-room log level (trace/debug/info/warn/error).",
+    "Polymorphic log control: action='search' tails the in-memory log buffer (filterable by source/level/tag/since), action='delete' clears that buffer, action='set_level' overrides the per-room log level (trace/debug/info/warn/error).",
   descriptionCompressed:
     "search/delete in-mem agent logs or set_level per-room owner-only",
   validate: async () => true,
@@ -280,11 +282,11 @@ export const logsAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | LogsParams
         | undefined) ?? {};
-    const op = params.op;
+    const op = params.action ?? params.subaction ?? params.op;
     if (!op || !LOGS_OPS.includes(op)) {
       if (callback) {
         callback({
-          text: `Unknown LOGS op. Use one of: ${LOGS_OPS.join(", ")}.`,
+          text: `Unknown LOGS action. Use one of: ${LOGS_OPS.join(", ")}.`,
           action: "LOGS_INVALID",
         });
       }
@@ -309,7 +311,7 @@ export const logsAction: Action = {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation: search | delete | set_level.",
       required: true,
       schema: { type: "string" as const, enum: [...LOGS_OPS] },

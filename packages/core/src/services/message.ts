@@ -27,10 +27,7 @@ import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import { applyAddressedTo } from "../runtime/addressed-to";
-import {
-	filterByContextGate,
-	satisfiesContextGate,
-} from "../runtime/context-gates";
+import { filterByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -1492,8 +1489,8 @@ async function collectV5PlannerCandidateActions(args: {
 	userRoles?: readonly RoleGateRole[];
 }): Promise<Action[]> {
 	// We used to filter the candidate set by `action.contexts` against the
-	// messageHandler-picked `selectedContexts`. That filter excluded LIFE /
-	// CALENDAR / SCHEDULE / etc. whenever the messageHandler routed to
+	// messageHandler-picked `selectedContexts`. That filter excluded owner
+	// actions, CALENDAR, SCHEDULED_TASKS, etc. whenever the messageHandler routed to
 	// "general" — even when the user clearly asked for a habit/event/etc.
 	// (See `docs/audits/lifeops-2026-05-09/12-real-root-cause.md`.)
 	//
@@ -2070,7 +2067,7 @@ function getStage1OwnerPreferenceRepairPlan(args: {
 					"store_preference",
 				]
 			: ["store_preference", "save_owner_profile"],
-		parentActionHints: ["PROFILE", "DOCUMENT"],
+		parentActionHints: ["REPLY", "DOCUMENT"],
 	};
 }
 
@@ -2151,7 +2148,7 @@ function getStage1PasswordManagerRepairPlan(args: {
 			"credential_lookup",
 			"search_password_manager",
 		],
-		parentActionHints: ["PASSWORD_MANAGER"],
+		parentActionHints: ["CREDENTIALS"],
 	};
 }
 
@@ -2322,8 +2319,13 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: ["calendar_search_events", "calendar_read"],
-		parentActionHints: ["CALENDAR"],
+		candidateActions: [
+			"personal_assistant_sign_document",
+			"sign_document",
+			"calendar_search_events",
+			"calendar_read",
+		],
+		parentActionHints: ["PERSONAL_ASSISTANT", "CALENDAR"],
 	};
 }
 
@@ -2831,14 +2833,13 @@ interface ExecuteV5PlannedToolCallParams {
  *
  * The LLM sees the stable Stage 2 wrapper surface, so every invocation
  * arrives wrapped: `{ name: "PLAN_ACTIONS",
- * params: { action, subaction?, parameters, thought } }`. Returns a
+ * params: { action, parameters, thought } }`. Returns a
  * normalized tool call where `name` is the actual action name and `params`
  * are the action-shaped parameters, ready for the rest of the dispatch
  * pipeline.
  *
- * The `subaction` hint, when present for router-style actions, is preserved
- * on `params.subaction` so actions that expose a router-style schema (LIFE,
- * MESSAGE, CALENDAR, etc.) receive the same field they documented.
+ * Legacy planner payloads may still include `subaction`; when present, it is
+ * mirrored into canonical `params.action` for parent-action dispatch.
  *
  * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
  * already-unwrapped action calls) so they keep their existing semantics.
@@ -2865,7 +2866,11 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
 	const mergedParameters: Record<string, unknown> = subaction
-		? { ...baseParameters, subaction }
+		? {
+				...baseParameters,
+				action: baseParameters.action ?? subaction,
+				subaction,
+			}
 		: baseParameters;
 	return {
 		id: toolCall.id,
@@ -2887,6 +2892,9 @@ function normalizeCompoundPlannerToolCall(
 			: {};
 	if (params.subaction === undefined) {
 		params.subaction = compoundAction.subaction;
+	}
+	if (params.action === undefined) {
+		params.action = compoundAction.subaction;
 	}
 	return {
 		...toolCall,
@@ -3048,6 +3056,7 @@ function buildNormalizedLifePlannerParams(args: {
 
 	for (const [key, value] of Object.entries(params)) {
 		if (
+			key !== "action" &&
 			key !== "subaction" &&
 			key !== "kind" &&
 			key !== "intent" &&
@@ -3132,7 +3141,7 @@ function extractCalendlyAvailabilityFallbackParams(
 		(match) => match[0],
 	);
 	return {
-		subaction: "calendly_availability",
+		action: "calendly_availability",
 		intent: text,
 		...(eventTypeUri ? { eventTypeUri: trimExtractedUrl(eventTypeUri) } : {}),
 		...(dates[0] ? { startDate: dates[0] } : {}),
@@ -3319,7 +3328,7 @@ async function runDeterministicPlannerFallback(args: {
 
 function shouldTreatPlannerLifeAsDeviceIntent(
 	resolvedName: string,
-	message: Memory,
+	_message: Memory,
 ): boolean {
 	if (
 		normalizeActionIdentifier(resolvedName) !==
@@ -3327,13 +3336,9 @@ function shouldTreatPlannerLifeAsDeviceIntent(
 	) {
 		return false;
 	}
-	return (
-		messageTextMatches(message, /\b(?:broadcast|send|push)\b/) &&
-		messageTextMatches(
-			message,
-			/\b(?:all (?:my )?devices|devices?|mobile|phone|desktop|computer)\b/,
-		)
-	);
+	// DEVICE_INTENT is no longer a planner-visible action. Legacy LIFE plans for
+	// device-wide delivery should not be rewritten into another retired action.
+	return false;
 }
 
 function shouldTreatPlannerWebAsCalendlyCalendar(
@@ -3497,20 +3502,17 @@ function normalizePostPlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const rawSubaction =
-		stringParam(params.action) ?? stringParam(params.subaction);
+	const rawAction = stringParam(params.action);
 	const source = stringParam(params.source);
 	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
-		rawSubaction ?? "",
+		rawAction ?? "",
 	)
 		? "read"
-		: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
+		: /^(?:search|search_twitter|x_search)$/i.test(rawAction ?? "")
 			? "search"
-			: (stringParam(params.action) ??
-				stringParam(params.op) ??
-				stringParam(params.operation));
+			: rawAction;
 	return {
-		...(op ? { action: op, subaction: op, op } : {}),
+		...(op ? { action: op } : {}),
 		...(source
 			? { source: source === "twitter" ? "x" : source }
 			: messageTextMatches(message, /\b(?:x|twitter)\b/)
@@ -3539,16 +3541,9 @@ function normalizeMessagePlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const rawOperation =
-		stringParam(params.action) ??
-		stringParam(params.operation) ??
-		stringParam(params.subaction) ??
-		stringParam(params.subAction) ??
-		stringParam(params.op);
+	const rawOperation = stringParam(params.action);
 	const manageIntent =
-		stringParam(params.manageOperation) ??
-		stringParam(params.command) ??
-		stringParam(params.action);
+		stringParam(params.manageOperation) ?? stringParam(params.command);
 	const rawSource =
 		stringParam(params.source) ??
 		stringParam(params.platform) ??
@@ -3614,8 +3609,6 @@ function normalizeMessagePlannerParams(
 		...((inferredOperation ?? operation)
 			? {
 					action: inferredOperation ?? operation,
-					operation: inferredOperation ?? operation,
-					subaction: inferredOperation ?? operation,
 				}
 			: {}),
 		...(source
@@ -3765,10 +3758,10 @@ function normalizeAliasedPlannerToolCall(
 	message: Memory,
 ): PlannerToolCall {
 	const normalizedResolvedName = normalizeActionIdentifier(resolvedName);
-	if (
-		normalizedResolvedName !== normalizeActionIdentifier("LIFE") &&
-		!OWNER_SURFACE_ACTIONS.has(normalizedResolvedName)
-	) {
+	const isOwnerSurface =
+		normalizedResolvedName === normalizeActionIdentifier("LIFE") ||
+		OWNER_SURFACE_ACTIONS.has(normalizedResolvedName);
+	if (!isOwnerSurface) {
 		if (normalizedResolvedName === normalizeActionIdentifier("BLOCK")) {
 			const originalName = normalizeActionIdentifier(toolCall.name);
 			const target =
@@ -3806,10 +3799,16 @@ function normalizeAliasedPlannerToolCall(
 		}
 		if (normalizedResolvedName === normalizeActionIdentifier("CREDENTIALS")) {
 			const originalName = normalizeActionIdentifier(toolCall.name);
+			const rawAction =
+				toolCall.params && typeof toolCall.params === "object"
+					? (stringParam((toolCall.params as Record<string, unknown>).action) ??
+						stringParam((toolCall.params as Record<string, unknown>).subaction))
+					: undefined;
 			const params =
 				originalName.includes("AUTOFILL") ||
 				originalName.includes("LOGIN") ||
-				originalName.includes("FILL")
+				originalName.includes("FILL") ||
+				rawAction === "fill"
 					? normalizeAutofillPlannerParams(toolCall, message)
 					: normalizePasswordManagerPlannerParams(toolCall, message);
 			return {
@@ -3942,17 +3941,17 @@ async function executeV5PlannedToolCall(
 			args.executorCtx.message,
 		);
 	const effectiveResolvedName = forceContactReminderToLife
-		? "LIFE"
+		? "OWNER_REMINDERS"
 		: forceLifeToDeviceIntent
-			? "DEVICE_INTENT"
+			? "MESSAGE"
 			: forceDeviceIntentToLife
-				? "LIFE"
+				? "OWNER_REMINDERS"
 				: forceWebToCalendlyCalendar
 					? "CALENDAR"
 					: forceWebToBookTravel
-						? "BOOK_TRAVEL"
+						? "PERSONAL_ASSISTANT"
 						: forceBrowserToAutofill
-							? "AUTOFILL"
+							? "CREDENTIALS"
 							: forceConnectorToPost
 								? "POST"
 								: forceConnectorToMessage
@@ -3963,6 +3962,8 @@ async function executeV5PlannedToolCall(
 			? {
 					...unwrappedToolCall,
 					params: {
+						action: "create",
+						subaction: "create",
 						intent: getUserMessageText(args.executorCtx.message),
 						details: {
 							contactName: stringParam(unwrappedToolCall.params?.name),
@@ -3971,7 +3972,33 @@ async function executeV5PlannedToolCall(
 						},
 					},
 				}
-			: unwrappedToolCall;
+			: forceWebToBookTravel
+				? {
+						...unwrappedToolCall,
+						name: "PERSONAL_ASSISTANT",
+						params: {
+							...(unwrappedToolCall.params &&
+							typeof unwrappedToolCall.params === "object"
+								? unwrappedToolCall.params
+								: {}),
+							action: "book_travel",
+							intent: getUserMessageText(args.executorCtx.message),
+						},
+					}
+				: forceBrowserToAutofill
+					? {
+							...unwrappedToolCall,
+							name: "CREDENTIALS",
+							params: {
+								...(unwrappedToolCall.params &&
+								typeof unwrappedToolCall.params === "object"
+									? unwrappedToolCall.params
+									: {}),
+								action: "fill",
+								subaction: "fill",
+							},
+						}
+					: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
@@ -5065,6 +5092,7 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["EMAIL_DRAFT_REPLY", "MESSAGE"],
 		["EMAIL_FETCH_UNREAD", "MESSAGE"],
 		["FETCH_UNREAD_EMAIL", "MESSAGE"],
+		["FETCH_UNREAD_EMAILS", "MESSAGE"],
 		["LIST_UNREAD_EMAILS", "MESSAGE"],
 		["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
 		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
@@ -5108,15 +5136,15 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SET_GOAL", "OWNER_GOALS"],
 		["CREATE_REMINDER", "OWNER_REMINDERS"],
 		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "REPLY"],
-		["LIFE_CHECK_IN", "REPLY"],
-		["MORNING_CHECKIN", "REPLY"],
-		["MORNING_CHECK_IN", "REPLY"],
-		["NIGHT_CHECKIN", "REPLY"],
-		["NIGHT_CHECK_IN", "REPLY"],
-		["RUN_CHECKIN", "REPLY"],
-		["RUN_MORNING_CHECKIN", "REPLY"],
-		["RUN_NIGHT_CHECKIN", "REPLY"],
+		["CHECK_IN", "CHECKIN"],
+		["LIFE_CHECK_IN", "CHECKIN"],
+		["MORNING_CHECKIN", "CHECKIN"],
+		["MORNING_CHECK_IN", "CHECKIN"],
+		["NIGHT_CHECKIN", "CHECKIN"],
+		["NIGHT_CHECK_IN", "CHECKIN"],
+		["RUN_CHECKIN", "CHECKIN"],
+		["RUN_MORNING_CHECKIN", "CHECKIN"],
+		["RUN_NIGHT_CHECKIN", "CHECKIN"],
 		["AUTOMATION_RUN", "REPLY"],
 		["DAILY_BRIEF", "REPLY"],
 		["MEMORY_SET", "REPLY"],
@@ -5161,93 +5189,93 @@ const PLANNER_ACTION_ALIAS_DEFAULTS = new Map(
 	[
 		[
 			"ADD_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"CREATE_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODO_ADD",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODO_CREATE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODOS_ADD",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODOS_CREATE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASK_ADD",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASK_CREATE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"ADD_TASK",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"CREATE_TASK",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASKS_ADD_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASKS_CREATE_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"ADD_HABIT",
-			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+			{ action: "create", kind: "definition", definitionKind: "habit" },
 		],
 		[
 			"CREATE_HABIT",
-			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+			{ action: "create", kind: "definition", definitionKind: "habit" },
 		],
-		["ADD_GOAL", { subaction: "create", kind: "goal" }],
-		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
-		["TASKS_SET_GOAL", { subaction: "create", kind: "goal" }],
-		["SET_GOAL", { subaction: "create", kind: "goal" }],
+		["ADD_GOAL", { action: "create", kind: "goal" }],
+		["CREATE_GOAL", { action: "create", kind: "goal" }],
+		["TASKS_SET_GOAL", { action: "create", kind: "goal" }],
+		["SET_GOAL", { action: "create", kind: "goal" }],
 		[
 			"CREATE_REMINDER",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASKS_CREATE_REMINDER",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"SET_REMINDER_RULE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
-		["LIST_TODOS", { subaction: "review" }],
-		["GET_TODOS", { subaction: "review" }],
-		["TODO_LIST", { subaction: "review" }],
-		["TODO_LIST_TODAY", { subaction: "review" }],
-		["TODOS_LIST", { subaction: "review" }],
-		["TODO_GET", { subaction: "review" }],
-		["TODOS_GET", { subaction: "review" }],
-		["TODOS_REVIEW", { subaction: "review" }],
-		["TASK_LIST", { subaction: "review" }],
-		["TASK_LIST_TODAY", { subaction: "review" }],
-		["TASKS_REVIEW", { subaction: "review" }],
-		["TASKS_LIST_TODAY", { subaction: "review" }],
-		["TASKS_LIST_TODOS", { subaction: "review" }],
-		["LIST_TASKS", { subaction: "review" }],
-		["LIFE_GET_TODOS", { subaction: "review" }],
+		["LIST_TODOS", { action: "review" }],
+		["GET_TODOS", { action: "review" }],
+		["TODO_LIST", { action: "review" }],
+		["TODO_LIST_TODAY", { action: "review" }],
+		["TODOS_LIST", { action: "review" }],
+		["TODO_GET", { action: "review" }],
+		["TODOS_GET", { action: "review" }],
+		["TODOS_REVIEW", { action: "review" }],
+		["TASK_LIST", { action: "review" }],
+		["TASK_LIST_TODAY", { action: "review" }],
+		["TASKS_REVIEW", { action: "review" }],
+		["TASKS_LIST_TODAY", { action: "review" }],
+		["TASKS_LIST_TODOS", { action: "review" }],
+		["LIST_TASKS", { action: "review" }],
+		["LIFE_GET_TODOS", { action: "review" }],
 		["LIFE_TODO", {}],
-		["LIST_HABITS", { subaction: "review" }],
+		["LIST_HABITS", { action: "review" }],
 	].map(([from, defaults]) => [
 		normalizeActionIdentifier(from as string),
 		defaults as PlannerLifeAliasDefaults,
@@ -5258,94 +5286,94 @@ const PLANNER_LIFE_SUBACTION_DEFAULTS = new Map(
 	[
 		[
 			"ADD_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"CREATE_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODO_ADD",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODO_CREATE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODOS_ADD",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TODOS_CREATE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASK_ADD",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASK_CREATE",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASKS_ADD_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASKS_CREATE_TODO",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"ADD_TASK",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"CREATE_TASK",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"ADD_REMINDER",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"CREATE_REMINDER",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"TASKS_CREATE_REMINDER",
-			{ subaction: "create", kind: "definition", definitionKind: "task" },
+			{ action: "create", kind: "definition", definitionKind: "task" },
 		],
 		[
 			"ADD_HABIT",
-			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+			{ action: "create", kind: "definition", definitionKind: "habit" },
 		],
 		[
 			"CREATE_HABIT",
-			{ subaction: "create", kind: "definition", definitionKind: "habit" },
+			{ action: "create", kind: "definition", definitionKind: "habit" },
 		],
-		["ADD_GOAL", { subaction: "create", kind: "goal" }],
-		["CREATE_GOAL", { subaction: "create", kind: "goal" }],
-		["TASKS_SET_GOAL", { subaction: "create", kind: "goal" }],
-		["SET_GOAL", { subaction: "create", kind: "goal" }],
-		["LIST_TODOS", { subaction: "review" }],
-		["GET_TODOS", { subaction: "review" }],
-		["TODO_LIST", { subaction: "review" }],
-		["TODO_LIST_TODAY", { subaction: "review" }],
-		["TODOS_LIST", { subaction: "review" }],
-		["TODO_GET", { subaction: "review" }],
-		["TODOS_GET", { subaction: "review" }],
-		["TODOS_REVIEW", { subaction: "review" }],
-		["TASK_LIST", { subaction: "review" }],
-		["TASK_LIST_TODAY", { subaction: "review" }],
-		["TASKS_REVIEW", { subaction: "review" }],
-		["TASKS_LIST_TODAY", { subaction: "review" }],
-		["TASKS_LIST_TODOS", { subaction: "review" }],
-		["LIST_TASKS", { subaction: "review" }],
-		["LIFE_GET_TODOS", { subaction: "review" }],
+		["ADD_GOAL", { action: "create", kind: "goal" }],
+		["CREATE_GOAL", { action: "create", kind: "goal" }],
+		["TASKS_SET_GOAL", { action: "create", kind: "goal" }],
+		["SET_GOAL", { action: "create", kind: "goal" }],
+		["LIST_TODOS", { action: "review" }],
+		["GET_TODOS", { action: "review" }],
+		["TODO_LIST", { action: "review" }],
+		["TODO_LIST_TODAY", { action: "review" }],
+		["TODOS_LIST", { action: "review" }],
+		["TODO_GET", { action: "review" }],
+		["TODOS_GET", { action: "review" }],
+		["TODOS_REVIEW", { action: "review" }],
+		["TASK_LIST", { action: "review" }],
+		["TASK_LIST_TODAY", { action: "review" }],
+		["TASKS_REVIEW", { action: "review" }],
+		["TASKS_LIST_TODAY", { action: "review" }],
+		["TASKS_LIST_TODOS", { action: "review" }],
+		["LIST_TASKS", { action: "review" }],
+		["LIFE_GET_TODOS", { action: "review" }],
 		["LIFE_TODO", {}],
-		["LIST_TASKS", { subaction: "review" }],
-		["LIST_HABITS", { subaction: "review" }],
+		["LIST_TASKS", { action: "review" }],
+		["LIST_HABITS", { action: "review" }],
 	].map(([from, defaults]) => [
 		normalizeActionIdentifier(from as string),
 		defaults as PlannerLifeAliasDefaults,
@@ -5379,20 +5407,17 @@ const ACTION_REPAIR_PASSIVE_ACTIONS = new Set(
 // WORKFLOW + its trigger schedule similes are included because the phrase
 // structure the planner matches on ("every N minutes", "at 7am daily",
 // "schedule a cron task") does not keyword-overlap with the action's
-// description the way LIFE's multi-paragraph reminder/alarm prose does.
+// description the way owner reminder/todo prose does.
 // Without these entries, the correction layer (findOwnedActionCorrectionFromMetadata)
 // routinely overrides a correct CREATE_CRON / WORKFLOW pick on
-// page-automations with LIFE based on fuzzy description overlap — breaking
+// page-automations with owner task actions based on fuzzy description overlap — breaking
 // the scope-gated routing on the page-automations surface.
-// RELATIONSHIP is the explicit umbrella action for the contacts /
+// CONTACT/ENTITY are explicit umbrella actions for contacts /
 // rolodex / follow-up surface. The metadata-based corrector would otherwise
-// override a correct RELATIONSHIP pick (subaction=add_follow_up) with
+// override a correct contact follow-up pick with
 // SCHEDULE_FOLLOW_UP based on keyword overlap ("follow up with X next week"),
-// even though SCHEDULE_FOLLOW_UP's validate explicitly returns false when
-// RELATIONSHIP is registered. The bypassed validate then surfaces a
-// "Contact not found in relationships" error from the wrong action path.
-// Treat RELATIONSHIP as explicit planner intent so the corrector does
-// not second-guess it.
+// creating a task on the wrong surface. Treat CONTACT and ENTITY as explicit
+// planner intent so the corrector does not second-guess them.
 //
 // START_CODING_TASK is the orchestrator's coding-sub-agent delegation. When a user
 // says "build me X" or "implement Y", the planner correctly picks START_CODING_TASK,
@@ -5409,7 +5434,7 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"SPAWN_AGENT",
 		"START_CODING_TASK",
 		"CREATE_TASK",
-		"READ_ATTACHMENT",
+		"ATTACHMENT",
 		"TRANSCRIBE_MEDIA",
 		"DOWNLOAD_MEDIA",
 		"CHAT_WITH_ATTACHMENTS",
@@ -5428,13 +5453,17 @@ const EXPLICIT_INTENT_ACTIONS = new Set(
 		"SCHEDULE_AUTOMATION",
 		"CREATE_CRON",
 		"CREATE_RECURRING",
-		"RELATIONSHIP",
-		// LIFE picks routine / reminder / todo / habit / goal intents that
+		"CONTACT",
+		"ENTITY",
+		// Owner task actions pick routine / reminder / todo / habit / goal intents that
 		// frequently mention a verb-noun pair the corrector will mis-rewrite.
-		// "remember to call mom on Sunday" → planner correctly picks LIFE
+		// "remember to call mom on Sunday" → planner correctly picks OWNER_REMINDERS
 		// (a reminder), but the corrector keyword-rescores it to
 		// VOICE_CALL because of "call". Trust the planner's pick.
-		"LIFE",
+		"OWNER_REMINDERS",
+		"OWNER_TODOS",
+		"OWNER_ROUTINES",
+		"OWNER_GOALS",
 	].map(normalizeActionIdentifier),
 );
 
@@ -5657,17 +5686,17 @@ function _buildActionOnlyRescuePrompt(draftReply: string): string {
 Examples:
 - "need to book 1 hour per day for time with Jill, any time is fine, ideally before sleep" -> CALENDAR
 - "I'm in Tokyo for limited time so let's schedule PendingReality and Ryan at the same time if possible" -> CALENDAR
-- "repair that missed call and hold the note for approval" -> MESSAGE operation=triage
-- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> MESSAGE operation=draft_followup
-	- "if direct relaying gets messy, suggest a group chat handoff" -> MESSAGE operation=triage
-	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> MESSAGE operation=list_inbox
+- "repair that missed call and hold the note for approval" -> MESSAGE action=triage
+- "if I still haven't answered about those three events, bump me again with context instead of starting over" -> MESSAGE action=draft_followup
+	- "if direct relaying gets messy, suggest a group chat handoff" -> MESSAGE action=triage
+	- "tell me what slides, bio, title, or portal assets I still owe before the event" -> MESSAGE action=list_inbox
 	- "we're gonna cancel some stuff and push everything back until next month, all partnership meetings" -> CALENDAR
-	- "capture my reusable flight and hotel preferences" -> PROFILE
+	- "capture my reusable flight and hotel preferences" -> REPLY
 	- "flag the conflict before my flight later and, if needed, help rebook the other thing" -> CALENDAR
-	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> BOOK_TRAVEL
+	- "I can go ahead and start booking the flights and hotel today if that's good with you" -> PERSONAL_ASSISTANT action=book_travel
 	- "when I'm done with the PPT, upload it to the speaker portal for me" -> COMPUTER_USE
 	- "if you get stuck in the browser or on my computer, call me" -> VOICE_CALL
-	- "check disk space on this VPS with df -h" -> SHELL_COMMAND
+- "check disk space on this VPS with df -h" -> SHELL
 	- "what is the current BTC price in USD?" -> SEARCH
 
 ${draftSection}Return JSON only:
@@ -5678,7 +5707,9 @@ ${draftSection}Return JSON only:
 }
 
 const ROUTING_REASSESS_ACTIONS = new Set(
-	["LIFE", "COMPUTER_USE", "SUBSCRIPTIONS"].map(normalizeActionIdentifier),
+	["OWNER_TODOS", "OWNER_REMINDERS", "COMPUTER_USE", "OWNER_FINANCES"].map(
+		normalizeActionIdentifier,
+	),
 );
 
 const ACTION_OWNERSHIP_STOPWORDS = new Set([
@@ -5910,6 +5941,7 @@ function findDirectOwnedActionSuggestion(
 ): ActionOwnershipSuggestion | null {
 	if (looksLikeLocalShellRequest(messageText)) {
 		const shellAction = findRuntimeActionByNames(runtime, [
+			"SHELL",
 			"SHELL_COMMAND",
 			"RUN_IN_TERMINAL",
 			"RUN_COMMAND",
@@ -6163,8 +6195,10 @@ function _hasSelectedShellCommandAction(
 		responseContent?.actions?.some(
 			(actionName) =>
 				typeof actionName === "string" &&
-				normalizeActionIdentifier(actionName) ===
+				[
+					normalizeActionIdentifier("SHELL"),
 					normalizeActionIdentifier("SHELL_COMMAND"),
+				].includes(normalizeActionIdentifier(actionName)),
 		) ?? false
 	);
 }
@@ -6197,8 +6231,8 @@ function _mergeLocalShellCommandParams(
 	) {
 		return {
 			...(existingParams as Record<string, unknown>),
-			SHELL_COMMAND: {
-				...(((existingParams as Record<string, unknown>).SHELL_COMMAND as
+			SHELL: {
+				...(((existingParams as Record<string, unknown>).SHELL as
 					| Record<string, unknown>
 					| undefined) ?? {}),
 				command,
@@ -6207,7 +6241,7 @@ function _mergeLocalShellCommandParams(
 	}
 
 	return {
-		SHELL_COMMAND: { command },
+		SHELL: { command },
 	} as Content["params"];
 }
 
@@ -6569,10 +6603,10 @@ function _buildOwnershipRepairPrompt(
 The previous plan selected ${selectedActionName}, but that action may be too broad or the wrong surface.
 Re-evaluate the request and choose the single best owning action from the listed actions above.
 Prefer the most specific owning action for inbox coordination, calendar conflict/rebooking, approval-gated travel booking, browser/portal workflows, device-warning policies, or owner-escalation workflows.
-Generic contextual bump rules about unanswered events belong to MESSAGE operation=draft_followup or LIFE, not DEVICE_INTENT, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
-Missing-ID or blocked-workflow prompts belong to DEVICE_INTENT, VOICE_CALL, or MESSAGE with the appropriate inbox/draft operation, not COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
-Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to LIFE unless the request is explicitly about personal todo/habit state.
-Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to device-intent, calendar, or call escalation actions, not to SUBSCRIPTIONS unless the user explicitly asks to audit, cancel, or status-check a named subscription.
+Generic contextual bump rules about unanswered events belong to MESSAGE action=draft_followup or an OWNER_* task surface, unless the owner explicitly asks for device-wide phone/desktop/mobile delivery.
+Missing-ID or blocked-workflow prompts belong to VOICE_CALL or MESSAGE with the appropriate inbox/draft action, not COMPUTER_USE, unless the assistant is actually operating a browser, portal, or file surface on the owner's machine.
+Outstanding slides, bios, titles, portal assets, drafts, and other "what do I still owe?" questions belong to the owning inbox/calendar/browser action, not to OWNER_TODOS unless the request is explicitly about personal todo/habit state.
+Cancellation-fee warnings and "warn me and offer to handle it now" policies belong to calendar, OWNER_FINANCES, or call escalation actions; email unsubscribe belongs to MESSAGE action=manage unless the user explicitly asks to audit, cancel, or status-check a paid subscription.
 Flight-conflict rebooking belongs to CALENDAR even when the exact flight time or event ID still needs a follow-up.
 If the current action is already the most specific owner, keep it.${draftSection}`;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: SPAWN_AGENT is `TASKS { op: "spawn_agent" }`.
+// Post-consolidation: SPAWN_AGENT is `TASKS { action: "spawn_agent" }`.
 import { spawnAgentAction } from "../../src/actions/tasks.js";
 import {
   callback,
@@ -9,9 +9,9 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-const spawnOptions = { parameters: { op: "spawn_agent" } };
+const spawnOptions = { parameters: { action: "spawn_agent" } };
 
-describe("TASKS:spawn_agent (legacy SPAWN_AGENT)", () => {
+describe("TASKS:spawn_agent", () => {
   it("validates with explicit payload and a service available", async () => {
     expect(
       await spawnAgentAction.validate(

@@ -29,15 +29,22 @@ const defaultRuntime = { error: console.error, exit: process.exit };
 
 const RESET_PROOF_FILENAME = "RESET_PROOF.txt";
 
-/** Resolve the eliza state dir without importing service modules. */
+/**
+ * Resolve the eliza state dir without importing service modules.
+ * Mirrors the canonical `MILADY_STATE_DIR` > `ELIZA_STATE_DIR` >
+ * `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence in @elizaos/core's
+ * `resolveStateDir`.
+ */
 function resolveElizaStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
+  const explicit =
+    process.env.MILADY_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return path.resolve(explicit);
+  const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   const home =
     process.env.HOME?.trim() ||
     process.env.USERPROFILE?.trim() ||
     process.cwd();
-  return path.join(home, ".eliza");
+  return path.join(home, `.${namespace}`);
 }
 
 interface RuntimeAdapter {

@@ -123,13 +123,13 @@ type EmbeddingModelHint = {
 const EMBEDDING_MODEL_HINTS: EmbeddingModelHint[] = [
   {
     pattern: /eliza-1-lite/i,
-    repo: "elizalabs/eliza-1-lite-0_6b",
+    repo: "elizaos/eliza-1-lite-0_6b",
     dimensions: 1024,
     contextSize: 32768,
   },
   {
     pattern: /eliza-1-mobile/i,
-    repo: "elizalabs/eliza-1-mobile-1_7b",
+    repo: "elizaos/eliza-1-mobile-1_7b",
     dimensions: 2048,
     contextSize: 32768,
   },

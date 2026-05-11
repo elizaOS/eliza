@@ -73,6 +73,8 @@ interface ListFilter {
 }
 
 interface PluginParams {
+  action?: PluginOp;
+  subaction?: PluginOp;
   op?: PluginOp;
   type?: PluginType;
   pluginId?: string;
@@ -790,16 +792,20 @@ export const pluginAction: Action = {
     "MANAGE_CONNECTOR",
   ],
   description:
-    "Manage plugin and connector lifecycle. ops: install, uninstall, " +
-    "update (refresh to latest), sync (pull upstream into ejected source), " +
-    "eject (clone source locally), reinject (drop ejected copy and use npm), " +
-    "configure (save key/value config + auto-test), read_config (return " +
-    "current state), toggle (enable/disable), list (enumerate plugins or " +
-    "connectors with optional filter), disconnect (sign out connector and " +
-    "drop session). type='plugin' (default) targets installed plugins; " +
-    "type='connector' targets plugins in the 'connector' category.",
+    "Install / uninstall / configure / eject plugins and connectors at the " +
+    "**package** level. ops: install, uninstall, update (refresh to latest), " +
+    "sync (pull upstream into ejected source), eject (clone source locally), " +
+    "reinject (drop ejected copy and use npm), configure (save key/value " +
+    "config + auto-test), read_config (return current state), toggle " +
+    "(enable/disable), list (enumerate plugins or connectors with optional " +
+    "filter), disconnect (sign out connector and drop session). type='plugin' " +
+    "(default) targets installed plugins; type='connector' targets plugins in " +
+    "the 'connector' category and manages their **package** install/eject " +
+    "only, not account state. For **account**-level connector lifecycle (log " +
+    "in, log out, verify account, list account status), use the `CONNECTOR` " +
+    "action instead.",
   descriptionCompressed:
-    "manage plugin+connector lifecycle install uninstall update sync eject reinject configure read_config toggle list disconnect type=plugin|connector",
+    "package-level plugin+connector lifecycle install uninstall update sync eject reinject configure read_config toggle list disconnect type=plugin|connector; for account login/logout use CONNECTOR",
   validate: async (runtime) => getPluginManager(runtime) !== null,
   handler: async (
     runtime: IAgentRuntime,
@@ -809,10 +815,10 @@ export const pluginAction: Action = {
   ): Promise<ActionResult> => {
     const params = ((options as HandlerOptions | undefined)?.parameters ??
       {}) as PluginParams;
-    const op = params.op;
+    const op = params.action ?? params.subaction ?? params.op;
     if (!op || !PLUGIN_OPS.includes(op)) {
       return fail(
-        `op is required and must be one of ${PLUGIN_OPS.join(", ")}.`,
+        `action is required and must be one of ${PLUGIN_OPS.join(", ")}.`,
         "PLUGIN_INVALID",
       );
     }
@@ -867,7 +873,7 @@ export const pluginAction: Action = {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation to perform.",
       required: true,
       schema: { type: "string" as const, enum: [...PLUGIN_OPS] },

@@ -18,8 +18,8 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import {
-  resolveRuntimeExecutionMode,
   type RuntimeExecutionMode,
+  resolveRuntimeExecutionMode,
 } from "@elizaos/shared";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";
@@ -40,6 +40,8 @@ export interface ShellRequest {
   cwd?: string;
   env?: Record<string, string>;
   timeoutMs?: number;
+  onStdout?: (chunk: string) => void;
+  onStderr?: (chunk: string) => void;
   /** Caller identity for audit trails. Required so logs are traceable. */
   toolName: string;
 }
@@ -161,10 +163,14 @@ async function runOnHost(req: ShellRequest): Promise<ShellResult> {
     if (typeof timer.unref === "function") timer.unref();
 
     child.stdout?.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      stdout += text;
+      req.onStdout?.(text);
     });
     child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString("utf8");
+      const text = chunk.toString("utf8");
+      stderr += text;
+      req.onStderr?.(text);
     });
     child.on("error", (err) => {
       clearTimeout(timer);
@@ -203,6 +209,8 @@ async function runInSandbox(
     env: req.env,
     timeoutMs: req.timeoutMs,
   });
+  if (result.stdout) req.onStdout?.(result.stdout);
+  if (result.stderr) req.onStderr?.(result.stderr);
   return {
     exitCode: result.exitCode,
     stdout: result.stdout,

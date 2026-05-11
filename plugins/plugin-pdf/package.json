@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-pdf",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -32,7 +32,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "unpdf": "^1.4.0"
   },
   "devDependencies": {

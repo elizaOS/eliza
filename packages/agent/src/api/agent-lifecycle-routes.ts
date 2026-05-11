@@ -1,5 +1,6 @@
 import type { AgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
+import { PostAgentAutonomyRequestSchema } from "@elizaos/shared";
 import { detectRuntimeModel } from "./agent-model.ts";
 
 type AgentStateStatus =
@@ -116,13 +117,18 @@ export async function handleAgentLifecycleRoutes(
   }
 
   if (method === "POST" && pathname === "/api/agent/autonomy") {
-    const body = await readJsonBody<{ enabled?: unknown }>(req, res);
-    if (!body) return true;
-
-    if (typeof body.enabled !== "boolean") {
-      error(res, "enabled must be a boolean", 400);
+    const rawAuto = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawAuto === null) return true;
+    const parsedAuto = PostAgentAutonomyRequestSchema.safeParse(rawAuto);
+    if (!parsedAuto.success) {
+      error(
+        res,
+        parsedAuto.error.issues[0]?.message ?? "enabled must be a boolean",
+        400,
+      );
       return true;
     }
+    const enabled = parsedAuto.data.enabled;
 
     if (!runtime) {
       error(res, "Agent runtime is not available", 503);
@@ -134,7 +140,7 @@ export async function handleAgentLifecycleRoutes(
     const autonomySvc =
       runtime.getService?.("AUTONOMY") ?? runtime.getService?.("autonomy");
     if (isAutonomyToggleService(autonomySvc)) {
-      if (body.enabled) {
+      if (enabled) {
         await autonomySvc.enableAutonomy();
       } else {
         await autonomySvc.disableAutonomy();
@@ -142,7 +148,7 @@ export async function handleAgentLifecycleRoutes(
     }
     // Always sync the property — enableAutonomy()/disableAutonomy() set it
     // internally, but if the service path wasn't taken, set it directly.
-    runtime.enableAutonomy = body.enabled;
+    runtime.enableAutonomy = enabled;
     json(res, { enabled: runtime.enableAutonomy === true });
     return true;
   }

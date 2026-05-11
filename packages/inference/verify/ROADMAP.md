@@ -1,5 +1,13 @@
 # `verify/` harness extension roadmap
 
+> Status note, 2026-05-11: this file is historical planning context. Vulkan
+> QJL/Polar bind-set verification, the CUDA harness, the Vulkan built-fork
+> dispatch smoke gate, and the Android Vulkan smoke runner now exist in this
+> directory. The enforceable current contract is
+> `kernel-contract.json`, checked by `make kernel-contract`; the current
+> blocker ledger is
+> `../reports/porting/2026-05-11/remaining-work-ledger.md`.
+
 This is the implementation plan for taking the `verify/` harness from its
 current state (Metal: 5/5 shaders verified on M4 Max; Vulkan: 3/5 turbo*
 shaders verified on Intel ARL + lavapipe; QJL/Polar Vulkan + every other
@@ -114,7 +122,7 @@ Mali / NVIDIA / AMD / Intel.
 
 ## Extension 3 — `cuda_verify` (new harness)
 
-**Status:** blocks `desktop-9b`, `pro-27b`, `server-h200` from claiming
+**Status:** blocks `9b`, `27b`, `27b-256k` from claiming
 CUDA backend verification per AGENTS.md §8.
 
 **Current state.** No CUDA verifier exists in `verify/`. The
@@ -146,7 +154,7 @@ GPU-runner or the existing device-lab.
 
 ## Extension 4 — Adreno on-device runner
 
-**Status:** blocks `mobile-1_7b` Vulkan claim on Snapdragon devices
+**Status:** blocks `1_7b` Vulkan claim on Snapdragon devices
 (Pixel 8/9, Galaxy S23/24/25).
 
 **Current state.** No on-device runner. `vulkan_verify` is a
@@ -176,7 +184,7 @@ doesn't have an `android-vulkan` recipe.
 
 ## Extension 5 — Mali on-device runner
 
-**Status:** blocks `mobile-1_7b` Vulkan claim on Tensor / non-Snapdragon
+**Status:** blocks `1_7b` Vulkan claim on Tensor / non-Snapdragon
 Galaxy / MediaTek devices.
 
 **Current state.** Same as #4. Mali's subgroup behavior differs from
@@ -195,7 +203,7 @@ Exynos-based Galaxy.
 
 ## Extension 6 — iOS on-device runner
 
-**Status:** blocks `lite-0_6b` and `mobile-1_7b` Metal claim on iOS
+**Status:** blocks `0_6b` and `1_7b` Metal claim on iOS
 hardware. **Has a hard prerequisite:** the `ios-arm64-metal` archive
 must actually be linked into the app first (see
 [`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md)
@@ -221,7 +229,7 @@ blocker #1).
 
 ## Extension 7 — `linux-aarch64-cuda` (GH200) target + verify
 
-**Status:** blocks `server-h200` tier entirely (no target exists today).
+**Status:** blocks `27b-256k` tier entirely (no target exists today).
 
 **Current state.** `SUPPORTED_TARGETS` in
 [`../../app-core/scripts/build-llama-cpp-dflash.mjs:82`](../../app-core/scripts/build-llama-cpp-dflash.mjs)
@@ -250,7 +258,7 @@ Grace + Hopper PCIe board).
 
 ## Extension 8 — AMD ROCm verify
 
-**Status:** blocks `desktop-9b`, `pro-27b` from claiming ROCm parity
+**Status:** blocks `9b`, `27b` from claiming ROCm parity
 even on hosts where the build target compiles.
 
 **Current state.** `linux-x64-rocm` builds when `hipcc`/`rocminfo` is
@@ -276,7 +284,7 @@ Strix-class workstation).
 
 ## Extension 9 — Windows on-device runner (x64 + arm64)
 
-**Status:** blocks `desktop-9b` claim on the Windows half of the
+**Status:** blocks `9b` claim on the Windows half of the
 desktop tier.
 
 **Current state.** `windows-x64-cpu` and `windows-x64-cuda` cross-build

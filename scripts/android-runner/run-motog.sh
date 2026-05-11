@@ -247,7 +247,7 @@ if [ "${SKIP_MODELS}" = "0" ]; then
   if [ -z "${ELIZA1_GGUF}" ]; then
     log "WARN: Eliza-1 mobile GGUF not found."
     log "      Set ANDROID_RUNNER_ELIZA1_GGUF or download via:"
-    log "        hf download elizalabs/eliza-1-mobile-1_7b text/eliza-1-mobile-1_7b-32k.gguf --local-dir ~/.cache/eliza/local-inference/models/eliza-1-mobile-1_7b"
+    log "        hf download elizaos/eliza-1-mobile-1_7b text/eliza-1-mobile-1_7b-32k.gguf --local-dir ~/.cache/eliza/local-inference/models/eliza-1-mobile-1_7b"
     SKIP_MODELS=1
   else
     log "models: eliza1=${ELIZA1_GGUF} ($(du -h "${ELIZA1_GGUF}" | awk '{print $1}'))"

@@ -1,7 +1,7 @@
 /**
  * Write-through mirror to @elizaos/vault for plugin sensitive fields.
  *
- * Extracted from plugins-compat-routes.ts so unit tests can exercise the
+ * Extracted from plugins-routes.ts so unit tests can exercise the
  * mirror logic without dragging in the entire @elizaos/agent runtime.
  *
  * Concurrency: the vault PUT path is hit concurrently when the UI saves

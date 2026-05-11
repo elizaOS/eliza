@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
   createElizaPlugin,
   extractPlugin,
   type PluginModuleShape,
@@ -325,14 +324,11 @@ describeIf(LIVE_SUITE_ENABLED)(
       };
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
-      const localEmbeddingPlugin = await loadPlugin(
-        "@elizaos/plugin-local-embedding",
-      );
       const providerPlugin = selectedLiveProvider
         ? await loadPlugin(selectedLiveProvider.plugin)
         : null;
 
-      if (!sqlPlugin || !localEmbeddingPlugin || !providerPlugin) {
+      if (!sqlPlugin || !providerPlugin) {
         throw new Error("Required live plugins were not available.");
       }
 
@@ -354,9 +350,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       if (runtime.adapter && !(await runtime.adapter.isReady())) {
         await runtime.adapter.init();
       }
-      configureLocalEmbeddingPlugin(localEmbeddingPlugin);
-      await runtime.registerPlugin(localEmbeddingPlugin);
-
       await runtime.initialize();
 
       lifeOpsService = new LifeOpsService(runtime, {

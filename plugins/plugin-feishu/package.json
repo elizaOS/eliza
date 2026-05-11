@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-feishu",
-	"version": "2.0.0-beta.0",
+	"version": "2.0.0-beta.1",
 	"type": "module",
 	"main": "dist/index.js",
 	"module": "dist/index.js",
@@ -27,7 +27,7 @@
 		}
 	},
 	"dependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "2.0.0-beta.1",
 		"@larksuiteoapi/node-sdk": "^1.40.0",
 		"@types/node": "^25.0.3",
 		"typescript": "^6.0.3"

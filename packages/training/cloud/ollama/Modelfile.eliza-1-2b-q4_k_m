@@ -5,7 +5,7 @@
 #
 # This pulls the GGUF directly from HuggingFace via Ollama's HF passthrough
 # (FROM hf.co/...). The repo name follows scripts/push_model_to_hf.py's
-# resolver: --quant gguf-q4_k_m on registry key qwen3.5-2b uploads to
+# resolver: --quant gguf-q4_k_m on registry key eliza-1-2b uploads to
 # `<eliza_repo_id>-gguf-q4_k_m` (one HF repo per K-quant level).
 #
 # Sized for 16 GB consumer GPUs:
@@ -16,7 +16,7 @@
 # Availability: requires `scripts/publish_all_eliza1.sh --filter-size 2b
 # --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
 # checkpoint. The HF repo does not exist before that runs.
-FROM hf.co/elizaos/eliza-1-2b-gguf-q4_k_m
+FROM hf.co/elizalabs/eliza-1-2b-gguf-q4_k_m
 
 # Match the runtime's default Eliza system prompt. The character/preset
 # layer (`packages/agent/src/runtime/eliza.ts` line ~2503) overrides this
@@ -24,7 +24,7 @@ FROM hf.co/elizaos/eliza-1-2b-gguf-q4_k_m
 # bare `ollama run eliza-1-2b` returns sane behavior.
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 
-# Qwen3.5/3.6 chat template uses the standard ChatML stop tokens.
+# Eliza-1 chat template uses the standard ChatML stop tokens.
 PARAMETER stop "<|im_start|>"
 PARAMETER stop "<|im_end|>"
 PARAMETER stop "<|endoftext|>"
@@ -39,7 +39,7 @@ PARAMETER num_ctx 32768
 PARAMETER num_predict 4096
 
 # Sampling — slightly conservative defaults appropriate for an agent.
-# Temperature 0.7 + top_p 0.9 mirror the Qwen3 chat-recommended values.
+# Temperature 0.7 + top_p 0.9 mirror the Eliza-1 values.
 PARAMETER temperature 0.7
 PARAMETER top_p 0.9
 PARAMETER repeat_penalty 1.05

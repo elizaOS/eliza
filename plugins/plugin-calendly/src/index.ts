@@ -3,7 +3,7 @@
  * @description elizaOS plugin for Calendly integration.
  *
  * Surface:
- *   - CALENDLY_OP { op: "book" | "cancel" } — unified booking + cancellation router
+ *   - Calendly provider metadata for calendar availability/event-type context
  *   - calendlyEventTypes — read-only provider for the connected user's event types
  *
  * Auth: Calendly v2 personal access token resolved from CALENDLY_ACCESS_TOKEN
@@ -15,9 +15,7 @@ import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import {
   getConnectorAccountManager,
   logger,
-  promoteSubactionsToActions,
 } from "@elizaos/core";
-import { calendlyOpAction } from "./actions/calendly-op.js";
 import { createCalendlyConnectorAccountProvider } from "./connector-account-provider.js";
 import { calendlyEventTypesProvider } from "./providers/calendly-event-types.js";
 import { CalendlyService } from "./services/CalendlyService.js";
@@ -49,7 +47,7 @@ export const calendlyPlugin: Plugin = {
   description:
     "Calendly integration -- list event types, hand off booking links, cancel scheduled events",
   services: [CalendlyService],
-  actions: [...promoteSubactionsToActions(calendlyOpAction)],
+  actions: [],
   providers: [calendlyEventTypesProvider],
   autoEnable: {
     envKeys: [

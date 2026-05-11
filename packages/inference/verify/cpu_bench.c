@@ -108,7 +108,7 @@ static double run_turbo4(const float *q, const eliza_block_turbo4_0 *kblocks,
                          float *scores) {
     double t0 = now_us();
     for (int i = 0; i < TURBO_NKV; i++) {
-        scores[i] = eliza_dot_q_turbo4(q, kblocks + i);
+        scores[i] = eliza_dot_q_turbo4(q, kblocks + (size_t)i * 4);
     }
     return now_us() - t0;
 }
@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
     eliza_block_turbo3_0 *k_turbo3 = (eliza_block_turbo3_0 *)
         malloc(sizeof(eliza_block_turbo3_0) * (size_t)TURBO_NKV * 4);
     eliza_block_turbo4_0 *k_turbo4 = (eliza_block_turbo4_0 *)
-        malloc(sizeof(eliza_block_turbo4_0) * (size_t)TURBO_NKV);
+        malloc(sizeof(eliza_block_turbo4_0) * (size_t)TURBO_NKV * 4);
     eliza_block_turbo3_tcq *k_turbo3t = (eliza_block_turbo3_tcq *)
         malloc(sizeof(eliza_block_turbo3_tcq) * (size_t)TURBO_NKV);
 
@@ -236,7 +236,7 @@ int main(int argc, char **argv) {
     fill_rand_bytes((uint8_t *)k_turbo3,
                     sizeof(eliza_block_turbo3_0) * (size_t)TURBO_NKV * 4);
     fill_rand_bytes((uint8_t *)k_turbo4,
-                    sizeof(eliza_block_turbo4_0) * (size_t)TURBO_NKV);
+                    sizeof(eliza_block_turbo4_0) * (size_t)TURBO_NKV * 4);
     fill_rand_bytes((uint8_t *)k_turbo3t,
                     sizeof(eliza_block_turbo3_tcq) * (size_t)TURBO_NKV);
     fill_randn(q_sketch, QJL_HEADS * QJL_PROJ_DIM);
@@ -258,7 +258,7 @@ int main(int argc, char **argv) {
             + (uint64_t)TURBO_NKV * sizeof(float), 0,0,0 },
         { "turbo4",     TURBO_NKV,
           (uint64_t)HEAD_DIM*sizeof(float)
-            + (uint64_t)TURBO_NKV * sizeof(eliza_block_turbo4_0)
+            + (uint64_t)TURBO_NKV * sizeof(eliza_block_turbo4_0) * 4
             + (uint64_t)TURBO_NKV * sizeof(float), 0,0,0 },
         { "turbo3_tcq", TURBO_NKV,
           (uint64_t)HEAD_DIM*sizeof(float)

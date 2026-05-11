@@ -4,7 +4,7 @@
  * Reading the recent-calls list is state exposure, not an agent operation
  * with side effects. Surfaced as a dynamic provider so the planner can pull
  * call-log context when a question hinges on prior calls. Live operations
- * such as PLACE_CALL remain as actions on the same plugin.
+ * such as outbound dialing route through the canonical VOICE_CALL surface.
  */
 
 import { type CallLogEntry, Phone } from "@elizaos/capacitor-phone";

@@ -45,10 +45,20 @@ export interface BackendLoadOverrides {
   cacheTypeK?: string;
   cacheTypeV?: string;
   gpuLayers?: number | "auto" | "max";
+  kvOffload?: "cpu" | "gpu" | "split" | { gpuLayers: number };
   flashAttention?: boolean;
   mmap?: boolean;
   mlock?: boolean;
   useGpu?: boolean;
+}
+
+export function gpuLayersForKvOffload(
+  mode: NonNullable<BackendLoadOverrides["kvOffload"]>,
+): number | "auto" | "max" {
+  if (mode === "cpu") return 0;
+  if (mode === "gpu") return "max";
+  if (mode === "split") return "auto";
+  return mode.gpuLayers;
 }
 
 export interface BackendPlan {

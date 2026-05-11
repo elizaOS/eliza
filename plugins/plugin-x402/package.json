@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-x402",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.1",
   "description": "x402 micropayment middleware for elizaOS plugin HTTP routes",
   "type": "module",
   "main": "dist/index.js",
@@ -50,7 +50,7 @@
     "lint:check": "bun run lint"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "drizzle-orm": "0.45.2",
     "viem": "^2.48.8"
   },
@@ -59,7 +59,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"

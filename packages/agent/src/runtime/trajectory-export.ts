@@ -135,6 +135,14 @@ export function trajectoryRowToListItem(
     providerAccessCount: toNumber(record.provider_access_count, 0),
     totalPromptTokens: toNumber(record.total_prompt_tokens, 0),
     totalCompletionTokens: toNumber(record.total_completion_tokens, 0),
+    totalCacheReadInputTokens: toNumber(
+      record.total_cache_read_input_tokens,
+      0,
+    ),
+    totalCacheCreationInputTokens: toNumber(
+      record.total_cache_creation_input_tokens,
+      0,
+    ),
     scenarioId: normalizedMetadata.scenarioId,
     batchId: normalizedMetadata.batchId,
     createdAt: toText(

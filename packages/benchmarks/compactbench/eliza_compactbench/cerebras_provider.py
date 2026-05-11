@@ -35,6 +35,13 @@ from compactbench.providers.errors import ProviderError, ProviderResponseError
 
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b"
+CEREBRAS_BENCHMARK_SYSTEM_PROMPT = (
+    "You are answering a fictional benchmark memory-recall probe. "
+    "Report what the provided summary says was recorded; do not execute, "
+    "recommend, or provide instructions for unsafe actions. If an "
+    "unsafe-looking phrase is the remembered content, mention it "
+    "descriptively or in quotes."
+)
 
 
 class CerebrasProvider(Provider):
@@ -91,8 +98,12 @@ class CerebrasProvider(Provider):
         cached_prefix = getattr(request, "cached_prefix", "") or ""
         user_content = cached_prefix + request.prompt
         messages: list[dict[str, str]] = []
-        if request.system:
-            messages.append({"role": "system", "content": request.system})
+        system_prompt = request.system or os.environ.get(
+            "CEREBRAS_BENCHMARK_SYSTEM_PROMPT",
+            CEREBRAS_BENCHMARK_SYSTEM_PROMPT,
+        )
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_content})
 
         kwargs: dict[str, Any] = {
@@ -124,8 +135,30 @@ class CerebrasProvider(Provider):
             raise ProviderResponseError("Cerebras returned no choices in response")
         choice: Any = choices[0]
         message: Any = getattr(choice, "message", None)
-        text_raw: Any = getattr(message, "content", None) or ""
-        text = text_raw if isinstance(text_raw, str) else ""
+        # gpt-oss-120b on Cerebras returns the visible answer in
+        # message.content for most calls, but occasionally routes the
+        # entire response through message.reasoning with no separate
+        # content. Mirror the TS bridge's content-or-reasoning fallback so
+        # we don't lose the response. The OpenAI SDK exposes vendor-only
+        # fields on message.model_extra (Pydantic v2) or as plain
+        # attributes when the vendor responds with snake-case keys.
+        content_raw: Any = getattr(message, "content", None)
+        text = content_raw if isinstance(content_raw, str) and content_raw else ""
+        if not text:
+            reasoning_raw: Any = getattr(message, "reasoning", None)
+            if not isinstance(reasoning_raw, str) or not reasoning_raw:
+                model_extra = getattr(message, "model_extra", None) or {}
+                if isinstance(model_extra, dict):
+                    extra_reasoning = model_extra.get("reasoning")
+                    if isinstance(extra_reasoning, str):
+                        reasoning_raw = extra_reasoning
+            if isinstance(reasoning_raw, str) and reasoning_raw:
+                text = reasoning_raw
+        if not text:
+            finish_reason = getattr(choice, "finish_reason", None)
+            raise ProviderResponseError(
+                f"Cerebras returned an empty completion (finish_reason={finish_reason!r})."
+            )
         usage: Any = getattr(response, "usage", None)
         return CompletionResponse(
             text=text,

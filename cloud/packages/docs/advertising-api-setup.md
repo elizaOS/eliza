@@ -10,6 +10,7 @@ The Cloud API already has the core advertising resources:
 - `GET /api/v1/advertising/accounts`
 - `POST /api/v1/advertising/accounts`
 - `POST /api/v1/advertising/accounts/discover`
+- `POST /api/v1/advertising/accounts/{id}/media`
 - `GET /api/v1/advertising/campaigns`
 - `POST /api/v1/advertising/campaigns`
 - `GET /api/v1/advertising/campaigns/{id}`
@@ -63,12 +64,19 @@ Provider clients currently mirror these public API families:
 Campaigns are created paused/disabled. Paid delivery is a separate start call.
 Creative creation also requires platform-native asset context:
 
-- Meta link creatives require `pageId` or `META_DEFAULT_PAGE_ID`, and may pass
-  `instagramActorId` or `META_DEFAULT_INSTAGRAM_ACTOR_ID`.
-- TikTok image/video creatives require `media[].providerAssetId`, not just a
-  public asset URL. That id must come from TikTok's native file upload APIs.
-- Google search creatives do not use generated image/video media yet; they
-  create responsive search ads from text fields.
+- Meta link/video creatives require `pageId` or `META_DEFAULT_PAGE_ID`, and may
+  pass `instagramActorId` or `META_DEFAULT_INSTAGRAM_ACTOR_ID`. Image URLs are
+  uploaded to Meta Ad Images and linked by `image_hash`; video URLs are mapped
+  through Meta Ad Videos and linked by `video_id`.
+- TikTok image/video creatives require provider-native `image_id` or
+  `video_id`. Cloud uploads generated URLs through TikTok's ad file upload API
+  before creative creation when `media[].providerAssetId` is absent.
+- Google image creatives upload generated images as Google Ads `ImageAsset`
+  resources. YouTube URLs are mapped to Google Ads `YOUTUBE_VIDEO` assets, and
+  raw video URLs use Google Ads resumable `YouTubeVideoUpload` ingestion.
+  Creatives with image assets use responsive display ads; when a processed
+  YouTube video asset is also present, Cloud attaches it to the responsive
+  display creative. Text-only creatives continue to use responsive search ads.
 
 ## Required Provider Registration
 
@@ -166,17 +174,21 @@ Configure:
 3. Discover selectable provider ad accounts if the account id is not already known.
 4. Connect or select an ad account.
 5. Create a campaign with a destination URL, app id, budget, and targeting.
-6. Create creative records from generated or uploaded media.
-7. Keep the campaign paused/draft until the owner confirms the exact platform,
+6. Upload media to the ad account when the agent needs the provider id in
+   advance, or let `advertising.creatives.create` auto-upload missing provider
+   ids for synced campaigns.
+7. Create creative records from generated or uploaded media.
+8. Keep the campaign paused/draft until the owner confirms the exact platform,
    account, destination, creative, audience, and budget.
-8. Start delivery with `/api/v1/advertising/campaigns/{id}/start`.
-9. Poll analytics and pause when the budget or quality guardrail is hit.
+9. Start delivery with `/api/v1/advertising/campaigns/{id}/start`.
+10. Poll analytics and pause when the budget or quality guardrail is hit.
 
 Spawned workers should use the parent-agent bridge:
 
 ```text
 USE_SKILL parent-agent {"mode":"list-cloud-commands","query":"advertising"}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.discover","params":{"body":{"platform":"meta","accessToken":"<temporary-provider-token>"}}}
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.upload","confirmed":true,"params":{"id":"<adAccountId>","body":{"type":"image","name":"launch-card","url":"https://cdn.example/asset.png"}}}
 USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.campaigns.create","params":{"body":{"adAccountId":"<uuid>","name":"Launch","objective":"traffic","budgetType":"daily","budgetAmount":50,"budgetCurrency":"USD","appId":"<appId>"}}}
 ```
 
@@ -200,6 +212,20 @@ with `confirmed:true` only after the parent/user approves.
 
 ### Meta Creative
 
+Optional media upload:
+
+```json
+{
+  "type": "image",
+  "name": "launch-card",
+  "url": "https://cdn.example/asset.png"
+}
+```
+
+The response `providerAssetId` is a Meta image hash for images or a Meta
+`video_id` for videos. Video uploads use Meta's URL-based Ad Video ingestion, so
+the source URL must stay provider-readable long enough for Meta to fetch it.
+
 `POST /api/v1/advertising/campaigns/{id}/creatives` should include:
 
 ```json
@@ -217,6 +243,7 @@ with `confirmed:true` only after the parent/user approves.
       "id": "11111111-1111-4111-8111-111111111111",
       "source": "generation",
       "url": "https://cdn.example/asset.png",
+      "providerAssetId": "optional_meta_image_hash",
       "type": "image",
       "order": 0
     }
@@ -226,7 +253,19 @@ with `confirmed:true` only after the parent/user approves.
 
 ### TikTok Creative
 
-Upload generated media to TikTok first, then pass the provider asset id:
+Upload generated media to TikTok first, or let creative creation do it:
+
+```json
+{
+  "type": "video",
+  "name": "launch-video",
+  "url": "https://cdn.example/asset.mp4",
+  "thumbnailUrl": "https://cdn.example/asset-thumb.png"
+}
+```
+
+The response `providerAssetId` is a TikTok `video_id` or `image_id`. Then pass
+it explicitly, or omit it and let Cloud map the URL during creative creation:
 
 ```json
 {
@@ -251,6 +290,38 @@ Upload generated media to TikTok first, then pass the provider asset id:
 }
 ```
 
+### Google Creative
+
+Upload generated images to Google Ads when creating display creatives:
+
+```json
+{
+  "type": "image",
+  "name": "Launch Image",
+  "url": "https://cdn.example/asset.jpg"
+}
+```
+
+The response `providerAssetId` is a Google Ads asset resource name such as
+`customers/123/assets/456`. Creatives with an image provider id create a paused
+responsive display ad. Text-only creatives create a paused responsive search ad.
+
+YouTube video URLs are mapped to Google Ads `YOUTUBE_VIDEO` assets:
+
+```json
+{
+  "type": "video",
+  "name": "Launch Video",
+  "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+  "thumbnailUrl": "https://cdn.example/asset-thumb.jpg"
+}
+```
+
+Raw video URLs are uploaded through Google Ads `YouTubeVideoUpload` and return a
+`customers/{customerId}/youTubeVideoUploads/{id}` resource. After Google/YouTube
+processing reaches `PROCESSED`, use the resulting YouTube video id to create a
+`YOUTUBE_VIDEO` asset or pass a YouTube URL through the media upload route.
+
 ## Implementation Gaps To Close Before Public Launch
 
 - Add OAuth start/callback routes:
@@ -262,8 +333,26 @@ Upload generated media to TikTok first, then pass the provider asset id:
 - Refresh expiring tokens on a scheduled job.
 - Add idempotency keys or persisted intermediate state for multi-step provider
   campaign creation to avoid duplicate budgets/campaigns/ad sets on retry.
-- Upload or map generated image/video assets into provider-native media ids for
-  Meta/TikTok/Google asset campaigns.
+- Add a background reconciler for Google `YouTubeVideoUpload` resources so raw
+  video uploads automatically become `YOUTUBE_VIDEO` assets once processing
+  reaches `PROCESSED`. Current provider upload/mapping supports Meta
+  images/videos, TikTok images/videos, Google image assets, Google YouTube video
+  assets, and Google raw video ingestion.
 - Ensure campaign creation creates paused/draft provider objects when supported.
 - Add provider sandbox/unit tests and Hono route tests for account connection,
   campaign create, creative create, start, pause, analytics, and failure paths.
+
+## Content Safety Notes
+
+- Set `OPENAI_MODERATION_API_KEY` or `OPENAI_API_KEY` and keep
+  `CONTENT_SAFETY_MODE=enforce` for public launch. Use
+  `CONTENT_SAFETY_REQUIRE_CONFIG=true` in production so public generation and
+  advertising routes fail closed if moderation is not configured.
+- Cloud reviews ad campaign copy, creative text, image media, generated image
+  outputs, promotion copy, promotion images, video prompts, music prompts and
+  lyrics, and TTS text before billing or external publication.
+- OpenAI Moderation supports text and image inputs through
+  `omni-moderation-latest`, but the official classification table marks
+  `sexual/minors` as text-only. Do not treat image moderation as a complete
+  CSAM classifier; keep provider policy checks, abuse reporting, and platform
+  review workflows in place.

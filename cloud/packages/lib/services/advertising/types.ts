@@ -161,6 +161,23 @@ export interface AdProviderCreativeResult {
   error?: string;
 }
 
+export interface UploadMediaInput {
+  name?: string;
+  type: "image" | "video";
+  url: string;
+  mimeType?: string;
+  thumbnailUrl?: string;
+}
+
+export interface AdProviderMediaUploadResult {
+  success: boolean;
+  providerAssetId?: string;
+  providerAssetUrl?: string;
+  providerAssetResourceName?: string;
+  error?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface AdProviderMetricsResult {
   success: boolean;
   metrics?: CampaignMetrics;
@@ -243,6 +260,17 @@ export interface AdProvider {
     externalCampaignId: string,
     input: CreateCreativeInput,
   ): Promise<AdProviderCreativeResult>;
+
+  /**
+   * Uploads or maps a Cloud-hosted media URL into the provider's ad asset library.
+   * Providers that can reference URLs directly may still return a stable provider
+   * asset id/hash so creatives can be retried without re-uploading.
+   */
+  uploadMedia?(
+    credentials: AdAccountCredentials,
+    accountId: string,
+    input: UploadMediaInput,
+  ): Promise<AdProviderMediaUploadResult>;
 
   /**
    * Gets campaign metrics/analytics.

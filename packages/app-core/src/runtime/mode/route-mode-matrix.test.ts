@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { findRouteModeRule, isRouteVisible } from "./route-mode-matrix";
-import { resolveRuntimeMode } from "./runtime-mode";
+import { resolveRuntimeMode, validateRemoteApiBase } from "./runtime-mode";
 
 describe("resolveRuntimeMode", () => {
   test("defaults to local when no deploymentTarget", () => {
@@ -22,7 +22,7 @@ describe("resolveRuntimeMode", () => {
     expect(snap.mode).toBe("cloud");
   });
 
-  test("remote includes the remoteApiBase + token", () => {
+  test("remote includes only local/private remoteApiBase + token", () => {
     const snap = resolveRuntimeMode({
       deploymentTarget: {
         runtime: "remote",
@@ -31,8 +31,45 @@ describe("resolveRuntimeMode", () => {
       },
     });
     expect(snap.mode).toBe("remote");
-    expect(snap.remoteApiBase).toBe("http://10.0.0.5:31337");
+    expect(snap.remoteApiBase).toBe("http://10.0.0.5:31337/");
+    expect(snap.remoteApiBaseError).toBeNull();
     expect(snap.remoteAccessToken).toBe("secret");
+  });
+
+  test("remote rejects public/cloud targets", () => {
+    const snap = resolveRuntimeMode({
+      deploymentTarget: {
+        runtime: "remote",
+        remoteApiBase: "https://api.elizacloud.example",
+      },
+    });
+    expect(snap.mode).toBe("remote");
+    expect(snap.remoteApiBase).toBeNull();
+    expect(snap.remoteApiBaseError).toMatch(/private-network|loopback|local/i);
+  });
+
+  test("remote target validator accepts loopback, private, and .local hosts", () => {
+    for (const base of [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://10.1.2.3:3000",
+      "http://172.20.1.1:3000",
+      "http://192.168.1.10:3000",
+      "http://100.64.0.2:3000",
+      "http://agent.local:3000",
+    ]) {
+      expect(validateRemoteApiBase(base).ok, base).toBe(true);
+    }
+  });
+
+  test("remote target validator rejects public hosts", () => {
+    for (const base of [
+      "https://api.elizacloud.example",
+      "https://huggingface.co",
+      "http://8.8.8.8:3000",
+    ]) {
+      expect(validateRemoteApiBase(base).ok, base).toBe(false);
+    }
   });
 
   test("local stays local when cloud.enabled is unset (cloud is optional, not opt-out)", () => {

@@ -1,5 +1,5 @@
 import { elizaLogger, type Plugin } from '@elizaos/core';
-import { BgTaskSchedulerService } from './services/BgTaskSchedulerService';
+import { BgTaskSchedulerService } from './services/BgTaskSchedulerService.js';
 
 /**
  * Background runner plugin.
@@ -7,7 +7,7 @@ import { BgTaskSchedulerService } from './services/BgTaskSchedulerService';
  * Sets `runtime.serverless = true` and registers a background scheduler that
  * calls core `TaskService.runDueTasks()` on OS-level wake-ups (iOS
  * BGTaskScheduler / Android WorkManager via
- * `@capacitor-community/background-runner`). On non-Capacitor hosts it falls
+ * `@capacitor/background-runner`). On non-Capacitor hosts it falls
  * back to a setInterval poll so the same plugin can be loaded uniformly.
  *
  * Native registration (BGTaskScheduler identifier in `Info.plist`,
@@ -32,13 +32,13 @@ export {
   type BackgroundRunnerLike,
   type CapacitorEnvironment,
   resolveCapacitorEnvironment,
-} from './capacitor/bridge';
-export { CapacitorBgScheduler } from './capacitor/capacitor-scheduler';
-export { BgTaskSchedulerService } from './services/BgTaskSchedulerService';
-export { IntervalBgScheduler } from './services/IntervalBgScheduler';
+} from './capacitor/bridge.js';
+export { CapacitorBgScheduler } from './capacitor/capacitor-scheduler.js';
+export { BgTaskSchedulerService } from './services/BgTaskSchedulerService.js';
+export { IntervalBgScheduler } from './services/IntervalBgScheduler.js';
 export {
   BACKGROUND_RUNNER_SERVICE_TYPE,
   type BgSchedulerKind,
   type IBgTaskScheduler,
   type ScheduleOptions,
-} from './types';
+} from './types.js';

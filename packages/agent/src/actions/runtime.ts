@@ -71,6 +71,8 @@ const SELF_STATUS_MODULES = [
 type SelfStatusModule = (typeof SELF_STATUS_MODULES)[number];
 
 interface RuntimeParams {
+  action?: string;
+  subaction?: string;
   op?: string;
   view?: "summary" | "counts";
   filter?: string;
@@ -447,7 +449,7 @@ export const runtimeAction: Action = {
     "CHECK_SELF",
   ],
   description:
-    "Polymorphic runtime control. op=status snapshots registered actions/providers/services; op=self_status returns Layer-2 awareness detail for a module (runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features); op=describe_actions lists registered actions, optionally filtered; op=reload_config re-applies hot-reloadable fields from eliza.json; op=restart bounces the process via the registered RestartHandler.",
+    "Polymorphic runtime control. action=status snapshots registered actions/providers/services; action=self_status returns Layer-2 awareness detail for a module (runtime, permissions, wallet, provider, pluginHealth, connectors, cloud, features); action=describe_actions lists registered actions, optionally filtered; action=reload_config re-applies hot-reloadable fields from eliza.json; action=restart bounces the process via the registered RestartHandler.",
   descriptionCompressed:
     "polymorphic runtime control: status, self_status, describe_actions, reload_config, restart",
   validate: async () => true,
@@ -456,7 +458,14 @@ export const runtimeAction: Action = {
       ((options as HandlerOptions | undefined)?.parameters as
         | RuntimeParams
         | undefined) ?? {};
-    const opRaw = typeof params.op === "string" ? params.op : "";
+    const opRaw =
+      typeof params.action === "string"
+        ? params.action
+        : typeof params.subaction === "string"
+          ? params.subaction
+          : typeof params.op === "string"
+            ? params.op
+            : "";
     const op = normalizeOp(opRaw);
     if (!op) {
       return {
@@ -465,7 +474,7 @@ export const runtimeAction: Action = {
         values: { error: "RUNTIME_INVALID", op: opRaw },
         data: {
           actionName: "RUNTIME",
-          op: opRaw,
+          action: opRaw,
           error: "RUNTIME_INVALID",
         },
       };
@@ -485,7 +494,7 @@ export const runtimeAction: Action = {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: `Runtime operation: ${RUNTIME_OPS.join(" | ")}.`,
       required: true,
       schema: {

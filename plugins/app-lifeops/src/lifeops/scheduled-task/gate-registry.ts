@@ -7,6 +7,8 @@
  * the responsibility of the runner (`compose: "all" | "any" | "first_deny"`).
  */
 
+import { logger } from "@elizaos/core";
+
 import type {
   GateDecision,
   GateEvaluationContext,
@@ -226,26 +228,43 @@ const duringTravelGate: TaskGateContribution = {
   },
 };
 
-const circadianStateInGate: TaskGateContribution = {
-  kind: "circadian_state_in",
-  evaluate(): GateDecision {
-    // The concrete circadian state reader lives outside the runner. Until it
-    // is injected as a typed gate contribution, this built-in preserves the
-    // structural gate key used by plugin-health default packs without
-    // accidentally disabling those tasks as "unknown gate kind".
-    return { kind: "allow" };
-  },
-};
+/**
+ * `circadian_state_in` and `no_recent_user_message_in` are referenced by
+ * plugin-health default packs but the concrete data readers (circadian state,
+ * recent-user-message lookup) are not wired into the runner today. Until a
+ * caller registers a real contribution (overwriting these), the gate falls
+ * through to `allow` and logs a warning once per process so the operator can
+ * see that the gate isn't doing what its name suggests. Loud > silent.
+ */
+function makeWarnOnceFallthroughGate(
+  kind: string,
+  remediation: string,
+): TaskGateContribution {
+  let warned = false;
+  return {
+    kind,
+    evaluate(): GateDecision {
+      if (!warned) {
+        warned = true;
+        logger.warn(
+          { src: "lifeops:scheduled-task:gate-registry", gateKind: kind },
+          `Gate "${kind}" has no production reader registered; falling through to allow. ${remediation}`,
+        );
+      }
+      return { kind: "allow" };
+    },
+  };
+}
 
-const noRecentUserMessageInGate: TaskGateContribution = {
-  kind: "no_recent_user_message_in",
-  evaluate(): GateDecision {
-    // The planner/message activity lookup is runtime-specific; callers can
-    // override this gate with a richer contribution. The safe default is
-    // allow, because this gate only suppresses redundant nudges.
-    return { kind: "allow" };
-  },
-};
+const circadianStateInGate = makeWarnOnceFallthroughGate(
+  "circadian_state_in",
+  "Register a circadian-state-aware contribution via TaskGateRegistry.register before plugin-health default packs load, or remove this gate from those packs.",
+);
+
+const noRecentUserMessageInGate = makeWarnOnceFallthroughGate(
+  "no_recent_user_message_in",
+  "Register a message-activity-aware contribution via TaskGateRegistry.register, or remove this gate from default packs.",
+);
 
 // ---------------------------------------------------------------------------
 // Registry

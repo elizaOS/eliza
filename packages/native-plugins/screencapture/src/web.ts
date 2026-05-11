@@ -69,6 +69,12 @@ export class ScreenCaptureWeb extends WebPlugin {
     const quality = (options?.quality || 100) / 100;
     const scale = options?.scale || 1;
 
+    // PERMISSIONS_MIGRATION: getDisplayMedia() triggers the OS screen
+    // recording / picker dialog implicitly. New flow probes via
+    // `screenRecordingProber` in
+    // `packages/agent/src/services/permissions/probers/screen-recording.ts`
+    // before opening the stream. Will be retired by the chat-surface
+    // migration agent.
     const stream = await getDisplayMedia({
       video: { displaySurface: "monitor" },
       audio: false,

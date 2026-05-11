@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-hyperscape",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,13 +13,13 @@
     }
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "elizaos": {
     "app": {

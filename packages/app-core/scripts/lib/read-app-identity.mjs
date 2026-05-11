@@ -6,7 +6,8 @@ import path from "node:path";
  * via regex (no TS evaluation, so callers stay bun-import-free).
  *
  * Used by desktop and mobile build scripts to forward identity into
- * downstream env vars (`ELIZA_APP_NAME`, `ELIZA_APP_ID`, `ELIZA_URL_SCHEME`).
+ * downstream env vars (`ELIZA_APP_NAME`, `ELIZA_APP_ID`, `ELIZA_URL_SCHEME`,
+ * `ELIZA_NAMESPACE`).
  */
 export function readAppIdentity(appDir) {
   const cfgPath = path.join(appDir, "app.config.ts");
@@ -23,6 +24,7 @@ export function readAppIdentity(appDir) {
     /desktop\s*:\s*\{[\s\S]*?urlScheme\s*:\s*["']([^"']+)["']/,
   )?.[1];
   const topLevelUrlScheme = src.match(/urlScheme:\s*["']([^"']+)["']/)?.[1];
+  const namespace = src.match(/namespace:\s*["']([^"']+)["']/)?.[1];
   if (!appId || !appName) {
     throw new Error(
       `Could not parse appId/appName from ${cfgPath} (regex failed)`,
@@ -32,6 +34,7 @@ export function readAppIdentity(appDir) {
     appId: desktopBundleId ?? appId,
     appName,
     urlScheme: desktopUrlScheme ?? topLevelUrlScheme ?? appId,
+    namespace: namespace ?? "eliza",
   };
 }
 
@@ -46,5 +49,6 @@ export function appIdentityEnv(appDir, existing = process.env) {
     ELIZA_APP_NAME: existing.ELIZA_APP_NAME?.trim() || identity.appName,
     ELIZA_APP_ID: existing.ELIZA_APP_ID?.trim() || identity.appId,
     ELIZA_URL_SCHEME: existing.ELIZA_URL_SCHEME?.trim() || identity.urlScheme,
+    ELIZA_NAMESPACE: existing.ELIZA_NAMESPACE?.trim() || identity.namespace,
   };
 }

@@ -40,6 +40,11 @@ describe("buildSkillsManifest", () => {
           description: "Cloud APIs, apps, billing, and media.",
         },
         {
+          slug: "build-monetized-app",
+          name: "Build Monetized App",
+          description: "Build, deploy, and monetize Eliza Cloud apps.",
+        },
+        {
           slug: "disabled-skill",
           name: "Disabled",
           description: "Should not be requestable.",
@@ -50,12 +55,21 @@ describe("buildSkillsManifest", () => {
 
     const manifest = await buildSkillsManifest(createRuntime(service), {
       onlyEligible: true,
-      recommendedSlugs: [PARENT_AGENT_BROKER_SLUG, "eliza-cloud"],
+      recommendedSlugs: [
+        PARENT_AGENT_BROKER_SLUG,
+        "build-monetized-app",
+        "eliza-cloud",
+      ],
       virtualSkills: [PARENT_AGENT_BROKER_MANIFEST_ENTRY],
     });
 
-    expect(manifest.slugs).toEqual([PARENT_AGENT_BROKER_SLUG, "eliza-cloud"]);
+    expect(manifest.slugs).toEqual([
+      PARENT_AGENT_BROKER_SLUG,
+      "build-monetized-app",
+      "eliza-cloud",
+    ]);
     expect(manifest.markdown).toContain("Eliza Cloud");
+    expect(manifest.markdown).toContain("Build Monetized App");
     expect(manifest.markdown).not.toContain("Disabled");
   });
 });

@@ -246,6 +246,7 @@ export const ELIZA_CLOUD_PUBLIC_ENDPOINTS = {
   "POST /api/elevenlabs/tts": { method: "POST", path: "/api/elevenlabs/tts", methodName: "postApiElevenlabsTts", responseMode: "binary", pathParams: [], catchAllPathParams: [], file: "apps/api/elevenlabs/tts/route.ts" },
   "POST /api/elevenlabs/voices/clone": { method: "POST", path: "/api/elevenlabs/voices/clone", methodName: "postApiElevenlabsVoicesClone", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/elevenlabs/voices/clone/route.ts" },
   "POST /api/v1/advertising/accounts": { method: "POST", path: "/api/v1/advertising/accounts", methodName: "postApiV1AdvertisingAccounts", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/route.ts" },
+  "POST /api/v1/advertising/accounts/{id}/media": { method: "POST", path: "/api/v1/advertising/accounts/{id}/media", methodName: "postApiV1AdvertisingAccountsByIdMedia", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/[id]/media/route.ts" },
   "POST /api/v1/advertising/accounts/discover": { method: "POST", path: "/api/v1/advertising/accounts/discover", methodName: "postApiV1AdvertisingAccountsDiscover", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/advertising/accounts/discover/route.ts" },
   "POST /api/v1/advertising/campaigns": { method: "POST", path: "/api/v1/advertising/campaigns", methodName: "postApiV1AdvertisingCampaigns", responseMode: "json", pathParams: [], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/route.ts" },
   "POST /api/v1/advertising/campaigns/{id}/creatives": { method: "POST", path: "/api/v1/advertising/campaigns/{id}/creatives", methodName: "postApiV1AdvertisingCampaignsByIdCreatives", responseMode: "json", pathParams: ["id"], catchAllPathParams: [], file: "apps/api/v1/advertising/campaigns/[id]/creatives/route.ts" },
@@ -678,6 +679,7 @@ export interface PublicRoutePathParams {
   "POST /api/elevenlabs/tts": Record<never, never>;
   "POST /api/elevenlabs/voices/clone": Record<never, never>;
   "POST /api/v1/advertising/accounts": Record<never, never>;
+  "POST /api/v1/advertising/accounts/{id}/media": { "id": string | number };
   "POST /api/v1/advertising/accounts/discover": Record<never, never>;
   "POST /api/v1/advertising/campaigns": Record<never, never>;
   "POST /api/v1/advertising/campaigns/{id}/creatives": { "id": string | number };
@@ -2406,6 +2408,12 @@ export class ElizaCloudPublicRoutesClient {
     options: PublicRouteCallOptions<"POST /api/v1/advertising/accounts"> = {}
   ): Promise<TResponse> {
     return this.call<"POST /api/v1/advertising/accounts", TResponse>("POST /api/v1/advertising/accounts", options);
+  }
+
+  postApiV1AdvertisingAccountsByIdMedia<TResponse = unknown>(
+    options: PublicRouteCallOptions<"POST /api/v1/advertising/accounts/{id}/media">
+  ): Promise<TResponse> {
+    return this.call<"POST /api/v1/advertising/accounts/{id}/media", TResponse>("POST /api/v1/advertising/accounts/{id}/media", options);
   }
 
   postApiV1AdvertisingAccountsDiscover<TResponse = unknown>(
@@ -4386,6 +4394,10 @@ export class ElizaCloudPublicRoutesClient {
 
   postApiV1AdvertisingAccountsRaw(options: PublicRouteCallOptions<"POST /api/v1/advertising/accounts"> = {}): Promise<Response> {
     return this.callRaw("POST /api/v1/advertising/accounts", options);
+  }
+
+  postApiV1AdvertisingAccountsByIdMediaRaw(options: PublicRouteCallOptions<"POST /api/v1/advertising/accounts/{id}/media">): Promise<Response> {
+    return this.callRaw("POST /api/v1/advertising/accounts/{id}/media", options);
   }
 
   postApiV1AdvertisingAccountsDiscoverRaw(options: PublicRouteCallOptions<"POST /api/v1/advertising/accounts/discover"> = {}): Promise<Response> {

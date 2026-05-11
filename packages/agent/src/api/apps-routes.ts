@@ -6,13 +6,37 @@ import path from "node:path";
 import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
+  type AppLaunchResult,
   type AppRunActionResult,
   type AppRunSummary,
   type AppSessionActionResult,
+  type AppStopResult,
+  type AppVerifyResult,
   createGeneratedAppHeroSvg,
+  type FavoritesResponse,
   hasAppInterface,
+  type InstallProgressEvent,
+  PostCreateAppRequestSchema,
+  type PostCreateAppResponse,
+  PostInstallAppRequestSchema,
+  type PostInstallAppResponse,
+  PostLaunchAppRequestSchema,
+  PostLoadFromDirectoryRequestSchema,
+  PostOverlayPresenceRequestSchema,
+  type PostOverlayPresenceResponse,
+  type PostRefreshAppsResponse,
+  PostRelaunchAppRequestSchema,
+  type PostRelaunchAppResponse,
+  PostReplaceFavoritesRequestSchema,
+  PostRunControlRequestSchema,
+  PostRunMessageRequestSchema,
+  PostStopAppRequestSchema,
+  PutAppPermissionsRequestSchema,
+  PutFavoriteAppRequestSchema,
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
+  parseAppIsolation,
+  parseAppPermissions,
 } from "@elizaos/shared";
 import {
   importAppRouteModule,
@@ -326,13 +350,13 @@ export interface AppManagerLike {
     name: string,
     onProgress?: (progress: InstallProgressLike) => void,
     runtime?: unknown | null,
-  ) => Promise<unknown>;
+  ) => Promise<AppLaunchResult>;
   stop: (
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
     runtime?: IAgentRuntime | null,
-  ) => Promise<unknown>;
+  ) => Promise<AppStopResult>;
   recordHeartbeat: (runId: string) => unknown;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
@@ -479,27 +503,6 @@ function parseCapturedBody(body: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function readSteeringContent(
-  body: Record<string, unknown> | null,
-): string | null {
-  const content =
-    typeof body?.content === "string"
-      ? body.content
-      : typeof body?.message === "string"
-        ? body.message
-        : null;
-  const trimmed = content?.trim() ?? "";
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function readSteeringAction(
-  body: Record<string, unknown> | null,
-): "pause" | "resume" | null {
-  const action = typeof body?.action === "string" ? body.action.trim() : "";
-  if (action === "pause" || action === "resume") return action;
-  return null;
 }
 
 function isAppRunSummary(value: unknown): value is AppRunSummary {
@@ -800,31 +803,32 @@ export async function handleAppsRoutes(
     }
 
     if (method === "GET") {
-      json(res, { favoriteApps: store.read() });
+      const response: FavoritesResponse = { favoriteApps: store.read() };
+      json(res, response);
       return true;
     }
 
     if (method === "PUT") {
-      const body = await readJsonBody<{
-        appName?: unknown;
-        isFavorite?: unknown;
-      }>(req, res);
-      if (!body) return true;
-      const rawName =
-        typeof body.appName === "string" ? body.appName.trim() : "";
-      if (!rawName) {
-        error(res, "appName is required", 400);
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null) return true;
+      const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
+        error(
+          res,
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          400,
+        );
         return true;
       }
-      if (typeof body.isFavorite !== "boolean") {
-        error(res, "isFavorite must be a boolean", 400);
-        return true;
-      }
+      const { appName, isFavorite } = parsed.data;
       const current = store.read();
-      const filtered = current.filter((entry) => entry !== rawName);
-      const next = body.isFavorite ? [...filtered, rawName] : filtered;
+      const filtered = current.filter((entry) => entry !== appName);
+      const next = isFavorite ? [...filtered, appName] : filtered;
       const persisted = store.write(sanitizeFavoriteAppNames(next));
-      json(res, { favoriteApps: persisted });
+      const response: FavoritesResponse = { favoriteApps: persisted };
+      json(res, response);
       return true;
     }
   }
@@ -835,15 +839,23 @@ export async function handleAppsRoutes(
       error(res, "Favorites store is not configured", 503);
       return true;
     }
-    const body = await readJsonBody<{ favoriteAppNames?: unknown }>(req, res);
-    if (!body) return true;
-    if (!Array.isArray(body.favoriteAppNames)) {
-      error(res, "favoriteAppNames must be an array of strings", 400);
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
-    const sanitized = sanitizeFavoriteAppNames(body.favoriteAppNames);
+    const sanitized = sanitizeFavoriteAppNames(parsed.data.favoriteAppNames);
     const persisted = store.write(sanitized);
-    json(res, { favoriteApps: persisted });
+    const response: FavoritesResponse = { favoriteApps: persisted };
+    json(res, response);
     return true;
   }
 
@@ -855,13 +867,23 @@ export async function handleAppsRoutes(
 
   // Dashboard heartbeat for overlay apps (companion, etc.) — no AppManager run.
   if (method === "POST" && pathname === "/api/apps/overlay-presence") {
-    const body = await readJsonBody<{ appName?: string | null }>(req, res);
-    if (!body) return true;
-    const raw = body.appName;
-    const appName =
-      typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostOverlayPresenceRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
+      return true;
+    }
+    const { appName } = parsed.data;
     setOverlayAppPresence(appName);
-    json(res, { ok: true, appName });
+    const response: PostOverlayPresenceResponse = { ok: true, appName };
+    json(res, response);
     return true;
   }
 
@@ -930,29 +952,18 @@ export async function handleAppsRoutes(
         return true;
       }
 
-      const body =
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null) return true;
+      const parsed =
         subroute === "message"
-          ? await readJsonBody<{ content?: string }>(req, res)
-          : await readJsonBody<{ action?: "pause" | "resume" }>(req, res);
-      if (!body) return true;
-
-      const normalizedBody =
-        subroute === "message"
-          ? {
-              content: readSteeringContent(body),
-            }
-          : {
-              action: readSteeringAction(body),
-            };
-      if (
-        (subroute === "message" && !normalizedBody.content) ||
-        (subroute === "control" && !normalizedBody.action)
-      ) {
+          ? PostRunMessageRequestSchema.safeParse(rawBody)
+          : PostRunControlRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
         error(
           res,
-          subroute === "message"
-            ? "content is required"
-            : "action must be pause or resume",
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
           400,
         );
         return true;
@@ -962,7 +973,7 @@ export async function handleAppsRoutes(
         ctx,
         run,
         subroute,
-        normalizedBody as Record<string, unknown>,
+        parsed.data as Record<string, unknown>,
       );
       if (!result) {
         error(res, "Run steering failed", 500);
@@ -1007,16 +1018,23 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
-      const body = await readJsonBody<{ name?: string }>(req, res);
-      if (!body) return true;
-      if (!body.name?.trim()) {
-        error(res, "name is required");
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null) return true;
+      const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
+        error(
+          res,
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          400,
+        );
         return true;
       }
       const pluginManager = getPluginManager();
-      const result = await appManager.launch(
+      const result: AppLaunchResult = await appManager.launch(
         pluginManager,
-        body.name.trim(),
+        parsed.data.name,
         (_progress: InstallProgressLike) => {},
         runtime,
       );
@@ -1029,27 +1047,27 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/install") {
     try {
-      const body = await readJsonBody<{ name?: string; version?: string }>(
-        req,
-        res,
-      );
-      if (!body) return true;
-      const name = body.name?.trim();
-      if (!name) {
-        error(res, "name is required");
+      const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawBody === null) return true;
+      const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
+      if (!parsed.success) {
+        const issue = parsed.error.issues[0];
+        const issuePath = issue?.path?.join(".") ?? "<root>";
+        error(
+          res,
+          `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+          400,
+        );
         return true;
       }
+      const { name, version } = parsed.data;
       const progressEvents: InstallProgressLike[] = [];
       const recordProgress = (progress: InstallProgressLike) => {
         progressEvents.push(progress);
       };
       const pluginManager = getPluginManager();
       let result = await pluginManager
-        .installPlugin(
-          name,
-          recordProgress,
-          body.version ? { version: body.version } : undefined,
-        )
+        .installPlugin(name, recordProgress, version ? { version } : undefined)
         .catch((err: unknown) => ({
           success: false as const,
           pluginName: name,
@@ -1068,24 +1086,26 @@ export async function handleAppsRoutes(
         const { installPlugin: installPluginDirect } = await import(
           /* webpackIgnore: true */ "../services/plugin-installer.js"
         );
-        result = await installPluginDirect(name, recordProgress, body.version);
+        result = await installPluginDirect(name, recordProgress, version);
       }
       if (!result.success) {
-        json(
-          res,
-          { success: false, error: result.error, progress: progressEvents },
-          422,
-        );
+        const failure: PostInstallAppResponse = {
+          success: false,
+          ...(result.error ? { error: result.error } : {}),
+          progress: progressEvents as InstallProgressEvent[],
+        };
+        json(res, failure, 422);
         return true;
       }
-      json(res, {
+      const success: PostInstallAppResponse = {
         success: true,
         pluginName: result.pluginName ?? name,
         version: result.version,
         installPath: result.installPath,
         requiresRestart: result.requiresRestart,
-        progress: progressEvents,
-      });
+        progress: progressEvents as InstallProgressEvent[],
+      };
+      json(res, success);
     } catch (e) {
       error(res, e instanceof Error ? e.message : "Failed to install app", 500);
     }
@@ -1093,19 +1113,27 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/stop") {
-    const body = await readJsonBody<{ name?: string; runId?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    if (!body.name?.trim() && !body.runId?.trim()) {
-      error(res, "name or runId is required");
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostStopAppRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
-    const appName = body.name?.trim() ?? "";
-    const runId = body.runId?.trim();
+    const appName = parsed.data.name ?? "";
+    const runId = parsed.data.runId;
     const pluginManager = getPluginManager();
-    const result = await appManager.stop(pluginManager, appName, runId);
+    const result: AppStopResult = await appManager.stop(
+      pluginManager,
+      appName,
+      runId,
+    );
     json(res, result);
     return true;
   }
@@ -1179,7 +1207,8 @@ export async function handleAppsRoutes(
       const count = Array.from(registry.values()).filter(
         isNonAppRegistryPlugin,
       ).length;
-      json(res, { ok: true, count });
+      const response: PostRefreshAppsResponse = { ok: true, count };
+      json(res, response);
     } catch (err) {
       error(
         res,
@@ -1199,37 +1228,39 @@ export async function handleAppsRoutes(
   // -------------------------------------------------------------------------
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
-    const body = await readJsonBody<{
-      name?: string;
-      runId?: string;
-      verify?: boolean;
-    }>(req, res);
-    if (!body) return true;
-    const name = body.name?.trim();
-    if (!name) {
-      error(res, "name is required");
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
+    const { name, runId, verify: verifyRequested } = parsed.data;
     const pluginManager = getPluginManager();
 
     try {
       // Stop matching runs first.
-      if (body.runId?.trim()) {
-        await appManager.stop(pluginManager, "", body.runId.trim(), null);
+      if (runId) {
+        await appManager.stop(pluginManager, "", runId, null);
       } else {
         await appManager.stop(pluginManager, name, undefined, null);
       }
 
-      const launch = await appManager.launch(
+      const launch: AppLaunchResult = await appManager.launch(
         pluginManager,
         name,
         (_progress: InstallProgressLike) => {},
         runtime,
       );
 
-      let verify: { verdict: string; retryablePromptForChild?: string } | null =
-        null;
-      if (body.verify === true) {
+      let verify: AppVerifyResult | null = null;
+      if (verifyRequested === true) {
         const runtimeWithServices = runtime as {
           getService?: (type: string) => {
             verifyApp?: (opts: {
@@ -1257,7 +1288,8 @@ export async function handleAppsRoutes(
         }
       }
 
-      json(res, { launch, verify });
+      const response: PostRelaunchAppResponse = { launch, verify };
+      json(res, response);
     } catch (err) {
       error(
         res,
@@ -1268,18 +1300,116 @@ export async function handleAppsRoutes(
     return true;
   }
 
+  if (method === "GET" && pathname === "/api/apps/permissions") {
+    const runtimeWithList = runtime as {
+      getService?: (type: string) => {
+        listPermissionsViews?: () => Promise<unknown[]>;
+      } | null;
+    } | null;
+    const registry = runtimeWithList?.getService?.("app-registry") ?? null;
+    if (!registry?.listPermissionsViews) {
+      error(res, "AppRegistryService is not registered on the runtime", 503);
+      return true;
+    }
+    const views = await registry.listPermissionsViews();
+    json(res, views);
+    return true;
+  }
+
+  if (
+    (method === "GET" || method === "PUT") &&
+    pathname.startsWith("/api/apps/permissions/")
+  ) {
+    const slug = decodeURIComponent(
+      pathname.slice("/api/apps/permissions/".length),
+    );
+    if (!slug || slug.includes("/")) {
+      error(res, "slug is required");
+      return true;
+    }
+    const runtimeWithRegistry = runtime as {
+      getService?: (type: string) => {
+        getPermissionsView?: (slug: string) => Promise<unknown>;
+        setGrantedNamespaces?: (
+          slug: string,
+          namespaces: readonly string[],
+          actor: "user" | "first-party-auto",
+        ) => Promise<
+          | { ok: true; view: unknown }
+          | {
+              ok: false;
+              reason: string;
+              unknownNamespaces?: string[];
+              notRequestedNamespaces?: string[];
+            }
+        >;
+      } | null;
+    } | null;
+    const registry = runtimeWithRegistry?.getService?.("app-registry") ?? null;
+    if (!registry?.getPermissionsView || !registry.setGrantedNamespaces) {
+      error(res, "AppRegistryService is not registered on the runtime", 503);
+      return true;
+    }
+
+    if (method === "GET") {
+      const view = await registry.getPermissionsView(slug);
+      if (view === null || view === undefined) {
+        error(res, `No app registered under slug=${slug}`, 404);
+        return true;
+      }
+      json(res, view);
+      return true;
+    }
+
+    // PUT — replace granted namespaces. Body validation goes through
+    // the zod schema in @elizaos/shared so the wire shape is the
+    // single source of truth (see contracts/app-permissions-routes.ts).
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const path = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${path}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
+      return true;
+    }
+    const result = await registry.setGrantedNamespaces(
+      slug,
+      parsed.data.namespaces,
+      "user",
+    );
+    if (result.ok === false) {
+      const status = result.reason.startsWith("No app registered") ? 404 : 400;
+      error(res, result.reason, status);
+      return true;
+    }
+    json(res, result.view);
+    return true;
+  }
+
   if (method === "POST" && pathname === "/api/apps/load-from-directory") {
-    const body = await readJsonBody<{ directory?: string }>(req, res);
-    if (!body) return true;
-    const directory = body.directory?.trim() ?? "";
-    if (!directory) {
-      error(res, "directory is required");
+    // Body validation goes through PostLoadFromDirectoryRequestSchema
+    // (zod, see @elizaos/shared/contracts/apps-loading-routes.ts).
+    // The schema handles the required check, the absolute-path check,
+    // and rejects extra unknown fields via .strict().
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const path = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${path}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
-    if (!path.isAbsolute(directory)) {
-      error(res, "directory must be an absolute path", 400);
-      return true;
-    }
+    const directory = parsed.data.directory;
 
     const runtimeWithServices = runtime as {
       getService?: (type: string) => {
@@ -1288,8 +1418,17 @@ export async function handleAppsRoutes(
           ctx?: {
             requesterEntityId?: string | null;
             requesterRoomId?: string | null;
+            trust?: "first-party" | "external";
           },
         ) => Promise<void>;
+        recordManifestRejection?: (rejection: {
+          directory: string;
+          packageName: string | null;
+          reason: string;
+          path: string;
+          requesterEntityId?: string | null;
+          requesterRoomId?: string | null;
+        }) => Promise<void>;
       } | null;
     } | null;
     const registry = runtimeWithServices?.getService?.("app-registry") ?? null;
@@ -1302,6 +1441,12 @@ export async function handleAppsRoutes(
       const entries = await fs.readdir(directory, { withFileTypes: true });
       let registered = 0;
       const items: Array<{ slug: string; canonicalName: string }> = [];
+      const rejectedManifests: Array<{
+        directory: string;
+        packageName: string | null;
+        reason: string;
+        path: string;
+      }> = [];
       for (const entry of entries) {
         if (!entry.isDirectory()) continue;
         const subdir = path.join(directory, entry.name);
@@ -1321,6 +1466,24 @@ export async function handleAppsRoutes(
         const packageName =
           typeof parsed.name === "string" ? parsed.name : null;
         if (!packageName) continue;
+
+        const permissionsResult = parseAppPermissions(appMeta.permissions);
+        if (permissionsResult.ok === false) {
+          const rejection = {
+            directory: subdir,
+            packageName,
+            reason: permissionsResult.reason,
+            path: permissionsResult.path,
+          };
+          rejectedManifests.push(rejection);
+          await registry.recordManifestRejection?.({
+            ...rejection,
+            requesterEntityId: null,
+            requesterRoomId: null,
+          });
+          continue;
+        }
+
         const basename = packageName.replace(/^@[^/]+\//, "").trim();
         const slug =
           (typeof appMeta.slug === "string" && appMeta.slug.trim()) ||
@@ -1332,23 +1495,32 @@ export async function handleAppsRoutes(
         const aliases = Array.isArray(appMeta.aliases)
           ? appMeta.aliases.filter((v): v is string => typeof v === "string")
           : [];
-        await registry.register(
-          {
-            slug,
-            canonicalName: packageName,
-            aliases,
-            directory: subdir,
-            displayName,
-          },
-          {
-            requesterEntityId: null,
-            requesterRoomId: null,
-          },
-        );
+        const entryRecord: Record<string, unknown> = {
+          slug,
+          canonicalName: packageName,
+          aliases,
+          directory: subdir,
+          displayName,
+          isolation: parseAppIsolation(appMeta.isolation),
+        };
+        if (permissionsResult.manifest.raw !== null) {
+          entryRecord.requestedPermissions = permissionsResult.manifest.raw;
+        }
+        await registry.register(entryRecord, {
+          requesterEntityId: null,
+          requesterRoomId: null,
+          trust: "external",
+        });
         registered += 1;
         items.push({ slug, canonicalName: packageName });
       }
-      json(res, { ok: true, directory, registered, items });
+      json(res, {
+        ok: true,
+        directory,
+        registered,
+        items,
+        rejectedManifests,
+      });
     } catch (err) {
       error(
         res,
@@ -1360,16 +1532,20 @@ export async function handleAppsRoutes(
   }
 
   if (method === "POST" && pathname === "/api/apps/create") {
-    const body = await readJsonBody<{ intent?: string; editTarget?: string }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    const intent = body.intent?.trim() ?? "";
-    if (!intent) {
-      error(res, "intent is required");
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
       return true;
     }
+    const { intent, editTarget } = parsed.data;
 
     const runtimeWithActions = runtime as {
       actions?: Array<{
@@ -1413,20 +1589,21 @@ export async function handleAppsRoutes(
           parameters: {
             mode: "create",
             intent,
-            ...(body.editTarget ? { editTarget: body.editTarget } : {}),
+            ...(editTarget ? { editTarget } : {}),
           },
           mode: "create",
           intent,
-          ...(body.editTarget ? { editTarget: body.editTarget } : {}),
+          ...(editTarget ? { editTarget } : {}),
         },
         callback,
       )) as { success?: boolean; text?: string; data?: unknown } | undefined;
-      json(res, {
+      const response: PostCreateAppResponse = {
         success: result?.success !== false,
         text: result?.text ?? lines.join("\n"),
         messages: lines,
         data: result?.data ?? null,
-      });
+      };
+      json(res, response);
     } catch (err) {
       error(
         res,

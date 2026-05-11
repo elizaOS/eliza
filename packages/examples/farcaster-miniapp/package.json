@@ -4,9 +4,9 @@
   "type": "module",
   "description": "ElizaOS Multi-chain Trading Platform - Farcaster Mini App",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
+    "dev": "bun --bun vite",
+    "build": "tsc && bun --bun vite build",
+    "preview": "bun --bun vite preview",
     "start": "node server.js",
     "test": "vitest run --passWithNoTests",
     "test:real": "USE_REAL_API=true vitest",

@@ -1,7 +1,6 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -131,126 +130,66 @@ function scheduleInspectionActionData(
   };
 }
 
-export const scheduleAction: Action = {
-  name: "SCHEDULE",
-  similes: ["SLEEP_INFERENCE", "MEAL_INFERENCE"],
-  description:
-    "Owner-only. Inspect LifeOps passive schedule inference from local activity, screen-time, and optional health signals. " +
-    "Use this for questions like 'did I sleep?', 'when did I wake up?', 'what do you think my schedule is?', or 'why do you think I ate lunch?'. " +
-    "Subactions: summary (default high-level answer) or inspect (show the evidence windows, sleep episodes, and meal candidates).",
-  descriptionCompressed:
-    "passive schedule inference activity+screen-time+health: summary | inspect(sleep meals evidence-windows)",
-  // See `12-real-root-cause.md` — "general" is the messageHandler's most
-  // common context choice for ambiguous personal-assistant prompts; without
-  // it here, SCHEDULE is filtered out of retrieval for routine-creation flows.
-  tags: [
-    "domain:meta",
-    "capability:read",
-    "surface:internal",
-    "cost:cheap",
-  ],
-  contexts: ["general", "calendar", "tasks", "health", "screen_time"],
-  roleGate: { minRole: "OWNER" },
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "Optional. summary (high-level circadian answer; default) or inspect (evidence windows, sleep episodes, meal candidates).",
-      descriptionCompressed: "schedule op: summary | inspect",
-      required: false,
-      schema: { type: "string" as const, enum: ["summary", "inspect"] },
-      examples: ["summary", "inspect"],
-    },
-    {
-      name: "timezone",
-      description: "Optional IANA timezone override (e.g. America/Los_Angeles).",
-      descriptionCompressed: "IANA tz override",
-      required: false,
-      schema: { type: "string" as const },
-      examples: ["America/Los_Angeles", "UTC"],
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Did I sleep last night?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Schedule phase: morning.\nLast inferred wake: 2026-04-19T07:30:00.000Z after 480 minutes asleep.",
-          action: "SCHEDULE",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Why do you think I had lunch?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Schedule phase: afternoon.\n...\nMeal candidates:\n- lunch at 2026-04-19T13:05:00.000Z via activity_gap (78%)",
-          action: "SCHEDULE",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state,
-    options,
-    callback,
-  ): Promise<ActionResult> => {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Schedule inference is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
-    }
+/**
+ * Handler function for the passive schedule inference subactions
+ * (`summary`, `inspect`).
+ *
+ * Folded out of the legacy `SCHEDULE` action surface — Audit F. The umbrella
+ * in `./owner-surfaces.ts` (OWNER_ROUTINES `schedule_summary` /
+ * `schedule_inspect` verbs) is the only caller; no `SCHEDULE`-named action
+ * is registered.
+ */
+export async function runScheduleHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  _state: unknown,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
+  if (!(await hasLifeOpsAccess(runtime, message))) {
+    const text = "Schedule inference is restricted to the owner.";
+    await callback?.({ text });
+    return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+  }
 
-    const params = ((options as HandlerOptions | undefined)?.parameters ??
-      {}) as OwnerScheduleParameters;
-    const subaction = coerceSubaction(params.subaction, messageText(message));
-    const timezone =
-      typeof params.timezone === "string" && params.timezone.trim().length > 0
-        ? params.timezone.trim()
-        : resolveDefaultTimeZone();
+  const params = ((options as HandlerOptions | undefined)?.parameters ??
+    {}) as OwnerScheduleParameters;
+  const subaction = coerceSubaction(params.subaction, messageText(message));
+  const timezone =
+    typeof params.timezone === "string" && params.timezone.trim().length > 0
+      ? params.timezone.trim()
+      : resolveDefaultTimeZone();
 
-    // W3-C drift D-4: consult the CircadianInsightContract registered by
-    // plugin-health for high-level sleep / scheduling reads. The contract
-    // is the typed seam between this action and plugin-health's circadian
-    // domain; the detailed inspection view still goes through
-    // LifeOpsService.inspectSchedule because the inspection record is
-    // produced by app-lifeops's own scheduler tick.
-    const circadianContract = getCircadianInsightContract(runtime);
-    const sleepWindow = circadianContract
-      ? await circadianContract.getCurrentSleepWindow({ timezone })
-      : null;
+  // W3-C drift D-4: consult the CircadianInsightContract registered by
+  // plugin-health for high-level sleep / scheduling reads. The contract is
+  // the typed seam between this action and plugin-health's circadian domain;
+  // the detailed inspection view still goes through
+  // LifeOpsService.inspectSchedule because the inspection record is produced
+  // by app-lifeops's own scheduler tick.
+  const circadianContract = getCircadianInsightContract(runtime);
+  const sleepWindow = circadianContract
+    ? await circadianContract.getCurrentSleepWindow({ timezone })
+    : null;
 
-    const service = new LifeOpsService(runtime);
-    const inspection = await service.inspectSchedule({ timezone });
-    const text =
-      subaction === "inspect"
-        ? formatScheduleInspection(inspection)
-        : formatScheduleSummary(inspection);
-    const data = toActionData({
-      ...scheduleInspectionActionData(inspection),
-      ...(sleepWindow
-        ? { circadianContractView: sleepWindow }
-        : { circadianContractView: null }),
-    });
-    await callback?.({
-      text,
-      data: data as any,
-    });
-    return {
-      text,
-      success: true,
-      data: data as any,
-    };
-  },
-};
+  const service = new LifeOpsService(runtime);
+  const inspection = await service.inspectSchedule({ timezone });
+  const text =
+    subaction === "inspect"
+      ? formatScheduleInspection(inspection)
+      : formatScheduleSummary(inspection);
+  const data = toActionData({
+    ...scheduleInspectionActionData(inspection),
+    ...(sleepWindow
+      ? { circadianContractView: sleepWindow }
+      : { circadianContractView: null }),
+  });
+  await callback?.({
+    text,
+    data: data as any,
+  });
+  return {
+    text,
+    success: true,
+    data: data as any,
+  };
+}

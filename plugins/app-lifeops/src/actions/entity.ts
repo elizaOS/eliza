@@ -358,10 +358,10 @@ async function resolveEntityPlanWithLlm(args: {
       ? args.message.content.text
       : "";
   const prompt = [
-    "Plan the ENTITY (people / relationships) subaction for this request.",
+    "Plan the ENTITY (people / relationships) action for this request.",
     "The user may speak in any language.",
     "Return JSON only as a single object with exactly these fields:",
-    "subaction: add, list, log_interaction, set_identity, set_relationship, merge, or null",
+    "action: add, list, log_interaction, set_identity, set_relationship, merge, or null",
     "shouldAct: true or false",
     "response: short clarifying question, or null",
     "intent: concise restatement of the user request, or null",
@@ -382,7 +382,7 @@ async function resolveEntityPlanWithLlm(args: {
     "relationshipType: edge type label (set_relationship; e.g. 'manages', 'colleague_of', 'works_at'), or null",
     "sourceEntityIds: array of duplicate entity ids to fold into the target (merge), or null",
     "evidence: short evidence string for set_identity / set_relationship, or null",
-    'Example: {"subaction":"add","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
+    'Example: {"action":"add","shouldAct":true,"response":null,"intent":"add Sam to my Rolodex","name":"Sam","channel":"telegram","handle":"@sam","email":null,"phone":null,"notes":null,"relationshipId":null,"reason":null,"confirmed":null,"entityId":null,"platform":null,"displayName":null,"toEntityId":null,"fromEntityId":null,"relationshipType":null,"sourceEntityIds":null,"evidence":null}',
     "",
     "Choose list when the user wants to see, browse, list, or recall who is in the contacts/Rolodex.",
     "Choose add when the user wants to remember a new person, store a handle, or add them to the contact list.",
@@ -390,8 +390,8 @@ async function resolveEntityPlanWithLlm(args: {
     "Choose set_identity when the user adds a (platform, handle) for an existing entity, e.g. 'Pat's Slack handle is @pat'.",
     "Choose set_relationship when the user describes a typed edge between two entities, e.g. 'Pat is my manager', 'Sam works at Acme', 'Carol is my colleague'.",
     "Choose merge when the user says two contact entries are the same person and should be combined.",
-    "If the user wants to schedule, list, or close a follow-up cadence, set shouldAct=false and tell them to use SCHEDULED_TASK — that umbrella owns follow-up verbs.",
-    "Set shouldAct=false only when the request is too vague to safely choose any of the subactions.",
+    "If the user wants to schedule, list, or close a follow-up cadence, set shouldAct=false and tell them to use SCHEDULED_TASKS - that umbrella owns follow-up verbs.",
+    "Set shouldAct=false only when the request is too vague to safely choose any of the actions.",
     "When shouldAct=false, response must be a short clarifying question in the user's language.",
     "Extract only values stated or clearly implied by the request or recent conversation. Do not invent ids, handles, or notes.",
     "For add, extract name plus channel and handle when present.",
@@ -419,7 +419,9 @@ async function resolveEntityPlanWithLlm(args: {
   if (!parsed) {
     return { subaction: null, shouldAct: null };
   }
-  const subaction = normalizeRelationshipSubaction(parsed.subaction);
+  const subaction = normalizeRelationshipSubaction(
+    parsed.action ?? parsed.subaction,
+  );
   return {
     subaction,
     shouldAct: subaction ? true : normalizeShouldAct(parsed.shouldAct),
@@ -529,7 +531,9 @@ export const entityAction: Action & {
     const rawParams = getParams(options);
     let params = rawParams;
     const body = messageBodyText(message);
-    const explicitSubaction = normalizeRelationshipSubaction(params.subaction);
+    const explicitSubaction = normalizeRelationshipSubaction(
+      params.action ?? params.subaction,
+    );
     let subaction: Subaction | null = explicitSubaction;
     if (!subaction) {
       const planIntent = (params.intent ?? body).trim();
@@ -807,9 +811,9 @@ export const entityAction: Action & {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASK.",
+        "Which ENTITY operation to run: add (new contact), list (read rolodex), log_interaction (record contact event), set_identity (force-merge a platform handle onto an entity), set_relationship (typed edge between entities), merge (collapse duplicate entities). Follow-up cadence belongs to SCHEDULED_TASKS.",
       descriptionCompressed:
         "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge",
       schema: {
@@ -821,8 +825,8 @@ export const entityAction: Action & {
     {
       name: "intent",
       description:
-        "Free-form user intent used to infer subaction when not set.",
-      descriptionCompressed: "free-form intent infer subaction",
+        "Free-form user intent used to infer action when not set.",
+      descriptionCompressed: "free-form intent infer action",
       schema: { type: "string" as const },
     },
     {
@@ -994,10 +998,3 @@ export const entityAction: Action & {
     ],
   ],
 };
-
-/**
- * Backward-compatibility alias for one release: `relationshipAction` is the
- * old export name. Importers should migrate to `entityAction`. The alias is
- * removed in Wave 3 W3-C.
- */
-export const relationshipAction = entityAction;

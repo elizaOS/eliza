@@ -368,17 +368,13 @@ export function useLifeOpsActivitySignals(enabled = true): void {
         !mobileSignals ||
         typeof mobileSignals.addListener !== "function" ||
         typeof mobileSignals.checkPermissions !== "function" ||
-        typeof mobileSignals.requestPermissions !== "function" ||
         typeof mobileSignals.startMonitoring !== "function" ||
         typeof mobileSignals.stopMonitoring !== "function"
       ) {
         return;
       }
 
-      const permissions = await mobileSignals.checkPermissions();
-      if (permissions.status !== "granted" && permissions.canRequest) {
-        await mobileSignals.requestPermissions();
-      }
+      await mobileSignals.checkPermissions();
 
       mobileSignalsHandle = await mobileSignals.addListener(
         "signal",

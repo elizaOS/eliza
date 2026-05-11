@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-form",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Eliza plugin-form: conversational forms as guardrails for guided user journeys.",
   "main": "./dist/index.js",
@@ -13,7 +13,7 @@
     }
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "uuid": "^14.0.0"
   },
   "agentConfig": {

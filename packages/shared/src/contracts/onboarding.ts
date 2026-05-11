@@ -308,7 +308,7 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     id: "zai-coding-subscription",
     name: "z.ai Coding Plan",
     envKey: null,
-    pluginName: "@homunculuslabs/plugin-zai",
+    pluginName: "@elizaos/plugin-zai",
     keyPrefix: null,
     description:
       "Stores z.ai Coding Plan credentials for the dedicated coding endpoint only, not the general z.ai API key path.",
@@ -474,9 +474,9 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     id: "zai",
     name: "z.ai",
     envKey: "ZAI_API_KEY",
-    pluginName: "@homunculuslabs/plugin-zai",
+    pluginName: "@elizaos/plugin-zai",
     keyPrefix: null,
-    description: "GLM models via z.ai Coding Plan.",
+    description: "GLM models via z.ai direct API billing.",
     family: "zai",
     authMode: "api-key",
     group: "local",
@@ -962,9 +962,30 @@ export function getOnboardingProviderSignalEnvKeys(
   if (providerId === "ollama") {
     return ["OLLAMA_BASE_URL"];
   }
+  if (providerId === "zai") {
+    return ["ZAI_API_KEY", "Z_AI_API_KEY"];
+  }
 
   const provider = getOnboardingProviderOption(providerId);
   return provider?.envKey ? [provider.envKey] : [];
+}
+
+function readOnboardingProviderApiKey(
+  config: Record<string, unknown> | null | undefined,
+  providerId: OnboardingLocalProviderId | null | undefined,
+): string | undefined {
+  if (!providerId) {
+    return undefined;
+  }
+  const provider = getOnboardingProviderOption(providerId);
+  if (provider?.envKey == null) {
+    return undefined;
+  }
+  const canonical = readOnboardingEnvSecret(config, provider.envKey);
+  if (canonical || providerId !== "zai") {
+    return canonical;
+  }
+  return readOnboardingEnvSecret(config, "Z_AI_API_KEY");
 }
 
 function readPrimaryModelFromConfig(
@@ -1299,13 +1320,7 @@ function deriveOnboardingConnectionFromRuntimeConfig(
   const deploymentTarget = resolveDeploymentTargetInConfig(config);
   const llmText = routing?.llmText;
   const backend = normalizeOnboardingProviderId(llmText?.backend);
-  const localProviderOption = backend
-    ? getOnboardingProviderOption(backend)
-    : null;
-  const routeApiKey =
-    localProviderOption?.envKey != null
-      ? readOnboardingEnvSecret(config, localProviderOption.envKey)
-      : undefined;
+  const routeApiKey = readOnboardingProviderApiKey(config, backend);
 
   if (llmText?.transport === "cloud-proxy" && backend === "elizacloud") {
     return {
@@ -1580,11 +1595,7 @@ export function inferCompatibilityOnboardingConnection(
   const remoteAccessToken = normalizeSecretString(cloud?.remoteAccessToken);
   const localProvider = resolveConfiguredLocalProviderFromSignals(config);
   const primaryModel = readPrimaryModelFromConfig(config);
-  const localProviderOption = getOnboardingProviderOption(localProvider);
-  const localApiKey =
-    localProviderOption?.envKey != null
-      ? readOnboardingEnvSecret(config, localProviderOption.envKey)
-      : undefined;
+  const localApiKey = readOnboardingProviderApiKey(config, localProvider);
 
   if (remoteApiBase) {
     return {

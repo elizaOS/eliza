@@ -17,9 +17,10 @@
  * Wave-2 worktrees.
  */
 
+import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { schedulingNegotiationAction } from "../src/actions/scheduling-negotiation.js";
+import { schedulingAction as schedulingNegotiationAction } from "../src/actions/lib/scheduling-handler.js";
 
 const NEGOTIATION_LIFECYCLE_VERBS = [
   "start",
@@ -45,12 +46,8 @@ const REMOVED_CALENDAR_SUBACTIONS = [
   "negotiate_list_proposals",
 ];
 
-function findSubactionEnum(action: typeof calendarAction): readonly string[] {
-  const subactionParam = (action.parameters ?? []).find(
-    (p) => p.name === "subaction",
-  );
-  const schema = subactionParam?.schema as { enum?: readonly string[] };
-  return schema.enum ?? [];
+function findCalendarActionEnum(action: typeof calendarAction): readonly string[] {
+  return listSubactionsFromParameters(action.parameters);
 }
 
 describe("W2-C: CALENDAR umbrella narrowing", () => {
@@ -59,7 +56,7 @@ describe("W2-C: CALENDAR umbrella narrowing", () => {
   });
 
   it("CALENDAR exposes ~12 calendar-provider verbs (no calendly_*, no negotiate_*)", () => {
-    const verbs = findSubactionEnum(calendarAction);
+    const verbs = findCalendarActionEnum(calendarAction);
     // ~12 per HARDCODING_AUDIT.md §6 #13. We assert <=14 for a small
     // amount of headroom; the canonical narrowed set today is 11.
     expect(verbs.length).toBeGreaterThanOrEqual(8);
@@ -67,14 +64,14 @@ describe("W2-C: CALENDAR umbrella narrowing", () => {
   });
 
   it("CALENDAR drops every calendly_* and negotiate_* subaction", () => {
-    const verbs = findSubactionEnum(calendarAction);
+    const verbs = findCalendarActionEnum(calendarAction);
     for (const removed of REMOVED_CALENDAR_SUBACTIONS) {
       expect(verbs).not.toContain(removed);
     }
   });
 
   it("CALENDAR keeps bulk_reschedule (compound — preview-then-commit)", () => {
-    const verbs = findSubactionEnum(calendarAction);
+    const verbs = findCalendarActionEnum(calendarAction);
     expect(verbs).toContain("bulk_reschedule");
   });
 

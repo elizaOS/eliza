@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-routing",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Cloud-default, local-override routing helper for Eliza Cloud-integrated plugins.",
   "type": "module",
   "main": "./dist/index.js",

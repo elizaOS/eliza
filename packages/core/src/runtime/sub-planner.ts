@@ -4,6 +4,7 @@ import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
+import { isActionAllowedByRolePolicy } from "./action-role-policy";
 import { filterByContextGate } from "./context-gates";
 import {
 	type ExecutePlannedToolCallContext,
@@ -25,8 +26,7 @@ import type { RecordedStage, TrajectoryRecorder } from "./trajectory-recorder";
  * helper in services/message.ts — duplicated here to keep the sub-planner
  * import surface tight (no cycle through services).
  *
- * Preserves the optional `subaction` hint on `params.subaction` for
- * router-style actions.
+ * Routed child operations belong inside the wrapped action parameters.
  */
 function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
@@ -35,11 +35,6 @@ function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	const params = toolCall.params ?? {};
 	const rawAction = params.action;
 	const actionName = typeof rawAction === "string" ? rawAction.trim() : "";
-	const rawSubaction = params.subaction;
-	const subaction =
-		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
-			? rawSubaction.trim()
-			: undefined;
 	const rawActionParameters = params.parameters;
 	const baseParameters =
 		rawActionParameters &&
@@ -47,13 +42,10 @@ function unwrapSubPlannerToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 		!Array.isArray(rawActionParameters)
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
-	const mergedParameters: Record<string, unknown> = subaction
-		? { ...baseParameters, subaction }
-		: baseParameters;
 	return {
 		id: toolCall.id,
 		name: actionName,
-		params: mergedParameters,
+		params: baseParameters,
 	};
 }
 
@@ -194,10 +186,17 @@ export async function runSubPlanner(
 		params.action.contexts,
 		...declaredChildActions.map((child) => child.contexts),
 	);
-	const childActions = filterByContextGate(
-		declaredChildActions,
-		authorizedActiveContexts,
-		params.ctx.userRoles,
+	const contextGated = new Set(
+		filterByContextGate(
+			declaredChildActions,
+			authorizedActiveContexts,
+			params.ctx.userRoles,
+		),
+	);
+	const childActions = declaredChildActions.filter(
+		(child) =>
+			contextGated.has(child) ||
+			isActionAllowedByRolePolicy(child.name, params.ctx.userRoles),
 	);
 	if (childActions.length === 0) {
 		throw new Error(

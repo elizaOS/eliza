@@ -39,6 +39,7 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
 } from "../src/lifeops/scheduled-task/runner.ts";
 import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.ts";
 import type {
@@ -81,6 +82,7 @@ function makeFreshRunner() {
     globalPause: pause,
     activity,
     subjectStore,
+    dispatcher: TestNoopScheduledTaskDispatcher,
     newTaskId: () => {
       counter += 1;
       return `spine_${counter}`;

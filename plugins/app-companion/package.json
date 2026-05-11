@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-companion",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Companion app package with the VRM scene runtime and avatar utilities.",
   "main": "./dist/index.js",
@@ -29,32 +29,32 @@
     }
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/app-task-coordinator": "workspace:*",
-    "@elizaos/app-wallet": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/app-task-coordinator": "2.0.0-beta.1",
+    "@elizaos/app-wallet": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "devDependencies": {
     "@pixiv/three-vrm": "^3.5.2",
-    "@types/bun": "^1.3.5",
-    "@types/node": "^25.0.6",
-    "@types/react-dom": "^19.0.0",
+    "@playwright/test": "^1.58.2",
     "@storybook/addon-a11y": "^10.0.0",
     "@storybook/addon-essentials": "^8.6.0",
     "@storybook/addon-themes": "^10.0.0",
-    "@playwright/test": "^1.58.2",
     "@storybook/react": "^10.0.0",
     "@storybook/react-vite": "^10.0.0",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.6",
     "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "@types/three": "^0.184.0",
     "storybook": "^10.0.0",
     "three": "^0.184.0",
-    "typescript": "^6.0.3",
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   },
   "peerDependencies": {
     "@pixiv/three-vrm": "^3.4.5",

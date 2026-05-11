@@ -42,8 +42,8 @@ export {
   canSetAsDefault,
   missingRequiredKernels,
   parseManifestOrThrow,
-  validateManifest,
   type ValidationErr,
   type ValidationOk,
   type ValidationResult,
+  validateManifest,
 } from "./validator";

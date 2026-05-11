@@ -26,7 +26,7 @@ Modes:
 
 Environment:
   ELIZA_SOURCE=local|packages
-  ELIZAOS_DIST_TAG=alpha|beta|main|latest|...
+  ELIZAOS_DIST_TAG=beta|alpha|main|latest|...
   ELIZAOS_VERSION=2.0.0-beta.1
   ELIZA_BRANCH=<branch-for-local-clone>
   ELIZA_GIT_URL=<repo-for-local-clone>`);

@@ -6,13 +6,13 @@ columns name the canonical config file and the runtime that consumes it.
 
 | Size                | Local (Milady)               | Ollama (local)                                    | vLLM (self-host)                                                   | Vast pyworker (autoscale)            | Eliza Cloud  |
 |---------------------|------------------------------|---------------------------------------------------|---------------------------------------------------------------------|--------------------------------------|--------------|
-| **eliza-1-2b**      | `MILADY_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key qwen3.5-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
-| **eliza-1-9b**      | `MILADY_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key qwen3.5-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
-| **eliza-1-27b**     | `MILADY_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key qwen3.6-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
+| **eliza-1-2b**      | `MILADY_MODEL=eliza-1-2b`    | `ollama/Modelfile.eliza-1-2b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-2b --gpu-target single`       | `vast-pyworker/eliza-1-2b.json`      | `vast/eliza-1-2b` (catalog entry pending) |
+| **eliza-1-9b**      | `MILADY_MODEL=eliza-1-9b`    | `ollama/Modelfile.eliza-1-9b-q4_k_m`              | `serve_vllm.py --registry-key eliza-1-9b --gpu-target h100-2x`      | `vast-pyworker/eliza-1-9b.json`      | `vast/eliza-1-9b` (catalog entry pending) |
+| **eliza-1-27b**     | `MILADY_MODEL=eliza-1-27b`   | `ollama/Modelfile.eliza-1-27b-q4_k_m`             | `serve_vllm.py --registry-key eliza-1-27b --gpu-target h200-2x`     | `vast-pyworker/eliza-1-27b.json`     | `vast/eliza-1-27b` (catalog entry pending) |
 
 The "catalog entry pending" annotation reflects that
 `eliza/cloud/packages/lib/models/catalog.ts` only has
-`vast/qwen3.6-27b-neo-code` today. Adding the `vast/eliza-1-*` entries
+`vast/eliza-1-27b` today. Adding the `vast/eliza-1-*` entries
 is a one-line PR per id (mirror the existing row), but is owned by the
 cloud monorepo, not this directory.
 
@@ -86,9 +86,9 @@ For GGUF this means a separate repo per K-quant level, NOT an umbrella
 
 | Size | Base (bf16) | GGUF Q4_K_M | GGUF Q5_K_M | GGUF Q6_K | PolarQuant | FP8 |
 |------|-------------|-------------|-------------|-----------|------------|-----|
-| 2B   | `elizaos/eliza-1-2b`    | `elizaos/eliza-1-2b-gguf-q4_k_m`    | `elizaos/eliza-1-2b-gguf-q5_k_m`    | `elizaos/eliza-1-2b-gguf-q6_k`    | `elizaos/eliza-1-2b-polarquant`    | — (skipped, bf16 is small enough) |
-| 9B   | `elizaos/eliza-1-9b`    | `elizaos/eliza-1-9b-gguf-q4_k_m`    | `elizaos/eliza-1-9b-gguf-q5_k_m`    | `elizaos/eliza-1-9b-gguf-q6_k`    | `elizaos/eliza-1-9b-polarquant`    | — (skipped, bf16 is small enough) |
-| 27B  | `elizaos/eliza-1-27b`   | `elizaos/eliza-1-27b-gguf-q4_k_m`   | `elizaos/eliza-1-27b-gguf-q5_k_m`   | `elizaos/eliza-1-27b-gguf-q6_k`   | `elizaos/eliza-1-27b-polarquant`   | `elizaos/eliza-1-27b-fp8` |
+| 2B   | `elizalabs/eliza-1-2b`    | `elizalabs/eliza-1-2b-gguf-q4_k_m`    | `elizalabs/eliza-1-2b-gguf-q5_k_m`    | `elizalabs/eliza-1-2b-gguf-q6_k`    | `elizalabs/eliza-1-2b-polarquant`    | — (skipped, bf16 is small enough) |
+| 9B   | `elizalabs/eliza-1-9b`    | `elizalabs/eliza-1-9b-gguf-q4_k_m`    | `elizalabs/eliza-1-9b-gguf-q5_k_m`    | `elizalabs/eliza-1-9b-gguf-q6_k`    | `elizalabs/eliza-1-9b-polarquant`    | — (skipped, bf16 is small enough) |
+| 27B  | `elizalabs/eliza-1-27b`   | `elizalabs/eliza-1-27b-gguf-q4_k_m`   | `elizalabs/eliza-1-27b-gguf-q5_k_m`   | `elizalabs/eliza-1-27b-gguf-q6_k`   | `elizalabs/eliza-1-27b-polarquant`   | `elizalabs/eliza-1-27b-fp8` |
 
 None of these repos exist until `scripts/publish_all_eliza1.sh` runs
 against a trained checkpoint. The smaller sizes skip explicit FP8

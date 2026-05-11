@@ -41,6 +41,27 @@ namespace {
     }                                                                         \
 } while (0)
 
+static std::string lower_ascii(const char * s) {
+    std::string out = s ? s : "";
+    for (char & c : out) {
+        if (c >= 'A' && c <= 'Z') c = (char) (c - 'A' + 'a');
+    }
+    return out;
+}
+
+static bool software_vulkan_allowed() {
+    const char * value = std::getenv("ELIZA_ALLOW_SOFTWARE_VULKAN");
+    return value && std::strcmp(value, "1") == 0;
+}
+
+static bool looks_like_software_vulkan_device(const char * name) {
+    const std::string device = lower_ascii(name);
+    return device.find("llvmpipe") != std::string::npos ||
+           device.find("lavapipe") != std::string::npos ||
+           device.find("swiftshader") != std::string::npos ||
+           device.find("software rasterizer") != std::string::npos;
+}
+
 // --- Fixture: union of every kernel's input shape. Only fields relevant to
 // the loaded fixture's `kernel` are populated; the rest stay default. ---
 struct Fixture {
@@ -202,6 +223,9 @@ struct PolarPush {
     uint32_t n_rows;
     uint32_t head_dim;
     uint32_t use_qjl;
+    uint32_t k_offset_bytes;
+    uint32_t q_offset;
+    uint32_t y_offset;
 };
 
 // --- Kernel-specific dispatch parameters resolved from the fixture. ---
@@ -291,11 +315,20 @@ int main(int argc, char ** argv) {
         pc.n_rows   = (uint32_t)fx.n_rows;
         pc.head_dim = (uint32_t)fx.head_dim;
         pc.use_qjl  = (uint32_t)fx.use_qjl;
+        pc.k_offset_bytes = 0;
+        pc.q_offset = 0;
+        pc.y_offset = 0;
         kb.push_bytes.assign((const uint8_t *)&pc,
                              (const uint8_t *)&pc + sizeof(pc));
     } else {
         std::fprintf(stderr, "unknown kernel '%s' in fixture\n", fx.kernel.c_str());
         return 1;
+    }
+    if (fx.expected_scores.size() != kb.n_outputs) {
+        std::fprintf(stderr,
+                     "fixture expected_scores length mismatch: got %zu, need %u\n",
+                     fx.expected_scores.size(), kb.n_outputs);
+        return 2;
     }
 
     // --- Vulkan instance ---
@@ -330,7 +363,23 @@ int main(int argc, char ** argv) {
     if (pd_count == 0) { std::fprintf(stderr, "no Vulkan devices\n"); return 1; }
     std::vector<VkPhysicalDevice> pds(pd_count);
     VK_CHECK(vkEnumeratePhysicalDevices(instance, &pd_count, pds.data()));
-    VkPhysicalDevice pd = pds[0];
+    VkPhysicalDevice pd = VK_NULL_HANDLE;
+    uint32_t qfam = (uint32_t)-1;
+    for (VkPhysicalDevice cand : pds) {
+        uint32_t cand_qfam_count = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(cand, &cand_qfam_count, nullptr);
+        std::vector<VkQueueFamilyProperties> cand_qfams(cand_qfam_count);
+        vkGetPhysicalDeviceQueueFamilyProperties(cand, &cand_qfam_count, cand_qfams.data());
+        for (uint32_t i = 0; i < cand_qfam_count; i++) {
+            if (cand_qfams[i].queueFlags & VK_QUEUE_COMPUTE_BIT) {
+                pd = cand;
+                qfam = i;
+                break;
+            }
+        }
+        if (pd != VK_NULL_HANDLE) break;
+    }
+    if (pd == VK_NULL_HANDLE) { std::fprintf(stderr, "no compute-capable Vulkan device\n"); return 1; }
     {
         VkPhysicalDeviceProperties props;
         vkGetPhysicalDeviceProperties(pd, &props);
@@ -338,17 +387,15 @@ int main(int argc, char ** argv) {
                     VK_VERSION_MAJOR(props.apiVersion),
                     VK_VERSION_MINOR(props.apiVersion),
                     VK_VERSION_PATCH(props.apiVersion));
+        if (!software_vulkan_allowed() &&
+                looks_like_software_vulkan_device(props.deviceName)) {
+            std::fprintf(stderr,
+                "[vulkan_verify] refusing software Vulkan device '%s'. "
+                "Set ELIZA_ALLOW_SOFTWARE_VULKAN=1 for diagnostics only.\n",
+                props.deviceName);
+            return 2;
+        }
     }
-
-    uint32_t qfam_count = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(pd, &qfam_count, nullptr);
-    std::vector<VkQueueFamilyProperties> qfams(qfam_count);
-    vkGetPhysicalDeviceQueueFamilyProperties(pd, &qfam_count, qfams.data());
-    uint32_t qfam = (uint32_t)-1;
-    for (uint32_t i = 0; i < qfam_count; i++) {
-        if (qfams[i].queueFlags & VK_QUEUE_COMPUTE_BIT) { qfam = i; break; }
-    }
-    if (qfam == (uint32_t)-1) { std::fprintf(stderr, "no compute queue\n"); return 1; }
 
     float prio = 1.0f;
     VkDeviceQueueCreateInfo qci{};
@@ -552,7 +599,6 @@ int main(int argc, char ** argv) {
     const float * out = (const float *)out_buf.mapped;
     int failures = 0;
     int compare_n = (int)kb.n_outputs;
-    if ((int)fx.expected_scores.size() < compare_n) compare_n = (int)fx.expected_scores.size();
     float max_diff = 0.0f;
     for (int i = 0; i < compare_n; i++) {
         float diff = std::fabs(out[i] - fx.expected_scores[i]);

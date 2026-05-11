@@ -53,6 +53,10 @@ import {
 import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
+  getUnsupportedBrowserWorkspaceEvmChainError,
+  isBrowserWorkspaceEvmChainSupported,
+  parseBrowserWorkspaceEvmChainId,
+  resolveBrowserWorkspaceSignMessage,
 } from "./browser-workspace-wallet";
 import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
@@ -94,7 +98,7 @@ type WebviewTagElement = HTMLElement & {
   toggleHidden(value?: boolean): void;
 };
 
-function isWebviewTagElement(
+function _isWebviewTagElement(
   value: EventTarget | null,
 ): value is WebviewTagElement {
   if (!(value instanceof HTMLElement)) return false;
@@ -346,6 +350,17 @@ function resolveBrowserWorkspaceSelection(
   return visibleTab?.id ?? tabs[0]?.id ?? null;
 }
 
+function resolveSolanaCluster(
+  value: unknown,
+): "mainnet" | "devnet" | "testnet" | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.toLowerCase();
+  if (normalized.includes("devnet")) return "devnet";
+  if (normalized.includes("testnet")) return "testnet";
+  if (normalized.includes("mainnet")) return "mainnet";
+  return undefined;
+}
+
 export function BrowserWorkspaceView(): JSX.Element {
   const {
     getStewardPending,
@@ -396,6 +411,9 @@ export function BrowserWorkspaceView(): JSX.Element {
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const electrobunWebviewRefs = useRef(
     new Map<string, WebviewTagElement | null>(),
+  );
+  const electrobunHostMessageHandlersRef = useRef(
+    new Map<string, (event: CustomEvent) => void>(),
   );
   const pendingTabExecsRef = useRef(
     new Map<
@@ -893,13 +911,16 @@ export function BrowserWorkspaceView(): JSX.Element {
                 arr[0] && typeof arr[0] === "object"
                   ? (arr[0] as { chainId?: unknown }).chainId
                   : null;
-              const chainHex = typeof next === "string" ? next : "";
-              const chainId = chainHex.startsWith("0x")
-                ? Number.parseInt(chainHex.slice(2), 16)
-                : Number(chainHex);
-              if (!Number.isFinite(chainId) || chainId <= 0) {
+              const chainId = parseBrowserWorkspaceEvmChainId(next);
+              if (!chainId) {
                 reply({
                   error: "wallet_switchEthereumChain requires a valid chainId.",
+                });
+                return;
+              }
+              if (!isBrowserWorkspaceEvmChainSupported(chainId)) {
+                reply({
+                  error: getUnsupportedBrowserWorkspaceEvmChainError(chainId),
                 });
                 return;
               }
@@ -919,13 +940,10 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
-              const arr = Array.isArray(req.params) ? req.params : [];
-              const message =
-                typeof arr[0] === "string"
-                  ? (arr[0] as string)
-                  : typeof arr[1] === "string"
-                    ? (arr[1] as string)
-                    : null;
+              const message = resolveBrowserWorkspaceSignMessage(
+                req.params,
+                evmAddress,
+              );
               if (!message) {
                 reply({
                   error: "Browser wallet signing requires a message payload.",
@@ -944,6 +962,15 @@ export function BrowserWorkspaceView(): JSX.Element {
               }
               const result = await client.signBrowserWalletMessage(message);
               reply({ result: result.signature });
+              return;
+            }
+            case "eth_signTypedData":
+            case "eth_signTypedData_v3":
+            case "eth_signTypedData_v4": {
+              reply({
+                error:
+                  "Typed-data signing is not supported by the Eliza browser wallet.",
+              });
               return;
             }
             case "eth_sendTransaction": {
@@ -966,7 +993,16 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
-              const chainId = tabChainIdRef.current.get(req.tabId) ?? 1;
+              const txChainId = parseBrowserWorkspaceEvmChainId(tx.chainId);
+              const chainId =
+                txChainId ?? tabChainIdRef.current.get(req.tabId) ?? 1;
+              if (!isBrowserWorkspaceEvmChainSupported(chainId)) {
+                reply({
+                  error: getUnsupportedBrowserWorkspaceEvmChainError(chainId),
+                });
+                return;
+              }
+              tabChainIdRef.current.set(req.tabId, chainId);
               const value =
                 typeof tx.value === "string"
                   ? tx.value.startsWith("0x")
@@ -1096,9 +1132,37 @@ export function BrowserWorkspaceView(): JSX.Element {
                 return;
               }
               const willBroadcast = req.method === "signAndSendTransaction";
+              const chain =
+                req.params && typeof req.params === "object"
+                  ? (req.params as Record<string, unknown>).chain
+                  : undefined;
+              const cluster =
+                resolveSolanaCluster(
+                  req.params && typeof req.params === "object"
+                    ? (req.params as Record<string, unknown>).cluster
+                    : undefined,
+                ) ?? resolveSolanaCluster(chain);
+              const description =
+                req.params && typeof req.params === "object"
+                  ? (req.params as Record<string, unknown>).description
+                  : undefined;
+              const effectiveDescription =
+                typeof description === "string" && description.trim()
+                  ? description.trim()
+                  : typeof chain === "string" && chain.trim()
+                    ? `Solana transaction on ${chain.trim()}`
+                    : cluster
+                      ? `Solana transaction on ${cluster}`
+                      : undefined;
+              const solanaDetails = [
+                cluster ? `Cluster: ${cluster}` : null,
+                typeof chain === "string" && chain.trim()
+                  ? `Chain: ${chain.trim()}`
+                  : null,
+              ].filter(Boolean);
               const allowed = await walletActionConfirm({
                 title: `${domain} wants to ${willBroadcast ? "send" : "sign"} a Solana transaction`,
-                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
+                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}${solanaDetails.length ? `\n${solanaDetails.join("\n")}` : ""}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
                 confirmLabel: willBroadcast ? "Send" : "Sign",
                 cancelLabel: "Reject",
               });
@@ -1109,6 +1173,10 @@ export function BrowserWorkspaceView(): JSX.Element {
               const result = await client.sendBrowserSolanaTransaction({
                 transactionBase64,
                 broadcast: willBroadcast,
+                ...(cluster ? { cluster } : {}),
+                ...(effectiveDescription
+                  ? { description: effectiveDescription }
+                  : {}),
               });
               reply({ result });
               return;
@@ -1137,6 +1205,8 @@ export function BrowserWorkspaceView(): JSX.Element {
   // `creds.<domain>.:autoallow` entry.
   const { confirm: vaultAutofillConfirm, modalProps: vaultAutofillModalProps } =
     useConfirm();
+  const browserWorkspaceConfirmOpen =
+    walletActionModalProps.open || vaultAutofillModalProps.open;
 
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
@@ -1240,7 +1310,7 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
 
   const handleTabHostMessage = useCallback(
-    (event: CustomEvent) => {
+    (tabId: string, event: CustomEvent) => {
       const detail = event.detail as
         | {
             type?: string;
@@ -1286,14 +1356,6 @@ export function BrowserWorkspaceView(): JSX.Element {
         typeof detail.protocol === "string" &&
         typeof detail.method === "string"
       ) {
-        const tag = isWebviewTagElement(event.currentTarget)
-          ? event.currentTarget
-          : null;
-        const tabId =
-          [...electrobunWebviewRefs.current.entries()].find(
-            ([, el]) => el === tag,
-          )?.[0] ?? null;
-        if (!tabId) return;
         void handleTabWalletRequest({
           tabId,
           requestId: detail.requestId,
@@ -1312,14 +1374,6 @@ export function BrowserWorkspaceView(): JSX.Element {
         typeof detail.url === "string" &&
         Array.isArray(detail.fieldHints)
       ) {
-        const tag = isWebviewTagElement(event.currentTarget)
-          ? event.currentTarget
-          : null;
-        const tabId =
-          [...electrobunWebviewRefs.current.entries()].find(
-            ([, el]) => el === tag,
-          )?.[0] ?? null;
-        if (!tabId) return;
         const fieldHints: Array<{
           kind: "username" | "password";
           selector: string;
@@ -1349,15 +1403,27 @@ export function BrowserWorkspaceView(): JSX.Element {
   const registerBrowserWorkspaceElectrobunWebview = useCallback(
     (tabId: string, element: WebviewTagElement | null) => {
       const previous = electrobunWebviewRefs.current.get(tabId);
+      const previousHandler =
+        electrobunHostMessageHandlersRef.current.get(tabId);
       if (previous && previous !== element) {
-        previous.off("host-message", handleTabHostMessage);
+        if (previousHandler) {
+          previous.off("host-message", previousHandler);
+        }
+        electrobunHostMessageHandlersRef.current.delete(tabId);
       }
       if (!element) {
+        if (previous && previousHandler) {
+          previous.off("host-message", previousHandler);
+        }
+        electrobunHostMessageHandlersRef.current.delete(tabId);
         electrobunWebviewRefs.current.delete(tabId);
         return;
       }
       if (previous !== element) {
-        element.on("host-message", handleTabHostMessage);
+        const hostMessageHandler = (event: CustomEvent) =>
+          handleTabHostMessage(tabId, event);
+        electrobunHostMessageHandlersRef.current.set(tabId, hostMessageHandler);
+        element.on("host-message", hostMessageHandler);
         // Poke the OOPIF to read fresh dimensions multiple times — the
         // tag auto-syncs only on its own ResizeObserver firing, and that
         // can miss the initial layout settle if the parent flex chain is
@@ -1422,7 +1488,9 @@ export function BrowserWorkspaceView(): JSX.Element {
     };
   }, []);
 
-  // Drive native hide/show on every tag whenever selection changes. The
+  // Drive native hide/show on every tag whenever selection or an in-app
+  // consent dialog changes. The native webview is an OOPIF overlay, so
+  // React dialogs are otherwise rendered under it and cannot be acted on.
   // HTML `hidden` attribute does NOT propagate to the OOPIF — only the
   // tag's `toggleHidden(bool)` method does. Without this, inactive tabs'
   // OOPIFs stay painted over the surface as native views and intercept
@@ -1432,27 +1500,35 @@ export function BrowserWorkspaceView(): JSX.Element {
     for (const [tabId, element] of electrobunWebviewRefs.current.entries()) {
       if (!element) continue;
       try {
-        element.toggleHidden(tabId !== selectedTabId);
+        element.toggleHidden(
+          browserWorkspaceConfirmOpen || tabId !== selectedTabId,
+        );
         element.syncDimensions(true);
       } catch {
         // best-effort
       }
     }
-  }, [selectedTabId, workspace.mode]);
+  }, [browserWorkspaceConfirmOpen, selectedTabId, workspace.mode]);
 
   // On unmount, hide every OOPIF so leftover native views don't bleed onto
   // other routes between React's unmount and the tag's
   // disconnectedCallback firing.
   useEffect(() => {
     const refs = electrobunWebviewRefs;
+    const handlers = electrobunHostMessageHandlersRef;
     return () => {
-      for (const element of refs.current.values()) {
+      for (const [tabId, element] of refs.current.entries()) {
         try {
+          const handler = handlers.current.get(tabId);
+          if (element && handler) {
+            element.off("host-message", handler);
+          }
           element?.toggleHidden(true);
         } catch {
           // best-effort
         }
       }
+      handlers.current.clear();
     };
   }, []);
 

@@ -1,8 +1,8 @@
 import Foundation
-import BackgroundTasks
 import Capacitor
 import HealthKit
 import UIKit
+import UserNotifications
 
 @objc(MobileSignalsPlugin)
 public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -18,14 +18,6 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "scheduleBackgroundRefresh", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelBackgroundRefresh", returnType: CAPPluginReturnPromise),
     ]
-
-    // Background task identifier — must be listed in the host app's Info.plist
-    // under `BGTaskSchedulerPermittedIdentifiers`. When it is not listed,
-    // registration fails silently (see `registerBackgroundTaskIfAvailable`)
-    // and the plugin still works with foreground-only HealthKit polling.
-    private static let backgroundRefreshIdentifier = "ai.eliza.mobile-signals.sleep-refresh"
-    private static let backgroundRefreshInterval: TimeInterval = 30 * 60
-    private var backgroundTaskRegistered = false
 
     private struct HealthCapture {
         let source: String
@@ -50,97 +42,20 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     public override func load() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        registerBackgroundTaskIfAvailable()
-    }
-
-    private func registerBackgroundTaskIfAvailable() {
-        if #available(iOS 13.0, *) {
-            guard !backgroundTaskRegistered else { return }
-            let identifier = Self.backgroundRefreshIdentifier
-            let registered = BGTaskScheduler.shared.register(
-                forTaskWithIdentifier: identifier,
-                using: nil
-            ) { [weak self] task in
-                guard let self = self, let refreshTask = task as? BGAppRefreshTask else {
-                    task.setTaskCompleted(success: false)
-                    return
-                }
-                self.handleBackgroundRefresh(task: refreshTask)
-            }
-            backgroundTaskRegistered = registered
-            if !registered {
-                FileHandle.standardError.write(
-                    "[mobile-signals] BGTaskScheduler registration declined. Add `\(identifier)` to Info.plist BGTaskSchedulerPermittedIdentifiers to enable background HealthKit polling.\n"
-                        .data(using: .utf8) ?? Data()
-                )
-            }
-        }
-    }
-
-    @available(iOS 13.0, *)
-    private func handleBackgroundRefresh(task: BGAppRefreshTask) {
-        let expirationHandler = { [weak task] in
-            guard let task = task else { return }
-            task.setTaskCompleted(success: false)
-        }
-        task.expirationHandler = expirationHandler
-        buildHealthSnapshot(reason: "background-refresh") { [weak self] healthSnapshot in
-            self?.notifyListeners("signal", data: healthSnapshot)
-            self?.scheduleNextBackgroundRefresh()
-            task.setTaskCompleted(success: true)
-        }
-    }
-
-    @available(iOS 13.0, *)
-    private func scheduleNextBackgroundRefresh() {
-        guard backgroundTaskRegistered else { return }
-        let request = BGAppRefreshTaskRequest(
-            identifier: Self.backgroundRefreshIdentifier
-        )
-        request.earliestBeginDate = Date(timeIntervalSinceNow: Self.backgroundRefreshInterval)
-        do {
-            try BGTaskScheduler.shared.submit(request)
-        } catch {
-            FileHandle.standardError.write(
-                "[mobile-signals] Failed to schedule background refresh: \(error.localizedDescription)\n"
-                    .data(using: .utf8) ?? Data()
-            )
-        }
     }
 
     @objc func scheduleBackgroundRefresh(_ call: CAPPluginCall) {
-        if #available(iOS 13.0, *) {
-            if !backgroundTaskRegistered {
-                call.resolve([
-                    "scheduled": false,
-                    "reason": "BGTaskSchedulerPermittedIdentifiers missing \(Self.backgroundRefreshIdentifier)",
-                ])
-                return
-            }
-            scheduleNextBackgroundRefresh()
-            call.resolve([
-                "scheduled": true,
-                "identifier": Self.backgroundRefreshIdentifier,
-                "earliestBeginInSeconds": Int(Self.backgroundRefreshInterval),
-            ])
-        } else {
-            call.resolve([
-                "scheduled": false,
-                "reason": "BackgroundTasks requires iOS 13.0 or later.",
-            ])
-        }
+        call.resolve([
+            "scheduled": false,
+            "reason": "iOS mobile signals use foreground monitoring; background scheduled work is routed through the eliza-tasks BackgroundRunner.",
+        ])
     }
 
     @objc func cancelBackgroundRefresh(_ call: CAPPluginCall) {
-        if #available(iOS 13.0, *) {
-            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.backgroundRefreshIdentifier)
-            call.resolve(["cancelled": true])
-        } else {
-            call.resolve([
-                "cancelled": false,
-                "reason": "BackgroundTasks requires iOS 13.0 or later.",
-            ])
-        }
+        call.resolve([
+            "cancelled": false,
+            "reason": "iOS mobile signals do not register a BGTaskScheduler background refresh task.",
+        ])
     }
 
     deinit {
@@ -170,17 +85,31 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public override func checkPermissions(_ call: CAPPluginCall) {
-        call.resolve(buildPermissionResult())
+        buildPermissionResult { result in
+            call.resolve(result)
+        }
     }
 
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
+        let target = call.getString("target") ?? "all"
+        if target == "screenTime" {
+            resolvePermissionAfterScreenTimeRequest(call)
+            return
+        }
+        if target == "notifications" {
+            requestNotificationPermissions(call)
+            return
+        }
+
+        let shouldRequestScreenTime = target != "health"
         let types = requestedHealthTypes()
         guard !types.isEmpty else {
-            resolvePermissionAfterScreenTimeRequest(
+            resolvePermissionResult(
                 call,
                 status: "not-applicable",
                 canRequest: false,
-                reason: "HealthKit sleep and biometric types are unavailable on this device."
+                reason: "HealthKit sleep and biometric types are unavailable on this device.",
+                requestScreenTime: shouldRequestScreenTime
             )
             return
         }
@@ -191,10 +120,22 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 let healthReason = !success
                     ? "HealthKit permission request failed: \(error?.localizedDescription ?? "unknown error")"
                     : nil
-                self.resolvePermissionAfterScreenTimeRequest(
+                self.resolvePermissionResult(
                     call,
-                    reason: healthReason
+                    reason: healthReason,
+                    requestScreenTime: shouldRequestScreenTime
                 )
+            }
+        }
+    }
+
+    private func requestNotificationPermissions(_ call: CAPPluginCall) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.buildPermissionResult(reason: error?.localizedDescription) { result in
+                    call.resolve(result)
+                }
             }
         }
     }
@@ -335,10 +276,71 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
+    private struct NotificationPermissionCapture {
+        let status: String
+        let canRequest: Bool
+        let reason: String?
+    }
+
+    private func readNotificationPermission(
+        completion: @escaping (NotificationPermissionCapture) -> Void
+    ) {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            let capture: NotificationPermissionCapture
+            switch settings.authorizationStatus {
+            case .authorized, .provisional, .ephemeral:
+                capture = NotificationPermissionCapture(
+                    status: "granted",
+                    canRequest: false,
+                    reason: nil
+                )
+            case .denied:
+                capture = NotificationPermissionCapture(
+                    status: "denied",
+                    canRequest: false,
+                    reason: "Notifications are disabled for Eliza. Open Settings to enable reminders and prompts."
+                )
+            case .notDetermined:
+                capture = NotificationPermissionCapture(
+                    status: "not-determined",
+                    canRequest: true,
+                    reason: "Allow notifications when LifeOps needs to remind or prompt you."
+                )
+            @unknown default:
+                capture = NotificationPermissionCapture(
+                    status: "restricted",
+                    canRequest: false,
+                    reason: "iOS notification authorization is restricted by this device."
+                )
+            }
+            DispatchQueue.main.async {
+                completion(capture)
+            }
+        }
+    }
+
     private func buildPermissionResult(
         status overrideStatus: String? = nil,
         canRequest overrideCanRequest: Bool? = nil,
-        reason overrideReason: String? = nil
+        reason overrideReason: String? = nil,
+        completion: @escaping ([String: Any]) -> Void
+    ) {
+        readNotificationPermission { [weak self] notification in
+            guard let self = self else { return }
+            completion(self.buildPermissionResultPayload(
+                status: overrideStatus,
+                canRequest: overrideCanRequest,
+                reason: overrideReason,
+                notification: notification
+            ))
+        }
+    }
+
+    private func buildPermissionResultPayload(
+        status overrideStatus: String? = nil,
+        canRequest overrideCanRequest: Bool? = nil,
+        reason overrideReason: String? = nil,
+        notification: NotificationPermissionCapture
     ) -> [String: Any] {
         let screenTimeStatus = ScreenTimeSupport.buildStatus()
         guard HKHealthStore.isHealthDataAvailable() else {
@@ -354,7 +356,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 "setupActions": buildSetupActions(
                     healthStatus: overrideStatus ?? "not-applicable",
                     healthCanRequest: overrideCanRequest ?? false,
-                    screenTimeStatus: screenTimeStatus
+                    screenTimeStatus: screenTimeStatus,
+                    notification: notification
                 ),
             ]
         }
@@ -394,7 +397,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             "setupActions": buildSetupActions(
                 healthStatus: status,
                 healthCanRequest: overrideCanRequest ?? (status != "granted" && hasRequestedTypes),
-                screenTimeStatus: screenTimeStatus
+                screenTimeStatus: screenTimeStatus,
+                notification: notification
             ),
             "permissions": [
                 "sleep": sleepGranted,
@@ -411,18 +415,46 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     ) {
         ScreenTimeSupport.requestAuthorizationIfAvailable { [weak self] screenTimeReason in
             guard let self = self else { return }
-            var result = self.buildPermissionResult(
+            self.buildPermissionResult(
+                status: status,
+                canRequest: canRequest,
+                reason: reason
+            ) { result in
+                var next = result
+                if let screenTimeReason {
+                    if let existingReason = next["reason"] as? String, !existingReason.isEmpty {
+                        next["reason"] = "\(existingReason) \(screenTimeReason)"
+                    } else {
+                        next["reason"] = screenTimeReason
+                    }
+                }
+                call.resolve(next)
+            }
+        }
+    }
+
+    private func resolvePermissionResult(
+        _ call: CAPPluginCall,
+        status: String? = nil,
+        canRequest: Bool? = nil,
+        reason: String? = nil,
+        requestScreenTime: Bool
+    ) {
+        if requestScreenTime {
+            resolvePermissionAfterScreenTimeRequest(
+                call,
                 status: status,
                 canRequest: canRequest,
                 reason: reason
             )
-            if let screenTimeReason {
-                if let existingReason = result["reason"] as? String, !existingReason.isEmpty {
-                    result["reason"] = "\(existingReason) \(screenTimeReason)"
-                } else {
-                    result["reason"] = screenTimeReason
-                }
-            }
+            return
+        }
+
+        buildPermissionResult(
+            status: status,
+            canRequest: canRequest,
+            reason: reason
+        ) { result in
             call.resolve(result)
         }
     }
@@ -430,7 +462,8 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     private func buildSetupActions(
         healthStatus: String,
         healthCanRequest: Bool,
-        screenTimeStatus: [String: Any]
+        screenTimeStatus: [String: Any],
+        notification: NotificationPermissionCapture
     ) -> [[String: Any]] {
         let healthReady = healthStatus == "granted"
         let authorization = screenTimeStatus["authorization"] as? [String: Any] ?? [:]
@@ -439,6 +472,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         let screenTimeSupported = screenTimeStatus["supported"] as? Bool ?? false
         let screenTimeReady = screenTimeAuthStatus == "approved"
         let screenTimeReason = screenTimeStatus["reason"] ?? NSNull()
+        let notificationsReady = notification.status == "granted"
 
         return [
             [
@@ -477,11 +511,11 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
             [
                 "id": "notification_settings",
                 "label": "Notifications",
-                "status": "needs-action",
-                "canRequest": false,
+                "status": notificationsReady ? "ready" : "needs-action",
+                "canRequest": notification.canRequest,
                 "canOpenSettings": true,
                 "settingsTarget": "notification",
-                "reason": "Open notification settings if reminders or telemetry prompts are muted.",
+                "reason": notificationsReady ? NSNull() : (notification.reason ?? "Open notification settings if reminders or telemetry prompts are muted."),
             ],
         ]
     }

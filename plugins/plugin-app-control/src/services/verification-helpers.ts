@@ -9,10 +9,9 @@
 
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { homedir } from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
+import { ModelType, resolveStateDir } from "@elizaos/core";
 
 export type Diagnostic = {
 	file: string;
@@ -181,13 +180,11 @@ export function parseVitestOutput(output: string): VitestSummary {
 }
 
 /**
- * Resolve the root state directory honoring Eliza/Eliza env overrides.
+ * Resolve the root state directory honoring `MILADY_STATE_DIR` >
+ * `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}` precedence.
  */
 export function getStateDir(): string {
-	const fromEnv = process.env.ELIZA_STATE_DIR?.trim();
-	return fromEnv && fromEnv.length > 0
-		? fromEnv
-		: path.join(homedir(), ".eliza");
+	return resolveStateDir();
 }
 
 /**

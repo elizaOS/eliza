@@ -113,10 +113,10 @@ describe("text model selection filter", () => {
 
     expect(
       isSelectableTextModel({
-        id: "meta-llama/llama-prompt-guard-2-22m",
+        id: "openai/content-safeguard-mini",
         object: "model",
         created: 0,
-        owned_by: "meta-llama",
+        owned_by: "openai",
         type: "language",
       }),
     ).toBe(false);

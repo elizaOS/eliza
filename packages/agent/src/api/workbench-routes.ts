@@ -1,8 +1,14 @@
 import type http from "node:http";
 import type { AgentRuntime, Task, UUID } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import {
+  PostWorkbenchTodoCompleteRequestSchema,
+  PostWorkbenchTodoRequestSchema,
+  PutWorkbenchTodoRequestSchema,
+} from "@elizaos/shared";
 import type { TriggerSummary } from "../triggers/types.ts";
 import { WORKBENCH_TODO_TAG } from "./workbench-helpers.ts";
+import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
 
 interface WorkbenchTodoView {
   id: string;
@@ -61,6 +67,10 @@ export async function handleWorkbenchRoutes(
   ctx: WorkbenchRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, state, json, error, readJsonBody } = ctx;
+
+  if (await handleWorkbenchVfsRoutes(ctx)) {
+    return true;
+  }
 
   // ── GET /api/workbench/overview ──────────────────────────────────────
   // Workbench surfaces todos + triggers. Tasks were unified into workflows;
@@ -161,23 +171,20 @@ export async function handleWorkbenchRoutes(
       error(res, "Agent runtime is not available", 503);
       return true;
     }
-    const body = await readJsonBody<{
-      name?: string;
-      description?: string;
-      priority?: number | string | null;
-      isUrgent?: boolean;
-      type?: string;
-      isCompleted?: boolean;
-      tags?: string[];
-    }>(req, res);
-    if (!body) return true;
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    if (!name) {
-      error(res, "name is required", 400);
+    const rawTodo = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawTodo === null) return true;
+    const parsedTodo = PostWorkbenchTodoRequestSchema.safeParse(rawTodo);
+    if (!parsedTodo.success) {
+      error(
+        res,
+        parsedTodo.error.issues[0]?.message ?? "name is required",
+        400,
+      );
       return true;
     }
-    const description =
-      typeof body.description === "string" ? body.description : "";
+    const body = parsedTodo.data;
+    const name = body.name;
+    const description = body.description ?? "";
     const isCompleted = body.isCompleted === true;
     const priority = ctx.parseNullableNumber(body.priority);
     const isUrgent = body.isUrgent === true;
@@ -227,9 +234,19 @@ export async function handleWorkbenchRoutes(
       "todo id",
     );
     if (!decodedTodoId) return true;
-    const body = await readJsonBody<{ isCompleted?: boolean }>(req, res);
-    if (!body) return true;
-    const isCompleted = body.isCompleted === true;
+    const rawComp = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawComp === null) return true;
+    const parsedComp =
+      PostWorkbenchTodoCompleteRequestSchema.safeParse(rawComp);
+    if (!parsedComp.success) {
+      error(
+        res,
+        parsedComp.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const isCompleted = parsedComp.data.isCompleted === true;
     const todoTask = await state.runtime.getTask(decodedTodoId as UUID);
     if (!todoTask?.id || !ctx.toWorkbenchTodo(todoTask)) {
       error(res, "Todo not found", 404);
@@ -289,16 +306,18 @@ export async function handleWorkbenchRoutes(
     }
 
     // PUT
-    const body = await readJsonBody<{
-      name?: string;
-      description?: string;
-      priority?: number | string | null;
-      isUrgent?: boolean;
-      type?: string;
-      isCompleted?: boolean;
-      tags?: string[];
-    }>(req, res);
-    if (!body) return true;
+    const rawPut = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPut === null) return true;
+    const parsedPut = PutWorkbenchTodoRequestSchema.safeParse(rawPut);
+    if (!parsedPut.success) {
+      error(
+        res,
+        parsedPut.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedPut.data;
 
     const todoTask = await state.runtime.getTask(decodedTodoId as UUID);
     const todoView = todoTask ? ctx.toWorkbenchTodo(todoTask) : null;

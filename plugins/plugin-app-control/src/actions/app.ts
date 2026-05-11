@@ -1,7 +1,7 @@
 /**
  * @module plugin-app-control/actions/app
  *
- * Unified APP action with sub-modes (`launch`, `relaunch`,
+ * Unified APP action with actions (`launch`, `relaunch`,
  * `load_from_directory`, `list`, `create`).
  *
  * Validate gates on owner role + structured context + a lookup against
@@ -84,7 +84,8 @@ function inferMode(
 	text: string,
 	options?: Record<string, unknown>,
 ): AppMode | null {
-	const explicit = readStringOption(options, "mode");
+	const explicit =
+		readStringOption(options, "action") ?? readStringOption(options, "mode");
 	if (explicit && (MODES as readonly string[]).includes(explicit)) {
 		return explicit as AppMode;
 	}
@@ -151,17 +152,26 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 		roleGate: { minRole: "USER" },
 		similes: ["APP_CONTROL", "MANAGE_APPS"],
 		description:
-			"Unified app control. mode=launch starts a registered app; mode=relaunch stops then launches (optionally with verify); mode=list shows installed + running runs; mode=load_from_directory registers apps from an absolute folder; mode=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
+			"Unified app control. action=launch starts a registered app; action=relaunch stops then launches (optionally with verify); action=list shows installed + running apps; action=load_from_directory registers apps from an absolute folder; action=create runs the multi-turn create-or-edit flow that searches existing apps, asks new/edit/cancel, scaffolds from the min-app template, and dispatches a coding agent with AppVerificationService validator.",
 		descriptionCompressed:
 			"Manage apps: launch/relaunch/list/load folder/create; create scaffolds min app, runs coding agent, verifies result.",
 		suppressPostActionContinuation: true,
 
 		parameters: [
 			{
-				name: "mode",
+				name: "action",
 				description:
-					"Sub-mode: launch | relaunch | load_from_directory | list | create.",
+					"Operation: launch | relaunch | load_from_directory | list | create.",
 				required: true,
+				schema: {
+					type: "string",
+					enum: [...MODES],
+				},
+			},
+			{
+				name: "mode",
+				description: "Legacy alias for action.",
+				required: false,
 				schema: {
 					type: "string",
 					enum: [...MODES],

@@ -132,9 +132,6 @@ function resolveDevServerEntryRelativePath(devCwd) {
   const packagedAppCoreEntry = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
-    "packages",
-    "app-core",
-    "src",
     "runtime",
     "dev-server.js",
   );
@@ -328,12 +325,20 @@ function which(cmd) {
 }
 
 const forceNodeRuntime = process.env.ELIZA_FORCE_NODE === "1";
+const hasNode = !!which("node");
 const hasBun = !forceNodeRuntime && !!which("bun") && !!which("bunx");
 
 if (!hasBun && !which("npx")) {
   console.error(
     'Neither "bun" nor "npx" was found in your PATH. ' +
       "Install Bun or Node.js with npx to run this dev script.",
+  );
+  process.exit(1);
+}
+
+if (!hasNode) {
+  console.error(
+    'Node.js was not found in your PATH. The app-core API runtime requires Node.js for built-in modules such as "node:sqlite".',
   );
   process.exit(1);
 }
@@ -1055,22 +1060,14 @@ if (uiOnly) {
     }
   }
 
-  const apiCmd = hasBun
-    ? [
-        "bun",
-        "--no-install",
-        ...nodeStealthImports.flatMap((filePath) => ["--preload", filePath]),
-        ...(useWatch ? ["--watch"] : []),
-        devServerEntry,
-      ]
-    : [
-        "node",
-        "--import",
-        "tsx",
-        ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
-        ...(useWatch ? ["--watch"] : []),
-        devServerEntry,
-      ];
+  const apiCmd = [
+    "node",
+    "--import",
+    "tsx",
+    ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),
+    ...(useWatch ? ["--watch"] : []),
+    devServerEntry,
+  ];
   // The API server resolves @elizaos/* deps via Bun workspace lookup, which
   // walks up from cwd looking for a package.json with a `workspaces` field.
   // When running from the milady-style outer repo (cwd contains an `eliza/`

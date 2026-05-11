@@ -353,6 +353,21 @@ export interface Action {
 	parameters?: ActionParameter[];
 
 	/**
+	 * When true, the JSON Schema generated for this action's top-level
+	 * parameters object will set `additionalProperties: true`, accepting
+	 * unknown keys and passing them through to the handler unchanged.
+	 *
+	 * This is useful for "group" / aggregator actions whose declared shape is
+	 * `{ action, parameters }` but where smaller LLMs frequently emit the
+	 * child-action fields at the top level (e.g. `{action, url, selector}`
+	 * instead of `{action, parameters: { url, selector }}`). The handler is
+	 * expected to auto-lift those extras into the child-action's parameters.
+	 *
+	 * Default: false (strict — unknown top-level fields are rejected).
+	 */
+	allowAdditionalParameters?: boolean;
+
+	/**
 	 * Domain contexts this action belongs to.
 	 * Used by the context-routing classifier to scope the planner's action search.
 	 * An action may belong to multiple contexts (e.g., a token-swap action is both
@@ -406,7 +421,48 @@ export interface Action {
 	 * for `PLANNER`.
 	 */
 	modePriority?: number;
+
+	/**
+	 * Per-action model routing hint. When present, the runtime resolves
+	 * `runtime.useModel(...)` calls made on behalf of this action to a model
+	 * registration that matches this class, rather than to whatever model the
+	 * caller passed. This lets the planner run on a large/cloud model while
+	 * cheap, narrow actions run on a small or local model.
+	 *
+	 * Closes gap A5 / W1-R2 in the Eliza-1 pipeline plan.
+	 *
+	 * Semantics (cost-aware, ascending escalation on failure):
+	 * - `LOCAL`     — prefer a local-provider registration (e.g. Ollama, LM
+	 *                 Studio, MLX, llama.cpp). If the local registration errors
+	 *                 or no local handler is registered, the runtime escalates
+	 *                 one step up: `LOCAL → TEXT_SMALL → TEXT_LARGE`.
+	 * - `TEXT_SMALL`— prefer a small cloud-class model. Escalates to
+	 *                 `TEXT_LARGE` on error.
+	 * - `TEXT_LARGE`— prefer a large cloud-class model. Top of the chain — no
+	 *                 escalation.
+	 *
+	 * The resolver applies this routing only when the action handler invokes
+	 * `runtime.useModel()` for a text-generation model type. Non-text model
+	 * types (embeddings, image, audio, tokenizer) are not rerouted. Backwards
+	 * compatibility: if `modelClass` is absent, the runtime uses today's model
+	 * resolution and fallback behavior verbatim.
+	 *
+	 * @see eliza/packages/core/src/runtime/action-model-routing.ts for the
+	 *      strategy-registry implementation.
+	 */
+	modelClass?: ActionModelClass;
 }
+
+/**
+ * Per-action model routing classes. Closes gap A5: provider switching was
+ * previously per-provider only — actions could not request a small/local
+ * model independently of the planner's choice.
+ *
+ * The runtime maps each class to a fallback chain via the strategy registry
+ * in `runtime/action-model-routing.ts`. Order of escalation on error is:
+ *   `LOCAL → TEXT_SMALL → TEXT_LARGE`
+ */
+export type ActionModelClass = "TEXT_LARGE" | "TEXT_SMALL" | "LOCAL";
 
 /**
  * JSON-serializable primitive values.

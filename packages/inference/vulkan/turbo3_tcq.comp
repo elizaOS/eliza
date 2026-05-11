@@ -111,28 +111,27 @@ void main() {
     uint norm16 = read_byte(blk_off + 0u) | (read_byte(blk_off + 1u) << 8u);
     float norm = fp16_to_fp32(norm16);
 
+    // Each thread handles four consecutive 3-bit TCQ symbols. Their 9-bit
+    // decode windows overlap, so one 24-bit preload covers all four states.
+    uint bit_pos0 = tid * 12u;             // (tid * 4) * 3
+    uint byte_idx0 = bit_pos0 >> 3;
+    uint bit_off0 = bit_pos0 & 7u;
+    uint q_base = push.q_head * push.head_dim + tid * 4u;
+    uint raw24 =
+        read_byte(blk_off + 2u + byte_idx0) |
+        (read_byte(blk_off + 2u + byte_idx0 + 1u) << 8u) |
+        (read_byte(blk_off + 2u + byte_idx0 + 2u) << 16u);
+
     float acc = 0.0;
-    // Each thread handles 4 of 128 timesteps.
     for (uint local = 0u; local < 4u; local += 1u) {
-        uint t = tid * 4u + local;          // 0..127
-        uint bit_pos = t * 3u;              // bit index into qs[] (after the 6-bit prefix)
-        // CUDA reads a 16-bit window at byte_idx, then >> bit_off & 0x1FF.
-        // Note: CUDA does NOT add the 6-bit prefix offset because the prefix
-        // ENCODES the initial state's [3..9] high bits, which by construction
-        // makes the very first 9-bit window starting at bit 0 yield the
-        // correct state[0]. So we read raw bit-pos t*3 (NOT (t*3 + 6)). This
-        // matches dequantize_turbo3_tcq() in turbo-quant-cuda.cuh exactly.
-        uint byte_idx = bit_pos >> 3;
-        uint bit_off = bit_pos & 7u;
-        uint b0 = read_byte(blk_off + 2u + byte_idx);
-        uint b1 = read_byte(blk_off + 2u + byte_idx + 1u);
-        // 9-bit window may straddle a third byte if bit_off > 7-? actually
-        // 9 bits in a 16-bit window starting at bit_off ∈ [0..7] always fits
-        // because max(bit_off + 9) = 16. So 2 bytes suffice.
-        uint raw = b0 | (b1 << 8u);
-        uint state = (raw >> bit_off) & 0x1FFu;
+        // Same state as CUDA's per-symbol 16-bit read at raw bit position
+        // t*3, just sourced from the lane's preloaded 24-bit window. CUDA
+        // does NOT add the 6-bit prefix offset because the prefix encodes
+        // the initial state's high bits; this matches dequantize_turbo3_tcq()
+        // in turbo-quant-cuda.cuh exactly.
+        uint state = (raw24 >> (bit_off0 + local * 3u)) & 0x1FFu;
         float k_val = codebook[state] * norm;
-        float q_val = q[push.q_head * push.head_dim + t];
+        float q_val = q[q_base + local];
         acc += q_val * k_val;
     }
 

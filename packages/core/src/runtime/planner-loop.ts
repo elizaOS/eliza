@@ -1,5 +1,4 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
@@ -21,6 +20,7 @@ import {
 	type ToolChoice,
 	type ToolDefinition,
 } from "../types/model";
+import { resolveStateDir } from "../utils/state-dir";
 import { computePrefixHashes } from "./context-hash";
 import { appendContextEvent } from "./context-object";
 import {
@@ -66,6 +66,7 @@ import type {
 	RecordedUsage,
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
+import { captureToolStageIO } from "./trajectory-recorder";
 
 export {
 	cacheProviderOptions,
@@ -1597,6 +1598,12 @@ async function recordToolStage(args: {
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
 	try {
+		const inputParams = (args.toolCall.params ?? {}) as Record<string, unknown>;
+		const io = captureToolStageIO({
+			input: inputParams,
+			output: args.result,
+			error: args.result.error,
+		});
 		const stage: RecordedStage = {
 			stageId: `stage-tool-${args.toolCall.name}-${args.startedAt}`,
 			kind: "tool",
@@ -1606,10 +1613,14 @@ async function recordToolStage(args: {
 			latencyMs: args.endedAt - args.startedAt,
 			tool: {
 				name: args.toolCall.name,
-				args: (args.toolCall.params ?? {}) as Record<string, unknown>,
+				args: inputParams,
 				result: args.result,
 				success: args.result.success,
 				durationMs: args.endedAt - args.startedAt,
+				input: io.input,
+				output: io.output,
+				errorText: io.errorText,
+				truncated: io.truncated,
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
@@ -1665,7 +1676,7 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
 /**
  * The LLM sees the stable Stage 2 wrapper surface, so every action invocation
  * arrives wrapped:
- * `{ name: "PLAN_ACTIONS", args: { action, subaction?, parameters, thought } }`.
+ * `{ name: "PLAN_ACTIONS", args: { action, parameters, thought } }`.
  * Holding the tool list fixed keeps prompt-cache hashes stable across requests
  * no matter which actions are gated this turn.
  *
@@ -1673,8 +1684,6 @@ function normalizeToolCalls(value: unknown): PlannerToolCall[] {
  * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
  * failure attribution — sees the actual action name, not the wrapper.
  *
- * The `subaction` hint is preserved on `params.subaction` for router-style
- * actions.
  */
 
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {
@@ -1727,23 +1736,16 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 		if (!actionName) {
 			return null;
 		}
-		const subaction =
-			typeof inner.subaction === "string" && inner.subaction.trim().length > 0
-				? inner.subaction.trim()
-				: undefined;
 		const baseParameters =
 			inner.parameters &&
 			typeof inner.parameters === "object" &&
 			!Array.isArray(inner.parameters)
 				? (inner.parameters as Record<string, unknown>)
 				: {};
-		const actionParameters: Record<string, unknown> = subaction
-			? { ...baseParameters, subaction }
-			: baseParameters;
 		return {
 			id: typeof record.id === "string" ? record.id : undefined,
 			name: actionName,
-			params: actionParameters,
+			params: baseParameters,
 		};
 	}
 
@@ -1971,7 +1973,7 @@ function isUnsafeUserVisibleText(value: string | undefined): boolean {
 		/\b(?:tool|function)\s+calls?\b/i,
 		/\b(?:I|we)\s+(?:need|should|must|will)\s+to\s+(?:call|use|invoke|issue|perform)\b/i,
 		/\b(?:call|use|invoke)\s+[A-Z][A-Z0-9_]{2,}\b/,
-		/\b(?:MESSAGE\s+operation|operation=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
+		/\b(?:MESSAGE\s+action|action=(?:draft_reply|respond|send_draft|triage|list_inbox))\b/i,
 		/\{\s*"parameters"\s*:/i,
 	].some((pattern) => pattern.test(text));
 }
@@ -2067,11 +2069,7 @@ let cachedDiskOptimizedPlannerPrompt: string | null = null;
 let cachedDiskOptimizedPlannerLoaded = false;
 
 function loadOptimizedPlannerFromDisk(): string | null {
-	const stateDir =
-		process.env.ELIZA_STATE_DIR?.trim() ||
-		process.env.MILADY_STATE_DIR?.trim() ||
-		join(homedir(), ".eliza");
-	const dir = join(stateDir, "optimized-prompts", "action_planner");
+	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
 	if (!existsSync(dir)) return null;
 	const entries = readdirSync(dir)
 		.filter((f) => f.endsWith(".json"))

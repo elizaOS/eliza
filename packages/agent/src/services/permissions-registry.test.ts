@@ -2,16 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  PermissionId,
-  PermissionState,
-} from "@elizaos/shared";
+import type { PermissionId, PermissionState } from "@elizaos/shared";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  PermissionRegistry,
-  type Prober,
-} from "./permissions-registry.ts";
+import { PermissionRegistry, type Prober } from "./permissions-registry.ts";
 
 function makeRuntime(): IAgentRuntime {
   return {
@@ -180,12 +174,13 @@ describe("PermissionRegistry", () => {
     registry.registerProber(oldProber);
     await registry.check("location");
     const old = registry.get("location");
-    (old as { lastBlockedFeature?: PermissionState["lastBlockedFeature"] }).lastBlockedFeature =
-      {
-        app: "x",
-        action: "y",
-        at: Date.now() - 25 * 60 * 60 * 1000,
-      };
+    (
+      old as { lastBlockedFeature?: PermissionState["lastBlockedFeature"] }
+    ).lastBlockedFeature = {
+      app: "x",
+      action: "y",
+      at: Date.now() - 25 * 60 * 60 * 1000,
+    };
 
     const ids = registry.pending().map((s) => s.id);
     expect(ids).toContain("microphone");

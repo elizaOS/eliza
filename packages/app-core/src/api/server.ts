@@ -34,8 +34,10 @@ import {
 } from "@elizaos/agent";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger } from "@elizaos/core";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
+import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
+import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -47,8 +49,6 @@ import {
   getConfiguredCompatAgentName,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
-import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
-import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
 
 export {
@@ -119,18 +119,20 @@ import {
 import { buildCharacterFromConfig } from "../runtime/build-character-from-config";
 import { deviceBridge } from "../services/local-inference/device-bridge";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
-import { handleAuthPairingCompatRoutes } from "./auth-pairing-compat-routes";
+import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
+import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 // Local-inference routes intentionally remain in app-core (no plugin-local-inference exists).
 import { handleLocalInferenceCompatRoutes } from "./local-inference-compat-routes";
-import { handleOnboardingCompatRoute } from "./onboarding-compat-routes";
-import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
+import { handleOnboardingCompatRoute } from "./onboarding-routes";
+import { handlePluginsCompatRoutes } from "./plugins-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import { handleTrainingBenchmarksRoute } from "./training-benchmarks";
 
 // Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
 // Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
@@ -179,7 +181,7 @@ const _PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos"]);
 
 // extractHeaderValue — now imported from ./auth
 // tokenMatches — now imported from ./auth
-// Pairing infrastructure — now in ./auth-pairing-compat-routes
+// Pairing infrastructure — now in ./auth-pairing-routes
 // getProvidedApiToken, ensureCompatApiAuthorized, isDevEnvironment,
 // ensureCompatSensitiveRouteAuthorized — now imported from ./auth
 
@@ -212,10 +214,13 @@ function resolveCompatConfigPaths(): {
   elizaConfigPath?: string;
   appConfigPath?: string;
 } {
-  const sharedStateDir = process.env.ELIZA_STATE_DIR?.trim();
+  const explicitConfig = process.env.ELIZA_CONFIG_PATH?.trim();
+  const hasStateOverride =
+    Boolean(process.env.MILADY_STATE_DIR?.trim()) ||
+    Boolean(process.env.ELIZA_STATE_DIR?.trim());
   const configPath =
-    process.env.ELIZA_CONFIG_PATH?.trim() ||
-    (sharedStateDir ? path.join(sharedStateDir, "eliza.json") : undefined);
+    explicitConfig ||
+    (hasStateOverride ? path.join(resolveStateDir(), "eliza.json") : undefined);
 
   return { elizaConfigPath: configPath, appConfigPath: configPath };
 }
@@ -501,7 +506,7 @@ async function _getTableColumnNames(
 // buildPluginParamDefs, findNearestFile, resolvePluginManifestPath,
 // resolveInstalledPackageVersion, resolveLoadedPluginNames, isPluginLoaded,
 // buildPluginListResponse, validateCompatPluginConfig, persistCompatPluginMutation
-// — extracted to ./plugins-compat-routes
+// — extracted to ./plugins-routes
 
 /**
  * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
@@ -640,8 +645,9 @@ async function handleCompatRoute(
   // These own cookie + CSRF lifecycle for the dashboard.
   if (await handleAuthSessionRoutes(req, res, state)) return true;
 
-  // Auth / pairing / onboarding status — extracted to auth-pairing-compat-routes.ts
+  // Auth / pairing / onboarding status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  if (await handleBackgroundTasksRoute(req, res, state)) return true;
   // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;
@@ -766,13 +772,18 @@ async function handleCompatRoute(
   // steward-compat, wallet-trade-compat) are now served via
   // stewardPlugin.routes (rawPath) on the runtime plugin route system.
 
-  // Plugin routes — extracted to plugins-compat-routes.ts
+  // Plugin routes — extracted to plugins-routes.ts
   if (await handlePluginsCompatRoutes(req, res, state)) return true;
 
   // Catalog routes — registry SoT projections (apps, plugins, connectors)
   if (await handleCatalogRoutes(req, res, state)) return true;
 
   if (await handleOnboardingCompatRoute(req, res, state)) return true;
+
+  // Benchmark trending DB read API — scaffolds gap M2 (W0-X5).
+  // Producers are Python (W1-B*); this exposes per-model history + pairwise
+  // compare for the dashboard.
+  if (await handleTrainingBenchmarksRoute(req, res, state)) return true;
 
   // GET /api/plugins/:id/ui-spec — generate a UiSpec for plugin configuration.
   // Used by the agent to spawn interactive config forms in chat.
@@ -783,7 +794,7 @@ async function handleCompatRoute(
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const pluginId = decodeURIComponent(uiSpecMatch[1]);
     const { buildPluginConfigUiSpec } = await import("@elizaos/shared");
-    const { buildPluginListResponse } = await import("./plugins-compat-routes");
+    const { buildPluginListResponse } = await import("./plugins-routes");
     const pluginList = buildPluginListResponse(state.current);
     const plugin = pluginList.plugins.find((p) => p.id === pluginId);
     if (!plugin) {

@@ -9,12 +9,12 @@ import {
   BROWSER_SERVICE_TYPE,
   type BrowserService,
 } from "../browser-service.js";
-import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 import {
   type BrowserWorkspaceCommand,
   executeBrowserWorkspaceCommand,
   getBrowserWorkspaceMode,
 } from "../workspace/browser-workspace.js";
+import { executeBrowserAutofillLogin } from "./browser-autofill-login.js";
 
 /**
  * Targets are the registered browser backends. The agent uses what is
@@ -51,7 +51,30 @@ type BrowserWorkspaceSubaction =
   | "cursor-move"
   | "cursor-hide";
 
+type BrowserWorkspaceAction =
+  | BrowserWorkspaceSubaction
+  | "realistic_click"
+  | "realistic_fill"
+  | "realistic_type"
+  | "realistic_press"
+  | "cursor_move"
+  | "cursor_hide";
+
 type BrowserActionSubaction = BrowserWorkspaceSubaction | "autofill-login";
+type BrowserActionValue =
+  | BrowserWorkspaceAction
+  | "autofill_login"
+  | "autofill-login";
+type NormalizedBrowserAction =
+  | BrowserWorkspaceSubaction
+  | "autofill-login"
+  | "info"
+  | "context"
+  | "get_context"
+  | "list_tabs"
+  | "open_tab"
+  | "close_tab"
+  | "switch_tab";
 
 type BrowserActionParameters = {
   /**
@@ -65,13 +88,10 @@ type BrowserActionParameters = {
   script?: string;
   selector?: string;
   /**
-   * Compatibility alias for older browser-router calls. Prefer `subaction` in
-   * new plans, but accept this so BROWSER_ACTION-shaped tool calls can still
-   * execute when the model picks the consolidated BROWSER action.
+   * Canonical browser action. Legacy `subaction` remains accepted.
    */
   action?:
-    | BrowserWorkspaceSubaction
-    | "autofill-login"
+    | BrowserActionValue
     | "info"
     | "context"
     | "get_context"
@@ -80,7 +100,7 @@ type BrowserActionParameters = {
     | "close_tab"
     | "switch_tab";
   subaction?: BrowserActionSubaction;
-  /** Registrable hostname for `subaction: "autofill-login"`. */
+  /** Registrable hostname for `action: "autofill_login"`. */
   domain?: string;
   /** Saved login username for autofill-login (optional). */
   username?: string;
@@ -121,19 +141,20 @@ function inferBrowserSubaction(
   params: BrowserActionParameters | undefined,
   messageText: string,
 ): BrowserWorkspaceCommand["subaction"] | "autofill-login" {
+  const normalizedAction = normalizeBrowserAction(params?.action);
   if (
-    params?.subaction === "autofill-login" ||
-    params?.action === "autofill-login"
+    normalizedAction === "autofill-login" ||
+    params?.subaction === "autofill-login"
   ) {
     return "autofill-login";
   }
-  if (params?.subaction) {
-    return params.subaction;
-  }
 
-  const legacySubaction = normalizeLegacyBrowserAction(params?.action);
+  const legacySubaction = normalizeLegacyBrowserAction(normalizedAction);
   if (legacySubaction) {
     return legacySubaction;
+  }
+  if (params?.subaction) {
+    return params.subaction;
   }
 
   if (params?.tabAction) {
@@ -161,10 +182,34 @@ function inferBrowserSubaction(
   return "state";
 }
 
+function normalizeBrowserAction(
+  action: BrowserActionParameters["action"] | undefined,
+): NormalizedBrowserAction | undefined {
+  switch (action) {
+    case "realistic_click":
+      return "realistic-click";
+    case "realistic_fill":
+      return "realistic-fill";
+    case "realistic_type":
+      return "realistic-type";
+    case "realistic_press":
+      return "realistic-press";
+    case "cursor_move":
+      return "cursor-move";
+    case "cursor_hide":
+      return "cursor-hide";
+    case "autofill_login":
+      return "autofill-login";
+    default:
+      return action as NormalizedBrowserAction | undefined;
+  }
+}
+
 function normalizeLegacyBrowserAction(
   action: BrowserActionParameters["action"] | undefined,
 ): BrowserWorkspaceCommand["subaction"] | undefined {
-  switch (action) {
+  const normalizedAction = normalizeBrowserAction(action);
+  switch (normalizedAction) {
     case "info":
     case "context":
     case "get_context":
@@ -179,14 +224,46 @@ function normalizeLegacyBrowserAction(
     case undefined:
       return undefined;
     default:
-      return action;
+      return isWorkspaceSubaction(normalizedAction)
+        ? normalizedAction
+        : undefined;
   }
+}
+
+function isWorkspaceSubaction(
+  action: unknown,
+): action is BrowserWorkspaceCommand["subaction"] {
+  return (
+    action === "back" ||
+    action === "click" ||
+    action === "close" ||
+    action === "forward" ||
+    action === "get" ||
+    action === "hide" ||
+    action === "navigate" ||
+    action === "open" ||
+    action === "press" ||
+    action === "reload" ||
+    action === "screenshot" ||
+    action === "show" ||
+    action === "snapshot" ||
+    action === "state" ||
+    action === "tab" ||
+    action === "type" ||
+    action === "wait" ||
+    action === "realistic-click" ||
+    action === "realistic-fill" ||
+    action === "realistic-type" ||
+    action === "realistic-press" ||
+    action === "cursor-move" ||
+    action === "cursor-hide"
+  );
 }
 
 function normalizeLegacyTabAction(
   action: BrowserActionParameters["action"] | undefined,
 ): BrowserActionParameters["tabAction"] | undefined {
-  switch (action) {
+  switch (normalizeBrowserAction(action)) {
     case "list_tabs":
       return "list";
     case "open_tab":
@@ -270,9 +347,9 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `subaction: \"autofill-login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
+    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `action: \"autofill_login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
   descriptionCompressed:
-    "Browser tab/page control: open/navigate/click/type/screenshot/state; subaction autofill-login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+    "Browser tab/page control: open/navigate/click/type/screenshot/state; action autofill_login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -306,9 +383,8 @@ export const browserAction: Action = {
       y: params?.y,
     };
 
-    const browserService = runtime.getService<BrowserService>(
-      BROWSER_SERVICE_TYPE,
-    );
+    const browserService =
+      runtime.getService<BrowserService>(BROWSER_SERVICE_TYPE);
 
     try {
       logger.info(
@@ -351,7 +427,7 @@ export const browserAction: Action = {
     {
       name: "action",
       description:
-        "Compatibility alias for subaction from older BROWSER_ACTION calls. Prefer subaction in new plans.",
+        "Browser action to perform. Snake_case values are canonical; legacy kebab-case and subaction are also accepted.",
       required: false,
       schema: {
         type: "string" as const,
@@ -380,19 +456,19 @@ export const browserAction: Action = {
           "wait",
           "close_tab",
           "switch_tab",
-          "realistic-click",
-          "realistic-fill",
-          "realistic-type",
-          "realistic-press",
-          "cursor-move",
-          "cursor-hide",
-          "autofill-login",
+          "realistic_click",
+          "realistic_fill",
+          "realistic_type",
+          "realistic_press",
+          "cursor_move",
+          "cursor_hide",
+          "autofill_login",
         ],
       },
     },
     {
       name: "subaction",
-      description: "Browser action to perform",
+      description: "Legacy alias for action.",
       required: false,
       schema: {
         type: "string" as const,
@@ -436,7 +512,7 @@ export const browserAction: Action = {
     {
       name: "domain",
       description:
-        "Required when subaction is autofill-login: registrable hostname (e.g. `github.com`).",
+        "Required when action is autofill_login: registrable hostname (e.g. `github.com`).",
       required: false,
       schema: { type: "string" as const },
     },

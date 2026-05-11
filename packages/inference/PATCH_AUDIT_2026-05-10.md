@@ -1,5 +1,12 @@
 # Patch audit — `build-llama-cpp-dflash.mjs` vs milady-ai/llama.cpp
 
+> Superseded status note, 2026-05-11: keep this file as historical context.
+> The current post-QJL-dispatch blocker ledger is
+> `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md`.
+> In particular, Metal QJL attention-score graph dispatch is now
+> runtime-ready; Metal TurboQuant/PolarQuant and Vulkan graph dispatch remain
+> blocked.
+
 Date: 2026-05-10
 Auditor: bounded read-only audit (no commits, no kernel edits).
 Scope: every patch hook in `packages/app-core/scripts/build-llama-cpp-dflash.mjs`,
@@ -25,11 +32,13 @@ divergence — both refs point at the same code.
 
 ## Build-script patch hook inventory
 
-`applyForkPatches(cacheDir, backend, target)` (build-llama-cpp-dflash.mjs:1010)
-dispatches to the in-script hooks below. Two impl modules
-(`kernel-patches/{metal,vulkan}-kernels.mjs`) are also imported but
-**neither is invoked anywhere in the build script** — they are dead
-imports. See "Dead imports" section.
+`applyForkPatches(cacheDir, backend, target)` dispatches to backend patch
+hooks. Historical note: the first 2026-05-10 read-only pass saw
+`kernel-patches/{metal,vulkan}-kernels.mjs` imported but not invoked. That is
+no longer true: the current build script calls `patchMetalKernelsImpl()` for
+Metal targets and `patchVulkanKernelsImpl()` for Vulkan targets. Treat the
+table below as historical context only; the current source and
+`remaining-work-ledger.md` are authoritative.
 
 | Hook                          | Triggered when                                | Env gate                                  | What it does in the fork                                                                  | In-fork status                                              | Still needed? |
 | ----------------------------- | --------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- |
@@ -118,27 +127,101 @@ purely additive. No conflict. The graft also explicitly skips
 `add_subdirectory(omnivoice/ggml)`, honoring the §4 "one ggml pin"
 contract.
 
-## Dead imports (informational, not changed in this audit)
+## Dead imports — RESOLVED 2026-05-10 (Wave-4 follow-up)
 
-`build-llama-cpp-dflash.mjs:60-66` imports
-`patchMetalKernels as patchMetalKernelsImpl` and
-`patchVulkanKernels as patchVulkanKernelsImpl` from
-`./kernel-patches/{metal,vulkan}-kernels.mjs` plus the
-`METAL_KERNEL_FILES` / `VULKAN_KERNEL_FILES` arrays. None of the four
-imports are referenced anywhere else in the script. The
-`applyForkPatches` dispatcher only calls the in-script no-op
-`patchMetal*` / `patchVulkanKernels` functions.
+The previous state was: `build-llama-cpp-dflash.mjs:60-66` imported
+`patchMetalKernels as patchMetalKernelsImpl`,
+`patchVulkanKernels as patchVulkanKernelsImpl`, plus the unused
+`METAL_KERNEL_FILES` / `VULKAN_KERNEL_FILES` arrays — and
+`applyForkPatches` only called in-script no-op log sentinels.
 
-The two Impl modules contain the *real* kernel-shipment logic
-(copy standalones into `ggml/src/ggml-metal/milady-shipped/` + patch
-the metallib `add_custom_command` to merge the resulting `.air` files;
-hard-throw on `*-vulkan` targets without an explicit
-`ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1`). They were written but
-never wired into `applyForkPatches`. Wiring them is out of scope for
-this audit per scope rules ("don't touch patch logic"); flagging here
-so a follow-up task can decide whether to (a) wire them in and start
-shipping the standalones into the fork build, or (b) delete the
-imports.
+**Now (post-Wave-4 wiring):**
+
+- `applyForkPatches(cacheDir, backend, target, { dryRun })` dispatches
+  to `patchMetalKernelsImpl` (for `backend === "metal"`) and
+  `patchVulkanKernelsImpl` (for `backend === "vulkan"`). The four
+  per-kernel no-op log sentinels (`patchMetalTurbo4`,
+  `patchMetalTurbo3Tcq`, `patchMetalQjl`, `patchMetalPolar`) and the
+  in-script `patchVulkanKernels` log-only function have been removed —
+  nothing else referenced them.
+- The unused `METAL_KERNEL_FILES` / `VULKAN_KERNEL_FILES` array imports
+  have been removed; the impl modules use them internally only.
+- `patchMetalKernelsImpl` copies the five standalone `.metal` files
+  from `packages/inference/metal/` into the fork at
+  `ggml/src/ggml-metal/milady-shipped/<name>.metal` and patches
+  `ggml/src/ggml-metal/CMakeLists.txt` so each standalone is compiled
+  into its own `.air` and merged into `default.metallib` alongside
+  `ggml-metal.air`. Idempotent via `# MILADY-KERNEL-PATCH-V1`.
+- `patchVulkanKernelsImpl` (re-evolved post-audit beyond the
+  hard-throw model) now copies the eight `.comp` files into the fork
+  at `ggml/src/ggml-vulkan/vulkan-shaders/<name>.comp` and applies two
+  unified-anchor patches under `kernel-patches/vulkan-dispatch-patches/`
+  to register the SPV blobs in `ggml-vulkan-shaders.hpp` and add
+  pipeline-creation calls in `ggml_vk_load_shaders`. Idempotent via
+  `MILADY-VK-DISPATCH-PATCH-V1`.
+- Both impls hard-throw on missing source files / missing CMakeLists
+  anchors / fs failures — no fallbacks per AGENTS.md §3.
+
+Deferred (separate from dead-import wiring):
+
+- `ggml-metal-ops.cpp` / `ggml-metal-device.m` dispatch sites for
+  `GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ`,
+  `GGML_TYPE_QJL1_256`, `GGML_TYPE_Q4_POLAR`. After the Metal patch
+  the kernel symbols are present in `default.metallib` (proven via
+  `verify-fork`, see below), but the runtime cannot select them
+  through the type-traits table until those dispatch sites are added.
+- iOS EMBED_LIBRARY path. `patchMetalKernels()` now replaces the old
+  concatenated-source `.incbin` flow with compiled per-TU `.air` files
+  merged into one embedded `default.metallib`. That fixes the duplicate
+  declaration collision for the standalone shaders. iOS artifacts still
+  fail the publish gate until physical-device graph dispatch smoke exists.
+
+## New build targets — added 2026-05-10 (Wave-4 follow-up)
+
+`SUPPORTED_TARGETS` was missing four real device classes flagged by
+`DEVICE_SUPPORT_GAP_2026-05-10.md`. Now added:
+
+| Target                  | Purpose                                                                          | Host requirement                                                                                       |
+| ----------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `linux-aarch64-cpu`     | Ampere Altra / AWS Graviton CPU-only deployments                                 | Real arm64 Linux host (no aarch64-cross-toolchain wired here)                                          |
+| `linux-aarch64-cuda`    | GH200 / `27b-256k` tier (aarch64 host + H100/H200 GPU)                        | arm64 Linux host with `nvcc`. Emits the same multi-arch `CMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80` pin |
+| `windows-arm64-cpu`     | Snapdragon X Elite / Copilot+ PC CPU (12-core ARM, NEON via qjl-cpu/polarquant-cpu) | Native Windows arm64 host (MSVC `-A ARM64`) **or** `MINGW_TOOLCHAIN_FILE` pointing at a clang/LLVM aarch64-w64-mingw32 toolchain file |
+| `windows-arm64-vulkan`  | Adreno X1 GPU on Snapdragon X (Vulkan 1.3)                                       | Same as above plus glslc on PATH                                                                       |
+
+`CMAKE_CUDA_ARCHITECTURES` is now pinned for **every** CUDA target
+(`linux-x64-cuda`, `linux-aarch64-cuda`, `windows-x64-cuda`) at
+`90a;90;89;86;80` — covers H200 (sm_90a), H100 (sm_90), Ada / RTX
+4090 / L4 (sm_89), Ampere / RTX 30xx (sm_86), A100 (sm_80). This was
+flagged as a quick win in `DEVICE_SUPPORT_GAP_2026-05-10.md` §3.3.
+Operators targeting older cards override via
+`ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=...`.
+
+## verify-fork drift check — added 2026-05-10
+
+`make -C packages/inference/verify verify-fork` re-runs `metal_verify`
+and `vulkan_verify` against the **fork's** in-tree shader paths
+(`~/.cache/eliza-dflash/milady-llama-cpp/ggml/src/ggml-metal/milady-kernels/*.metal`
+and `.../ggml-vulkan/vulkan-shaders/*.comp`) using the same
+`fixtures/*.json` the standalone reference runs use. Behavior:
+
+- If `~/.cache/eliza-dflash/milady-llama-cpp/.git` is missing, prints a
+  clear "fork not present, please run build first" message and exits 1.
+- Metal: runs each of the five fork shaders against its matching
+  fixture. Reports per-kernel pass/fail.
+- Vulkan: runs all five fork shaders (`turbo3`, `turbo4`,
+  `turbo3_tcq`, `qjl`, `polar`) plus the Polar QJL-residual fixture.
+- Skips a backend when its harness isn't buildable on the current host
+  (e.g. xcrun missing on Linux) rather than failing.
+
+**First run on M4 Max revealed real drift** the audit predicted in
+the "polar Hadamard" / "qjl uint3 promotion" rows: fork `qjl.metal`
+fails to compile because its kernel signature mixes `uint` + `uint2`
+attribute params (the standalone fixed this by promoting both to
+`uint3` — the W3 fix that made qjl compile at all on Apple). Fork
+turbo3 / turbo4 / turbo3_tcq pass 8/8 against the standalone fixtures.
+This means the v0.4.0-milady fork's in-tree `qjl.metal` is shipping a
+broken-on-Apple variant; the standalone (which is what the metallib
+patch ships into the build) is the one users actually get.
 
 ## Conclusions
 
@@ -180,12 +263,12 @@ no-op logs):**
   files to confirm 8/8 PASS still holds before signing off the next
   bundle release.
 
-**Dead-imports flag (informational):**
+**Dead-imports flag (resolved after this historical audit):**
 
-- `patchMetalKernelsImpl` / `patchVulkanKernelsImpl` /
-  `METAL_KERNEL_FILES` / `VULKAN_KERNEL_FILES` are imported but
-  unreferenced in `build-llama-cpp-dflash.mjs`. Either wire them or
-  remove the imports.
+- `patchMetalKernelsImpl` and `patchVulkanKernelsImpl` are now invoked by
+  `applyForkPatches()`. The active blocker is no longer "dead imports"; it is
+  the remaining graph-dispatch coverage for Metal TurboQuant/PolarQuant and
+  Vulkan.
 
 ## Verification
 

@@ -53,10 +53,11 @@ to match. The publish script MUST refuse to bundle a drafter whose
 training run did not target the same text-checkpoint hash recorded in
 its metadata.
 
-OmniVoice singing weights are research-only. Do not include them in
-any default Eliza-1 bundle until legal review clears the dataset and
-an eval gate is defined. There is no "experimental" tier — research
-artifacts live under a separate HF org and are never `defaultEligible`.
+OmniVoice singing weights can ship in default Eliza-1 bundles under the
+current non-commercial open-source mandate. The prior research-only gate
+is lifted per `packages/inference/AGENTS.md`; if the project pivots to
+commercial licensing, the CC-BY-NC-SA training-data lineage must be
+re-evaluated before any commercial bundle is published.
 
 ---
 

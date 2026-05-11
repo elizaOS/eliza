@@ -47,6 +47,8 @@ const SAVEABLE_CHARACTER_FIELDS: ReadonlyArray<keyof Character> = [
 type ModifyScope = "auto" | "global" | "user";
 
 type CharacterParameters = {
+	action?: string;
+	subaction?: string;
 	op?: string;
 	request?: string;
 	scope?: string;
@@ -99,14 +101,23 @@ export const characterAction: Action = {
 		"RENAME_AGENT",
 	],
 	description:
-		"Modify, persist, or update the agent character. Ops: modify (LLM-driven personality, tone, voice, style, bio, name, topics, response format) | persist (flush in-memory runtime.character to the persistence service) | update_identity (rename agent or replace system prompt).",
+		"Modify, persist, or update the agent character. Actions: modify (LLM-driven personality, tone, voice, style, bio, name, topics, response format) | persist (flush in-memory runtime.character to the persistence service) | update_identity (rename agent or replace system prompt).",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
-			name: "subaction",
+			name: "action",
 			description:
-				"Which character sub-operation to run: modify (LLM-driven personality edit), persist (flush runtime.character), or update_identity (set name/system prompt).",
+				"Which character operation to run: modify (LLM-driven personality edit), persist (flush runtime.character), or update_identity (set name/system prompt).",
 			required: true,
+			schema: {
+				type: "string" as const,
+				enum: [...CHARACTER_OPS],
+			},
+		},
+		{
+			name: "op",
+			description: "Legacy alias for action.",
+			required: false,
 			schema: {
 				type: "string" as const,
 				enum: [...CHARACTER_OPS],
@@ -198,10 +209,11 @@ export const characterAction: Action = {
 	): Promise<ActionResult> => {
 		const handlerOptions = options as CharacterHandlerOptions | undefined;
 		const params = handlerOptions?.parameters ?? {};
-		const op = isCharacterOp(params.op) ? params.op : null;
+		const rawOp = params.action ?? params.subaction ?? params.op;
+		const op = isCharacterOp(rawOp) ? rawOp : null;
 		if (!op) {
-			const text = `CHARACTER requires an op: ${CHARACTER_OPS.join(", ")}.`;
-			await callback?.({ text, thought: "Missing or invalid op" });
+			const text = `CHARACTER requires an action: ${CHARACTER_OPS.join(", ")}.`;
+			await callback?.({ text, thought: "Missing or invalid action" });
 			return {
 				text,
 				success: false,

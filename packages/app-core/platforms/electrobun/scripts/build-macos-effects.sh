@@ -25,7 +25,10 @@ xcrun clang++ \
   -framework Cocoa \
   -framework ApplicationServices \
   -framework AVFoundation \
+  -framework Contacts \
   -framework CoreGraphics \
+  -framework EventKit \
+  -framework UserNotifications \
   "$SRC_FILE" \
   -o "$OUT_FILE"
 echo "Built native macOS effects: $OUT_FILE"

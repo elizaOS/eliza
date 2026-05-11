@@ -17,30 +17,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// Load .env from repo root if dotenv is available. Lazy-loaded behind a
-// memoized helper so this module's import graph stays free of top-level
-// awaits. Bun.build's mobile bundle path rejects any transitive `require`
-// of a module containing a TLA, so all dotenv loading must be deferred.
-const REPO_ROOT =
-	process.env.ELIZA_REPO_ROOT?.trim() ||
-	(typeof import.meta.dirname === "string"
-		? path.resolve(import.meta.dirname, "..", "..", "..", "..")
-		: process.cwd());
-let dotenvLoaded: Promise<void> | null = null;
-async function ensureDotenvLoaded(): Promise<void> {
-	if (dotenvLoaded) return dotenvLoaded;
-	dotenvLoaded = (async () => {
-		try {
-			const { config } = await import("dotenv");
-			config({ path: path.join(REPO_ROOT, ".env") });
-		} catch {
-			// dotenv optional
-		}
-	})();
-	return dotenvLoaded;
-}
-
 const ELIZA_CLOUD_OPENAI_BASE_URL = "https://elizacloud.ai/api/v1";
+const CEREBRAS_OPENAI_BASE_URL = "https://api.cerebras.ai/v1";
 
 function loadConfiguredCloudApiKey(): string {
 	const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
@@ -127,7 +105,7 @@ const PROVIDERS: Array<{
 	{
 		name: "openai",
 		plugin: "@elizaos/plugin-openai",
-		keyEnvVars: ["OPENAI_API_KEY"],
+		keyEnvVars: ["OPENAI_API_KEY", "CEREBRAS_API_KEY"],
 		baseUrlEnvVar: "OPENAI_BASE_URL",
 		defaultBaseUrl: "https://api.openai.com/v1",
 		smallModelEnvVar: "OPENAI_SMALL_MODEL",
@@ -186,23 +164,34 @@ export function selectLiveProvider(
 
 	for (const def of candidates) {
 		let apiKey = "";
+		let apiKeyEnvVar = "";
 		for (const envVar of def.keyEnvVars) {
 			const val = process.env[envVar]?.trim();
 			if (val) {
 				apiKey = val;
+				apiKeyEnvVar = envVar;
 				break;
 			}
 		}
 		if (!apiKey) continue;
 
+		const isCerebrasOpenAi =
+			def.name === "openai" && apiKeyEnvVar === "CEREBRAS_API_KEY";
 		const baseUrl = def.baseUrlEnvVar
-			? process.env[def.baseUrlEnvVar]?.trim() || def.defaultBaseUrl
+			? process.env[def.baseUrlEnvVar]?.trim() ||
+				(isCerebrasOpenAi ? CEREBRAS_OPENAI_BASE_URL : def.defaultBaseUrl)
 			: def.defaultBaseUrl;
 
+		const defaultSmallModel = isCerebrasOpenAi
+			? "gpt-oss-120b"
+			: def.defaultSmallModel;
+		const defaultLargeModel = isCerebrasOpenAi
+			? "gpt-oss-120b"
+			: def.defaultLargeModel;
 		const smallModel =
-			process.env[def.smallModelEnvVar]?.trim() || def.defaultSmallModel;
+			process.env[def.smallModelEnvVar]?.trim() || defaultSmallModel;
 		const largeModel =
-			process.env[def.largeModelEnvVar]?.trim() || def.defaultLargeModel;
+			process.env[def.largeModelEnvVar]?.trim() || defaultLargeModel;
 
 		const env: Record<string, string> = {};
 		for (const envVar of def.keyEnvVars) {
@@ -212,6 +201,10 @@ export function selectLiveProvider(
 		if (def.baseUrlEnvVar) {
 			const baseUrlVal = process.env[def.baseUrlEnvVar]?.trim();
 			if (baseUrlVal) env[def.baseUrlEnvVar] = baseUrlVal;
+			else if (isCerebrasOpenAi) env[def.baseUrlEnvVar] = baseUrl;
+		}
+		if (isCerebrasOpenAi) {
+			env.MILADY_PROVIDER = process.env.MILADY_PROVIDER?.trim() || "cerebras";
 		}
 		env[def.smallModelEnvVar] = smallModel;
 		env[def.largeModelEnvVar] = largeModel;

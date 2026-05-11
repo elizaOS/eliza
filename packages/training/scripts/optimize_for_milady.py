@@ -1,10 +1,10 @@
-"""End-to-end Milady optimization → GGUF → HF push pipeline.
+"""End-to-end Eliza-1 optimization -> GGUF -> HF push pipeline.
 
 Composes the per-technique apply scripts in dependency order, runs the
 ``milady-ai/llama.cpp`` GGUF conversion (fork-aware, understands the new
 GGML types ``Q4_POLAR=47`` and ``QJL1_256=46``), and publishes a
-single ``milady-ai/<name>-milady-optimized`` HuggingFace repo whose
-contents are ready for the on-device Milady downloader to consume.
+single ``elizalabs/eliza-1-<tier>`` HuggingFace repo whose contents are
+ready for the on-device Eliza-1 downloader to consume.
 
 The orchestrator is **idempotent**: each step writes its sidecar
 artifact (``polarquant_artifacts.safetensors``,
@@ -14,29 +14,29 @@ load the file without re-deriving anything at runtime.
 
 Usage::
 
-    # Dry-run on the smallest base model (Qwen3-0.6B, ~484 MB Q4_K_M baseline).
+    # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_milady.py \\
-        --base-model Qwen/Qwen3-0.6B \\
-        --output-dir checkpoints/qwen3-0.6b-milady \\
+        --base-model elizalabs/eliza-1-0_6b \\
+        --output-dir checkpoints/eliza-1-0_6b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo milady-ai/qwen3-0.6b-milady-optimized \\
+        --hf-repo elizalabs/eliza-1-0_6b \\
         --dry-run
 
     # Real run (needs the milady-ai/llama.cpp v0.4.0-milady checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
         uv run python scripts/optimize_for_milady.py \\
-            --base-model Qwen/Qwen3-0.6B \\
-            --output-dir checkpoints/qwen3-0.6b-milady \\
+            --base-model elizalabs/eliza-1-0_6b \\
+            --output-dir checkpoints/eliza-1-0_6b \\
             --apply polarquant qjl turboquant \\
-            --hf-repo milady-ai/qwen3-0.6b-milady-optimized
+            --hf-repo elizalabs/eliza-1-0_6b
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
 
-    llama-server --model qwen3-0.6b-milady-Q4_POLAR.gguf \\
-                 --draft-model qwen3-0.6b-milady-drafter.gguf \\
+    llama-server --model eliza-1-0_6b-Q4_POLAR.gguf \\
+                 --draft-model eliza-1-0_6b-drafter.gguf \\
                  --spec-type dflash \\
                  --cache-type-k qjl1_256 \\
                  --cache-type-v tbq3_0
@@ -406,8 +406,8 @@ def _emit_load_readme(manifest: dict[str, object]) -> str:
         "```\n"
         "\n"
         "DFlash speculative decoding is enabled when a `--draft-model` is set; the\n"
-        "default Milady drafter for this size is `Qwen/Qwen3-0.6B` itself for\n"
-        "matched-vocab targets larger than 0.6B (see "
+        "drafter must be an Eliza-1 GGUF with the same tokenizer family as the\n"
+        "target (see "
         "`docs/porting/dflash-drafter-strategy.md`).\n"
     )
 
@@ -644,7 +644,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--base-model",
         required=True,
-        help="HF repo id or local path to the base model (e.g. Qwen/Qwen3-0.6B).",
+        help="HF repo id or local path to the base model (e.g. elizalabs/eliza-1-0_6b).",
     )
     p.add_argument(
         "--output-dir",
@@ -688,7 +688,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (e.g. milady-ai/qwen3-0.6b-milady-optimized). "
+        help="HuggingFace repo to publish to (e.g. elizalabs/eliza-1-0_6b). "
              "When omitted the pipeline stops after manifest emission.",
     )
     p.add_argument(

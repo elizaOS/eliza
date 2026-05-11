@@ -40,6 +40,15 @@ export interface ExistingElizaInstallInfo {
 	source: ExistingElizaInstallSource;
 }
 
+export interface StateDirMigrationResult {
+	ok: boolean;
+	migrated: boolean;
+	fromPath: string;
+	toPath: string;
+	error?: string;
+	skippedReason?: "same-path" | "source-missing" | "source-not-directory";
+}
+
 export interface TrayMenuItem {
 	id: string;
 	label?: string;
@@ -242,12 +251,14 @@ export interface DiscoveryResult {
 
 // -- Permissions --
 export type {
+	PermissionId,
 	PermissionState,
 	PermissionStatus,
-	SystemPermissionId,
 } from "@elizaos/shared";
 
-import type { PermissionState, SystemPermissionId } from "@elizaos/shared";
+import type { PermissionId, PermissionState } from "@elizaos/shared";
+
+export type SystemPermissionId = PermissionId;
 
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {
@@ -425,6 +436,29 @@ export interface FileDialogResult {
 	filePaths: string[];
 }
 
+/**
+ * Workspace folder pick result. Used by store builds (Mac App Store, etc.)
+ * where the agent's writable area is restricted to user-granted folders.
+ *
+ * `path` — resolved absolute path (empty string when canceled).
+ * `canceled` — user dismissed the dialog without choosing.
+ * `bookmark` — opaque, OS-specific persistence handle (macOS security-scoped
+ *   bookmark base64; null on platforms that do not require it). Callers must
+ *   persist it verbatim.
+ */
+export interface WorkspaceFolderPickResult {
+	canceled: boolean;
+	path: string;
+	bookmark: string | null;
+}
+
+export interface WorkspaceFolderBookmarkResolveResult {
+	ok: boolean;
+	path: string;
+	stale?: boolean;
+	error?: string;
+}
+
 // -- Screen / Display --
 export interface DisplayBounds {
 	x: number;
@@ -516,6 +550,10 @@ export type ElizaDesktopRPCSchema = {
 			agentInspectExistingInstall: {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
+			};
+			agentMigrateStateDir: {
+				params: { fromPath: string };
+				response: StateDirMigrationResult;
 			};
 			agentPostReset: {
 				params: { apiBase?: string; bearerToken?: string } | undefined | null;
@@ -822,6 +860,18 @@ export type ElizaDesktopRPCSchema = {
 			desktopShowSaveDialog: {
 				params: FileDialogOptions;
 				response: FileDialogResult;
+			};
+			desktopPickWorkspaceFolder: {
+				params: { defaultPath?: string; promptTitle?: string };
+				response: WorkspaceFolderPickResult;
+			};
+			desktopResolveWorkspaceFolderBookmark: {
+				params: { bookmark: string };
+				response: WorkspaceFolderBookmarkResolveResult;
+			};
+			desktopReleaseWorkspaceFolderBookmarks: {
+				params: undefined;
+				response: { ok: true };
 			};
 
 			// ---- Gateway ----
@@ -1487,6 +1537,7 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:restartClearLocalDb": "agentRestartClearLocalDb",
 	"agent:status": "agentStatus",
 	"agent:inspectExistingInstall": "agentInspectExistingInstall",
+	"agent:migrateStateDir": "agentMigrateStateDir",
 	"agent:postReset": "agentPostReset",
 	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
 	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
@@ -1593,6 +1644,11 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	// Desktop: File Dialogs
 	"desktop:showOpenDialog": "desktopShowOpenDialog",
 	"desktop:showSaveDialog": "desktopShowSaveDialog",
+	"desktop:pickWorkspaceFolder": "desktopPickWorkspaceFolder",
+	"desktop:resolveWorkspaceFolderBookmark":
+		"desktopResolveWorkspaceFolderBookmark",
+	"desktop:releaseWorkspaceFolderBookmarks":
+		"desktopReleaseWorkspaceFolderBookmarks",
 
 	// Gateway
 	"gateway:startDiscovery": "gatewayStartDiscovery",

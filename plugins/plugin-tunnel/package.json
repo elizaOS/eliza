@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tunnel",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.1",
   "description": "Tunnel plugin for elizaOS — local Tailscale CLI backend (serve/funnel). Pair with @elizaos/plugin-elizacloud for the hosted headscale backend.",
   "type": "module",
   "main": "dist/index.js",
@@ -37,10 +37,10 @@
     "networking"
   ],
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "zod": "^4.4.2"
   },
   "devDependencies": {

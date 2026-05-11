@@ -22,6 +22,20 @@ export type {
   UpdateBrowserBridgeSettingsRequest,
 } from "@elizaos/plugin-browser";
 export type {
+  CloudCodingAgent,
+  CloudCodingContainerSession,
+  CloudCodingContainerStatus,
+  CloudCodingPatch,
+  CloudCodingPatchFormat,
+  CloudCodingPromotion,
+  CloudCodingSyncDirection,
+  CloudCodingSyncResult,
+  CloudContainerArchitecture,
+  CloudVfsBundle,
+  CloudVfsDeletedFile,
+  CloudVfsFile,
+  CloudVfsFileEncoding,
+  CloudVfsSourceKind,
   CompleteLifeOpsBrowserSessionRequest as CompleteBrowserBridgeSessionRequest,
   CompleteLifeOpsOccurrenceRequest,
   ConfirmLifeOpsBrowserSessionRequest as ConfirmBrowserBridgeSessionRequest,
@@ -50,11 +64,18 @@ export type {
   LifeOpsReminderInspection,
   LifeOpsReminderPlan,
   LifeOpsTaskDefinition,
+  PostWorkbenchVfsPromoteToCloudRequest,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
   SelectLifeOpsGoogleConnectorPreferenceRequest,
   SendLifeOpsGmailReplyRequest,
   SnoozeLifeOpsOccurrenceRequest,
   StartLifeOpsGoogleConnectorRequest,
   StartLifeOpsGoogleConnectorResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
 } from "@elizaos/shared";
@@ -494,6 +515,55 @@ export interface WorkbenchOverview {
     thinking: boolean;
     lastEventAt?: number | null;
   };
+}
+
+export interface WorkbenchVfsEntry {
+  path: string;
+  type: "file" | "directory";
+  size: number;
+  mtimeMs: number;
+}
+
+export interface WorkbenchVfsSnapshot {
+  id: string;
+  projectId: string;
+  createdAt: string;
+  filesBytes: number;
+  fileCount: number;
+  note?: string;
+}
+
+export interface WorkbenchVfsQuota {
+  usedBytes: number;
+  fileCount: number;
+  quotaBytes: number;
+  maxFileBytes: number;
+}
+
+export interface WorkbenchVfsProject {
+  projectId: string;
+}
+
+export interface WorkbenchVfsDiffEntry {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  before?: WorkbenchVfsEntry;
+  after?: WorkbenchVfsEntry;
+}
+
+export interface WorkbenchVfsCompileResult {
+  outFile: string;
+  format: "esm" | "cjs";
+  target: string;
+  warnings: unknown[];
+  durationMs: number;
+}
+
+export interface WorkbenchLoadedVfsPlugin {
+  pluginName: string;
+  vfsPath: string;
+  projectId: string | null;
+  loadedAt: number;
 }
 
 export type AutomationType =

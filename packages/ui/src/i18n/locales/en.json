@@ -496,7 +496,7 @@
   "chat.newMessagesChip": "New messages ↓",
   "chat.releaseToSend": "Release to send...",
   "chat.removeImage": "Remove image {{name}}",
-  "chat.setupProviderToChat": "Setup Provider To Chat",
+  "chat.setupProviderToChat": "Set up an LLM provider in Settings to start chatting",
   "chat.stopGeneration": "Stop generation",
   "chat.stopListening": "Stop listening",
   "chat.stopSpeaking": "Stop speaking",

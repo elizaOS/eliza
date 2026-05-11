@@ -42,6 +42,9 @@
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],
+      "@elizaos/capacitor-calendar": [
+        "../native-plugins/calendar/src/index.ts"
+      ],
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
@@ -57,7 +60,7 @@
       "react-dom/client": [
         "../../node_modules/@types/react-dom/client.d.ts"
       ],
-      "@clawville/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
+      "@elizaos/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
     }
   }
 }

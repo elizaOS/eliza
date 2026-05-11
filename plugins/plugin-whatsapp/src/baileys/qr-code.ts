@@ -1,4 +1,3 @@
-/// <reference path="../types/qrcode-terminal.d.ts" />
 import QRCode from "qrcode";
 import * as QRCodeTerminal from "qrcode-terminal";
 import type { QRCodeData } from "../types";

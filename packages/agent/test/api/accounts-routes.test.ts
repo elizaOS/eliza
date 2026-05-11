@@ -1,13 +1,13 @@
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import type { LinkedAccountConfig } from "@elizaos/shared";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AccountsRouteContext } from "../../src/api/accounts-routes";
 import {
   _resetAccountsRoutesPoolCache,
   handleAccountsRoutes,
 } from "../../src/api/accounts-routes";
-import { listAccounts } from "../../src/auth/account-storage.js";
+import { listAccounts, saveAccount } from "../../src/auth/account-storage.js";
 
 const poolMock = vi.hoisted(() => ({
   list: vi.fn(),
@@ -81,6 +81,10 @@ describe("accounts routes provider-scoped account resolution", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     _resetAccountsRoutesPoolCache();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("patches the provider-matching account when ids collide", async () => {
@@ -218,6 +222,76 @@ describe("accounts routes provider-scoped account resolution", () => {
         label: "z.ai Coding",
         source: "api-key",
       }),
+    );
+  });
+
+  it("keeps z.ai coding-plan and direct API accounts in separate credential pools", async () => {
+    vi.stubEnv("ZAI_API_KEY", "");
+    vi.stubEnv("Z_AI_API_KEY", undefined);
+    poolMock.list.mockImplementation((providerId?: string) => {
+      if (providerId === "zai-coding") {
+        return [
+          linkedAccount("zai-coding", {
+            id: "existing-coding",
+            priority: 0,
+          }),
+        ];
+      }
+      return [];
+    });
+    poolMock.upsert.mockResolvedValue(undefined);
+    const codingCtx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/zai-coding",
+      body: {
+        source: "api-key",
+        label: "z.ai Coding Work",
+        apiKey: "sk-test-zai-coding-key",
+      },
+    });
+
+    const codingHandled = await handleAccountsRoutes(codingCtx);
+
+    expect(codingHandled).toBe(true);
+    expect(codingCtx.status).toBe(201);
+    expect(process.env.ZAI_API_KEY).toBe("");
+    expect(process.env.Z_AI_API_KEY).toBeUndefined();
+    expect(codingCtx.body).toMatchObject({
+      providerId: "zai-coding",
+      label: "z.ai Coding Work",
+      source: "api-key",
+      priority: 1,
+    });
+
+    const directCtx = createContext({
+      method: "POST",
+      pathname: "/api/accounts/zai-api",
+      body: {
+        source: "api-key",
+        label: "z.ai API",
+        apiKey: "sk-test-zai-api-key",
+      },
+    });
+
+    const directHandled = await handleAccountsRoutes(directCtx);
+
+    expect(directHandled).toBe(true);
+    expect(directCtx.status).toBe(201);
+    expect(process.env.ZAI_API_KEY).toBe("sk-test-zai-api-key");
+    expect(process.env.Z_AI_API_KEY).toBe("sk-test-zai-api-key");
+    expect(vi.mocked(saveAccount).mock.calls.map(([record]) => record)).toEqual(
+      [
+        expect.objectContaining({
+          providerId: "zai-coding",
+          label: "z.ai Coding Work",
+          source: "api-key",
+        }),
+        expect.objectContaining({
+          providerId: "zai-api",
+          label: "z.ai API",
+          source: "api-key",
+        }),
+      ],
     );
   });
 });

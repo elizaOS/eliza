@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tailscale",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Tunnel plugin for elizaOS — local Tailscale serve/funnel or Eliza Cloud-routed Tailscale auth-key minter",
   "type": "module",
   "main": "dist/index.js",
@@ -30,13 +30,13 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-tunnel": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-tunnel": "2.0.0-beta.1"
   },
   "dependencies": {
-    "@elizaos/cloud-routing": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-tunnel": "workspace:*",
+    "@elizaos/cloud-routing": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-tunnel": "2.0.0-beta.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {

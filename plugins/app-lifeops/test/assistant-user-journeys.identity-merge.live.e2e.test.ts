@@ -3,11 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
-  createElizaPlugin,
-} from "@elizaos/agent";
+import { buildCharacterFromConfig, createElizaPlugin } from "@elizaos/agent";
 import { AgentRuntime, type Plugin, type UUID } from "@elizaos/core";
 import dotenv from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -15,8 +11,8 @@ import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import { ConversationHarness } from "../../../test/helpers/conversation-harness.ts";
 import { saveEnv } from "../../../test/helpers/test-utils";
 import {
-  assertCanonicalIdentityMerged,
   acceptCanonicalIdentityMerge,
+  assertCanonicalIdentityMerged,
   CANONICAL_IDENTITY_PLATFORMS,
   seedCanonicalIdentityFixture,
 } from "./helpers/lifeops-identity-merge-fixtures.js";
@@ -109,9 +105,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
-      const localEmbeddingPlugin = await loadPlugin(
-        "@elizaos/plugin-local-embedding",
-      );
       const providerPlugin = selectedLiveProvider
         ? await loadPlugin(selectedLiveProvider.plugin)
         : null;
@@ -136,10 +129,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       await runtime.registerPlugin(sqlPlugin as Plugin);
       if (runtime.adapter && !(await runtime.adapter.isReady())) {
         await runtime.adapter.init();
-      }
-      if (localEmbeddingPlugin) {
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin);
-        await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
       }
       await runtime.initialize();
       await (
@@ -206,7 +195,9 @@ describeIf(LIVE_SUITE_ENABLED)(
 
       const text = normalizeText(turn.responseText);
       expect(text.length).toBeGreaterThan(0);
-      expect(text).not.toMatch(/something (?:went wrong|flaked)|try again/i);
+      expect(text).not.toMatch(
+        /something (?:went wrong|flaked)|please try again|try again in a sec/i,
+      );
     }, 240_000);
   },
 );

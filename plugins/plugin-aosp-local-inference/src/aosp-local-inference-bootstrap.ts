@@ -47,6 +47,7 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  resolveStateDir,
   type TextEmbeddingParams,
 } from "@elizaos/core";
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
@@ -209,16 +210,6 @@ function readBundledModelManifest(modelsDir: string): {
   }
 }
 
-function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR;
-  if (explicit?.trim()) return explicit;
-  // On AOSP we expect ELIZA_STATE_DIR to be set by ElizaAgentService.
-  // Fall back to $HOME/.eliza so dev / non-Android exercise paths still
-  // resolve.
-  const home = process.env.HOME ?? process.cwd();
-  return path.join(home, ".eliza");
-}
-
 // Recommended-model auto-download for the AOSP / bun:ffi path. Mirrors
 // the helper in plugin-capacitor-bridge/mobile-device-bridge-bootstrap.ts:
 // when no GGUF is staged on the device, fetch a known-good default from
@@ -238,12 +229,12 @@ type AospRecommendedModel = {
 const AOSP_RECOMMENDED_MODELS: Record<"chat" | "embedding", AospRecommendedModel> = {
   chat: {
     id: "eliza-1-mobile-1_7b",
-    hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+    hfRepo: "elizaos/eliza-1-mobile-1_7b",
     ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
   },
   embedding: {
     id: "eliza-1-lite-0_6b",
-    hfRepo: "elizalabs/eliza-1-lite-0_6b",
+    hfRepo: "elizaos/eliza-1-lite-0_6b",
     ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
   },
 };

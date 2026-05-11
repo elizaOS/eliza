@@ -5,7 +5,7 @@
  * Affordance shape (frozen — `wave1-interfaces.md` §4.1):
  *   { kind: "first_run_pending",
  *     oneLine: "...",                  // ≤ 120 chars
- *     suggestedActionKey: "FIRST_RUN",
+ *     suggestedWorkflowKey: "first_run",
  *     paths: ["defaults", "customize"] }
  *
  * Position: `-10` so it lands ahead of most context — same convention as
@@ -26,7 +26,7 @@ import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 export interface FirstRunAffordance {
   kind: "first_run_pending";
   oneLine: string;
-  suggestedActionKey: "FIRST_RUN";
+  suggestedWorkflowKey: "first_run";
   paths: ("defaults" | "customize")[];
 }
 
@@ -41,12 +41,12 @@ const ONE_LINE_MAX = 120;
 function buildOneLine(inProgress: boolean, partialPath?: string): string {
   if (inProgress) {
     const where = partialPath === "customize" ? " (customize)" : "";
-    return `First-run is in progress${where}. Resume FIRST_RUN to continue.`.slice(
+    return `First-run setup is in progress${where}. Continue the first-run workflow.`.slice(
       0,
       ONE_LINE_MAX,
     );
   }
-  return "First-run hasn't run yet. Offer FIRST_RUN with path = defaults or customize.".slice(
+  return "First-run setup hasn't run yet. Ask whether to use defaults or customize.".slice(
     0,
     ONE_LINE_MAX,
   );
@@ -55,8 +55,7 @@ function buildOneLine(inProgress: boolean, partialPath?: string): string {
 export const firstRunProvider: Provider = {
   name: "firstRun",
   description:
-    "Surfaces the first-run affordance so the planner can offer FIRST_RUN " +
-    "(defaults or customize) on a fresh boot. Goes silent once first-run is complete.",
+    "Surfaces a dynamic first-run setup affordance on a fresh boot. It does not expose a planner action and goes silent once first-run is complete.",
   descriptionCompressed:
     "Pending first-run affordance; quiet after completion.",
   dynamic: true,
@@ -101,7 +100,7 @@ export const firstRunProvider: Provider = {
     const affordance: FirstRunAffordance = {
       kind: "first_run_pending",
       oneLine,
-      suggestedActionKey: "FIRST_RUN",
+      suggestedWorkflowKey: "first_run",
       paths: ["defaults", "customize"],
     };
     return {

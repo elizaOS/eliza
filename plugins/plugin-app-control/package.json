@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-app-control",
-	"version": "2.0.0-beta.0",
+	"version": "2.0.0-beta.1",
 	"description": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -16,8 +16,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts --format esm --dts --clean",
-		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --clean",
+		"dev": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --watch",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
@@ -27,10 +27,10 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elizaos/core": "workspace:*"
+		"@elizaos/core": "2.0.0-beta.1"
 	},
 	"peerDependencies": {
-		"@elizaos/core": "workspace:*",
+		"@elizaos/core": "2.0.0-beta.1",
 		"puppeteer-core": "^24.39.1"
 	},
 	"peerDependenciesMeta": {

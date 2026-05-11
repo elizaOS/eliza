@@ -26,6 +26,13 @@ export const EvaluatorPriority = {
 	// the post-update form session.
 	FORM: 50,
 
+	// Inbound auto-capture group: deterministic side-effect evaluators that
+	// extract structured data from the inbound message itself (image
+	// attachments, http(s) URLs). Run before reflection so downstream
+	// reflective evaluators can see the persisted captures if they want.
+	INBOUND_ATTACHMENT_IMAGE: 60,
+	INBOUND_LINK_EXTRACTION: 70,
+
 	// Reflection group: ordered by dependency (facts before identity, etc.).
 	REFLECTION_FACTS: 100,
 	REFLECTION_RELATIONSHIPS: 110,

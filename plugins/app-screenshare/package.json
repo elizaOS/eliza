@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-screenshare",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
   "main": "./dist/index.js",
@@ -13,12 +13,12 @@
     }
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-computeruse": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-computeruse": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {

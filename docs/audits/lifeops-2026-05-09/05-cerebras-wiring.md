@@ -77,11 +77,10 @@ what the redirect to Cerebras fixes.
 |---|---|---|---|---|
 | 16 | `eliza/plugins/app-training/src/core/prompt-compare.ts:242-250` (`resolveAdapter`) | `createRuntimeAdapter(input.runtime.useModel)` | **TRAINING** | Same `useModel` chain as #10. Falls under the same fix. |
 
-### F. Atropos backend (training, but no LLM call)
+### F. ~~Atropos backend~~ — removed
 
-| # | File:line | Current provider/model | Category | Notes |
-|---|---|---|---|---|
-| 17 | `eliza/plugins/app-training/src/backends/atropos.ts:45-83` (`runAtroposBackend`) | `spawnSync(ATROPOS_BIN, …)` | **TRAINING (no LLM)** | Pure CLI dispatcher. No model call to redirect. The Atropos process itself does its own training. Out of scope for this audit. |
+The Atropos backend was deleted in W0-X2 (closes pipeline gap C2). Nothing
+to wire here.
 
 ### G. Tinker backend
 
@@ -680,8 +679,6 @@ Failure modes the script catches:
 
 ## 5) Out-of-scope (deliberate)
 
-- `eliza/plugins/app-training/src/backends/atropos.ts` — pure CLI
-  dispatcher.
 - `eliza/plugins/app-training/src/backends/tinker.ts` — job submitter.
 - All `eliza/plugins/app-lifeops/src/**` runtime callsites — they are
   the agent itself, must stay on Anthropic.

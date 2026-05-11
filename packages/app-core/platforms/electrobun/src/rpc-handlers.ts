@@ -171,16 +171,18 @@ export function wireBrowserWorkspaceCaller(
  * Adding/removing a schema method without a corresponding handler change
  * is now a compile error.
  *
- * Async helpers returning `Promise<void>` are assignable here: schema `response:
- * undefined` means “no payload”, which we model as `void` at the handler boundary
- * (distinct from `undefined` in TypeScript’s type system).
+ * Schema `response: undefined` means "no payload", which we model as
+ * `void` at the handler boundary so Promise<void> native calls are accepted.
  */
+// biome-ignore lint/suspicious/noConfusingVoidType: no-payload async RPC handlers naturally return Promise<void>.
 type RpcMethodReturn<R> = [R] extends [undefined] ? void : R;
 
 type BunRpcHandlers = {
 	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (
 		params: ElizaDesktopRPCSchema["bun"]["requests"][K]["params"],
-	) => Promise<RpcMethodReturn<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>>;
+	) => Promise<
+		RpcMethodReturn<ElizaDesktopRPCSchema["bun"]["requests"][K]["response"]>
+	>;
 };
 
 export function buildBunRpcHandlers({
@@ -242,6 +244,8 @@ export function buildBunRpcHandlers({
 		},
 		agentStatus: async () => agent.getStatus(),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
+		agentMigrateStateDir: async (params: { fromPath: string }) =>
+			agent.migrateStateDir(params),
 		/** Renderer `fetch` after native dialogs can stall; main POST matches menu reset pattern. */
 		agentPostReset: async (
 			params?: { apiBase?: string; bearerToken?: string } | null,
@@ -635,6 +639,14 @@ export function buildBunRpcHandlers({
 		desktopShowSaveDialog: async (
 			params: Parameters<typeof desktop.showSaveDialog>[0],
 		) => desktop.showSaveDialog(params),
+		desktopPickWorkspaceFolder: async (
+			params: Parameters<typeof desktop.pickWorkspaceFolder>[0],
+		) => desktop.pickWorkspaceFolder(params),
+		desktopResolveWorkspaceFolderBookmark: async (
+			params: Parameters<typeof desktop.resolveWorkspaceFolderBookmark>[0],
+		) => desktop.resolveWorkspaceFolderBookmark(params),
+		desktopReleaseWorkspaceFolderBookmarks: async () =>
+			desktop.releaseWorkspaceFolderBookmarks(),
 
 		// ---- Gateway ----
 		gatewayStartDiscovery: async (

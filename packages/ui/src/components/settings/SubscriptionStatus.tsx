@@ -61,6 +61,21 @@ export interface SubscriptionStatusProps {
   loadSubscriptionStatus: () => Promise<void>;
 }
 
+type SubscriptionStatusRow =
+  SubscriptionStatusProps["subscriptionStatus"][number];
+
+function selectRepresentativeSubscriptionStatus(
+  rows: SubscriptionStatusRow[],
+): SubscriptionStatusRow | null {
+  return (
+    rows.find((status) => status.configured && status.valid) ??
+    rows.find((status) => status.configured) ??
+    rows.find((status) => status.available === false) ??
+    rows[0] ??
+    null
+  );
+}
+
 interface SubscriptionProviderPanelProps {
   providerId: SubscriptionProviderSelectionId;
   connected: boolean;
@@ -288,13 +303,16 @@ export function SubscriptionStatus({
     disconnectingRef.current = subscriptionDisconnecting;
   }, [subscriptionDisconnecting]);
 
-  const anthropicStatus = subscriptionStatus.find(
+  const anthropicStatuses = subscriptionStatus.filter(
     (s) => s.provider === "anthropic-subscription",
   );
-  const openaiStatus = subscriptionStatus.find(
+  const anthropicStatus =
+    selectRepresentativeSubscriptionStatus(anthropicStatuses);
+  const openaiStatuses = subscriptionStatus.filter(
     (s) =>
       s.provider === "openai-subscription" || s.provider === "openai-codex",
   );
+  const openaiStatus = selectRepresentativeSubscriptionStatus(openaiStatuses);
 
   /* ── Shared disconnect ─────────────────────────────────────────── */
   const handleDisconnectSubscription = useCallback(
@@ -588,11 +606,12 @@ export function SubscriptionStatus({
           resolvedSelectedId as SubscriptionProviderSelectionId,
         )
       : null;
-  const genericStatus = genericStoredProvider
-    ? subscriptionStatus.find(
+  const genericStatuses = genericStoredProvider
+    ? subscriptionStatus.filter(
         (status) => status.provider === genericStoredProvider,
       )
-    : null;
+    : [];
+  const genericStatus = selectRepresentativeSubscriptionStatus(genericStatuses);
 
   return (
     <div className="border-t border-border/40 pt-4">

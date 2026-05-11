@@ -1,14 +1,14 @@
 # TurboQuant / QJL / PolarQuant KV cache kernels (Vulkan + Metal)
 
-> **STATUS — All five Metal shaders hardware-verified 8/8 PASS on Apple M4 Max (Wave-3, 2026-05-10; perf pass 2026-05-10 dropped polar GPU median from 5726 µs → 458 µs via threadgroup-cooperative Hadamard butterfly, see `SHADER_REVIEW_2026-05-10.md`). Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each). Vulkan QJL + Polar now hardware-verified 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C harness extension; polar.comp ports the W4-B threadgroup-cooperative Hadamard, qjl.comp ports the vec4+branchless+FMA pattern; max diff 7.6e-6 / 5.7e-6).**
+> **STATUS — All five Metal shaders hardware-verified 8/8 PASS on Apple M4 Max (rerun 2026-05-11 after TBQ4 layout alignment; perf pass 2026-05-10 dropped polar GPU median from 5726 µs → 458 µs via threadgroup-cooperative Hadamard butterfly, see `SHADER_REVIEW_2026-05-10.md`). Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each) and rerun on Apple M4 Max via MoltenVK after the current TBQ4 four-record layout update. Vulkan QJL score (`qjl.comp`) + Polar matvec (`polar.comp`) are hardware-verified 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C harness extension; max diff 7.6e-6 / 5.7e-6). The Vulkan fallback entrypoints (`qjl_get_rows.comp`, `qjl_mul_mv.comp`, `polar_get_rows.comp`) are staged and `spirv-val` clean but do not yet have fixture/hardware smoke coverage.**
 >
 > | Family       | Files                                                            | Source-level checked against fork? | Compiles with target SDK? | Validated on hardware? |
 > | ------------ | ---------------------------------------------------------------- | ---------------------------------- | ------------------------- | ---------------------- |
-> | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match in-tree `dequantize_turbo3_*` and the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe |
-> | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches in-tree `dequantize_turbo3_0_t4` + the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
-> | QJL          | `metal/qjl.metal`, `vulkan/qjl{,_get_rows,_mul_mv}.comp`         | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C); max diff 7.629e-6 |
-> | PolarQuant   | `metal/polar.metal`, `vulkan/polar{,_get_rows}.comp`             | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max. Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C, after threadgroup-cooperative Hadamard mirror); max diff 5.722e-6 |
-> | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in fork v0.4.0-milady; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/CUDA_VERIFICATION.md` for the end-to-end runbook (local CUDA host or `CUDA_REMOTE=user@host ./cuda_runner.sh`) |
+> | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match current fork `block_tbq*` layouts; TBQ4 is four 18-byte records per 128-row) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe; rerun via MoltenVK on Apple M4 Max after TBQ4 update |
+> | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches current fork `block_tbq*` layouts; TBQ4 is four 18-byte records per 128-row) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
+> | QJL          | `metal/qjl.metal`, `vulkan/qjl.comp` plus staged fallback `vulkan/qjl{_get_rows,_mul_mv}.comp` | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan score: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C); fallback get-rows/matvec: COMPILE/STAGED ONLY |
+> | PolarQuant   | `metal/polar.metal`, `vulkan/polar.comp` plus staged fallback `vulkan/polar_get_rows.comp` | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max. Vulkan matvec: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C, after threadgroup-cooperative Hadamard mirror); fallback get-rows: COMPILE/STAGED ONLY |
+> | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in fork v0.4.0-milady; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
 >
 > Earlier history: the original `turbo*.comp` Vulkan port reported 0/8 PASS
 > against Mesa llvmpipe AND Intel ARL — different wrong values per ICD,
@@ -18,12 +18,11 @@
 > the new W3-E QJL/Polar shaders use; the result is 8/8 PASS on both ICDs.
 > See `reports/porting/2026-05-09-w4/vulkan-turbo-fix.md`.
 >
-> The Metal ports here mirror the **same** decode math as the fork's
-> existing, shipping `dequantize_turbo3_0_t4` and the fork's in-tree
-> `tbq4_0.metal` (`block_turbo4_0` = `half norm; uint8_t qs[64]`) — so the
-> byte layout and centroid lookup have been triple-checked at the source
-> level. None of that is a substitute for `metal_verify` reporting 8/8
-> PASS on a real Apple GPU.
+> The Metal ports here mirror the **same** decode math as the fork's current
+> shipped TurboQuant layouts. `block_tbq4_0` is `half norm; uint8_t qs[16]`,
+> and four records form one 128-wide attention row, so the standalone,
+> Vulkan, and built-fork graph-dispatch paths now use the same 72-byte TBQ4
+> row size.
 >
 > Patch-hook status (post 2026-05-10 audit):
 >
@@ -43,71 +42,57 @@
 >     `-DGGML_METAL_EMBED_LIBRARY=OFF`, so the patched `add_custom_command`
 >     (which lives in the non-EMBED branch of the fork's CMakeLists.txt)
 >     actually runs. iOS targets keep `EMBED_LIBRARY=ON` because the
->     static-archive build needs the metallib data baked in via `.incbin`,
->     but the EMBED path is NOT yet wired — the iOS metallib will not
->     contain the milady kernels until a separate dup-strip patcher lands
->     in `metal-kernels.mjs`. `requiredKernelsMissing()` will refuse the
->     iOS artifact accordingly.
+>     static-archive build needs the metallib data baked in via `.incbin`.
+>     The patcher now rewrites that EMBED path to embed compiled
+>     `default.metallib` bytes, so desktop and iOS package the same shipped
+>     standalone symbols. The build gate still refuses an iOS artifact until
+>     those symbols are runtime-dispatch-ready, not merely present.
 >
->   * The Vulkan `patchVulkanKernels` hook now copies the eight standalone
->     `.comp` files from `packages/inference/vulkan/` into the fork at
->     `ggml/src/ggml-vulkan/milady-shipped/<name>.comp`. It also
->     hard-throws when a `*-vulkan` target is queued because the fork at
->     v0.4.0-milady has neither registration in `vulkan-shaders-gen` nor
->     dispatch sites in `ggml-vulkan.cpp` for the milady quant types.
->     `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1` exists as an audit-loggable
->     escape hatch.
+>   * The Vulkan `patchVulkanKernels` hook (Wave-6, 2026-05-10) now stages
+>     the eight standalone `.comp` files from `packages/inference/vulkan/`
+>     directly into `ggml/src/ggml-vulkan/vulkan-shaders/` (where the fork's
+>     `file(GLOB CONFIGURE_DEPENDS *.comp)` picks them up), plus applies two
+>     anchor-driven idempotent patches under
+>     `kernel-patches/vulkan-dispatch-patches/`:
 >
->   * Deferred dispatch wiring (Wave-6 audit, 2026-05-10): `ggml-metal-ops.cpp`
->     and `ggml-metal-device.m` do NOT yet contain dispatch sites for
->     `GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ`,
->     `GGML_TYPE_QJL1_256`, `GGML_TYPE_Q4_POLAR`. After Wave-5 the kernel
->     SYMBOLS are present in the metallib (`strings default.metallib | grep
->     kernel_turbo3_dot` hits), but the runtime cannot select them via the
->     type-traits table.
+>       1. `01-vulkan-shaders-gen.patch` — adds 8 `string_to_spv()` calls at
+>          the bottom of `process_shaders()` so the gen tool emits
+>          `milady_<name>_data[]` + `milady_<name>_len` symbols into
+>          `ggml-vulkan-shaders.hpp`.
+>       2. `02-ggml-vulkan-pipelines.patch` — extends `vk_device_struct` with
+>          8 `vk_pipeline pipeline_milady_*` slots and adds 8
+>          `ggml_vk_create_pipeline()` calls at the bottom of
+>          `ggml_vk_load_shaders()` so each SPV blob is referenced at link
+>          time and surfaces in `nm libggml-vulkan.so`.
 >
->     **Wave-6 finding — kernel ABI is incompatible with the standard
->     ggml-metal mul_mv dispatch contract.** The fork's
->     `ggml_metal_library_get_pipeline_mul_mv` constructs a pipeline name
->     `kernel_mul_mv_<typename_src0>_<typename_src1>_nsg=N`, sets a function
->     constant `nsg` (subgroup count) at index `FC_MUL_MV+0`, binds buffers
->     in the layout `ggml_metal_kargs_mul_mv` from `ggml-metal-impl.h`, and
->     dispatches with `nsg`-many simdgroups per row. The verified standalone
->     `kernel_mul_mv_qjl1_256_f32` and `kernel_mul_mv_q4_polar_f32`
->     entrypoints take a custom argument struct (`qjl_score_args`,
->     `polar_dequant_args`), do NOT declare an `nsg` function constant, and
->     dispatch one threadgroup per row (fixed `threadgroup_size=32`).
->     Calling them via the standard pipeline path crashes the Metal
->     compiler at constant-binding time.
+>     Symbol audit (`nm libggml-vulkan.so | grep milady_`) is now expected to
+>     pass on a successful linux-x64-vulkan build. **Op-level dispatch
+>     routing for `GGML_OP_ATTN_SCORE_QJL` and the milady `GGML_TYPE_*`
+>     case branches is the remaining gap.** The 8 standalone shaders use
+>     bespoke push-constant layouts (`{n_heads, n_kv_heads, n_tokens,
+>     proj_dim}` for QJL; `{n_rows, head_dim, use_qjl}` for Polar) that do
+>     NOT match the existing `vk_op_binary_push_constants` /
+>     `vk_mat_vec_push_constants` paths, so a follow-up patch must
+>     introduce a milady-native dispatch entrypoint and per-op routing.
+>     Until that lands, `llama-server --help` still won't show qjl/polar/
+>     turbo as user-visible cache types and the build gate refuses the
+>     artifact as incomplete.
 >
->     Symbol-only state (Metal): `kernel_turbo3_dot`, `kernel_turbo4_dot`,
->     `kernel_turbo3_tcq_dot`, `kernel_attn_score_qjl1_256`,
->     `kernel_get_rows_qjl1_256`, `kernel_mul_mv_qjl1_256_f32`,
->     `kernel_get_rows_q4_polar`, `kernel_mul_mv_q4_polar_f32` all linked
->     into `default.metallib`; verified by `strings`. Reachability via
->     `MTLDevice.newLibraryWithSource` JIT (the `metal_verify` harness)
->     confirmed 8/8 PASS. Reachability from `ggml_compute_*` graph
->     evaluation is NOT confirmed and requires either:
->
->       (a) editing the standalones to take `ggml_metal_kargs_*` and
->           `nsg` function constants — forbidden by the standalone
->           freeze contract, or
->       (b) shipping bridge wrapper kernels in `ggml-metal.metal` that
->           accept the standard kargs ABI and trampoline into the
->           standalone entrypoints with a translated argument struct —
->           pending design, or
->       (c) carving a parallel dispatch path
->           (`ggml_metal_op_mul_mv_milady_quant`) in `ggml-metal-ops.cpp`
->           that bypasses `get_pipeline_mul_mv` and binds the standalones'
->           custom argument structs directly — pending design.
->
->     CUDA is the only backend whose v0.4.0-milady binary fully satisfies
->     AGENTS.md §3 today (the CUDA fork has explicit dispatch entries in
->     `ggml-cuda/ggml-cuda.cu` for these types). Metal kernels are
->     production-shipped as JIT-loadable artifacts in `default.metallib`
->     but the graph executor cannot route ops to them without one of (b)
->     or (c). `requiredKernelsMissing()` reports them as missing for any
->     Metal target that uses help-string detection.
+>   * Dispatch wiring status (Wave-7 audit, 2026-05-10): the build now
+>     distinguishes **shipped symbols** from **runtime-ready graph
+>     capabilities**. `patchMetalKernels()` ships all five standalones in
+>     desktop `default.metallib` and iOS embedded metallib. Metal now has a
+>     dedicated, numerically smoke-tested `GGML_OP_ATTN_SCORE_QJL` bridge to
+>     `kernel_attn_score_qjl1_256_multi`, so `CAPABILITIES.json` may report
+>     `kernels.qjl_full=true` when that symbol is present. The helper still
+>     deliberately refuses the old generic `MUL_MAT`/`GET_ROWS` patch route:
+>     routing the standalones through generic ggml ops is either semantically
+>     wrong (`QJL1_256` expects a pre-projected sketch) or incomplete (the
+>     `tbq*` kernels are attention-score only). `shippedKernels.symbols.*`
+>     records metallib symbol presence; the remaining Turbo/Polar
+>     `kernels.*` bits stay false until dedicated graph ops land and pass
+>     numeric dispatch tests. CUDA is still the only backend whose
+>     v0.4.0-milady binary covers the full runtime path for all five types.
 >
 >   * Wave-6 darwin shared-lib link fix: ggml-base on darwin defaults to
 >     `BUILD_SHARED_LIBS=ON` and links with `-undefined error`, so
@@ -150,7 +135,7 @@ CUDA originals: `https://github.com/spiritbuun/buun-llama-cpp.git` at commit
 - `ggml/src/ggml-cuda/turbo-quant-cuda.cuh` — quantize/dequantize, codebooks, FWHT, Viterbi
 - `ggml/src/ggml-cuda/fattn-vec.cuh` — flash-attention vec path that consumes them
 - `ggml/src/ggml-common.h` — `block_turbo3_0`, `block_turbo4_0`, `block_turbo3_tcq` layouts
-- `ggml/src/ggml-cpu/ops.cpp` and `ggml/src/ggml-turbo-quant.c` — CPU reference (lossy stubs)
+- `ggml/src/ggml-cpu/ops.cpp` and `ggml/src/ggml-turbo-quant.c` — CPU reference helpers for lossy quantization
 - `ggml/src/ggml-metal/ggml-metal.metal` and `turbo-wht.h` — existing Metal shader ground truth (the `dequantize_turbo3_0_t4` helper there is the bit-for-bit reference our standalone `turbo3.metal` mirrors)
 
 ### QJL (1-bit JL transform K-cache compression)
@@ -191,17 +176,17 @@ bits in `qs[]`, high bit in `signs[]`. Per-group norm is corrected by
 norm. At dot-product time, the host has already pre-rotated `Q` with the
 same FWHT, so the shader only needs `Q · centroids[idx] * norm`.
 
-### `turbo4` — 4-bit PolarQuant (16 centroids)
+### `turbo4` — 4-bit TurboQuant (16 centroids)
 
-Same FWHT pipeline as turbo3, but quantizes to 16 Lloyd–Max centroids
-`{-0.241556, ..., +0.241556}` packed 2 indices per byte. Norm correction is
-identical. The current `block_turbo4_0` layout is `norm + qs[64]` — it does
-NOT include QJL residual signs; that older path was removed upstream. The
-milady-ai/llama.cpp fork ships this layout directly in
-`ggml/src/ggml-metal/milady-kernels/tbq4_0.metal`, so the on-disk struct
-and centroid lookup are bit-identical to this standalone (the historical
-`patchMetalTurbo4` runtime rewrite is now a no-op). The kernel *body* has
-diverged into perf-only differences (the standalone hoists per-block byte
+Current TBQ4 uses four independent 32-element preconditioned records per
+128-wide attention row. Each record is `half norm; uint8_t qs[16]` (18 bytes);
+the full GGML row size for `head_dim=128` is 72 bytes. A fixed sign vector plus
+32-point Hadamard preconditions each record before quantization to centroids
+`{-2.7321365, -2.0685055, ..., +2.7321365}`. The packing stores elements
+0..15 in low nibbles and 16..31 in high nibbles. The standalone Metal,
+Vulkan, reference fixture generator, and built-fork Metal graph-dispatch
+smoke all use this layout now. The kernel *body* has diverged into perf-only
+differences (the standalone hoists per-block byte
 loads and uses `fma`); see `PATCH_AUDIT_2026-05-10.md` for the diff.
 
 ### `turbo3_tcq` — 3-bit Trellis-Coded Quantization (k=3, L=9, 512 states)
@@ -304,6 +289,17 @@ Each shader file annotates the CUDA function it ports. Key correspondences:
 
 ## Hardware verification protocol
 
+Before running backend-specific hardware checks, run the executable contract
+gate. It verifies that the manifest kernel names
+(`turboquant_q3`/`turboquant_q4`/`qjl`/`polarquant`/`dflash`/`turbo3_tcq`),
+the build-script capability keys (`turbo3`/`turbo4`/`turbo3_tcq`/`qjl_full`),
+the fixture set, and every supported build target's platform gate are still
+in sync:
+
+```bash
+make -C packages/inference/verify kernel-contract
+```
+
 ### Mac (Apple Silicon)
 
 ```bash
@@ -327,12 +323,9 @@ make metal
 ./metal_verify ../metal/qjl.metal        kernel_attn_score_qjl1_256     fixtures/qjl.json
 ./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32     fixtures/polar.json
 
-# 5) Optional: end-to-end via the patched llama-server. All four metal
-#    kernel patch hooks are opt-in via env vars (default OFF). To opt in:
-ELIZA_DFLASH_PATCH_METAL_TURBO3=1 \
-ELIZA_DFLASH_PATCH_METAL_QJL=1 \
-ELIZA_DFLASH_PATCH_METAL_POLAR=1 \
-  bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend metal
+# 5) Optional: build the patched llama-server. Metal kernel patching is
+#    unconditional for Metal targets; there are no opt-in env vars.
+bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend metal
 
 # 6) Optional: build the iOS Capacitor static archive that the
 #    LlamaCpp.xcframework patch in
@@ -348,35 +341,42 @@ bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs \
 
 ```bash
 # Host-side: build SPIR-V from the .comp files using glslc from the Vulkan
-# SDK (https://vulkan.lunarg.com/sdk/home).
-glslc -fshader-stage=compute packages/inference/vulkan/turbo3.comp     -o turbo3.spv
-glslc -fshader-stage=compute packages/inference/vulkan/turbo4.comp     -o turbo4.spv
-glslc -fshader-stage=compute packages/inference/vulkan/turbo3_tcq.comp -o turbo3_tcq.spv
-
-# Or with glslangValidator if you don't have glslc:
-glslangValidator -V -S comp packages/inference/vulkan/turbo3.comp -o turbo3.spv
+# SDK (https://vulkan.lunarg.com/sdk/home) or the Android NDK shader tools.
+cd packages/inference/verify
+make reference-test
+make vulkan-spirv
 
 # 1) On a workstation with a Vulkan-capable GPU (NVIDIA / AMD / Intel),
 #    run the host harness:
-cd packages/inference/verify
 VULKAN_SDK=/opt/vulkan-sdk make vulkan
-./vulkan_verify ../vulkan/turbo3.spv     fixtures/turbo3.json
-./vulkan_verify ../vulkan/turbo4.spv     fixtures/turbo4.json
-./vulkan_verify ../vulkan/turbo3_tcq.spv fixtures/turbo3_tcq.json
+make vulkan-verify
 
-# 2) On-device (Android) verification: cross-compile the harness against
+# 2) On native Linux hardware, run the stricter smoke gate. This writes
+#    hardware-results/linux-vulkan-smoke-*.log, rejects software ICDs unless
+#    ELIZA_ALLOW_SOFTWARE_VULKAN=1, runs standalone fixtures, builds the
+#    patched fork, dumps CAPABILITIES.json, then runs the built-fork graph
+#    gate against the managed install output under
+#    $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-vulkan by default.
+#    Build failure stops the runner; stale/symbol-only artifacts are not reused.
+make vulkan-native-smoke
+
+#    Direct graph dispatch smoke is native-Linux-only by default and requires a
+#    bin dir containing libggml-vulkan.so. Override only for explicit prebuilts:
+#    ELIZA_DFLASH_VULKAN_BIN_DIR=/path/to/bin make vulkan-dispatch-smoke
+
+# 3) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
-#    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures.
-adb push turbo3.spv turbo4.spv turbo3_tcq.spv /data/local/tmp/eliza-kernels/
-adb push fixtures/   /data/local/tmp/eliza-kernels/fixtures/
-adb push vulkan_verify /data/local/tmp/eliza-kernels/
-adb shell "cd /data/local/tmp/eliza-kernels && \
-           ./vulkan_verify turbo3.spv fixtures/turbo3.json"
+#    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures. The runner records
+#    hardware-results/android-vulkan-smoke-*.log and fails closed after
+#    standalone fixtures unless ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE points at
+#    a built-fork/app graph-dispatch report covering all six Vulkan graph
+#    routes or all five runtime capability keys with finite maxDiff.
+make android-vulkan-smoke
 
-# 3) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
-#    default-on after Wave-4 hardware verification. To silence the log:
-ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 \
-  bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
+# 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
+#    default-on. The build still refuses publishable artifacts until graph
+#    dispatch capabilities are runtime-ready, not merely symbol-shipped.
+bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
 ```
 
 ## Verification matrix (verified locally vs needs hardware)
@@ -386,8 +386,10 @@ ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 \
 | `turbo3.comp`     | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 4.8e-6 |
 | `turbo4.comp`     | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 5.7e-6 |
 | `turbo3_tcq.comp` | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 6.7e-6 |
-| `qjl.comp`, `qjl_get_rows.comp`, `qjl_mul_mv.comp` | n/a | n/a | yes | YES (against `qjl_score_qk_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 7.6e-6 |
-| `polar.comp`, `polar_get_rows.comp` | n/a | n/a | yes | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 5.7e-6 |
+| `qjl.comp` | n/a | n/a | yes | YES (against `qjl_score_qk_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 7.6e-6 |
+| `qjl_get_rows.comp`, `qjl_mul_mv.comp` | n/a | n/a | yes | YES (against `qjl_score_qk_ref` / fallback contracts) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | NOT RUN — staged fallback entrypoints lack fixture harness coverage | NEEDS HARNESS EXTENSION |
+| `polar.comp` | n/a | n/a | yes | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 5.7e-6 |
+| `polar_get_rows.comp` | n/a | n/a | yes | YES (against `dequantize_row_q4_polar_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | NOT RUN — staged fallback entrypoint lacks fixture harness coverage | NEEDS HARNESS EXTENSION |
 | `turbo3.metal`    | n/a                  | n/a             | yes               | YES (matches fork's `dequantize_turbo3_0_t4` byte-for-byte) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 3.3e-6 |
 | `turbo4.metal`    | n/a                  | n/a             | yes               | The fork's in-tree `milady-kernels/tbq4_0.metal` is an EARLIER draft (29-line diff, materially different inner loop). The standalone is the canonical FMA-tuned variant; the build script copies the standalone into `milady-shipped/` so the metallib uses it. | YES (Apple M4 Max, runtime JIT in verify harness) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 5.7e-6 |
 | `turbo3_tcq.metal`| n/a                  | n/a             | yes               | YES (matches CUDA `dequantize_turbo3_tcq` 9-bit window decode) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 6.7e-6 |
@@ -435,11 +437,13 @@ the Metal and Vulkan harnesses; the QJL/Polar fixture shape fields
 
 Hardware run: Apple M4 Max (Darwin 25.2.0) via MoltenVK 1.4.1 + Vulkan-Loader
 1.4.341 (`brew install molten-vk vulkan-loader vulkan-headers vulkan-tools
-shaderc`; ICD at `/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json`). All 5
-kernels (turbo3, turbo4, turbo3_tcq, qjl, polar) report 8/8 PASS at the
-standard 1e-3 tolerance with max diffs in the 4.8e-7 to 7.6e-6 range — within
-1 ULP of the direct Metal harness numbers, which confirms MoltenVK's
-SPIR-V→MSL translation is bit-equivalent on Apple Silicon for these kernels.
+shaderc`; ICD at `/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json`). The
+five primary harness entrypoints (turbo3, turbo4, turbo3_tcq, qjl score,
+polar matvec) report 8/8 PASS at the standard 1e-3 tolerance with max diffs
+in the 4.8e-7 to 7.6e-6 range — within 1 ULP of the direct Metal harness
+numbers, which confirms MoltenVK's SPIR-V→MSL translation is bit-equivalent
+on Apple Silicon for these kernels. The staged Vulkan fallback entrypoints
+still need their own fixture branches before they can be called verified.
 Re-run with:
 
 ```
@@ -521,51 +525,70 @@ similarly `kernel_turbo4_dot`, `kernel_turbo3_tcq_dot`,
 `kernel_mul_mv_q4_polar_f32`) returns matches. The kernels are
 present as live symbols inside the metallib.
 
-### Metal (iOS) — deferred
+### Metal (iOS) — shipped symbols, dispatch-gated
 
 iOS keeps `EMBED_LIBRARY=ON` because the static-archive build needs the
-metallib data baked in via `.incbin`. The EMBED path concatenates
-`ggml-metal.metal` with `ggml-common.h` via `sed`, and the standalones'
-self-contained redefinitions of `block_qjl1_256` / `block_q4_polar` /
-`QK_POLAR` / `QK_QJL` / `QJL_RESIDUAL_BYTES` collide. A dup-strip patcher
-is filed as a follow-up in `kernel-patches/metal-kernels.mjs`'s module
-comment. Until then `requiredKernelsMissing()` refuses iOS metal builds.
+metallib data baked in via `.incbin`. `patchMetalKernels()` rewrites that
+branch to compile `ggml-metal.metal` plus the five standalones as separate
+`.air` files, merge them into `default.metallib`, and embed the compiled
+bytes. This avoids the old duplicate-declaration failure from concatenating
+standalone Metal source with `ggml-common.h`.
+
+The build still fails the publish gate until op-level dispatch is
+numerically verified. Shipped symbols are not enough to satisfy the
+runtime-ready kernel contract.
 
 ### Vulkan — staged but not yet wired
 
-The eight standalone `.comp` files are copied into the fork at
-`ggml/src/ggml-vulkan/milady-shipped/<name>.comp` so they are visible
-for the next agent to wire up, but `vulkan-shaders-gen` does not yet
-know about them and `ggml-vulkan.cpp` has no dispatch sites for the
-milady quant types. The patch helper hard-throws when a `*-vulkan`
-target is queued unless `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1` is
-set as an audit-loggable acknowledgement of the AGENTS.md §3 gap.
+The eight standalone `.comp` files are staged into the fork and compiled
+cleanly, but `ggml-vulkan.cpp` still has no numerically verified
+op-level dispatch sites for the milady quant types. The build helper
+hard-throws when a `*-vulkan` target is queued and the dispatch-ready
+kernel probe is incomplete. There is no incomplete-artifact bypass.
 
-### Dispatch wiring (deferred for both Metal and Vulkan)
+### Dispatch wiring (partially complete)
 
-`ggml-metal-ops.cpp` / `ggml-metal-device.m` (and the Vulkan
-equivalents) have no dispatch entries for `GGML_TYPE_TBQ3_0`,
-`GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ`, `GGML_TYPE_QJL1_256`,
-`GGML_TYPE_Q4_POLAR`. CUDA does. This means the kernel symbols are now
-present in the Metal `default.metallib` but the runtime cannot select
-them via the type-traits table — they ship as dead code until the
-dispatch wiring lands. CUDA is the only backend whose v0.4.0-milady
-binary fully satisfies AGENTS.md §3 today.
+For the current blocker ledger and platform/device gap list, see
+`reports/porting/2026-05-11/remaining-work-ledger.md`.
+
+Metal has one verified graph route today: `GGML_OP_ATTN_SCORE_QJL`
+dispatches `GGML_TYPE_QJL1_256` packed K-cache blocks through the
+launch-tax-amortized `kernel_attn_score_qjl1_256_multi` path. `make -C packages/inference/verify
+dispatch-smoke` links against the built fork libraries, executes the
+actual Metal backend path, and compares 32 scores against a local
+packed-QJL reference with max diff `2.384e-07` on Apple M4 Max. This is
+why Metal `CAPABILITIES.json` can report `kernels.qjl_full=true`.
+
+Metal TurboQuant (`GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`,
+`GGML_TYPE_TBQ3_TCQ`) and PolarQuant (`GGML_TYPE_Q4_POLAR`) still need
+dedicated graph dispatch entries and built-fork numeric smoke tests.
+Their standalone kernel symbols are present in `default.metallib`, but
+their runtime capability bits remain false and the build refuses
+publishable artifacts while they are missing.
+
+Vulkan is still symbol/staging-only for QJL, Polar, and TurboQuant graph
+execution. CUDA remains the only backend whose v0.4.0-milady binary fully
+satisfies AGENTS.md §3 across all five kernel families today.
 
 ## Build-time environment overrides
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN`   | Acknowledge AGENTS.md §3 gap so a `*-vulkan` target builds without turbo/qjl/polar dispatch (audit-loggable). | OFF |
 | `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Override the fork remote (default `https://github.com/milady-ai/llama.cpp.git`). | unset |
 | `ELIZA_DFLASH_LLAMA_CPP_REF`             | Override the fork ref (default `v0.4.0-milady`).          | unset |
 | `ELIZA_DFLASH_VULKAN_HEADERS_DIR` / `ELIZA_DFLASH_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
+| `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
+| `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |
 
 The previous `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`
 environment knobs were decorative log toggles for the v0.4.0-milady-era
-no-op patch hooks. They have been removed; the new patch helpers run
-unconditionally on every Metal target and hard-throw on Vulkan unless
-the explicit gap-acknowledgement env var is set.
+no-op patch hooks. They have been removed; both the Metal and Vulkan
+patch helpers now run unconditionally on every matching target — Metal
+copies the standalone shaders + patches the metallib `add_custom_command`,
+Vulkan copies the standalones into `vulkan-shaders/` + applies the
+available staging patches.
+There is no opt-out, per AGENTS.md §3 ("Required for ALL tiers").
+Symbol-only kernels do not satisfy the post-build audit gate.
 
 Wiring these into `dflash-server.ts` (so `--cache-type-k turbo3_tcq`
 actually runs through the new shader, and so QJL / Polar are reachable

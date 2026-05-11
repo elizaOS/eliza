@@ -11,7 +11,7 @@
 import type {
   BlockAppsOptions,
   BlockAppsResult,
-} from "@elizaos/ui";
+} from "../../app-blocker/types.js";
 import {
   getAppBlockerStatus,
   startAppBlock,

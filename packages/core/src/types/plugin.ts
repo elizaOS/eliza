@@ -1,3 +1,4 @@
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { Character } from "./agent";
 import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
@@ -6,7 +7,6 @@ import type { EventHandler, EventPayload, EventPayloadMap } from "./events";
 import type { ModelParamsMap, PluginModelResult } from "./model";
 import type { X402Config, X402RequestValidator } from "./payment";
 import type { JsonValue, UUID } from "./primitives";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { IAgentRuntime } from "./runtime";
 import type { Service } from "./service";
 import type { TestSuite } from "./testing";

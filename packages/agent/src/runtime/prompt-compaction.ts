@@ -125,7 +125,7 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  *                   STOP_AGENT / MANAGE_ISSUES sub-ops)
  *   RUNTIME       — packages/agent/src/actions/runtime.ts:405 (op:"restart"
  *                   replaces the old RESTART_AGENT)
- *   SHELL_COMMAND — packages/agent/src/actions/terminal.ts:261
+ *   SHELL         — packages/agent/src/actions/terminal.ts:261
  *   PLAY_EMOTE    — plugins/app-companion/src/actions/emote.ts:22
  *
  * GitHub issue ops live under GITHUB_ISSUE in plugin-github but that plugin
@@ -134,7 +134,7 @@ export const UNIVERSAL_ACTIONS = new Set(["REPLY", "NONE", "IGNORE"]);
  */
 export const INTENT_ACTION_MAP: Record<string, Set<string>> = {
   coding: new Set(["TASKS"]),
-  terminal: new Set(["SHELL_COMMAND", "RUNTIME"]),
+  terminal: new Set(["SHELL", "RUNTIME"]),
   issues: new Set(["TASKS"]),
   emote: new Set(["PLAY_EMOTE"]),
   plugin_ui: new Set(["RUNTIME"]),

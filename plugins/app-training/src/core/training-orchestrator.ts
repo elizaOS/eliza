@@ -16,7 +16,7 @@
  *      (`exportTrajectoryTaskDatasets`). When `task` is supplied, only that
  *      bucket is forwarded to the backend.
  *   4. Dispatch the chosen task's dataset to the configured backend
- *      (`atropos` | `tinker` | `native`).
+ *      (`tinker` | `native`).
  *   5. Persist a run record at `<state>/training/runs/<runId>.json`.
  */
 
@@ -226,20 +226,6 @@ async function defaultDispatcher(
   input: BackendDispatchInput,
 ): Promise<BackendDispatchResult> {
   switch (input.backend) {
-    case "atropos": {
-      const { runAtroposBackend } = await import("../backends/atropos.js");
-      const result = await runAtroposBackend({
-        datasetPath: input.datasetPath,
-        task: input.task,
-      });
-      return {
-        invoked: result.invoked,
-        artifactPath: result.stagedPath,
-        notes: result.invoked
-          ? [`atropos exited with code ${result.exitCode ?? 0}`]
-          : ["atropos CLI not configured (set ATROPOS_BIN to invoke)"],
-      };
-    }
     case "tinker": {
       const { runTinkerBackend } = await import("../backends/tinker.js");
       const result = await runTinkerBackend({

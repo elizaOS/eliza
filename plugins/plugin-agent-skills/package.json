@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-agent-skills",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
   "main": "dist/index.js",
   "type": "module",
@@ -36,7 +36,7 @@
     "progressive-disclosure"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "fflate": "^0.8.2"
   },
   "devDependencies": {

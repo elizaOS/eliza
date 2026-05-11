@@ -1,75 +1,81 @@
-export * from "./types";
-export { PhraseChunker, chunkTokens } from "./phrase-chunker";
-export { RollbackQueue, type RollbackEvent } from "./rollback-queue";
 export {
   BargeInController,
   type BargeInListener,
   type CancelSignal,
 } from "./barge-in";
-export { PcmRingBuffer, InMemoryAudioSink } from "./ring-buffer";
 export {
-  SpeakerPresetCache,
-  type PresetBundlePaths,
-  type LoadedPresetBundle,
-} from "./speaker-preset-cache";
+  decodeMonoPcm16Wav,
+  defaultLifecycleLoaders,
+  EngineVoiceBridge,
+  type EngineVoiceBridgeOptions,
+  encodeMonoPcm16Wav,
+  FfiOmniVoiceBackend,
+  StubOmniVoiceBackend,
+  VoiceStartupError,
+} from "./engine-bridge";
 export {
-  VOICE_PRESET_MAGIC,
-  VOICE_PRESET_VERSION,
-  VOICE_PRESET_HEADER_BYTES,
-  VoicePresetFormatError,
-  readVoicePresetFile,
-  writeVoicePresetFile,
-  type VoicePresetFile,
-  type VoicePresetSeedPhrase,
-} from "./voice-preset-format";
+  type ArmedResources,
+  type TextResources,
+  VoiceLifecycle,
+  VoiceLifecycleError,
+  type VoiceLifecycleEvents,
+  type VoiceLifecycleLoaders,
+  type VoiceLifecycleState,
+} from "./lifecycle";
 export {
   CharacterPhonemeStub,
   type Phoneme,
   type PhonemeTokenizer,
 } from "./phoneme-tokenizer";
 export {
-  PhraseCache,
-  canonicalizePhraseText,
   type CachedPhraseAudio,
+  canonicalizePhraseText,
+  PhraseCache,
 } from "./phrase-cache";
+export { chunkTokens, PhraseChunker } from "./phrase-chunker";
+export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
+export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
-  VoiceScheduler,
-  type SchedulerEvents,
   type SchedulerDeps,
+  type SchedulerEvents,
+  VoiceScheduler,
 } from "./scheduler";
 export {
-  EngineVoiceBridge,
-  StubOmniVoiceBackend,
-  FfiOmniVoiceBackend,
-  VoiceStartupError,
-  type EngineVoiceBridgeOptions,
-} from "./engine-bridge";
-export {
-  SharedResourceRegistry,
   type DflashDrafterHandle,
   type KernelSet,
   type MmapRegionHandle,
   type RefCountedResource,
   type SchedulerSlot,
+  SharedResourceRegistry,
   type SharedTokenizer,
 } from "./shared-resources";
 export {
-  VoiceLifecycle,
-  VoiceLifecycleError,
-  type ArmedResources,
-  type TextResources,
-  type VoiceLifecycleEvents,
-  type VoiceLifecycleLoaders,
-  type VoiceLifecycleState,
-} from "./lifecycle";
+  type LoadedPresetBundle,
+  type PresetBundlePaths,
+  SpeakerPresetCache,
+} from "./speaker-preset-cache";
+export * from "./types";
+export {
+  readVoicePresetFile,
+  VOICE_PRESET_HEADER_BYTES,
+  VOICE_PRESET_MAGIC,
+  VOICE_PRESET_VERSION,
+  type VoicePresetFile,
+  VoicePresetFormatError,
+  type VoicePresetSeedPhrase,
+  writeVoicePresetFile,
+} from "./voice-preset-format";
 
 /**
  * Voice on/off invariants (binding for every consumer of this module):
  *
- * 1. Voice is OFF by default — text + drafter only. TTS, ASR, the
- *    speaker preset cache, the phrase cache, the chunker, the
- *    rollback queue, the barge-in controller, and the ring buffer
- *    are NOT in RAM until `VoiceLifecycle.arm()` is called.
+ * 1. Voice is OFF by default — text + drafter only. Before
+ *    `EngineVoiceBridge.start()` there are no voice resources in RAM.
+ *    After `start()` but before `VoiceLifecycle.arm()`, only the tiny
+ *    default speaker preset, phrase seed metadata, and scheduler
+ *    scaffolding are live. TTS/ASR weight regions are NOT mapped or
+ *    re-paged until `VoiceLifecycle.arm()` calls the fused ABI's
+ *    `mmap_acquire`.
  *
  * 2. Shared resources between text and voice (one instance each per
  *    engine, refcounted by `SharedResourceRegistry`):

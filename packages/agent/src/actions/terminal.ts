@@ -1,5 +1,5 @@
 /**
- * SHELL_COMMAND action — runs a shell command on the server.
+ * SHELL action — runs a shell command on the server.
  *
  * When triggered the action:
  *   1. Extracts the command from parameters or MCP-style JSON
@@ -20,12 +20,18 @@ import type {
   Media,
   Memory,
 } from "@elizaos/core";
-import { ContentType, logger, stringToUuid } from "@elizaos/core";
+import {
+  buildStoreVariantBlockedMessage,
+  ContentType,
+  isLocalCodeExecutionAllowed,
+  logger,
+  stringToUuid,
+} from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.ts";
 
 /** API port for posting terminal requests. */
 const API_PORT = process.env.API_PORT || process.env.SERVER_PORT || "2138";
-const TERMINAL_ACTION_NAME = "SHELL_COMMAND";
+const TERMINAL_ACTION_NAME = "SHELL";
 const MAX_TERMINAL_DATA_CHARS = 16000;
 
 const FAIL = { success: false, text: "" } as const;
@@ -267,7 +273,7 @@ export const terminalAction: Action = {
     "RUN_COMMAND",
     "EXECUTE_COMMAND",
     "TERMINAL",
-    "SHELL",
+    "SHELL_COMMAND",
     "RUN_SHELL",
     "EXEC",
     "CALL_MCP_TOOL",
@@ -281,9 +287,21 @@ export const terminalAction: Action = {
   descriptionCompressed:
     "run single explicit shell command user provide directly use user give specific command like run ls - la execute npm install use build project, create website, multi-step work use START_CODING_TASK instead command output captur document attachment native planner follow-up after run, decide whether reply, stay silent, continue w/ another action, save attachment via clipboard plugin",
 
-  validate: async () => true,
+  validate: async () => isLocalCodeExecutionAllowed(),
 
   handler: async (runtime, message, _state, options) => {
+    if (!isLocalCodeExecutionAllowed()) {
+      return {
+        success: false,
+        text: buildStoreVariantBlockedMessage("Terminal commands"),
+        data: {
+          actionName: TERMINAL_ACTION_NAME,
+          suppressPostActionContinuation: true,
+          terminal: { storeBuildBlocked: true },
+        },
+      };
+    }
+
     if (!(await hasOwnerAccess(runtime, message))) {
       return {
         success: false,
@@ -304,15 +322,24 @@ export const terminalAction: Action = {
     }
 
     try {
+      const terminalToken = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (terminalToken) {
+        headers["X-Eliza-Terminal-Token"] = terminalToken;
+      }
+
       const response = await fetch(
         `http://localhost:${API_PORT}/api/terminal/run`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             command,
             clientId: "runtime-terminal-action",
             captureOutput: true,
+            ...(terminalToken ? { terminalToken } : {}),
           }),
         },
       );

@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-discord",
-	"version": "2.0.0-beta.0",
+	"version": "2.0.0-beta.2",
 	"description": "",
 	"type": "module",
 	"main": "dist/index.js",
@@ -43,8 +43,8 @@
 		"@discordjs/opus": "^0.10.0",
 		"@discordjs/rest": "^2.6.1",
 		"@discordjs/voice": "^0.19.2",
-		"@elizaos/core": "workspace:*",
-		"@elizaos/plugin-browser": "workspace:*",
+		"@elizaos/core": "2.0.0-beta.1",
+		"@elizaos/plugin-browser": "2.0.0-beta.1",
 		"discord-api-types": "^0.38.0",
 		"discord.js": "^14.26.4",
 		"fast-levenshtein": "^3.0.0",
@@ -62,7 +62,7 @@
 		"vitest": "^4.1.4"
 	},
 	"peerDependencies": {
-		"@elizaos/core": "workspace:*"
+		"@elizaos/core": "2.0.0-beta.1"
 	},
 	"publishConfig": {
 		"access": "public"

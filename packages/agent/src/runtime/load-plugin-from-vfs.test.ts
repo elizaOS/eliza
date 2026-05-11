@@ -57,9 +57,9 @@ describe("loadPluginFromVfs", () => {
 
     const runtime = new AgentRuntime({ logLevel: "fatal" });
     expect(typeof runtime.registerPlugin).toBe("function");
-    expect(
-      typeof (runtime as { unloadPlugin?: unknown }).unloadPlugin,
-    ).toBe("function");
+    expect(typeof (runtime as { unloadPlugin?: unknown }).unloadPlugin).toBe(
+      "function",
+    );
 
     const loaded = await loadPluginFromVfs({
       runtime,
@@ -92,9 +92,7 @@ describe("loadPluginFromVfs", () => {
     });
     expect(unloadResult.unloaded).toBe(true);
     expect(
-      runtime.actions.some(
-        (candidate) => candidate.name === "VFS_LOADER_PING",
-      ),
+      runtime.actions.some((candidate) => candidate.name === "VFS_LOADER_PING"),
     ).toBe(false);
     expect(getLoadedVfsPlugins()).toHaveLength(0);
   });

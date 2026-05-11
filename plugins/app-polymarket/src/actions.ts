@@ -94,7 +94,6 @@ const READ_KINDS = [
 type PolymarketReadKind = (typeof READ_KINDS)[number];
 const POLYMARKET_OPS = ["read", "place_order"] as const;
 type PolymarketOp = (typeof POLYMARKET_OPS)[number];
-const PREDICTION_MARKET_SUBACTIONS = ["read", "place-order"] as const;
 const POLYMARKET_READ_COMPAT_SIMILES = [
   POLYMARKET_READ_COMPAT_NAME,
   "POLYMARKET_STATUS",
@@ -208,10 +207,10 @@ function readOp(
   options: HandlerOptions | Record<string, unknown> | undefined,
 ): PolymarketOp | null {
   const rawOp =
+    readStringParam(options, "action") ??
     readStringParam(options, "subaction") ??
     readStringParam(options, "op") ??
     readStringParam(options, "operation") ??
-    readStringParam(options, "action") ??
     readStringParam(options, "name");
   const explicit = normalizeOp(rawOp);
   if (explicit) return explicit;
@@ -726,9 +725,9 @@ export const polymarketAction: Action = {
     ...POLYMARKET_PLACE_ORDER_COMPAT_SIMILES,
   ],
   description:
-    "Use registered prediction market providers. target selects the provider; Polymarket is registered today. subaction=read reads public state with kind: status, markets, market, orderbook, or positions. subaction=place-order reports trading readiness; signed order placement is disabled in this app scaffold.",
+    "Use registered prediction market providers. target selects the provider; Polymarket is registered today. action=read reads public state with kind: status, markets, market, orderbook, or positions. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
   descriptionCompressed:
-    "Prediction market router: target polymarket; subaction read or place-order.",
+    "Prediction market router: target polymarket; action read or place_order.",
   parameters: [
     {
       name: "target",
@@ -737,10 +736,16 @@ export const polymarketAction: Action = {
       schema: { type: "string", enum: ["polymarket"], default: "polymarket" },
     },
     {
-      name: "subaction",
-      description: "Prediction market operation: read or place-order.",
+      name: "action",
+      description: "Prediction market operation: read or place_order.",
       required: false,
-      schema: { type: "string", enum: [...PREDICTION_MARKET_SUBACTIONS] },
+      schema: { type: "string", enum: [...POLYMARKET_OPS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action. Accepts place-order as place_order.",
+      required: false,
+      schema: { type: "string", enum: [...POLYMARKET_OPS, "place-order"] },
     },
     {
       name: "kind",
@@ -812,10 +817,10 @@ export const polymarketAction: Action = {
     const op = readOp(options);
     if (!op) {
       const text =
-        "Provide subaction: read | place-order. For read, also provide kind: status | markets | market | orderbook | positions.";
+        "Provide action: read | place_order. For read, also provide kind: status | markets | market | orderbook | positions.";
       return emitFailure(callback, text, "missing_or_invalid_op", {
         actionName: POLYMARKET_ACTION_NAME,
-        availableSubactions: [...PREDICTION_MARKET_SUBACTIONS],
+        availableActions: [...POLYMARKET_OPS],
       });
     }
     const service = runtime.getService(

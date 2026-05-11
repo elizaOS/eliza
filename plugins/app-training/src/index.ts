@@ -9,7 +9,6 @@ export * from "./core/cli.js";
 export * from "./core/privacy-filter.js";
 export * from "./core/skill-scoring-cron.js";
 export * from "./cli/train.js";
-export * from "./backends/atropos.js";
 export * from "./backends/tinker.js";
 export * from "./backends/native.js";
 export * from "./optimizers/index.js";

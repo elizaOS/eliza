@@ -22,7 +22,7 @@ import type {
   BackendPlan,
   LocalInferenceBackend,
 } from "./backend";
-import { BackendDispatcher } from "./backend";
+import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
 import { findCatalogModel } from "./catalog";
 import {
   type ConversationHandle,
@@ -50,6 +50,7 @@ import {
 import type {
   RejectedTokenRange,
   TextToken,
+  TranscriptionAudio,
   VerifierStreamEvent,
 } from "./voice/types";
 
@@ -88,6 +89,7 @@ function toBackendLoadOverrides(
   if (args.cacheTypeK !== undefined) overrides.cacheTypeK = args.cacheTypeK;
   if (args.cacheTypeV !== undefined) overrides.cacheTypeV = args.cacheTypeV;
   if (args.gpuLayers !== undefined) overrides.gpuLayers = args.gpuLayers;
+  if (args.kvOffload !== undefined) overrides.kvOffload = args.kvOffload;
   if (args.flashAttention !== undefined) {
     overrides.flashAttention = args.flashAttention;
   }
@@ -280,6 +282,8 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
     let gpuLayers: number | "max" | "auto" = "auto";
     if (overrides?.gpuLayers !== undefined) {
       gpuLayers = overrides.gpuLayers;
+    } else if (overrides?.kvOffload !== undefined) {
+      gpuLayers = gpuLayersForKvOffload(overrides.kvOffload);
     } else if (overrides?.useGpu === false) {
       gpuLayers = 0;
     }
@@ -514,13 +518,18 @@ export class LocalInferenceEngine {
   }
 
   async unload(): Promise<void> {
-    if (this.voiceBridge) {
+    const bridge = this.voiceBridge;
+    if (bridge) {
       // Drop voice resources before tearing down text. Disarm is a
       // no-op when the lifecycle is already in voice-off, so this is
       // safe even if the caller never called startVoice().
-      await this.voiceBridge.disarm();
-      await this.voiceBridge.settle();
-      this.voiceBridge = null;
+      try {
+        await bridge.disarm();
+        await bridge.settle();
+      } finally {
+        bridge.dispose();
+        if (this.voiceBridge === bridge) this.voiceBridge = null;
+      }
     }
     await this.dispatcher.unload();
   }
@@ -559,12 +568,16 @@ export class LocalInferenceEngine {
       await this.dispatcher.load(plan);
       return;
     } catch (err) {
-      // If DFlash was the chosen backend but is not strictly required, fall
-      // back to node-llama-cpp transparently. This preserves the prior
-      // behaviour — the operator gets a working chat instead of an error
-      // when the binary is missing.
+      // Only a soft catalog preference may fall back to node-llama-cpp.
+      // Kernel-required loads are the mandatory-optimization path: falling
+      // back would silently run an unoptimized bundle, which violates the
+      // Eliza-1 startup contract.
       const decision = this.dispatcher.decide(plan);
-      if (decision.backend === "llama-server" && !dflashRequired()) {
+      if (
+        decision.backend === "llama-server" &&
+        decision.reason === "preferred-backend" &&
+        !dflashRequired()
+      ) {
         console.warn(
           "[local-inference] llama-server backend unavailable; falling back to node-llama-cpp:",
           err instanceof Error ? err.message : String(err),
@@ -782,9 +795,10 @@ export class LocalInferenceEngine {
   }
 
   /**
-   * Arm the voice lifecycle on the active bridge — lazily loads TTS +
-   * ASR mmap regions, voice caches, and voice scheduler nodes via the
-   * shared resource registry. Throws `VoiceLifecycleError` if any
+   * Arm the voice lifecycle on the active bridge — lazily loads the TTS
+   * mmap region, optional ASR region when present, voice caches, and
+   * voice scheduler nodes via the shared resource registry. Throws
+   * `VoiceLifecycleError` if any
    * required artifact is unavailable (RAM pressure, mmap fail, kernel
    * missing) — see `voice/lifecycle.ts` for the structured codes.
    *
@@ -826,9 +840,23 @@ export class LocalInferenceEngine {
   async stopVoice(): Promise<void> {
     const bridge = this.voiceBridge;
     if (!bridge) return;
-    this.voiceBridge = null;
-    await bridge.disarm();
-    await bridge.settle();
+    try {
+      await bridge.disarm();
+      await bridge.settle();
+    } finally {
+      bridge.dispose();
+      if (this.voiceBridge === bridge) this.voiceBridge = null;
+    }
+  }
+
+  async synthesizeSpeech(text: string): Promise<Uint8Array> {
+    return this.requireVoiceBridge("synthesize speech").synthesizeTextToWav(
+      text,
+    );
+  }
+
+  async transcribePcm(args: TranscriptionAudio): Promise<string> {
+    return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
   }
 
   /**
@@ -840,6 +868,17 @@ export class LocalInferenceEngine {
    */
   voice(): EngineVoiceBridge | null {
     return this.voiceBridge;
+  }
+
+  private requireVoiceBridge(action: string): EngineVoiceBridge {
+    const bridge = this.voiceBridge;
+    if (!bridge) {
+      throw new VoiceStartupError(
+        "not-started",
+        `[voice] Cannot ${action}: no voice session active. Call startVoice() and armVoice() first.`,
+      );
+    }
+    return bridge;
   }
 
   /**

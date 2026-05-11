@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
-import type { RouteRequestContext } from "@elizaos/shared";
-import { resolveApiToken } from "@elizaos/shared";
+import type {
+  PostAuthPairResponse,
+  RouteRequestContext,
+} from "@elizaos/shared";
+import { PostAuthPairRequestSchema, resolveApiToken } from "@elizaos/shared";
 import { isAuthorized, isTrustedLocalRequest } from "./server-helpers-auth.ts";
 
 function getConfiguredApiToken(): string | undefined {
@@ -105,8 +108,27 @@ export async function handleAuthRoutes(
   }
 
   if (method === "POST" && pathname === "/api/auth/pair") {
-    const body = await readJsonBody<{ code?: string }>(req, res);
-    if (!body) return true;
+    // NOTE: this handler is shadowed by `handleAuthPairingCompatRoutes` in
+    // `@elizaos/app-core` (the compat route mints a real machine session
+    // bound to an identity, which authenticates against
+    // `ensureCompatApiAuthorizedAsync`). This agent-only path is kept for
+    // standalone agent-server usage; it returns the static connection key,
+    // which only authenticates routes that explicitly accept the static
+    // token (e.g. `/api/auth/status`). For full route coverage, run via
+    // app-core so the compat handler intercepts first.
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostAuthPairRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      const issue = parsed.error.issues[0];
+      const issuePath = issue?.path?.join(".") ?? "<root>";
+      error(
+        res,
+        `Invalid request body at ${issuePath}: ${issue?.message ?? "validation failed"}`,
+        400,
+      );
+      return true;
+    }
 
     if (isCloudProvisionedContainer()) {
       error(res, "Pairing disabled", 403);
@@ -127,7 +149,7 @@ export async function handleAuthRoutes(
       return true;
     }
 
-    const provided = normalizePairingCode(body.code ?? "");
+    const provided = normalizePairingCode(parsed.data.code);
     const current = ensurePairingCode();
     if (!current || Date.now() > getPairingExpiresAt()) {
       ensurePairingCode();
@@ -148,7 +170,8 @@ export async function handleAuthRoutes(
     }
 
     clearPairing();
-    json(res, { token });
+    const response: PostAuthPairResponse = { token };
+    json(res, response);
     return true;
   }
 

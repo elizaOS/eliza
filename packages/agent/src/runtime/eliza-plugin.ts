@@ -12,14 +12,10 @@ import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { logsAction } from "../actions/logs.ts";
 import { memoryAction } from "../actions/memories.ts";
-import { pageActionGroupActions } from "../actions/page-action-groups.ts";
+import { pageDelegateAction } from "../actions/page-action-groups.ts";
 import { pluginAction } from "../actions/plugin.ts";
 import { runtimeAction } from "../actions/runtime.ts";
 import { settingsAction } from "../actions/settings-actions.ts";
-import {
-  addRegisteredSkillSlug,
-  clearRegisteredSkillSlugs,
-} from "../actions/skill-command.ts";
 import { terminalAction } from "../actions/terminal.ts";
 import { triggerAction } from "../actions/trigger.ts";
 import { adminPanelProvider } from "../providers/admin-panel.ts";
@@ -27,6 +23,7 @@ import { adminTrustProvider } from "../providers/admin-trust.ts";
 import { automationTerminalBridgeProvider } from "../providers/automation-terminal-bridge.ts";
 import { escalationTriggerProvider } from "../providers/escalation-trigger.ts";
 import { pageScopedContextProvider } from "../providers/page-scoped-context.ts";
+import { pendingPermissionsProvider } from "../providers/pending-permissions-provider.ts";
 import { recentConversationsProvider } from "../providers/recent-conversations.ts";
 import { relevantConversationsProvider } from "../providers/relevant-conversations.ts";
 import { roleBackfillProvider } from "../providers/role-backfill.ts";
@@ -93,6 +90,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createSessionKeyProvider({ defaultAgentId: agentId }),
     ...getSessionProviders({ storePath: sessionStorePath }),
     createDynamicSkillProvider(),
+    pendingPermissionsProvider,
     createUserNameProvider(),
     createOngoingTasksProvider(),
   ];
@@ -140,7 +138,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
 
           // Ensure the command store is scoped to this runtime
           initForRuntime(runtime.agentId);
-          clearRegisteredSkillSlugs();
 
           let registered = 0;
           for (const skill of skills) {
@@ -161,7 +158,6 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
                   },
                 ],
               });
-              addRegisteredSkillSlug(slug);
               registered++;
             } catch {
               // Command may already be registered (e.g. /stop conflicts)
@@ -203,7 +199,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     actions: [
       terminalAction,
       ...promoteSubactionsToActions(triggerAction),
-      ...pageActionGroupActions,
+      pageDelegateAction,
       ...promoteSubactionsToActions(contactAction),
       settingsAction,
       ...promoteSubactionsToActions(pluginAction),

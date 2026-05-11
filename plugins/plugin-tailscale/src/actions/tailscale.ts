@@ -135,6 +135,13 @@ function readOptions(options?: HandlerOptions): Record<string, unknown> {
   return { ...direct, ...params };
 }
 
+function formatUsd(amount: number): string {
+  return amount.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+}
+
 async function handleStart(
   runtime: IAgentRuntime,
   message: Memory,
@@ -180,10 +187,18 @@ async function handleStart(
     ? await tailscaleImpl.startTunnel(port, { accountId })
     : await tunnelService.startTunnel(port);
   const publicUrl = typeof url === "string" ? url : tunnelService.getUrl();
+  const billing =
+    tailscaleImpl instanceof CloudTailscaleService
+      ? tailscaleImpl.getLastProvisioningBilling()
+      : null;
+  const billingLine =
+    billing?.charged && billing.amountUsd > 0
+      ? `\nCloud tunnel charge: $${formatUsd(billing.amountUsd)} org credits.`
+      : "";
 
   if (callback) {
     await callback({
-      text: `Tailscale tunnel started.\n\nURL: ${publicUrl ?? "unknown"}\nLocal port: ${port}`,
+      text: `Tailscale tunnel started.\n\nURL: ${publicUrl ?? "unknown"}\nLocal port: ${port}${billingLine}`,
     });
   }
 
@@ -195,6 +210,7 @@ async function handleStart(
       tunnelUrl: publicUrl ?? "",
       port,
       accountId,
+      billing,
     },
   };
 }

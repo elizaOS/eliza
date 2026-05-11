@@ -2,8 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { SpeakerPreset } from "./types";
 import {
-  type VoicePresetSeedPhrase,
   readVoicePresetFile,
+  type VoicePresetSeedPhrase,
 } from "./voice-preset-format";
 
 export interface PresetBundlePaths {
@@ -19,11 +19,17 @@ export interface LoadedPresetBundle {
   phrases: ReadonlyArray<VoicePresetSeedPhrase>;
 }
 
-const DEFAULT_REL_PATH = path.join("cache", "voice-preset-default.bin");
+export const DEFAULT_VOICE_PRESET_REL_PATH = path.join(
+  "cache",
+  "voice-preset-default.bin",
+);
 
 export class SpeakerPresetCache {
   private readonly cache = new Map<string, SpeakerPreset>();
-  private readonly seeds = new Map<string, ReadonlyArray<VoicePresetSeedPhrase>>();
+  private readonly seeds = new Map<
+    string,
+    ReadonlyArray<VoicePresetSeedPhrase>
+  >();
 
   /**
    * Load a voice-preset binary file and return both the speaker embedding
@@ -42,7 +48,7 @@ export class SpeakerPresetCache {
       };
     }
 
-    const rel = paths.cacheRelPath ?? DEFAULT_REL_PATH;
+    const rel = paths.cacheRelPath ?? DEFAULT_VOICE_PRESET_REL_PATH;
     const fullPath = path.join(paths.bundleRoot, rel);
     const bytes = readFileSync(fullPath);
     const parsed = readVoicePresetFile(new Uint8Array(bytes));

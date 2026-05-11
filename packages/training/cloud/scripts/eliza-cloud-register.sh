@@ -111,7 +111,7 @@ cat <<'POSTSTEPS'
 Next manual steps (one-time, per size):
   1. Add a catalog entry per Vast alias in
      eliza/cloud/packages/lib/models/catalog.ts
-     (mirror the existing vast/qwen3.6-27b-neo-code row).
+     (mirror the existing vast/eliza-1-27b row).
   2. Push wrangler secrets so the Cloud Worker can reach the endpoint:
        wrangler secret put VAST_BASE_URL    # e.g. https://run.vast.ai/route/<endpoint-id>
        wrangler secret put VAST_API_KEY     # endpoint-scoped token

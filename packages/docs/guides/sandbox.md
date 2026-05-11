@@ -6,6 +6,14 @@ description: "Container-based sandbox isolation with configurable security modes
 
 Eliza provides a container-based sandbox system that isolates agent code execution from the host environment. The sandbox supports multiple security levels, network policies, audit logging, and a remote signing service that keeps private keys on the host while allowing sandboxed agents to submit transactions.
 
+On mobile and store builds, "sandbox" is platform-specific rather than a
+desktop container: iOS and Google Play builds use the app sandbox plus the
+mobile-safe VFS/runtime providers and Cloud coding containers for full shell
+work; AOSP / ElizaOS Android can additionally enable the local Bun backend,
+`/system/bin/sh`, shell/coding-tools/orchestrator, and AVF/Microdroid when the
+system image grants it. See the mobile agentic IDE plan for the full policy
+matrix.
+
 ## Table of Contents
 
 1. [Sandbox Modes](#sandbox-modes)

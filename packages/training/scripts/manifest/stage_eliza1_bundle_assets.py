@@ -1,0 +1,473 @@
+#!/usr/bin/env python3
+"""Stage real voice / ASR / VAD assets into an Eliza-1 bundle directory.
+
+This is the bridge between the manifest-first runtime bundle layout and
+the current upstream asset locations on Hugging Face. It intentionally does
+not fabricate text or DFlash weights; it stages the non-text assets that are
+already externally available and writes evidence/provenance sidecars so the
+publish orchestrator can hash and validate the final bundle.
+
+Default sources:
+  - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
+  - ASR: ggml-org/Qwen3-ASR-*-GGUF, GGUF artifacts.
+  - VAD: onnx-community/silero-vad, int8 ONNX sidecar model.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import shutil
+import struct
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Final
+
+from huggingface_hub import HfApi, hf_hub_download
+
+try:
+    from .eliza1_manifest import VOICE_QUANT_BY_TIER
+except ImportError:  # pragma: no cover - script execution path
+    from eliza1_manifest import VOICE_QUANT_BY_TIER
+
+VOICE_REPO: Final[str] = "Serveurperso/OmniVoice-GGUF"
+VAD_REPO: Final[str] = "onnx-community/silero-vad"
+ASR_REPO_BY_TIER: Final[dict[str, str]] = {
+    "0_6b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "1_7b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "9b": "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+    "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
+}
+GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
+    "Q4_K_M",
+    "Q4_K_S",
+    "Q5_K_M",
+    "Q8_0",
+)
+
+VAD_FILES: Final[tuple[tuple[str, str], ...]] = (
+    ("onnx/model_int8.onnx", "vad/silero-vad-int8.onnx"),
+)
+
+VOICE_PRESET_MAGIC: Final[int] = 0x315A4C45  # 'ELZ1'
+VOICE_PRESET_VERSION: Final[int] = 1
+VOICE_PRESET_HEADER_BYTES: Final[int] = 24
+HF_RETRY_ATTEMPTS: Final[int] = 4
+HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
+
+
+def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
+    last_error: Exception | None = None
+    for attempt in range(HF_RETRY_ATTEMPTS):
+        try:
+            return callable_(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - network-only path
+            last_error = exc
+            if attempt == HF_RETRY_ATTEMPTS - 1:
+                break
+            time.sleep(HF_RETRY_BASE_DELAY_SEC * (attempt + 1))
+    assert last_error is not None
+    raise last_error
+
+
+def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def copy_hf_file(
+    *,
+    repo_id: str,
+    revision: str | None,
+    remote_path: str,
+    destination: Path,
+    link_mode: str,
+    dry_run: bool,
+) -> dict[str, Any]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        return {
+            "repo": repo_id,
+            "revision": revision,
+            "remotePath": remote_path,
+            "path": str(destination),
+            "dryRun": True,
+        }
+
+    cached = Path(
+        retry_hf(
+            hf_hub_download,
+            repo_id=repo_id,
+            filename=remote_path,
+            revision=revision,
+            repo_type="model",
+        )
+    )
+    if link_mode == "hardlink":
+        try:
+            if destination.exists() or destination.is_symlink():
+                if destination.samefile(cached):
+                    pass
+                else:
+                    destination.unlink()
+                    os.link(cached, destination)
+            else:
+                os.link(cached, destination)
+        except OSError:
+            shutil.copy2(cached, destination)
+    else:
+        shutil.copy2(cached, destination)
+    return {
+        "repo": repo_id,
+        "revision": revision,
+        "remotePath": remote_path,
+        "path": str(destination),
+        "linkMode": link_mode,
+        "sizeBytes": destination.stat().st_size,
+        "sha256": sha256_file(destination),
+    }
+
+
+def choose_gguf_file(
+    api: HfApi,
+    *,
+    repo_id: str,
+    requested: str | None = None,
+) -> str:
+    files = [
+        f
+        for f in retry_hf(api.list_repo_files, repo_id, repo_type="model")
+        if f.endswith(".gguf")
+    ]
+    files = [f for f in files if "mmproj" not in f.lower()]
+    if requested:
+        if requested not in files:
+            raise ValueError(f"requested GGUF {requested!r} not found in {repo_id}")
+        return requested
+    for quant in GGUF_QUANT_PREFERENCE:
+        matches = sorted(f for f in files if quant.lower() in f.lower())
+        if matches:
+            return matches[0]
+    if not files:
+        raise ValueError(f"no GGUF files found in {repo_id}")
+    return sorted(files)[0]
+
+
+def choose_mmproj_file(
+    api: HfApi,
+    *,
+    repo_id: str,
+    requested: str | None = None,
+) -> str:
+    files = [
+        f
+        for f in retry_hf(api.list_repo_files, repo_id, repo_type="model")
+        if f.endswith(".gguf") and "mmproj" in f.lower()
+    ]
+    if requested:
+        if requested not in files:
+            raise ValueError(
+                f"requested ASR mmproj {requested!r} not found in {repo_id}"
+            )
+        return requested
+    for quant in GGUF_QUANT_PREFERENCE:
+        matches = sorted(f for f in files if quant.lower() in f.lower())
+        if matches:
+            return matches[0]
+    if not files:
+        raise ValueError(f"no ASR mmproj GGUF files found in {repo_id}")
+    return sorted(files)[0]
+
+
+def write_voice_preset(path: Path, *, dry_run: bool) -> dict[str, Any]:
+    """Write a deterministic neutral v1 voice preset cache.
+
+    The real release should replace this with a speaker embedding derived
+    from the approved Eliza voice sample plus phrase-cache PCM seeds. This
+    neutral cache is still a valid fail-closed runtime artifact: it exercises
+    the parser and cache path without inventing audio.
+    """
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    embedding = [0.0] * 256
+    emb = struct.pack("<" + "f" * len(embedding), *embedding)
+    phrases = struct.pack("<I", 0)
+    emb_off = VOICE_PRESET_HEADER_BYTES
+    phr_off = emb_off + len(emb)
+    header = struct.pack(
+        "<IIIIII",
+        VOICE_PRESET_MAGIC,
+        VOICE_PRESET_VERSION,
+        emb_off,
+        len(emb),
+        phr_off,
+        len(phrases),
+    )
+    payload = header + emb + phrases
+    if not dry_run:
+        path.write_bytes(payload)
+    return {
+        "path": str(path),
+        "sizeBytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "embeddingFloats": len(embedding),
+        "phraseSeedCount": 0,
+        "dryRun": dry_run,
+    }
+
+
+def merge_lineage(
+    bundle_dir: Path,
+    revisions: dict[str, str],
+    *,
+    asr_repo: str,
+    dry_run: bool,
+) -> None:
+    path = bundle_dir / "lineage.json"
+    data: dict[str, Any] = {}
+    if path.is_file():
+        data = json.loads(path.read_text())
+    data.update(
+        {
+            "voice": {
+                "base": f"{VOICE_REPO}@{revisions[VOICE_REPO]}",
+                "license": "apache-2.0",
+            },
+            "asr": {
+                "base": f"{asr_repo}@{revisions[asr_repo]}",
+                "license": "apache-2.0; review upstream model card before release",
+            },
+            "vad": {
+                "base": f"{VAD_REPO}@{revisions[VAD_REPO]}",
+                "license": "mit",
+            },
+        }
+    )
+    if not dry_run:
+        path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+
+
+def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
+    licenses = {
+        "LICENSE.voice": (
+            "OmniVoice GGUF assets staged from Serveurperso/OmniVoice-GGUF.\n"
+            "Declared upstream license: Apache-2.0.\n"
+        ),
+        "LICENSE.asr": (
+            "ASR GGUF assets staged from ggml-org/Qwen3-ASR-*-GGUF.\n"
+            "Review upstream Apache-2.0 license and model card before release.\n"
+        ),
+        "LICENSE.vad": (
+            "VAD assets staged from onnx-community/silero-vad.\n"
+            "Declared upstream license: MIT.\n"
+        ),
+    }
+    if dry_run:
+        return
+    license_dir = bundle_dir / "licenses"
+    license_dir.mkdir(parents=True, exist_ok=True)
+    for name, text in licenses.items():
+        target = license_dir / name
+        if not target.exists():
+            target.write_text(text)
+
+
+def resolve_revisions(api: HfApi, repos: tuple[str, ...]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for repo in repos:
+        info = retry_hf(api.model_info, repo)
+        out[repo] = str(info.sha)
+    return out
+
+
+def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
+    tier = args.tier
+    quant = VOICE_QUANT_BY_TIER[tier]
+    bundle_dir = args.bundle_dir.resolve()
+    asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
+    api = HfApi()
+    revisions = resolve_revisions(api, (VOICE_REPO, asr_repo, VAD_REPO))
+    asr_remote_path = choose_gguf_file(api, repo_id=asr_repo, requested=args.asr_file)
+    asr_mmproj_remote_path = choose_mmproj_file(
+        api,
+        repo_id=asr_repo,
+        requested=args.asr_mmproj_file,
+    )
+
+    staged: list[dict[str, Any]] = []
+    voice_pairs = (
+        (f"omnivoice-base-{quant}.gguf", f"tts/omnivoice-base-{quant}.gguf"),
+        (
+            f"omnivoice-tokenizer-{quant}.gguf",
+            f"tts/omnivoice-tokenizer-{quant}.gguf",
+        ),
+    )
+    for remote, rel in voice_pairs:
+        staged.append(
+            copy_hf_file(
+                repo_id=VOICE_REPO,
+                revision=revisions[VOICE_REPO],
+                remote_path=remote,
+                destination=bundle_dir / rel,
+                link_mode=args.link_mode,
+                dry_run=args.dry_run,
+            )
+        )
+    staged.append(
+        copy_hf_file(
+            repo_id=asr_repo,
+            revision=revisions[asr_repo],
+            remote_path=asr_remote_path,
+            destination=bundle_dir / "asr" / "eliza-1-asr.gguf",
+            link_mode=args.link_mode,
+            dry_run=args.dry_run,
+        )
+    )
+    staged.append(
+        copy_hf_file(
+            repo_id=asr_repo,
+            revision=revisions[asr_repo],
+            remote_path=asr_mmproj_remote_path,
+            destination=bundle_dir / "asr" / "eliza-1-asr-mmproj.gguf",
+            link_mode=args.link_mode,
+            dry_run=args.dry_run,
+        )
+    )
+    for remote, rel in VAD_FILES:
+        staged.append(
+            copy_hf_file(
+                repo_id=VAD_REPO,
+                revision=revisions[VAD_REPO],
+                remote_path=remote,
+                destination=bundle_dir / rel,
+                link_mode=args.link_mode,
+                dry_run=args.dry_run,
+            )
+        )
+
+    preset = write_voice_preset(
+        bundle_dir / "cache" / "voice-preset-default.bin",
+        dry_run=args.dry_run,
+    )
+    merge_lineage(bundle_dir, revisions, asr_repo=asr_repo, dry_run=args.dry_run)
+    write_license_notes(bundle_dir, dry_run=args.dry_run)
+
+    report = {
+        "schemaVersion": 1,
+        "generatedAt": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "tier": tier,
+        "bundleDir": str(bundle_dir),
+        "voiceQuant": quant,
+        "asrRepo": asr_repo,
+        "asrRemotePath": asr_remote_path,
+        "asrMmprojRemotePath": asr_mmproj_remote_path,
+        "sources": {
+            repo: {"revision": rev}
+            for repo, rev in revisions.items()
+        },
+        "files": staged,
+        "voicePreset": preset,
+        "dryRun": args.dry_run,
+    }
+    if not args.dry_run:
+        evidence = bundle_dir / "evidence" / "bundle-assets.json"
+        evidence.parent.mkdir(parents=True, exist_ok=True)
+        evidence.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    return report
+
+
+def upload_assets(args: argparse.Namespace) -> None:
+    if not args.upload_repo or args.dry_run:
+        return
+    api = HfApi()
+    api.create_repo(
+        repo_id=args.upload_repo,
+        repo_type="model",
+        private=not args.public,
+        exist_ok=True,
+    )
+    api.upload_folder(
+        repo_id=args.upload_repo,
+        repo_type="model",
+        folder_path=str(args.bundle_dir.resolve()),
+        path_in_repo=args.upload_prefix.strip("/"),
+        commit_message=f"Stage Eliza-1 {args.tier} voice/ASR/VAD assets",
+        allow_patterns=[
+            "tts/**",
+            "asr/**",
+            "vad/**",
+            "cache/voice-preset-default.bin",
+            "evidence/bundle-assets.json",
+            "lineage.json",
+            "licenses/LICENSE.voice",
+            "licenses/LICENSE.asr",
+            "licenses/LICENSE.vad",
+        ],
+    )
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--tier", required=True, choices=tuple(VOICE_QUANT_BY_TIER))
+    ap.add_argument("--bundle-dir", required=True, type=Path)
+    ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--link-mode",
+        choices=("copy", "hardlink"),
+        default="copy",
+        help=(
+            "How to materialize Hub cache files in the bundle. `hardlink` "
+            "deduplicates repeated tier assets on the same filesystem and "
+            "falls back to copy if linking is unavailable."
+        ),
+    )
+    ap.add_argument(
+        "--asr-repo",
+        default=None,
+        help="Override ASR GGUF model repo. Defaults by tier.",
+    )
+    ap.add_argument(
+        "--asr-file",
+        default=None,
+        help=(
+            "Exact ASR GGUF file path inside --asr-repo. Defaults to a "
+            "preferred quant."
+        ),
+    )
+    ap.add_argument(
+        "--asr-mmproj-file",
+        default=None,
+        help="Exact ASR mmproj GGUF file path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--upload-repo",
+        default=None,
+        help="Optional HF repo id to upload the staged asset subset to.",
+    )
+    ap.add_argument(
+        "--upload-prefix",
+        default="",
+        help="Optional path prefix inside --upload-repo.",
+    )
+    ap.add_argument("--public", action="store_true")
+    return ap.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    report = stage_assets(args)
+    upload_assets(args)
+    print(json.dumps(report, indent=2, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

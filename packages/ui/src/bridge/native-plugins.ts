@@ -109,6 +109,22 @@ export interface MobileSignalsOpenSettingsResult {
   reason: string | null;
 }
 
+export type MobileSignalsPermissionTarget =
+  | "all"
+  | "health"
+  | "screenTime"
+  | "notifications";
+
+export interface MobileSignalsRequestPermissionsOptions {
+  target?: MobileSignalsPermissionTarget;
+}
+
+export interface AppleCalendarPermissionStatus {
+  calendar: "granted" | "denied" | "prompt" | "restricted";
+  canRequest: boolean;
+  reason?: string | null;
+}
+
 export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
@@ -405,7 +421,9 @@ export interface SystemPluginLike extends NativePlugin {
 
 export interface MobileSignalsPluginLike extends NativePlugin {
   checkPermissions(): Promise<MobileSignalsPermissionStatus>;
-  requestPermissions(): Promise<MobileSignalsPermissionStatus>;
+  requestPermissions(
+    options?: MobileSignalsRequestPermissionsOptions,
+  ): Promise<MobileSignalsPermissionStatus>;
   openSettings(options?: {
     target?: MobileSignalsSettingsTarget;
   }): Promise<MobileSignalsOpenSettingsResult>;
@@ -428,6 +446,11 @@ export interface MobileSignalsPluginLike extends NativePlugin {
     eventName: "signal",
     listenerFunc: (event: MobileSignalsSignal) => void,
   ): Promise<PluginListenerHandle>;
+}
+
+export interface AppleCalendarPluginLike extends NativePlugin {
+  checkPermissions?(): Promise<AppleCalendarPermissionStatus>;
+  requestPermissions?(): Promise<AppleCalendarPermissionStatus>;
 }
 
 export interface TalkModePermissionStatus {
@@ -584,6 +607,10 @@ export function getTalkModePlugin(): TalkModePluginLike {
 
 export function getMobileSignalsPlugin(): MobileSignalsPluginLike {
   return getNativePlugin<MobileSignalsPluginLike>("MobileSignals");
+}
+
+export function getAppleCalendarPlugin(): AppleCalendarPluginLike {
+  return getNativePlugin<AppleCalendarPluginLike>("AppleCalendar");
 }
 
 export function getAppBlockerPlugin(): AppBlockerPluginLike {

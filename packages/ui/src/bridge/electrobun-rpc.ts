@@ -114,6 +114,28 @@ export interface DesktopRuntimeModeInfo {
   externalApiSource?: string | null;
 }
 
+export interface WorkspaceFolderPickResult {
+  canceled: boolean;
+  path: string;
+  bookmark: string | null;
+}
+
+export interface StateDirMigrationResult {
+  ok: boolean;
+  migrated: boolean;
+  fromPath: string;
+  toPath: string;
+  error?: string;
+  skippedReason?: "same-path" | "source-missing" | "source-not-directory";
+}
+
+export interface WorkspaceFolderBookmarkResolveResult {
+  ok: boolean;
+  path: string;
+  stale?: boolean;
+  error?: string;
+}
+
 export async function scanProviderCredentials(): Promise<DetectedProvider[]> {
   const result = await invokeDesktopBridgeRequest<{
     providers: DetectedProvider[];
@@ -129,6 +151,46 @@ export async function inspectExistingElizaInstall(): Promise<ExistingElizaInstal
   return invokeDesktopBridgeRequest<ExistingElizaInstallInfo>({
     rpcMethod: "agentInspectExistingInstall",
     ipcChannel: "agent:inspectExistingInstall",
+  });
+}
+
+export async function pickDesktopWorkspaceFolder(options?: {
+  defaultPath?: string;
+  promptTitle?: string;
+}): Promise<WorkspaceFolderPickResult | null> {
+  return invokeDesktopBridgeRequest<WorkspaceFolderPickResult>({
+    rpcMethod: "desktopPickWorkspaceFolder",
+    ipcChannel: "desktop:pickWorkspaceFolder",
+    params: options ?? {},
+  });
+}
+
+export async function migrateDesktopStateDir(
+  fromPath: string,
+): Promise<StateDirMigrationResult | null> {
+  return invokeDesktopBridgeRequest<StateDirMigrationResult>({
+    rpcMethod: "agentMigrateStateDir",
+    ipcChannel: "agent:migrateStateDir",
+    params: { fromPath },
+  });
+}
+
+export async function resolveDesktopWorkspaceFolderBookmark(
+  bookmark: string,
+): Promise<WorkspaceFolderBookmarkResolveResult | null> {
+  return invokeDesktopBridgeRequest<WorkspaceFolderBookmarkResolveResult>({
+    rpcMethod: "desktopResolveWorkspaceFolderBookmark",
+    ipcChannel: "desktop:resolveWorkspaceFolderBookmark",
+    params: { bookmark },
+  });
+}
+
+export async function releaseDesktopWorkspaceFolderBookmarks(): Promise<{
+  ok: true;
+} | null> {
+  return invokeDesktopBridgeRequest<{ ok: true }>({
+    rpcMethod: "desktopReleaseWorkspaceFolderBookmarks",
+    ipcChannel: "desktop:releaseWorkspaceFolderBookmarks",
   });
 }
 

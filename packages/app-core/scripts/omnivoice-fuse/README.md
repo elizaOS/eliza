@@ -171,8 +171,132 @@ fallback" path.
 - `verify-symbols.mjs` — post-build symbol probe. Runs `nm` (or
                        `objdump -T` on PE) against the produced
                        binary/library and asserts both `llama_*` and
-                       `omnivoice_*` exports are present.
+                       concrete OmniVoice `ov_*` exports are present.
+                       Writes `OMNIVOICE_FUSE_VERIFY.json` beside the
+                       artifact on both pass and fail.
 - `patches/`         — directory for `.patch` files keyed to specific
                        omnivoice or ggml commit drifts. Each patch is
                        applied with `git apply --check` first; a failed
                        apply is a hard error.
+- `ffi.h`            — C ABI v1 for `libelizainference`. Single source
+                       of truth for the symbol set the fused build
+                       exposes. Consumed by the Bun FFI loader at
+                       `src/services/local-inference/voice/ffi-bindings.ts`
+                       and by future Rust / Swift / Python bridges.
+- `ffi-stub.c`       — Reference C implementation that builds into
+                       `libelizainference_stub.{dylib,so}`. Lifecycle
+                       (`create`/`destroy`) works; every entry that
+                       requires the real fused build returns
+                       `ELIZA_ERR_NOT_IMPLEMENTED`. Used by
+                       `ffi-bindings.test.ts` for end-to-end loader
+                       validation without the fused dylib.
+- `Makefile`         — Builds the stub. `make` produces the
+                       platform-default artifact; `make verify` lists
+                       the exported `eliza_inference_*` symbols.
+
+## C ABI v1 (`ffi.h`)
+
+The fused build (and the stub) export exactly these symbols. Bump
+`ELIZA_INFERENCE_ABI_VERSION` in `ffi.h` AND
+`ELIZA_INFERENCE_ABI_VERSION` in
+`packages/app-core/src/services/local-inference/voice/ffi-bindings.ts`
+in lockstep on any breaking shape change — the loader checks the
+version at `dlopen` time and refuses to bind a mismatched library.
+
+| Symbol                              | Purpose                                                     |
+| ----------------------------------- | ----------------------------------------------------------- |
+| `eliza_inference_abi_version`       | Returns the static ABI version string ("1" today).          |
+| `eliza_inference_create`            | Allocate a per-engine `EliInferenceContext` from a bundle.  |
+| `eliza_inference_destroy`           | Free a context (idempotent on NULL).                        |
+| `eliza_inference_mmap_acquire`      | Lazy-page weights for a region (`tts`/`asr`/`text`/`dflash`). |
+| `eliza_inference_mmap_evict`        | Release a voice-only region; backends may madvise pages or unload ASR/TTS state. |
+| `eliza_inference_tts_synthesize`    | Synchronous OmniVoice forward → fp32 PCM @ 24 kHz.          |
+| `eliza_inference_asr_transcribe`    | Synchronous ASR forward → UTF-8 transcript.                 |
+| `eliza_inference_free_string`       | Free heap strings the library handed back (errors, future transcript buffers). |
+
+Implementation note: ABI v1 completes real TTS and ASR on macOS Metal.
+TTS keeps the OmniVoice LM / MaskGIT path on the selected accelerator. On
+Apple Metal, the audio tokenizer / DAC codec region is pinned to a CPU-only
+scheduler inside the same process; this avoids the previously observed
+merged-ggml Metal DAC decode stall after `[TTS] Decode` without launching a
+second model runtime or duplicating model lifecycle state. ASR uses llama.cpp
+`mtmd` with a qwen3a backport for Qwen3-ASR GGUF bundles and requires the
+canonical bundle files `asr/eliza-1-asr.gguf` and
+`asr/eliza-1-asr-mmproj.gguf`; missing or ambiguous ASR assets remain a hard
+`ELIZA_ERR_BUNDLE_INVALID` failure.
+
+All errors flow through a `char ** out_error` parameter that the
+library populates with a heap-allocated NUL-terminated message.
+Callers MUST free those messages via `eliza_inference_free_string`.
+Negative return values map to the `ELIZA_ERR_*` codes declared in
+`ffi.h` — the JS binding re-projects them onto
+`VoiceLifecycleError.code` (`ram-pressure`, `mmap-fail`,
+`kernel-missing`, `disarm-failed`).
+
+## Loading the library from JS
+
+Production loader (Bun runtime via Electrobun + Capacitor):
+
+```ts
+import { loadElizaInferenceFfi } from
+  "@elizaos/app-core/services/local-inference/voice/ffi-bindings";
+const ffi = loadElizaInferenceFfi("/path/to/libelizainference.dylib");
+const ctx = ffi.create(bundleRoot);
+ffi.mmapAcquire(ctx, "tts");
+const out = new Float32Array(24_000 * 4);
+const samples = ffi.ttsSynthesize({
+  ctx, text: "hello world", speakerPresetId: null, out,
+});
+ffi.mmapEvict(ctx, "tts");
+ffi.destroy(ctx);
+ffi.close();
+```
+
+The loader throws `VoiceLifecycleError({code:"kernel-missing"})` when
+the runtime is not Bun, when `dlopen` fails, or when the library's
+ABI version disagrees with the binding. It does NOT fall back to a
+stub on failure — per `packages/inference/AGENTS.md` §3 + §9, every
+startup precondition is a structured throw.
+
+## Building the stub for tests
+
+```sh
+make -C packages/app-core/scripts/omnivoice-fuse
+# → libelizainference_stub.dylib (macOS) or .so (linux)
+
+# Symbol verification:
+nm -gU libelizainference_stub.dylib | grep eliza_inference_
+
+# Fail-closed real-library smoke. This intentionally renames the stub
+# as libelizainference and verifies the real fused-symbol checker
+# rejects it with an OMNIVOICE_FUSE_VERIFY.json failure report:
+make -C packages/app-core/scripts/omnivoice-fuse verify-stub-rejected
+
+# JS-side coverage (requires Bun on PATH for the integration scenarios):
+cd packages/app-core
+bunx vitest run src/services/local-inference/voice/ffi-bindings.test.ts
+```
+
+The test harness spawns a `bun -e` subprocess that loads the stub
+dylib via `bun:ffi` and exercises `create`/`destroy`/`mmapEvict`/
+`ttsSynthesize`/ABI-mismatch scenarios. The vitest worker itself runs
+on Node 22 (no `bun:ffi`), so the pure-unit cases assert that the
+loader throws structurally on the no-Bun path.
+
+## Verifying a real fused artifact
+
+After `build-llama-cpp-dflash.mjs --target <fused-target>` installs
+`libelizainference`, the build runs the same verifier as this CLI:
+
+```sh
+node packages/app-core/scripts/omnivoice-fuse/verify-symbols.mjs \
+  --out-dir <installed-bin-dir> \
+  --target darwin-arm64-metal-fused
+```
+
+The verifier rejects stub-only artifacts, missing `llama_*` exports
+unless Darwin re-exports `libllama.dylib`, missing ABI v1
+`eliza_inference_*` entries, and missing concrete OmniVoice entries
+such as `ov_init`, `ov_synthesize`, and `ov_audio_free`. A failed probe
+exits non-zero and leaves `OMNIVOICE_FUSE_VERIFY.json` in the output
+directory for build reports.

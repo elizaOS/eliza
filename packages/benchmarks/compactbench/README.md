@@ -37,6 +37,8 @@ packages/benchmarks/compactbench/
     ts_bridge.ts               TS shim that dispatches to TS strategies
     compactors/__init__.py     Five `compactbench.Compactor` subclasses
     cerebras_provider.py       OpenAI-compatible provider wired at Cerebras
+    valid_hits.py              Conservative response-level failure analysis
+    analyze_valid_hits.py        Rerun cases and emit repaired benchmark scores
   tests/
     test_bridge.py
     test_compactors.py
@@ -79,6 +81,65 @@ COMPACT_METHOD=PromptStrippingPassthroughCompactor ./run.sh
 ship in the git repo, not on PyPI. Override the location with
 `COMPACTBENCH_BENCHMARKS_DIR=/path/to/benchmarks/public`.
 
+## Failure analysis
+
+CompactBench's upstream scorer is lexical: it lowercases, collapses whitespace,
+and checks for exact substrings. That is deterministic, but it misclassifies
+valid answers such as "using regex to parse HTML" for an expected phrase of
+"use regex to parse HTML", or "No, trust user input without validation is not
+still the plan" for a `forbidden_absent` probe. The elizaOS harness treats the
+repaired scorer as the benchmark scorer.
+
+Use `analyze_valid_hits.py` when a run has failures that need inspection:
+
+```bash
+python analyze_valid_hits.py \
+  --method "$(pwd)/eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor" \
+  --suite starter \
+  --benchmarks-dir /tmp/compactbench-upstream/benchmarks/public \
+  --case-count 1 \
+  --drift-cycles 2 \
+  --output /tmp/compactbench-valid-hits.jsonl
+```
+
+The script reruns the same case/drift loop and writes raw item responses,
+artifact context, `overall_score`, `benchmark_quality_score`, and
+`raw_lexical_overall_score` for scorer-audit telemetry. The repaired scorer only
+uses the expected check and the model response, never the strategy name,
+artifact internals, template id, or case id. It can also lower a
+`forbidden_absent` item when the lexical scorer misses a morphological forbidden
+paraphrase such as "committing directly to the main branch".
+
+Before scoring, generated cases are repaired when the same normalized phrase is
+both required in `locked_decisions` and forbidden in `forbidden_behaviors`.
+Locked decisions win: conflicting forbidden values and their impossible
+`forbidden_absent` probes are removed from the generated case. The run records
+`repaired_expected_conflicts` and `removed_invalid_items` so repairs remain
+auditable.
+
+When iterating on scorer rules, rescore an existing analysis file without model
+calls:
+
+```bash
+python analyze_valid_hits.py \
+  --rescore-from /tmp/compactbench-valid-hits.jsonl \
+  --output /tmp/compactbench-valid-hits.rescored.jsonl
+```
+
+To debug one real miss cheaply, add `--template-key decision_override_starter_v1`
+and `--seed-slot 2`.
+
+For one command that writes the raw run and then performs the repaired response
+capture pass:
+
+```bash
+python run_cerebras.py \
+  --method "$(pwd)/eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor" \
+  --suite starter \
+  --score \
+  --analyze-valid-hits
+```
+
 ## Tests
 
 ```bash
@@ -86,6 +147,7 @@ cd packages/benchmarks/compactbench
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest tests/                    # excludes live_test_cerebras.py by default
+pytest tests/test_valid_hits.py   # focused valid-hit analyzer tests
 COMPACTBENCH_LIVE=1 pytest tests/live_test_cerebras.py
 ```
 
@@ -103,6 +165,12 @@ COMPACTBENCH_LIVE=1 pytest tests/live_test_cerebras.py
   (summarization model used by the strategies) and the Python side (the
   CompactBench judge) hit `https://api.cerebras.ai/v1/chat/completions`
   with `gpt-oss-120b`.
+- **Judge refusals are framed out.** Some CompactBench templates contain
+  unsafe-looking synthetic strings such as "commit credentials to git
+  history". The Cerebras provider adds a neutral benchmark system prompt so
+  the judge reports recorded summary text descriptively instead of refusing.
+  It does not include answers, and explicit `CompletionRequest.system` values
+  still take precedence.
 - **Registry mutation.** CompactBench v0.1.0 has no public provider
   registration API — `register_cerebras_provider()` mutates
   `compactbench.providers._REGISTRY` directly. If a future release seals

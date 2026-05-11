@@ -1,5 +1,5 @@
 import type { Plugin } from "../../types/index.ts";
-import { createPlanAction } from "./actions/create-plan.ts";
+import { planAction } from "./actions/plan.ts";
 import { PlanningService } from "./services/planning-service.ts";
 
 export function createAdvancedPlanningPlugin(): Plugin {
@@ -7,7 +7,7 @@ export function createAdvancedPlanningPlugin(): Plugin {
 		name: "advanced-planning",
 		description: "Built-in advanced planning and execution capabilities",
 		providers: [],
-		actions: [createPlanAction],
+		actions: [planAction],
 		services: [PlanningService],
 	};
 }

@@ -1,5 +1,6 @@
 import os from "node:os";
 import type { RouteRequestContext } from "@elizaos/core";
+import { PostBugReportRequestSchema } from "@elizaos/shared";
 
 export const DEFAULT_BUG_REPORT_REPO = "eliza-ai/eliza";
 export const BUG_REPORT_REPO_ENV_KEY = "ELIZA_BUG_REPORT_REPO";
@@ -284,13 +285,19 @@ export async function handleBugReportRoutes(
       return true;
     }
 
-    const body = await readJsonBody<BugReportBody>(req, res);
-    if (!body) return true;
-
-    if (!body.description?.trim() || !body.stepsToReproduce?.trim()) {
-      error(res, "description and stepsToReproduce are required", 400);
+    const rawBug = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBug === null) return true;
+    const parsedBug = PostBugReportRequestSchema.safeParse(rawBug);
+    if (!parsedBug.success) {
+      error(
+        res,
+        parsedBug.error.issues[0]?.message ??
+          "description and stepsToReproduce are required",
+        400,
+      );
       return true;
     }
+    const body = parsedBug.data;
 
     if (getRemoteBugReportUrl()) {
       try {

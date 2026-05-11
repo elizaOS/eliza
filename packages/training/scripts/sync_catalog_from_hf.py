@@ -1,10 +1,10 @@
-"""Walk milady-ai/* repos and emit a catalog diff for the local-inference catalog.
+"""Walk elizalabs/eliza-1-* repos and emit a catalog diff for local inference.
 
 The local-inference catalog (`packages/app-core/src/services/local-inference/catalog.ts`)
 is the source of truth for which models the phone offers and where it
 downloads them from. This script:
 
-  1. Lists every repo under the milady-ai HF org.
+  1. Lists every Eliza-1 repo under the elizalabs HF org.
   2. For each repo, reads `manifest.json` and the GGUF metadata (via the
      `huggingface_hub` repo_info API; `lfs.sha256` and `size` come for
      free with `files_metadata=True`).
@@ -18,12 +18,12 @@ schema is intentionally tiny:
     {
       "version": 1,
       "generatedAt": "<UTC ISO>",
-      "org": "milady-ai",
+      "org": "elizalabs",
       "entries": [
         {
-          "id": "qwen3.5-4b-milady-optimized",
-          "hfRepo": "milady-ai/qwen3.5-4b-milady-optimized",
-          "ggufFile": "qwen3.5-4b-milady-optimized.gguf",
+          "id": "eliza-1-1_7b",
+          "hfRepo": "elizalabs/eliza-1-1_7b",
+          "ggufFile": "text/eliza-1-1_7b-q4_k_m.gguf",
           "sha256": "<64-hex>",
           "sizeBytes": 0,
           "manifest": { ... full manifest.json contents ... }
@@ -36,13 +36,13 @@ Usage::
 
     # No HF_TOKEN required for public repos.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org milady-ai \\
+        --org elizalabs \\
         --out reports/porting/2026-05-10/catalog-diff.json
 
     # Limit to a specific naming convention.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org milady-ai \\
-        --filter-suffix milady-optimized \\
+        --org elizalabs \\
+        --filter-prefix eliza-1- \\
         --out diff.json
 """
 
@@ -154,6 +154,7 @@ def _gguf_sibling(api, repo_id: str) -> tuple[str, str, int] | None:
 def collect_entries(
     *,
     org: str,
+    filter_prefix: str | None,
     filter_suffix: str | None,
 ) -> list[CatalogEntry]:
     from huggingface_hub import HfApi
@@ -167,6 +168,9 @@ def collect_entries(
     entries: list[CatalogEntry] = []
     for repo in repos:
         repo_id = repo.id
+        repo_name = repo_id.split("/", 1)[1] if "/" in repo_id else repo_id
+        if filter_prefix and not repo_name.startswith(filter_prefix):
+            continue
         if filter_suffix and not repo_id.endswith(f"-{filter_suffix}"):
             continue
         log.info("inspecting %s", repo_id)
@@ -182,8 +186,8 @@ def collect_entries(
             continue
         gguf_file, sha, size = gguf_info
         # Catalog id == bare repo name (after the org/), e.g.
-        # `milady-ai/qwen3.5-4b-milady-optimized` -> `qwen3.5-4b-milady-optimized`.
-        catalog_id = repo_id.split("/", 1)[1]
+        # `elizalabs/eliza-1-1_7b` -> `eliza-1-1_7b`.
+        catalog_id = repo_name
         entries.append(CatalogEntry(
             id=catalog_id,
             hf_repo=repo_id,
@@ -214,12 +218,17 @@ def write_diff(entries: list[CatalogEntry], out_path: Path, *, org: str) -> None
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--org", default="milady-ai",
-                    help="HF org to scan (default: milady-ai).")
+    ap.add_argument("--org", default="elizalabs",
+                    help="HF org to scan (default: elizalabs).")
+    ap.add_argument(
+        "--filter-prefix", default="eliza-1-",
+        help="If set, include only repos whose bare name starts with this prefix "
+             "(default: eliza-1-).",
+    )
     ap.add_argument(
         "--filter-suffix", default=None,
         help="If set, include only repos whose name ends with -<suffix>. "
-             "Useful values: milady-optimized, milady-drafter.",
+             "Useful for one-off legacy scans; leave unset for Eliza-1.",
     )
     ap.add_argument(
         "--out", type=Path, required=True,
@@ -227,7 +236,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    entries = collect_entries(org=args.org, filter_suffix=args.filter_suffix)
+    entries = collect_entries(
+        org=args.org,
+        filter_prefix=args.filter_prefix,
+        filter_suffix=args.filter_suffix,
+    )
     write_diff(entries, args.out, org=args.org)
     return 0
 

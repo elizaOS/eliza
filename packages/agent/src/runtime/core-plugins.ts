@@ -33,7 +33,10 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  * either from a cloud provider or from the upcoming `llama-cpp-capacitor`
  * JNI binding (separate task).
  */
-export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
+export const MOBILE_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-sql",
+  "@elizaos/plugin-background-runner",
+];
 
 /**
  * ElizaOS-only overlay app plugins. Used when the runtime is the custom
@@ -53,6 +56,22 @@ export const ELIZAOS_ANDROID_CORE_PLUGINS: readonly string[] = [
   "@elizaos/app-wifi",
   "@elizaos/app-contacts",
   "@elizaos/app-phone",
+];
+
+/**
+ * Terminal / shell / coding-tool plugins available on the privileged AOSP
+ * build only. The privileged Android service spawns bun under the priv_app
+ * SELinux context which permits `execve`, so shell, native file actions, and
+ * subprocess-backed coding-agent orchestration can work where they would not on
+ * stock Android.
+ *
+ * Stock Play-Store Android cannot have these — `execve` of arbitrary binaries
+ * is blocked by the default SELinux policy and would also fail Play review.
+ */
+export const ELIZAOS_ANDROID_TERMINAL_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+  "agent-orchestrator",
 ];
 
 /** Core plugins that should always be loaded. collectPluginNames() seeds from this list only. */

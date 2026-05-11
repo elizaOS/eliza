@@ -5,6 +5,28 @@
  * for containers, auth, credits, bridge messaging, and agent state snapshots.
  */
 
+export type {
+  CloudCodingAgent,
+  CloudCodingContainerSession,
+  CloudCodingContainerStatus,
+  CloudCodingPatch,
+  CloudCodingPatchFormat,
+  CloudCodingPromotion,
+  CloudCodingSyncDirection,
+  CloudCodingSyncResult,
+  CloudVfsBundle,
+  CloudVfsDeletedFile,
+  CloudVfsFile,
+  CloudVfsFileEncoding,
+  CloudVfsSourceKind,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
+} from "@elizaos/shared";
+
 // ─── Container Types ────────────────────────────────────────────────────────
 
 export type ContainerStatus =

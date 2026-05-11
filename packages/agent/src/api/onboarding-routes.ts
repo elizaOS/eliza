@@ -10,6 +10,7 @@ import {
   normalizeLinkedAccountFlagsConfig,
   normalizeOnboardingCredentialInputs,
   normalizeServiceRoutingConfig,
+  PostOnboardingRequestSchema,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -343,39 +344,19 @@ export async function handleOnboardingRoutes(
 
   // ── POST /api/onboarding ────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/onboarding") {
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-
-    // ── Validate required fields ──────────────────────────────────────────
-    if (
-      !body.name ||
-      typeof body.name !== "string" ||
-      !(body.name as string).trim()
-    ) {
-      error(res, "Missing or invalid agent name", 400);
-      return true;
-    }
-    const hasLegacyOnboardingFields = [
-      "connection",
-      "runMode",
-      "cloudProvider",
-      "provider",
-      "providerApiKey",
-      "primaryModel",
-      "nanoModel",
-      "smallModel",
-      "mediumModel",
-      "largeModel",
-      "megaModel",
-    ].some((key) => Object.hasOwn(body, key));
-    if (hasLegacyOnboardingFields) {
+    const rawOnboarding = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawOnboarding === null) return true;
+    const parsedOnboarding =
+      PostOnboardingRequestSchema.safeParse(rawOnboarding);
+    if (!parsedOnboarding.success) {
       error(
         res,
-        "legacy onboarding payloads are no longer supported; send deploymentTarget, linkedAccounts, serviceRouting, and credentialInputs",
+        parsedOnboarding.error.issues[0]?.message ?? "Invalid request body",
         400,
       );
       return true;
     }
+    const body = parsedOnboarding.data as Record<string, unknown>;
 
     let config = state.config;
     try {

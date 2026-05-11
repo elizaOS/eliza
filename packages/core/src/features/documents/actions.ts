@@ -37,6 +37,7 @@ type DocumentSubAction =
 	| "import_url";
 
 type DocumentActionParameters = {
+	action?: string;
 	subaction?: string;
 	query?: string;
 	id?: string;
@@ -143,7 +144,8 @@ function inferSubAction(
 	params: DocumentActionParameters,
 	message: Memory,
 ): DocumentSubAction | null {
-	const explicit = normalizeSubAction(params.subaction);
+	const explicit =
+		normalizeSubAction(params.action) ?? normalizeSubAction(params.subaction);
 	if (explicit) return explicit;
 
 	const text = message.content?.text ?? "";
@@ -999,13 +1001,13 @@ export const documentAction: Action = {
 	contextGate: { anyOf: ["documents"] },
 	roleGate: { minRole: "USER" },
 	description:
-		"List, search, read, write, edit, delete, and import stored documents. Select one subaction and provide the fields needed for that operation.",
+		"List, search, read, write, edit, delete, and import stored documents. Select one action and provide the fields needed for that operation.",
 	descriptionCompressed:
-		"Dispatches document operations using subaction: list, search, read, write, edit, delete, import_file, import_url.",
+		"Dispatches document operations using action: list, search, read, write, edit, delete, import_file, import_url.",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{
-			name: "subaction",
+			name: "action",
 			description:
 				"Document operation to perform: list, search, read, write, edit, delete, import_file, or import_url.",
 			required: true,

@@ -18,6 +18,7 @@ import type {
   BackendPlan,
   LocalInferenceBackend,
 } from "./backend";
+import { gpuLayersForKvOffload } from "./backend";
 import {
   buildModelHash,
   type CacheStatsEntry,
@@ -384,6 +385,21 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
 
 function normalizeGpuLayers(value: number | "auto"): string {
   return value === "auto" ? "99" : String(value);
+}
+
+function resolveDflashGpuLayers(
+  overrides: BackendPlan["overrides"],
+  fallback: number | "auto",
+): number | "auto" {
+  if (typeof overrides?.gpuLayers === "number") return overrides.gpuLayers;
+  if (overrides?.gpuLayers === "auto") return "auto";
+  if (overrides?.gpuLayers === "max") return "auto";
+  if (overrides?.kvOffload !== undefined) {
+    const mapped = gpuLayersForKvOffload(overrides.kvOffload);
+    return mapped === "max" ? "auto" : mapped;
+  }
+  if (overrides?.useGpu === false) return 0;
+  return fallback;
 }
 
 function findPython(): string | null {
@@ -815,10 +831,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       typeof overrides?.contextSize === "number"
         ? overrides.contextSize
         : dflash.contextSize;
-    const gpuLayers =
-      typeof overrides?.gpuLayers === "number"
-        ? overrides.gpuLayers
-        : dflash.gpuLayers;
+    const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
 
     await this.start(
       {
@@ -877,9 +890,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       extra: `ctx=${plan.contextSize};parallel=${parallel}`,
     });
     const slotDir = slotSavePath(modelHash);
-    const conversationKvDir = path.join(slotDir, "conversations");
+    // llama-server's slot API treats `filename` as a basename relative to
+    // --slot-save-path. Keep per-conversation KV files in that same root so
+    // save and restore agree on the exact path.
+    const conversationKvDir = slotDir;
     fs.mkdirSync(slotDir, { recursive: true });
-    fs.mkdirSync(conversationKvDir, { recursive: true });
     // Fire-and-forget eviction: stale slot files on disk shouldn't block
     // server startup, but we don't want them to grow without bound.
     void evictExpired(slotDir, DEFAULT_CACHE_TTLS).catch(() => {

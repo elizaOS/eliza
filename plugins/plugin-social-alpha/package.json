@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-social-alpha",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
   "type": "module",
   "main": "dist/index.js",
@@ -16,8 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "bunx vite build",
-    "dev": "vite",
+    "build": "bun --bun vite build",
+    "dev": "bun --bun vite",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo",
     "lint": "echo \"Lint skipped for release\"",
@@ -27,7 +27,7 @@
     "typecheck": "echo \"Typecheck skipped for release\""
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "bignumber.js": "^11.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -39,7 +39,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

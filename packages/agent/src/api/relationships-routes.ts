@@ -6,6 +6,7 @@ import type {
   UUID,
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
+import { PostRelationshipLinkRequestSchema } from "@elizaos/shared";
 
 type RelationshipsFeatureRuntime = IAgentRuntime & {
   enableRelationships?: () => Promise<void>;
@@ -87,11 +88,6 @@ async function getRelationshipsGraphService(
   const service = runtime.getService("relationships");
   return isRelationshipsServiceWithGraph(service) ? service : null;
 }
-
-type LinkRequestBody = {
-  targetEntityId?: unknown;
-  evidence?: unknown;
-};
 
 function asEvidenceRecord(value: unknown): RelationshipsMergeProposalEvidence {
   if (value === undefined || value === null) {
@@ -204,18 +200,21 @@ export async function handleRelationshipsRoutes(
         error(res, "Missing source entity id.", 400);
         return true;
       }
-      const body = await readJsonBody<LinkRequestBody>(req, res);
-      if (!body) return true;
-      const targetEntityId =
-        typeof body.targetEntityId === "string" ? body.targetEntityId : "";
-      if (!targetEntityId) {
-        error(res, "targetEntityId is required.", 400);
+      const rawLink = await readJsonBody<Record<string, unknown>>(req, res);
+      if (rawLink === null) return true;
+      const parsedLink = PostRelationshipLinkRequestSchema.safeParse(rawLink);
+      if (!parsedLink.success) {
+        error(
+          res,
+          parsedLink.error.issues[0]?.message ?? "targetEntityId is required.",
+          400,
+        );
         return true;
       }
-      const evidence = asEvidenceRecord(body.evidence);
+      const evidence = asEvidenceRecord(parsedLink.data.evidence);
       const candidateId = await relationshipsGraph.proposeMerge(
         sourceEntityId as UUID,
-        targetEntityId as UUID,
+        parsedLink.data.targetEntityId as UUID,
         evidence,
       );
       json(res, { data: { id: candidateId, status: "pending" } }, 201);

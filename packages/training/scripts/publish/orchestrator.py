@@ -10,24 +10,31 @@ Stages, in order, with hard exits on failure:
 1. **Layout validation.** Walk the bundle directory and verify it
    conforms to ``packages/inference/AGENTS.md`` §2 (text/, tts/, asr/,
    vision/, dflash/, cache/, evals/, licenses/). Missing required files
-   or sidecars are publish-blocking.
+   or sidecars are publish-blocking. The frozen voice artifacts and
+   ``cache/voice-preset-default.bin`` must be present.
 2. **Kernel verification.** Run the
    ``packages/inference/verify`` harness for the tier's supported
    backends. CPU + Vulkan are runnable in CI; Metal is hardware-only —
    the orchestrator detects Metal as NEEDS-HARDWARE and either consumes
    a previously-recorded ``metal_verify.json`` from a verified host
    (``--metal-verification PATH``) or refuses to publish.
-3. **Eval gates.** Load ``evals/aggregate.json`` from the bundle dir,
+3. **Release evidence.** Validate ``evidence/release.json`` and
+   ``checksums/SHA256SUMS``. The evidence sidecar must declare final
+   weights, hashes, eval outputs, licenses, runtime-dispatch reports,
+   platform evidence, HF destination, and size-first repo IDs. The
+   checksum manifest must cover the actual bytes that will be uploaded.
+4. **Eval gates.** Load ``evals/aggregate.json`` from the bundle dir,
    run ``apply_gates(results, tier)``, refuse to proceed unless
    ``passed: true``.
-4. **Manifest build.** Assemble inputs into ``build_manifest`` from the
+5. **Manifest build.** Assemble inputs into ``build_manifest`` from the
    manifest module. ``defaultEligible`` is True iff every required gate
    is green and every supported backend verified pass; the manifest
-   validator enforces the same rule.
-5. **README render.** Render ``templates/README.md.j2`` with the
+   validator enforces the same rule. The voice section is emitted as
+   frozen and includes ``tts``, emotion tags, and singing capabilities.
+6. **README render.** Render ``templates/README.md.j2`` with the
    manifest as the data context. Same data, no marketing buzzwords, no
-   user-visible Qwen/Llama strings.
-6. **HF push.** Upload weights, manifest, README, licenses, eval blobs
+   user-visible upstream model-family strings.
+7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
    to ``elizalabs/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
@@ -64,14 +71,21 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
     SUPPORTED_BACKENDS_BY_TIER,
+    VOICE_PRESET_CACHE_PATH,
+    VOICE_QUANT_BY_TIER,
     Eliza1ManifestError,
     FileEntry,
     KernelVerification,
     LineageEntry,
     build_manifest,
     parse_text_ctx_from_filename,
+    required_voice_artifacts_for_tier,
+)
+from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
+    REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
 )
 
 # ---------------------------------------------------------------------------
@@ -86,6 +100,9 @@ EXIT_KERNEL_VERIFY_FAIL = 12
 EXIT_EVAL_GATE_FAIL = 13
 EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
+EXIT_RELEASE_EVIDENCE_FAIL = 16
+
+ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -95,10 +112,14 @@ EXIT_HF_PUSH_FAIL = 15
 REQUIRED_SUBDIRS: tuple[str, ...] = (
     "text",
     "tts",
+    "asr",
+    "vad",
     "dflash",
     "cache",
     "evals",
     "licenses",
+    "evidence",
+    "checksums",
 )
 
 # License blobs that must be present per inference/AGENTS.md §2.
@@ -108,32 +129,71 @@ REQUIRED_LICENSE_FILES: tuple[str, ...] = (
     "LICENSE.dflash",
     "LICENSE.eliza-1",
 )
+COMPONENT_LICENSE_FILES: Mapping[str, str] = {
+    "asr": "LICENSE.asr",
+    "vision": "LICENSE.vision",
+    "vad": "LICENSE.vad",
+    "embedding": "LICENSE.embedding",
+    "wakeword": "LICENSE.wakeword",
+}
 
+# Quantization recipe sidecars required by training/AGENTS.md §3. The
+# publish manifest builder consumes these as proof that the bundle flowed
+# through the matching recipes and that recipe/kernel layout pins are present.
+REQUIRED_QUANTIZATION_SIDECARS: Mapping[str, tuple[str, ...]] = {
+    "turboquant": ("turboquant.json", "fused_turboquant.json"),
+    "qjl": ("qjl_config.json",),
+    "polarquant": ("polarquant_config.json",),
+}
+REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
+    "kernel_target",
+    "block_layout_version",
+    "codebook_hash",
+    "per_block_tolerance",
+)
+
+RELEASE_EVIDENCE_PATH = Path("evidence/release.json")
+CHECKSUMS_PATH = Path("checksums/SHA256SUMS")
+REQUIRED_RELEASE_FINAL_FLAGS: tuple[str, ...] = (
+    "weights",
+    "hashes",
+    "evals",
+    "licenses",
+    "kernelDispatchReports",
+    "platformEvidence",
+    "sizeFirstRepoIds",
+)
+REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl",
+    "polar",
+)
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
-    "lite-0_6b": "low-RAM phones, CPU fallback",
-    "mobile-1_7b": "modern phones",
-    "desktop-9b": "laptops, 24GB phones, 48GB Mac",
-    "pro-27b": "96GB+ Mac, high-VRAM desktop",
-    "server-h200": "server / workstation",
+    "0_6b": "low-RAM phones, CPU fallback",
+    "1_7b": "modern phones",
+    "9b": "laptops, 24GB phones, 48GB Mac",
+    "27b": "96GB+ Mac, high-VRAM desktop",
+    "27b-256k": "server / workstation",
 }
 
-VOICE_BACKBONE_BY_TIER: Mapping[str, str] = {
-    "lite-0_6b": "omnivoice-0.6b",
-    "mobile-1_7b": "omnivoice-0.6b",
-    "desktop-9b": "omnivoice-1.7b",
-    "pro-27b": "omnivoice-1.7b",
-    "server-h200": "omnivoice-1.7b",
-}
+DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
+EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
+    "expressive_tag_faithfulness",
+    "expressive_mos",
+    "expressive_tag_leakage",
+)
 
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-    "lite-0_6b": (1500, 1800),
-    "mobile-1_7b": (3500, 4500),
-    "desktop-9b": (7000, 9500),
-    "pro-27b": (24000, 32000),
-    "server-h200": (48000, 64000),
+    "0_6b": (1500, 1800),
+    "1_7b": (3500, 4500),
+    "9b": (7000, 9500),
+    "27b": (24000, 32000),
+    "27b-256k": (48000, 64000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -192,7 +252,76 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
         raise OrchestratorError(
             f"missing sidecar: {path}", EXIT_MISSING_FILE
         )
-    return json.loads(path.read_text())
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise OrchestratorError(
+            f"invalid JSON sidecar {path}: {exc}",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        ) from exc
+    if not isinstance(data, dict):
+        raise OrchestratorError(
+            f"sidecar {path} must contain a JSON object",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    return data
+
+
+def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
+    for name in names:
+        for base in (bundle, bundle / "text", bundle / "dflash", bundle / "evals"):
+            candidate = base / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
+    found: list[Path] = []
+    for method, names in REQUIRED_QUANTIZATION_SIDECARS.items():
+        sidecar = _find_sidecar(bundle, names)
+        if sidecar is None:
+            raise OrchestratorError(
+                "bundle layout: missing quantization sidecar for "
+                f"{method}; expected one of {', '.join(names)} in bundle root, "
+                "text/, dflash/, or evals/",
+                EXIT_MISSING_FILE,
+            )
+        data = _read_sidecar(sidecar)
+        kernel_manifest = data.get("kernel_manifest")
+        if not isinstance(kernel_manifest, dict):
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} missing kernel_manifest object",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        missing_keys = [
+            key
+            for key in REQUIRED_KERNEL_MANIFEST_KEYS
+            if key not in kernel_manifest
+        ]
+        if missing_keys:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} has incomplete "
+                f"kernel_manifest; missing {missing_keys}",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        targets = kernel_manifest.get("kernel_target")
+        if not isinstance(targets, list) or not targets:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
+                "must be a non-empty array",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        found.append(sidecar)
+    return found
+
+
+def _license_files_for_layout(layout: Mapping[str, Sequence[Path]]) -> tuple[str, ...]:
+    names = list(REQUIRED_LICENSE_FILES)
+    for kind, name in COMPONENT_LICENSE_FILES.items():
+        if layout.get(kind):
+            names.append(name)
+    return tuple(names)
 
 
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
@@ -230,10 +359,40 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             "bundle layout: tts/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
+    required_tts = set(required_voice_artifacts_for_tier(ctx.tier))
+    tts_names = {p.name for p in out["tts"]}
+    missing_tts = sorted(required_tts - tts_names)
+    if missing_tts:
+        raise OrchestratorError(
+            "bundle layout: missing frozen voice artifact(s) in tts/: "
+            f"{missing_tts}",
+            EXIT_MISSING_FILE,
+        )
     if not out["dflash"]:
         raise OrchestratorError(
             "bundle layout: dflash/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    if not out["asr"]:
+        raise OrchestratorError(
+            "bundle layout: asr/ must contain at least one model file",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    if not out["vad"]:
+        raise OrchestratorError(
+            "bundle layout: vad/ must contain at least one VAD model file",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    voice_cache = bundle / VOICE_PRESET_CACHE_PATH
+    if not voice_cache.is_file():
+        raise OrchestratorError(
+            f"bundle layout: missing frozen voice cache {VOICE_PRESET_CACHE_PATH}",
+            EXIT_MISSING_FILE,
+        )
+    if voice_cache.stat().st_size == 0:
+        raise OrchestratorError(
+            f"bundle layout: empty frozen voice cache {VOICE_PRESET_CACHE_PATH}",
+            EXIT_MISSING_FILE,
         )
     if not out["cache"]:
         raise OrchestratorError(
@@ -242,7 +401,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
         )
 
     # Optional but if present must not be empty.
-    for opt in ("asr", "vision"):
+    for opt in ("vision", "embedding", "wakeword"):
         d = bundle / opt
         if d.is_dir():
             files = sorted(p for p in d.iterdir() if p.is_file())
@@ -252,7 +411,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
 
     # Licenses — every required blob must be present and non-empty.
     licenses_dir = bundle / "licenses"
-    for name in REQUIRED_LICENSE_FILES:
+    for name in _license_files_for_layout(out):
         p = licenses_dir / name
         if not p.is_file():
             raise OrchestratorError(
@@ -273,7 +432,461 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_MISSING_FILE,
         )
 
+    out["quantization_sidecars"] = _validate_quantization_sidecars(bundle)
+
     return out
+
+
+def validate_destination_repo(ctx: PublishContext) -> None:
+    expected = f"{ELIZA_1_HF_ORG}/eliza-1-{ctx.tier}"
+    if ctx.repo_id != expected:
+        raise OrchestratorError(
+            f"Eliza-1 bundle publishes must target {expected}; got {ctx.repo_id!r}. "
+            "Use a non-release publisher for experiments or custom checkpoints.",
+            EXIT_USAGE,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Stage 1b — release evidence
+# ---------------------------------------------------------------------------
+
+
+def _relative_file_paths(paths: Sequence[Path], bundle_root: Path) -> list[str]:
+    return [str(p.relative_to(bundle_root)) for p in paths]
+
+
+def _expected_payload_paths(
+    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+) -> list[str]:
+    """Return the files whose bytes must be covered by SHA256SUMS.
+
+    The generated manifest + README are intentionally absent here because
+    they are produced later by the orchestrator. ``checksums/SHA256SUMS``
+    is also absent to avoid a circular hash. Every input artifact that
+    reaches the HF upload path is included, including release evidence.
+    """
+
+    expected: list[str] = []
+    for kind_src in (
+        "text",
+        "tts",
+        "asr",
+        "vision",
+        "dflash",
+        "cache",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
+        expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
+
+    licenses_dir = ctx.bundle_dir / "licenses"
+    expected.extend(f"licenses/{name}" for name in _license_files_for_layout(layout))
+
+    evals_dir = ctx.bundle_dir / "evals"
+    expected.extend(
+        f"evals/{p.name}" for p in sorted(evals_dir.iterdir()) if p.is_file()
+    )
+
+    expected.extend(
+        _relative_file_paths(layout.get("quantization_sidecars", []), ctx.bundle_dir)
+    )
+    evidence_dir = ctx.bundle_dir / "evidence"
+    expected.extend(
+        str(p.relative_to(ctx.bundle_dir))
+        for p in sorted(evidence_dir.rglob("*"))
+        if p.is_file()
+    )
+
+    return sorted(set(expected))
+
+
+def _parse_sha256s(path: Path) -> dict[str, str]:
+    """Parse a standard ``sha256sum`` file.
+
+    Format accepted per line: ``<64 lowercase hex><space><space><path>``.
+    Empty lines and comments are ignored.
+    """
+
+    if not path.is_file():
+        raise OrchestratorError(
+            f"release evidence: missing {CHECKSUMS_PATH}",
+            EXIT_MISSING_FILE,
+        )
+
+    out: dict[str, str] = {}
+    for line_no, raw in enumerate(path.read_text().splitlines(), start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(None, 1)
+        if len(parts) != 2:
+            raise OrchestratorError(
+                f"{CHECKSUMS_PATH}:{line_no}: expected '<sha256>  <path>'",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        sha, rel = parts[0], parts[1].strip()
+        if len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+            raise OrchestratorError(
+                f"{CHECKSUMS_PATH}:{line_no}: invalid sha256 {sha!r}",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        out[rel] = sha
+    return out
+
+
+def _assert_checksum_coverage(
+    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+) -> None:
+    expected = _expected_payload_paths(ctx, layout)
+    recorded = _parse_sha256s(ctx.bundle_dir / CHECKSUMS_PATH)
+
+    missing = [rel for rel in expected if rel not in recorded]
+    if missing:
+        raise OrchestratorError(
+            "release evidence: checksum manifest missing required path(s): "
+            f"{missing}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    mismatched: list[str] = []
+    for rel in expected:
+        actual = _sha256_file(ctx.bundle_dir / rel)
+        if recorded[rel] != actual:
+            mismatched.append(rel)
+    if mismatched:
+        raise OrchestratorError(
+            "release evidence: checksum mismatch for path(s): "
+            f"{mismatched}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+
+def _write_checksum_manifest(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+) -> Path:
+    """Write checksums for all payload inputs except the checksum file itself."""
+
+    checksum_path = ctx.bundle_dir / CHECKSUMS_PATH
+    checksum_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"{_sha256_file(ctx.bundle_dir / rel)}  {rel}"
+        for rel in _expected_payload_paths(ctx, layout)
+    ]
+    checksum_path.write_text("\n".join(lines) + "\n")
+    return checksum_path
+
+
+def _require_existing_json_report(
+    ctx: PublishContext,
+    *,
+    label: str,
+    backend: str | None = None,
+    target: str | None = None,
+    rel_path: str,
+    require_runtime_ready: bool,
+) -> Mapping[str, Any]:
+    if not rel_path.startswith(("evals/", "evidence/")):
+        raise OrchestratorError(
+            f"release evidence: {label} report path must live under evals/ "
+            f"or evidence/: {rel_path}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    path = ctx.bundle_dir / rel_path
+    if not path.is_file():
+        raise OrchestratorError(
+            f"release evidence: missing {label} report "
+            f"{backend or target or ''}: {rel_path}",
+            EXIT_MISSING_FILE,
+        )
+    try:
+        data = json.loads(path.read_text())
+    except json.JSONDecodeError as exc:
+        raise OrchestratorError(
+            f"release evidence: invalid JSON in {rel_path}: {exc}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        ) from exc
+    if not isinstance(data, dict):
+        raise OrchestratorError(
+            f"release evidence: {rel_path} must contain a JSON object",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    if backend is not None and data.get("backend") != backend:
+        raise OrchestratorError(
+            f"release evidence: {rel_path} backend {data.get('backend')!r} "
+            f"does not match {backend!r}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    if target is not None and data.get("target") != target:
+        raise OrchestratorError(
+            f"release evidence: {rel_path} target {data.get('target')!r} "
+            f"does not match {target!r}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    accepted_statuses = {"pass"} if require_runtime_ready else {"pass", "passed"}
+    if data.get("status") not in accepted_statuses:
+        raise OrchestratorError(
+            f"release evidence: {rel_path} status {data.get('status')!r}, "
+            f"expected one of {sorted(accepted_statuses)!r}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    if require_runtime_ready:
+        _validate_runtime_dispatch_report(rel_path, data)
+    else:
+        _validate_platform_report(rel_path, data, target=target)
+    return data
+
+
+def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) -> None:
+    errors: list[str] = []
+    if data.get("runtimeReady") is not True:
+        errors.append("runtimeReady must be true")
+    at_commit = data.get("atCommit") or data.get("at_commit")
+    if not isinstance(at_commit, str) or not at_commit:
+        errors.append("atCommit required")
+    if not isinstance(data.get("report"), str) or not data.get("report"):
+        errors.append("report required")
+    model_sha = data.get("modelSha256")
+    if not isinstance(model_sha, str) or len(model_sha) != 64 or any(
+        c not in "0123456789abcdef" for c in model_sha
+    ):
+        errors.append("modelSha256 must be 64 lowercase hex chars")
+    kernel_set = data.get("kernelSet")
+    if not isinstance(kernel_set, list) or not all(
+        isinstance(k, str) for k in kernel_set
+    ):
+        errors.append("kernelSet must be an array of strings")
+    else:
+        missing = sorted(set(REQUIRED_GRAPH_CACHE_FAMILIES) - set(kernel_set))
+        if missing:
+            errors.append(f"kernelSet missing {missing}")
+    graph = data.get("graphDispatch")
+    if not isinstance(graph, dict):
+        errors.append("graphDispatch must be an object")
+    else:
+        families = graph.get("cacheFamilies")
+        if not isinstance(families, list) or not all(
+            isinstance(f, str) for f in families
+        ):
+            errors.append("graphDispatch.cacheFamilies must be an array of strings")
+        else:
+            missing = sorted(set(REQUIRED_GRAPH_CACHE_FAMILIES) - set(families))
+            if missing:
+                errors.append(f"graphDispatch.cacheFamilies missing {missing}")
+        command = graph.get("command")
+        if not isinstance(command, str) or "--cache-type-k" not in command:
+            errors.append("graphDispatch.command must include --cache-type-k")
+        if not isinstance(graph.get("logs"), list) or not graph.get("logs"):
+            errors.append("graphDispatch.logs must be a non-empty array")
+    device = data.get("device")
+    if not isinstance(device, (dict, str)) or device == "":
+        errors.append("device required")
+    if errors:
+        raise OrchestratorError(
+            f"release evidence: runtime dispatch report {rel_path} invalid:\n  - "
+            + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+
+def _validate_platform_report(
+    rel_path: str,
+    data: Mapping[str, Any],
+    *,
+    target: str | None,
+) -> None:
+    errors: list[str] = []
+    if not isinstance(data.get("device"), (dict, str)) or data.get("device") == "":
+        errors.append("device required")
+    if not isinstance(data.get("atCommit") or data.get("at_commit"), str):
+        errors.append("atCommit required")
+    if not isinstance(data.get("report"), str) or not data.get("report"):
+        errors.append("report required")
+    if data.get("skippedVoiceAbi") is True:
+        errors.append("skippedVoiceAbi must not be true")
+    if target == "ios-arm64-metal" and data.get("voiceAbi") not in (
+        True,
+        "pass",
+        "passed",
+    ):
+        errors.append("ios-arm64-metal platform evidence must prove voiceAbi")
+    if errors:
+        raise OrchestratorError(
+            f"release evidence: platform report {rel_path} invalid:\n  - "
+            + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+
+def validate_release_evidence(
+    ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
+) -> dict[str, Any]:
+    """Validate final release evidence before any upload path runs.
+
+    This is deliberately stricter than the manifest schema. The manifest
+    proves the runtime can load the bundle; this sidecar proves release
+    operators used final artifacts and have backend/platform evidence for
+    the exact bytes being uploaded.
+    """
+
+    evidence_path = ctx.bundle_dir / RELEASE_EVIDENCE_PATH
+    evidence = _read_sidecar(evidence_path)
+
+    errors: list[str] = []
+    if evidence.get("schemaVersion") != 1:
+        errors.append("schemaVersion must be 1")
+    if evidence.get("tier") != ctx.tier:
+        errors.append(f"tier must be {ctx.tier!r}")
+    if evidence.get("repoId") != ctx.repo_id:
+        errors.append(f"repoId must be {ctx.repo_id!r}")
+
+    release_state = evidence.get("releaseState")
+    if release_state not in {"upload-candidate", "final"}:
+        errors.append("releaseState must be 'upload-candidate' or 'final'")
+
+    final = evidence.get("final")
+    if not isinstance(final, dict):
+        errors.append("final must be an object")
+    else:
+        for flag in REQUIRED_RELEASE_FINAL_FLAGS:
+            if final.get(flag) is not True:
+                errors.append(f"final.{flag} must be true")
+
+    checksum_manifest = evidence.get("checksumManifest")
+    if checksum_manifest != str(CHECKSUMS_PATH):
+        errors.append(f"checksumManifest must be {str(CHECKSUMS_PATH)!r}")
+
+    weights = evidence.get("weights")
+    if not isinstance(weights, list) or not all(isinstance(p, str) for p in weights):
+        errors.append("weights must be an array of bundle-relative paths")
+    else:
+        shipped_weight_paths = set(
+            _relative_file_paths(
+                [
+                    p
+                    for kind in ("text", "tts", "asr", "vision", "dflash")
+                    for p in layout.get(kind, [])
+                ],
+                ctx.bundle_dir,
+            )
+        )
+        missing_weights = sorted(shipped_weight_paths - set(weights))
+        if missing_weights:
+            errors.append(f"weights missing shipped artifact(s): {missing_weights}")
+
+    eval_reports = evidence.get("evalReports")
+    if not isinstance(eval_reports, list) or "evals/aggregate.json" not in eval_reports:
+        errors.append("evalReports must include 'evals/aggregate.json'")
+    elif not all((ctx.bundle_dir / str(p)).is_file() for p in eval_reports):
+        errors.append("evalReports contains missing file(s)")
+
+    license_files = evidence.get("licenseFiles")
+    expected_licenses = [
+        f"licenses/{name}" for name in _license_files_for_layout(layout)
+    ]
+    if license_files != expected_licenses:
+        errors.append(f"licenseFiles must equal {expected_licenses!r}")
+
+    hf = evidence.get("hf")
+    if not isinstance(hf, dict):
+        errors.append("hf must be an object")
+    elif hf.get("repoId") != ctx.repo_id:
+        errors.append(f"hf.repoId must be {ctx.repo_id!r}")
+
+    if errors:
+        raise OrchestratorError(
+            "release evidence invalid:\n  - " + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    supported = SUPPORTED_BACKENDS_BY_TIER[ctx.tier]
+    kernel_reports = evidence.get("kernelDispatchReports")
+    if not isinstance(kernel_reports, dict):
+        raise OrchestratorError(
+            "release evidence: kernelDispatchReports must be an object",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    platform_evidence = evidence.get("platformEvidence")
+    if not isinstance(platform_evidence, dict):
+        raise OrchestratorError(
+            "release evidence: platformEvidence must be an object",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    for backend in supported:
+        dispatch_path = kernel_reports.get(backend)
+        if not isinstance(dispatch_path, str):
+            raise OrchestratorError(
+                f"release evidence: kernelDispatchReports.{backend} required",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        _require_existing_json_report(
+            ctx,
+            label="kernel dispatch",
+            backend=backend,
+            rel_path=dispatch_path,
+            require_runtime_ready=True,
+        )
+
+    for target in REQUIRED_PLATFORM_EVIDENCE_BY_TIER[ctx.tier]:
+        platform_path = platform_evidence.get(target)
+        if not isinstance(platform_path, str):
+            raise OrchestratorError(
+                f"release evidence: platformEvidence.{target} required",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        _require_existing_json_report(
+            ctx,
+            label="platform",
+            target=target,
+            rel_path=platform_path,
+            require_runtime_ready=False,
+        )
+
+    if release_state == "final":
+        upload_evidence = hf.get("uploadEvidence") if isinstance(hf, dict) else None
+        if not isinstance(upload_evidence, dict):
+            raise OrchestratorError(
+                "release evidence: final releaseState requires hf.uploadEvidence",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        if upload_evidence.get("repoId") != ctx.repo_id:
+            raise OrchestratorError(
+                f"release evidence: hf.uploadEvidence.repoId must be {ctx.repo_id!r}",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        if not upload_evidence.get("commit") or not upload_evidence.get("url"):
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence requires commit and url",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        if upload_evidence.get("status") != "uploaded":
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence.status must be 'uploaded'",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        uploaded_paths = upload_evidence.get("uploadedPaths")
+        if not isinstance(uploaded_paths, list) or not all(
+            isinstance(p, str) for p in uploaded_paths
+        ):
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence.uploadedPaths must be "
+                "an array of paths",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+    elif not ctx.dry_run:
+        hf_status = hf.get("status") if isinstance(hf, dict) else None
+        if hf_status != "pending-upload":
+            raise OrchestratorError(
+                "release evidence: upload-candidate evidence must carry "
+                "hf.status='pending-upload' before a real publish",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+
+    _assert_checksum_coverage(ctx, layout)
+    return evidence
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +989,8 @@ def run_kernel_verification(
       consumes that report directly. There is no inline metal run.
     - CUDA: same shape — recorded report at
       ``bundle/evals/cuda_verify.json`` if the tier supports it.
+    - ROCm: same shape — recorded report at
+      ``bundle/evals/rocm_verify.json`` if the tier supports it.
     """
 
     supported = set(SUPPORTED_BACKENDS_BY_TIER[ctx.tier])
@@ -386,10 +1001,7 @@ def run_kernel_verification(
     # CPU — always run reference-test (CI-safe).
     if "cpu" in supported:
         verify_dir = _verify_dir(ctx)
-        if ctx.dry_run:
-            log.info("[verify] cpu: dry-run, skipping subprocess")
-        else:
-            _run_reference_test(verify_dir)
+        _run_reference_test(verify_dir)
         out["cpu"] = KernelVerification(
             status="pass", at_commit=sha, report="reference-test"
         )
@@ -414,6 +1026,11 @@ def run_kernel_verification(
     if "cuda" in supported:
         recorded = ctx.bundle_dir / "evals" / "cuda_verify.json"
         out["cuda"] = _read_recorded_report(recorded, "cuda")
+
+    # ROCm — recorded report.
+    if "rocm" in supported:
+        recorded = ctx.bundle_dir / "evals" / "rocm_verify.json"
+        out["rocm"] = _read_recorded_report(recorded, "rocm")
 
     # Backends not supported by this tier are recorded as skipped, with
     # a stable report name. The manifest validator only enforces "pass"
@@ -492,6 +1109,9 @@ def _collect_files_for_manifest(
         "vision": [],
         "dflash": [],
         "cache": [],
+        "embedding": [],
+        "vad": [],
+        "wakeword": [],
     }
 
     for kind_src, kind_dst in (
@@ -501,6 +1121,9 @@ def _collect_files_for_manifest(
         ("vision", "vision"),
         ("dflash", "dflash"),
         ("cache", "cache"),
+        ("embedding", "embedding"),
+        ("vad", "vad"),
+        ("wakeword", "wakeword"),
     ):
         for p in layout.get(kind_src, []):
             entry = FileEntry(
@@ -514,32 +1137,61 @@ def _collect_files_for_manifest(
 
 
 def _build_lineage(
-    tier: str, sidecar: Mapping[str, Any] | None
+    tier: str,
+    sidecar: Mapping[str, Any] | None,
+    files: Mapping[str, Sequence[FileEntry]],
 ) -> dict[str, LineageEntry]:
     """Read lineage from ``bundle/lineage.json`` if present, else defaults.
 
-    The defaults are deliberately minimal — they reflect the public
-    backbones from inference/AGENTS.md §1. A real publish should ship
-    a hand-written ``lineage.json`` with exact upstream commits.
+    The defaults are deliberately minimal. A real publish should ship a
+    hand-written ``lineage.json`` with exact upstream commits.
     """
     defaults: dict[str, LineageEntry] = {
-        "text": LineageEntry(base="qwen3.5-family", license="apache-2.0"),
+        "text": LineageEntry(base="eliza-1-family", license="apache-2.0"),
         "voice": LineageEntry(
-            base=VOICE_BACKBONE_BY_TIER[tier], license="apache-2.0"
+            base=f"omnivoice-gguf-{VOICE_QUANT_BY_TIER[tier]}",
+            license="apache-2.0",
         ),
         "drafter": LineageEntry(
             base=f"dflash-{tier}-drafter", license="apache-2.0"
         ),
     }
-    if not sidecar:
-        return defaults
     out = dict(defaults)
-    for slot in ("text", "voice", "drafter"):
+
+    optional_defaults: dict[str, LineageEntry] = {
+        "asr": LineageEntry(base="eliza-1-asr-family", license="apache-2.0"),
+        "vision": LineageEntry(base="eliza-1-vision-family", license="apache-2.0"),
+        "embedding": LineageEntry(
+            base="eliza-1-embedding-family", license="apache-2.0"
+        ),
+        "vad": LineageEntry(base="eliza-1-vad-family", license="apache-2.0"),
+        "wakeword": LineageEntry(
+            base="eliza-1-wakeword-family", license="apache-2.0"
+        ),
+    }
+    for slot, default in optional_defaults.items():
+        if files.get(slot):
+            out[slot] = default
+
+    if not sidecar:
+        return out
+
+    for slot in (
+        "text",
+        "voice",
+        "drafter",
+        "asr",
+        "vision",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
         spec = sidecar.get(slot)
         if isinstance(spec, dict):
+            default = out.get(slot)
             out[slot] = LineageEntry(
-                base=str(spec.get("base", defaults[slot].base)),
-                license=str(spec.get("license", defaults[slot].license)),
+                base=str(spec.get("base", default.base if default else "")),
+                license=str(spec.get("license", default.license if default else "")),
             )
     return out
 
@@ -550,15 +1202,15 @@ def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tu
     """Compute the ``kernels.required`` and ``kernels.optional`` lists.
 
     Required kernels come from REQUIRED_KERNELS_BY_TIER. ``turbo3_tcq``
-    is added as optional whenever any text variant has ctx > 64k.
+    is promoted to required whenever any text variant has ctx > 64k.
     """
     req = list(REQUIRED_KERNELS_BY_TIER[tier])
     opt: list[str] = []
     for p in layout.get("text", []):
         ctx = parse_text_ctx_from_filename(p)
         if ctx is not None and ctx > 65536:
-            if "turbo3_tcq" not in req and "turbo3_tcq" not in opt:
-                opt.append("turbo3_tcq")
+            if "turbo3_tcq" not in req:
+                req.append("turbo3_tcq")
     return req, opt
 
 
@@ -592,7 +1244,7 @@ def assemble_manifest(
     lineage_sidecar: dict[str, Any] | None = None
     if lineage_path.is_file():
         lineage_sidecar = json.loads(lineage_path.read_text())
-    lineage = _build_lineage(ctx.tier, lineage_sidecar)
+    lineage = _build_lineage(ctx.tier, lineage_sidecar, files_map)
 
     ram_path = ctx.bundle_dir / "ram_budget.json"
     if ram_path.is_file():
@@ -605,11 +1257,22 @@ def assemble_manifest(
     results = eval_blob["results"]
     text_eval_score = float(results["text_eval"])
     voice_rtf = float(results["voice_rtf"])
+    has_asr = bool(files_map.get("asr"))
+    asr_wer = float(results["asr_wer"]) if has_asr else None
+    has_vad = bool(files_map.get("vad"))
+    vad_latency_ms = float(results["vad_latency_ms"]) if has_vad else None
+    expressive_tag_faithfulness = float(results["expressive_tag_faithfulness"])
+    expressive_mos = float(results["expressive_mos"])
+    expressive_tag_leakage = float(results["expressive_tag_leakage"])
 
     # All evals' ``passed`` flags come from the gate report — it's the
     # only source of truth and matches the manifest validator's rules.
     text_eval_passed = _gate_passed(gate_report, "text_eval")
     voice_rtf_passed = _gate_passed(gate_report, "voice_rtf")
+    expressive_passed = all(
+        _gate_passed(gate_report, gate_name)
+        for gate_name in EXPRESSIVE_GATE_NAMES
+    )
     # ``e2e_loop_ok`` and ``thirty_turn_ok`` are independent boolean
     # contract gates per AGENTS.md §6 (manifest fields ``evals.e2eLoopOk``
     # and ``evals.thirtyTurnOk``). Read each from the eval blob directly
@@ -634,6 +1297,9 @@ def assemble_manifest(
         and all_backends_pass
         and text_eval_passed
         and voice_rtf_passed
+        and (_gate_passed(gate_report, "asr_wer") if has_asr else False)
+        and (_gate_passed(gate_report, "vad_latency_ms") if has_vad else False)
+        and expressive_passed
         and e2e_loop_ok
         and thirty_turn_ok
     )
@@ -657,6 +1323,21 @@ def assemble_manifest(
             ram_budget_min_mb=ram_min,
             ram_budget_recommended_mb=ram_rec,
             default_eligible=default_eligible,
+            asr_wer=asr_wer,
+            asr_wer_passed=_gate_passed(gate_report, "asr_wer") if has_asr else None,
+            vad_latency_ms_median=vad_latency_ms,
+            vad_latency_ms_passed=(
+                _gate_passed(gate_report, "vad_latency_ms") if has_vad else None
+            ),
+            expressive_tag_faithfulness=expressive_tag_faithfulness,
+            expressive_mos=expressive_mos,
+            expressive_tag_leakage=expressive_tag_leakage,
+            expressive_passed=expressive_passed,
+            voice_capabilities=DEFAULT_VOICE_CAPABILITIES,
+            voice_version=ELIZA_1_VOICE_MANIFEST_VERSION,
+            voice_frozen=True,
+            voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
+            voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(
@@ -799,6 +1480,8 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         for kind in ("text", "voice", "asr", "vision", "dflash", "cache")
         if manifest["files"].get(kind)
     ]
+    voice = manifest.get("voice") or {}
+    voice_cache = voice.get("cache") if isinstance(voice.get("cache"), dict) else {}
 
     return template.render(
         manifest=manifest,
@@ -811,6 +1494,8 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         kernels_required_str=", ".join(manifest["kernels"]["required"]),
         kernels_optional_str=", ".join(manifest["kernels"]["optional"]) or "(none)",
         file_groups=file_groups,
+        voice_capabilities_str=", ".join(voice.get("capabilities", [])),
+        voice_cache=voice_cache,
     )
 
 
@@ -833,12 +1518,22 @@ def _build_upload_list(
     """
     pairs: list[tuple[Path, str]] = []
 
-    for kind_src in ("text", "tts", "asr", "vision", "dflash", "cache"):
+    for kind_src in (
+        "text",
+        "tts",
+        "asr",
+        "vision",
+        "dflash",
+        "cache",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
         for p in layout.get(kind_src, []):
             pairs.append((p, str(p.relative_to(ctx.bundle_dir))))
 
     licenses_dir = ctx.bundle_dir / "licenses"
-    for name in REQUIRED_LICENSE_FILES:
+    for name in _license_files_for_layout(layout):
         p = licenses_dir / name
         pairs.append((p, f"licenses/{name}"))
 
@@ -846,6 +1541,29 @@ def _build_upload_list(
     for p in sorted(evals_dir.iterdir()):
         if p.is_file():
             pairs.append((p, f"evals/{p.name}"))
+
+    existing_targets = {target for _, target in pairs}
+    for p in layout.get("quantization_sidecars", []):
+        target = str(p.relative_to(ctx.bundle_dir))
+        if target not in existing_targets:
+            pairs.append((p, target))
+            existing_targets.add(target)
+
+    evidence_dir = ctx.bundle_dir / "evidence"
+    for p in sorted(evidence_dir.rglob("*")):
+        if p.is_file():
+            target = str(p.relative_to(ctx.bundle_dir))
+            if target not in existing_targets:
+                pairs.append((p, target))
+                existing_targets.add(target)
+
+    checksums_dir = ctx.bundle_dir / "checksums"
+    for p in sorted(checksums_dir.rglob("*")):
+        if p.is_file():
+            target = str(p.relative_to(ctx.bundle_dir))
+            if target not in existing_targets:
+                pairs.append((p, target))
+                existing_targets.add(target)
 
     return pairs
 
@@ -855,16 +1573,16 @@ def push_to_hf(
     manifest_path: Path,
     readme_path: Path,
     upload_pairs: Sequence[tuple[Path, str]],
-) -> None:
+) -> dict[str, Any] | None:
     """Push the bundle to ``ctx.repo_id``. No-op when ``ctx.dry_run``.
 
-    Side-effects on success: tags the local training repo with
-    ``eliza-1-<tier>-v<version>`` + the training commit hash.
+    Returns the HF payload commit evidence on success so the release
+    sidecar can be finalized and uploaded in a follow-up commit.
     """
     if ctx.dry_run:
         log.info("[push] dry-run: would push %d files to %s",
                  len(upload_pairs) + 2, ctx.repo_id)
-        return
+        return None
 
     if not _hf_token():
         raise OrchestratorError(
@@ -908,11 +1626,126 @@ def push_to_hf(
             CommitOperationAdd(path_in_repo=target, path_or_fileobj=str(src))
         )
 
-    api.create_commit(
+    commit_info = api.create_commit(
         repo_id=ctx.repo_id,
         repo_type="model",
         operations=operations,
         commit_message=f"eliza-1-{ctx.tier}: publish bundle",
+    )
+    uploaded_paths = [
+        "eliza-1.manifest.json",
+        "README.md",
+        *(target for _, target in upload_pairs),
+    ]
+    return _upload_evidence_from_commit(
+        ctx,
+        commit_info=commit_info,
+        uploaded_paths=uploaded_paths,
+    )
+
+
+def _upload_evidence_from_commit(
+    ctx: PublishContext,
+    *,
+    commit_info: object,
+    uploaded_paths: Sequence[str],
+) -> dict[str, Any]:
+    commit = (
+        getattr(commit_info, "oid", None)
+        or getattr(commit_info, "commit_id", None)
+        or getattr(commit_info, "commit_hash", None)
+    )
+    url = (
+        getattr(commit_info, "commit_url", None)
+        or getattr(commit_info, "url", None)
+    )
+    if not commit or not url:
+        raise OrchestratorError(
+            "HF upload completed but the client did not return commit/url "
+            "evidence; refusing to finalize release evidence.",
+            EXIT_HF_PUSH_FAIL,
+        )
+    return {
+        "repoId": ctx.repo_id,
+        "status": "uploaded",
+        "commit": str(commit),
+        "url": str(url),
+        "uploadedPaths": sorted(set(uploaded_paths)),
+    }
+
+
+def finalize_release_evidence(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+    upload_evidence: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    """Move evidence/release.json from candidate to final after HF upload.
+
+    The payload upload commit is the non-circular proof for the final
+    evidence. The final evidence sidecar and refreshed checksum manifest
+    are uploaded in a small follow-up commit by ``push_final_release_evidence``.
+    """
+
+    release_path = ctx.bundle_dir / RELEASE_EVIDENCE_PATH
+    evidence = _read_sidecar(release_path)
+    hf = evidence.get("hf")
+    if not isinstance(hf, dict):
+        raise OrchestratorError(
+            "release evidence: hf must be an object before finalization",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    evidence["releaseState"] = "final"
+    hf["repoId"] = ctx.repo_id
+    hf["status"] = "uploaded"
+    hf["uploadEvidence"] = dict(upload_evidence)
+    evidence["hf"] = hf
+    release_path.write_text(json.dumps(evidence, indent=2, sort_keys=False) + "\n")
+
+    checksum_path = _write_checksum_manifest(ctx, layout)
+    validate_release_evidence(ctx, layout)
+    return release_path, checksum_path
+
+
+def push_final_release_evidence(
+    ctx: PublishContext,
+    release_path: Path,
+    checksum_path: Path,
+) -> None:
+    """Upload final release evidence after the payload commit exists."""
+
+    if ctx.dry_run:
+        return
+    if not _hf_token():
+        raise OrchestratorError(
+            "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing "
+            "to push final release evidence.",
+            EXIT_HF_PUSH_FAIL,
+        )
+    try:
+        from huggingface_hub import CommitOperationAdd, HfApi
+    except ImportError as exc:  # pragma: no cover
+        raise OrchestratorError(
+            "huggingface_hub is required to push final release evidence; "
+            "install via `uv run --with huggingface_hub ...`",
+            EXIT_HF_PUSH_FAIL,
+        ) from exc
+
+    api = HfApi(token=_hf_token())
+    api.create_commit(
+        repo_id=ctx.repo_id,
+        repo_type="model",
+        operations=[
+            CommitOperationAdd(
+                path_in_repo=str(RELEASE_EVIDENCE_PATH),
+                path_or_fileobj=str(release_path),
+            ),
+            CommitOperationAdd(
+                path_in_repo=str(CHECKSUMS_PATH),
+                path_or_fileobj=str(checksum_path),
+            ),
+        ],
+        commit_message=f"eliza-1-{ctx.tier}: finalize release evidence",
     )
 
 
@@ -972,20 +1805,25 @@ def run(ctx: PublishContext) -> int:
     """Run every stage. Returns an exit code; never raises."""
 
     try:
-        log.info("[stage 1/6] validate bundle layout (%s)", ctx.bundle_dir)
+        validate_destination_repo(ctx)
+
+        log.info("[stage 1/7] validate bundle layout (%s)", ctx.bundle_dir)
         layout = validate_bundle_layout(ctx)
 
-        log.info("[stage 2/6] kernel verification for tier %s", ctx.tier)
+        log.info("[stage 2/7] validate release evidence")
+        validate_release_evidence(ctx, layout)
+
+        log.info("[stage 3/7] kernel verification for tier %s", ctx.tier)
         backends = run_kernel_verification(ctx)
         for b in SUPPORTED_BACKENDS_BY_TIER[ctx.tier]:
             log.info("  %s: %s (%s)", b, backends[b].status, backends[b].report)
 
-        log.info("[stage 3/6] eval gates")
+        log.info("[stage 4/7] eval gates")
         gate_report, eval_blob = run_eval_gates(ctx)
         log.info("  passed=%s, %d gates evaluated",
                  gate_report.passed, len(gate_report.gates))
 
-        log.info("[stage 4/6] build + validate manifest")
+        log.info("[stage 5/7] build + validate manifest")
         version = _read_version(ctx)
         manifest = assemble_manifest(
             ctx,
@@ -1002,7 +1840,7 @@ def run(ctx: PublishContext) -> int:
         log.info("  defaultEligible=%s, version=%s",
                  manifest["defaultEligible"], version)
 
-        log.info("[stage 5/6] render README")
+        log.info("[stage 6/7] render README")
         readme_text = render_readme(ctx, manifest)
         readme_path = ctx.bundle_dir / "README.md"
         readme_path.write_text(readme_text)
@@ -1011,10 +1849,18 @@ def run(ctx: PublishContext) -> int:
             log.info("\n--- manifest preview ---\n%s",
                      json.dumps(manifest, indent=2))
 
-        log.info("[stage 6/6] push to %s%s", ctx.repo_id,
+        log.info("[stage 7/7] push to %s%s", ctx.repo_id,
                  " (dry-run)" if ctx.dry_run else "")
         upload_pairs = _build_upload_list(ctx, layout)
-        push_to_hf(ctx, manifest_path, readme_path, upload_pairs)
+        upload_evidence = push_to_hf(ctx, manifest_path, readme_path, upload_pairs)
+        if upload_evidence is not None:
+            log.info("[stage 7/7] finalize HF upload evidence")
+            release_path, checksum_path = finalize_release_evidence(
+                ctx,
+                layout,
+                upload_evidence,
+            )
+            push_final_release_evidence(ctx, release_path, checksum_path)
 
         tag_name = tag_training_repo(ctx, version, ctx.dry_run)
         log.info("done. tag=%s", tag_name)
@@ -1056,7 +1902,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     ap.add_argument(
         "--repo-id",
         default=None,
-        help="Override HF repo id (default: elizalabs/eliza-1-<tier>).",
+        help=(
+            "HF repo id. Must equal elizalabs/eliza-1-<tier>; accepted only "
+            "so wrappers can pass the resolved destination explicitly."
+        ),
     )
     ap.add_argument(
         "--public",
@@ -1085,7 +1934,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"elizalabs/eliza-1-{args.tier}"
+    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1-{args.tier}"
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )

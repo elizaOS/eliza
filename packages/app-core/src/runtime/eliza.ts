@@ -44,6 +44,7 @@ import {
   syncResolvedApiPort,
 } from "@elizaos/shared";
 import { getApps, loadRegistry } from "../registry";
+import { registerCoreSensitiveRequestAdapters } from "../services/sensitive-requests/index.js";
 import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
@@ -461,6 +462,10 @@ async function repairRuntimeAfterBoot(
   await registerAppRoutePlugins(runtime);
 
   await registerTrainingRuntimeHooks(runtime);
+
+  // Register first-party sensitive-request delivery adapters with the
+  // dispatch registry (no-op when the registry service isn't present).
+  registerCoreSensitiveRequestAdapters(runtime);
 
   if (!runtime.getService("AUTONOMY")) {
     try {

@@ -1,6 +1,6 @@
 {
-  "name": "@elizaos-plugins/plugin-web-search",
-  "version": "2.0.0-beta.0",
+  "name": "@elizaos/plugin-web-search",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -18,7 +18,7 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@tavily/core": "^0.7.0",
     "js-tiktoken": "1.0.21",
     "tsup": "^8.5.1"

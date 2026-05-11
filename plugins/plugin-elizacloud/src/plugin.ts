@@ -171,6 +171,24 @@ const cloudRoutes: Route[] = [
     rawPath: true,
     handler: cloudRouteHandler,
   },
+  {
+    type: "POST",
+    path: "/api/cloud/coding-containers/promotions",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/coding-containers",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
+  {
+    type: "POST",
+    path: "/api/cloud/coding-containers/:containerId/sync",
+    rawPath: true,
+    handler: cloudRouteHandler,
+  },
   ...(["GET", "POST", "PUT", "PATCH", "DELETE"] as const).map((type) => ({
     type,
     path: "/api/cloud/billing/:path*",

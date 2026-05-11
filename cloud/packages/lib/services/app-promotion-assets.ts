@@ -8,6 +8,7 @@ import {
 } from "@/lib/providers/anthropic-thinking";
 import { getLanguageModel } from "@/lib/providers/language-model";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
+import { contentSafetyService } from "@/lib/services/content-safety";
 import { parseAiJson } from "@/lib/utils/ai-json-parse";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
@@ -287,6 +288,19 @@ class AppPromotionAssetsService {
       prompt = prompt.slice(0, MAX_PROMPT_LENGTH);
     }
 
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "promotion_asset_prompt",
+      organizationId: app.organization_id,
+      appId: app.id,
+      text: [
+        `App name: ${app.name}`,
+        app.description ? `App description: ${app.description}` : undefined,
+        customPrompt ? `Custom prompt: ${customPrompt}` : undefined,
+        `Image prompt: ${prompt}`,
+      ],
+      metadata: { size },
+    });
+
     logger.info("[PromotionAssets] Generating image", {
       appId: app.id,
       size,
@@ -359,6 +373,14 @@ class AppPromotionAssetsService {
       folder: `promotion-assets/${app.id}`,
     });
 
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "promotion_asset_output",
+      organizationId: app.organization_id,
+      appId: app.id,
+      imageUrls: [blob.url],
+      metadata: { size, format: "png" },
+    });
+
     logger.info("[PromotionAssets] Image generated and uploaded", {
       appId: app.id,
       size,
@@ -417,6 +439,20 @@ class AppPromotionAssetsService {
 
     const websiteUrl = app.website_url || app.app_url;
 
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "promotion_copy",
+      organizationId: app.organization_id,
+      appId: app.id,
+      text: [
+        `App name: ${app.name}`,
+        app.description ? `App description: ${app.description}` : undefined,
+        websiteUrl ? `Website: ${websiteUrl}` : undefined,
+        targetAudience ? `Target audience: ${targetAudience}` : undefined,
+        `Tone: ${tone}`,
+      ],
+      metadata: { stage: "input" },
+    });
+
     const prompt = `You are a world-class copywriter for tech startups. Generate compelling advertising copy for this ${category}:
 
 ## App Details
@@ -466,7 +502,22 @@ Return ONLY valid JSON. No markdown, no explanation.`;
       prompt,
     });
 
-    return parseAiJson(text, AdCopyVariantsSchema, "ad copy variants");
+    const parsed = parseAiJson(text, AdCopyVariantsSchema, "ad copy variants");
+
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "promotion_copy",
+      organizationId: app.organization_id,
+      appId: app.id,
+      text: [
+        ...parsed.headlines.map((headline) => `Headline: ${headline}`),
+        ...parsed.descriptions.map((description) => `Description: ${description}`),
+        ...parsed.callToActions.map((callToAction) => `CTA: ${callToAction}`),
+        ...parsed.hashtags.map((hashtag) => `Hashtag: ${hashtag}`),
+      ],
+      metadata: { stage: "output" },
+    });
+
+    return parsed;
   }
 
   /**

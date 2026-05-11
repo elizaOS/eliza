@@ -1,20 +1,18 @@
 // Hardware-verified on Intel ARL (Mesa 25.2.8) + lavapipe (Mesa 25.2.8 LLVMpipe)
-// — 8/8 PASS for the 8-token fixture (see packages/inference/README.md
-// "Verification matrix" and reports/porting/2026-05-09-w4/vulkan-turbo-fix.md).
+// for the earlier single-block layout. This source now follows the current
+// fork block_tbq4_0 layout (four 32-element blocks per 128-row); re-run
+// `make -C packages/inference/verify vulkan-verify` on a Vulkan host after
+// regenerating fixtures.
 //
 // turbo4 KV cache dequant + Q·K dot product (Vulkan compute shader, GLSL 450).
 //
-// Ports buun-llama-cpp's CUDA dequantize_turbo4_0 from
-// ggml/src/ggml-cuda/turbo-quant-cuda.cuh (commit 6575873e9c) and the
-// flash-attention vec path that consumes it (fattn-vec.cuh).
+// Ports the fork's block_tbq4_0 decode path.
 //
-// Block layout (matches block_turbo4_0 in ggml-common.h, 66 bytes):
-//     half  norm        // [0..1]   fp16 corrected norm (norm/recon_norm * alpha)
-//     u8    qs[64]      // [2..65]  4-bit indices, 2 per byte (low nibble first)
+// Block layout (matches block_tbq4_0 in ggml-common.h, 18 bytes):
+//     half  norm        // [0..1]   fp16 RMS after TBQ preconditioning
+//     u8    qs[16]      // [2..17]  first 16 low nibbles, last 16 high nibbles
 //
-// One block IS one 128-element rotation group. The graph pre-rotates queries,
-// so this shader does NOT apply an inverse rotation — just decode 128
-// centroids and accumulate the dot product.
+// Four 32-element blocks form one 128-element attention row.
 //
 // Dispatch: one workgroup per (n_kv_block, n_head). 32 invocations cooperate.
 
@@ -30,7 +28,7 @@ layout(std430, binding = 0) readonly buffer QBuf {
 };
 
 layout(std430, binding = 1) readonly buffer KBuf {
-    uint k_packed[];        // each block_turbo4_0 = 66 bytes
+    uint k_packed[];        // each block_turbo4_0 = 18 bytes
 };
 
 layout(std430, binding = 2) writeonly buffer OutBuf {
@@ -40,17 +38,18 @@ layout(std430, binding = 2) writeonly buffer OutBuf {
 layout(push_constant) uniform Push {
     uint head_dim;          // must be 128
     uint n_kv;
-    uint kv_stride_blocks;  // 1 for d=128
+    uint kv_stride_blocks;  // 4 for d=128
     uint q_head;
     uint head_offset_bytes;
 } push;
 
-// Lloyd-Max centroids for N(0, 1/sqrt(128)). CUDA: d_turbo_centroids_4bit.
+const uint TURBO4_BLOCK_BYTES = 18u;
+
 const float TURBO_CENTROIDS_4BIT[16] = float[16](
-    -0.241556, -0.182907, -0.143047, -0.111065,
-    -0.083317, -0.058069, -0.034311, -0.011353,
-     0.011353,  0.034311,  0.058069,  0.083317,
-     0.111065,  0.143047,  0.182907,  0.241556
+    -2.7321365, -2.0685055, -1.6175243, -1.2557391,
+    -0.9419147, -0.6564307, -0.3878412, -0.1283243,
+     0.1283243,  0.3878412,  0.6564307,  0.9419147,
+     1.2557391,  1.6175243,  2.0685055,  2.7321365
 );
 
 float fp16_to_fp32(uint h16) {
@@ -104,25 +103,23 @@ void main() {
     uint kv_idx = gl_WorkGroupID.x;
     if (kv_idx >= push.n_kv) return;
 
-    uint blk_off = push.head_offset_bytes + kv_idx * 66u;
+    uint elem0 = tid * 4u;
+    uint blk_idx = elem0 >> 5;
+    uint within0 = elem0 & 31u;
+    uint group_off = push.head_offset_bytes +
+                     kv_idx * push.kv_stride_blocks * TURBO4_BLOCK_BYTES;
+    uint blk_off = group_off + blk_idx * TURBO4_BLOCK_BYTES;
 
-    // Norm: shared across all 128 elements of this block. One thread reads it,
-    // broadcasts via shared memory.
     uint norm16 = read_u16(blk_off + 0u);
     float norm = fp16_to_fp32(norm16);
 
-    // Each thread handles 4 elements (4 * 32 = 128).
     float acc = 0.0;
+    uint q_base = push.q_head * push.head_dim + elem0;
     for (uint local = 0u; local < 4u; local += 1u) {
-        uint elem = tid * 4u + local;       // 0..127
-        // qs[elem / 2]; low nibble for even, high nibble for odd.
-        uint qs_byte = read_byte(blk_off + 2u + (elem >> 1));
-        uint idx = ((elem & 1u) == 0u)
-                   ? (qs_byte & 0xFu)
-                   : (qs_byte >> 4);
-        float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
-        float q_val = q[push.q_head * push.head_dim + elem];
-        acc += q_val * k_val;
+        uint within = within0 + local;
+        uint qs_byte = read_byte(blk_off + 2u + (within & 15u));
+        uint idx = within < 16u ? (qs_byte & 0xFu) : (qs_byte >> 4);
+        acc = fma(q[q_base + local], TURBO_CENTROIDS_4BIT[idx] * norm, acc);
     }
 
     float sum = reduce_sum_32(acc, tid);

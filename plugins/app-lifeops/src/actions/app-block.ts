@@ -1,7 +1,6 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -456,173 +455,62 @@ async function handleStatus(): Promise<ActionResult> {
 }
 
 /**
- * Internal implementation of the legacy `APP_BLOCK` action surface.
- *
- * Audit B Defer #1 folded `APP_BLOCK` and `WEBSITE_BLOCK` into the single
- * `BLOCK` umbrella (`./block.ts`). The umbrella delegates to this impl when
- * `target=app`, so the runtime logic + handlers + parameter shape stay
- * unchanged. The legacy export name (`appBlockAction`) is re-exported below as
- * an alias for `blockAction` so cached planner outputs and downstream
- * importers keep resolving — but no `APP_BLOCK`-named action is registered in
- * the plugin anymore; the umbrella simile carries the legacy name forward.
+ * Owner-only validate gate for the BLOCK umbrella's app-target leg.
+ * Returns true when the owner has granted the relevant phone-app
+ * blocking permission.
  */
-export const appBlockActionImpl: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: ACTION_NAME,
-  similes: [
-    "APP_BLOCKER",
-    "SHIELD_APPS",
-    "FAMILY_CONTROLS",
-    "PHONE_FOCUS",
-    "SET_APP_BLOCK",
-    "PHONE_SET_APP_BLOCK",
-    "PHONE_BLOCK_APPS",
-    "BLOCK_APPS",
-  ],
-  description:
-    "Owner-only. Manage native phone app blocking via Family Controls (iPhone) or Usage Access (Android). " +
-    "Subactions: block (start a block on selected apps for a duration; LLM-extracts apps from intent if not provided), " +
-    "unblock (remove the active app block), " +
-    "status (check whether a block is active and when it ends). " +
-    "Use this ONLY for apps on the owner's phone. Do NOT use it for desktop website blocking — that belongs to WEBSITE_BLOCK. " +
-    "Do NOT use it for screen-time analytics (SCREEN_TIME) or remote desktop sessions (REMOTE_DESKTOP).",
-  descriptionCompressed:
-    "phone app block native iOS-Family-Controls Android-Usage-Access: block(apps,duration) unblock status",
-  // Drop "tasks" — APP_BLOCK is a focus/screen-time tool, not a personal-
-  // task tool. Including "tasks" made it compete on context-boost with
-  // LIFE on every habit prompt and blew up tier-A on benign self-care
-  // requests. Belongs to screen_time / automation / settings only.
-  contexts: ["screen_time", "automation", "settings"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
+export async function appBlockValidate(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> {
+  const access = await getAppBlockerAccess(runtime, message);
+  return access.allowed;
+}
 
-  validate: async (runtime, message) => {
-    const access = await getAppBlockerAccess(runtime, message);
-    return access.allowed;
-  },
+/**
+ * Handler function backing the BLOCK umbrella when `target=app`.
+ *
+ * Folded out of the legacy `APP_BLOCK` action surface — Audit B Defer #1.
+ * The umbrella in `./block.ts` is the only caller; no Action object is
+ * registered for this handler anymore.
+ */
+export async function runAppBlockHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+): Promise<ActionResult> {
+  const access = await getAppBlockerAccess(runtime, message);
+  if (!access.allowed) {
+    return {
+      success: false,
+      text: access.reason ?? APP_BLOCKER_ACCESS_ERROR,
+    };
+  }
 
-  parameters: [
-    {
-      name: "subaction",
-      description: "One of: block, unblock, status.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "intent",
-      description:
-        "Free-form description of which apps to block and for how long; used by the block subaction when explicit selection is missing.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "packageNames",
-      description:
-        "Android package names to block, e.g. ['com.twitter.android']. Used by block on Android.",
-      required: false,
-      schema: { type: "array" as const, items: { type: "string" as const } },
-    },
-    {
-      name: "appTokens",
-      description:
-        "iPhone app tokens from a previous selectApps() call. Used by block on iOS.",
-      required: false,
-      schema: { type: "array" as const, items: { type: "string" as const } },
-    },
-    {
-      name: "durationMinutes",
-      description:
-        "How long to block the apps, in minutes. Omit for indefinite block.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-  ],
+  const resolved = await resolveActionArgs<AppBlockSubaction, AppBlockParams>({
+    runtime,
+    message,
+    state,
+    options,
+    actionName: ACTION_NAME,
+    subactions: SUBACTIONS,
+  });
+  if (!resolved.ok) {
+    return {
+      success: false,
+      text: resolved.clarification,
+      data: { actionName: ACTION_NAME, missing: resolved.missing },
+    };
+  }
 
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Block Twitter and Instagram on my phone for 2 hours.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Started blocking 2 apps until the block expires.",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Unblock my phone apps." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Removed the app block. All apps are unblocked now.",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Is there an app block running?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "An app block is active for 3 apps until 2026-04-15T15:00:00.000Z.",
-          action: ACTION_NAME,
-        },
-      },
-    ],
-  ] as ActionExample[][],
-
-  handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    const access = await getAppBlockerAccess(runtime, message);
-    if (!access.allowed) {
-      return {
-        success: false,
-        text: access.reason ?? APP_BLOCKER_ACCESS_ERROR,
-      };
-    }
-
-    const resolved = await resolveActionArgs<AppBlockSubaction, AppBlockParams>(
-      {
-        runtime,
-        message,
-        state,
-        options,
-        actionName: ACTION_NAME,
-        subactions: SUBACTIONS,
-      },
-    );
-    if (!resolved.ok) {
-      return {
-        success: false,
-        text: resolved.clarification,
-        data: { actionName: ACTION_NAME, missing: resolved.missing },
-      };
-    }
-
-    const { subaction, params } = resolved;
-    switch (subaction) {
-      case "block":
-        return handleBlock(runtime, message, state, params);
-      case "unblock":
-        return handleUnblock();
-      case "status":
-        return handleStatus();
-    }
-  },
-};
-
-// Legacy export — the `APP_BLOCK` name lives on as a simile of the new BLOCK
-// umbrella. Importers that destructured `appBlockAction` get the umbrella back
-// so they continue to dispatch through the unified entry.
-export { blockAction as appBlockAction } from "./block.js";
+  const { subaction, params } = resolved;
+  switch (subaction) {
+    case "block":
+      return handleBlock(runtime, message, state, params);
+    case "unblock":
+      return handleUnblock();
+    case "status":
+      return handleStatus();
+  }
+}

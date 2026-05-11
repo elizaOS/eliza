@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-training",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -21,10 +21,10 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1"
   },
   "peerDependencies": {
     "react": "*"

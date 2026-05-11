@@ -10,6 +10,7 @@ When Cloud is enabled, it already gives the app most of the backend primitives a
 - credits and billing
 - analytics
 - domains
+- on-demand cloud tunnels
 - app users
 - creator earnings
 
@@ -55,6 +56,8 @@ Cloud already exposes:
   amount through Stripe or OxaPay and receive app credits after payment
 - x402 payment requests for direct crypto settlement, with status checks and
   callbacks into the originating channel
+- Headscale-backed cloud tunnel provisioning that debits org credits once per
+  successful short-lived auth-key mint
 
 In Eliza, billing is intended to stay inside the app where possible, with hosted URLs treated as fallback.
 
@@ -112,6 +115,19 @@ Both request types carry callback URL/channel metadata. Include the initiating
 room and agent id in the callback channel so success/failure events can be
 written back to the same conversation.
 
+## Cloud Tunnel Provisioning
+
+Agents that need to expose a local port should use `@elizaos/plugin-tailscale`
+in cloud mode instead of minting VPN credentials directly. The plugin calls
+`POST /api/v1/apis/tunnels/tailscale/auth-key`, then runs `tailscale up` and
+`tailscale serve` locally. The route requires a Cloud user/API key with an
+active organization, charges org credits once using `TUNNEL_AUTH_KEY_COST_USD`,
+refunds on Headscale mint failure, forces `tag:eliza-tunnel`, and returns a
+generated `eliza-<org>-<random>-<expiry>-<signature>.tunnel.elizacloud.ai`
+hostname. This is pay-as-needed infrastructure usage, not subscription SaaS. In
+production the hostname includes an expiry and HMAC suffix, so the Railway
+proxy only forwards unexpired hostnames minted by the Cloud Worker.
+
 ## Source Of Truth When Docs Drift
 
 Prefer these implementation surfaces:
@@ -121,6 +137,7 @@ Prefer these implementation surfaces:
 - `eliza/cloud/packages/db/schemas/redeemable-earnings.ts`
 - `eliza/cloud/packages/lib/services/app-charge-requests.ts`
 - `eliza/cloud/packages/lib/services/x402-payment-requests.ts`
+- `eliza/cloud/apps/api/v1/apis/tunnels/tailscale/auth-key/route.ts`
 - `eliza/cloud/apps/api/v1/apps/[id]/charges/route.ts`
 - `eliza/cloud/apps/api/v1/x402/requests/route.ts`
 - `eliza/cloud/packages/ui/src/components/apps/app-monetization-settings.tsx`

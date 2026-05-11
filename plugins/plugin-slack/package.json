@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-slack",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "Slack integration plugin for elizaOS agents with Socket Mode support",
   "type": "module",
   "main": "dist/index.js",
@@ -53,7 +53,7 @@
     "format:check": "../../node_modules/.bin/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@slack/bolt": "^4.1.0",
     "@slack/web-api": "^7.15.2",
     "zod": "^4.4.3"
@@ -65,7 +65,7 @@
     "vitest": "^4.1.4"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "publishConfig": {
     "access": "public"

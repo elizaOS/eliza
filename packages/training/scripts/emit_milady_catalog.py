@@ -1,5 +1,4 @@
-"""Emit a catalog.ts diff that points the on-device runtime at the new
-``milady-ai/<name>-milady-optimized`` HF repo.
+"""Emit a catalog.ts diff that points the on-device runtime at Eliza-1.
 
 The repo's catalog of downloadable models lives at
 ``packages/app-core/src/services/local-inference/catalog.ts`` (and the
@@ -17,13 +16,13 @@ file.
 Usage::
 
     uv run python scripts/emit_milady_catalog.py \\
-        --manifest checkpoints/qwen3-0.6b-milady/gguf/milady_manifest.json \\
+        --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json \\
         --catalog packages/app-core/src/services/local-inference/catalog.ts \\
-        --output reports/training/catalog-milady-qwen3-0.6b.diff
+        --output reports/training/catalog-eliza-1-0_6b.diff
 
     # Or just print the new entry block to stdout:
     uv run python scripts/emit_milady_catalog.py \\
-        --manifest checkpoints/qwen3-0.6b-milady/gguf/milady_manifest.json \\
+        --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json \\
         --print-entry
 """
 
@@ -47,37 +46,46 @@ log = logging.getLogger("emit_milady_catalog")
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "Qwen/Qwen3-0.6B": {
-        "params": "1B",  # catalog enum has no "0.6B" — round up like upstream
-        "context_length": 40960,  # native Qwen3-0.6B
-        "tokenizer_family": "qwen3",
+    "elizalabs/eliza-1-0_6b": {
+        "params": "0.6B",
+        "context_length": 32768,
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 2,
         "size_gb_estimate": 0.4,  # Q4_POLAR 0.6B ≈ 380-450 MB
     },
-    "Qwen/Qwen3.5-2B": {
-        "params": "2B",
-        "context_length": 131072,
-        "tokenizer_family": "qwen3",
+    "elizalabs/eliza-1-1_7b": {
+        "params": "1.7B",
+        "context_length": 32768,
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "small",
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "Qwen/Qwen3.5-9B": {
+    "elizalabs/eliza-1-9b": {
         "params": "9B",
-        "context_length": 131072,
-        "tokenizer_family": "qwen3",
+        "context_length": 65536,
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "mid",
-        "min_ram_gb": 8,
+        "min_ram_gb": 12,
         "size_gb_estimate": 5.5,
     },
-    "Qwen/Qwen3.6-27B": {
+    "elizalabs/eliza-1-27b-256k": {
+        "params": "27B",
+        "context_length": 262144,
+        "tokenizer_family": "eliza1",
+        "category": "chat",
+        "bucket": "large",
+        "min_ram_gb": 96,
+        "size_gb_estimate": 16.0,
+    },
+    "elizalabs/eliza-1-27b": {
         "params": "27B",
         "context_length": 131072,
-        "tokenizer_family": "qwen3",
+        "tokenizer_family": "eliza1",
         "category": "chat",
         "bucket": "large",
         "min_ram_gb": 32,
@@ -159,12 +167,9 @@ class MiladyCatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``milady-ai/qwen3-0.6b-milady-optimized`` →
-    ``qwen3-0.6b-milady`` for catalog ids.
+    """Convert ``elizalabs/eliza-1-1_7b`` to a catalog id.
     """
     last = hf_repo.split("/")[-1]
-    if last.endswith("-milady-optimized"):
-        last = last[: -len("-milady-optimized")] + "-milady"
     return last.lower()
 
 
@@ -211,17 +216,13 @@ def build_catalog_entry(manifest: dict[str, object]) -> MiladyCatalogEntry:
                 ) or None
 
     slug = _slug_from_repo(target_repo)
-    quant_label = "Q4_POLAR + QJL1_256 K + TBQ3_0 V"
-    if spec_type == "dflash":
-        quant_label += " + DFlash"
-
     return MiladyCatalogEntry(
         id=slug,
-        display_name=f"{base_model.split('/')[-1]} (Milady-optimized)",
+        display_name=slug,
         hf_repo=target_repo,
         gguf_file=gguf_file,
         params=str(base_meta["params"]),
-        quant=quant_label,
+        quant="Eliza-1 optimized local runtime",
         size_gb=float(base_meta["size_gb_estimate"]),
         min_ram_gb=int(base_meta["min_ram_gb"]),
         category=str(base_meta["category"]),
@@ -232,12 +233,7 @@ def build_catalog_entry(manifest: dict[str, object]) -> MiladyCatalogEntry:
         cache_type_v=cache_type_v,
         spec_type=spec_type,
         drafter_model_id=drafter_model_id,
-        blurb=(
-            f"Milady-optimized {base_model.split('/')[-1]} — PolarQuant 4-bit weights, "
-            "QJL 1-bit K cache, TurboQuant V cache, DFlash speculative decoding. "
-            "Requires the milady-ai/llama.cpp v0.4.0-milady fork "
-            "(bundled in the AOSP and desktop builds)."
-        ),
+        blurb=f"{slug} - Eliza-1 optimized local runtime bundle.",
     )
 
 

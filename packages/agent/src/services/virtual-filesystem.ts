@@ -49,6 +49,17 @@ export interface VirtualFilesystemDiffEntry {
   after?: VirtualFilesystemEntry;
 }
 
+export interface VirtualFilesystemQuota {
+  usedBytes: number;
+  fileCount: number;
+  quotaBytes: number;
+  maxFileBytes: number;
+}
+
+export interface VirtualFilesystemExportFile extends VirtualFilesystemEntry {
+  bytes: Buffer;
+}
+
 interface TreeStats {
   bytes: number;
   fileCount: number;
@@ -173,10 +184,17 @@ export class VirtualFilesystemService {
     const target = this.resolvePath(virtualPath);
     await this.ensureSafeParentDirectory(target);
     await this.rejectSymlinkIfExists(target);
-    await fsp.rm(target, {
-      recursive: Boolean(options.recursive),
-      force: false,
-    });
+    try {
+      await fsp.rm(target, {
+        recursive: Boolean(options.recursive),
+        force: false,
+      });
+    } catch (error) {
+      if (isNodeErrno(error, "ENOENT")) {
+        throw new VirtualFilesystemError("Path not found", "NOT_FOUND");
+      }
+      throw error;
+    }
   }
 
   async createSnapshot(note?: string): Promise<VirtualFilesystemSnapshot> {
@@ -215,6 +233,22 @@ export class VirtualFilesystemService {
       );
     }
     return snapshot;
+  }
+
+  async listSnapshots(): Promise<VirtualFilesystemSnapshot[]> {
+    await this.initialize();
+    const entries = await fsp.readdir(this.snapshotsRoot, {
+      withFileTypes: true,
+    });
+    const snapshots: VirtualFilesystemSnapshot[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const snapshot = await this.readSnapshot(entry.name);
+      if (snapshot) snapshots.push(snapshot);
+    }
+    return snapshots.sort(
+      (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
+    );
   }
 
   async diffSnapshots(
@@ -260,6 +294,16 @@ export class VirtualFilesystemService {
     return rollback;
   }
 
+  async quota(): Promise<VirtualFilesystemQuota> {
+    const stats = await this.measureFiles();
+    return {
+      usedBytes: stats.bytes,
+      fileCount: stats.fileCount,
+      quotaBytes: this.quotaBytes,
+      maxFileBytes: this.maxFileBytes,
+    };
+  }
+
   resolveVirtualPath(virtualPath: string): string {
     return toVirtualPath(this.resolvePath(virtualPath), this.filesRoot);
   }
@@ -273,6 +317,42 @@ export class VirtualFilesystemService {
    */
   resolveDiskPath(virtualPath: string): string {
     return this.resolvePath(virtualPath);
+  }
+
+  async exportFiles(
+    snapshotId?: string,
+  ): Promise<VirtualFilesystemExportFile[]> {
+    const root = snapshotId
+      ? await this.snapshotFilesRoot(snapshotId)
+      : this.filesRoot;
+    const files: VirtualFilesystemExportFile[] = [];
+    const walk = async (dir: string): Promise<void> => {
+      for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
+        const realPath = path.join(dir, dirent.name);
+        if (dirent.isSymbolicLink()) {
+          throw new VirtualFilesystemError(
+            "Symlinks are not allowed in the VFS",
+            "SYMLINK_DENIED",
+          );
+        }
+        if (dirent.isDirectory()) {
+          await walk(realPath);
+          continue;
+        }
+        if (!dirent.isFile()) continue;
+        const stat = await fsp.lstat(realPath);
+        const bytes = await fsp.readFile(realPath);
+        files.push({
+          path: toVirtualPath(realPath, root),
+          type: "file",
+          size: stat.size,
+          mtimeMs: stat.mtimeMs,
+          bytes,
+        });
+      }
+    };
+    await walk(root);
+    return files.sort((a, b) => a.path.localeCompare(b.path));
   }
 
   private resolvePath(virtualPath: string): string {
@@ -503,11 +583,17 @@ export function createVirtualFilesystemService(
 }
 
 function sanitizeProjectId(projectId: string): string {
-  const sanitized = projectId.trim().replace(/[^a-zA-Z0-9._-]/g, "-");
-  if (!sanitized || sanitized === "." || sanitized === "..") {
+  const normalized = projectId.trim();
+  if (
+    !normalized ||
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.length > 120 ||
+    !/^[a-zA-Z0-9._-]+$/.test(normalized)
+  ) {
     throw new VirtualFilesystemError("Invalid VFS project id", "INVALID_PATH");
   }
-  return sanitized.slice(0, 120);
+  return normalized;
 }
 
 function normalizeVirtualPath(input: string): string {
@@ -566,6 +652,14 @@ async function sha256(realPath: string): Promise<string> {
   const hash = crypto.createHash("sha256");
   hash.update(await fsp.readFile(realPath));
   return hash.digest("hex");
+}
+
+function isNodeErrno(error: unknown, code: string): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === code
+  );
 }
 
 function diffIndexes(

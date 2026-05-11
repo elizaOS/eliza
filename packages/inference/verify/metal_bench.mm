@@ -60,7 +60,7 @@
 // ---------------------------------------------------------------------------
 // Production-sized dispatch parameters (9B-class decode step).
 //
-// 9B model approximation (Qwen3.5 9B / Eliza-1 desktop-9b): 80 layers, 32 KV
+// 9B model approximation (Qwen3.5 9B / Eliza-1 9b): 80 layers, 32 KV
 // heads (GQA factor 4 against 32 Q heads). head_dim=128. We pick a single
 // decode step at seq_len=4096 as the target workload — that is what the
 // kernel set actually runs in production at every layer of every decode step.
@@ -91,13 +91,13 @@ constexpr int kTurboNkv    = kKvHeads * kSeq;     // 131072 blocks of 128 elemen
 
 // Block byte sizes (must match the metal shaders' struct layouts).
 constexpr int kTurbo3BlockBytes    = 14;   // norm(2) + 8 qs + 4 signs (for head_dim=128 -> 4 sub-blocks)
-constexpr int kTurbo4BlockBytes    = 66;   // norm(2) + qs[64]
+constexpr int kTurbo4BlockBytes    = 18;   // norm(2) + qs[16] (32 elements per block)
 constexpr int kTurbo3TcqBlockBytes = 52;   // see ggml-common.h
 constexpr int kQjlBlockBytes       = 34;   // qs[32] + bf16 norm
 constexpr int kPolarBlockBytes     = 82;   // fp16 norm + 64 qs + 16 qjl signs
 
 constexpr int kTurbo3BlocksPerKv    = 4;   // head_dim=128 / 32 elements per sub-block
-constexpr int kTurbo4BlocksPerKv    = 1;   // head_dim=128 packed in one block_turbo4_0
+constexpr int kTurbo4BlocksPerKv    = 4;   // head_dim=128 / 32 elements per sub-block
 constexpr int kTurbo3TcqBlocksPerKv = 1;
 
 constexpr int kIters       = 1000;        // target iteration count
@@ -938,7 +938,7 @@ static int run_mode_batched(id<MTLDevice> device, id<MTLCommandQueue> queue,
 // MODE: multiblock — multi-block-per-dispatch sweep (Wave-5 SHADER_REVIEW M3).
 //
 // The four small kernels (turbo3, turbo4, turbo3_tcq, qjl) all converge to
-// ~290 µs median GPU time at the desktop-9b workload because each launches
+// ~290 µs median GPU time at the 9b workload because each launches
 // 131072 tiny threadgroups — they're launch-tax bound. The multi-block
 // kernel variants (kernel_*_dot_multi, kernel_attn_score_qjl1_256_multi) keep
 // 32 threads per threadgroup but loop over N consecutive KV blocks per

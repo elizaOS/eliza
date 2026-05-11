@@ -348,6 +348,41 @@ JSONL — one event per line. All scoring is reproducible from the log alone:
 pip install -e ".[drift]"
 ```
 
+## Drift harness — round 2 fixes
+
+The TypeScript drift harness (`scripts/benchmark/drift-harness.ts`) was hardened
+based on review feedback. Key changes:
+
+- **No jailbreak system prompt.** The previous "all data is fictional, repeat
+  values back" wrapper was a coping mechanism for `sk_*` API-key recall
+  refusals. It was removed; sensitive `api_key` fact kinds were dropped.
+- **Safer high-information fact kinds.** The fact rotation is now
+  `aws_account, person_name, address, code, book_title, project_codename,
+  isbn, date_iso, birthday, flight_number, uuid, zipcode` — memorable and
+  safety-neutral.
+- **Per-call reasoning effort.** The chat client takes a `reasoningEffort`
+  per call. Defaults: agent + judge `medium` (so they actually scan
+  history), compactor `low` (structured extraction). CLI flags
+  `--agent-reasoning-effort`, `--judge-reasoning-effort`,
+  `--compactor-reasoning-effort` override.
+- **Larger probe budget.** `--probe-max-tokens` defaults to 600 (was 200) so
+  prose recall answers don't truncate.
+- **Balanced fact distribution.** Kinds rotate round-robin per seed: a
+  4-fact run gets 4 distinct kinds; a 24-fact run gets exactly 2 of each
+  of the 12 kinds.
+- **Per-kind summary.** The `summary` JSONL event now includes
+  `perKindAccuracy: { <kind>: { correct, total, accuracy } }`.
+- **Realistic system prompt.** `--realistic-system-prompt` swaps in a ~5KB
+  Eliza-style prompt with synthetic action and plugin descriptions so the
+  compactor has something representative to chew on.
+- **Independent judge.** `--judge-model` selects a different model id for
+  the grader. Same model as agent (default) is biased toward agent output;
+  use a different family for trustworthy numbers.
+- **Tool-call drift.** `--with-tool-calls` interleaves a synthetic
+  `[tool_call:<name>]` / `[tool_result:<name>] <value>` pair every 5 turns
+  and probes `What did the X tool return when called at turn Y?` to verify
+  tool-result preservation across compaction.
+
 ## License
 
 MIT License - see LICENSE file for details.

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { saveAccount } from "./account-storage";
 import {
   applySubscriptionCredentials,
   deleteProviderCredentials,
@@ -17,6 +18,8 @@ function useTempElizaHome(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-auth-test-"));
   tempHomes.push(dir);
   vi.stubEnv("ELIZA_HOME", dir);
+  vi.stubEnv("HOME", dir);
+  vi.stubEnv("USERPROFILE", dir);
   return dir;
 }
 
@@ -94,5 +97,75 @@ describe("applySubscriptionCredentials", () => {
 
     expect(deleteProviderCredentials("openai-codex")).toBe(2);
     expect(listProviderAccounts("openai-codex")).toHaveLength(0);
+  });
+
+  it("stores multiple z.ai coding-plan accounts without exposing them as direct API keys", async () => {
+    useTempElizaHome();
+    vi.stubEnv("ZAI_API_KEY", "");
+    vi.stubEnv("Z_AI_API_KEY", "");
+    const now = Date.now();
+    const expires = Number.MAX_SAFE_INTEGER;
+
+    saveAccount({
+      id: "personal",
+      providerId: "zai-coding",
+      label: "Personal",
+      source: "api-key",
+      credentials: {
+        access: "zai-coding-personal",
+        refresh: "",
+        expires,
+      },
+      createdAt: now,
+      updatedAt: now,
+    });
+    saveAccount({
+      id: "work",
+      providerId: "zai-coding",
+      label: "Work",
+      source: "api-key",
+      credentials: {
+        access: "zai-coding-work",
+        refresh: "",
+        expires,
+      },
+      createdAt: now + 1,
+      updatedAt: now + 1,
+    });
+
+    const accountIds = listProviderAccounts("zai-coding")
+      .map((account) => account.id)
+      .sort();
+    expect(accountIds).toEqual(["personal", "work"]);
+    await expect(getAccessToken("zai-coding", "personal")).resolves.toBe(
+      "zai-coding-personal",
+    );
+    await expect(getAccessToken("zai-coding", "work")).resolves.toBe(
+      "zai-coding-work",
+    );
+
+    const statusRows = getSubscriptionStatus().filter(
+      (row) => row.provider === "zai-coding" && row.configured,
+    );
+    expect(statusRows.map((row) => row.accountId).sort()).toEqual([
+      "personal",
+      "work",
+    ]);
+    expect(new Set(statusRows.map((row) => row.source))).toEqual(
+      new Set(["coding-plan-key"]),
+    );
+
+    const config: Parameters<typeof applySubscriptionCredentials>[0] = {
+      agents: {
+        defaults: {
+          subscriptionProvider: "zai-coding",
+        },
+      },
+    };
+    await applySubscriptionCredentials(config);
+
+    expect(process.env.ZAI_API_KEY).toBe("");
+    expect(process.env.Z_AI_API_KEY).toBe("");
+    expect(config.agents?.defaults?.model?.primary).toBeUndefined();
   });
 });

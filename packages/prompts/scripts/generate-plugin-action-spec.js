@@ -33,6 +33,79 @@ const OUTPUT_PATH = path.join(
   "plugins.generated.json",
 );
 
+const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
+  "ASK_USER_QUESTION",
+  "CHECKIN",
+  "CHECK_AVAILABILITY",
+  "CLEAR_HISTORY",
+  "CREATE_PLAN",
+  "DESKTOP",
+  "DISCORD_SETUP_CREDENTIALS",
+  "EDIT",
+  "ENTER_WORKTREE",
+  "EXIT_WORKTREE",
+  "FIRST_RUN",
+  "FORM_RESTORE",
+  "GET_TUNNEL_STATUS",
+  "GLOB",
+  "GREP",
+  "HEALTH",
+  "LIFE",
+  "LIFEOPS",
+  "LIST_ACTIVE_BLOCKS",
+  "PROFILE",
+  "RELATIONSHIP",
+  "MONEY",
+  "PAYMENTS",
+  "SUBSCRIPTIONS",
+  "SCHEDULE",
+  "BOOK_TRAVEL",
+  "SCHEDULING_NEGOTIATION",
+  "DEVICE_INTENT",
+  "MESSAGE_HANDOFF",
+  "APP_BLOCK",
+  "WEBSITE_BLOCK",
+  "AUTOFILL",
+  "PASSWORD_MANAGER",
+  "GOOGLE_CALENDAR",
+  "LIFEOPS_PAUSE",
+  "NOSTR_PUBLISH_PROFILE",
+  "PAYMENT",
+  "PLACE_CALL",
+  "PLAY_AUDIO",
+  "PLAYBACK",
+  "READ",
+  "READING",
+  "RELEASE_BLOCK",
+  "SCREEN_TIME",
+  "SEND_TO_ADMIN",
+  "TOGGLE_FEATURE",
+  "TAILSCALE",
+  "START_TUNNEL",
+  "STOP_TUNNEL",
+  "WEB_FETCH",
+  "WRITE",
+  "LS",
+  "MUSIC_LIBRARY",
+  "LIST_OVERDUE_FOLLOWUPS",
+  "MARK_FOLLOWUP_DONE",
+  "SET_FOLLOWUP_THRESHOLD",
+  "LINEAR_ISSUE",
+  "LINEAR_COMMENT",
+  "LINEAR_WORKFLOW",
+  "CREATE_LINEAR_ISSUE",
+  "GET_LINEAR_ISSUE",
+  "UPDATE_LINEAR_ISSUE",
+  "DELETE_LINEAR_ISSUE",
+  "CREATE_LINEAR_COMMENT",
+  "UPDATE_LINEAR_COMMENT",
+  "DELETE_LINEAR_COMMENT",
+  "LIST_LINEAR_COMMENTS",
+  "GET_LINEAR_ACTIVITY",
+  "CLEAR_LINEAR_ACTIVITY",
+  "SEARCH_LINEAR_ISSUES",
+]);
+
 function readText(filePath) {
   return fs.readFileSync(filePath, "utf-8");
 }
@@ -116,6 +189,7 @@ function listTsFiles(rootDir) {
         }
         stack.push(full);
       } else if (ent.isFile() && ent.name.endsWith(".ts")) {
+        if (!isActionCandidateFile(full)) continue;
         if (full.includes(`${path.sep}__tests__${path.sep}`)) continue;
         if (full.endsWith(".test.ts")) continue;
         out.push(full);
@@ -125,110 +199,122 @@ function listTsFiles(rootDir) {
   return out.sort((a, b) => a.localeCompare(b));
 }
 
+function isActionCandidateFile(filePath) {
+  return (
+    filePath.includes(`${path.sep}actions${path.sep}`) ||
+    filePath.endsWith(`${path.sep}actions.ts`)
+  );
+}
+
 /**
  * Extract object literal source for `export const X: Action = { ... }`.
  * Returns array of `{ filePath, objectText }`.
  */
 function extractActionObjects(filePath, src) {
   const results = [];
-  const re = /:\s*Action\s*=\s*\{/gm;
-  for (;;) {
-    const m = re.exec(src);
-    if (m === null) break;
-    const braceStart = m.index + m[0].lastIndexOf("{");
+  const patterns = [
+    /:\s*Action(?:\s*&\s*\{[\s\S]*?\})?\s*=\s*\{/gm,
+    /\bfunction\s+[A-Za-z_$][A-Za-z0-9_$]*\s*\([^)]*\)\s*:\s*Action\s*\{[\s\S]*?\breturn\s+\{/gm,
+  ];
+  for (const re of patterns) {
+    for (;;) {
+      const m = re.exec(src);
+      if (m === null) break;
+      const braceStart = m.index + m[0].lastIndexOf("{");
 
-    // Parse balanced braces, skipping strings and comments.
-    let depth = 0;
-    let j = braceStart;
-    let inSingle = false;
-    let inDouble = false;
-    let inTemplate = false;
-    let inLineComment = false;
-    let inBlockComment = false;
-    let escaped = false;
+      // Parse balanced braces, skipping strings and comments.
+      let depth = 0;
+      let j = braceStart;
+      let inSingle = false;
+      let inDouble = false;
+      let inTemplate = false;
+      let inLineComment = false;
+      let inBlockComment = false;
+      let escaped = false;
 
-    while (j < src.length) {
-      const ch = src[j];
-      const next = j + 1 < src.length ? src[j + 1] : "";
+      while (j < src.length) {
+        const ch = src[j];
+        const next = j + 1 < src.length ? src[j + 1] : "";
 
-      if (inLineComment) {
-        if (ch === "\n") inLineComment = false;
-        j++;
-        continue;
-      }
-      if (inBlockComment) {
-        if (ch === "*" && next === "/") {
-          inBlockComment = false;
-          j += 2;
-          continue;
-        }
-        j++;
-        continue;
-      }
-
-      if (!inSingle && !inDouble && !inTemplate) {
-        if (ch === "/" && next === "/") {
-          inLineComment = true;
-          j += 2;
-          continue;
-        }
-        if (ch === "/" && next === "*") {
-          inBlockComment = true;
-          j += 2;
-          continue;
-        }
-      }
-
-      if (inSingle) {
-        if (!escaped && ch === "'") inSingle = false;
-        escaped = !escaped && ch === "\\";
-        j++;
-        continue;
-      }
-      if (inDouble) {
-        if (!escaped && ch === '"') inDouble = false;
-        escaped = !escaped && ch === "\\";
-        j++;
-        continue;
-      }
-      if (inTemplate) {
-        if (!escaped && ch === "`") {
-          inTemplate = false;
+        if (inLineComment) {
+          if (ch === "\n") inLineComment = false;
           j++;
           continue;
         }
-        escaped = !escaped && ch === "\\";
-        j++;
-        continue;
-      }
-
-      if (ch === "'") {
-        inSingle = true;
-        j++;
-        continue;
-      }
-      if (ch === '"') {
-        inDouble = true;
-        j++;
-        continue;
-      }
-      if (ch === "`") {
-        inTemplate = true;
-        j++;
-        continue;
-      }
-
-      if (ch === "{") depth++;
-      if (ch === "}") {
-        depth--;
-        if (depth === 0) {
-          const objectText = src.slice(braceStart, j + 1);
-          results.push({ filePath, objectText });
-          break;
+        if (inBlockComment) {
+          if (ch === "*" && next === "/") {
+            inBlockComment = false;
+            j += 2;
+            continue;
+          }
+          j++;
+          continue;
         }
-      }
 
-      j++;
+        if (!inSingle && !inDouble && !inTemplate) {
+          if (ch === "/" && next === "/") {
+            inLineComment = true;
+            j += 2;
+            continue;
+          }
+          if (ch === "/" && next === "*") {
+            inBlockComment = true;
+            j += 2;
+            continue;
+          }
+        }
+
+        if (inSingle) {
+          if (!escaped && ch === "'") inSingle = false;
+          escaped = !escaped && ch === "\\";
+          j++;
+          continue;
+        }
+        if (inDouble) {
+          if (!escaped && ch === '"') inDouble = false;
+          escaped = !escaped && ch === "\\";
+          j++;
+          continue;
+        }
+        if (inTemplate) {
+          if (!escaped && ch === "`") {
+            inTemplate = false;
+            j++;
+            continue;
+          }
+          escaped = !escaped && ch === "\\";
+          j++;
+          continue;
+        }
+
+        if (ch === "'") {
+          inSingle = true;
+          j++;
+          continue;
+        }
+        if (ch === '"') {
+          inDouble = true;
+          j++;
+          continue;
+        }
+        if (ch === "`") {
+          inTemplate = true;
+          j++;
+          continue;
+        }
+
+        if (ch === "{") depth++;
+        if (ch === "}") {
+          depth--;
+          if (depth === 0) {
+            const objectText = src.slice(braceStart, j + 1);
+            results.push({ filePath, objectText });
+            break;
+          }
+        }
+
+        j++;
+      }
     }
   }
 
@@ -697,13 +783,33 @@ function skipTypeAssertionSuffix(src, cursor) {
     const after = i + 2 < src.length ? src[i + 2] : "";
     if (/[A-Za-z0-9_$]/.test(before) || /[A-Za-z0-9_$]/.test(after)) break;
     i = skipTrivia(src, i + 2);
-    while (i < src.length && ![",", "]", "}"].includes(src[i])) i++;
+    let bracketDepth = 0;
+    let angleDepth = 0;
+    let parenDepth = 0;
+    while (i < src.length) {
+      const ch = src[i];
+      if (
+        bracketDepth === 0 &&
+        angleDepth === 0 &&
+        parenDepth === 0 &&
+        [",", "]", "}"].includes(ch)
+      ) {
+        break;
+      }
+      if (ch === "[") bracketDepth++;
+      else if (ch === "]" && bracketDepth > 0) bracketDepth--;
+      else if (ch === "<") angleDepth++;
+      else if (ch === ">" && angleDepth > 0) angleDepth--;
+      else if (ch === "(") parenDepth++;
+      else if (ch === ")" && parenDepth > 0) parenDepth--;
+      i++;
+    }
     i = skipTrivia(src, i);
   }
   return i;
 }
 
-function parseTsLiteralValue(src, cursor = 0) {
+function parseTsLiteralValue(src, cursor = 0, constants = new Map()) {
   let i = skipTrivia(src, cursor);
   const ch = src[i];
   if (ch === undefined) return { value: undefined, end: i };
@@ -725,9 +831,15 @@ function parseTsLiteralValue(src, cursor = 0) {
         break;
       }
       if (src.startsWith("...", i)) {
-        i = skipUnknownExpression(src, i + 3);
+        const ident = readIdentifier(src, skipTrivia(src, i + 3));
+        if (ident && Array.isArray(constants.get(ident.value))) {
+          arr.push(...constants.get(ident.value));
+          i = ident.end;
+        } else {
+          i = skipUnknownExpression(src, i + 3);
+        }
       } else {
-        const parsed = parseTsLiteralValue(src, i);
+        const parsed = parseTsLiteralValue(src, i, constants);
         if (parsed.value !== undefined) arr.push(parsed.value);
         i = parsed.end;
       }
@@ -777,7 +889,7 @@ function parseTsLiteralValue(src, cursor = 0) {
         if (src[i] === ",") i++;
         continue;
       }
-      const parsed = parseTsLiteralValue(src, i + 1);
+      const parsed = parseTsLiteralValue(src, i + 1, constants);
       if (parsed.value !== undefined) obj[key] = parsed.value;
       i = skipTrivia(src, parsed.end);
       if (src[i] === ",") i++;
@@ -793,6 +905,12 @@ function parseTsLiteralValue(src, cursor = 0) {
 
   const ident = readIdentifier(src, i);
   if (ident) {
+    if (constants.has(ident.value)) {
+      return {
+        value: constants.get(ident.value),
+        end: skipTypeAssertionSuffix(src, ident.end),
+      };
+    }
     if (ident.value === "true") {
       return { value: true, end: skipTypeAssertionSuffix(src, ident.end) };
     }
@@ -807,10 +925,61 @@ function parseTsLiteralValue(src, cursor = 0) {
   return { value: undefined, end: skipUnknownExpression(src, i) };
 }
 
-function extractTopLevelLiteralProp(objText, propName) {
+function extractTopLevelLiteralProp(objText, propName, constants = new Map()) {
   const source = extractTopLevelValueSource(objText, propName);
   if (!source) return undefined;
-  return parseTsLiteralValue(source).value;
+  return parseTsLiteralValue(source, 0, constants).value;
+}
+
+function extractConstLiterals(src) {
+  const constants = new Map();
+  const re = /\bconst\s+([A-Za-z_$][A-Za-z0-9_$]*)(?:\s*:[^=]+)?\s*=\s*/gm;
+  for (;;) {
+    const match = re.exec(src);
+    if (match === null) break;
+    const name = match[1];
+    const initializerStart = skipTrivia(src, re.lastIndex);
+    if (src[initializerStart] === "{") {
+      re.lastIndex = Math.max(
+        skipUnknownExpression(src, initializerStart),
+        re.lastIndex,
+      );
+      continue;
+    }
+    const parsed = parseTsLiteralValue(src, re.lastIndex, constants);
+    if (
+      typeof parsed.value === "string" ||
+      typeof parsed.value === "number" ||
+      typeof parsed.value === "boolean" ||
+      Array.isArray(parsed.value)
+    ) {
+      constants.set(name, parsed.value);
+    }
+    re.lastIndex = Math.max(parsed.end, re.lastIndex);
+  }
+  return constants;
+}
+
+function resolveRequireActionSpecName(src, source) {
+  const match = source.trim().match(/^([A-Za-z_$][A-Za-z0-9_$]*)\.name$/);
+  if (!match) return null;
+  const specName = match[1];
+  const specRe = new RegExp(
+    `\\bconst\\s+${specName}\\s*=\\s*requireActionSpec\\((["'\`])([^"'\`]+)\\1\\)`,
+  );
+  return specRe.exec(src)?.[2] ?? null;
+}
+
+function extractResolvedStringProp(objText, propName, constants, src) {
+  const direct = extractTopLevelStringProp(objText, propName);
+  if (typeof direct === "string") return direct;
+
+  const source = extractTopLevelValueSource(objText, propName);
+  if (!source) return null;
+  const parsed = parseTsLiteralValue(source, 0, constants).value;
+  if (typeof parsed === "string") return parsed;
+
+  return resolveRequireActionSpecName(src, source);
 }
 
 function isRecordValue(value) {
@@ -1201,6 +1370,11 @@ function main() {
   const actionDocsByName = new Map();
 
   for (const filePath of tsFiles) {
+    if (process.env.DEBUG_ACTION_SPEC) {
+      console.error(
+        `[generate-plugin-action-spec] ${path.relative(REPO_ROOT, filePath)}`,
+      );
+    }
     // Only consider files that look like they might define actions.
     if (
       !filePath.includes(`${path.sep}actions${path.sep}`) &&
@@ -1210,11 +1384,18 @@ function main() {
     }
     const src = readText(filePath);
     if (!src.includes(": Action")) continue;
+    const constants = extractConstLiterals(src);
 
     const objects = extractActionObjects(filePath, src);
     for (const obj of objects) {
-      const name = extractTopLevelStringProp(obj.objectText, "name");
+      const name = extractResolvedStringProp(
+        obj.objectText,
+        "name",
+        constants,
+        src,
+      );
       if (!name) continue;
+      if (RETIRED_IMPLEMENTATION_ONLY_ACTIONS.has(name)) continue;
       if (coreActionNames.has(name)) continue;
       const description = expandDescriptionTemplateLiterals(
         extractTopLevelStringProp(obj.objectText, "description") ?? "",
@@ -1226,7 +1407,7 @@ function main() {
       );
       const similes = extractTopLevelStringArrayProp(obj.objectText, "similes");
       const explicitParameters = sanitizeParameters(
-        extractTopLevelLiteralProp(obj.objectText, "parameters"),
+        extractTopLevelLiteralProp(obj.objectText, "parameters", constants),
       );
       const descriptionParameters = inferParametersFromDescription(description);
       const jsonTemplateParameters =

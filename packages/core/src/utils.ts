@@ -518,7 +518,9 @@ export const formatMessages = ({
 								lines.push(`Type: ${media.contentType}`);
 							}
 							if (media.text || media.description) {
-								lines.push("Stored content available via READ_ATTACHMENT");
+								lines.push(
+									"Stored content available via ATTACHMENT action=read",
+								);
 							}
 							return lines.join("\n");
 						})
@@ -574,7 +576,7 @@ export const formatMessages = ({
 
 	return [
 		formattedMessages,
-		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use READ_ATTACHMENT to inspect additional attachments.`,
+		`Note: ${omittedAttachmentCount} older attachment${omittedAttachmentCount === 1 ? "" : "s"} omitted from context. Use ATTACHMENT action=read to inspect additional attachments.`,
 	]
 		.filter(Boolean)
 		.join("\n");

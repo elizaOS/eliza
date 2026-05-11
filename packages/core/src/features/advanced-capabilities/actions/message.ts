@@ -13,6 +13,7 @@ import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
+import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
 import type {
 	Action,
 	ActionExample,
@@ -84,9 +85,9 @@ export type MessageOperation = (typeof MESSAGE_OPS)[number];
 const MESSAGE_CONTEXTS = ["messaging", "email", "contacts", "connectors"];
 
 const MESSAGE_DESCRIPTION =
-	"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Use operation to choose the subaction. Public feed publishing belongs to POST.";
+	"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Use action to choose the operation. Public feed publishing belongs to POST.";
 const MESSAGE_COMPRESSED =
-	"primary message action ops send read_channel read_with_contact search list_channels list_servers join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft";
+	"primary message action send read_channel read_with_contact search list_channels list_servers join leave react edit delete pin get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft";
 
 // ---------------------------------------------------------------------------
 // Param coercion / op normalization
@@ -235,13 +236,7 @@ function normalizeOp(value: unknown): MessageOperation | undefined {
 }
 
 function inferOp(message: Memory, params: ParamRecord): MessageOperation {
-	const explicit =
-		normalizeOp(params.subaction) ??
-		normalizeOp(params.operation) ??
-		normalizeOp(params.subAction) ??
-		normalizeOp(params.__subaction) ??
-		normalizeOp(params.op) ??
-		normalizeOp(params.action);
+	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
 
 	const text = `${message.content?.text ?? ""}`.toLowerCase();
@@ -3131,13 +3126,9 @@ async function delegateToTriage(
 	responses: Parameters<Action["handler"]>[5],
 ): Promise<ActionResult> {
 	const action = TRIAGE_OP_TO_ACTION[op];
-	const result = await action.handler(
-		runtime,
-		message,
-		state,
-		options,
-		callback,
-		responses,
+	const result = await runWithActionRoutingContext(
+		{ actionName: action.name, modelClass: action.modelClass },
+		() => action.handler(runtime, message, state, options, callback, responses),
 	);
 	const normalized: ActionResult = result ?? {
 		success: true,
@@ -3160,38 +3151,10 @@ async function delegateToTriage(
 
 export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	{
-		name: "subaction",
-		description: `Message subaction. One of: ${MESSAGE_OPS.join(", ")}.`,
+		name: "action",
+		description: `Message action. One of: ${MESSAGE_OPS.join(", ")}.`,
 		required: false,
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
-	},
-	{
-		name: "operation",
-		description:
-			"Legacy alias for subaction, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "subAction",
-		description:
-			"Legacy alias for subaction, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "__subaction",
-		description:
-			"Legacy alias for subaction, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "op",
-		description:
-			"Legacy alias for subaction, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
 	},
 	{
 		name: "source",

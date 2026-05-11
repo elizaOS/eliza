@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/browser-bridge-extension",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "scripts": {
     "build": "bun scripts/build.mjs chrome",
@@ -16,8 +16,8 @@
     "test:ci": "bun run test && bun run test:smoke"
   },
   "dependencies": {
-    "@elizaos/plugin-browser": "workspace:*",
-    "@elizaos/shared": "workspace:*"
+    "@elizaos/plugin-browser": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1"
   },
   "private": true
 }

@@ -1,1 +1,1 @@
-export { clearHistory } from "./clearHistory";
+export { clearHistory, shellHistoryAction } from "./shellHistory";

@@ -7,6 +7,14 @@ import type {
 export const BROWSER_WALLET_REQUEST_TYPE = "ELIZA_BROWSER_WALLET_REQUEST";
 export const BROWSER_WALLET_RESPONSE_TYPE = "ELIZA_BROWSER_WALLET_RESPONSE";
 export const BROWSER_WALLET_READY_TYPE = "ELIZA_BROWSER_WALLET_READY";
+export const DEFAULT_BROWSER_WORKSPACE_EVM_CHAIN_ID = 1;
+export const SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_IDS = [
+  1, 10, 56, 137, 8453, 42161,
+] as const;
+
+const SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_ID_SET = new Set<number>(
+  SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_IDS,
+);
 
 export type BrowserWorkspaceWalletMode =
   | "steward"
@@ -72,6 +80,9 @@ export type BrowserWorkspaceWalletRpcMethod =
   | "eth_sendTransaction"
   | "personal_sign"
   | "eth_sign"
+  | "eth_signTypedData"
+  | "eth_signTypedData_v3"
+  | "eth_signTypedData_v4"
   | "wallet_switchEthereumChain";
 
 export type BrowserWorkspaceSolanaMethod =
@@ -159,11 +170,18 @@ export function resolveBrowserWorkspaceWalletMode(
   solanaAddress: string | null,
   walletConfig: WalletConfigStatus | null,
 ): BrowserWorkspaceWalletMode {
+  const evmMessageSigningAvailable = Boolean(
+    evmAddress && walletConfig?.evmSigningCapability === "local",
+  );
+  const evmTransactionSigningAvailable = Boolean(
+    evmAddress && walletConfig?.executionReady,
+  );
   if (stewardStatus?.connected) {
     return "steward";
   }
   if (
-    (evmAddress && walletConfig?.executionReady) ||
+    evmMessageSigningAvailable ||
+    evmTransactionSigningAvailable ||
     (solanaAddress && walletConfig?.solanaSigningAvailable)
   ) {
     return "local";
@@ -201,6 +219,12 @@ export function buildBrowserWorkspaceWalletState(params: {
   );
   const evmConnected = Boolean(evmAddress);
   const solanaConnected = Boolean(solanaAddress);
+  const evmMessageSigningAvailable = Boolean(
+    evmAddress && walletConfig?.evmSigningCapability === "local",
+  );
+  const evmTransactionSigningAvailable = Boolean(
+    evmAddress && walletConfig?.executionReady,
+  );
   const solanaMessageSigningAvailable = Boolean(
     solanaAddress && walletConfig?.solanaSigningAvailable,
   );
@@ -237,17 +261,12 @@ export function buildBrowserWorkspaceWalletState(params: {
       mode,
       pendingApprovals: 0,
       reason: null,
-      messageSigningAvailable: Boolean(
-        evmAddress && walletConfig?.executionReady,
-      ),
-      transactionSigningAvailable: Boolean(
-        evmAddress && walletConfig?.executionReady,
-      ),
-      chainSwitchingAvailable: Boolean(
-        evmAddress && walletConfig?.executionReady,
-      ),
+      messageSigningAvailable: evmMessageSigningAvailable,
+      transactionSigningAvailable: evmTransactionSigningAvailable,
+      chainSwitchingAvailable: evmTransactionSigningAvailable,
       signingAvailable:
-        Boolean(evmAddress && walletConfig?.executionReady) ||
+        evmMessageSigningAvailable ||
+        evmTransactionSigningAvailable ||
         solanaMessageSigningAvailable ||
         solanaTransactionSigningAvailable,
       solanaAddress,
@@ -303,4 +322,46 @@ export function isBrowserWorkspaceWalletRequest(
     typeof entry.requestId === "string" &&
     typeof entry.method === "string"
   );
+}
+
+export function parseBrowserWorkspaceEvmChainId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = trimmed.startsWith("0x")
+    ? Number.parseInt(trimmed.slice(2), 16)
+    : Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function formatBrowserWorkspaceEvmChainId(chainId: number): string {
+  return `0x${chainId.toString(16)}`;
+}
+
+export function isBrowserWorkspaceEvmChainSupported(chainId: number): boolean {
+  return SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_ID_SET.has(chainId);
+}
+
+export function getUnsupportedBrowserWorkspaceEvmChainError(
+  chainId: number,
+): string {
+  return `Unsupported EVM chain ${chainId}. Supported chain IDs: ${SUPPORTED_BROWSER_WORKSPACE_EVM_CHAIN_IDS.join(", ")}.`;
+}
+
+export function resolveBrowserWorkspaceSignMessage(
+  params: unknown,
+  address: string | null,
+): string | null {
+  if (typeof params === "string") return params;
+  if (!Array.isArray(params) || params.length === 0) return null;
+  const [first, second] = params;
+  if (typeof first === "string" && typeof second === "string" && address) {
+    const normalizedAddress = address.toLowerCase();
+    if (first.toLowerCase() === normalizedAddress) return second;
+    if (second.toLowerCase() === normalizedAddress) return first;
+  }
+  return typeof first === "string" ? first : null;
 }

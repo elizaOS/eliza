@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { listSubactionsFromParameters } from "../../actions/promote-subactions.ts";
 import * as pluginManagerExports from "./index.ts";
 import { pluginAction, pluginManagerPlugin } from "./index.ts";
 
@@ -26,10 +27,7 @@ describe("plugin manager umbrella action", () => {
 	});
 
 	it("folds plugin management operations into subactions", () => {
-		const subaction = pluginAction.parameters?.find(
-			(parameter) => parameter.name === "subaction",
-		);
-		expect(subaction?.schema.enum).toEqual([
+		expect(listSubactionsFromParameters(pluginAction.parameters)).toEqual([
 			"install",
 			"eject",
 			"sync",
@@ -44,6 +42,11 @@ describe("plugin manager umbrella action", () => {
 			"core_status",
 			"create",
 		]);
+		expect(
+			pluginAction.parameters?.some(
+				(parameter) => parameter.name === "subaction",
+			),
+		).toBe(false);
 	});
 
 	it("does not re-export standalone core plugin management actions", () => {

@@ -1,0 +1,162 @@
+{
+  "name": "@elizaos/plugin-zai",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/node/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-zai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "import": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small"
+      ]
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@ai-sdk/openai-compatible": "^1.0.0",
+    "@elizaos/core": "2.0.0-beta.1",
+    "ai": "^6.0.23"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "^1.3.10",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bunx vitest run --config vitest.config.ts",
+    "test:watch": "bunx vitest --config vitest.config.ts",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ZAI_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to z.ai's general OpenAI-compatible API",
+        "required": true,
+        "sensitive": true
+      },
+      "ZAI_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for z.ai's general OpenAI-compatible API. Coding Plan and Anthropic-compatible coding-tool endpoints are intentionally rejected here.",
+        "required": false,
+        "default": "https://api.z.ai/api/paas/v4",
+        "sensitive": false
+      },
+      "ZAI_SMALL_MODEL": {
+        "type": "string",
+        "description": "Override the default z.ai small model identifier",
+        "required": false,
+        "default": "glm-4.5-air",
+        "sensitive": false
+      },
+      "ZAI_LARGE_MODEL": {
+        "type": "string",
+        "description": "Override the default z.ai large model identifier",
+        "required": false,
+        "default": "glm-5.1",
+        "sensitive": false
+      },
+      "ZAI_EXPERIMENTAL_TELEMETRY": {
+        "type": "boolean",
+        "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ZAI_BROWSER_BASE_URL": {
+        "type": "string",
+        "description": "Browser-only proxy endpoint base URL for z.ai requests. Do not expose API keys in browser clients.",
+        "required": false,
+        "sensitive": false
+      },
+      "ZAI_COT_BUDGET": {
+        "type": "string",
+        "description": "Deprecated compatibility setting. A positive value enables z.ai thinking mode, but z.ai's OpenAI-compatible API does not accept Anthropic budget_tokens.",
+        "required": false,
+        "sensitive": false
+      },
+      "ZAI_COT_BUDGET_SMALL": {
+        "type": "string",
+        "description": "Deprecated compatibility setting. A positive value enables z.ai thinking mode for small-model calls.",
+        "required": false,
+        "sensitive": false
+      },
+      "ZAI_COT_BUDGET_LARGE": {
+        "type": "string",
+        "description": "Deprecated compatibility setting. A positive value enables z.ai thinking mode for large-model calls.",
+        "required": false,
+        "sensitive": false
+      },
+      "ZAI_THINKING_TYPE": {
+        "type": "string",
+        "description": "Optional z.ai thinking mode override: enabled or disabled. When unset, z.ai uses its service default.",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  }
+}

@@ -1,6 +1,6 @@
 ---
 name: eliza-cloud
-description: "Use when the task involves Eliza Cloud or elizaOS Cloud as a managed backend, app platform, deployment target, billing layer, or monetization surface. The catch-all skill for any user request about THEIR existing apps / containers / earnings / credits / api-keys / analytics / billing — `list my apps`, `delete this app`, `change container size`, `what are my earnings`, `top up credits`, `regenerate api key`, `show analytics`. Covers app creation, `appId` usage, app auth flows, cloud-hosted APIs, analytics, credits, creator monetization, and custom Docker container deployments. For domain-specific ops defer to `eliza-cloud-buy-domain` / `eliza-cloud-manage-domain`."
+description: "Use when the task involves Eliza Cloud or elizaOS Cloud as a managed backend, app platform, deployment target, billing layer, or monetization surface. The catch-all skill for any user request about THEIR existing apps / containers / earnings / credits / api-keys / analytics / billing / payment requests / payouts — `list my apps`, `delete this app`, `change container size`, `what are my earnings`, `top up credits`, `charge this user`, `check if they paid`, `request payout`, `regenerate api key`, `show analytics`. Covers app creation, `appId` usage, app auth flows, cloud-hosted APIs, analytics, credits, app charge requests, x402 crypto requests, affiliate links, creator monetization, payout redemptions, and custom Docker container deployments. For domain-specific ops defer to `eliza-cloud-buy-domain` / `eliza-cloud-manage-domain`."
 ---
 
 # Eliza Cloud
@@ -18,12 +18,23 @@ Treat Eliza Cloud as the default managed backend before inventing separate auth,
 - creator monetization, app charge requests, affiliate links, x402 payment
   requests, and payout redemptions
 - Docker container deployments for server-side workloads
+- on-demand cloud tunnel provisioning for agents through Headscale-backed
+  Tailscale sessions
 
 ## Read These References First
 
 - `references/cloud-backend-and-monetization.md` for apps, auth, billing, and earnings
 - `references/apps-and-containers.md` for deployment, domains, and container workflow
-- `references/payments-and-promotion.md` for app charges, x402 requests, promotion assets, advertising, image/video/music/TTS generation, and parent-agent Cloud commands
+- `references/payments-and-promotion.md` for app charges, x402 requests, local billing proxy aliases, payout redemptions, promotion assets, advertising, image/video/music/TTS generation, and parent-agent Cloud commands
+
+## Skill Pairing
+
+Use `build-monetized-app` alongside this skill for any new Cloud app that
+should earn money. `build-monetized-app` owns the build, deploy, monetize, and
+custom-domain offer flow; `eliza-cloud` owns the current Cloud backend surface,
+existing-app management, app charge requests, x402 requests, affiliate earnings,
+payout redemptions, media/promotion, and account-bound parent-agent commands.
+Spawned code agents should load or request both skills for Cloud app builds.
 
 ## Default Build Flow
 
@@ -67,6 +78,44 @@ app-specific chat endpoint:
 
 Some older docs still describe generic per-request or per-token app pricing. In this repo's current implementation, the active app monetization controls are markup/share-based. Prefer the current schema, UI, and API behavior in this repo when prose docs conflict.
 
+## Payment And Money Flow Rules
+
+Pick the narrowest money surface:
+
+- **App monetization** (`PUT /api/v1/apps/{id}/monetization`) sets ongoing inference markup and app-credit purchase share. It is not a one-off invoice.
+- **App charge requests** (`POST /api/v1/apps/{id}/charges`) ask a user to pay an exact USD amount through Stripe or OxaPay. The payer receives app credits; creator earnings flow through the app-credit earnings ledger.
+- **x402 payment requests** (`POST /api/v1/x402/requests`) ask for direct crypto settlement. Use these when the payer already has crypto or the flow is wallet-native. Current settlement support includes Base, Ethereum, BSC, and Solana; defaults point at `https://x402.elizacloud.ai`.
+- **App-credit checkout** (`POST /api/v1/app-credits/checkout`) buys app credits directly. Use app charge requests when the agent needs a durable request, metadata, callbacks, and a reusable payment URL.
+- **Org-credit checkout** (`POST /api/v1/credits/checkout`) tops up the user's organization. It is not creator pricing.
+- **Cloud tunnel provisioning** (`POST /api/v1/apis/tunnels/tailscale/auth-key`) debits org credits once per successful tunnel auth-key mint. It is on-demand infrastructure usage, not SaaS/subscription billing.
+- **Redemptions** (`POST /api/v1/redemptions`) request creator payout in elizaOS tokens on `base`, `bsc`/`bnb`, `ethereum`, or `solana`. Payouts are fixed to the USD quote at request time and then admin reviewed/processed.
+
+For agent-initiated charges, always include callback channel metadata when a
+conversation should get the payment result:
+
+```json
+{ "callback_channel": { "roomId": "room-id", "agentId": "agent-id" } }
+```
+
+On success or failure, the Cloud payment services can write back to that same
+room so the agent can tell the user whether the payment went through.
+
+When running inside the local `@elizaos/plugin-elizacloud` route plugin, use
+`/api/cloud/billing/*` aliases instead of exposing Cloud credentials to browser
+or app code. They proxy to the real Cloud API and preserve x402 payment headers:
+
+- `/api/cloud/billing/x402/*` -> `/api/v1/x402/*`
+- `/api/cloud/billing/apps/{appId}/charges/*` -> `/api/v1/apps/{appId}/charges/*`
+- `/api/cloud/billing/apps/{appId}/earnings/*` -> `/api/v1/apps/{appId}/earnings/*`
+- `/api/cloud/billing/apps/{appId}/monetization` -> `/api/v1/apps/{appId}/monetization`
+- `/api/cloud/billing/app-credits/*` -> `/api/v1/app-credits/*`
+- `/api/cloud/billing/affiliates/*` -> `/api/v1/affiliates/*`
+- `/api/cloud/billing/redemptions/*` -> `/api/v1/redemptions/*`
+
+Do not hand-calculate payment totals. The creator supplies the requested amount;
+Cloud returns platform/service fees, total charged amount, headers, URLs, and
+status fields. Show or store the returned values.
+
 ## Management surface — what users can ask for
 
 This is the catch-all skill for any user request about apps they already own. Endpoints + intent map:
@@ -83,14 +132,26 @@ This is the catch-all skill for any user request about apps they already own. En
 | `set markup percentage` | `/api/v1/apps/{id}/monetization` | PUT |
 | `charge this user` / `send a payment request` | `/api/v1/apps/{id}/charges` or `/api/v1/x402/requests` | POST |
 | `check if they paid` | `/api/v1/apps/{id}/charges/{chargeId}` or `/api/v1/x402/requests/{id}` | GET |
+| `create checkout for that charge` | `/api/v1/apps/{id}/charges/{chargeId}/checkout` | POST |
 | `create affiliate code` | `/api/v1/affiliates` | POST |
 | `link affiliate code` | `/api/v1/affiliates/link` | POST |
+| `show payout balance` | `/api/v1/redemptions/balance` | GET |
+| `quote payout` | `/api/v1/redemptions/quote` | GET |
 | `request payout` | `/api/v1/redemptions` | POST |
 | `show app analytics / usage` | `/api/v1/apps/{id}/analytics` | GET |
 | `regenerate my api key` | `/api/v1/apps/{id}/regenerate-api-key` | POST |
 | `manage app users` | `/api/v1/apps/{id}/users` | GET / POST |
-| `top up credits` | direct user to `/dashboard/billing` (Stripe checkout) |
+| `top up org credits` | `/api/v1/credits/checkout` or `/dashboard/billing` | POST / hosted |
+| `top up app credits` | `/api/v1/app-credits/checkout` | POST |
+| `start/provision a cloud tunnel` | `/api/v1/apis/tunnels/tailscale/auth-key` via `@elizaos/plugin-tailscale` | POST |
 | `dashboard overview` | `/api/v1/dashboard` | GET |
+
+Cloud tunnels are multi-tenant by construction: callers must authenticate as an
+active Cloud user or API key with an organization, provisioning consumes org
+credits immediately, keys are short-lived/non-reusable/ephemeral, the server
+forces `tag:eliza-tunnel`, and the public proxy only forwards generated
+signed `eliza-<org>-<random>-<expiry>-<signature>` hostnames into the Headscale
+tailnet. Signed public hostnames expire with the tunnel provisioning window.
 
 Always confirm before destructive actions (delete app, regenerate key) — show the user what's about to happen, ask for explicit yes.
 

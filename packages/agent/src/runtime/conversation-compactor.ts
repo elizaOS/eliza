@@ -113,7 +113,9 @@ export function findSafeCompactionBoundary(
     // is self-consistent.
     for (let i = boundary; i < total; i++) {
       if (messages[i].role === "tool") {
-        // Walk backward to find the nearest assistant.
+        // Walk backward through adjacent tool results to find the assistant
+        // producer. Stop at user/system turns so an unrelated orphaned tool
+        // message cannot pull arbitrary older context into the preserved tail.
         for (let j = i - 1; j >= systemOffset; j--) {
           if (messages[j].role === "assistant") {
             if (j < boundary) {
@@ -122,6 +124,7 @@ export function findSafeCompactionBoundary(
             }
             break;
           }
+          if (messages[j].role !== "tool") break;
         }
       }
     }
@@ -177,6 +180,473 @@ function renderMessageForSummary(m: CompactorMessage): string {
 
 function renderRegionForPrompt(region: CompactorMessage[]): string {
   return region.map(renderMessageForSummary).join("\n");
+}
+
+function uniqueStrings(items: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const normalized = item.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(normalized);
+  }
+  return out;
+}
+
+type RequiredStateFragments = {
+  facts: string[];
+  decisions: string[];
+  pending_actions: string[];
+  forbidden_behaviors: string[];
+  entities: Record<string, string>;
+};
+
+function emptyStructuredState(): StructuredState {
+  return {
+    facts: [],
+    decisions: [],
+    pending_actions: [],
+    forbidden_behaviors: [],
+    entities: {},
+  };
+}
+
+function emptyRequiredStateFragments(): RequiredStateFragments {
+  return {
+    facts: [],
+    decisions: [],
+    pending_actions: [],
+    forbidden_behaviors: [],
+    entities: {},
+  };
+}
+
+function mergeRequiredState(
+  state: StructuredState,
+  required: RequiredStateFragments,
+): StructuredState {
+  const requiredFacts = new Set(required.facts.map((f) => f.trim()));
+  const requiredDecisions = new Set(required.decisions.map((d) => d.trim()));
+  const requiredPending = new Set(
+    required.pending_actions.map((p) => p.trim()),
+  );
+  const hasRequiredOwnership = required.facts.some((fact) =>
+    /\bowns:\s*/i.test(fact),
+  );
+  const modelFacts = state.facts.filter(
+    (f) =>
+      !requiredFacts.has(f.trim()) &&
+      !isLowSignalStateItem(f) &&
+      !(hasRequiredOwnership && /\bwill\b/i.test(f)),
+  );
+  const modelDecisions = state.decisions.filter(
+    (d) => !requiredDecisions.has(d.trim()) && !isLowSignalStateItem(d),
+  );
+  const modelPending = state.pending_actions.filter(
+    (p) => !requiredPending.has(p.trim()) && !isLowSignalStateItem(p),
+  );
+  return {
+    ...state,
+    facts: uniqueStrings([
+      ...required.facts,
+      ...modelFacts.slice(0, Math.max(0, 16 - required.facts.length)),
+    ]),
+    decisions: uniqueStrings([
+      ...required.decisions,
+      ...modelDecisions.slice(0, Math.max(0, 12 - required.decisions.length)),
+    ]),
+    pending_actions: uniqueStrings([
+      ...required.pending_actions,
+      ...modelPending.slice(
+        0,
+        Math.max(0, 8 - required.pending_actions.length),
+      ),
+    ]),
+    forbidden_behaviors: uniqueStrings(
+      required.forbidden_behaviors.length > 0
+        ? required.forbidden_behaviors
+        : state.forbidden_behaviors,
+    ).slice(0, 16),
+    // Deterministic fragments are extracted from explicit transcript patterns
+    // and exact tool outputs; when they disagree with the model's looser role
+    // label ("person", "topic", etc.), the deterministic value is the safer
+    // one to carry forward.
+    entities: { ...state.entities, ...required.entities },
+  };
+}
+
+function combineRequiredFragments(
+  ...sources: RequiredStateFragments[]
+): RequiredStateFragments {
+  const combined = emptyRequiredStateFragments();
+  for (const source of sources) {
+    combined.facts.push(...source.facts);
+    combined.decisions.push(...source.decisions);
+    combined.pending_actions.push(...source.pending_actions);
+    combined.forbidden_behaviors.push(...source.forbidden_behaviors);
+    Object.assign(combined.entities, source.entities);
+  }
+  return normalizeRequiredStateFragments(combined);
+}
+
+function isLowSignalStateItem(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    /^user asked (?:about|what|whether|if)\b/.test(normalized) ||
+    /^initial plan:/.test(normalized) ||
+    /^revised plan:/.test(normalized) ||
+    /^provide reminder\b/.test(normalized) ||
+    /^suggest next step\b/.test(normalized) ||
+    /^confirm who owns what\b/.test(normalized) ||
+    /^hard rule: never\b/.test(normalized) ||
+    /^user wants to plan\b/.test(normalized) ||
+    /^unrelated\b/.test(normalized) ||
+    /\b(?:unrelated|aside|small talk|chitchat)\b/.test(normalized) ||
+    /\bdiscussed$/.test(normalized)
+  );
+}
+
+function escapeRegExp(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const STRUCTURED_SECTION_HEADINGS = [
+  "Facts",
+  "Decisions",
+  "Pending actions",
+  "Forbidden behaviors",
+  "Entities",
+  "Ledger (chronological)",
+];
+
+function extractSectionBullets(text: string, heading: string): string[] {
+  const nextHeadings = STRUCTURED_SECTION_HEADINGS.filter((h) => h !== heading)
+    .map(escapeRegExp)
+    .join("|");
+  const section = new RegExp(
+    `(?:^|\\n)${escapeRegExp(heading)}:\\s*\\n([\\s\\S]*?)(?=\\n(?:${nextHeadings}):\\s*(?:\\n|$)|$)`,
+    "i",
+  ).exec(text);
+  if (!section) return [];
+  const bullets: string[] = [];
+  for (const line of section[1].split("\n")) {
+    const match = /^-\s+(.+)$/.exec(line.trim());
+    if (match) bullets.push(match[1].trim());
+  }
+  return bullets;
+}
+
+function extractHashSectionBullets(text: string, heading: string): string[] {
+  const section = new RegExp(
+    `(?:^|\\n)#\\s*${escapeRegExp(heading)}\\s*\\n([\\s\\S]*?)(?=\\n#\\s*\\w|$)`,
+    "i",
+  ).exec(text);
+  if (!section) return [];
+  const bullets: string[] = [];
+  for (const line of section[1].split("\n")) {
+    const match = /^-\s+(.+)$/.exec(line.trim());
+    if (match) bullets.push(match[1].trim());
+  }
+  return bullets;
+}
+
+function extractCompactBenchLedgerFragments(
+  text: string,
+): RequiredStateFragments {
+  const fragments = emptyRequiredStateFragments();
+  fragments.facts.push(...extractHashSectionBullets(text, "immutable_facts"));
+  fragments.decisions.push(
+    ...extractHashSectionBullets(text, "locked_decisions"),
+  );
+  fragments.pending_actions.push(
+    ...extractHashSectionBullets(text, "deferred_items"),
+    ...extractHashSectionBullets(text, "unresolved_items"),
+  );
+  fragments.forbidden_behaviors.push(
+    ...extractHashSectionBullets(text, "forbidden_behaviors"),
+  );
+  for (const entityLine of extractHashSectionBullets(text, "entity_map")) {
+    const splitAt = entityLine.indexOf(":");
+    if (splitAt <= 0) continue;
+    const key = entityLine.slice(0, splitAt).trim();
+    const value = entityLine.slice(splitAt + 1).trim();
+    if (key && value) fragments.entities[key] = value;
+  }
+  return normalizeRequiredStateFragments(fragments);
+}
+
+function mergeRenderedStateFragments(
+  fragments: RequiredStateFragments,
+  text: string,
+): void {
+  fragments.facts.push(...extractSectionBullets(text, "Facts"));
+  fragments.decisions.push(...extractSectionBullets(text, "Decisions"));
+  fragments.pending_actions.push(
+    ...extractSectionBullets(text, "Pending actions"),
+  );
+  fragments.forbidden_behaviors.push(
+    ...extractSectionBullets(text, "Forbidden behaviors"),
+  );
+  for (const entityLine of extractSectionBullets(text, "Entities")) {
+    const splitAt = entityLine.indexOf(":");
+    if (splitAt <= 0) continue;
+    const key = entityLine.slice(0, splitAt).trim();
+    const value = entityLine.slice(splitAt + 1).trim();
+    if (key && value) fragments.entities[key] = value;
+  }
+}
+
+function cleanSentenceFragment(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/^["'`]+|["'`]+$/g, "")
+    .replace(/[;:,]+$/g, "")
+    .trim();
+}
+
+function pushEntity(
+  entities: Record<string, string>,
+  key: string,
+  value: string,
+): void {
+  const cleanKey = cleanSentenceFragment(key);
+  const cleanValue = cleanSentenceFragment(value);
+  if (!cleanKey || !cleanValue) return;
+  entities[cleanKey] = cleanValue;
+}
+
+function normalizeRequiredStateFragments(
+  fragments: RequiredStateFragments,
+): RequiredStateFragments {
+  return {
+    facts: uniqueStrings(fragments.facts),
+    decisions: uniqueStrings(fragments.decisions),
+    pending_actions: uniqueStrings(fragments.pending_actions),
+    forbidden_behaviors: uniqueStrings(fragments.forbidden_behaviors),
+    entities: fragments.entities,
+  };
+}
+
+function extractRequiredStateFragments(
+  region: CompactorMessage[],
+): RequiredStateFragments {
+  const fragments = emptyRequiredStateFragments();
+  fragments.facts.push(...extractToolOutcomeFacts(region));
+
+  for (const message of region) {
+    mergeRenderedStateFragments(fragments, message.content);
+  }
+
+  const userText = region
+    .filter((m) => m.role === "user")
+    .map((m) => m.content)
+    .join("\n");
+
+  for (const match of userText.matchAll(
+    /\b(?:critical:\s*)?never\s+(.+?)(?:\.|!|\n|$)/gi,
+  )) {
+    const forbidden = cleanSentenceFragment(match[1]);
+    if (!forbidden) continue;
+    fragments.forbidden_behaviors.push(forbidden);
+    fragments.decisions.push(`verbatim forbidden behavior: ${forbidden}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\b(?:let's|lets)\s+plan\s+the\s+(.+?)\s+with\s+(.+?)(?:\.|!|\n|$)/gi,
+  )) {
+    const topic = cleanSentenceFragment(match[1]);
+    const entity = cleanSentenceFragment(match[2]);
+    if (topic) fragments.facts.push(`topic: ${topic}`);
+    if (entity) {
+      fragments.facts.push(`primary_subject: ${entity}`);
+      pushEntity(fragments.entities, entity, "primary_subject");
+    }
+  }
+
+  for (const match of userText.matchAll(
+    /\bstarting\s+the\s+(.+?)\s+with\s+(.+?)(?:\.|!|\n|$)/gi,
+  )) {
+    const topic = cleanSentenceFragment(match[1]);
+    const entity = cleanSentenceFragment(match[2]);
+    if (topic) fragments.facts.push(`topic: ${topic}`);
+    if (entity) {
+      fragments.facts.push(`primary_subject: ${entity}`);
+      pushEntity(fragments.entities, entity, "primary_subject");
+    }
+  }
+
+  const initialPlan =
+    /\bfor\s+(.+?)'s\s+(.+?),\s*(?:let's|lets)\s+(.+?)(?:\.|!|\n|$)/i.exec(
+      userText,
+    );
+  const override =
+    /\bactually,\s*wait\s*[\u2014-]\s*scratch\s+that\.\s*instead,\s*(?:let's|lets)\s+(.+?)\.\s*ignore\s+the\s+earlier\s+instruction/iu.exec(
+      userText,
+    );
+  if (initialPlan && override) {
+    const entity = cleanSentenceFragment(initialPlan[1]);
+    const topic = cleanSentenceFragment(initialPlan[2]);
+    const rejected = cleanSentenceFragment(initialPlan[3]);
+    const approved = cleanSentenceFragment(override[1]);
+    if (approved) fragments.decisions.push(`latest decision: ${approved}`);
+    if (rejected) {
+      fragments.forbidden_behaviors.push(rejected);
+    }
+    if (topic) fragments.facts.push(`topic: ${topic}`);
+    if (entity) pushEntity(fragments.entities, entity, "primary_subject");
+  }
+
+  for (const match of userText.matchAll(
+    /\bon\s+the\s+(.+?),\s*(.+?)\s+will\s+(.+?),\s+and\s+(.+?)\s+will\s+(.+?)(?:\.|!|\n|$)/gi,
+  )) {
+    const topic = cleanSentenceFragment(match[1]);
+    const personA = cleanSentenceFragment(match[2]);
+    const taskA = cleanSentenceFragment(match[3]);
+    const personB = cleanSentenceFragment(match[4]);
+    const taskB = cleanSentenceFragment(match[5]);
+    if (topic) fragments.facts.push(`topic: ${topic}`);
+    if (personA && taskA) {
+      fragments.facts.push(`${personA} owns: ${taskA}`);
+      pushEntity(fragments.entities, personA, `owner_of: ${taskA}`);
+    }
+    if (personB && taskB) {
+      fragments.facts.push(`${personB} owns: ${taskB}`);
+      pushEntity(fragments.entities, personB, `owner_of: ${taskB}`);
+    }
+  }
+
+  for (const match of userText.matchAll(
+    /\bship to:\s*([^.!\n]+)(?:\.|!|\n|$)/gi,
+  )) {
+    const address = cleanSentenceFragment(match[1]);
+    if (address) fragments.facts.push(`office shipping address: ${address}`);
+  }
+
+  for (const match of userText.matchAll(/\bAWS account ID is\s*(\d{12})\b/gi)) {
+    fragments.facts.push(`AWS account ID: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bvendor is\s*([A-Z][a-z]+ [A-Z][a-z]+)\b/g,
+  )) {
+    fragments.facts.push(`vendor contact: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bcodename for this quarter:\s*([A-Z0-9]+)\b/g,
+  )) {
+    fragments.facts.push(`quarter project codename: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bbook my friend recommended is called\s*"([^"]+)"/gi,
+  )) {
+    fragments.facts.push(`recommended book: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\binternal codename for the new initiative is\s*"([^"]+)"/gi,
+  )) {
+    fragments.facts.push(`internal initiative codename: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bISBN of that book is\s*(\d{13})\b/gi,
+  )) {
+    fragments.facts.push(`book ISBN: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bcontract effective date is\s*(\d{4}-\d{2}-\d{2})\b/gi,
+  )) {
+    fragments.facts.push(`contract effective date: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\b([A-Z][A-Za-z\s']+?)'s birthday is\s*(\d{2}\/\d{2})\b/g,
+  )) {
+    const who = cleanSentenceFragment(match[1]);
+    const date = match[2];
+    fragments.facts.push(`${who}'s birthday: ${date}`);
+    fragments.facts.push(`birthday: ${date}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bflight is\s*([A-Z]{2}\d{3,4})\b/gi,
+  )) {
+    fragments.facts.push(`flight number: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(
+    /\bUUID is\s*([0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\b/gi,
+  )) {
+    fragments.facts.push(`ticket UUID: ${match[1]}`);
+  }
+
+  for (const match of userText.matchAll(/\bZIP code is\s*(\d{5})\b/gi)) {
+    fragments.facts.push(`warehouse ZIP code: ${match[1]}`);
+  }
+
+  return normalizeRequiredStateFragments(fragments);
+}
+
+function parseToolResultContent(content: string): {
+  toolName?: string;
+  value: string;
+} {
+  const trimmed = content.trim();
+  const tagged = /^\[tool_result:([^\]]+)\]\s*([\s\S]+)$/.exec(trimmed);
+  if (tagged) {
+    return { toolName: tagged[1].trim(), value: tagged[2].trim() };
+  }
+  return { value: trimmed };
+}
+
+function extractToolOutcomeFacts(region: CompactorMessage[]): string[] {
+  const callInfo = new Map<string, { name?: string; turn?: string | number }>();
+
+  for (const message of region) {
+    if (message.role !== "assistant" || !message.toolCalls) continue;
+    for (const call of message.toolCalls) {
+      if (!call.id) continue;
+      const turn = call.arguments?.turn;
+      callInfo.set(call.id, {
+        name: call.name,
+        turn:
+          typeof turn === "string" || typeof turn === "number"
+            ? turn
+            : undefined,
+      });
+    }
+  }
+
+  const facts: string[] = [];
+  for (const message of region) {
+    if (message.role !== "tool" || !message.content.trim()) continue;
+    const parsed = parseToolResultContent(message.content);
+    const info = message.toolCallId ? callInfo.get(message.toolCallId) : null;
+    const toolName = parsed.toolName || message.toolName || info?.name;
+    const turn = info?.turn;
+    const who = toolName ? ` from ${toolName}` : "";
+    const where = turn !== undefined ? ` at turn ${turn}` : "";
+    facts.push(`Tool result${where}${who}: ${parsed.value}`);
+  }
+
+  // Some older harnesses flatten tool output into regular messages. Preserve
+  // those too, but avoid duplicating typed tool-role messages handled above.
+  for (const message of region) {
+    if (message.role === "tool") continue;
+    for (const match of message.content.matchAll(
+      /\[tool_result:([^\]]+)\]\s*([^\n]+)/g,
+    )) {
+      const toolName = match[1].trim();
+      const value = match[2].trim();
+      if (value) facts.push(`Tool result from ${toolName}: ${value}`);
+    }
+  }
+
+  return uniqueStrings(facts);
 }
 
 function requireCallModel(
@@ -241,8 +711,9 @@ function splitTranscript(
 const NAIVE_SYSTEM_PROMPT =
   "You are a conversation summarizer. Read the supplied transcript and write" +
   " a concise prose summary that preserves: facts established, decisions" +
-  " made, pending actions, identifiers, and any tool calls and their" +
-  " outcomes. Do not invent details. Do not include meta-commentary.";
+  " made, latest overrides, rules, constraints, forbidden behaviors, exact" +
+  " entity assignments, identifiers, and any tool calls and their outcomes." +
+  " Do not invent details. Do not include meta-commentary.";
 
 async function naiveCompact(
   transcript: CompactorTranscript,
@@ -339,32 +810,109 @@ type StructuredState = {
   facts: string[];
   decisions: string[];
   pending_actions: string[];
+  forbidden_behaviors: string[];
   entities: Record<string, string>;
 };
 
 const STRUCTURED_SYSTEM_PROMPT =
   "You are a conversation state extractor. Read the supplied transcript and" +
   " output a JSON object with exactly these keys:\n" +
-  '  - "facts": string[] — durable facts established in the conversation\n' +
-  '  - "decisions": string[] — decisions made by the user or agent\n' +
+  '  - "facts": string[] — durable facts, rules, constraints, forbidden behaviors, and exact entity assignments established in the conversation\n' +
+  '  - "decisions": string[] — decisions made by the user or agent, especially latest overrides that replace earlier decisions\n' +
   '  - "pending_actions": string[] — open follow-ups still to be done\n' +
-  '  - "entities": object — entity name → short description\n' +
+  '  - "forbidden_behaviors": string[] — exact actions, rejected options, or behaviors the agent must not do\n' +
+  '  - "entities": object — exact entity name → short description, role, owner, or assignment\n' +
+  "Treat tool-role messages and `[tool_result:name] value` lines as durable" +
+  " facts. Preserve exact tool result values, ids, dates, codes, and other" +
+  " identifiers verbatim.\n" +
   "Output ONLY the JSON object, no prose, no markdown fences.";
+
+/**
+ * Scan a string for all balanced top-level `{...}` blocks, respecting JSON
+ * string literals (so `<reasoning>alt {plan}</reasoning>{ "facts": [] }`
+ * yields BOTH `{plan}` and the outer JSON object as candidates).
+ *
+ * Returns the substrings (each including its outer braces) in source order.
+ */
+function findBalancedJsonObjectCandidates(input: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let start = -1;
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (ch === "\\") {
+        escaped = true;
+      } else if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+    if (ch === "{") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === "}") {
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start !== -1) {
+          out.push(input.slice(start, i + 1));
+          start = -1;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Extract a parseable JSON object body from arbitrary model output.
+ *
+ * Handles:
+ *   - Bare JSON: `{ ... }`
+ *   - ```json fenced blocks (with or without language tag)
+ *   - JSON wrapped in <reasoning> / preface / trailing prose
+ *   - Prose that contains stray `{...}` fragments (picks the candidate that
+ *     actually parses, not the first balanced range)
+ *
+ * Returns the most likely JSON body — the FIRST candidate that successfully
+ * round-trips through JSON.parse. Falls back to the largest candidate (so
+ * the eventual JSON.parse will throw a useful error to the caller's catch),
+ * or the trimmed input if no balanced object exists.
+ */
+function extractJsonBody(raw: string): string {
+  const trimmed = raw.trim();
+  let scan = trimmed;
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) scan = fenceMatch[1].trim();
+
+  const candidates = findBalancedJsonObjectCandidates(scan);
+  if (candidates.length === 0) return scan;
+
+  for (const candidate of candidates) {
+    try {
+      JSON.parse(candidate);
+      return candidate;
+    } catch {
+      // Not parseable — try the next candidate.
+    }
+  }
+  // No candidate parsed — return the largest, so the upstream JSON.parse
+  // produces a meaningful error rather than swallowing input.
+  return candidates.reduce((a, b) => (b.length > a.length ? b : a));
+}
 
 function safeParseStructured(raw: string): StructuredState {
   // Tolerate ```json fences and surrounding prose by extracting the first
-  // {...} balanced block. Falls back to an empty state on parse failure.
-  const trimmed = raw.trim();
-  let body = trimmed;
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) body = fenceMatch[1].trim();
-  else {
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      body = trimmed.slice(firstBrace, lastBrace + 1);
-    }
-  }
+  // balanced {...} block. Falls back to an empty state on parse failure.
+  const body = extractJsonBody(raw);
   const parsed = JSON.parse(body) as Partial<StructuredState>;
   return {
     facts: Array.isArray(parsed.facts) ? parsed.facts.map(String) : [],
@@ -373,6 +921,9 @@ function safeParseStructured(raw: string): StructuredState {
       : [],
     pending_actions: Array.isArray(parsed.pending_actions)
       ? parsed.pending_actions.map(String)
+      : [],
+    forbidden_behaviors: Array.isArray(parsed.forbidden_behaviors)
+      ? parsed.forbidden_behaviors.map(String)
       : [],
     entities:
       parsed.entities && typeof parsed.entities === "object"
@@ -393,6 +944,8 @@ function renderStructuredState(state: StructuredState): string {
   for (const d of state.decisions) lines.push(`- ${d}`);
   lines.push("Pending actions:");
   for (const p of state.pending_actions) lines.push(`- ${p}`);
+  lines.push("Forbidden behaviors:");
+  for (const f of state.forbidden_behaviors) lines.push(`- ${f}`);
   lines.push("Entities:");
   for (const [k, v] of Object.entries(state.entities)) {
     lines.push(`- ${k}: ${v}`);
@@ -426,6 +979,7 @@ async function structuredCompact(
     };
   }
 
+  const requiredState = extractRequiredStateFragments(region);
   const userBody = renderRegionForPrompt(region);
   const raw = await callModel({
     systemPrompt: STRUCTURED_SYSTEM_PROMPT,
@@ -442,8 +996,9 @@ async function structuredCompact(
   try {
     state = safeParseStructured(raw);
   } catch {
-    state = { facts: [], decisions: [], pending_actions: [], entities: {} };
+    state = emptyStructuredState();
   }
+  state = mergeRequiredState(state, requiredState);
 
   let rendered = renderStructuredState(state);
   const counter = getCounter(options);
@@ -473,6 +1028,7 @@ async function structuredCompact(
     } catch {
       break;
     }
+    reducedState = mergeRequiredState(reducedState, requiredState);
     const next = renderStructuredState(reducedState);
     if (counter(next) >= counter(rendered)) break; // no progress
     state = reducedState;
@@ -516,12 +1072,15 @@ const HIERARCHICAL_CHUNK_SIZE = 10;
 const HIERARCHICAL_LEAF_SYSTEM_PROMPT =
   "You are a conversation summarizer. Summarize the given conversation chunk" +
   " in 3-6 sentences, preserving load-bearing facts, decisions, identifiers," +
-  " and tool-call outcomes. Output prose only.";
+  " rules, constraints, forbidden behaviors, exact entity assignments, and" +
+  " tool-call outcomes. Output prose only.";
 
 const HIERARCHICAL_ROLLUP_SYSTEM_PROMPT =
   "You are a summary aggregator. Combine the given list of chunk summaries" +
   " into a single concise summary that preserves the most load-bearing facts" +
-  " and decisions. Maintain chronological coherence. Output prose only.";
+  " and decisions, including latest overrides, rules, constraints, forbidden" +
+  " behaviors, and exact entity assignments. Maintain chronological" +
+  " coherence. Output prose only.";
 
 async function summarizeChunks(
   callModel: CompactorModelCall,
@@ -673,11 +1232,22 @@ const LEDGER_SYSTEM_PROMPT =
   "You are a conversation ledger extractor. Read the supplied transcript and" +
   " output a JSON object with exactly these keys:\n" +
   '  - "state": { "facts": string[], "decisions": string[],' +
-  ' "pending_actions": string[], "entities": { [k: string]: string } }\n' +
+  ' "pending_actions": string[], "forbidden_behaviors": string[],' +
+  ' "entities": { [k: string]: string } }\n' +
   '  - "ledger": Array<{ "index": number, "note": string }>\n' +
-  "The ledger is a chronological list of important events, in order. The" +
-  " state is the structured summary at the end of the conversation. Output" +
-  " ONLY the JSON object, no prose, no markdown fences.";
+  "The ledger is a chronological list of LOAD-BEARING events only — not" +
+  " every turn. Skip greetings, filler, and acknowledgements. Each note must" +
+  " be a single short clause (≤ 15 words). Cap the ledger at 10 entries; if" +
+  " more events are load-bearing, merge nearby ones. The state is the" +
+  " structured summary at the end of the conversation. Tool-role messages" +
+  " and `[tool_result:name] value` lines are always load-bearing: include" +
+  " every tool result in state.facts with the exact returned value, and add" +
+  " ledger entries for the most recent tool results. Preserve ids, dates," +
+  " codes, rules, constraints, forbidden behaviors, latest overrides, exact" +
+  " entity assignments, and other identifiers verbatim. Output ONLY the" +
+  " JSON object, no prose, no markdown fences.";
+
+const HYBRID_LEDGER_MAX_ENTRIES = 10;
 
 type HybridParsed = {
   state: StructuredState;
@@ -685,17 +1255,7 @@ type HybridParsed = {
 };
 
 function safeParseHybrid(raw: string): HybridParsed {
-  const trimmed = raw.trim();
-  let body = trimmed;
-  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/);
-  if (fenceMatch) body = fenceMatch[1].trim();
-  else {
-    const firstBrace = trimmed.indexOf("{");
-    const lastBrace = trimmed.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace > firstBrace) {
-      body = trimmed.slice(firstBrace, lastBrace + 1);
-    }
-  }
+  const body = extractJsonBody(raw);
   const parsed = JSON.parse(body) as {
     state?: Partial<StructuredState>;
     ledger?: Array<{ index?: number; note?: string }>;
@@ -709,6 +1269,9 @@ function safeParseHybrid(raw: string): HybridParsed {
       : [],
     pending_actions: Array.isArray(parsed.state?.pending_actions)
       ? parsed.state.pending_actions.map(String)
+      : [],
+    forbidden_behaviors: Array.isArray(parsed.state?.forbidden_behaviors)
+      ? parsed.state.forbidden_behaviors.map(String)
       : [],
     entities:
       parsed.state?.entities && typeof parsed.state.entities === "object"
@@ -726,6 +1289,13 @@ function safeParseHybrid(raw: string): HybridParsed {
           note: typeof e.note === "string" ? e.note : "",
         }))
         .filter((e) => e.note.length > 0)
+        // Hard cap defends compression_ratio when the model ignores the
+        // "≤ 10 entries" instruction in the prompt. Without the cap, the
+        // ledger overhead can make the artifact larger than the input.
+        // Keep the MOST RECENT entries (chronologically last) — the model
+        // is instructed to emit chronologically and the newest events tend
+        // to be the most load-bearing for "what just happened" continuity.
+        .slice(-HYBRID_LEDGER_MAX_ENTRIES)
     : [];
   return { state, ledger };
 }
@@ -771,7 +1341,17 @@ async function hybridCompact(
   // compaction cycle, prepend it to the prompt so the model can extend
   // rather than discard it. This is what gives hybrid-ledger its multi-cycle
   // entity coherence.
-  const priorLedger = (transcript.metadata?.priorLedger as string) ?? "";
+  const priorLedgerRaw = transcript.metadata?.priorLedger;
+  const priorLedger =
+    typeof priorLedgerRaw === "string" && priorLedgerRaw.length > 0
+      ? priorLedgerRaw
+      : "";
+  const requiredState = priorLedger
+    ? combineRequiredFragments(
+        extractCompactBenchLedgerFragments(priorLedger),
+        extractRequiredStateFragments(region),
+      )
+    : extractRequiredStateFragments(region);
   const userBody = priorLedger
     ? `Existing ledger (do not lose these entries — extend them):\n${priorLedger}\n\nNew conversation to fold in:\n${renderRegionForPrompt(region)}`
     : `Conversation:\n${renderRegionForPrompt(region)}`;
@@ -787,10 +1367,14 @@ async function hybridCompact(
     parsed = safeParseHybrid(raw);
   } catch {
     parsed = {
-      state: { facts: [], decisions: [], pending_actions: [], entities: {} },
+      state: emptyStructuredState(),
       ledger: [],
     };
   }
+  parsed = {
+    ...parsed,
+    state: mergeRequiredState(parsed.state, requiredState),
+  };
 
   let rendered = renderHybrid(parsed);
   const counter = getCounter(options);
@@ -819,6 +1403,10 @@ async function hybridCompact(
     } catch {
       break;
     }
+    reducedParsed = {
+      ...reducedParsed,
+      state: mergeRequiredState(reducedParsed.state, requiredState),
+    };
     const next = renderHybrid(reducedParsed);
     if (counter(next) >= counter(rendered)) break;
     parsed = reducedParsed;

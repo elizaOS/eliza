@@ -5,6 +5,12 @@ import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   isElizaSettingsDebugEnabled,
+  PostPluginCoreToggleRequestSchema,
+  PostPluginInstallRequestSchema,
+  PostPluginUninstallRequestSchema,
+  PostPluginUpdateRequestSchema,
+  PutPluginRequestSchema,
+  PutSecretsRequestSchema,
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
@@ -633,11 +639,18 @@ export async function handlePluginRoutes(
   // ── PUT /api/plugins/:id ────────────────────────────────────────────────
   if (method === "PUT" && pathname.startsWith("/api/plugins/")) {
     const pluginId = pathname.slice("/api/plugins/".length);
-    const body = await readJsonBody<{
-      enabled?: boolean;
-      config?: Record<string, string>;
-    }>(req, res);
-    if (!body) return true;
+    const rawPlugin = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPlugin === null) return true;
+    const parsedPlugin = PutPluginRequestSchema.safeParse(rawPlugin);
+    if (!parsedPlugin.success) {
+      error(
+        res,
+        parsedPlugin.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedPlugin.data;
 
     if (isElizaSettingsDebugEnabled()) {
       logger.debug(
@@ -926,15 +939,18 @@ export async function handlePluginRoutes(
 
   // ── PUT /api/secrets ─────────────────────────────────────────────────
   if (method === "PUT" && pathname === "/api/secrets") {
-    const body = await readJsonBody<{ secrets: Record<string, string> }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    if (!body.secrets || typeof body.secrets !== "object") {
-      error(res, "Missing or invalid 'secrets' object", 400);
+    const rawSecrets = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawSecrets === null) return true;
+    const parsedSecrets = PutSecretsRequestSchema.safeParse(rawSecrets);
+    if (!parsedSecrets.success) {
+      error(
+        res,
+        parsedSecrets.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedSecrets.data;
 
     // Build allowlist from all plugin-declared sensitive params
     const bundledIds = new Set(state.plugins.map((p) => p.id));
@@ -1056,19 +1072,19 @@ export async function handlePluginRoutes(
   // ── POST /api/plugins/install ───────────────────────────────────────────
   // Install a plugin from the registry and restart the agent.
   if (method === "POST" && pathname === "/api/plugins/install") {
-    const body = await readJsonBody<{
-      name: string;
-      autoRestart?: boolean;
-      stream?: "latest" | "beta";
-      version?: string;
-    }>(req, res);
-    if (!body) return true;
-    const pluginName = body.name?.trim();
-
-    if (!pluginName) {
-      error(res, "Request body must include 'name' (plugin package name)", 400);
+    const rawInstall = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawInstall === null) return true;
+    const parsedInstall = PostPluginInstallRequestSchema.safeParse(rawInstall);
+    if (!parsedInstall.success) {
+      error(
+        res,
+        parsedInstall.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedInstall.data;
+    const pluginName = body.name;
 
     const installValidationError =
       validateRegistryPluginPackageName(pluginName);
@@ -1201,18 +1217,21 @@ export async function handlePluginRoutes(
 
   // ── POST /api/plugins/update ────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/plugins/update") {
-    const body = await readJsonBody<{
-      name: string;
-      autoRestart?: boolean;
-      stream?: "latest" | "beta";
-      version?: string;
-    }>(req, res);
-    if (!body) return true;
-    const pluginName = body.name?.trim();
+    const rawUpdate = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawUpdate === null) return true;
+    const parsedUpdate = PostPluginUpdateRequestSchema.safeParse(rawUpdate);
+    if (!parsedUpdate.success) {
+      error(
+        res,
+        parsedUpdate.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedUpdate.data;
+    const pluginName = body.name;
 
-    const updateValidationError = validateRegistryPluginPackageName(
-      pluginName ?? "",
-    );
+    const updateValidationError = validateRegistryPluginPackageName(pluginName);
     if (updateValidationError) {
       error(res, updateValidationError, 400);
       return true;
@@ -1330,16 +1349,23 @@ export async function handlePluginRoutes(
 
   // ── POST /api/plugins/uninstall ─────────────────────────────────────────
   if (method === "POST" && pathname === "/api/plugins/uninstall") {
-    const body = await readJsonBody<{ name: string; autoRestart?: boolean }>(
-      req,
-      res,
-    );
-    if (!body) return true;
-    const pluginName = body.name?.trim();
+    const rawUninstall = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawUninstall === null) return true;
+    const parsedUninstall =
+      PostPluginUninstallRequestSchema.safeParse(rawUninstall);
+    if (!parsedUninstall.success) {
+      error(
+        res,
+        parsedUninstall.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedUninstall.data;
+    const pluginName = body.name;
 
-    const uninstallValidationError = validateRegistryPluginPackageName(
-      pluginName ?? "",
-    );
+    const uninstallValidationError =
+      validateRegistryPluginPackageName(pluginName);
     if (uninstallValidationError) {
       error(res, uninstallValidationError, 400);
       return true;
@@ -1702,11 +1728,18 @@ export async function handlePluginRoutes(
   // ── POST /api/plugins/core/toggle ─────────────────────────────────────
   // Enable or disable an optional core plugin by updating the allow list.
   if (method === "POST" && pathname === "/api/plugins/core/toggle") {
-    const body = await readJsonBody<{ npmName: string; enabled: boolean }>(
-      req,
-      res,
-    );
-    if (!body?.npmName) return true;
+    const rawToggle = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawToggle === null) return true;
+    const parsedToggle = PostPluginCoreToggleRequestSchema.safeParse(rawToggle);
+    if (!parsedToggle.success) {
+      error(
+        res,
+        parsedToggle.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedToggle.data;
 
     // Only allow toggling optional plugins, not core
     const isCorePlugin = (CORE_PLUGINS as readonly string[]).includes(

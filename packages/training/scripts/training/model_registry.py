@@ -36,9 +36,18 @@ class ModelEntry:
 
     # ─── training budgets ───
     seq_len: int
-    """Training sequence length. Bounded by the fp32 logits transient
+    """Default training sequence length. Bounded by the fp32 logits transient
     (B*S*V*4 bytes; Qwen vocab=248k makes this dominant). With Liger kernel
-    fused chunked CE we can roughly 4× this on the same VRAM budget."""
+    fused chunked CE we can roughly 4× this on the same VRAM budget.
+
+    This is a *default* — `scripts/train_local.py` and `scripts/run_pipeline.py`
+    both accept ``--max-seq-len <int>`` to override per run. CLI flags always
+    win over registry values (see ``train_local.py`` arg-merge near
+    ``args.max_seq_len == ap.get_default("max_seq_len")``). The 27B default
+    is intentionally conservative (64k) so the registry's memory budget
+    leaves real headroom on a 2× H200 / 2× B200 cluster; bump it via
+    ``--max-seq-len`` for long-context runs when you've validated capacity
+    with ``scripts/training/memory_calc.py --shape qwen3.6-27b``."""
 
     optimizer: str
     """One of: apollo, apollo_mini."""
@@ -72,13 +81,13 @@ class ModelEntry:
 
     eliza_repo_id: str = ""
     """HuggingFace repo id under which the fine-tuned model is published,
-    e.g. ``elizaos/eliza-1-2b``. Quants live in sibling repos with suffixes
+    e.g. ``elizalabs/eliza-1-2b``. Quants live in sibling repos with suffixes
     (``-gguf``, ``-fp8``, ``-polarquant``)."""
 
     abliteration_repo_id: str = ""
     """HuggingFace repo id for the post-abliteration ("uncensored") release,
-    e.g. ``elizaos/eliza-1-2b-uncensored``. Empty means: do not publish an
-    abliterated variant for this entry. Lives under the same ``elizaos`` org
+    e.g. ``elizalabs/eliza-1-2b-uncensored``. Empty means: do not publish an
+    abliterated variant for this entry. Lives under the same ``elizalabs`` org
     as the safety-tuned line, distinguished by the ``-uncensored`` suffix —
     see ``scripts/training/abliterate.py``."""
 
@@ -131,6 +140,16 @@ class ModelEntry:
         # 16 GB local GPU rule of thumb: PolarQuant + TurboQuant keeps every
         # tier up to (and including) 27B inside 32 GB at 144k context.
         return self.infer_mem_gb_quantized <= 32.0
+
+    @property
+    def public_name(self) -> str:
+        """User-facing model name.
+
+        Published entries use the Eliza-1 release name. Smoke/internal
+        entries keep their registry short name because they are not exposed
+        as installable models.
+        """
+        return self.eliza_short_name or self.short_name
 
 
 def _compute_inference_mem(
@@ -223,8 +242,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-2b": _entry(
         hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
-        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
-        abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
+        eliza_short_name="eliza-1-2b", eliza_repo_id="elizalabs/eliza-1-2b",
+        abliteration_repo_id="elizalabs/eliza-1-2b-uncensored",
         params_billion=2.27, tier=Tier.LOCAL,
         seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
@@ -242,8 +261,8 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
-        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
-        abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
+        eliza_short_name="eliza-1-9b", eliza_repo_id="elizalabs/eliza-1-9b",
+        abliteration_repo_id="elizalabs/eliza-1-9b-uncensored",
         params_billion=9.0, tier=Tier.WORKSTATION,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
         micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
@@ -257,10 +276,15 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
-        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
-        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizalabs/eliza-1-27b",
+        abliteration_repo_id="elizalabs/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=147456, optimizer="apollo_mini", optimizer_rank=512,
+        # seq_len lowered from 147456 to 65536 (gap M35): 147k left only ~1%
+        # headroom on a 2× Blackwell 6000 (192 GB) cluster and ~6% on 2× H200
+        # (282 GB) at the registry's 190 GB budget — one activation spike
+        # OOMed the run. 64k is the safe default; bump per run via
+        # `--max-seq-len` after validating with `memory_calc.py`.
+        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
@@ -269,9 +293,11 @@ REGISTRY: dict[str, ModelEntry] = {
         # train_vast.sh as `scripts/quantization/${name}_apply.py`. Only
         # names with a real apply.py belong in this tuple.
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="2× H200 SXM with FSDP for 144k-context training (187 GB total, "
-              "44% per-GPU utilization on 282 GB — plenty of headroom). Full "
-              "quant stack (PolarQuant + QJL-1bit + TurboQuant-4bit) lets "
+        notes="2× H200 SXM with FSDP. Default training seq_len is 64k — "
+              "headroom on 2× H200 (282 GB) and even fits 2× Blackwell 6000 "
+              "(192 GB) safely. Override per run with `--max-seq-len` once "
+              "you've validated VRAM via `memory_calc.py --shape qwen3.6-27b`. "
+              "Full quant stack (PolarQuant + QJL-1bit + TurboQuant-4bit) lets "
               "144k inference fit in 14.5 GB on a 48 GB RTX Pro 5000 "
               "Blackwell (30% util) and 1M-token inference fit in 23 GB (48% util). "
               "Q6_K GGUF served on RTX 5090 via Vast (cloud/services/vast-pyworker).",
@@ -285,7 +311,12 @@ def get(name: str) -> ModelEntry:
     if key in REGISTRY:
         return REGISTRY[key]
     for entry in REGISTRY.values():
-        if entry.hf_id == name or entry.short_name == name:
+        if (
+            entry.hf_id == name
+            or entry.short_name == name
+            or entry.eliza_short_name == name
+            or entry.eliza_short_name.lower() == key
+        ):
             return entry
     raise KeyError(f"unknown model {name!r}; known: {sorted(REGISTRY)}")
 
@@ -300,7 +331,7 @@ def summary_table() -> str:
     rows = [cols]
     for e in REGISTRY.values():
         rows.append((
-            e.short_name,
+            e.public_name,
             f"{e.params_billion:.1f}",
             e.tier.value,
             f"{e.seq_len}",

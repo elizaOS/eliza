@@ -16,7 +16,7 @@ export interface EmbeddingPreset {
 
 const COMPACT_ELIZA_1_EMBEDDING = {
   model: "text/eliza-1-lite-0_6b-32k.gguf",
-  modelRepo: "elizalabs/eliza-1-lite-0_6b",
+  modelRepo: "elizaos/eliza-1-lite-0_6b",
   dimensions: 1024,
   contextSize: 32768,
   downloadSizeMB: 512,
@@ -39,8 +39,7 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
   standard: {
     tier: "standard",
     label: "Efficient (Metal GPU)",
-    description:
-      "Eliza-1 lite local embeddings with Metal acceleration",
+    description: "Eliza-1 lite local embeddings with Metal acceleration",
     model: COMPACT_ELIZA_1_EMBEDDING.model,
     modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
     dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,
@@ -51,8 +50,7 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
   performance: {
     tier: "performance",
     label: "Efficient (High-memory GPU)",
-    description:
-      "Eliza-1 lite local embeddings for high-memory Macs",
+    description: "Eliza-1 lite local embeddings for high-memory Macs",
     model: COMPACT_ELIZA_1_EMBEDDING.model,
     modelRepo: COMPACT_ELIZA_1_EMBEDDING.modelRepo,
     dimensions: COMPACT_ELIZA_1_EMBEDDING.dimensions,

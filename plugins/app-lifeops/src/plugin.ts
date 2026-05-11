@@ -130,6 +130,7 @@ import {
 } from "./website-blocker/engine.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
 import { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
+import { ownerProfileExtractionEvaluator } from "./lifeops/profile/response-handler-evaluator.js";
 import { InboxTriageRepository } from "./inbox/repository.js";
 import { createApprovalQueue } from "./lifeops/approval-queue.js";
 import type { ApprovalChannel } from "./lifeops/approval-queue.types.js";
@@ -171,6 +172,79 @@ function looksLikeFlightConflictQuestion(text: string): boolean {
       normalized,
     )
   );
+}
+
+function looksLikeDocumentSignatureRequest(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
+      normalized,
+    )
+  );
+}
+
+function defaultSignatureDeadline(text: string): string {
+  const match = /\bin\s+(\d+)\s+days?\b/iu.exec(text);
+  if (match?.[1]) {
+    return new Date(
+      Date.now() + Number(match[1]) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+  }
+  return new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+}
+
+async function queueDocumentSignatureRequest(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  const text = getMessageText(args.message);
+  const documentName = /\bnda\b/iu.test(text) ? "NDA" : "Document";
+  const documentId = `signature-${String(args.message.id ?? Date.now())}`;
+  const signatureUrl = text.match(/https?:\/\/\S+/u)?.[0] ?? "pending-signature-url";
+  const subjectUserId =
+    typeof args.message.entityId === "string"
+      ? args.message.entityId
+      : String(args.runtime.agentId);
+  const queue = createApprovalQueue(args.runtime, {
+    agentId: args.runtime.agentId,
+  });
+  const request = await queue.enqueue({
+    requestedBy: "PERSONAL_ASSISTANT",
+    subjectUserId,
+    action: "sign_document",
+    payload: {
+      action: "sign_document",
+      documentId,
+      documentName,
+      signatureUrl,
+      deadline: defaultSignatureDeadline(text),
+    },
+    channel: "internal",
+    reason: `Initiate signing flow for ${documentName}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+  const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: "PERSONAL_ASSISTANT",
+  });
+  return {
+    success: true,
+    text: responseText,
+    data: {
+      actionName: "PERSONAL_ASSISTANT",
+      action: "sign_document",
+      approvalRequestId: request.id,
+    },
+  };
 }
 
 function buildFlightConflictPreview(text: string): string {
@@ -322,6 +396,9 @@ async function handleLifeOpsDirectMessageRequest(args: {
         subaction: "flight_conflict_rebooking",
       },
     };
+  }
+  if (looksLikeDocumentSignatureRequest(text)) {
+    return queueDocumentSignatureRequest(args);
   }
   return null;
 }
@@ -510,15 +587,15 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 const rawAppLifeOpsPlugin: Plugin = {
   name: "@elizaos/app-lifeops",
   description:
-    "LifeOps: routines, goals, Google Workspace, Apple Reminders, Twilio, browser companions (Chrome/Safari), website blocking, app blocking, and related surfaces.",
+    "Owner operations: routines, goals, scheduled tasks, calendar, messaging, connectors, credentials, voice calls, browser companions, website/app blocking, and related owner-only surfaces.",
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],
   schema: lifeOpsSchema,
   actions: [
-    // Audit B umbrella folds (D-1, D-4, D-5): one umbrella per folded pair.
-    // Each umbrella registers itself + its per-subaction virtuals via
+    // Canonical owner-operation umbrellas. Each umbrella registers itself + its
+    // per-action virtuals via
     // `promoteSubactionsToActions` so the planner sees a discoverable
-    // top-level entry for every flat subaction (e.g. `BLOCK_BLOCK`,
-    // `BLOCK_LIST_ACTIVE`, `MONEY_DASHBOARD`, `CREDENTIALS_FILL`, …).
+    // top-level entry for every flat child action (e.g. `BLOCK_BLOCK`,
+    // `BLOCK_LIST_ACTIVE`, `OWNER_FINANCES_DASHBOARD`, `CREDENTIALS_FILL`, ...).
     ...promoteSubactionsToActions(blockAction),
     ...promoteSubactionsToActions(ownerFinancesAction),
     ...promoteSubactionsToActions(credentialsAction),
@@ -561,7 +638,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     ActivityTrackerService,
     PresenceSignalBridgeService,
   ],
-  responseHandlerEvaluators: [workThreadResponseHandlerEvaluator],
+  responseHandlerEvaluators: [
+    ownerProfileExtractionEvaluator,
+    workThreadResponseHandlerEvaluator,
+  ],
   init: async (
     pluginConfig: Record<string, unknown>,
     runtime: IAgentRuntime,
@@ -820,9 +900,6 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
-export { firstRunAction } from "./actions/first-run.js";
-export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
-export { messageHandoffAction } from "./actions/message-handoff.js";
 export { workThreadAction } from "./actions/work-thread.js";
 export {
   getAppBlockerPermissionState,
