@@ -4,6 +4,7 @@ export * from "./apps.js";
 export * from "./apps-favorites-routes.js";
 export * from "./apps-lifecycle-routes.js";
 export * from "./apps-loading-routes.js";
+export * from "./apps-runs-routes.js";
 export * from "./awareness.js";
 export * from "./cloud-topology.js";
 export * from "./config.js";

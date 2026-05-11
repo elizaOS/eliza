@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  PostCreateAppRequestSchema,
   PostInstallAppRequestSchema,
   PostLaunchAppRequestSchema,
+  PostOverlayPresenceRequestSchema,
   PostRelaunchAppRequestSchema,
   PostStopAppRequestSchema,
 } from "./apps-lifecycle-routes.js";
@@ -163,6 +165,105 @@ describe("PostRelaunchAppRequestSchema", () => {
   it("rejects extra fields (strict)", () => {
     expect(() =>
       PostRelaunchAppRequestSchema.parse({ name: "x", force: true }),
+    ).toThrow();
+  });
+});
+
+describe("PostCreateAppRequestSchema", () => {
+  it("accepts intent only", () => {
+    const parsed = PostCreateAppRequestSchema.parse({ intent: "make a todo" });
+    expect(parsed).toEqual({ intent: "make a todo" });
+  });
+
+  it("accepts intent + editTarget", () => {
+    const parsed = PostCreateAppRequestSchema.parse({
+      intent: "tweak the colour",
+      editTarget: "companion",
+    });
+    expect(parsed).toEqual({
+      intent: "tweak the colour",
+      editTarget: "companion",
+    });
+  });
+
+  it("trims intent and editTarget", () => {
+    const parsed = PostCreateAppRequestSchema.parse({
+      intent: "  build me an app  ",
+      editTarget: "  companion  ",
+    });
+    expect(parsed).toEqual({
+      intent: "build me an app",
+      editTarget: "companion",
+    });
+  });
+
+  it("rejects missing intent", () => {
+    expect(() => PostCreateAppRequestSchema.parse({})).toThrow();
+  });
+
+  it("rejects empty intent", () => {
+    expect(() => PostCreateAppRequestSchema.parse({ intent: "" })).toThrow();
+  });
+
+  it("rejects empty editTarget (use omission)", () => {
+    expect(() =>
+      PostCreateAppRequestSchema.parse({ intent: "x", editTarget: "" }),
+    ).toThrow();
+  });
+
+  it("rejects extra fields (strict)", () => {
+    expect(() =>
+      PostCreateAppRequestSchema.parse({ intent: "x", scaffold: "v2" }),
+    ).toThrow();
+  });
+});
+
+describe("PostOverlayPresenceRequestSchema", () => {
+  it("accepts a string appName", () => {
+    const parsed = PostOverlayPresenceRequestSchema.parse({
+      appName: "companion",
+    });
+    expect(parsed).toEqual({ appName: "companion" });
+  });
+
+  it("accepts explicit null", () => {
+    const parsed = PostOverlayPresenceRequestSchema.parse({ appName: null });
+    expect(parsed).toEqual({ appName: null });
+  });
+
+  it("accepts omitted appName as null", () => {
+    const parsed = PostOverlayPresenceRequestSchema.parse({});
+    expect(parsed).toEqual({ appName: null });
+  });
+
+  it("collapses empty string to null", () => {
+    const parsed = PostOverlayPresenceRequestSchema.parse({ appName: "" });
+    expect(parsed).toEqual({ appName: null });
+  });
+
+  it("collapses whitespace-only string to null", () => {
+    const parsed = PostOverlayPresenceRequestSchema.parse({
+      appName: "   \t  ",
+    });
+    expect(parsed).toEqual({ appName: null });
+  });
+
+  it("trims surrounding whitespace", () => {
+    const parsed = PostOverlayPresenceRequestSchema.parse({
+      appName: "  companion  ",
+    });
+    expect(parsed).toEqual({ appName: "companion" });
+  });
+
+  it("rejects non-string non-null appName", () => {
+    expect(() =>
+      PostOverlayPresenceRequestSchema.parse({ appName: 42 }),
+    ).toThrow();
+  });
+
+  it("rejects extra fields (strict)", () => {
+    expect(() =>
+      PostOverlayPresenceRequestSchema.parse({ appName: "x", focus: true }),
     ).toThrow();
   });
 });
