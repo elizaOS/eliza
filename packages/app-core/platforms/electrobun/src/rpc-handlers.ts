@@ -48,6 +48,16 @@ import {
 } from "./native/steward";
 import { getSwabbleManager } from "./native/swabble";
 import { getTalkModeManager } from "./native/talkmode";
+import {
+	composeBootProgressSnapshot,
+	readAgentHealthSnapshotViaHttp,
+} from "./boot-progress";
+import {
+	composeOnboardingOptionsSnapshot,
+	composeOnboardingStatusSnapshot,
+	readOnboardingOptionsViaHttp,
+	readOnboardingStatusViaHttp,
+} from "./onboarding-rpc";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
 	buildRuntimePermissionUnavailableState,
@@ -243,6 +253,38 @@ export function buildBunRpcHandlers({
 			}
 		},
 		agentStatus: async () => agent.getStatus(),
+		/**
+		 * Aggregated boot snapshot — typed counterpart to renderer
+		 * `/api/health` + `/api/dev/stack` polling. Pure composition over
+		 * `agent.getStatus()` + `readAgentHealthSnapshotViaHttp` so both
+		 * sources are swappable when the agent runtime merges into this
+		 * Bun process (the typed contract stays identical through that
+		 * migration).
+		 */
+		bootProgress: async () =>
+			composeBootProgressSnapshot(
+				agent.getStatus(),
+				readAgentHealthSnapshotViaHttp,
+			),
+		/**
+		 * Typed counterpart to renderer `client.getOnboardingStatus()` —
+		 * the polling-backend startup phase calls this. See
+		 * `onboarding-rpc.ts` for the pure composition layer.
+		 */
+		getOnboardingStatus: async () =>
+			composeOnboardingStatusSnapshot(
+				agent.getStatus().port,
+				readOnboardingStatusViaHttp,
+			),
+		/**
+		 * Typed counterpart to renderer `client.getOnboardingOptions()` —
+		 * provider + model catalogs for the onboarding form.
+		 */
+		getOnboardingOptions: async () =>
+			composeOnboardingOptionsSnapshot(
+				agent.getStatus().port,
+				readOnboardingOptionsViaHttp,
+			),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
 		agentMigrateStateDir: async (params: { fromPath: string }) =>
 			agent.migrateStateDir(params),

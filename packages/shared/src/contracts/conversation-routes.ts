@@ -20,16 +20,28 @@
 
 import z from "zod";
 
+// Must stay in sync with the `ConversationScope` TS type in
+// `packages/agent/src/api/server-types.ts` and the runtime allowlist
+// `VALID_SCOPES` in `packages/agent/src/api/conversation-metadata.ts`.
+// Develop had a stale short enum here that rejected every `page-*` scope
+// the UI emits (BrowserWorkspaceView, CharacterHubView, etc.), surfacing
+// as "Invalid option: expected one of …" toasts.
 const ConversationScopeSchema = z.enum([
-  "user",
-  "page",
-  "agent",
-  "task",
-  "workflow",
-  "character",
-  "trigger",
-  "draft",
-  "terminal",
+  "general",
+  "automation-coordinator",
+  "automation-workflow",
+  "automation-workflow-draft",
+  "automation-draft",
+  "page-character",
+  "page-apps",
+  "page-connectors",
+  "page-phone",
+  "page-plugins",
+  "page-lifeops",
+  "page-settings",
+  "page-wallet",
+  "page-browser",
+  "page-automations",
 ]);
 
 const ConversationAutomationTypeSchema = z.enum([

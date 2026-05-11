@@ -107,3 +107,10 @@ export const serverHealth = {
 	check: async () => ({ status: "not-applicable", environment: "browser" }),
 	isHealthy: () => true,
 };
+
+// Cloud-routing helpers (`toRuntimeSettings`, etc.) are pure functions
+// used by app-core's sensitive-requests/cloud-link-adapter at static
+// import time. Browser-safe — no Node deps — so include them here so
+// Rollup can satisfy the named import without falling back to the
+// stub plugin.
+export * from "./cloud-routing";

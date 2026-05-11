@@ -531,6 +531,79 @@ export interface DesktopBugReportBundleInfo {
 	startupStatusPath: string | null;
 }
 
+/**
+ * Typed response for `getOnboardingStatus` — the renderer's first-boot
+ * gate, currently fetched over HTTP at `/api/onboarding/status`. Server
+ * source: `eliza/packages/agent/src/api/onboarding-routes.ts`.
+ */
+export interface OnboardingStatusSnapshot {
+	complete: boolean;
+	cloudProvisioned?: boolean;
+}
+
+/**
+ * Typed response for `getOnboardingOptions` — provider/model catalogs +
+ * style presets used by the onboarding UI. Mirrors the OnboardingOptions
+ * structure in `@elizaos/shared/contracts/onboarding`, narrowed to the
+ * subset the server actually returns at `/api/onboarding/options`
+ * (server source: `onboarding-routes.ts:328`). Fields are kept structural
+ * (`unknown`/`Record<string, unknown>`) for items whose shape lives
+ * deeper inside the shared contracts — the typed boundary lives at the
+ * RPC envelope, the underlying option records pass through.
+ */
+export interface OnboardingOptionsSnapshot {
+	names: string[];
+	styles: ReadonlyArray<Record<string, unknown>>;
+	providers: ReadonlyArray<Record<string, unknown>>;
+	cloudProviders: ReadonlyArray<Record<string, unknown>>;
+	models: {
+		nano?: ReadonlyArray<Record<string, unknown>>;
+		small?: ReadonlyArray<Record<string, unknown>>;
+		medium?: ReadonlyArray<Record<string, unknown>>;
+		large?: ReadonlyArray<Record<string, unknown>>;
+		mega?: ReadonlyArray<Record<string, unknown>>;
+	};
+	openrouterModels?: ReadonlyArray<Record<string, unknown>>;
+	inventoryProviders: ReadonlyArray<Record<string, unknown>>;
+	sharedStyleRules: string;
+	githubOAuthAvailable?: boolean;
+}
+
+/**
+ * Aggregated boot/startup snapshot returned by `bootProgress`.
+ *
+ * This is the typed counterpart to the renderer's current HTTP polling
+ * loop against `/api/health` + `/api/dev/stack`. Same data, but the
+ * contract is enforced at compile time on both sides of the Electrobun
+ * native bridge — no Zod schema drift, no port allocation, no
+ * frontend↔backend disconnect when the API child restarts.
+ *
+ * `phase` corresponds to the agent's runtime startup state machine
+ * (`pre_boot` → `loading_plugins` → `db_init` → `running` → terminal
+ * states). The renderer can either poll `bootProgress` or — once the
+ * message channel migration lands — subscribe to push updates.
+ */
+export interface BootProgressSnapshot {
+	/** Top-level agent process lifecycle (same enum as EmbeddedAgentStatus.state). */
+	state: "not_started" | "starting" | "running" | "stopped" | "error";
+	/** Fine-grained runtime startup phase. `null` until the agent answers. */
+	phase: string | null;
+	/** Last error message produced by the agent process. `null` when clean. */
+	lastError: string | null;
+	/** Count of plugins that loaded successfully. `null` until first health response. */
+	pluginsLoaded: number | null;
+	/** Count of plugins that failed to load. `null` until first health response. */
+	pluginsFailed: number | null;
+	/** Database state from the runtime's perspective. `null` until ready. */
+	database: "ok" | "unknown" | "error" | null;
+	/** Cached from EmbeddedAgentStatus — kept here so renderers don't need two RPCs. */
+	agentName: string | null;
+	port: number | null;
+	startedAt: number | null;
+	/** Wall-clock time the snapshot was assembled, ISO 8601. */
+	updatedAt: string;
+}
+
 // ============================================================================
 // RPC Schema
 // ============================================================================
@@ -547,6 +620,34 @@ export type ElizaDesktopRPCSchema = {
 				response: EmbeddedAgentStatus;
 			};
 			agentStatus: { params: undefined; response: EmbeddedAgentStatus };
+			/**
+			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the
+			 * `/api/health` plugin/db counters and the in-process runtime phase.
+			 * Renderer should call this in the polling-backend startup phase
+			 * instead of hitting `/api/health` over HTTP — typed end-to-end,
+			 * no port shifts, no schema drift.
+			 */
+			bootProgress: { params: undefined; response: BootProgressSnapshot };
+			/**
+			 * Typed counterpart to `client.getOnboardingStatus()` — the
+			 * renderer's first-boot gate. Same data as
+			 * `GET /api/onboarding/status`; same transitional carrier as
+			 * bootProgress (in-process HTTP fetch today, in-process state
+			 * read once the agent runtime merges into this Bun process).
+			 */
+			getOnboardingStatus: {
+				params: undefined;
+				response: OnboardingStatusSnapshot;
+			};
+			/**
+			 * Typed counterpart to `client.getOnboardingOptions()` — provider
+			 * + model catalogs the onboarding UI hydrates from. Same data as
+			 * `GET /api/onboarding/options`.
+			 */
+			getOnboardingOptions: {
+				params: undefined;
+				response: OnboardingOptionsSnapshot;
+			};
 			agentInspectExistingInstall: {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
