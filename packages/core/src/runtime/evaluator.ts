@@ -106,10 +106,7 @@ export async function runEvaluator(
 	);
 	const endedAt = Date.now();
 	const output = repairForwardLookingFinish(
-		repairMissingEvaluatorSuccess(
-			parseEvaluatorOutput(raw),
-			params.trajectory,
-		),
+		repairMissingEvaluatorSuccess(parseEvaluatorOutput(raw), params.trajectory),
 		params.trajectory,
 	);
 	const streamingContext = getStreamingContext();
