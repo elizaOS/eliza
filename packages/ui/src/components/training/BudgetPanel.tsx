@@ -15,7 +15,8 @@ function BudgetGauge({ budget }: { budget: TrainingBudget }) {
   // soft). When no cap is configured we anchor against $50 just so the
   // bar has a sensible visible domain — the gauge is informational only
   // in the unbounded case.
-  const cap = budget.hard_cap_usd ?? Math.max(50, budget.total_so_far_usd * 1.5);
+  const cap =
+    budget.hard_cap_usd ?? Math.max(50, budget.total_so_far_usd * 1.5);
   const fraction = Math.min(1, budget.total_so_far_usd / cap);
   const pct = fraction * 100;
 
