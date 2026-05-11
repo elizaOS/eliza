@@ -23,6 +23,12 @@ xcuserdata/
 # Tauri-generated Xcode project
 examples/browser-extension/safari/
 
+# Safari browser-extension example Xcode project — regenerates UUIDs +
+# timestamps on every Xcode open/build, creating large pure-churn diffs.
+# The Swift sources, assets, and Resources/ subtree stay tracked; only
+# the generated *.xcodeproj/ pbxproj is ignored.
+packages/examples/browser-extension/safari/**/*.xcodeproj/project.pbxproj
+
 # Generated app platform shells; canonical templates live under packages/app-core/platforms.
 packages/app/android/
 packages/app/ios/
