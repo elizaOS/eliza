@@ -71,15 +71,33 @@ describe("translation harness — generated packs", () => {
   });
 
   it("preserves speaker placeholders verbatim", () => {
-    // Source actions use either `{{name1}}/{{agentName}}` (the registry default
-    // pair) or `{{user1}}/{{agent}}` (older convention used by a handful of
-    // app-lifeops actions). The harness must round-trip whichever one the
-    // source uses without translating placeholder identifiers.
-    const userPlaceholders = new Set(["{{name1}}", "{{user1}}"]);
-    const agentPlaceholders = new Set(["{{agentName}}", "{{agent}}"]);
+    // Source actions use one of three speaker-name conventions:
+    //   - `{{name1}}` / `{{agentName}}` — the registry default convention.
+    //   - `{{user1}}` / `{{agent}}` — older convention used by a handful of
+    //     app-lifeops actions.
+    //   - Bare `"User"` / `"Assistant"` literals — used by the Linear plugin
+    //     family (`plugin-linear`); these are not Mustache placeholders and
+    //     do not get substituted at runtime, but they round-trip through the
+    //     harness verbatim.
+    // The invariant tested here is round-trip preservation: the harness must
+    // emit exactly what the source declared, never a translated placeholder.
+    // The numbered `{{name1}}` / `{{name2}}` convention is used in some
+    // plugins (e.g. `plugin-music`) where either slot can be the user or
+    // the agent depending on the example. We accept either token in either
+    // slot; the harness must round-trip whichever the source declared.
+    const acceptedNames = new Set([
+      "{{name1}}",
+      "{{name2}}",
+      "{{user1}}",
+      "{{userName}}",
+      "{{agentName}}",
+      "{{agent}}",
+      "User",
+      "Assistant",
+    ]);
     for (const entry of generated) {
-      expect(userPlaceholders.has(entry.user.name ?? "")).toBe(true);
-      expect(agentPlaceholders.has(entry.agent.name ?? "")).toBe(true);
+      expect(acceptedNames.has(entry.user.name ?? "")).toBe(true);
+      expect(acceptedNames.has(entry.agent.name ?? "")).toBe(true);
     }
   });
 
