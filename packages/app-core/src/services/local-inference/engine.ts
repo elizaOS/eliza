@@ -1021,6 +1021,32 @@ export class LocalInferenceEngine {
     );
   }
 
+  /**
+   * Idle-time auto-prewarm: synthesize the canonical common-phrase seed so
+   * the phrase cache is warm before the next turn. No-op unless a real TTS
+   * backend is present and voice is armed. Callers (the voice bridge /
+   * connector) invoke this when the loop is idle.
+   */
+  async prewarmIdleVoicePhrases(
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    return this.requireVoiceBridge(
+      "prewarm idle voice phrases",
+    ).prewarmIdlePhrases(opts);
+  }
+
+  /**
+   * Play the first-audio filler (a short cached acknowledgement) — the seam
+   * W9's turn controller calls the instant VAD fires `speech-start` to mask
+   * first-token latency. Returns the played filler text, or `null` if none
+   * was played. No-op without a real TTS backend / armed voice.
+   */
+  playFirstAudioFiller(): string | null {
+    return this.requireVoiceBridge(
+      "play first-audio filler",
+    ).playFirstAudioFiller();
+  }
+
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
   }

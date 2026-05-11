@@ -48,7 +48,7 @@
       "sensitive": false,
       "default": "auto",
       "label": "Default Provider",
-      "help": "Default TTS provider (auto, elevenlabs, openai, edge, robot-voice)",
+      "help": "Default TTS provider (auto, elevenlabs, openai, edge)",
       "advanced": false
     }
   },
