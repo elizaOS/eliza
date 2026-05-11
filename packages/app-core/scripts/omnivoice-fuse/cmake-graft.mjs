@@ -103,6 +103,10 @@ if(MILADY_FUSE_OMNIVOICE)
     target_include_directories(elizainference SYSTEM PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/ggml/include)
     target_link_libraries(elizainference PUBLIC llama)
+    if(APPLE)
+        target_link_options(elizainference PRIVATE
+            "LINKER:-reexport_library,$<TARGET_FILE:llama>")
+    endif()
     target_link_libraries(elizainference PUBLIC ggml Threads::Threads)
     if(TARGET ggml-base)
         target_link_libraries(elizainference PUBLIC ggml-base)
@@ -181,6 +185,10 @@ export function appendCmakeGraft({ llamaCppRoot }) {
     upgraded = upgraded.replace(
       "            ${CMAKE_CURRENT_BINARY_DIR})\n        target_link_libraries(llama-omnivoice-server PRIVATE",
       "            ${CMAKE_CURRENT_BINARY_DIR})\n        target_compile_features(llama-omnivoice-server PRIVATE cxx_std_17)\n        target_link_libraries(llama-omnivoice-server PRIVATE",
+    );
+    upgraded = upgraded.replace(
+      "target_link_libraries(elizainference PUBLIC llama)\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)",
+      "target_link_libraries(elizainference PUBLIC llama)\n    if(APPLE)\n        target_link_options(elizainference PRIVATE\n            \"LINKER:-reexport_library,$<TARGET_FILE:llama>\")\n    endif()\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)",
     );
     if (upgraded !== original) {
       fs.writeFileSync(cmakePath, upgraded, "utf8");
