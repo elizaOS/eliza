@@ -297,7 +297,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
     "qwen3.5-2b": _entry(
         hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
-        eliza_short_name="", eliza_repo_id="elizaos/eliza-1-2b",
+        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
         abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
         params_billion=2.27, tier=Tier.LOCAL, unverified_base=True,
         seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
@@ -313,7 +313,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
-        eliza_short_name="", eliza_repo_id="elizaos/eliza-1-9b",
+        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
         abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
         params_billion=9.0, tier=Tier.WORKSTATION, unverified_base=True,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
@@ -330,7 +330,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
-        eliza_short_name="", eliza_repo_id="elizaos/eliza-1-27b",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
         abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD, unverified_base=True,
         seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
