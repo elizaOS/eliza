@@ -15,8 +15,7 @@
  *   3. Bucket trajectories into per-task JSONL files via dataset-generator
  *      (`exportTrajectoryTaskDatasets`). When `task` is supplied, only that
  *      bucket is forwarded to the backend.
- *   4. Dispatch the chosen task's dataset to the configured backend
- *      (`tinker` | `native`).
+ *   4. Dispatch the chosen task's dataset to the `native` backend.
  *   5. Persist a run record at `<state>/training/runs/<runId>.json`.
  */
 
@@ -226,18 +225,6 @@ async function defaultDispatcher(
   input: BackendDispatchInput,
 ): Promise<BackendDispatchResult> {
   switch (input.backend) {
-    case "tinker": {
-      const { runTinkerBackend } = await import("../backends/tinker.js");
-      const result = await runTinkerBackend({
-        datasetPath: input.datasetPath,
-        task: input.task,
-      });
-      return {
-        invoked: result.invoked,
-        artifactPath: result.jobId,
-        notes: result.notes,
-      };
-    }
     case "native": {
       const { runNativeBackend } = await import("../backends/native.js");
       const useModelHandler = await extractUseModel(input.runtime);
@@ -314,7 +301,7 @@ async function extractUseModel(
     // Lazy-import so the helper isn't required during unit tests that don't
     // exercise this branch.
     const { getTrainingUseModelAdapter } = await import(
-      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+      "./cerebras-eval-model.js"
     );
     return getTrainingUseModelAdapter();
   }
@@ -402,10 +389,8 @@ async function loadBaselineForTask(
       );
     case "action_planner":
       return (
-        firstStringExport(promptModule, [
-          "plannerTemplate",
-          "plannerTemplate",
-        ]) ?? PLANNER_BASELINE
+        firstStringExport(promptModule, ["plannerTemplate"]) ??
+        PLANNER_BASELINE
       );
     case "media_description":
       return (
