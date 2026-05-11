@@ -94,7 +94,7 @@ type WebviewTagElement = HTMLElement & {
   toggleHidden(value?: boolean): void;
 };
 
-function isWebviewTagElement(
+function _isWebviewTagElement(
   value: EventTarget | null,
 ): value is WebviewTagElement {
   if (!(value instanceof HTMLElement)) return false;
@@ -1373,10 +1373,7 @@ export function BrowserWorkspaceView(): JSX.Element {
       if (previous !== element) {
         const hostMessageHandler = (event: CustomEvent) =>
           handleTabHostMessage(tabId, event);
-        electrobunHostMessageHandlersRef.current.set(
-          tabId,
-          hostMessageHandler,
-        );
+        electrobunHostMessageHandlersRef.current.set(tabId, hostMessageHandler);
         element.on("host-message", hostMessageHandler);
         // Poke the OOPIF to read fresh dimensions multiple times — the
         // tag auto-syncs only on its own ResizeObserver firing, and that

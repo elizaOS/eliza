@@ -74,13 +74,19 @@ export interface ElizaInferenceFfi {
   /** Destroy a previously-created context. Idempotent on already-freed handles. */
   destroy(ctx: ElizaInferenceContextHandle): void;
   /** Map / re-page weights for a region. */
-  mmapAcquire(ctx: ElizaInferenceContextHandle, region: ElizaInferenceRegion): void;
+  mmapAcquire(
+    ctx: ElizaInferenceContextHandle,
+    region: ElizaInferenceRegion,
+  ): void;
   /**
    * Hint the kernel that a region's pages are no longer needed
    * (madvise MADV_DONTNEED / VirtualUnlock). Does not close the file
    * descriptor — a subsequent `mmapAcquire` re-pages without an open().
    */
-  mmapEvict(ctx: ElizaInferenceContextHandle, region: ElizaInferenceRegion): void;
+  mmapEvict(
+    ctx: ElizaInferenceContextHandle,
+    region: ElizaInferenceRegion,
+  ): void;
   /**
    * Synchronous TTS forward. Caller provides the output buffer; library
    * fills up to its capacity and returns the number of samples written.
@@ -150,38 +156,38 @@ export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 /* ---------------------------------------------------------------- */
 
 interface BunFfiSymbols {
-  eliza_inference_abi_version: { (): unknown };
-  eliza_inference_create: { (bundleDir: unknown, outErr: unknown): bigint };
-  eliza_inference_destroy: { (ctx: bigint): void };
-  eliza_inference_mmap_acquire: {
-    (ctx: bigint, region: unknown, outErr: unknown): number;
-  };
-  eliza_inference_mmap_evict: {
-    (ctx: bigint, region: unknown, outErr: unknown): number;
-  };
-  eliza_inference_tts_synthesize: {
-    (
-      ctx: bigint,
-      text: unknown,
-      textLen: bigint | number,
-      speaker: unknown,
-      outPcm: unknown,
-      maxSamples: bigint | number,
-      outErr: unknown,
-    ): number;
-  };
-  eliza_inference_asr_transcribe: {
-    (
-      ctx: bigint,
-      pcm: unknown,
-      nSamples: bigint | number,
-      sampleRateHz: number,
-      outText: unknown,
-      maxTextBytes: bigint | number,
-      outErr: unknown,
-    ): number;
-  };
-  eliza_inference_free_string: { (str: unknown): void };
+  eliza_inference_abi_version: () => unknown;
+  eliza_inference_create: (bundleDir: unknown, outErr: unknown) => bigint;
+  eliza_inference_destroy: (ctx: bigint) => void;
+  eliza_inference_mmap_acquire: (
+    ctx: bigint,
+    region: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_mmap_evict: (
+    ctx: bigint,
+    region: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_tts_synthesize: (
+    ctx: bigint,
+    text: unknown,
+    textLen: bigint | number,
+    speaker: unknown,
+    outPcm: unknown,
+    maxSamples: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_asr_transcribe: (
+    ctx: bigint,
+    pcm: unknown,
+    nSamples: bigint | number,
+    sampleRateHz: number,
+    outText: unknown,
+    maxTextBytes: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_free_string: (str: unknown) => void;
 }
 
 interface BunFfiLib {

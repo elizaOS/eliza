@@ -3,8 +3,8 @@
  *
  * Eliza-1 is the only default-eligible model line. The user-facing model
  * ids are size-first (`eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-9b`,
- * `eliza-1-27b`). The recommendation engine picks one of these tiers
- * based on hardware.
+ * `eliza-1-27b`, `eliza-1-27b-256k`). The recommendation engine picks
+ * one of these tiers based on hardware.
  *
  * HF-search results from outside `elizalabs/eliza-1-*` MUST never be
  * marked default-eligible (handled by `hf-search.ts`, which produces
@@ -26,6 +26,7 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-1_7b",
   "eliza-1-9b",
   "eliza-1-27b",
+  "eliza-1-27b-256k",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
@@ -128,7 +129,7 @@ function drafterCompanion(args: {
     runtimeRole: "dflash-drafter",
     companionForModelId: args.id,
     tokenizerFamily: "eliza1",
-    blurb: `${args.displayName} drafter companion.`,
+    blurb: "Hidden DFlash drafter companion.",
   };
 }
 
@@ -136,7 +137,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   // eliza-1-0_6b (low-RAM phones, CPU fallback)
   {
     id: "eliza-1-0_6b",
-    displayName: "eliza-1-0_6b",
+    displayName: "Eliza-1 0.6B",
     hfRepo: "elizalabs/eliza-1-0_6b",
     ggufFile: "text/eliza-1-0_6b-32k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
@@ -151,11 +152,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-0_6b-drafter"],
     runtime: runtimeFor("eliza-1-0_6b", 32768),
     blurb:
-      "eliza-1-0_6b - low-RAM phones and CPU-only fallback with the optimized local runtime.",
+      "Eliza-1 0.6B - low-RAM phones and CPU-only fallback with the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-0_6b",
-    displayName: "eliza-1-0_6b",
+    displayName: "Eliza-1 0.6B",
     ggufFile: "dflash/drafter-0_6b.gguf",
     params: "0.6B",
     sizeGb: 0.25,
@@ -166,7 +167,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   // eliza-1-1_7b (modern phones)
   {
     id: "eliza-1-1_7b",
-    displayName: "eliza-1-1_7b",
+    displayName: "Eliza-1 1.7B",
     hfRepo: "elizalabs/eliza-1-1_7b",
     ggufFile: "text/eliza-1-1_7b-32k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
@@ -181,11 +182,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-1_7b-drafter"],
     runtime: runtimeFor("eliza-1-1_7b", 32768),
     blurb:
-      "eliza-1-1_7b - modern phone default with text and voice prepared for the optimized local runtime.",
+      "Eliza-1 1.7B - modern phone default with text and voice prepared for the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-1_7b",
-    displayName: "eliza-1-1_7b",
+    displayName: "Eliza-1 1.7B",
     ggufFile: "dflash/drafter-1_7b.gguf",
     params: "1.7B",
     sizeGb: 0.35,
@@ -196,7 +197,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   // eliza-1-9b (laptops, 24 GB phones, 48 GB Mac)
   {
     id: "eliza-1-9b",
-    displayName: "eliza-1-9b",
+    displayName: "Eliza-1 9B",
     hfRepo: "elizalabs/eliza-1-9b",
     ggufFile: "text/eliza-1-9b-64k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
@@ -211,11 +212,11 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-9b-drafter"],
     runtime: runtimeFor("eliza-1-9b", 65536),
     blurb:
-      "eliza-1-9b - laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
+      "Eliza-1 9B - laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
   },
   drafterCompanion({
     id: "eliza-1-9b",
-    displayName: "eliza-1-9b",
+    displayName: "Eliza-1 9B",
     ggufFile: "dflash/drafter-9b.gguf",
     params: "9B",
     sizeGb: 0.8,
@@ -226,7 +227,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
   // eliza-1-27b (96 GB+ Mac, high-VRAM desktop)
   {
     id: "eliza-1-27b",
-    displayName: "eliza-1-27b",
+    displayName: "Eliza-1 27B",
     hfRepo: "elizalabs/eliza-1-27b",
     ggufFile: "text/eliza-1-27b-128k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
@@ -241,15 +242,45 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-27b-drafter"],
     runtime: runtimeFor("eliza-1-27b", 131072),
     blurb:
-      "eliza-1-27b - 96 GB+ Mac and high-VRAM desktop default with text, voice, vision, and 128k context.",
+      "Eliza-1 27B - 96 GB+ Mac and high-VRAM desktop default with text, voice, vision, and 128k context.",
   },
   drafterCompanion({
     id: "eliza-1-27b",
-    displayName: "eliza-1-27b",
+    displayName: "Eliza-1 27B",
     ggufFile: "dflash/drafter-27b.gguf",
     params: "9B",
     sizeGb: 1.2,
     minRamGb: 32,
+    bucket: "large",
+  }),
+
+  // eliza-1-27b-256k (workstation / server)
+  {
+    id: "eliza-1-27b-256k",
+    displayName: "Eliza-1 27B 256k",
+    hfRepo: "elizalabs/eliza-1-27b-256k",
+    ggufFile: "text/eliza-1-27b-256k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
+    params: "27B",
+    quant: "Eliza-1 optimized local runtime",
+    sizeGb: 16.8,
+    minRamGb: 96,
+    category: "chat",
+    bucket: "large",
+    contextLength: 262144,
+    tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-27b-256k-drafter"],
+    runtime: runtimeFor("eliza-1-27b-256k", 262144),
+    blurb:
+      "Eliza-1 27B 256k - H200-class workstation tier with the largest context window in the line.",
+  },
+  drafterCompanion({
+    id: "eliza-1-27b-256k",
+    displayName: "Eliza-1 27B 256k",
+    ggufFile: "dflash/drafter-27b-256k.gguf",
+    params: "9B",
+    sizeGb: 1.2,
+    minRamGb: 96,
     bucket: "large",
   }),
 ];

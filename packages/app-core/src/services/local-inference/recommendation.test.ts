@@ -222,10 +222,10 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
     expect(
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_SMALL.model!.id),
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_SMALL.model?.id),
     ).toBe(true);
     expect(
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_LARGE.model!.id),
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_LARGE.model?.id),
     ).toBe(true);
   });
 

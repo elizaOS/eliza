@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { listSubactionsFromParameters } from "../../actions/promote-subactions.ts";
 import * as pluginManagerExports from "./index.ts";
 import { pluginAction, pluginManagerPlugin } from "./index.ts";
 
@@ -25,11 +26,8 @@ describe("plugin manager umbrella action", () => {
 		}
 	});
 
-	it("folds plugin management operations into the action parameter", () => {
-		const action = pluginAction.parameters?.find(
-			(parameter) => parameter.name === "action",
-		);
-		expect(action?.schema.enum).toEqual([
+	it("folds plugin management operations into subactions", () => {
+		expect(listSubactionsFromParameters(pluginAction.parameters)).toEqual([
 			"install",
 			"eject",
 			"sync",

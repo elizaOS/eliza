@@ -1345,7 +1345,9 @@ function createDesktopRpc(label: string): {
 	};
 
 	type BunRpcRequestsHandlers = NonNullable<
-		Parameters<typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>>[0]["handlers"]
+		Parameters<
+			typeof BrowserView.defineRPC<ElizaDesktopRPCSchema>
+		>[0]["handlers"]
 	>["requests"];
 
 	rpc = BrowserView.defineRPC<ElizaDesktopRPCSchema>({

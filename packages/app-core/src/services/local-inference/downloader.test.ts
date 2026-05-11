@@ -75,7 +75,7 @@ describe("local inference downloader status", () => {
         jobs: [
           {
             jobId: "job-1",
-            modelId: "eliza-1-mobile-1_7b",
+            modelId: "eliza-1-1_7b",
             state: "failed",
             received: 64,
             total: 128,
@@ -92,7 +92,7 @@ describe("local inference downloader status", () => {
 
     const [job] = new Downloader().snapshot();
 
-    expect(job?.modelId).toBe("eliza-1-mobile-1_7b");
+    expect(job?.modelId).toBe("eliza-1-1_7b");
     expect(job?.state).toBe("failed");
     expect(job?.error).toBe("network reset");
   });
@@ -100,7 +100,7 @@ describe("local inference downloader status", () => {
   it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-lite-0_6b");
+    const model = findCatalogModel("eliza-1-0_6b");
     expect(model).toBeDefined();
     if (!model) throw new Error("missing test catalog model");
 
@@ -109,13 +109,13 @@ describe("local inference downloader status", () => {
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
     const manifest = JSON.stringify({
-      id: "eliza-1-lite-0_6b",
+      id: "eliza-1-0_6b",
       version: "1.0.0",
       defaultEligible: true,
       files: {
         text: [
           {
-            path: "text/eliza-1-lite-0_6b-32k.gguf",
+            path: "text/eliza-1-0_6b-32k.gguf",
             sha256: sha256(text),
             ctx: 32768,
           },
@@ -125,7 +125,7 @@ describe("local inference downloader status", () => {
         vision: [],
         dflash: [
           {
-            path: "dflash/drafter-lite-0_6b.gguf",
+            path: "dflash/drafter-0_6b.gguf",
             sha256: sha256(drafter),
           },
         ],
@@ -140,9 +140,9 @@ describe("local inference downloader status", () => {
     installFetchFixture(
       new Map([
         ["eliza-1.manifest.json", manifest],
-        ["text/eliza-1-lite-0_6b-32k.gguf", text],
+        ["text/eliza-1-0_6b-32k.gguf", text],
         ["tts/voice.gguf", voice],
-        ["dflash/drafter-lite-0_6b.gguf", drafter],
+        ["dflash/drafter-0_6b.gguf", drafter],
         ["cache/default-voice-preset.bin", cache],
       ]),
     );
@@ -154,7 +154,7 @@ describe("local inference downloader status", () => {
     const installed = await listInstalledModels();
     const main = installed.find((entry) => entry.id === model.id);
     const companion = installed.find(
-      (entry) => entry.id === "eliza-1-lite-0_6b-drafter",
+      (entry) => entry.id === "eliza-1-0_6b-drafter",
     );
     expect(main).toBeDefined();
     expect(companion).toBeDefined();
@@ -165,9 +165,9 @@ describe("local inference downloader status", () => {
     }
 
     expect(job.state).toBe("completed");
-    expect(main.path.endsWith("text/eliza-1-lite-0_6b-32k.gguf")).toBe(true);
+    expect(main.path.endsWith("text/eliza-1-0_6b-32k.gguf")).toBe(true);
     expect(bundleRoot).toBe(
-      path.join(root, "local-inference", "models", "eliza-1-lite-0_6b.bundle"),
+      path.join(root, "local-inference", "models", "eliza-1-0_6b.bundle"),
     );
     expect(main.manifestPath).toBe(
       path.join(bundleRoot, "eliza-1.manifest.json"),
@@ -177,7 +177,7 @@ describe("local inference downloader status", () => {
     expect(fs.existsSync(path.join(bundleRoot, "tts/voice.gguf"))).toBe(true);
     expect(companion.runtimeRole).toBe("dflash-drafter");
     expect(companion.companionFor).toBe(model.id);
-    expect(companion.path.endsWith("dflash/drafter-lite-0_6b.gguf")).toBe(true);
+    expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
     expect(companion.bundleRoot).toBe(bundleRoot);
   });
 });

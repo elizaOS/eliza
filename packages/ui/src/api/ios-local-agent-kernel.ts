@@ -231,9 +231,7 @@ type LlamaCppModule = {
     url: string,
     filename: string,
   ) => Promise<string | { path?: string }>;
-  hashFile?: (
-    path: string,
-  ) => Promise<
+  hashFile?: (path: string) => Promise<
     | string
     | {
         sha256?: string;

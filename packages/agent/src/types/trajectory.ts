@@ -34,8 +34,7 @@ export type TrajectoryCacheStats = CoreTrajectoryCacheStatsRecord;
 export type TrajectoryFlattenedLlmCall = CoreTrajectoryFlattenedLlmCallRecord;
 
 export type TrajectoryListItem = CoreTrajectorySummaryRecord;
-export type TrajectoryListResult =
-  CoreTrajectoryListResult<TrajectoryListItem>;
+export type TrajectoryListResult = CoreTrajectoryListResult<TrajectoryListItem>;
 export type TrajectoryLlmCall = CoreTrajectoryLlmCallRecord;
 export type TrajectoryProviderAccess = CoreTrajectoryProviderAccessRecord;
 export type TrajectoryStep = CoreTrajectoryStepRecord;

@@ -27,7 +27,7 @@ import time
 from typing import Any
 
 from eliza_compactbench.cerebras_provider import register_cerebras_provider
-from eliza_compactbench.valid_hits import evaluate_valid_hit
+from eliza_compactbench.valid_hits import evaluate_valid_hit, is_refusal, normalize_text
 
 
 @dataclass(frozen=True)
@@ -44,6 +44,8 @@ class ItemAnalysis:
     reason: str
     valid_false_negative: bool
     semantic_false_positive: bool
+    invalid_expected_conflict: bool
+    judge_refusal: bool
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,8 @@ class CycleAnalysis:
     contradiction_rate: float
     compression_ratio: float
     latency_ms: int
+    artifact: dict[str, Any]
+    artifact_context: str
     items: list[ItemAnalysis]
 
 
@@ -74,6 +78,19 @@ def main() -> int:
     parser.add_argument("--drift-cycles", type=int, default=2)
     parser.add_argument("--difficulty", default="medium")
     parser.add_argument("--seed-group", default="default")
+    parser.add_argument(
+        "--template-key",
+        action="append",
+        default=None,
+        help="Limit analysis to one template key. Repeat for multiple templates.",
+    )
+    parser.add_argument(
+        "--seed-slot",
+        action="append",
+        type=int,
+        default=None,
+        help="Limit analysis to one case slot. Repeat for multiple slots.",
+    )
     parser.add_argument(
         "--provider",
         default="cerebras",
@@ -153,6 +170,9 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
     valid_false_negatives = 0
     semantic_false_positives = 0
     failures_remaining = 0
+    failures_remaining_excluding_invalid = 0
+    invalid_expected_conflicts = 0
+    judge_refusals = 0
     started_at = datetime.now(UTC)
 
     with args.output.open("w", encoding="utf-8") as fh:
@@ -171,11 +191,20 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                 "drift_cycles": args.drift_cycles,
                 "seed_group": args.seed_group,
                 "case_count_per_template": args.case_count,
+                "template_key_filter": args.template_key,
+                "seed_slot_filter": args.seed_slot,
             },
         )
 
         for template in templates:
-            for slot in range(args.case_count):
+            if args.template_key and template.key not in set(args.template_key):
+                continue
+            slots = args.seed_slot if args.seed_slot is not None else range(args.case_count)
+            for slot in slots:
+                if slot < 0 or slot >= args.case_count:
+                    raise SystemExit(
+                        f"--seed-slot {slot} is outside --case-count {args.case_count}"
+                    )
                 case_seed = derive_case_seed(
                     f"{args.suite}@{suite_version}", args.seed_group, slot
                 )
@@ -206,10 +235,30 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                 case_failures_remaining = sum(
                     1 for cycle in case_cycles for item in cycle.items if item.adjusted_score < 1.0
                 )
+                case_invalid_expected_conflicts = sum(
+                    1
+                    for cycle in case_cycles
+                    for item in cycle.items
+                    if item.invalid_expected_conflict
+                )
+                case_judge_refusals = sum(
+                    1 for cycle in case_cycles for item in cycle.items if item.judge_refusal
+                )
+                case_failures_remaining_excluding_invalid = sum(
+                    1
+                    for cycle in case_cycles
+                    for item in cycle.items
+                    if item.adjusted_score < 1.0 and not item.invalid_expected_conflict
+                )
                 total_items += sum(len(cycle.items) for cycle in case_cycles)
                 valid_false_negatives += case_valid_false_negatives
                 semantic_false_positives += case_semantic_false_positives
                 failures_remaining += case_failures_remaining
+                failures_remaining_excluding_invalid += (
+                    case_failures_remaining_excluding_invalid
+                )
+                invalid_expected_conflicts += case_invalid_expected_conflicts
+                judge_refusals += case_judge_refusals
 
                 _write_event(
                     fh,
@@ -218,11 +267,17 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                         "case_id": case.case_id,
                         "template_key": case.template_key,
                         "seed": case.seed,
+                        "ground_truth": case.ground_truth.model_dump(),
                         "official_case_score": official_case_score,
                         "adjusted_case_score": adjusted_case_score,
                         "valid_false_negatives": case_valid_false_negatives,
                         "semantic_false_positives": case_semantic_false_positives,
                         "failures_remaining": case_failures_remaining,
+                        "failures_remaining_excluding_invalid": (
+                            case_failures_remaining_excluding_invalid
+                        ),
+                        "invalid_expected_conflicts": case_invalid_expected_conflicts,
+                        "judge_refusals": case_judge_refusals,
                         "cycles": [_cycle_to_dict(cycle) for cycle in case_cycles],
                     },
                 )
@@ -237,6 +292,9 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
             "valid_false_negatives": valid_false_negatives,
             "semantic_false_positives": semantic_false_positives,
             "failures_remaining": failures_remaining,
+            "failures_remaining_excluding_invalid": failures_remaining_excluding_invalid,
+            "invalid_expected_conflicts": invalid_expected_conflicts,
+            "judge_refusals": judge_refusals,
             "notes": [
                 "official scores are unmodified CompactBench scores",
                 "adjusted scores use response-local valid-hit analysis only",
@@ -256,7 +314,11 @@ async def _execute_case_with_analysis(
     case_seed: int,
 ) -> list[CycleAnalysis]:
     from compactbench.contracts import CompactionArtifact, Transcript
-    from compactbench.runner import evaluate_items, extend_with_continuation
+    from compactbench.runner import (
+        evaluate_items,
+        extend_with_continuation,
+        render_artifact_for_prompt,
+    )
     from compactbench.scoring import score_cycle
 
     transcript: Transcript = case.transcript
@@ -281,7 +343,12 @@ async def _execute_case_with_analysis(
         )
         responses = await evaluate_items(case.evaluation_items, artifact, provider, model)
         scorecard = score_cycle(case, artifact, responses, cycle_number=cycle_num)
-        items = _analyze_items(case.evaluation_items, responses, scorecard.item_scores)
+        items = _analyze_items(
+            case.evaluation_items,
+            responses,
+            scorecard.item_scores,
+            invalid_expected_values=_ground_truth_conflict_values(case.ground_truth),
+        )
         adjusted_score = _weighted_score(items, attr="adjusted_score")
         adjusted_penalized = max(0.0, min(1.0, adjusted_score * (1.0 - scorecard.contradiction_rate)))
         cycles.append(
@@ -294,6 +361,8 @@ async def _execute_case_with_analysis(
                 contradiction_rate=scorecard.contradiction_rate,
                 compression_ratio=scorecard.compression_ratio,
                 latency_ms=int((time.perf_counter() - started) * 1000),
+                artifact=artifact.model_dump(by_alias=True),
+                artifact_context=render_artifact_for_prompt(artifact),
                 items=items,
             )
         )
@@ -304,9 +373,14 @@ async def _execute_case_with_analysis(
 
 
 def _analyze_items(
-    evaluation_items: list[Any], responses: dict[str, str], item_scores: list[Any]
+    evaluation_items: list[Any],
+    responses: dict[str, str],
+    item_scores: list[Any],
+    *,
+    invalid_expected_values: set[str] | None = None,
 ) -> list[ItemAnalysis]:
     score_by_key = {score.item_key: score for score in item_scores}
+    invalid_expected_values = invalid_expected_values or set()
     analyses: list[ItemAnalysis] = []
     for item in evaluation_items:
         response = responses.get(item.key, "")
@@ -329,9 +403,25 @@ def _analyze_items(
                 reason=valid.reason,
                 valid_false_negative=valid.valid_false_negative,
                 semantic_false_positive=valid.semantic_false_positive,
+                invalid_expected_conflict=_expected_value(item.expected)
+                in invalid_expected_values,
+                judge_refusal=is_refusal(response),
             )
         )
     return analyses
+
+
+def _ground_truth_conflict_values(ground_truth: Any) -> set[str]:
+    locked = {normalize_text(value) for value in getattr(ground_truth, "locked_decisions", [])}
+    forbidden = {
+        normalize_text(value) for value in getattr(ground_truth, "forbidden_behaviors", [])
+    }
+    return locked & forbidden
+
+
+def _expected_value(expected: dict[str, Any]) -> str | None:
+    value = expected.get("value")
+    return normalize_text(value) if isinstance(value, str) else None
 
 
 def _weighted_score(items: list[ItemAnalysis], *, attr: str) -> float:
@@ -360,6 +450,8 @@ def _cycle_to_dict(cycle: CycleAnalysis) -> dict[str, Any]:
         "contradiction_rate": cycle.contradiction_rate,
         "compression_ratio": cycle.compression_ratio,
         "latency_ms": cycle.latency_ms,
+        "artifact": cycle.artifact,
+        "artifact_context": cycle.artifact_context,
         "items": [item.__dict__ for item in cycle.items],
     }
 
@@ -376,6 +468,9 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
     valid_false_negatives = 0
     semantic_false_positives = 0
     failures_remaining = 0
+    failures_remaining_excluding_invalid = 0
+    invalid_expected_conflicts = 0
+    judge_refusals = 0
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with input_path.open("r", encoding="utf-8") as source, output_path.open(
@@ -395,6 +490,11 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
             valid_false_negatives += int(rescored["valid_false_negatives"])
             semantic_false_positives += int(rescored["semantic_false_positives"])
             failures_remaining += int(rescored["failures_remaining"])
+            failures_remaining_excluding_invalid += int(
+                rescored["failures_remaining_excluding_invalid"]
+            )
+            invalid_expected_conflicts += int(rescored["invalid_expected_conflicts"])
+            judge_refusals += int(rescored["judge_refusals"])
             total_items += sum(
                 len(cycle.get("items", [])) for cycle in rescored.get("cycles", [])
             )
@@ -410,6 +510,9 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
             "valid_false_negatives": valid_false_negatives,
             "semantic_false_positives": semantic_false_positives,
             "failures_remaining": failures_remaining,
+            "failures_remaining_excluding_invalid": failures_remaining_excluding_invalid,
+            "invalid_expected_conflicts": invalid_expected_conflicts,
+            "judge_refusals": judge_refusals,
             "notes": [
                 "official scores are unmodified CompactBench scores",
                 "adjusted scores use response-local valid-hit analysis only",
@@ -426,18 +529,32 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
     valid_false_negatives = 0
     semantic_false_positives = 0
     failures_remaining = 0
+    failures_remaining_excluding_invalid = 0
+    invalid_expected_conflicts = 0
+    judge_refusals = 0
 
     for cycle in updated.get("cycles", []):
         items = cycle.get("items", [])
+        invalid_values = _ground_truth_conflict_values_from_event(updated)
         for item in items:
             result = evaluate_valid_hit(item.get("expected", {}), item.get("response", ""))
             item["adjusted_score"] = result.adjusted_score
             item["reason"] = result.reason
             item["valid_false_negative"] = result.valid_false_negative
             item["semantic_false_positive"] = result.semantic_false_positive
+            expected_value = _expected_value(item.get("expected", {}))
+            item["invalid_expected_conflict"] = expected_value in invalid_values
+            item["judge_refusal"] = is_refusal(item.get("response", ""))
             valid_false_negatives += 1 if result.valid_false_negative else 0
             semantic_false_positives += 1 if result.semantic_false_positive else 0
             failures_remaining += 1 if result.adjusted_score < 1.0 else 0
+            failures_remaining_excluding_invalid += (
+                1
+                if result.adjusted_score < 1.0 and not item["invalid_expected_conflict"]
+                else 0
+            )
+            invalid_expected_conflicts += 1 if item["invalid_expected_conflict"] else 0
+            judge_refusals += 1 if item["judge_refusal"] else 0
         adjusted_score = _weighted_score_dicts(items, attr="adjusted_score")
         cycle["adjusted_score"] = adjusted_score
         cycle["adjusted_penalized_score"] = max(
@@ -450,7 +567,27 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
     updated["valid_false_negatives"] = valid_false_negatives
     updated["semantic_false_positives"] = semantic_false_positives
     updated["failures_remaining"] = failures_remaining
+    updated["failures_remaining_excluding_invalid"] = failures_remaining_excluding_invalid
+    updated["invalid_expected_conflicts"] = invalid_expected_conflicts
+    updated["judge_refusals"] = judge_refusals
     return updated
+
+
+def _ground_truth_conflict_values_from_event(event: dict[str, Any]) -> set[str]:
+    ground_truth = event.get("ground_truth", {})
+    if not isinstance(ground_truth, dict):
+        return set()
+    locked = {
+        normalize_text(value)
+        for value in ground_truth.get("locked_decisions", [])
+        if isinstance(value, str)
+    }
+    forbidden = {
+        normalize_text(value)
+        for value in ground_truth.get("forbidden_behaviors", [])
+        if isinstance(value, str)
+    }
+    return locked & forbidden
 
 
 def _weighted_score_dicts(items: list[dict[str, Any]], *, attr: str) -> float:

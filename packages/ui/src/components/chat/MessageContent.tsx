@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import {
   type FormEvent,
   useCallback,
@@ -12,6 +11,11 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
+import { isDesktopPlatform, isNative } from "../../platform";
+import {
+  createMobileSignalsPermissionsRegistry,
+  openMobilePermissionSettings,
+} from "../../platform/mobile-permissions-client";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
 import { stripAssistantStageDirections } from "../../utils/assistant-text";
@@ -24,6 +28,7 @@ import {
 import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
+import { Button } from "../ui/button";
 import { findChoiceRegions } from "./message-choice-parser";
 import { type ChoiceOption, ChoiceWidget } from "./widgets/ChoiceWidget";
 
@@ -1059,7 +1064,10 @@ export function MessageContent({
   );
 
   const permissionRegistry = useMemo(
-    () => createClientPermissionsRegistry(client),
+    () =>
+      isNative && !isDesktopPlatform()
+        ? createMobileSignalsPermissionsRegistry(undefined, client)
+        : createClientPermissionsRegistry(client),
     [],
   );
 
@@ -1258,9 +1266,13 @@ export function MessageContent({
                   fallbackOffered={seg.payload.fallbackOffered}
                   fallbackLabel={seg.payload.fallbackLabel}
                   registry={permissionRegistry}
-                  onOpenSettings={(permission) =>
-                    client.openPermissionSettings(permission)
-                  }
+                  onOpenSettings={async (permission) => {
+                    if (isNative && !isDesktopPlatform()) {
+                      await openMobilePermissionSettings(permission);
+                      return;
+                    }
+                    await client.openPermissionSettings(permission);
+                  }}
                   onFallback={({ feature, permission }) =>
                     handlePermissionFallback(feature, permission)
                   }

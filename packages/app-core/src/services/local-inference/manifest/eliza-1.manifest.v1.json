@@ -18,7 +18,10 @@
     "defaultEligible"
   ],
   "properties": {
-    "$schema": { "type": "string", "const": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" },
+    "$schema": {
+      "type": "string",
+      "const": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
+    },
     "id": { "type": "string", "minLength": 1 },
     "tier": {
       "type": "string",
@@ -34,13 +37,13 @@
       "additionalProperties": false,
       "required": ["text", "voice", "drafter"],
       "properties": {
-        "text":    { "$ref": "#/$defs/lineageEntry" },
-        "voice":   { "$ref": "#/$defs/lineageEntry" },
+        "text": { "$ref": "#/$defs/lineageEntry" },
+        "voice": { "$ref": "#/$defs/lineageEntry" },
         "drafter": { "$ref": "#/$defs/lineageEntry" },
-        "asr":     { "$ref": "#/$defs/lineageEntry" },
+        "asr": { "$ref": "#/$defs/lineageEntry" },
         "embedding": { "$ref": "#/$defs/lineageEntry" },
-        "vision":  { "$ref": "#/$defs/lineageEntry" },
-        "vad":     { "$ref": "#/$defs/lineageEntry" },
+        "vision": { "$ref": "#/$defs/lineageEntry" },
+        "vad": { "$ref": "#/$defs/lineageEntry" },
         "wakeword": { "$ref": "#/$defs/lineageEntry" }
       }
     },
@@ -49,15 +52,37 @@
       "additionalProperties": false,
       "required": ["text", "voice", "asr", "vision", "dflash", "cache"],
       "properties": {
-        "text":   { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
-        "voice":  { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
-        "asr":    { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
+        "text": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileEntry" }
+        },
+        "voice": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileEntry" }
+        },
+        "asr": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
         "vision": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
-        "dflash": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
-        "cache":  { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
-        "embedding": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
-        "vad":    { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
-        "wakeword": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } }
+        "dflash": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileEntry" }
+        },
+        "cache": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/fileEntry" }
+        },
+        "embedding": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fileEntry" }
+        },
+        "vad": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
+        "wakeword": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fileEntry" }
+        }
       }
     },
     "kernels": {
@@ -79,10 +104,10 @@
           "additionalProperties": false,
           "required": ["metal", "vulkan", "cuda", "cpu"],
           "properties": {
-            "metal":  { "$ref": "#/$defs/backendStatus" },
+            "metal": { "$ref": "#/$defs/backendStatus" },
             "vulkan": { "$ref": "#/$defs/backendStatus" },
-            "cuda":   { "$ref": "#/$defs/backendStatus" },
-            "cpu":    { "$ref": "#/$defs/backendStatus" }
+            "cuda": { "$ref": "#/$defs/backendStatus" },
+            "cpu": { "$ref": "#/$defs/backendStatus" }
           }
         }
       }
@@ -97,7 +122,7 @@
           "additionalProperties": false,
           "required": ["score", "passed"],
           "properties": {
-            "score":  { "type": "number", "minimum": 0, "maximum": 1 },
+            "score": { "type": "number", "minimum": 0, "maximum": 1 },
             "passed": { "type": "boolean" }
           }
         },
@@ -106,18 +131,18 @@
           "additionalProperties": false,
           "required": ["rtf", "passed"],
           "properties": {
-            "rtf":    { "type": "number", "minimum": 0 },
+            "rtf": { "type": "number", "minimum": 0 },
             "passed": { "type": "boolean" }
           }
         },
-        "e2eLoopOk":    { "type": "boolean" },
+        "e2eLoopOk": { "type": "boolean" },
         "thirtyTurnOk": { "type": "boolean" },
         "asrWer": {
           "type": "object",
           "additionalProperties": false,
           "required": ["wer", "passed"],
           "properties": {
-            "wer":    { "type": "number", "minimum": 0 },
+            "wer": { "type": "number", "minimum": 0 },
             "passed": { "type": "boolean" }
           }
         },
@@ -126,7 +151,7 @@
           "additionalProperties": false,
           "required": ["score", "passed"],
           "properties": {
-            "score":  { "type": "number", "minimum": 0, "maximum": 1 },
+            "score": { "type": "number", "minimum": 0, "maximum": 1 },
             "passed": { "type": "boolean" }
           }
         },
@@ -142,7 +167,12 @@
         "expressive": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["tagFaithfulness", "mosExpressive", "tagLeakage", "passed"],
+          "required": [
+            "tagFaithfulness",
+            "mosExpressive",
+            "tagLeakage",
+            "passed"
+          ],
           "properties": {
             "tagFaithfulness": { "type": "number", "minimum": 0, "maximum": 1 },
             "mosExpressive": { "type": "number", "minimum": 0 },
@@ -157,7 +187,7 @@
       "additionalProperties": false,
       "required": ["min", "recommended"],
       "properties": {
-        "min":         { "type": "integer", "minimum": 1 },
+        "min": { "type": "integer", "minimum": 1 },
         "recommended": { "type": "integer", "minimum": 1 }
       }
     },
@@ -168,7 +198,10 @@
       "properties": {
         "capabilities": {
           "type": "array",
-          "items": { "type": "string", "enum": ["tts", "emotion-tags", "singing"] }
+          "items": {
+            "type": "string",
+            "enum": ["tts", "emotion-tags", "singing"]
+          }
         }
       }
     },
@@ -180,7 +213,7 @@
       "additionalProperties": false,
       "required": ["base", "license"],
       "properties": {
-        "base":    { "type": "string", "minLength": 1 },
+        "base": { "type": "string", "minLength": 1 },
         "license": { "type": "string", "minLength": 1 }
       }
     },
@@ -189,23 +222,30 @@
       "additionalProperties": false,
       "required": ["path", "sha256"],
       "properties": {
-        "path":   { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
         "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
-        "ctx":    { "type": "integer", "minimum": 1 }
+        "ctx": { "type": "integer", "minimum": 1 }
       }
     },
     "kernelName": {
       "type": "string",
-      "enum": ["turboquant_q3", "turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"]
+      "enum": [
+        "turboquant_q3",
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq"
+      ]
     },
     "backendStatus": {
       "type": "object",
       "additionalProperties": false,
       "required": ["status", "atCommit", "report"],
       "properties": {
-        "status":   { "type": "string", "enum": ["pass", "fail", "skipped"] },
+        "status": { "type": "string", "enum": ["pass", "fail", "skipped"] },
         "atCommit": { "type": "string", "minLength": 1 },
-        "report":   { "type": "string", "minLength": 1 }
+        "report": { "type": "string", "minLength": 1 }
       }
     }
   }

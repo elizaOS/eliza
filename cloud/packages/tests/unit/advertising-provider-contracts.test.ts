@@ -81,7 +81,7 @@ describe("advertising provider contracts", () => {
       new Response(JSON.stringify({ data: [{ id: "adset-1", name: "Ad Set" }] }), {
         status: 200,
         headers: { "content-type": "application/json" },
-      })) as typeof fetch;
+      })) as unknown as typeof fetch;
 
     const { metaAdsProvider } = await import(
       `../../lib/services/advertising/providers/meta.ts?case=${Date.now()}`

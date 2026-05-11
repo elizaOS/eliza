@@ -110,7 +110,10 @@ const LOCAL_PROVIDER: ProviderDefinition = {
         return { enabled: false, reason: "No local model installed" };
       const dflash = getDflashRuntimeStatus();
       return dflash.enabled
-        ? { enabled: true, reason: "Eliza-1 model installed; local acceleration available" }
+        ? {
+            enabled: true,
+            reason: "Eliza-1 model installed; local acceleration available",
+          }
         : { enabled: true, reason: "GGUF model installed" };
     } catch {
       return { enabled: false, reason: "No local model installed" };
@@ -155,7 +158,7 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 
 const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
   id: "capacitor-llama",
-  label: "Eliza-1 mobile runtime",
+  label: "Eliza-1 1.7B runtime",
   kind: "local",
   description:
     "Runs Eliza-1 natively on iOS or Android via Capacitor. Only available in mobile builds.",

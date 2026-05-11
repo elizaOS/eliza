@@ -712,7 +712,10 @@ export const liquidityAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Open a Raydium LP position with 100 USDC paired against SOL.", source: "chat" },
+        content: {
+          text: "Open a Raydium LP position with 100 USDC paired against SOL.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -727,7 +730,10 @@ export const liquidityAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Show my current liquidity positions.", source: "chat" },
+        content: {
+          text: "Show my current liquidity positions.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -742,7 +748,10 @@ export const liquidityAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Close my SOL/USDC liquidity position.", source: "chat" },
+        content: {
+          text: "Close my SOL/USDC liquidity position.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",

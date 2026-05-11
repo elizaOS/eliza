@@ -28,6 +28,7 @@ import {
   RefreshCw,
   Server,
   Shield,
+  ShieldCheck,
   SlidersHorizontal,
   Upload,
   User,
@@ -51,6 +52,7 @@ import {
   useIsDeveloperMode,
 } from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
+import { AppPermissionsSection } from "../settings/AppPermissionsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
 import { IdentitySettingsSection } from "../settings/IdentitySettingsSection";
@@ -166,6 +168,15 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     description: "settings.sections.apps.desc",
     defaultDescription:
       "Installed apps, launching, relaunching, editing, and creating new ones.",
+  },
+  {
+    id: "app-permissions",
+    label: "settings.sections.apppermissions.label",
+    defaultLabel: "App Permissions",
+    icon: ShieldCheck,
+    description: "settings.sections.apppermissions.desc",
+    defaultDescription:
+      "Per-app filesystem and network namespace grants. Advisory until enforcement lands.",
   },
   {
     id: "wallet-rpc",
@@ -1085,6 +1096,22 @@ export function SettingsView({
           ref={registerContentItem("apps")}
         >
           <AppsManagementSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("app-permissions") && (
+        <SettingsSection
+          id="app-permissions"
+          title={t("settings.sections.apppermissions.label", {
+            defaultValue: "App Permissions",
+          })}
+          description={t("settings.sections.apppermissions.desc", {
+            defaultValue:
+              "Per-app filesystem and network namespace grants. Advisory until enforcement lands.",
+          })}
+          ref={registerContentItem("app-permissions")}
+        >
+          <AppPermissionsSection />
         </SettingsSection>
       )}
 

@@ -34,7 +34,7 @@ const BYTES_PER_GB = 1024 ** 3;
  * Per-platform slot ladders. Every default-recommended entry is an
  * Eliza-1 tier (the only default-eligible line — see catalog.ts and
  * `packages/inference/AGENTS.md` §2). Ladders bias toward the smallest
- * tier that fits the platform; desktops pick larger tiers
+ * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
 const SLOT_LADDERS: Record<
@@ -51,7 +51,12 @@ const SLOT_LADDERS: Record<
   },
   "linux-gpu": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-1_7b"],
+    TEXT_LARGE: [
+      "eliza-1-27b-256k",
+      "eliza-1-27b",
+      "eliza-1-9b",
+      "eliza-1-1_7b",
+    ],
   },
   "linux-cpu": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
@@ -59,7 +64,12 @@ const SLOT_LADDERS: Record<
   },
   "desktop-gpu": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-1_7b"],
+    TEXT_LARGE: [
+      "eliza-1-27b-256k",
+      "eliza-1-27b",
+      "eliza-1-9b",
+      "eliza-1-1_7b",
+    ],
   },
   "desktop-cpu": {
     TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
@@ -260,7 +270,9 @@ export function selectRecommendedModelForSlot(
   // ladder order still wins when long-context availability is the same
   // for every entry (or when the host doesn't have the headroom).
   const ranked =
-    eligible.length > 0 && hasLongContextHeadroom(hardware)
+    slot === "TEXT_LARGE" &&
+    eligible.length > 0 &&
+    hasLongContextHeadroom(hardware)
       ? rankLadderByLongContext(eligible)
       : eligible;
 

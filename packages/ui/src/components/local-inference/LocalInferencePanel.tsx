@@ -21,9 +21,9 @@ import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
+import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import { SlotAssignments } from "./SlotAssignments";
-import { displayModelName } from "./hub-utils";
 
 type HubTab = "curated" | "search" | "downloads";
 
@@ -151,7 +151,11 @@ export function LocalInferencePanel() {
     (spec: CatalogModel) => {
       void withBusy(async () => {
         await client.startLocalInferenceDownload(spec);
-        setActionNotice(`Downloading ${displayModelName(spec)}`, "success", 2000);
+        setActionNotice(
+          `Downloading ${displayModelName(spec)}`,
+          "success",
+          2000,
+        );
       });
     },
     [setActionNotice, withBusy],
@@ -269,7 +273,9 @@ export function LocalInferencePanel() {
     return <p className="text-sm text-muted">Loading local models…</p>;
   }
 
-  const catalog = hub.catalog.filter((model) => model.id.startsWith("eliza-1-"));
+  const catalog = hub.catalog.filter((model) =>
+    model.id.startsWith("eliza-1-"),
+  );
 
   return (
     <div className="flex flex-col gap-3">

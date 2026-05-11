@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildHuggingFaceResolveUrl,
   DEFAULT_ELIGIBLE_MODEL_IDS,
   ELIZA_1_TIER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
-  buildHuggingFaceResolveUrl,
   findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
@@ -32,12 +32,15 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses Eliza-1 user-facing display names", () => {
+  it("uses eliza-1 size ids as user-facing display names", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model, `${id} missing`).toBeTruthy();
-      expect(model!.displayName).toMatch(/^Eliza-1\b/);
-      expect(model!.blurb).toMatch(/^Eliza-1\b/);
+      expect(model?.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+      expect(model?.blurb).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+      expect(`${model?.displayName} ${model?.blurb}`).not.toMatch(
+        /\b(?:Qwen|Llama)\b/i,
+      );
     }
   });
 
@@ -118,7 +121,7 @@ describe("local inference catalog", () => {
   it("DFlash pairs share a tokenizer family when present", () => {
     const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
     for (const entry of dflashEntries) {
-      const drafterId = entry.runtime!.dflash!.drafterModelId;
+      const drafterId = entry.runtime?.dflash?.drafterModelId;
       const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
       expect(
         drafter,
@@ -129,18 +132,24 @@ describe("local inference catalog", () => {
         `target ${entry.id} missing tokenizerFamily`,
       ).toBeDefined();
       expect(
-        drafter!.tokenizerFamily,
+        drafter?.tokenizerFamily,
         `drafter ${drafterId} missing tokenizerFamily`,
       ).toBeDefined();
       expect(
         entry.tokenizerFamily,
-        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter!.tokenizerFamily})`,
-      ).toBe(drafter!.tokenizerFamily);
+        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) ≠ drafter ${drafterId} (${drafter?.tokenizerFamily})`,
+      ).toBe(drafter?.tokenizerFamily);
     }
   });
 
   it("declares the mandatory local runtime contract for every default tier", () => {
-    const baseKernels = ["dflash", "turbo3", "turbo4", "qjl_full", "polarquant"];
+    const baseKernels = [
+      "dflash",
+      "turbo3",
+      "turbo4",
+      "qjl_full",
+      "polarquant",
+    ];
     for (const id of ELIZA_1_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
@@ -216,8 +225,8 @@ describe("local inference catalog", () => {
   it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {
     const picked = recommendForFirstRun();
     expect(picked).not.toBeNull();
-    expect(picked!.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
-    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked!.id)).toBe(true);
-    expect(picked!.displayName).toMatch(/^Eliza-1\b/);
+    expect(picked?.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked?.id)).toBe(true);
+    expect(picked?.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
   });
 });

@@ -36,7 +36,9 @@ function isRuntimeMode(value: unknown): value is RuntimeMode {
   );
 }
 
-function isDeploymentRuntime(value: unknown): value is RuntimeDeploymentRuntime {
+function isDeploymentRuntime(
+  value: unknown,
+): value is RuntimeDeploymentRuntime {
   return value === "local" || value === "cloud" || value === "remote";
 }
 
@@ -45,9 +47,7 @@ function isDeploymentRuntime(value: unknown): value is RuntimeDeploymentRuntime 
  * unreachable or returns a non-2xx — callers fall back to local heuristics
  * (the snapshot is advisory, never load-bearing for security).
  */
-export async function fetchRuntimeModeSnapshot(): Promise<
-  RuntimeModeSnapshot | null
-> {
+export async function fetchRuntimeModeSnapshot(): Promise<RuntimeModeSnapshot | null> {
   let res: Response;
   try {
     res = await fetchWithCsrf(`${modeBase()}/api/runtime/mode`);
@@ -55,14 +55,12 @@ export async function fetchRuntimeModeSnapshot(): Promise<
     return null;
   }
   if (!res.ok) return null;
-  const body = (await res.json().catch(() => null)) as
-    | {
-        mode?: unknown;
-        deploymentRuntime?: unknown;
-        isRemoteController?: unknown;
-        remoteApiBaseConfigured?: unknown;
-      }
-    | null;
+  const body = (await res.json().catch(() => null)) as {
+    mode?: unknown;
+    deploymentRuntime?: unknown;
+    isRemoteController?: unknown;
+    remoteApiBaseConfigured?: unknown;
+  } | null;
   if (!body) return null;
   if (!isRuntimeMode(body.mode)) return null;
   if (!isDeploymentRuntime(body.deploymentRuntime)) return null;

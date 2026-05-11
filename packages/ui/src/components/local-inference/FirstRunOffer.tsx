@@ -5,7 +5,6 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
-import { MODEL_CATALOG } from "../../services/local-inference/catalog";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
 import { displayModelName, findInstalled } from "./hub-utils";
 
@@ -90,7 +89,7 @@ function pickRecommended(
   installed: InstalledModel[],
   hardware: HardwareProbe,
 ): CatalogModel | null {
-  const recommended = selectRecommendedModels(hardware, MODEL_CATALOG);
+  const recommended = selectRecommendedModels(hardware, catalog);
   for (const candidate of [
     recommended.TEXT_LARGE.model,
     recommended.TEXT_SMALL.model,
@@ -98,5 +97,10 @@ function pickRecommended(
     if (!candidate || findInstalled(candidate, installed)) continue;
     return catalog.find((model) => model.id === candidate.id) ?? candidate;
   }
-  return null;
+  return (
+    catalog.find(
+      (model) =>
+        model.id.startsWith("eliza-1-") && !findInstalled(model, installed),
+    ) ?? null
+  );
 }

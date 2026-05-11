@@ -19,13 +19,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
   "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix).
-export const ELIZA_1_TIERS = [
-  "0_6b",
-  "1_7b",
-  "9b",
-  "27b",
-  "27b-256k",
-] as const;
+export const ELIZA_1_TIERS = ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
@@ -49,7 +43,7 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
 // - All tiers require turboquant + qjl + polarquant + dflash.
-// - desktop/pro/server require `turbo3_tcq`. The validator also enforces the
+// - 9B and larger tiers require `turbo3_tcq`. The validator also enforces the
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
@@ -60,27 +54,9 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 > = {
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-  "9b": [
-    "turboquant_q4",
-    "qjl",
-    "polarquant",
-    "dflash",
-    "turbo3_tcq",
-  ],
-  "27b": [
-    "turboquant_q4",
-    "qjl",
-    "polarquant",
-    "dflash",
-    "turbo3_tcq",
-  ],
-  "27b-256k": [
-    "turboquant_q4",
-    "qjl",
-    "polarquant",
-    "dflash",
-    "turbo3_tcq",
-  ],
+  "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+  "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+  "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware. The 0.6B and
@@ -92,7 +68,7 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   "1_7b": ["metal", "vulkan", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "cpu"],
-  "27b-256k": ["cuda", "vulkan", "cpu"],
+  "27b-256k": ["metal", "vulkan", "cuda", "cpu"],
 };
 
 // ---------------------------------------------------------------------------
@@ -269,7 +245,11 @@ export const Eliza1ManifestSchema = z
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
   // re-reading the manifest. Example: `id: "eliza-1-9b"`.
-  .refine((m) => m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`), {
-    message: "id must start with `eliza-1-<tier>`",
-    path: ["id"],
-  });
+  .refine(
+    (m) =>
+      m.id === `eliza-1-${m.tier}` || m.id.startsWith(`eliza-1-${m.tier}-`),
+    {
+      message: "id must start with `eliza-1-<tier>`",
+      path: ["id"],
+    },
+  );

@@ -148,8 +148,7 @@ export async function forwardRemoteCloudMutation(
 
   const responseBody = await upstream.arrayBuffer();
   res.writeHead(upstream.status, {
-    "content-type":
-      upstream.headers.get("content-type") ?? "application/json",
+    "content-type": upstream.headers.get("content-type") ?? "application/json",
   });
   res.end(Buffer.from(responseBody));
   return true;

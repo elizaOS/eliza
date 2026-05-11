@@ -132,19 +132,19 @@ REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
 
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
-    "lite-0_6b": "low-RAM phones, CPU fallback",
-    "mobile-1_7b": "modern phones",
-    "desktop-9b": "laptops, 24GB phones, 48GB Mac",
-    "pro-27b": "96GB+ Mac, high-VRAM desktop",
-    "server-h200": "server / workstation",
+    "0_6b": "low-RAM phones, CPU fallback",
+    "1_7b": "modern phones",
+    "9b": "laptops, 24GB phones, 48GB Mac",
+    "27b": "96GB+ Mac, high-VRAM desktop",
+    "27b-256k": "server / workstation",
 }
 
 VOICE_BACKBONE_BY_TIER: Mapping[str, str] = {
-    "lite-0_6b": "omnivoice-0.6b",
-    "mobile-1_7b": "omnivoice-0.6b",
-    "desktop-9b": "omnivoice-1.7b",
-    "pro-27b": "omnivoice-1.7b",
-    "server-h200": "omnivoice-1.7b",
+    "0_6b": "omnivoice-0.6b",
+    "1_7b": "omnivoice-0.6b",
+    "9b": "omnivoice-1.7b",
+    "27b": "omnivoice-1.7b",
+    "27b-256k": "omnivoice-1.7b",
 }
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
 EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
@@ -156,11 +156,11 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-    "lite-0_6b": (1500, 1800),
-    "mobile-1_7b": (3500, 4500),
-    "desktop-9b": (7000, 9500),
-    "pro-27b": (24000, 32000),
-    "server-h200": (48000, 64000),
+    "0_6b": (1500, 1800),
+    "1_7b": (3500, 4500),
+    "9b": (7000, 9500),
+    "27b": (24000, 32000),
+    "27b-256k": (48000, 64000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -324,11 +324,6 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             "bundle layout: dflash/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
-    if not out["cache"]:
-        raise OrchestratorError(
-            "bundle layout: cache/ must contain at least one cache file",
-            EXIT_BUNDLE_LAYOUT_FAIL,
-        )
     voice_cache = bundle / VOICE_PRESET_CACHE_PATH
     if not voice_cache.is_file():
         raise OrchestratorError(
@@ -339,6 +334,11 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
         raise OrchestratorError(
             f"bundle layout: empty frozen voice cache {VOICE_PRESET_CACHE_PATH}",
             EXIT_MISSING_FILE,
+        )
+    if not out["cache"]:
+        raise OrchestratorError(
+            "bundle layout: cache/ must contain at least one cache file",
+            EXIT_BUNDLE_LAYOUT_FAIL,
         )
 
     # Optional but if present must not be empty.

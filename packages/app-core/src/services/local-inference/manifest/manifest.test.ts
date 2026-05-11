@@ -11,8 +11,16 @@ const SHA = "0".repeat(64);
 
 function passingBackends() {
   return {
-    metal: { status: "pass" as const, atCommit: "abc1234", report: "metal.txt" },
-    vulkan: { status: "pass" as const, atCommit: "abc1234", report: "vulkan.txt" },
+    metal: {
+      status: "pass" as const,
+      atCommit: "abc1234",
+      report: "metal.txt",
+    },
+    vulkan: {
+      status: "pass" as const,
+      atCommit: "abc1234",
+      report: "vulkan.txt",
+    },
     cuda: { status: "pass" as const, atCommit: "abc1234", report: "cuda.txt" },
     cpu: { status: "pass" as const, atCommit: "abc1234", report: "cpu.txt" },
   };
@@ -32,7 +40,9 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       vision: { base: "eliza-1-vision", license: "apache-2.0" },
     },
     files: {
-      text: [{ path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA }],
+      text: [
+        { path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA },
+      ],
       voice: [{ path: "tts/omnivoice-1.7b.gguf", sha256: SHA }],
       asr: [{ path: "asr/asr.gguf", sha256: SHA }],
       vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
@@ -162,12 +172,10 @@ describe("validateManifest — contract rejections", () => {
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(
-        result.errors.some((e) => e.includes("textEval")),
-      ).toBe(true);
-      expect(
-        result.errors.some((e) => e.includes("defaultEligible")),
-      ).toBe(true);
+      expect(result.errors.some((e) => e.includes("textEval"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("defaultEligible"))).toBe(
+        true,
+      );
     }
   });
 
@@ -254,9 +262,9 @@ describe("validateManifest — contract rejections", () => {
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(
-        result.errors.some((e) => e.includes("kernels.required")),
-      ).toBe(true);
+      expect(result.errors.some((e) => e.includes("kernels.required"))).toBe(
+        true,
+      );
     }
   });
 
@@ -291,13 +299,15 @@ describe("canSetAsDefault", () => {
   });
 
   it("returns false when the device shares no passing backend with the tier", () => {
-    const m = baseManifest("27b-256k"); // 27b-256k supports cuda/vulkan/cpu
-    // device only has metal — overlap with this tier is none, except cpu.
-    // this tier *does* support cpu, so this passes; tighten to just an
-    // unrelated backend to verify the exclusion path.
-    expect(canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 })).toBe(
-      false,
-    );
+    const m = baseManifest("27b-256k");
+    m.kernels.verifiedBackends.metal = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "metal.txt",
+    };
+    expect(
+      canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 }),
+    ).toBe(false);
   });
 
   it("returns false when the manifest fails contract checks even if defaultEligible=true", () => {

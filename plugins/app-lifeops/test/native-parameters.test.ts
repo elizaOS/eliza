@@ -1,4 +1,9 @@
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  listSubactionsFromParameters,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
@@ -135,8 +140,7 @@ describe("LifeOps native options.parameters migration", () => {
       (p) => p.name === "action",
     );
     expect(actionParam).toBeDefined();
-    const enumVerbs = (actionParam?.schema as { enum?: readonly string[] })
-      .enum;
+    const enumVerbs = listSubactionsFromParameters(calendarAction.parameters);
     expect(enumVerbs).toContain("feed");
     expect(enumVerbs).toContain("create_event");
     expect(enumVerbs).toContain("propose_times");

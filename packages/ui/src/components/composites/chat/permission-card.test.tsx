@@ -126,6 +126,30 @@ describe("PermissionCard", () => {
     ).toContain("Open System Settings");
   });
 
+  it("opens settings when not-determined cannot be requested directly", () => {
+    const onOpenSettings = vi.fn();
+    render(
+      <PermissionCard
+        {...baseProps}
+        permission="screentime"
+        initialState={{
+          id: "screentime",
+          status: "not-determined",
+          lastChecked: 0,
+          canRequest: false,
+          platform: "darwin",
+        }}
+        onOpenSettings={onOpenSettings}
+      />,
+    );
+    const button = screen.getByTestId(
+      "permission-card-primary",
+    ) as HTMLButtonElement;
+    expect(button.textContent).toContain("Open System Settings");
+    fireEvent.click(button);
+    expect(onOpenSettings).toHaveBeenCalledWith("screentime");
+  });
+
   it("renders disabled 'Coming soon' when restricted by entitlement", () => {
     render(
       <PermissionCard
@@ -146,6 +170,28 @@ describe("PermissionCard", () => {
     ) as HTMLButtonElement;
     expect(btn.disabled).toBe(true);
     expect(btn.textContent).toContain("Coming soon");
+  });
+
+  it("renders unavailable for platform-unsupported restricted permissions", () => {
+    render(
+      <PermissionCard
+        {...baseProps}
+        permission="health"
+        initialState={{
+          id: "health",
+          status: "restricted",
+          restrictedReason: "platform_unsupported",
+          lastChecked: 0,
+          canRequest: false,
+          platform: "darwin",
+        }}
+      />,
+    );
+    const btn = screen.getByTestId(
+      "permission-card-primary",
+    ) as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+    expect(btn.textContent).toContain("Unavailable on this platform");
   });
 
   it("auto-collapses to 'Access granted' when initial state is granted", () => {

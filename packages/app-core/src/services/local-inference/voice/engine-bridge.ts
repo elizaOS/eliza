@@ -39,16 +39,13 @@ import {
   VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./lifecycle";
-import {
-  PhraseCache,
-  type CachedPhraseAudio,
-} from "./phrase-cache";
+import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
+import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
   type MmapRegionHandle,
   SharedResourceRegistry,
 } from "./shared-resources";
 import { SpeakerPresetCache } from "./speaker-preset-cache";
-import { VoiceScheduler, type SchedulerEvents } from "./scheduler";
 import type {
   AudioChunk,
   AudioSink,
@@ -82,10 +79,7 @@ export class VoiceStartupError extends Error {
     | "already-started"
     | "not-started";
 
-  constructor(
-    code: VoiceStartupError["code"],
-    message: string,
-  ) {
+  constructor(code: VoiceStartupError["code"], message: string) {
     super(message);
     this.name = "VoiceStartupError";
     this.code = code;
@@ -518,8 +512,9 @@ export class EngineVoiceBridge {
 function isTranscriber(
   backend: OmniVoiceBackend,
 ): backend is OmniVoiceBackend & OmniVoiceTranscriber {
-  return typeof (backend as Partial<OmniVoiceTranscriber>).transcribe ===
-    "function";
+  return (
+    typeof (backend as Partial<OmniVoiceTranscriber>).transcribe === "function"
+  );
 }
 
 export function encodeMonoPcm16Wav(

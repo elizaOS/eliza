@@ -41,11 +41,12 @@ describe("local inference recommendations", () => {
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-1_7b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
-    // 27b (minRam 32, size 16.8) fits and is the largest default tier.
+    // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
+    // not. Ladder is 27b-256k -> 27b -> 9b -> 1_7b, picks 27b.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
-  it("stays on the 27B Eliza-1 tier on a >=96 GB-effective workstation", () => {
+  it("picks the 27B 256k tier on a >=96 GB-effective workstation", () => {
     const probe = hardware({
       totalRamGb: 128,
       freeRamGb: 96,
@@ -59,7 +60,7 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
   it("uses the mobile platform ladder and prefers the 1.7B tier when it fits", () => {
@@ -203,10 +204,10 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
     expect(
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_SMALL.model!.id),
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_SMALL.model?.id),
     ).toBe(true);
     expect(
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_LARGE.model!.id),
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(recommended.TEXT_LARGE.model?.id),
     ).toBe(true);
   });
 

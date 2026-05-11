@@ -8,34 +8,34 @@ Usage::
 
     # Dry-run (always safe; no network calls except metadata reads).
     uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final \\
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --dry-run
 
     # Real upload to the default repo (elizalabs/eliza-1-2b).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final
 
     # Upload a quantized sidecar (e.g. polarquant) to a sibling repo
     # (elizalabs/eliza-1-2b-polarquant).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final-polarquant \\
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final-polarquant \\
         --quant polarquant
 
     # Upload a GGUF directory (post llama.cpp convert + quantize). Use a
     # specific quant level for the sibling repo suffix (one HF repo per
     # quant level, matching the publish_all_eliza1.sh matrix).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.6-27b \\
-        --checkpoint checkpoints/qwen3-6-27b-apollo/final-gguf \\
+        --registry-key eliza-1-27b \\
+        --checkpoint checkpoints/eliza-1-27b-apollo/final-gguf \\
         --quant gguf-q4_k_m
 
     # Attach evaluation results to the rendered model card.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key qwen3.5-2b \\
-        --checkpoint checkpoints/qwen3-5-2b-apollo/final \\
+        --registry-key eliza-1-2b \\
+        --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --eval-results path/to/eliza_bench.json
 
 The script defers the heavy upload to `huggingface_hub.HfApi.upload_folder`

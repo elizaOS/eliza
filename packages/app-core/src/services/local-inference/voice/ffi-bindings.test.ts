@@ -32,14 +32,13 @@ import { existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-
-import { VoiceLifecycleError } from "./lifecycle";
 import {
   ELIZA_ERR_NOT_IMPLEMENTED,
   ELIZA_INFERENCE_ABI_VERSION,
   ELIZA_OK,
   loadElizaInferenceFfi,
 } from "./ffi-bindings";
+import { VoiceLifecycleError } from "./lifecycle";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -88,7 +87,9 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
     expect(thrown).toBeInstanceOf(VoiceLifecycleError);
     if (thrown instanceof VoiceLifecycleError) {
       expect(thrown.code).toBe("kernel-missing");
-      expect(thrown.message).toMatch(/runtime is not Bun|Failed to open libelizainference/);
+      expect(thrown.message).toMatch(
+        /runtime is not Bun|Failed to open libelizainference/,
+      );
     }
   });
 
