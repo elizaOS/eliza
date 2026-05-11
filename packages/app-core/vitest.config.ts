@@ -99,7 +99,12 @@ export default defineConfig({
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
       "test/app/onboarding-companion.live.e2e.test.ts",
-      ...(includeLiveE2e ? [] : ["test/live-agent/**/*.e2e.test.ts"]),
+      ...(includeLiveE2e
+        ? []
+        : [
+            "src/services/local-inference/engine.e2e.test.ts",
+            "test/live-agent/**/*.e2e.test.ts",
+          ]),
     ],
   },
   resolve: {

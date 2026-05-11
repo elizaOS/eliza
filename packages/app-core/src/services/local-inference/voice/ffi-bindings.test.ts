@@ -75,8 +75,10 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
     expect(ELIZA_INFERENCE_ABI_VERSION).toBe(1);
   });
 
-  it("loadElizaInferenceFfi throws VoiceLifecycleError when not running under Bun", () => {
-    // The vitest runner here is Node — `Bun` global is undefined.
+  it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
+    // Depending on the test runner this is either a non-Bun runtime or Bun
+    // with a deliberately missing dylib. Both must normalize to the same
+    // structured lifecycle error instead of leaking a raw runtime exception.
     let thrown: unknown;
     try {
       loadElizaInferenceFfi("/nonexistent/path/libelizainference.dylib");
@@ -86,7 +88,7 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
     expect(thrown).toBeInstanceOf(VoiceLifecycleError);
     if (thrown instanceof VoiceLifecycleError) {
       expect(thrown.code).toBe("kernel-missing");
-      expect(thrown.message).toMatch(/runtime is not Bun/);
+      expect(thrown.message).toMatch(/runtime is not Bun|Failed to open libelizainference/);
     }
   });
 

@@ -142,10 +142,10 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 
 const CATALOG: CatalogModel[] = [
 	{
-		id: "eliza-1-mobile-1_7b",
+		id: "eliza-1-1_7b",
 		displayName: "Eliza-1 mobile 1.7B",
-		hfRepo: "elizaos/eliza-1-mobile-1_7b",
-		ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
+		hfRepo: "elizaos/eliza-1-1_7b",
+		ggufFile: "text/eliza-1-1_7b-32k.gguf",
 		params: "1.7B",
 		quant: "fused GGUF",
 		sizeGb: 1.2,
@@ -156,10 +156,10 @@ const CATALOG: CatalogModel[] = [
 		role: "chat",
 	},
 	{
-		id: "eliza-1-desktop-9b",
+		id: "eliza-1-9b",
 		displayName: "Eliza-1 desktop 9B",
-		hfRepo: "elizaos/eliza-1-desktop-9b",
-		ggufFile: "text/eliza-1-desktop-9b-64k.gguf",
+		hfRepo: "elizaos/eliza-1-9b",
+		ggufFile: "text/eliza-1-9b-64k.gguf",
 		params: "9B",
 		quant: "fused GGUF",
 		sizeGb: 5.4,
@@ -170,10 +170,10 @@ const CATALOG: CatalogModel[] = [
 		role: "chat",
 	},
 	{
-		id: "eliza-1-lite-0_6b",
+		id: "eliza-1-0_6b",
 		displayName: "Eliza-1 lite embeddings",
-		hfRepo: "elizaos/eliza-1-lite-0_6b",
-		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
+		hfRepo: "elizaos/eliza-1-0_6b",
+		ggufFile: "text/eliza-1-0_6b-32k.gguf",
 		params: "0.6B",
 		quant: "fused GGUF",
 		sizeGb: 0.5,

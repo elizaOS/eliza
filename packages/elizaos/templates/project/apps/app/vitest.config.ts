@@ -39,6 +39,12 @@ const uiSourceRoot = path.join(localElizaRoot, "packages", "ui", "src");
 const bridgeStubPath = path.join(here, "test", "stubs", "app-core-bridge.ts");
 
 const capacitorCoreEntry = _require.resolve("@capacitor/core");
+const reactPackageRoot = path.dirname(
+  _require.resolve("react/package.json", { paths: [here, repoRoot] }),
+);
+const reactDomPackageRoot = path.dirname(
+  _require.resolve("react-dom/package.json", { paths: [here, repoRoot] }),
+);
 
 const nativePluginAliasEntries = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   find: new RegExp(`^@elizaos/capacitor-${name}$`),
@@ -134,19 +140,19 @@ export default defineConfig({
     alias: [
       {
         find: /^react$/,
-        replacement: path.join(here, "node_modules/react"),
+        replacement: path.join(reactPackageRoot, "index.js"),
       },
       {
         find: /^react\/(.*)$/,
-        replacement: path.join(here, "node_modules/react", "$1"),
+        replacement: path.join(reactPackageRoot, "$1"),
       },
       {
         find: /^react-dom$/,
-        replacement: path.join(here, "node_modules/react-dom"),
+        replacement: path.join(reactDomPackageRoot, "index.js"),
       },
       {
         find: /^react-dom\/(.*)$/,
-        replacement: path.join(here, "node_modules/react-dom", "$1"),
+        replacement: path.join(reactDomPackageRoot, "$1"),
       },
       {
         find: /^@capacitor\/core$/,

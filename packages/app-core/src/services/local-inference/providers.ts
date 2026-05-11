@@ -2,7 +2,7 @@
  * Provider registry.
  *
  * Treats every inference source the same way — cloud subscription, cloud
- * API, local llama.cpp engine, paired-device bridge, Capacitor on-device
+ * API, Eliza-1 local runtime, paired-device bridge, Capacitor on-device
  * — each is a `ProviderDefinition` with an `id`, a human label, a set of
  * supported model slots, and a pluggable `getEnableState()` that inspects
  * whatever underlying gate controls it (API key presence, subscription
@@ -82,10 +82,10 @@ export function getRegisteredSlotsForProvider(providerId: string): string[] {
 
 const LOCAL_PROVIDER: ProviderDefinition = {
   id: "eliza-local-inference",
-  label: "Local llama.cpp",
+  label: "Eliza-1 local runtime",
   kind: "local",
   description:
-    "On-device inference using node-llama-cpp, with DFlash llama-server acceleration when the managed binary and drafter companion are installed. The plugin-local-embedding companion serves the TEXT_EMBEDDING slot from the same node-llama-cpp runtime.",
+    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves the TEXT_EMBEDDING slot from the same runtime.",
   // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
   // registers its own model handler against the runtime. We advertise the
   // slot here so the providers panel reports it as supported by the local
@@ -107,7 +107,7 @@ const LOCAL_PROVIDER: ProviderDefinition = {
         return { enabled: false, reason: "No local model installed" };
       const dflash = getDflashRuntimeStatus();
       return dflash.enabled
-        ? { enabled: true, reason: "GGUF model installed; DFlash available" }
+        ? { enabled: true, reason: "Eliza-1 model installed; local acceleration available" }
         : { enabled: true, reason: "GGUF model installed" };
     } catch {
       return { enabled: false, reason: "No local model installed" };
@@ -152,10 +152,10 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 
 const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
   id: "capacitor-llama",
-  label: "On-device llama.cpp (mobile)",
+  label: "Eliza-1 mobile runtime",
   kind: "local",
   description:
-    "Runs llama.cpp natively on iOS or Android via Capacitor. Only available in mobile builds.",
+    "Runs Eliza-1 natively on iOS or Android via Capacitor. Only available in mobile builds.",
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const cap = (globalThis as Record<string, unknown>).Capacitor as

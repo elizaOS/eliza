@@ -13,12 +13,12 @@ import type {
   ServiceTypeName,
 } from "@elizaos/core";
 import { resolveActionContexts, resolveProviderContexts } from "@elizaos/core";
+import type { ToolCallCache } from "./tool-call-cache/index.ts";
 import {
   createToolCallCacheFromConfig,
-  wrapActionWithCache,
   type ToolCacheConfig,
+  wrapActionWithCache,
 } from "./tool-call-cache-wrapper.ts";
-import type { ToolCallCache } from "./tool-call-cache/index.ts";
 
 /** elizaOS runtime plugin lifecycle bookkeeping (not exported from @elizaos/core). */
 type ElizaPluginOwnership = {
@@ -716,7 +716,11 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
     );
     const toolCache = getOrBuildToolCallCache(runtime);
     if (toolCache) {
-      effective = wrapActionWithCache(effective, toolCache.cache, toolCache.cfg);
+      effective = wrapActionWithCache(
+        effective,
+        toolCache.cache,
+        toolCache.cfg,
+      );
     }
     originalRegisterAction(effective);
     if (!capture || runtime.actions.length <= actionsBefore) return;

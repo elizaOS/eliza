@@ -47,6 +47,7 @@ import { handlerRegistry } from "../services/local-inference/handler-registry";
 import { listInstalledModels } from "../services/local-inference/registry";
 import { installRouterHandler } from "../services/local-inference/router-handler";
 import type { AgentModelSlot } from "../services/local-inference/types";
+import { getRuntimeMode } from "./mode/runtime-mode";
 
 type GenerateTextHandler = (
   runtime: IAgentRuntime,
@@ -93,6 +94,10 @@ const AOSP_LLAMA_PROVIDER = "eliza-aosp-llama";
  * routing-policy layer picks between them).
  */
 const LOCAL_INFERENCE_PRIORITY = 0;
+
+export function shouldRegisterLocalInferenceHandlers(mode: string): boolean {
+  return mode === "local" || mode === "local-only";
+}
 
 function getLoader(runtime: IAgentRuntime): LocalInferenceLoader | null {
   const candidate = (
@@ -384,6 +389,14 @@ async function tryRegisterCapacitorLoader(
 export async function ensureLocalInferenceHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
+  const runtimeMode = getRuntimeMode();
+  if (!shouldRegisterLocalInferenceHandlers(runtimeMode)) {
+    logger.info(
+      `[local-inference] Runtime mode is ${runtimeMode}; skipping local model handler registration`,
+    );
+    return;
+  }
+
   const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
   if (
     typeof runtimeWithRegistration.getModel !== "function" ||

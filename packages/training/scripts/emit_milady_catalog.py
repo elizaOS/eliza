@@ -46,7 +46,7 @@ log = logging.getLogger("emit_milady_catalog")
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "elizaos/eliza-1-lite-0_6b": {
+    "elizalabs/eliza-1-lite-0_6b": {
         "params": "1B",  # catalog enum has no "0.6B" — round up like upstream
         "context_length": 32768,
         "tokenizer_family": "eliza1",
@@ -55,7 +55,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 2,
         "size_gb_estimate": 0.4,  # Q4_POLAR 0.6B ≈ 380-450 MB
     },
-    "elizaos/eliza-1-mobile-1_7b": {
+    "elizalabs/eliza-1-mobile-1_7b": {
         "params": "2B",
         "context_length": 32768,
         "tokenizer_family": "eliza1",
@@ -64,7 +64,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "elizaos/eliza-1-desktop-9b": {
+    "elizalabs/eliza-1-desktop-9b": {
         "params": "9B",
         "context_length": 131072,
         "tokenizer_family": "eliza1",
@@ -73,7 +73,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 8,
         "size_gb_estimate": 5.5,
     },
-    "elizaos/eliza-1-pro-27b": {
+    "elizalabs/eliza-1-pro-27b": {
         "params": "27B",
         "context_length": 131072,
         "tokenizer_family": "eliza1",
@@ -158,7 +158,7 @@ class MiladyCatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``elizaos/eliza-1-mobile-1_7b`` to a catalog id.
+    """Convert ``elizalabs/eliza-1-mobile-1_7b`` to a catalog id.
     """
     last = hf_repo.split("/")[-1]
     return last.lower()

@@ -2,7 +2,7 @@
   "$schema": "./schema.json",
   "label": "eliza-1-2b",
   "model_size": "2b",
-  "model_repo": "elizaos/eliza-1-2b",
+  "model_repo": "elizalabs/eliza-1-2b",
   "model_alias": "vast/eliza-1-2b",
   "served_model_name": "eliza-1-2b",
   "registry_key": "eliza-1-2b",
@@ -12,7 +12,7 @@
   "min_inet_down_mbps": 100,
   "port": 8000,
   "health_check_url": "http://127.0.0.1:8000/health",
-  "model": "elizaos/eliza-1-2b",
+  "model": "elizalabs/eliza-1-2b",
   "tensor_parallel_size": 1,
   "gpu_memory_utilization": 0.85,
   "max_model_len": 131072,
@@ -31,7 +31,7 @@
   "vllm_args": [
     "vllm",
     "serve",
-    "elizaos/eliza-1-2b",
+    "elizalabs/eliza-1-2b",
     "--tensor-parallel-size",
     "1",
     "--max-model-len",
@@ -56,7 +56,7 @@
     "eliza-1-2b"
   ],
   "vast_template_env": {
-    "MODEL_REPO": "elizaos/eliza-1-2b",
+    "MODEL_REPO": "elizalabs/eliza-1-2b",
     "MODEL_ALIAS": "vast/eliza-1-2b",
     "VLLM_PORT": "8000",
     "VLLM_REGISTRY_KEY": "eliza-1-2b"

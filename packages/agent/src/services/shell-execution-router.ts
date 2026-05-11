@@ -18,8 +18,8 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import {
-  resolveRuntimeExecutionMode,
   type RuntimeExecutionMode,
+  resolveRuntimeExecutionMode,
 } from "@elizaos/shared";
 import { CapabilityBroker } from "./capability-broker.ts";
 import type { SandboxManager } from "./sandbox-manager.ts";

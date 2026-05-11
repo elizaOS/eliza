@@ -489,7 +489,7 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*secrets/);
-		expect(prompt).toContain('"parentActionHints":["PASSWORD_MANAGER"]');
+		expect(prompt).toContain('"parentActionHints":["CREDENTIALS"]');
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("PASSWORD_MANAGER");
 	});
@@ -542,7 +542,7 @@ describe("v5 tiered action surface", () => {
 
 		const prompt = plannerUserContent(runtime);
 		expect(prompt).toMatch(/selected_contexts:[^\n]*tasks/);
-		expect(prompt).toContain('"parentActionHints":["CHECKIN"]');
+		expect(prompt).toContain('"parentActionHints":["SCHEDULED_TASKS"]');
 		const actions = availableActionsSection(runtime);
 		expect(actions).toContain("CHECKIN");
 	});

@@ -317,26 +317,6 @@ export async function createRealTestRuntime(
     // Always register plugin-sql for PGLite database.
     await runtime.registerPlugin(await importPluginSql());
 
-    if (
-      options?.withLLM &&
-      process.env.ELIZA_DISABLE_LOCAL_EMBEDDING_PLUGIN !== "1"
-    ) {
-      try {
-        const { default: localEmbeddingPlugin } = await import(
-          "@elizaos/plugin-local-embedding"
-        );
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
-        await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
-        logger.info(
-          "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
-        );
-      } catch (err) {
-        logger.warn(
-          `[real-runtime] Failed to register local embedding plugin: ${err}`,
-        );
-      }
-    }
-
     // Register LLM plugin if requested
     let providerName: LiveProviderName | null = null;
     let providerConfig: LiveProviderConfig | null = null;
@@ -388,6 +368,27 @@ export async function createRealTestRuntime(
           providerName = null;
           providerConfig = null;
         }
+      }
+    }
+
+    if (
+      options?.withLLM &&
+      !providerConfig &&
+      process.env.ELIZA_DISABLE_LOCAL_EMBEDDING_PLUGIN !== "1"
+    ) {
+      try {
+        const { default: localEmbeddingPlugin } = await import(
+          "@elizaos/plugin-local-embedding"
+        );
+        configureLocalEmbeddingPlugin(localEmbeddingPlugin as Plugin);
+        await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
+        logger.info(
+          "[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
+        );
+      } catch (err) {
+        logger.warn(
+          `[real-runtime] Failed to register local embedding plugin: ${err}`,
+        );
       }
     }
 

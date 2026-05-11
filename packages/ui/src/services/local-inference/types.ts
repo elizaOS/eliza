@@ -45,7 +45,8 @@ export type LocalRuntimeKernel =
   | "turbo3"
   | "turbo4"
   | "turbo3_tcq"
-  | "qjl_full";
+  | "qjl_full"
+  | "polarquant";
 
 export interface LocalRuntimeOptimizations {
   lookahead?: number;
@@ -104,19 +105,22 @@ export interface LocalRuntimeAcceleration {
  * tokenizers cannot be bridged by metadata repair. Add new families here
  * as the catalog grows.
  */
-export type TokenizerFamily =
-  | "eliza1"
-  | "sentencepiece"
-  | (string & {});
+export type TokenizerFamily = "eliza1" | "sentencepiece" | (string & {});
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-mobile-1_7b". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1-1_7b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
+  /**
+   * Optional Eliza-1 bundle manifest in the same HF repo. When present, the
+   * downloader installs every file listed in the manifest and uses
+   * `ggufFile` as the primary text GGUF inside that bundle.
+   */
+  bundleManifestFile?: string;
   params:
     | "360M"
     | "1B"

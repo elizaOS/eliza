@@ -169,9 +169,9 @@ import {
   stopAllPairingSessions as _bs_38_stopAllPairingSessions,
   whatsappSetupRoutes as _bs_39_whatsappSetupRoutes,
 } from "./setup-routes";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ = [
   _bs_1_checkWhatsAppUserAccess,
   _bs_2_DEFAULT_ACCOUNT_ID,
@@ -213,6 +213,5 @@ const __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ = [
   _bs_38_stopAllPairingSessions,
   _bs_39_whatsappSetupRoutes,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
 (globalThis as any).__bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__ =
   __bundle_safety_PLUGINS_PLUGIN_WHATSAPP_SRC_INDEX__;

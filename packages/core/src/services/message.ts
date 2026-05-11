@@ -23,10 +23,7 @@ import { buildActionCatalog } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";
-import {
-	filterByContextGate,
-	satisfiesContextGate,
-} from "../runtime/context-gates";
+import { filterByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -2311,8 +2308,13 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["calendar"],
-		candidateActions: ["calendar_search_events", "calendar_read"],
-		parentActionHints: ["CALENDAR"],
+		candidateActions: [
+			"personal_assistant_sign_document",
+			"sign_document",
+			"calendar_search_events",
+			"calendar_read",
+		],
+		parentActionHints: ["PERSONAL_ASSISTANT", "CALENDAR"],
 	};
 }
 
@@ -2820,14 +2822,10 @@ interface ExecuteV5PlannedToolCallParams {
  *
  * The LLM sees the stable Stage 2 wrapper surface, so every invocation
  * arrives wrapped: `{ name: "PLAN_ACTIONS",
- * params: { action, subaction?, parameters, thought } }`. Returns a
+ * params: { action, parameters, thought } }`. Returns a
  * normalized tool call where `name` is the actual action name and `params`
  * are the action-shaped parameters, ready for the rest of the dispatch
  * pipeline.
- *
- * The `subaction` hint, when present for legacy router-style planner output,
- * is mirrored into canonical `params.action` by downstream normalizers so
- * parent actions receive the child operation without another LLM repair pass.
  *
  * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
  * already-unwrapped action calls) so they keep their existing semantics.
@@ -2841,11 +2839,6 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	const rawActionName = typeof rawAction === "string" ? rawAction.trim() : "";
 	const compoundAction = splitPlannerCompoundActionName(rawActionName);
 	const actionName = compoundAction?.actionName ?? rawActionName;
-	const rawSubaction = params.subaction ?? compoundAction?.subaction;
-	const subaction =
-		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
-			? rawSubaction.trim()
-			: undefined;
 	const rawActionParameters = params.parameters;
 	const baseParameters =
 		rawActionParameters &&
@@ -2853,13 +2846,15 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 		!Array.isArray(rawActionParameters)
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
-	const mergedParameters: Record<string, unknown> = subaction
-		? { ...baseParameters, action: baseParameters.action ?? subaction, subaction }
-		: baseParameters;
 	return {
 		id: toolCall.id,
 		name: actionName,
-		params: mergedParameters,
+		params: compoundAction?.subaction
+			? {
+					...baseParameters,
+					action: baseParameters.action ?? compoundAction.subaction,
+				}
+			: baseParameters,
 	};
 }
 
@@ -2874,9 +2869,6 @@ function normalizeCompoundPlannerToolCall(
 		toolCall.params && typeof toolCall.params === "object"
 			? { ...toolCall.params }
 			: {};
-	if (params.subaction === undefined) {
-		params.subaction = compoundAction.subaction;
-	}
 	if (params.action === undefined) {
 		params.action = compoundAction.subaction;
 	}
@@ -3312,7 +3304,7 @@ async function runDeterministicPlannerFallback(args: {
 
 function shouldTreatPlannerLifeAsDeviceIntent(
 	resolvedName: string,
-	message: Memory,
+	_message: Memory,
 ): boolean {
 	if (
 		normalizeActionIdentifier(resolvedName) !==
@@ -3486,20 +3478,17 @@ function normalizePostPlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const rawSubaction =
-		stringParam(params.action) ?? stringParam(params.subaction);
+	const rawAction = stringParam(params.action);
 	const source = stringParam(params.source);
 	const op = /^(?:timeline|feed|read|read_feed|get_timeline|get_feed)$/i.test(
-		rawSubaction ?? "",
+		rawAction ?? "",
 	)
 		? "read"
-		: /^(?:search|search_twitter|x_search)$/i.test(rawSubaction ?? "")
+		: /^(?:search|search_twitter|x_search)$/i.test(rawAction ?? "")
 			? "search"
-			: (stringParam(params.action) ??
-				stringParam(params.op) ??
-				stringParam(params.operation));
+			: rawAction;
 	return {
-		...(op ? { action: op, subaction: op, op } : {}),
+		...(op ? { action: op } : {}),
 		...(source
 			? { source: source === "twitter" ? "x" : source }
 			: messageTextMatches(message, /\b(?:x|twitter)\b/)
@@ -3528,16 +3517,9 @@ function normalizeMessagePlannerParams(
 		toolCall.params && typeof toolCall.params === "object"
 			? (toolCall.params as Record<string, unknown>)
 			: {};
-	const rawOperation =
-		stringParam(params.action) ??
-		stringParam(params.operation) ??
-		stringParam(params.subaction) ??
-		stringParam(params.subAction) ??
-		stringParam(params.op);
+	const rawOperation = stringParam(params.action);
 	const manageIntent =
-		stringParam(params.manageOperation) ??
-		stringParam(params.command) ??
-		stringParam(params.action);
+		stringParam(params.manageOperation) ?? stringParam(params.command);
 	const rawSource =
 		stringParam(params.source) ??
 		stringParam(params.platform) ??
@@ -3603,8 +3585,6 @@ function normalizeMessagePlannerParams(
 		...((inferredOperation ?? operation)
 			? {
 					action: inferredOperation ?? operation,
-					operation: inferredOperation ?? operation,
-					subaction: inferredOperation ?? operation,
 				}
 			: {}),
 		...(source
@@ -3797,8 +3777,8 @@ function normalizeAliasedPlannerToolCall(
 			const originalName = normalizeActionIdentifier(toolCall.name);
 			const rawAction =
 				toolCall.params && typeof toolCall.params === "object"
-					? stringParam((toolCall.params as Record<string, unknown>).action) ??
-						stringParam((toolCall.params as Record<string, unknown>).subaction)
+					? (stringParam((toolCall.params as Record<string, unknown>).action) ??
+						stringParam((toolCall.params as Record<string, unknown>).subaction))
 					: undefined;
 			const params =
 				originalName.includes("AUTOFILL") ||
@@ -3994,7 +3974,7 @@ async function executeV5PlannedToolCall(
 								subaction: "fill",
 							},
 						}
-			: unwrappedToolCall;
+					: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,

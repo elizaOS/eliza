@@ -72,11 +72,21 @@ const hasLocalElizaWorkspace =
 const publishedAppCoreRoot = path.dirname(
   requireResolve("@elizaos/app-core/package.json"),
 );
-const appCoreSrcRoot = hasLocalElizaWorkspace
-  ? path.join(elizaRoot, "packages/app-core/src")
-  : fs.existsSync(path.join(publishedAppCoreRoot, "packages/app-core/src"))
-    ? path.join(publishedAppCoreRoot, "packages/app-core/src")
-    : path.join(publishedAppCoreRoot, "src");
+
+function resolveAppCoreSourceRoot(): string {
+  if (hasLocalElizaWorkspace) {
+    return path.join(elizaRoot, "packages/app-core/src");
+  }
+  if (fs.existsSync(path.join(publishedAppCoreRoot, "platform"))) {
+    return publishedAppCoreRoot;
+  }
+  if (fs.existsSync(path.join(publishedAppCoreRoot, "packages/app-core/src"))) {
+    return path.join(publishedAppCoreRoot, "packages/app-core/src");
+  }
+  return path.join(publishedAppCoreRoot, "src");
+}
+
+const appCoreSrcRoot = resolveAppCoreSourceRoot();
 
 function resolveAppCoreSourceFile(relativePath: string): string {
   const extensionCandidates = hasLocalElizaWorkspace

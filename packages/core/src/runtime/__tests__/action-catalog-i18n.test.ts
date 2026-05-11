@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
+import type { ActionExample } from "../../types/components";
 import {
 	buildActionCatalog,
 	type LocalizedActionExamplePair,
 	type LocalizedActionExampleResolver,
 } from "../action-catalog";
-import type { ActionExample } from "../../types/components";
 
 /**
  * `MultilingualPromptRegistry`-style fixture: maps composite keys to

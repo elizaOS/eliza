@@ -1,4 +1,4 @@
-import { elizaLogger, promoteSubactionsToActions, type Plugin } from '@elizaos/core';
+import { elizaLogger, type Plugin, promoteSubactionsToActions } from '@elizaos/core';
 import { TunnelTestSuite } from './__tests__/TunnelTestSuite';
 import { tunnelAction } from './actions/tunnel';
 import { tunnelStateProvider } from './providers/tunnel-state';

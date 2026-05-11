@@ -1,0 +1,12 @@
+{
+  "device": "Apple M4 Max",
+  "date": "2026-05-10",
+  "mode": "fp16ref",
+  "description": "fp16 K-cache dot-product baseline; same N=131072 output blocks as turbo*; this is the unquantized throughput we would otherwise be shipping.",
+  "iterations": 1000, "warmup": 100, "runs": 3,
+  "bytes_per_dispatch": 34079232,
+  "gpu_us": { "median_of_medians": 236.0625, "p99": 1178.5487, "per_run_min": 235.9167, "per_run_max": 237.3750, "per_run_variance_pct": 0.6182 },
+  "cpu_us": { "median": 343.0000 },
+  "bandwidth_GBs": 144.3653,
+  "bandwidth_pct_of_peak": 26.4405
+}

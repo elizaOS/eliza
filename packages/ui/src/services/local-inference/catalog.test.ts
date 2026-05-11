@@ -11,7 +11,11 @@ import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
   it("ships exactly the 5 Eliza-1 tiers", () => {
-    expect(MODEL_CATALOG.map((m) => m.id).sort()).toEqual(
+    expect(
+      MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)
+        .map((m) => m.id)
+        .sort(),
+    ).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
   });
@@ -78,11 +82,11 @@ describe("local inference catalog", () => {
     // 64k, pro = 128k, server = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-lite-0_6b": 32768,
-      "eliza-1-mobile-1_7b": 32768,
-      "eliza-1-desktop-9b": 65536,
-      "eliza-1-pro-27b": 131072,
-      "eliza-1-server-h200": 262144,
+      "eliza-1-0_6b": 32768,
+      "eliza-1-1_7b": 32768,
+      "eliza-1-9b": 65536,
+      "eliza-1-27b": 131072,
+      "eliza-1-27b-256k": 262144,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);

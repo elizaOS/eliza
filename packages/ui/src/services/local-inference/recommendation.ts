@@ -42,42 +42,42 @@ const SLOT_LADDERS: Record<
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-    TEXT_SMALL: ["eliza-1-lite-0_6b", "eliza-1-mobile-1_7b"],
-    TEXT_LARGE: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b"],
+    TEXT_LARGE: ["eliza-1-1_7b", "eliza-1-0_6b"],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
-      "eliza-1-pro-27b",
-      "eliza-1-desktop-9b",
-      "eliza-1-mobile-1_7b",
+      "eliza-1-27b",
+      "eliza-1-9b",
+      "eliza-1-1_7b",
     ],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
-      "eliza-1-server-h200",
-      "eliza-1-pro-27b",
-      "eliza-1-desktop-9b",
-      "eliza-1-mobile-1_7b",
+      "eliza-1-27b-256k",
+      "eliza-1-27b",
+      "eliza-1-9b",
+      "eliza-1-1_7b",
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: ["eliza-1-desktop-9b", "eliza-1-mobile-1_7b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
-      "eliza-1-server-h200",
-      "eliza-1-pro-27b",
-      "eliza-1-desktop-9b",
-      "eliza-1-mobile-1_7b",
+      "eliza-1-27b-256k",
+      "eliza-1-27b",
+      "eliza-1-9b",
+      "eliza-1-1_7b",
     ],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-mobile-1_7b", "eliza-1-lite-0_6b"],
-    TEXT_LARGE: ["eliza-1-desktop-9b", "eliza-1-mobile-1_7b"],
+    TEXT_SMALL: ["eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b"],
   },
 };
 
@@ -95,7 +95,7 @@ function chatCandidates(catalog: CatalogModel[]): CatalogModel[] {
 export function classifyRecommendationPlatform(
   hardware: HardwareProbe,
 ): RecommendationPlatformClass {
-  const platform = hardware.platform as string;
+  const platform = hardware.mobile?.platform ?? (hardware.platform as string);
   if (platform === "android" || platform === "ios") return "mobile";
   if (hardware.appleSilicon) return "apple-silicon";
   if (platform === "linux" && hardware.gpu) return "linux-gpu";

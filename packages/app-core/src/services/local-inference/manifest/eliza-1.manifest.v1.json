@@ -22,7 +22,7 @@
     "id": { "type": "string", "minLength": 1 },
     "tier": {
       "type": "string",
-      "enum": ["lite-0_6b", "mobile-1_7b", "desktop-9b", "pro-27b", "server-h200"]
+      "enum": ["0_6b", "1_7b", "9b", "27b", "27b-256k"]
     },
     "version": {
       "type": "string",
@@ -36,7 +36,12 @@
       "properties": {
         "text":    { "$ref": "#/$defs/lineageEntry" },
         "voice":   { "$ref": "#/$defs/lineageEntry" },
-        "drafter": { "$ref": "#/$defs/lineageEntry" }
+        "drafter": { "$ref": "#/$defs/lineageEntry" },
+        "asr":     { "$ref": "#/$defs/lineageEntry" },
+        "embedding": { "$ref": "#/$defs/lineageEntry" },
+        "vision":  { "$ref": "#/$defs/lineageEntry" },
+        "vad":     { "$ref": "#/$defs/lineageEntry" },
+        "wakeword": { "$ref": "#/$defs/lineageEntry" }
       }
     },
     "files": {
@@ -49,7 +54,10 @@
         "asr":    { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
         "vision": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
         "dflash": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
-        "cache":  { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } }
+        "cache":  { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fileEntry" } },
+        "embedding": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
+        "vad":    { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
+        "wakeword": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } }
       }
     },
     "kernels": {
@@ -103,7 +111,45 @@
           }
         },
         "e2eLoopOk":    { "type": "boolean" },
-        "thirtyTurnOk": { "type": "boolean" }
+        "thirtyTurnOk": { "type": "boolean" },
+        "asrWer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wer", "passed"],
+          "properties": {
+            "wer":    { "type": "number", "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "embedMteb": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["score", "passed"],
+          "properties": {
+            "score":  { "type": "number", "minimum": 0, "maximum": 1 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "vadLatencyMs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["median", "passed"],
+          "properties": {
+            "median": { "type": "number", "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "expressive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tagFaithfulness", "mosExpressive", "tagLeakage", "passed"],
+          "properties": {
+            "tagFaithfulness": { "type": "number", "minimum": 0, "maximum": 1 },
+            "mosExpressive": { "type": "number", "minimum": 0 },
+            "tagLeakage": { "type": "number", "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
+        }
       }
     },
     "ramBudgetMb": {
@@ -113,6 +159,17 @@
       "properties": {
         "min":         { "type": "integer", "minimum": 1 },
         "recommended": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capabilities"],
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["tts", "emotion-tags", "singing"] }
+        }
       }
     },
     "defaultEligible": { "type": "boolean" }

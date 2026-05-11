@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getElizaNamespace, resolveStateDir, resolveUserPath } from "@elizaos/core";
+import {
+  getElizaNamespace,
+  resolveStateDir,
+  resolveUserPath,
+} from "@elizaos/core";
 import { extractDevServerUrl } from "./ansi-utils.js";
 import type { SwarmCoordinator } from "./swarm-coordinator.js";
 import type { TaskArtifactRecord, TaskThreadDetail } from "./task-registry.js";

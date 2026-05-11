@@ -51,13 +51,36 @@ ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
 )
 
 ELIZA_1_BACKENDS: Final[tuple[str, ...]] = ("metal", "vulkan", "cuda", "cpu")
+ELIZA_1_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
+    "tts",
+    "emotion-tags",
+    "singing",
+)
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "lite-0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "mobile-1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "desktop-9b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "pro-27b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "server-h200": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "desktop-9b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "pro-27b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "server-h200": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -241,6 +264,7 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
     if not _is_object(lineage):
         errors.append("lineage: must be an object")
     else:
+        # Required lineage entries.
         for slot in ("text", "voice", "drafter"):
             entry = lineage.get(slot)
             if not _is_object(entry):
@@ -250,6 +274,18 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
                 errors.append(f"lineage.{slot}.base: required")
             if not entry.get("license"):
                 errors.append(f"lineage.{slot}.license: required")
+        # Wave-6 optional lineage entries — must validate when present.
+        for slot in ("asr", "embedding", "vision", "vad", "wakeword"):
+            entry = lineage.get(slot)
+            if entry is None:
+                continue
+            if not _is_object(entry):
+                errors.append(f"lineage.{slot}: must be an object when present")
+                continue
+            if not entry.get("base"):
+                errors.append(f"lineage.{slot}.base: required when lineage.{slot} present")
+            if not entry.get("license"):
+                errors.append(f"lineage.{slot}.license: required when lineage.{slot} present")
 
     # ── files ────────────────────────────────────────────────────────────
     files = manifest["files"]
@@ -258,8 +294,18 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
     else:
         kinds_min1 = ("text", "voice", "dflash", "cache")
         kinds_optional = ("asr", "vision")
-        for kind in (*kinds_min1, *kinds_optional):
+        # Wave-6 fully-optional file slots: missing key = "this bundle
+        # does not ship this component". The validator does not require
+        # an empty array for absence (TS schema makes the array itself
+        # optional), but if present it must be a real array.
+        kinds_fully_optional = ("embedding", "vad", "wakeword")
+        for kind in (*kinds_min1, *kinds_optional, *kinds_fully_optional):
+            # The kinds_fully_optional slots are absent-OK; iterate over
+            # whatever the value actually is (the array-shape check above
+            # already rejected non-arrays for present slots).
             value = files.get(kind)
+            if value is None and kind in kinds_fully_optional:
+                continue
             if not isinstance(value, list):
                 errors.append(f"files.{kind}: must be an array")
                 continue
@@ -352,6 +398,60 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
             if not isinstance(evals.get(flag), bool):
                 errors.append(f"evals.{flag}: must be a boolean")
 
+        asr_wer = evals.get("asrWer")
+        if asr_wer is not None:
+            if not _is_object(asr_wer):
+                errors.append("evals.asrWer: must be an object when present")
+            else:
+                wer = asr_wer.get("wer")
+                if not isinstance(wer, (int, float)) or wer < 0:
+                    errors.append("evals.asrWer.wer: must be a non-negative number")
+                if not isinstance(asr_wer.get("passed"), bool):
+                    errors.append("evals.asrWer.passed: must be a boolean")
+
+        embed_mteb = evals.get("embedMteb")
+        if embed_mteb is not None:
+            if not _is_object(embed_mteb):
+                errors.append("evals.embedMteb: must be an object when present")
+            else:
+                score = embed_mteb.get("score")
+                if not isinstance(score, (int, float)) or not 0 <= score <= 1:
+                    errors.append("evals.embedMteb.score: must be a number in [0, 1]")
+                if not isinstance(embed_mteb.get("passed"), bool):
+                    errors.append("evals.embedMteb.passed: must be a boolean")
+
+        vad_latency = evals.get("vadLatencyMs")
+        if vad_latency is not None:
+            if not _is_object(vad_latency):
+                errors.append("evals.vadLatencyMs: must be an object when present")
+            else:
+                median = vad_latency.get("median")
+                if not isinstance(median, (int, float)) or median < 0:
+                    errors.append(
+                        "evals.vadLatencyMs.median: must be a non-negative number"
+                    )
+                if not isinstance(vad_latency.get("passed"), bool):
+                    errors.append("evals.vadLatencyMs.passed: must be a boolean")
+
+        expressive = evals.get("expressive")
+        if expressive is not None:
+            if not _is_object(expressive):
+                errors.append("evals.expressive: must be an object when present")
+            else:
+                for field in ("tagFaithfulness", "mosExpressive", "tagLeakage"):
+                    value = expressive.get(field)
+                    if not isinstance(value, (int, float)) or value < 0:
+                        errors.append(
+                            f"evals.expressive.{field}: must be a non-negative number"
+                        )
+                tag_faithfulness = expressive.get("tagFaithfulness")
+                if isinstance(tag_faithfulness, (int, float)) and tag_faithfulness > 1:
+                    errors.append(
+                        "evals.expressive.tagFaithfulness: must be a number in [0, 1]"
+                    )
+                if not isinstance(expressive.get("passed"), bool):
+                    errors.append("evals.expressive.passed: must be a boolean")
+
     # ── ram budget ───────────────────────────────────────────────────────
     ram = manifest["ramBudgetMb"]
     if not _is_object(ram):
@@ -375,6 +475,21 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
     if not isinstance(manifest["defaultEligible"], bool):
         errors.append("defaultEligible: must be a boolean")
 
+    voice = manifest.get("voice")
+    if voice is not None:
+        if not _is_object(voice):
+            errors.append("voice: must be an object when present")
+        else:
+            capabilities = voice.get("capabilities")
+            if not isinstance(capabilities, list):
+                errors.append("voice.capabilities: must be an array")
+            else:
+                for capability in capabilities:
+                    if capability not in ELIZA_1_VOICE_CAPABILITIES:
+                        errors.append(
+                            f"voice.capabilities: unknown capability {capability!r}"
+                        )
+
     # If shape is broken, don't try the cross-field rules.
     if errors:
         return tuple(errors)
@@ -390,11 +505,9 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
     has_long_ctx = any(
         isinstance(f.get("ctx"), int) and f["ctx"] > 65536 for f in files["text"]
     )
-    if has_long_ctx and "turbo3_tcq" not in declared_set and "turbo3_tcq" not in set(
-        declared_optional
-    ):
+    if has_long_ctx and "turbo3_tcq" not in declared_set:
         errors.append(
-            "kernels: text variant with ctx > 64k requires turbo3_tcq in required or optional set"
+            "kernels.required: text variant with ctx > 64k requires turbo3_tcq"
         )
 
     # ── §3/§6 contract: every supported backend is pass ─────────────────
@@ -414,6 +527,49 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
         errors.append("evals.e2eLoopOk: false")
     if not evals["thirtyTurnOk"]:
         errors.append("evals.thirtyTurnOk: false")
+
+    # ── §3/§6 contract: optional component consistency + gates ──────────
+    optional_component_slots = ("asr", "embedding", "vision", "vad", "wakeword")
+    for slot in optional_component_slots:
+        component_files = files.get(slot) or []
+        component_lineage = lineage.get(slot)
+        if component_files and not component_lineage:
+            errors.append(f"lineage.{slot}: required when files.{slot} is non-empty")
+        if component_lineage and not component_files:
+            errors.append(f"files.{slot}: required when lineage.{slot} is present")
+
+    if files.get("asr"):
+        gate = evals.get("asrWer")
+        if not _is_object(gate):
+            errors.append("evals.asrWer: required when files.asr is non-empty")
+        elif not gate["passed"]:
+            errors.append("evals.asrWer.passed: false")
+    if files.get("embedding"):
+        gate = evals.get("embedMteb")
+        if not _is_object(gate):
+            errors.append("evals.embedMteb: required when files.embedding is non-empty")
+        elif not gate["passed"]:
+            errors.append("evals.embedMteb.passed: false")
+    if files.get("vad"):
+        gate = evals.get("vadLatencyMs")
+        if not _is_object(gate):
+            errors.append("evals.vadLatencyMs: required when files.vad is non-empty")
+        elif not gate["passed"]:
+            errors.append("evals.vadLatencyMs.passed: false")
+
+    capabilities = []
+    if _is_object(manifest.get("voice")):
+        maybe_capabilities = manifest["voice"].get("capabilities")
+        if isinstance(maybe_capabilities, list):
+            capabilities = maybe_capabilities
+    if "emotion-tags" in capabilities or "singing" in capabilities:
+        gate = evals.get("expressive")
+        if not _is_object(gate):
+            errors.append(
+                "evals.expressive: required when voice capabilities include emotion-tags or singing"
+            )
+        elif not gate["passed"]:
+            errors.append("evals.expressive.passed: false")
 
     # ── strongest claim: defaultEligible ────────────────────────────────
     if manifest["defaultEligible"] and errors:
@@ -456,6 +612,17 @@ def build_manifest(
     ram_budget_min_mb: int,
     ram_budget_recommended_mb: int,
     default_eligible: bool,
+    asr_wer: float | None = None,
+    asr_wer_passed: bool | None = None,
+    embed_mteb_score: float | None = None,
+    embed_mteb_passed: bool | None = None,
+    vad_latency_ms_median: float | None = None,
+    vad_latency_ms_passed: bool | None = None,
+    expressive_tag_faithfulness: float | None = None,
+    expressive_mos: float | None = None,
+    expressive_tag_leakage: float | None = None,
+    expressive_passed: bool | None = None,
+    voice_capabilities: Sequence[str] | None = None,
     bundle_id: str | None = None,
 ) -> dict[str, Any]:
     """Assemble a manifest dict from typed inputs and validate it.
@@ -474,6 +641,50 @@ def build_manifest(
     file_map: dict[str, list[dict[str, Any]]] = {}
     for kind in ("text", "voice", "asr", "vision", "dflash", "cache"):
         file_map[kind] = [_file_dict(f) for f in files.get(kind, ())]
+    for kind in ("embedding", "vad", "wakeword"):
+        if kind in files:
+            file_map[kind] = [_file_dict(f) for f in files.get(kind, ())]
+
+    evals: dict[str, Any] = {
+        "textEval": {"score": text_eval_score, "passed": text_eval_passed},
+        "voiceRtf": {"rtf": voice_rtf, "passed": voice_rtf_passed},
+        "e2eLoopOk": e2e_loop_ok,
+        "thirtyTurnOk": thirty_turn_ok,
+    }
+    if asr_wer is not None or asr_wer_passed is not None:
+        evals["asrWer"] = {
+            "wer": asr_wer if asr_wer is not None else -1,
+            "passed": bool(asr_wer_passed),
+        }
+    if embed_mteb_score is not None or embed_mteb_passed is not None:
+        evals["embedMteb"] = {
+            "score": embed_mteb_score if embed_mteb_score is not None else -1,
+            "passed": bool(embed_mteb_passed),
+        }
+    if vad_latency_ms_median is not None or vad_latency_ms_passed is not None:
+        evals["vadLatencyMs"] = {
+            "median": vad_latency_ms_median if vad_latency_ms_median is not None else -1,
+            "passed": bool(vad_latency_ms_passed),
+        }
+    expressive_values = (
+        expressive_tag_faithfulness,
+        expressive_mos,
+        expressive_tag_leakage,
+        expressive_passed,
+    )
+    if any(value is not None for value in expressive_values):
+        evals["expressive"] = {
+            "tagFaithfulness": (
+                expressive_tag_faithfulness
+                if expressive_tag_faithfulness is not None
+                else -1
+            ),
+            "mosExpressive": expressive_mos if expressive_mos is not None else -1,
+            "tagLeakage": (
+                expressive_tag_leakage if expressive_tag_leakage is not None else -1
+            ),
+            "passed": bool(expressive_passed),
+        }
 
     manifest: dict[str, Any] = {
         "$schema": ELIZA_1_MANIFEST_SCHEMA_URL,
@@ -498,18 +709,15 @@ def build_manifest(
                 for b, v in verified_backends.items()
             },
         },
-        "evals": {
-            "textEval": {"score": text_eval_score, "passed": text_eval_passed},
-            "voiceRtf": {"rtf": voice_rtf, "passed": voice_rtf_passed},
-            "e2eLoopOk": e2e_loop_ok,
-            "thirtyTurnOk": thirty_turn_ok,
-        },
+        "evals": evals,
         "ramBudgetMb": {
             "min": ram_budget_min_mb,
             "recommended": ram_budget_recommended_mb,
         },
         "defaultEligible": default_eligible,
     }
+    if voice_capabilities is not None:
+        manifest["voice"] = {"capabilities": list(voice_capabilities)}
 
     errors = validate_manifest(manifest)
     if errors:

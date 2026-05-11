@@ -3,10 +3,10 @@
  * task-agent lifecycle, workspace lifecycle, GitHub issue management, and
  * coding-task archive/reopen surface.
  *
- * Old leaf actions live as similes; their handlers were folded into per-op
+ * Old leaf actions live as similes; their handlers were folded into per-action
  * runners on this file.
  *
- * Ops:
+ * Actions:
  *   create               — CREATE_AGENT_TASK / START_CODING_TASK
  *   spawn_agent          — SPAWN_AGENT
  *   send                 — SEND_TO_AGENT
@@ -129,14 +129,8 @@ type HistoryWindow =
   | "last_7_days"
   | "last_30_days";
 
-function readOp(
-  params: Record<string, unknown>,
-  content: Record<string, unknown>,
-): TaskOp | null {
-  const raw =
-    pickString(params, content, "subaction") ??
-    pickString(params, content, "op") ??
-    pickString(params, content, "action");
+function readOp(params: Record<string, unknown>): TaskOp | null {
+  const raw = typeof params.action === "string" ? params.action : undefined;
   if (!raw) return null;
   const normalized = raw.toLowerCase().replace(/-/g, "_");
   return (SUPPORTED_OPS as readonly string[]).includes(normalized)
@@ -144,7 +138,7 @@ function readOp(
     : null;
 }
 
-// ── op: create (CREATE_AGENT_TASK) ──────────────────────────────────────
+// ── action: create (CREATE_AGENT_TASK) ──────────────────────────────────────
 
 function taskParts(
   params: Record<string, unknown>,
@@ -346,7 +340,7 @@ async function runCreate(
   };
 }
 
-// ── op: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────
+// ── action: spawn_agent (SPAWN_AGENT) ───────────────────────────────────────
 
 async function runSpawnAgent(
   runtime: IAgentRuntime,
@@ -437,7 +431,7 @@ async function runSpawnAgent(
   }
 }
 
-// ── op: send (SEND_TO_AGENT) ────────────────────────────────────────────
+// ── action: send (SEND_TO_AGENT) ────────────────────────────────────────────
 
 async function runSend(
   runtime: IAgentRuntime,
@@ -511,7 +505,7 @@ async function runSend(
   }
 }
 
-// ── op: stop_agent (STOP_AGENT) ─────────────────────────────────────────
+// ── action: stop_agent (STOP_AGENT) ─────────────────────────────────────────
 
 async function runStopAgent(
   runtime: IAgentRuntime,
@@ -586,7 +580,7 @@ async function runStopAgent(
   }
 }
 
-// ── op: list_agents (LIST_AGENTS) ───────────────────────────────────────
+// ── action: list_agents (LIST_AGENTS) ───────────────────────────────────────
 
 function dateString(value: Date | string | number): string {
   return new Date(value).toISOString();
@@ -616,7 +610,7 @@ async function runListAgents(
 
   if (sessions.length === 0) {
     const text =
-      'No active task agents. Use TASKS { op: "create" } when the user needs anything more involved than a simple direct reply.';
+      'No active task agents. Use TASKS { action: "create" } when the user needs anything more involved than a simple direct reply.';
     await callbackText(callback, text);
     return {
       success: true,
@@ -654,7 +648,7 @@ async function runListAgents(
   };
 }
 
-// ── op: cancel (CANCEL_TASK) ────────────────────────────────────────────
+// ── action: cancel (CANCEL_TASK) ────────────────────────────────────────────
 
 async function runCancel(
   runtime: IAgentRuntime,
@@ -737,7 +731,7 @@ async function runCancel(
   }
 }
 
-// ── op: history (TASK_HISTORY) ──────────────────────────────────────────
+// ── action: history (TASK_HISTORY) ──────────────────────────────────────────
 
 function textValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
@@ -1055,7 +1049,7 @@ async function runHistory(
   };
 }
 
-// ── op: control (TASK_CONTROL) ──────────────────────────────────────────
+// ── action: control (TASK_CONTROL) ──────────────────────────────────────────
 
 function inferControlAction(
   text: string,
@@ -1111,18 +1105,7 @@ async function runControl(
   }
 
   const text = typeof content.text === "string" ? content.text : "";
-  const topLevelAction = textValue(params.action) ?? textValue(content.action);
-  const normalizedTopLevelAction = topLevelAction?.toLowerCase().replace(/-/g, "_");
-  const legacyControlAction =
-    topLevelAction && normalizedTopLevelAction !== "control"
-      ? topLevelAction
-      : undefined;
-  const action = inferControlAction(
-    text,
-    textValue(params.controlAction) ??
-      textValue(content.controlAction) ??
-      legacyControlAction,
-  );
+  const action = inferControlAction(text, textValue(params.controlAction));
 
   if (!action) {
     const msg =
@@ -1213,7 +1196,7 @@ async function runControl(
   };
 }
 
-// ── op: share (TASK_SHARE) ──────────────────────────────────────────────
+// ── action: share (TASK_SHARE) ──────────────────────────────────────────────
 
 function artifactTypeForTarget(type: string): string {
   if (type === "preview_url" || type === "artifact_uri") return "share_link";
@@ -1327,7 +1310,7 @@ async function runShare(
   };
 }
 
-// ── op: provision_workspace (CREATE_WORKSPACE) ─────────────────────────
+// ── action: provision_workspace (CREATE_WORKSPACE) ─────────────────────────
 
 async function runProvisionWorkspace(
   runtime: IAgentRuntime,
@@ -1454,7 +1437,7 @@ async function runProvisionWorkspace(
   }
 }
 
-// ── op: submit_workspace (SUBMIT_WORKSPACE) ────────────────────────────
+// ── action: submit_workspace (SUBMIT_WORKSPACE) ────────────────────────────
 
 async function runSubmitWorkspace(
   runtime: IAgentRuntime,
@@ -1589,7 +1572,7 @@ async function runSubmitWorkspace(
   }
 }
 
-// ── op: manage_issues (MANAGE_ISSUES) ──────────────────────────────────
+// ── action: manage_issues (MANAGE_ISSUES) ──────────────────────────────────
 
 function formatGitHubAuthPrompt(
   prompt: Parameters<AuthPromptCallback>[0],
@@ -1903,17 +1886,7 @@ async function runManageIssues(
 
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
-  const topLevelAction = textValue(params.action) ?? textValue(content.action);
-  const normalizedTopLevelAction = topLevelAction?.toLowerCase().replace(/-/g, "_");
-  const legacyIssueAction =
-    topLevelAction && normalizedTopLevelAction !== "manage_issues"
-      ? topLevelAction
-      : undefined;
-  const action =
-    (params.issueAction as string) ??
-    (content.issueAction as string) ??
-    legacyIssueAction ??
-    inferIssueAction(text);
+  const action = (params.issueAction as string) ?? inferIssueAction(text);
   const repo = (params.repo as string) ?? (content.repo as string);
 
   if (!repo) {
@@ -1951,7 +1924,7 @@ async function runManageIssues(
   );
 }
 
-// ── op: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
+// ── action: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
 
 async function runArchive(
   runtime: IAgentRuntime,
@@ -2211,13 +2184,15 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "memoryContent",
-      description: "Additional memory/context for action=create / action=spawn_agent.",
+      description:
+        "Additional memory/context for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "label",
-      description: "Task label for action=create / action=spawn_agent / action=send.",
+      description:
+        "Task label for action=create / action=spawn_agent / action=send.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2232,7 +2207,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "keepAliveAfterComplete",
-      description: "Keep session alive after completion for action=spawn_agent.",
+      description:
+        "Keep session alive after completion for action=spawn_agent.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2266,26 +2242,28 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "taskId",
-      description: "Alias for threadId; preferred for action=archive / action=reopen.",
+      description:
+        "Alias for threadId; preferred for action=archive / action=reopen.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "all",
-      description: "Apply to all sessions for action=stop_agent / action=cancel.",
+      description:
+        "Apply to all sessions for action=stop_agent / action=cancel.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "search",
       description:
-        "Free-text search for thread/task lookup in op=cancel / op=control / op=history / op=share.",
+        "Free-text search for thread/task lookup in action=cancel / action=control / action=history / action=share.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
-      description: "Cancellation reason for op=cancel.",
+      description: "Cancellation reason for action=cancel.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2293,13 +2271,13 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     {
       name: "metric",
       description:
-        "History query mode for op=history: list (default), count, or detail.",
+        "History query mode for action=history: list (default), count, or detail.",
       required: false,
       schema: { type: "string" as const, enum: ["list", "count", "detail"] },
     },
     {
       name: "window",
-      description: "Relative window for op=history.",
+      description: "Relative window for action=history.",
       required: false,
       schema: {
         type: "string" as const,
@@ -2328,7 +2306,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     {
       name: "controlAction",
       description:
-        "Child action for action=control: pause | resume | stop | continue | archive | reopen. Legacy action=<control verb> is still accepted when top-level action is supplied as op/subaction.",
+        "Child action for action=control: pause | resume | stop | continue | archive | reopen.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2341,7 +2319,8 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "note",
-      description: "Optional note for action=control with controlAction=pause|stop.",
+      description:
+        "Optional note for action=control with controlAction=pause|stop.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2362,44 +2341,44 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "useWorktree",
-      description: "Use worktree mode for op=provision_workspace.",
+      description: "Use worktree mode for action=provision_workspace.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "parentWorkspaceId",
       description:
-        "Parent workspace id for op=provision_workspace worktree mode.",
+        "Parent workspace id for action=provision_workspace worktree mode.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "workspaceId",
-      description: "Workspace id for op=submit_workspace.",
+      description: "Workspace id for action=submit_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "commitMessage",
-      description: "Commit message for op=submit_workspace.",
+      description: "Commit message for action=submit_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "prTitle",
-      description: "PR title for op=submit_workspace.",
+      description: "PR title for action=submit_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "prBody",
-      description: "PR body for op=submit_workspace.",
+      description: "PR body for action=submit_workspace.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "draft",
-      description: "Create draft PR for op=submit_workspace.",
+      description: "Create draft PR for action=submit_workspace.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -2448,19 +2427,19 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     // misc
     {
       name: "validator",
-      description: "Optional verifier for op=create.",
+      description: "Optional verifier for action=create.",
       required: false,
       schema: { type: "object" as const },
     },
     {
       name: "maxRetries",
-      description: "Verifier retry count for op=create.",
+      description: "Verifier retry count for action=create.",
       required: false,
       schema: { type: "integer" as const, minimum: 0 },
     },
     {
       name: "onVerificationFail",
-      description: "Verifier failure behavior for op=create.",
+      description: "Verifier failure behavior for action=create.",
       required: false,
       schema: {
         type: "string" as const,
@@ -2469,17 +2448,17 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     },
     {
       name: "metadata",
-      description: "Additional metadata for op=create.",
+      description: "Additional metadata for action=create.",
       required: false,
       schema: { type: "object" as const },
     },
   ],
   validate: async (runtime, message) => {
-    // Always allow when ACP service is available — op switch handles dispatch.
+    // Always allow when ACP service is available — action switch handles dispatch.
     if (!getAcpService(runtime) && !getCoordinator(runtime)) return false;
     if (
       hasExplicitPayload(message, [
-        "op",
+        "action",
         "task",
         "repo",
         "workdir",
@@ -2504,9 +2483,9 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   ): Promise<ActionResult | undefined> => {
     const params = paramsRecord(options as HandlerOptionsLike | undefined);
     const content = contentRecord(message);
-    const op = readOp(params, content) ?? "create";
+    const action = readOp(params) ?? "create";
 
-    switch (op) {
+    switch (action) {
       case "create":
         return runCreate(runtime, message, state, params, content, callback);
       case "spawn_agent":
@@ -2571,7 +2550,10 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       case "reopen":
         return runReopen(runtime, message, state, params, content, callback);
       default:
-        return errorResult("UNKNOWN", `Unknown TASKS op: ${String(op)}`);
+        return errorResult(
+          "UNKNOWN",
+          `Unknown TASKS action: ${String(action)}`,
+        );
     }
   },
 
@@ -2590,7 +2572,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
           text: "Creating the task and dispatching a coding sub-agent.",
           actions: ["TASKS"],
           thought:
-            "User asked to delegate a coding job; TASKS subaction=create with kind=coding routes to the orchestrator's spawn path.",
+            "User asked to delegate a coding job; TASKS action=create with kind=coding routes to the orchestrator's spawn path.",
         },
       },
     ],
@@ -2608,7 +2590,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
           text: "Listing active tasks.",
           actions: ["TASKS"],
           thought:
-            "Status check maps to TASKS subaction=list filtering for in_progress / queued tasks.",
+            "Status check maps to TASKS action=list_agents filtering for in_progress / queued tasks.",
         },
       },
     ],
@@ -2626,7 +2608,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
           text: "Pausing the task.",
           actions: ["TASKS"],
           thought:
-            "Halt-and-keep-state maps to TASKS subaction=pause; archive/reopen are for fully resolved tasks.",
+            "Halt-and-keep-state maps to TASKS action=control with controlAction=pause; archive/reopen are for fully resolved tasks.",
         },
       },
     ],
@@ -2644,7 +2626,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
           text: "Opening the worktree.",
           actions: ["TASKS"],
           thought:
-            "Worktree inspection maps to TASKS subaction=worktree with the explicit task id.",
+            "Worktree inspection maps to TASKS action=share with the explicit task id.",
         },
       },
     ],

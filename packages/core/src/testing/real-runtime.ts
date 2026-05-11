@@ -172,30 +172,6 @@ export async function createRealTestRuntime(
 	}
 	await runtime.registerPlugin(pluginSql as RegisterablePlugin);
 
-	if (options?.withLLM) {
-		try {
-			const pluginModule = (await import(
-				["@elizaos", "plugin-local-embedding"].join("/")
-			)) as RuntimePluginModule;
-			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
-			if (plugin) {
-				const modulePath = "../../../agent/src/runtime/eliza";
-				const agentRuntimeModule = (await import(
-					modulePath
-				)) as AgentRuntimeModule;
-				agentRuntimeModule.configureLocalEmbeddingPlugin?.(plugin);
-				await runtime.registerPlugin(plugin as RegisterablePlugin);
-				logger.info(
-					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
-				);
-			}
-		} catch (err) {
-			logger.warn(
-				`[real-runtime] Failed to register local embedding plugin: ${err}`,
-			);
-		}
-	}
-
 	// Register LLM plugin if requested
 	let providerName: LiveProviderName | null = null;
 	let providerConfig: LiveProviderConfig | null = null;
@@ -225,6 +201,30 @@ export async function createRealTestRuntime(
 				providerName = null;
 				providerConfig = null;
 			}
+		}
+	}
+
+	if (options?.withLLM && !providerConfig) {
+		try {
+			const pluginModule = (await import(
+				["@elizaos", "plugin-local-embedding"].join("/")
+			)) as RuntimePluginModule;
+			const plugin = pluginModule.default ?? pluginModule.elizaPlugin;
+			if (plugin) {
+				const modulePath = "../../../agent/src/runtime/eliza";
+				const agentRuntimeModule = (await import(
+					modulePath
+				)) as AgentRuntimeModule;
+				agentRuntimeModule.configureLocalEmbeddingPlugin?.(plugin);
+				await runtime.registerPlugin(plugin as RegisterablePlugin);
+				logger.info(
+					"[real-runtime] Registered local embedding plugin for TEXT_EMBEDDING",
+				);
+			}
+		} catch (err) {
+			logger.warn(
+				`[real-runtime] Failed to register local embedding plugin: ${err}`,
+			);
 		}
 	}
 

@@ -9,10 +9,10 @@ import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
   OnboardingOptions,
+  PermissionId,
   PermissionState,
   ServiceRouteAccountStrategy,
   SubscriptionStatusResponse,
-  SystemPermissionId,
 } from "@elizaos/shared";
 import {
   isElizaSettingsDebugEnabled,
@@ -758,9 +758,9 @@ declare module "./client-base" {
       mode: TradePermissionMode,
     ): Promise<TradePermissionModeResponse>;
     getPermissions(): Promise<AllPermissionsState>;
-    getPermission(id: SystemPermissionId): Promise<PermissionState>;
-    requestPermission(id: SystemPermissionId): Promise<PermissionState>;
-    openPermissionSettings(id: SystemPermissionId): Promise<void>;
+    getPermission(id: PermissionId): Promise<PermissionState>;
+    requestPermission(id: PermissionId): Promise<PermissionState>;
+    openPermissionSettings(id: PermissionId): Promise<void>;
     refreshPermissions(): Promise<AllPermissionsState>;
     setShellEnabled(enabled: boolean): Promise<PermissionState>;
     isShellEnabled(): Promise<boolean>;

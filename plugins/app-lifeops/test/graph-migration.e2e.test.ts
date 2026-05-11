@@ -30,6 +30,7 @@ async function seedLegacyRelationships(
   count: number,
 ): Promise<{ legacyIds: string[]; interactionIds: string[] }> {
   const now = new Date().toISOString();
+  const seedRunId = crypto.randomUUID().slice(0, 8);
   const legacyIds: string[] = [];
   const interactionIds: string[] = [];
   for (let i = 0; i < count; i += 1) {
@@ -50,8 +51,8 @@ async function seedLegacyRelationships(
          ${sqlQuote(AGENT_ID)},
          ${sqlQuote(`Person ${i}`)},
          ${sqlQuote("email")},
-         ${sqlQuote(`person${i}@example.com`)},
-         ${sqlQuote(`person${i}@example.com`)},
+         ${sqlQuote(`person${i}-${seedRunId}@example.com`)},
+         ${sqlQuote(`person${i}-${seedRunId}@example.com`)},
          ${i % 4 === 0 ? sqlQuote(`+1555000${String(i).padStart(4, "0")}`) : "NULL"},
          ${sqlQuote(`Note for person ${i}`)},
          ${sqlJson([`tag${i % 3}`])},

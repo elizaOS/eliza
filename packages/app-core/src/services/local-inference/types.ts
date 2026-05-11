@@ -151,19 +151,22 @@ export interface LocalRuntimeAcceleration {
  * without a code change in every consumer; the canonical members are
  * enumerated for tooling.
  */
-export type TokenizerFamily =
-  | "eliza1"
-  | "sentencepiece"
-  | (string & {});
+export type TokenizerFamily = "eliza1" | "sentencepiece" | (string & {});
 
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-mobile-1_7b". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1-mobile-1_7b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
+  /**
+   * Optional Eliza-1 bundle manifest in the same HF repo. When present, the
+   * downloader installs every file listed in the manifest and uses
+   * `ggufFile` as the primary text GGUF inside that bundle.
+   */
+  bundleManifestFile?: string;
   params:
     | "360M"
     | "1B"

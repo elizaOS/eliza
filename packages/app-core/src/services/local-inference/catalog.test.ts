@@ -3,6 +3,7 @@ import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   ELIZA_1_TIER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
+  buildHuggingFaceResolveUrl,
   findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
@@ -10,8 +11,9 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 5 Eliza-1 tiers", () => {
-    expect(MODEL_CATALOG.map((m) => m.id).sort()).toEqual(
+  it("ships exactly the 5 visible Eliza-1 tiers", () => {
+    const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
+    expect(visible.map((m) => m.id).sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
   });
@@ -36,6 +38,16 @@ describe("local inference catalog", () => {
       expect(model, `${id} missing`).toBeTruthy();
       expect(model!.displayName).toMatch(/^Eliza-1\b/);
       expect(model!.blurb).toMatch(/^Eliza-1\b/);
+    }
+  });
+
+  it("uses elizalabs HuggingFace repos for every visible Eliza-1 tier", () => {
+    for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
+      expect(model.hfRepo).toBe(`elizalabs/${model.id}`);
+      expect(model.hfRepo).not.toMatch(/^elizaos\//);
+      expect(buildHuggingFaceResolveUrl(model)).toContain(
+        `/elizalabs/${model.id}/resolve/main/`,
+      );
     }
   });
 
@@ -78,11 +90,11 @@ describe("local inference catalog", () => {
     // 64k, pro = 128k, server = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-lite-0_6b": 32768,
-      "eliza-1-mobile-1_7b": 32768,
-      "eliza-1-desktop-9b": 65536,
-      "eliza-1-pro-27b": 131072,
-      "eliza-1-server-h200": 262144,
+      "eliza-1-0_6b": 32768,
+      "eliza-1-1_7b": 32768,
+      "eliza-1-9b": 65536,
+      "eliza-1-27b": 131072,
+      "eliza-1-27b-256k": 262144,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -127,6 +139,55 @@ describe("local inference catalog", () => {
     }
   });
 
+  it("declares the mandatory local runtime contract for every default tier", () => {
+    const baseKernels = ["dflash", "turbo3", "turbo4", "qjl_full", "polarquant"];
+    for (const id of ELIZA_1_TIER_IDS) {
+      const model = findCatalogModel(id);
+      expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
+        "llama-server",
+      );
+      expect(model?.runtime?.dflash?.drafterModelId, `${id} drafter`).toBe(
+        `${id}-drafter`,
+      );
+      expect(model?.companionModelIds, `${id} companions`).toContain(
+        `${id}-drafter`,
+      );
+      for (const kernel of baseKernels) {
+        expect(
+          model?.runtime?.optimizations?.requiresKernel,
+          `${id} kernel ${kernel}`,
+        ).toContain(kernel);
+      }
+      if ((model?.contextLength ?? 0) >= 65536) {
+        expect(model?.runtime?.optimizations?.requiresKernel).toContain(
+          "turbo3_tcq",
+        );
+      }
+    }
+  });
+
+  it("keeps drafter companions hidden and non-default", () => {
+    const drafters = MODEL_CATALOG.filter(
+      (m) => m.runtimeRole === "dflash-drafter",
+    );
+    expect(drafters.length).toBe(ELIZA_1_TIER_IDS.length);
+    for (const drafter of drafters) {
+      expect(drafter.hiddenFromCatalog).toBe(true);
+      expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
+      expect(drafter.companionForModelId).toBeTruthy();
+      expect(drafter.tokenizerFamily).toBe("eliza1");
+    }
+  });
+
+  it("does not leak implementation-family names in visible catalog copy", () => {
+    const banned = /\b(?:qwen|llama|turboquant|qjl|polarquant|dflash)\b/i;
+    for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
+      expect(model.displayName).not.toMatch(banned);
+      expect(model.quant).not.toMatch(banned);
+      expect(model.blurb).not.toMatch(banned);
+    }
+  });
+
   it("does not ship non-Eliza local model entries", () => {
     const offenders: string[] = [];
     for (const model of MODEL_CATALOG) {
@@ -135,6 +196,12 @@ describe("local inference catalog", () => {
       }
     }
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps external HF search-shaped ids custom-only", () => {
+    const externalId = "hf:some-org/custom-model::model.Q4_K_M.gguf";
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(externalId)).toBe(false);
+    expect(externalId.startsWith("eliza-1-")).toBe(false);
   });
 
   it("FIRST_RUN_DEFAULT_MODEL_ID resolves to a default-eligible Eliza-1 tier", () => {

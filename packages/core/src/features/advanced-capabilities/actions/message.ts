@@ -235,13 +235,7 @@ function normalizeOp(value: unknown): MessageOperation | undefined {
 }
 
 function inferOp(message: Memory, params: ParamRecord): MessageOperation {
-	const explicit =
-		normalizeOp(params.action) ??
-		normalizeOp(params.subaction) ??
-		normalizeOp(params.operation) ??
-		normalizeOp(params.subAction) ??
-		normalizeOp(params.__subaction) ??
-		normalizeOp(params.op);
+	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
 
 	const text = `${message.content?.text ?? ""}`.toLowerCase();
@@ -3164,34 +3158,6 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description: `Message action. One of: ${MESSAGE_OPS.join(", ")}.`,
 		required: false,
 		schema: { type: "string", enum: [...MESSAGE_OPS] },
-	},
-	{
-		name: "operation",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "subAction",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "__subaction",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
-	},
-	{
-		name: "op",
-		description:
-			"Legacy alias for action, accepted for planner compatibility.",
-		required: false,
-		schema: { type: "string" },
 	},
 	{
 		name: "source",

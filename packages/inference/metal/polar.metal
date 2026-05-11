@@ -1,14 +1,11 @@
-// DRAFT: COMPILED locally NOT YET — agent runs on Linux without xcrun metal.
-// SOURCE-LEVEL VERIFIED against the PolarQuant CPU reference at
+// HARDWARE VERIFIED on Apple M4 Max (Metal runtime JIT): 8/8 PASS against the
+// fixture harness. Source-level verified against the PolarQuant CPU reference at
 // packages/native-plugins/polarquant-cpu/src/polar_dequantize_ref.c and
 // polar_dot_ref.c (W1-B's authoritative CPU side). The block layout
 // (`block_q4_polar`), centroid LUT (POLAR_Q4_CENTROIDS), QJL residual
 // magnitude (POLAR_QJL_CORRECTION_MAGNITUDE / sqrt(QK_POLAR)), and the
 // (1 / QK_POLAR) compensation that turns the in-place Hadamard butterfly
 // into the orthonormal inverse are all bit-identical.
-//
-// Hardware verification still required — see
-// packages/inference/README.md "Verification matrix".
 //
 // Block layout (block_q4_polar in polar_block.h, 82 bytes, packed):
 //     fp16     d                          // [0..1]   per-block L2 norm

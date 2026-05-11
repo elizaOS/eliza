@@ -87,7 +87,7 @@ const ACTIVITY_DEFAULT_LIMIT = 50;
 const ACTIVITY_MAX_LIMIT = 100;
 
 interface ContactParams {
-  action?: ContactOp;
+  action?: ContactOp | "accept" | "reject";
   subaction?: ContactOp;
   op?: ContactOp;
   // Common
@@ -128,7 +128,6 @@ interface ContactParams {
   // merge
   candidateId?: string;
   mergeWith?: string;
-  action?: "accept" | "reject";
   // activity
   since?: string;
   offset?: number;
@@ -2167,7 +2166,9 @@ export const contactAction: Action = {
     registerEntitySearchCategory(runtime);
     {
       const params = getParams(options);
-      if (readOp(params.action ?? params.subaction ?? params.op) === "followup") {
+      if (
+        readOp(params.action ?? params.subaction ?? params.op) === "followup"
+      ) {
         return true;
       }
     }

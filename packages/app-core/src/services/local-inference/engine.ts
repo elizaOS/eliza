@@ -559,12 +559,16 @@ export class LocalInferenceEngine {
       await this.dispatcher.load(plan);
       return;
     } catch (err) {
-      // If DFlash was the chosen backend but is not strictly required, fall
-      // back to node-llama-cpp transparently. This preserves the prior
-      // behaviour — the operator gets a working chat instead of an error
-      // when the binary is missing.
+      // Only a soft catalog preference may fall back to node-llama-cpp.
+      // Kernel-required loads are the mandatory-optimization path: falling
+      // back would silently run an unoptimized bundle, which violates the
+      // Eliza-1 startup contract.
       const decision = this.dispatcher.decide(plan);
-      if (decision.backend === "llama-server" && !dflashRequired()) {
+      if (
+        decision.backend === "llama-server" &&
+        decision.reason === "preferred-backend" &&
+        !dflashRequired()
+      ) {
         console.warn(
           "[local-inference] llama-server backend unavailable; falling back to node-llama-cpp:",
           err instanceof Error ? err.message : String(err),

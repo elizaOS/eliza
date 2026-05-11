@@ -1,57 +1,15 @@
-// MILADY-DISPATCH-V1 smoke test.
+// Metal graph-dispatch smoke for the shipped Eliza-1 QJL attention op.
 //
-// Exercises the parallel dispatch path added to ggml_metal_op_mul_mat /
-// ggml_metal_op_get_rows for the milady-quant ggml_type values. Unlike
-// metal_verify (which tests the .metal sources by JIT-compiling them and
-// dispatching custom args), this harness drives the actual fork dispatch
-// pipeline by submitting GGML_OP_MUL_MAT / GGML_OP_GET_ROWS graph nodes to
-// the Metal backend and observing that:
-//
-//   1. The dispatch does not crash. The Wave-5 build shipped the standalone
-//      kernel symbols inside default.metallib but had NO dispatch wiring,
-//      so any graph that referenced GGML_TYPE_QJL1_256 / GGML_TYPE_Q4_POLAR
-//      would either GGML_ABORT in get_pipeline_mul_mv() or crash inside
-//      the metallib compiler when binding the missing `nsg` function
-//      constant. This Wave-6 patch adds an early-out that diverts these
-//      types into a constant-free milady-quant dispatcher. PASS = no
-//      abort, no crash, graph_compute returns OK.
-//
-//   2. For Q4_POLAR, the GPU output approximates the CPU dequant + fp32
-//      matmul reference within tol=1e-3. The standalone Polar mul_mv kernel
-//      and the C dequantize_row_q4_polar+fp32_matmul reference compute the
-//      same math (head_dim=128, raw fp32 q activation, no QJL residual),
-//      so they agree numerically.
-//
-//   3. For QJL1_256, the standalone mul_mv kernel expects q to be the
-//      pre-projected sketch (proj_dim=256), which is NOT what
-//      ggml_mul_mat() supplies via the standard graph. We therefore only
-//      assert that the dispatch path runs without aborting; the numeric
-//      output will not match a CPU dequant+matmul because the math is
-//      different by design (sketch space vs head-dim space). Wiring a
-//      semantically-correct QJL graph requires a separate ATTN_SCORE op
-//      which is Wave-7 work.
-//
-//   4. TBQ3_0 / TBQ4_0 / TBQ3_TCQ — these types' standalones expose ONLY
-//      attention-score kernels (kernel_turbo3_dot, etc.), not mul_mv
-//      kernels, so a MUL_MAT graph against them aborts with the structured
-//      "tbq* MUL_MAT not yet wired" message. The harness verifies that
-//      this is the message we get (i.e. the routing reaches our parallel
-//      dispatcher and emits the expected diagnostic) rather than crashing
-//      inside the metallib compiler.
-//
-// Build: cd packages/inference/verify && make dispatch-smoke
-//   (or: clang++ ... see the Makefile target for full flags)
-//
-// Run:   ./dispatch_smoke
-//   Exits 0 if all four cases produce the expected outcome (PASS for
-//   QJL/Polar dispatch; expected-abort for tbq*).
+// This is intentionally not a standalone shader test. It links against the
+// patched fork's libggml-metal.dylib and drives a real GGML graph containing
+// GGML_OP_ATTN_SCORE_QJL. PASS means the build patch wired the graph op to
+// kernel_attn_score_qjl1_256 and the numeric output matches the QJL score
+// formula on the packed bytes.
 
-#include <cassert>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <string>
 #include <vector>
 
 #include "ggml.h"
@@ -61,70 +19,94 @@
 
 namespace {
 
-constexpr int K_HEAD_DIM = 128;     // QK_POLAR / QK_QJL block size
-constexpr int N_ROWS    = 4;        // few rows of weight tensor
-constexpr float TOL     = 1e-3f;
+constexpr int QJL_HEAD_DIM = 128;
+constexpr int QJL_PROJ_DIM = 256;
+constexpr int QJL_PACKED_BYTES = 32;
+constexpr int N_HEADS = 4;
+constexpr int N_KV_HEADS = 2;
+constexpr int N_TOKENS = 8;
+constexpr float TOL = 1e-3f;
 
-// Returns true if MUL_MAT produced a finite output (no NaN/inf, no abort).
-// For Polar, also compares vs CPU dequant reference.
-struct CaseResult {
-    const char * name;
-    bool         dispatch_ok;
-    bool         numerics_ok;        // ignored if numeric_check == false
-    bool         numeric_check;      // false for QJL (math differs by design)
-    float        max_abs_err;
-    int          n_compared;
-    const char * note;
+struct block_qjl1_256_smoke {
+    uint8_t qs[QJL_PACKED_BYTES];
+    uint16_t norm_bf16;
 };
 
-bool run_mul_mat_case(ggml_type weight_type,
-                      bool numeric_check,
-                      CaseResult * out) {
-    const char * tname = ggml_type_name(weight_type);
-    out->name = tname;
-    out->dispatch_ok = false;
-    out->numerics_ok = false;
-    out->numeric_check = numeric_check;
-    out->max_abs_err = 0;
-    out->n_compared = 0;
-    out->note = "";
+static float bf16_to_f32(uint16_t v) {
+    uint32_t u = ((uint32_t) v) << 16;
+    float out;
+    std::memcpy(&out, &u, sizeof(out));
+    return out;
+}
 
-    // 1. Build a small fp32 weight matrix (N_ROWS x K_HEAD_DIM) and
-    //    quantize it via the public ggml_quantize_chunk API. This is the
-    //    same path llama.cpp uses when reading a quantized GGUF.
-    std::vector<float> weights_f32(N_ROWS * K_HEAD_DIM);
-    for (int r = 0; r < N_ROWS; ++r) {
-        for (int k = 0; k < K_HEAD_DIM; ++k) {
-            // Mild non-trivial pattern, magnitudes in ~[-1, 1].
-            weights_f32[r * K_HEAD_DIM + k] =
-                std::sin(0.13f * (float) k + 0.07f * (float) r) * 0.7f;
+static float qjl_ref_score(
+        const float * q_sketch,
+        const block_qjl1_256_smoke * blocks,
+        int h_q,
+        int token) {
+    const int gqa = N_HEADS / N_KV_HEADS;
+    const int h_k = h_q / gqa;
+    const block_qjl1_256_smoke * blk = blocks + h_k * N_TOKENS + token;
+    const float * q = q_sketch + h_q * QJL_PROJ_DIM;
+
+    float acc = 0.0f;
+    for (int j = 0; j < QJL_PROJ_DIM; ++j) {
+        const uint8_t bits = blk->qs[j >> 3];
+        const bool sign = ((bits >> (j & 7)) & 1u) != 0;
+        acc += sign ? q[j] : -q[j];
+    }
+    constexpr float scale = 1.2533141373155003f / (float) QJL_PROJ_DIM;
+    return scale * bf16_to_f32(blk->norm_bf16) * acc;
+}
+
+static void fill_inputs(std::vector<float> & k_rows, std::vector<float> & q_sketch) {
+    for (int row = 0; row < N_TOKENS * N_KV_HEADS; ++row) {
+        for (int i = 0; i < QJL_HEAD_DIM; ++i) {
+            k_rows[row * QJL_HEAD_DIM + i] =
+                0.6f * std::sin(0.017f * (float) (row * QJL_HEAD_DIM + i)) +
+                0.2f * std::cos(0.071f * (float) (i + 3 * row));
         }
     }
+    for (int h = 0; h < N_HEADS; ++h) {
+        for (int j = 0; j < QJL_PROJ_DIM; ++j) {
+            q_sketch[h * QJL_PROJ_DIM + j] =
+                std::cos(0.031f * (float) (h * QJL_PROJ_DIM + j)) -
+                0.3f * std::sin(0.047f * (float) j);
+        }
+    }
+}
 
-    // Type-size-aware allocation for the quantized blob.
-    const size_t row_size = ggml_row_size(weight_type, K_HEAD_DIM);
-    std::vector<uint8_t> quant_blob(row_size * N_ROWS);
-    size_t bytes_written = ggml_quantize_chunk(
-        weight_type,
-        weights_f32.data(),
-        quant_blob.data(),
-        /*start=*/0, /*nrows=*/N_ROWS, /*n_per_row=*/K_HEAD_DIM,
-        /*imatrix=*/nullptr);
-    if (bytes_written != row_size * N_ROWS) {
+} // namespace
+
+int main() {
+    const size_t row_size = ggml_row_size(GGML_TYPE_QJL1_256, QJL_HEAD_DIM);
+    if (row_size != sizeof(block_qjl1_256_smoke)) {
         std::fprintf(stderr,
-            "[dispatch_smoke] quantize_chunk(%s) returned %zu, expected %zu\n",
-            tname, bytes_written, row_size * N_ROWS);
-        return false;
+            "[dispatch_smoke] QJL row size mismatch: ggml=%zu local=%zu\n",
+            row_size, sizeof(block_qjl1_256_smoke));
+        return 1;
     }
 
-    // 2. fp32 activation row of length K_HEAD_DIM.
-    std::vector<float> act_f32(K_HEAD_DIM);
-    for (int k = 0; k < K_HEAD_DIM; ++k) {
-        act_f32[k] = std::cos(0.11f * (float) k);
+    std::vector<float> k_rows(N_TOKENS * N_KV_HEADS * QJL_HEAD_DIM);
+    std::vector<float> q_sketch(N_HEADS * QJL_PROJ_DIM);
+    fill_inputs(k_rows, q_sketch);
+
+    std::vector<uint8_t> packed(row_size * N_TOKENS * N_KV_HEADS);
+    const size_t written = ggml_quantize_chunk(
+        GGML_TYPE_QJL1_256,
+        k_rows.data(),
+        packed.data(),
+        /*start=*/0,
+        /*nrows=*/N_TOKENS * N_KV_HEADS,
+        /*n_per_row=*/QJL_HEAD_DIM,
+        /*imatrix=*/nullptr);
+    if (written != packed.size()) {
+        std::fprintf(stderr,
+            "[dispatch_smoke] ggml_quantize_chunk wrote %zu bytes, expected %zu\n",
+            written, packed.size());
+        return 1;
     }
 
-    // 3. Build a graph: dst (1 x N_ROWS) = mul_mat(src0[N_ROWS x K], src1[K x 1]).
-    //    ggml_mul_mat expects src0 = (K, N) i.e. ne[0]=K, ne[1]=N.
     ggml_init_params params = {
         /*.mem_size   =*/ 16 * 1024 * 1024,
         /*.mem_buffer =*/ nullptr,
@@ -133,26 +115,27 @@ bool run_mul_mat_case(ggml_type weight_type,
     ggml_context * ctx = ggml_init(params);
     if (!ctx) {
         std::fprintf(stderr, "[dispatch_smoke] ggml_init failed\n");
-        return false;
+        return 1;
     }
 
-    ggml_tensor * src0 = ggml_new_tensor_2d(ctx, weight_type, K_HEAD_DIM, N_ROWS);
-    ggml_tensor * src1 = ggml_new_tensor_2d(ctx, GGML_TYPE_F32, K_HEAD_DIM, 1);
-    ggml_set_name(src0, "src0_quant");
-    ggml_set_name(src1, "src1_act");
+    ggml_tensor * q = ggml_new_tensor_4d(
+        ctx, GGML_TYPE_F32, QJL_PROJ_DIM, N_HEADS, 1, 1);
+    ggml_tensor * pk = ggml_new_tensor_4d(
+        ctx, GGML_TYPE_QJL1_256, QJL_HEAD_DIM, N_TOKENS, N_KV_HEADS, 1);
+    ggml_set_name(q, "q_sketch");
+    ggml_set_name(pk, "packed_k_qjl");
 
-    ggml_tensor * dst = ggml_mul_mat(ctx, src0, src1);
-    ggml_set_name(dst, "dst");
+    ggml_tensor * scores = ggml_attn_score_qjl(ctx, q, pk, N_KV_HEADS);
+    ggml_set_name(scores, "scores_qjl");
 
     ggml_cgraph * gf = ggml_new_graph(ctx);
-    ggml_build_forward_expand(gf, dst);
+    ggml_build_forward_expand(gf, scores);
 
-    // 4. Allocate on the Metal backend.
     ggml_backend_t backend = ggml_backend_metal_init();
     if (!backend) {
         std::fprintf(stderr, "[dispatch_smoke] ggml_backend_metal_init failed\n");
         ggml_free(ctx);
-        return false;
+        return 1;
     }
 
     ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
@@ -160,143 +143,53 @@ bool run_mul_mat_case(ggml_type weight_type,
         std::fprintf(stderr, "[dispatch_smoke] alloc_ctx_tensors failed\n");
         ggml_backend_free(backend);
         ggml_free(ctx);
-        return false;
+        return 1;
     }
 
-    ggml_backend_tensor_set(src0, quant_blob.data(), 0, quant_blob.size());
-    ggml_backend_tensor_set(src1, act_f32.data(),    0, act_f32.size() * sizeof(float));
+    ggml_backend_tensor_set(q, q_sketch.data(), 0, q_sketch.size() * sizeof(float));
+    ggml_backend_tensor_set(pk, packed.data(), 0, packed.size());
 
-    // 5. Compute. This is the moment of truth for the dispatch path:
-    //    if our patch is correctly diverting these types, this returns OK.
-    //    If routing leaks back into get_pipeline_mul_mv, the metallib
-    //    compiler aborts with "function 'kernel_mul_mv_X_Y' could not be
-    //    found" or similar.
-    ggml_status status = ggml_backend_graph_compute(backend, gf);
+    const ggml_status status = ggml_backend_graph_compute(backend, gf);
     if (status != GGML_STATUS_SUCCESS) {
         std::fprintf(stderr,
-            "[dispatch_smoke] %s: graph_compute returned status=%d\n",
-            tname, (int) status);
-        out->note = "graph_compute non-success";
+            "[dispatch_smoke] graph_compute returned status=%d\n",
+            (int) status);
         ggml_backend_buffer_free(buf);
         ggml_backend_free(backend);
         ggml_free(ctx);
-        return false;
+        return 1;
     }
 
-    out->dispatch_ok = true;
+    std::vector<float> got(N_HEADS * N_TOKENS, 0.0f);
+    ggml_backend_tensor_get(scores, got.data(), 0, got.size() * sizeof(float));
 
-    // 6. Read back the result.
-    std::vector<float> result(N_ROWS, 0);
-    ggml_backend_tensor_get(dst, result.data(), 0, result.size() * sizeof(float));
-
-    bool any_nan = false;
-    for (int r = 0; r < N_ROWS; ++r) {
-        if (!std::isfinite(result[r])) { any_nan = true; break; }
-    }
-    if (any_nan) {
-        out->note = "non-finite output";
-        ggml_backend_buffer_free(buf);
-        ggml_backend_free(backend);
-        ggml_free(ctx);
-        return false;
-    }
-
-    // 7. Numeric comparison vs CPU reference for types where the math agrees.
-    if (numeric_check) {
-        // CPU reference: dequantize each row + fp32 dot vs activation.
-        const auto * traits = ggml_get_type_traits(weight_type);
-        if (!traits || !traits->to_float) {
-            out->note = "no to_float trait for type";
-            ggml_backend_buffer_free(buf);
-            ggml_backend_free(backend);
-            ggml_free(ctx);
-            return false;
-        }
-
-        std::vector<float> deq_row(K_HEAD_DIM);
-        float max_err = 0.f;
-        int   n_cmp  = 0;
-        for (int r = 0; r < N_ROWS; ++r) {
-            traits->to_float(quant_blob.data() + r * row_size, deq_row.data(), K_HEAD_DIM);
-            float ref = 0.f;
-            for (int k = 0; k < K_HEAD_DIM; ++k) {
-                ref += deq_row[k] * act_f32[k];
+    const auto * blocks =
+        reinterpret_cast<const block_qjl1_256_smoke *>(packed.data());
+    float max_err = 0.0f;
+    for (int h = 0; h < N_HEADS; ++h) {
+        for (int t = 0; t < N_TOKENS; ++t) {
+            const float expected = qjl_ref_score(q_sketch.data(), blocks, h, t);
+            const float actual = got[h * N_TOKENS + t];
+            const float err = std::fabs(expected - actual);
+            if (!std::isfinite(actual) || err > TOL) {
+                std::fprintf(stderr,
+                    "[dispatch_smoke] FAIL h=%d t=%d expected=%+.6f got=%+.6f diff=%.3e\n",
+                    h, t, expected, actual, err);
+                ggml_backend_buffer_free(buf);
+                ggml_backend_free(backend);
+                ggml_free(ctx);
+                return 1;
             }
-            float err = std::fabs(ref - result[r]);
             if (err > max_err) max_err = err;
-            ++n_cmp;
         }
-        out->max_abs_err = max_err;
-        out->n_compared  = n_cmp;
-        out->numerics_ok = max_err < TOL;
-        if (!out->numerics_ok) out->note = "numeric mismatch vs CPU dequant ref";
-    } else {
-        // Dispatch-only check; just verify the result vector is finite.
-        out->note = "dispatch only (numeric path expects pre-projected query)";
     }
+
+    std::printf(
+        "[dispatch_smoke] PASS GGML_OP_ATTN_SCORE_QJL Metal dispatch: %d scores, max diff %.3e\n",
+        N_HEADS * N_TOKENS, max_err);
 
     ggml_backend_buffer_free(buf);
     ggml_backend_free(backend);
     ggml_free(ctx);
-    return true;
-}
-
-void print_result(const CaseResult & r) {
-    if (!r.dispatch_ok) {
-        std::printf("[dispatch_smoke] %-12s FAIL  (dispatch %s)\n",
-                    r.name, r.note);
-        return;
-    }
-    if (r.numeric_check) {
-        std::printf("[dispatch_smoke] %-12s %s  dispatch=OK numerics %s "
-                    "(max_err=%.4e over %d rows)%s%s\n",
-                    r.name,
-                    r.numerics_ok ? "PASS" : "FAIL",
-                    r.numerics_ok ? "OK" : "MISMATCH",
-                    r.max_abs_err, r.n_compared,
-                    r.note[0] ? "  -- " : "", r.note);
-    } else {
-        std::printf("[dispatch_smoke] %-12s PASS  dispatch=OK numerics=skipped  -- %s\n",
-                    r.name, r.note);
-    }
-}
-
-}  // namespace
-
-int main() {
-    int n_pass = 0;
-    int n_total = 0;
-
-    // Polar: numeric check against CPU dequant + fp32 dot.
-    {
-        CaseResult r{};
-        bool ok = run_mul_mat_case(GGML_TYPE_Q4_POLAR, /*numeric_check=*/true, &r);
-        print_result(r);
-        ++n_total;
-        if (ok && r.dispatch_ok && r.numerics_ok) ++n_pass;
-    }
-
-    // QJL1_256: dispatch-only — math is sketch-space, can't compare to CPU.
-    {
-        CaseResult r{};
-        bool ok = run_mul_mat_case(GGML_TYPE_QJL1_256, /*numeric_check=*/false, &r);
-        print_result(r);
-        ++n_total;
-        if (ok && r.dispatch_ok) ++n_pass;
-    }
-
-    // TBQ types: expected to abort with "tbq* MUL_MAT not yet wired".
-    // We don't run these inside the same process because GGML_ABORT calls
-    // std::abort(); a fork()ed child would be needed to test it. For now
-    // we just document the expected behaviour.
-    std::printf("[dispatch_smoke] %-12s SKIP  (standalone exposes only attention-score; "
-                "MUL_MAT routing emits structured 'tbq* not wired' abort by design — "
-                "verified via patch read at metal-kernels.mjs MILADY-DISPATCH-V1)\n",
-                "tbq3_0");
-    std::printf("[dispatch_smoke] %-12s SKIP  (same — see tbq3_0)\n", "tbq4_0");
-    std::printf("[dispatch_smoke] %-12s SKIP  (same — see tbq3_0)\n", "tbq3_tcq");
-
-    std::printf("\n[dispatch_smoke] summary: %d/%d cases PASS (qjl1_256 + q4_polar)\n",
-                n_pass, n_total);
-    return n_pass == n_total ? 0 : 1;
+    return 0;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: STOP_AGENT is `TASKS { op: "stop_agent" }`.
+// Post-consolidation: STOP_AGENT is `TASKS { action: "stop_agent" }`.
 import { stopAgentAction } from "../../src/actions/tasks.js";
 import {
   callback,
@@ -9,9 +9,9 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-const stopOptions = { parameters: { op: "stop_agent" } };
+const stopOptions = { parameters: { action: "stop_agent" } };
 
-describe("TASKS:stop_agent (legacy STOP_AGENT)", () => {
+describe("TASKS:stop_agent", () => {
   it("stops a specific session", async () => {
     const svc = serviceMock();
     expect(

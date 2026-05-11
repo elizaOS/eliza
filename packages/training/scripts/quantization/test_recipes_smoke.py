@@ -207,15 +207,15 @@ def test_push_model_resolves_repo_id_with_quant_suffix():
     sys.path.insert(0, str(_HERE.parent))
     from push_model_to_hf import resolve_repo_id
 
-    assert resolve_repo_id("qwen3.5-2b", None, "default", None) == "elizaos/eliza-1-2b"
+    assert resolve_repo_id("qwen3.5-2b", None, "default", None) == "elizalabs/eliza-1-2b"
     assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", None) == (
-        "elizaos/eliza-1-2b-polarquant"
+        "elizalabs/eliza-1-2b-polarquant"
     )
     assert resolve_repo_id("qwen3.6-27b", "gguf-q4_k_m", "default", None) == (
-        "elizaos/eliza-1-27b-gguf-q4_k_m"
+        "elizalabs/eliza-1-27b-gguf-q4_k_m"
     )
     assert resolve_repo_id("qwen3.5-2b", None, "abliterated", None) == (
-        "elizaos/eliza-1-2b-uncensored"
+        "elizalabs/eliza-1-2b-uncensored"
     )
     assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", "custom/foo") == "custom/foo"
 
@@ -232,7 +232,7 @@ def test_push_model_card_inference_blocks_reference_real_imports():
         cfg = PushConfig(
             registry_key="qwen3.5-2b",
             checkpoint=Path("/tmp/_unused"),
-            repo_id=f"elizaos/eliza-1-2b-{quant}",
+            repo_id=f"elizalabs/eliza-1-2b-{quant}",
             quant=quant,
             variant="default",
             public=False,

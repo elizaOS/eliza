@@ -1,5 +1,12 @@
 # Patch audit — `build-llama-cpp-dflash.mjs` vs milady-ai/llama.cpp
 
+> Superseded status note, 2026-05-11: keep this file as historical context.
+> The current post-QJL-dispatch blocker ledger is
+> `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md`.
+> In particular, Metal QJL attention-score graph dispatch is now
+> runtime-ready; Metal TurboQuant/PolarQuant and Vulkan graph dispatch remain
+> blocked.
+
 Date: 2026-05-10
 Auditor: bounded read-only audit (no commits, no kernel edits).
 Scope: every patch hook in `packages/app-core/scripts/build-llama-cpp-dflash.mjs`,

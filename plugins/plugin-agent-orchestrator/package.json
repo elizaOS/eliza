@@ -85,7 +85,7 @@
     "lint:check": "bunx @biomejs/biome check . --no-errors-on-unmatched",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "bunx vitest run --config vitest.config.ts",
-    "test:unit": "bunx vitest run --config vitest.config.ts --dir __tests__/unit",
+    "test:unit": "bunx vitest run --config vitest.config.ts __tests__/unit",
     "test:integration": "bunx vitest run --config vitest.config.ts --dir tests/e2e --passWithNoTests",
     "test:watch": "bunx vitest --config vitest.config.ts",
     "build": "bun run build.ts",

@@ -50,7 +50,7 @@
     "@capacitor/preferences": "8.0.1",
     "@capacitor/push-notifications": "8.0.3",
     "@capacitor/status-bar": "8.0.2",
-    "@clawville/app-clawville": "2.0.0-beta.1",
+    "@elizaos/app-clawville": "2.0.0-beta.1",
     "@elizaos/app-2004scape": "2.0.0-beta.1",
     "@elizaos/app-babylon": "2.0.0-beta.1",
     "@elizaos/app-companion": "2.0.0-beta.1",

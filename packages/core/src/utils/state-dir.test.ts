@@ -36,7 +36,7 @@ describe("resolveStateDir", () => {
 		).toBe("/tmp/bar");
 	});
 
-	it("derives ~/.${namespace} from ELIZA_NAMESPACE when no override is set", () => {
+	it("derives ~/.<namespace> from ELIZA_NAMESPACE when no override is set", () => {
 		expect(resolveStateDir({ ELIZA_NAMESPACE: "milady" }, fakeHomedir)).toBe(
 			join(FAKE_HOME, ".milady"),
 		);
