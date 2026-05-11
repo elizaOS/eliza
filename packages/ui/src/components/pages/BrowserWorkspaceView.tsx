@@ -66,6 +66,23 @@ const BROWSER_WORKSPACE_APP_PARTITION = "persist:eliza-browser-app";
 const BROWSER_WORKSPACE_DEFAULT_HOME_URL = "https://docs.elizaos.ai/";
 const BROWSER_WORKSPACE_COLLAPSED_SECTIONS_STORAGE_KEY =
   "eliza:browser-workspace:collapsed-sections";
+// Selectors handed to `<electrobun-webview masks=…>` so the native OOPIF
+// surface doesn't paint over (or capture clicks within) React overlays
+// stacked on the same rect. Covers Radix Dialog/AlertDialog content
+// (`role=dialog`/`alertdialog`), every Radix popper-based surface (Popover,
+// Tooltip, Dropdown, Select, HoverCard, ContextMenu — all wrapped in
+// `data-radix-popper-content-wrapper`), and the ActionNotice toast which
+// uses `role=status`. Polled by OverlaySyncController so overlays mounted
+// after the tab still get masked.
+const BROWSER_WORKSPACE_TAB_MASK_SELECTORS = [
+  '[role="dialog"]',
+  '[role="alertdialog"]',
+  "[data-radix-popper-content-wrapper]",
+  '[role="tooltip"]',
+  '[role="menu"]',
+  '[role="listbox"]',
+  '[role="status"]',
+].join(", ");
 
 // Minimal subset of Electrobun's <electrobun-webview> custom element surface
 // used by this view. Inlined so this file typechecks identically from any
@@ -92,6 +109,15 @@ type WebviewTagElement = HTMLElement & {
    * clicks meant for sibling UI.
    */
   toggleHidden(value?: boolean): void;
+  /**
+   * Toggle pointer-event passthrough on the native OOPIF view. When enabled
+   * the surface stops capturing clicks even if it remains visible, so React
+   * siblings stacked over the same rect (overlays mid-transition, the
+   * inactive-tab opacity-0 layer) can receive events. Used alongside
+   * `toggleHidden` on inactive tabs so the native view neither paints nor
+   * grabs input during the gap between layout flap and first sync.
+   */
+  togglePassthrough(value?: boolean): void;
 };
 
 function isWebviewTagElement(
@@ -120,6 +146,28 @@ declare module "react" {
           sandbox?: boolean | "";
           transparent?: boolean | "";
           hidden?: boolean;
+          /**
+           * "cef" (bundled Chromium) or "native" (system WKWebView on macOS).
+           * Set explicitly per-tag rather than relying on the
+           * `defaultRenderer` config: CEF is what supports the OOPIF model
+           * + RPC + preload script the agent automation kit depends on.
+           */
+          renderer?: "cef" | "native";
+          /**
+           * Comma-separated CSS selectors. Any element matching is treated
+           * as a punch-out rect — the native OOPIF will not paint over it
+           * and will not capture clicks within it. Required so React
+           * overlays (modals, dropdowns, toasts) render above the webview
+           * surface and remain interactive.
+           */
+          masks?: string;
+          /**
+           * Initial passthrough state. When present the OOPIF starts in
+           * pointer-events: none mode. Set on inactive tabs so the gap
+           * between mount and the first selection effect doesn't leak
+           * clicks into the wrong tab.
+           */
+          passthrough?: boolean | "";
         },
         HTMLElement
       >;
@@ -1382,9 +1430,12 @@ export function BrowserWorkspaceView(): JSX.Element {
         // Hide the native OOPIF immediately if the tag isn't the active
         // one — otherwise its native view sits over the surface and
         // intercepts clicks while React still has it in the tree.
+        // Passthrough goes along for the ride so any clicks landing on the
+        // rect mid-transition fall through to React siblings beneath.
         if (selectedTabIdRef.current && selectedTabIdRef.current !== tabId) {
           try {
             element.toggleHidden(true);
+            element.togglePassthrough(true);
           } catch {
             // best-effort
           }
@@ -1426,13 +1477,17 @@ export function BrowserWorkspaceView(): JSX.Element {
   // HTML `hidden` attribute does NOT propagate to the OOPIF — only the
   // tag's `toggleHidden(bool)` method does. Without this, inactive tabs'
   // OOPIFs stay painted over the surface as native views and intercept
-  // clicks intended for sibling UI (e.g. the top app nav).
+  // clicks intended for sibling UI (e.g. the top app nav). Passthrough is
+  // toggled in lockstep so a tab caught mid-transition (visible but not
+  // selected) still lets clicks fall through to the React layer beneath.
   useEffect(() => {
     if (workspace.mode !== "desktop") return;
     for (const [tabId, element] of electrobunWebviewRefs.current.entries()) {
       if (!element) continue;
+      const inactive = tabId !== selectedTabId;
       try {
-        element.toggleHidden(tabId !== selectedTabId);
+        element.toggleHidden(inactive);
+        element.togglePassthrough(inactive);
         element.syncDimensions(true);
       } catch {
         // best-effort
@@ -1440,15 +1495,16 @@ export function BrowserWorkspaceView(): JSX.Element {
     }
   }, [selectedTabId, workspace.mode]);
 
-  // On unmount, hide every OOPIF so leftover native views don't bleed onto
-  // other routes between React's unmount and the tag's
-  // disconnectedCallback firing.
+  // On unmount, hide every OOPIF and engage passthrough so leftover native
+  // views don't bleed onto other routes between React's unmount and the
+  // tag's disconnectedCallback firing.
   useEffect(() => {
     const refs = electrobunWebviewRefs;
     return () => {
       for (const element of refs.current.values()) {
         try {
           element?.toggleHidden(true);
+          element?.togglePassthrough(true);
         } catch {
           // best-effort
         }
@@ -2396,11 +2452,13 @@ export function BrowserWorkspaceView(): JSX.Element {
               src={tab.url}
               partition={tab.partition}
               preload={BROWSER_TAB_PRELOAD_SCRIPT}
-              // Native OOPIF hide/show is driven by `tag.toggleHidden(bool)`
-              // in the selection useEffect — the HTML `hidden` attribute
-              // alone is a no-op for the underlying native view, which is
-              // why inactive tabs were leaking pointer events through the
-              // surface.
+              renderer="cef"
+              masks={BROWSER_WORKSPACE_TAB_MASK_SELECTORS}
+              // Start inactive tabs in passthrough so the OOPIF doesn't
+              // capture clicks during the gap between mount and the first
+              // selection effect. Native hide/show (toggleHidden) is then
+              // driven from the selection useEffect.
+              passthrough={active ? undefined : ""}
               className={`absolute inset-0 ${visibilityClass}`}
               style={{ display: "block" }}
             />
