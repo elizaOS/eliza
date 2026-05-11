@@ -5,6 +5,7 @@ import {
   type LocalInferenceBackend,
   readBackendOverride,
 } from "./backend";
+import { LocalInferenceEngine } from "./engine";
 import type { CatalogModel } from "./types";
 
 const ORIGINAL_ENV = { ...process.env };
@@ -253,6 +254,65 @@ describe("BackendDispatcher", () => {
     await expect(d.generate({ prompt: "x" })).rejects.toThrow(
       /No backend loaded/,
     );
+  });
+});
+
+describe("LocalInferenceEngine backend fallback", () => {
+  it("does not fall back when llama-server was selected for required kernels", async () => {
+    const engine = new LocalInferenceEngine();
+    const internals = engine as unknown as {
+      dispatcher: {
+        load(plan: unknown): Promise<void>;
+        decide(plan: unknown): ReturnType<typeof decideBackend>;
+      };
+      nodeBackend: { load(plan: unknown): Promise<void> };
+    };
+    let nodeLoads = 0;
+    internals.dispatcher.load = async () => {
+      throw new Error("missing turbo3 kernel");
+    };
+    internals.dispatcher.decide = () => ({
+      backend: "llama-server",
+      reason: "kernel-required",
+      kernels: ["turbo3"],
+      unsatisfiedKernels: ["turbo3"],
+    });
+    internals.nodeBackend.load = async () => {
+      nodeLoads += 1;
+    };
+
+    await expect(engine.load("/tmp/eliza-1.gguf")).rejects.toThrow(
+      /missing turbo3 kernel/,
+    );
+    expect(nodeLoads).toBe(0);
+  });
+
+  it("still falls back when llama-server was only a soft preference", async () => {
+    const engine = new LocalInferenceEngine();
+    const internals = engine as unknown as {
+      dispatcher: {
+        load(plan: unknown): Promise<void>;
+        decide(plan: unknown): ReturnType<typeof decideBackend>;
+      };
+      nodeBackend: { load(plan: unknown): Promise<void> };
+    };
+    let nodeLoads = 0;
+    internals.dispatcher.load = async () => {
+      throw new Error("llama-server unavailable");
+    };
+    internals.dispatcher.decide = () => ({
+      backend: "llama-server",
+      reason: "preferred-backend",
+      kernels: [],
+    });
+    internals.nodeBackend.load = async () => {
+      nodeLoads += 1;
+    };
+
+    await expect(engine.load("/tmp/soft-preference.gguf")).resolves.toBe(
+      undefined,
+    );
+    expect(nodeLoads).toBe(1);
   });
 });
 

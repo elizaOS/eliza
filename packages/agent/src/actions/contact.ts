@@ -87,7 +87,7 @@ const ACTIVITY_DEFAULT_LIMIT = 50;
 const ACTIVITY_MAX_LIMIT = 100;
 
 interface ContactParams {
-  action?: ContactOp;
+  action?: ContactOp | "accept" | "reject";
   subaction?: ContactOp;
   op?: ContactOp;
   // Common
@@ -128,7 +128,6 @@ interface ContactParams {
   // merge
   candidateId?: string;
   mergeWith?: string;
-  action?: "accept" | "reject";
   // activity
   since?: string;
   offset?: number;

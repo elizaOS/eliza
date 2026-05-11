@@ -12,6 +12,7 @@ import {
   buildUserTurn,
   type ChatMessage,
   type CliArgs,
+  extractBenchmarkAnswerText,
   FACT_KINDS,
   KNOWN_STRATEGIES,
   type ModelClient,
@@ -21,6 +22,7 @@ import {
   parseJudgeResponse,
   planFacts,
   planToolCalls,
+  probeFact,
   rng,
   runDriftHarness,
 } from "./drift-harness";
@@ -87,6 +89,11 @@ describe("parseArgs", () => {
     );
   });
 
+  it("allows plant-facts equal to turns", () => {
+    const args = parseArgs(["--turns", "2", "--plant-facts", "2"]);
+    expect(args.plantFacts).toBe(2);
+  });
+
   it("recognizes --help", () => {
     expect(parseArgs(["--help"]).help).toBe(true);
     expect(parseArgs(["-h"]).help).toBe(true);
@@ -136,11 +143,23 @@ describe("planFacts", () => {
     const b = planFacts({ totalTurns: 30, count: 5, seed: 99 });
     expect(a).toEqual(b);
   });
+
+  it("handles count equal to totalTurns without hanging", () => {
+    const facts = planFacts({ totalTurns: 2, count: 2, seed: 1 });
+    expect(facts.map((f) => f.turn)).toEqual([1, 2]);
+  });
+
+  it("stratifies planted facts across the run", () => {
+    const facts = planFacts({ totalTurns: 100, count: 5, seed: 123 });
+    expect(facts[0]?.turn).toBeLessThanOrEqual(20);
+    expect(facts.at(-1)?.turn).toBeGreaterThanOrEqual(81);
+  });
 });
 
 describe("buildUserTurn", () => {
   it("uses the planted fact's utterance when supplied", () => {
-    const fact = planFacts({ totalTurns: 5, count: 1, seed: 1 })[0]!;
+    const fact = planFacts({ totalTurns: 5, count: 1, seed: 1 })[0];
+    if (!fact) throw new Error("expected a planted fact");
     const t = buildUserTurn({ index: 1, rand: rng(1), fact });
     expect(t.factId).toBe(fact.id);
     expect(t.content).toBe(fact.utterance);
@@ -174,6 +193,142 @@ describe("parseJudgeResponse", () => {
   it("falls back gracefully on bad JSON", () => {
     const r = parseJudgeResponse("not even json");
     expect(typeof r.correct).toBe("boolean");
+  });
+
+  it("does not mark prose containing both true and false as correct", () => {
+    const r = parseJudgeResponse("false; not true for this answer");
+    expect(r.correct).toBe(false);
+  });
+});
+
+describe("extractBenchmarkAnswerText", () => {
+  it("unwraps Eliza REPLY action JSON into visible text", () => {
+    const raw = JSON.stringify(
+      { action: "REPLY", args: { content: "7283 Cedar St, Ithaca" } },
+      null,
+      2,
+    );
+    expect(extractBenchmarkAnswerText(raw)).toBe("7283 Cedar St, Ithaca");
+  });
+
+  it("leaves non-REPLY action JSON intact", () => {
+    const raw = JSON.stringify({
+      action: "RECALL",
+      args: { key: "contract_effective_date" },
+    });
+    expect(extractBenchmarkAnswerText(raw)).toBe(raw);
+  });
+});
+
+describe("probeFact exact recall scoring", () => {
+  it("rejects hedged answers even when they contain the expected identifier", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "I don't know, maybe LIME-4421.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "code",
+        utterance: "The code is LIME-4421.",
+        expected: "LIME-4421",
+        question: "What is the code?",
+        exactMatch: true,
+      },
+    });
+    expect(outcome.correct).toBe(false);
+  });
+
+  it("normalizes narrow no-break spaces in exact answers", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The contact is Ramon\u202fRamirez.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "person_name",
+        utterance: "The contact is Ramon Ramirez.",
+        expected: "Ramon Ramirez",
+        question: "Who is the contact?",
+        exactMatch: true,
+      },
+    });
+    expect(outcome.correct).toBe(true);
+  });
+
+  it("normalizes Unicode hyphen variants in exact answers", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The effective date is 2026\u201102\u201106.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "date_iso",
+        utterance: "The date is 2026-02-06.",
+        expected: "2026-02-06",
+        question: "What is the date?",
+        exactMatch: true,
+      },
+    });
+    expect(outcome.correct).toBe(true);
+  });
+
+  it("scores extracted REPLY action content instead of the JSON envelope", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: JSON.stringify({
+          action: "REPLY",
+          args: { content: "7283 Cedar St, Ithaca" },
+        }),
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "address",
+        utterance: "Ship to: 7283 Cedar St, Ithaca.",
+        expected: "7283 Cedar St, Ithaca",
+        question: "What is the address?",
+        exactMatch: false,
+      },
+      judgeFn: async () => ({ correct: false, reasoning: "should bypass" }),
+    });
+    expect(outcome.correct).toBe(true);
+    expect(outcome.actual).toBe("7283 Cedar St, Ithaca");
+    expect(outcome.rawActual).toContain("REPLY");
   });
 });
 
@@ -315,13 +470,23 @@ describe("runDriftHarness end-to-end (fake client)", () => {
     expect(turnEvents.length).toBe(args.turns * 2); // user+assistant per turn
     // compactEvery=3 in 5 turns triggers compaction at turn 3 only (turn 5 is final)
     expect(compactEvents.length).toBe(1);
-    // 2 facts probed at compaction (post-compact) + 2 final probes = 4
-    expect(probeEvents.length).toBe(4);
+    const facts = planFacts({
+      totalTurns: args.turns,
+      count: args.plantFacts,
+      seed: args.seed,
+    });
+    const expectedPostCompactProbes = facts.filter((f) => f.turn <= 3).length;
+    expect(probeEvents.length).toBe(
+      expectedPostCompactProbes + args.plantFacts,
+    );
     expect(summaryEvents.length).toBe(1);
-    const summary = summaryEvents[0]!;
+    const summary = summaryEvents[0];
+    if (!summary) throw new Error("expected a summary event");
     if (summary.event !== "summary") throw new Error("unreachable");
     expect(summary.strategy).toBe("none");
-    expect(summary.totalProbes).toBe(4);
+    expect(summary.totalProbes).toBe(
+      expectedPostCompactProbes + args.plantFacts,
+    );
   });
 
   it("produces a parseable JSONL serialization", async () => {
@@ -337,11 +502,15 @@ describe("runDriftHarness end-to-end (fake client)", () => {
     for (const line of lines) {
       expect(() => JSON.parse(line)).not.toThrow();
     }
-    const summary = JSON.parse(lines[lines.length - 1]!);
+    const lastLine = lines[lines.length - 1];
+    if (!lastLine) throw new Error("expected at least one JSONL line");
+    const summary = JSON.parse(lastLine);
     expect(summary.event).toBe("summary");
     expect(summary).toHaveProperty("overallAccuracy");
     expect(summary).toHaveProperty("totalCompactions");
     expect(summary).toHaveProperty("totalTokensSaved");
+    expect(summary.valid).toBe(true);
+    expect(summary.skipped).toBe(false);
   });
 
   it("logs unavailable strategies without crashing", async () => {
@@ -369,6 +538,9 @@ describe("runDriftHarness end-to-end (fake client)", () => {
     expect(summary).toBeDefined();
     if (summary && summary.event === "summary") {
       expect(summary.totalCompactions).toBe(0);
+      expect(summary.valid).toBe(false);
+      expect(summary.skipped).toBe(true);
+      expect(summary.skipReason).toMatch(/not yet implemented/);
     }
   });
 
@@ -518,7 +690,8 @@ describe("planToolCalls and tool-call probes", () => {
     const probes = sink.events.filter((e) => e.event === "probe");
     // 1 tool call (turn 5) probed at final.
     expect(probes.length).toBe(1);
-    const probe = probes[0]!;
+    const probe = probes[0];
+    if (!probe) throw new Error("expected a probe event");
     if (probe.event !== "probe") throw new Error("unreachable");
     expect(probe.kind).toBe("tool_call");
     expect(probe.correct).toBe(true);

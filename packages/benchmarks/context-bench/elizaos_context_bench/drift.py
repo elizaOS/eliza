@@ -71,6 +71,7 @@ class DriftProbeEvent:
     at_turn: int
     fact_id: str
     planted_turn: int
+    kind: str | None
     expected: str
     actual: str
     correct: bool
@@ -92,6 +93,9 @@ class DriftSummaryEvent:
     turns: int
     compact_every: int
     plant_facts: int
+    valid: bool = True
+    skipped: bool = False
+    skip_reason: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -160,7 +164,7 @@ def _parse_event(
             original_tokens=int(obj["originalTokens"]),  # type: ignore[arg-type]
             compacted_tokens=int(obj["compactedTokens"]),  # type: ignore[arg-type]
             latency_ms=float(obj["latencyMs"]),  # type: ignore[arg-type]
-            unavailable=bool(obj.get("unavailable", False)),
+            unavailable=obj.get("unavailable") is True,
             unavailable_reason=(
                 str(obj["unavailableReason"])
                 if obj.get("unavailableReason") is not None
@@ -172,9 +176,10 @@ def _parse_event(
             at_turn=int(obj["atTurn"]),  # type: ignore[arg-type]
             fact_id=str(obj["factId"]),
             planted_turn=int(obj["plantedTurn"]),  # type: ignore[arg-type]
+            kind=(str(obj["kind"]) if obj.get("kind") is not None else None),
             expected=str(obj["expected"]),
             actual=str(obj["actual"]),
-            correct=bool(obj["correct"]),
+            correct=obj.get("correct") is True,
             judge_reasoning=str(obj["judgeReasoning"]),
             phase=str(obj["phase"]),
         )
@@ -190,6 +195,11 @@ def _parse_event(
             turns=int(obj["turns"]),  # type: ignore[arg-type]
             compact_every=int(obj["compactEvery"]),  # type: ignore[arg-type]
             plant_facts=int(obj["plantFacts"]),  # type: ignore[arg-type]
+            valid=obj.get("valid", True) is True,
+            skipped=obj.get("skipped", False) is True,
+            skip_reason=(
+                str(obj["skipReason"]) if obj.get("skipReason") is not None else None
+            ),
         )
     return None
 
@@ -264,12 +274,26 @@ def aggregate_run(
         )
     else:
         strategy = summary.strategy
+        computed_total_probes = len(probes)
+        computed_total_correct = sum(1 for p in probes if p.correct)
+        if summary.total_probes != computed_total_probes:
+            raise ValueError(
+                "drift summary total_probes does not match probe events: "
+                f"{summary.total_probes} != {computed_total_probes}"
+            )
+        if summary.total_correct != computed_total_correct:
+            raise ValueError(
+                "drift summary total_correct does not match probe events: "
+                f"{summary.total_correct} != {computed_total_correct}"
+            )
         total_probes = summary.total_probes
         total_correct = summary.total_correct
         successful_compactions = summary.total_compactions
         tokens_saved = summary.total_tokens_saved
-        skipped = bool(compacts) and all(c.unavailable for c in compacts)
-        skip_reason = (
+        skipped = summary.skipped or (
+            bool(compacts) and all(c.unavailable for c in compacts)
+        )
+        skip_reason = summary.skip_reason or (
             compacts[0].unavailable_reason if skipped and compacts else None
         )
 

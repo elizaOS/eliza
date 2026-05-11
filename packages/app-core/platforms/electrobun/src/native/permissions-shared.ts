@@ -1,20 +1,22 @@
 export type {
 	PermissionCheckResult,
+	PermissionId,
 	PermissionState,
 	PermissionStatus,
 	Platform,
 	SystemPermissionDefinition,
-	SystemPermissionId,
 } from "@elizaos/shared";
 
 import type {
+	PermissionId,
 	PermissionState,
 	Platform,
 	SystemPermissionDefinition,
-	SystemPermissionId,
 } from "@elizaos/shared";
 
-/** Local variant uses an index signature (the canonical contract uses explicit keys). */
+export type SystemPermissionId = PermissionId;
+
+/** Local variant keeps a loose index signature for legacy Electrobun RPC code. */
 export interface AllPermissionsState {
 	[key: string]: PermissionState;
 }
@@ -78,6 +80,81 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 		icon: "map-pin",
 		platforms: ["darwin", "win32", "linux"],
 		requiredForFeatures: ["travel-time", "location"],
+	},
+	{
+		id: "reminders",
+		name: "Apple Reminders",
+		description: "Create and read Apple Reminders from LifeOps",
+		icon: "list-todo",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "reminders"],
+	},
+	{
+		id: "calendar",
+		name: "Apple Calendar",
+		description: "Read and write Apple Calendar events for scheduling",
+		icon: "calendar",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "calendar"],
+	},
+	{
+		id: "health",
+		name: "Apple Health",
+		description:
+			"Read HealthKit data such as sleep and wellness signals from paired devices",
+		icon: "heart-pulse",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "health", "sleep"],
+	},
+	{
+		id: "screentime",
+		name: "Screen Time",
+		description: "Read Screen Time and app-usage signals",
+		icon: "hourglass",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "screentime"],
+	},
+	{
+		id: "contacts",
+		name: "Contacts",
+		description: "Read contacts for person-aware reminders and follow-ups",
+		icon: "contact",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "contacts"],
+	},
+	{
+		id: "notes",
+		name: "Apple Notes",
+		description: "Read and create Apple Notes through user-approved automation",
+		icon: "notebook-tabs",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "notes"],
+	},
+	{
+		id: "notifications",
+		name: "Notifications",
+		description:
+			"Show system notifications for reminders and background results",
+		icon: "bell",
+		platforms: ["darwin", "win32", "linux"],
+		requiredForFeatures: ["notifications", "lifeops"],
+	},
+	{
+		id: "full-disk",
+		name: "Full Disk Access",
+		description:
+			"Read protected local app data such as Messages databases when explicitly enabled",
+		icon: "hard-drive",
+		platforms: ["darwin"],
+		requiredForFeatures: ["imessage", "local-data"],
+	},
+	{
+		id: "automation",
+		name: "Automation",
+		description: "Control other macOS apps through Apple Events",
+		icon: "workflow",
+		platforms: ["darwin"],
+		requiredForFeatures: ["lifeops", "automation"],
 	},
 ];
 

@@ -27,12 +27,18 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { compactors, naiveSummaryCompactor } from "./conversation-compactor.ts";
+import {
+  compactors,
+  findSafeCompactionBoundary,
+  naiveSummaryCompactor,
+} from "./conversation-compactor.ts";
 import {
   approxCountTokens,
+  type CompactionStats,
   type CompactorMessage,
   type CompactorModelCall,
   type CompactorTranscript,
+  countTranscriptTokens,
 } from "./conversation-compactor.types.ts";
 
 export const STRATEGY_NAMES = [
@@ -45,13 +51,23 @@ export const STRATEGY_NAMES = [
 export type StrategyName = (typeof STRATEGY_NAMES)[number];
 
 const CONVERSATION_HEADER = "# Conversation Messages";
-const RECEIVED_HEADER_RE = /\n#{1,3}\s*Received Message\b/i;
+const CONVERSATION_HEADER_RE = /^#{1,3}\s*Conversation Messages\b/gim;
+const RECEIVED_HEADER_RE = /\n#{1,3}\s*Received Message\b/gi;
 
+// Match any of:
+//   "12:53 (17 minutes ago) [uuid] Eliza: text"  ← canonical Eliza recorder
+//   "12:53 (17 minutes ago) Eliza: text"          ← without uuid
+//   "12:53 Eliza: text"                            ← minimal (dev/tests)
+// All four capture groups (time, relative, uuid, name, text) are returned, but
+// only `time` and the trailing `name: text` are required.
 const CONVERSATION_LINE_RE =
-  /^(\d{1,2}:\d{2})\s*\(([^)]*)\)\s*(?:\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\])?\s*([^:]+):\s*(.*)$/i;
+  /^(\d{1,2}:\d{2})(?:\s*\(([^)]*)\))?(?:\s*\[([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\])?\s*([^:]+?):\s*(.*)$/i;
 
 const INTERNAL_THOUGHT_RE = /\([^)]*'s internal thought:[^)]*\)/i;
 const ACTIONS_LINE_RE = /\([^)]*'s actions:[^)]*\)/i;
+const USER_SPEAKER_RE = /^(?:user|operator|human|client|customer)$/i;
+const ASSISTANT_SPEAKER_RE =
+  /^(?:eliza|milady|agent|assistant|system|bot|ai)(?:\s*\([^)]*\))?$/i;
 
 // ---------------------------------------------------------------------------
 // Env config
@@ -91,14 +107,21 @@ type ConversationRegion = {
 };
 
 function locateConversationRegion(prompt: string): ConversationRegion | null {
-  const start = prompt.indexOf(CONVERSATION_HEADER);
-  if (start === -1) return null;
-  const tailSearch = prompt.slice(start);
-  const tailMatch = tailSearch.match(RECEIVED_HEADER_RE);
-  const endOffset =
-    tailMatch && typeof tailMatch.index === "number"
-      ? start + tailMatch.index
+  const receivedMatches = [...prompt.matchAll(RECEIVED_HEADER_RE)];
+  const lastReceived = receivedMatches.at(-1);
+  const receivedStart =
+    lastReceived && typeof lastReceived.index === "number"
+      ? lastReceived.index
       : prompt.length;
+  const conversationMatches = [...prompt.matchAll(CONVERSATION_HEADER_RE)];
+  const startMatch = conversationMatches
+    .filter(
+      (match) => typeof match.index === "number" && match.index < receivedStart,
+    )
+    .at(-1);
+  if (!startMatch || typeof startMatch.index !== "number") return null;
+  const start = startMatch.index;
+  const endOffset = receivedStart > start ? receivedStart : prompt.length;
   return {
     prefix: prompt.slice(0, start),
     region: prompt.slice(start, endOffset),
@@ -126,7 +149,12 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
   let current: string[] | null = null;
 
   for (const line of lines) {
-    if (CONVERSATION_LINE_RE.test(line.trim())) {
+    const match = line.trim().match(CONVERSATION_LINE_RE);
+    const speaker = match?.[4]?.trim() ?? "";
+    const canonicalTurn = Boolean(match?.[2] || match?.[3]);
+    const knownSpeaker =
+      USER_SPEAKER_RE.test(speaker) || ASSISTANT_SPEAKER_RE.test(speaker);
+    if (match && (current === null || canonicalTurn || knownSpeaker)) {
       if (current) blocks.push(current);
       current = [line];
     } else if (current) {
@@ -144,14 +172,20 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
     if (!match) continue;
     const [, time, , , name, text] = match;
     const blockText = block.join("\n");
+    const normalizedName = name.trim();
+    const isUserSpeaker = USER_SPEAKER_RE.test(normalizedName);
+    const isAssistantSpeaker = ASSISTANT_SPEAKER_RE.test(normalizedName);
     const role: "user" | "assistant" =
-      INTERNAL_THOUGHT_RE.test(blockText) || ACTIONS_LINE_RE.test(blockText)
+      !isUserSpeaker &&
+      (isAssistantSpeaker ||
+        INTERNAL_THOUGHT_RE.test(blockText) ||
+        ACTIONS_LINE_RE.test(blockText))
         ? "assistant"
         : "user";
     messages.push({
       role,
       raw: blockText,
-      name: name.trim(),
+      name: normalizedName,
       text: text.trim(),
       time,
     });
@@ -186,9 +220,12 @@ export function parsePromptToTranscript(prompt: string): CompactorTranscript {
     };
   }
 
-  // The conversation region always starts with the literal header. Strip
-  // the header line so the body parser doesn't have to special-case it.
-  const headerStripped = region.region.slice(CONVERSATION_HEADER.length);
+  // Strip the section header line so the body parser doesn't have to
+  // special-case it.
+  const headerStripped = region.region.replace(
+    /^#{1,3}\s*Conversation Messages\b[^\n]*(?:\n)?/i,
+    "",
+  );
   const parsed = parseConversationBody(headerStripped);
 
   const messages: CompactorMessage[] = [];
@@ -327,6 +364,42 @@ export type ApplyConversationCompactionResult = {
   compactedTokens: number;
   latencyMs: number;
   strategy: StrategyName | null;
+  targetTokens: number;
+  replacementTargetTokens: number;
+  artifact?: {
+    replacementMessageCount: number;
+    stats: CompactionArtifactStats;
+  };
+};
+
+export type ApplyConversationMessageCompactionArgs = {
+  messages: CompactorMessage[];
+  strategy: StrategyName;
+  /** Current message token count (already estimated by caller when known). */
+  currentTokens: number;
+  /** Token budget the message list must fit into. */
+  targetTokens: number;
+  /** Wraps `runtime.useModel(TEXT_LARGE, ...)`; required for summarizers. */
+  callModel: CompactorModelCall;
+  /** Optional — message-count to preserve verbatim at the tail. */
+  preserveTailMessages?: number;
+};
+
+export type ApplyConversationMessageCompactionResult = Omit<
+  ApplyConversationCompactionResult,
+  "prompt"
+> & {
+  messages: CompactorMessage[];
+};
+
+type CompactionArtifactStats = {
+  originalMessageCount: CompactionStats["originalMessageCount"];
+  compactedMessageCount: CompactionStats["compactedMessageCount"];
+  originalTokens: CompactionStats["originalTokens"];
+  compactedTokens: CompactionStats["compactedTokens"];
+  summarizationModel?: CompactionStats["summarizationModel"];
+  latencyMs: CompactionStats["latencyMs"];
+  extra?: CompactionStats["extra"];
 };
 
 /**
@@ -351,6 +424,8 @@ export async function applyConversationCompaction(
       compactedTokens: originalTokens,
       latencyMs: 0,
       strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens: args.targetTokens,
     };
   }
 
@@ -367,30 +442,45 @@ export async function applyConversationCompaction(
       compactedTokens: originalTokens,
       latencyMs: Date.now() - startedAt,
       strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens: args.targetTokens,
     };
   }
 
+  const systemOffset = transcript.messages[0]?.role === "system" ? 1 : 0;
+  const hasActiveSuffix = Boolean(
+    locateConversationRegion(args.prompt)?.suffix.trim().length,
+  );
+  const preserveTail = Math.max(
+    args.preserveTailMessages ?? 6,
+    hasActiveSuffix ? 1 : 0,
+  );
+  const boundary = findSafeCompactionBoundary(
+    transcript.messages,
+    preserveTail,
+  );
+  const systemPrefix = systemOffset === 1 ? [transcript.messages[0]] : [];
+  const preservedTail = transcript.messages.slice(boundary);
+  const nonCompactableTokens = approxCountTokens(
+    [...systemPrefix, ...preservedTail].map((m) => m.content).join("\n"),
+  );
+  const minimumReplacementBudget = Math.min(64, args.targetTokens);
+  const replacementTargetTokens = Math.max(
+    minimumReplacementBudget,
+    Math.min(args.targetTokens, args.targetTokens - nonCompactableTokens - 32),
+  );
+
   const artifact = await strategyImpl.compact(transcript, {
-    targetTokens: args.targetTokens,
+    targetTokens: replacementTargetTokens,
     callModel: args.callModel,
     countTokens: approxCountTokens,
-    ...(args.preserveTailMessages !== undefined
-      ? { preserveTailMessages: args.preserveTailMessages }
-      : {}),
+    preserveTailMessages: preserveTail,
   });
 
   // Reconstruct a transcript = systemPrefix + replacement + preservedTail.
   // The compactor returned only the replacement; we need to combine with
   // the boundary it computed. Easiest: re-split the original transcript
   // and rebuild here.
-  const systemOffset = transcript.messages[0]?.role === "system" ? 1 : 0;
-  // The compactor uses findSafeCompactionBoundary internally; mirror its
-  // default tail size unless the caller overrode it.
-  const preserveTail = args.preserveTailMessages ?? 6;
-  const total = transcript.messages.length;
-  const naiveBoundary = Math.max(systemOffset, total - preserveTail);
-  const systemPrefix = systemOffset === 1 ? [transcript.messages[0]] : [];
-  const preservedTail = transcript.messages.slice(naiveBoundary);
   const compactedTranscript: CompactorTranscript = {
     messages: [
       ...systemPrefix,
@@ -406,6 +496,23 @@ export async function applyConversationCompaction(
   );
   const compactedTokens = Math.ceil(compactedPrompt.length / 4);
 
+  if (compactedTokens >= originalTokens) {
+    return {
+      prompt: args.prompt,
+      didCompact: false,
+      originalTokens,
+      compactedTokens: originalTokens,
+      latencyMs: Date.now() - startedAt,
+      strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens,
+      artifact: {
+        replacementMessageCount: artifact.replacementMessages.length,
+        stats: artifact.stats,
+      },
+    };
+  }
+
   return {
     prompt: compactedPrompt,
     didCompact: compactedPrompt !== args.prompt,
@@ -413,5 +520,120 @@ export async function applyConversationCompaction(
     compactedTokens,
     latencyMs: Date.now() - startedAt,
     strategy: args.strategy,
+    targetTokens: args.targetTokens,
+    replacementTargetTokens,
+    artifact: {
+      replacementMessageCount: artifact.replacementMessages.length,
+      stats: artifact.stats,
+    },
+  };
+}
+
+/**
+ * Message-level companion to `applyConversationCompaction`.
+ *
+ * v5 runtime model calls often pass OpenAI-style `messages` directly instead
+ * of a flattened prompt string. This path avoids lossy prompt parsing and
+ * lets the conversation compactor operate on the role-tagged transcript.
+ */
+export async function applyConversationMessageCompaction(
+  args: ApplyConversationMessageCompactionArgs,
+): Promise<ApplyConversationMessageCompactionResult> {
+  const startedAt = Date.now();
+  const originalTokens = args.currentTokens;
+
+  if (args.currentTokens <= args.targetTokens) {
+    return {
+      messages: args.messages,
+      didCompact: false,
+      originalTokens,
+      compactedTokens: originalTokens,
+      latencyMs: 0,
+      strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens: args.targetTokens,
+    };
+  }
+
+  const strategyImpl = compactors[args.strategy] ?? naiveSummaryCompactor;
+  const transcript: CompactorTranscript = { messages: args.messages };
+  const systemOffset = args.messages[0]?.role === "system" ? 1 : 0;
+  const preserveTail = args.preserveTailMessages ?? 6;
+  const boundary = findSafeCompactionBoundary(args.messages, preserveTail);
+  const systemPrefix = systemOffset === 1 ? [args.messages[0]] : [];
+  const preservedTail = args.messages.slice(boundary);
+  const nonCompactableTokens = approxCountTokens(
+    [...systemPrefix, ...preservedTail].map((m) => m.content).join("\n"),
+  );
+  const minimumReplacementBudget = Math.min(64, args.targetTokens);
+  const replacementTargetTokens = Math.max(
+    minimumReplacementBudget,
+    Math.min(args.targetTokens, args.targetTokens - nonCompactableTokens - 32),
+  );
+
+  const artifact = await strategyImpl.compact(transcript, {
+    targetTokens: replacementTargetTokens,
+    callModel: args.callModel,
+    countTokens: approxCountTokens,
+    preserveTailMessages: preserveTail,
+  });
+
+  if (artifact.replacementMessages.length === 0) {
+    return {
+      messages: args.messages,
+      didCompact: false,
+      originalTokens,
+      compactedTokens: originalTokens,
+      latencyMs: Date.now() - startedAt,
+      strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens,
+      artifact: {
+        replacementMessageCount: 0,
+        stats: artifact.stats,
+      },
+    };
+  }
+
+  const compactedMessages = [
+    ...systemPrefix,
+    ...artifact.replacementMessages,
+    ...preservedTail,
+  ];
+  const compactedTokens = countTranscriptTokens(
+    { messages: compactedMessages },
+    approxCountTokens,
+  );
+
+  if (compactedTokens >= originalTokens) {
+    return {
+      messages: args.messages,
+      didCompact: false,
+      originalTokens,
+      compactedTokens: originalTokens,
+      latencyMs: Date.now() - startedAt,
+      strategy: args.strategy,
+      targetTokens: args.targetTokens,
+      replacementTargetTokens,
+      artifact: {
+        replacementMessageCount: artifact.replacementMessages.length,
+        stats: artifact.stats,
+      },
+    };
+  }
+
+  return {
+    messages: compactedMessages,
+    didCompact: true,
+    originalTokens,
+    compactedTokens,
+    latencyMs: Date.now() - startedAt,
+    strategy: args.strategy,
+    targetTokens: args.targetTokens,
+    replacementTargetTokens,
+    artifact: {
+      replacementMessageCount: artifact.replacementMessages.length,
+      stats: artifact.stats,
+    },
   };
 }

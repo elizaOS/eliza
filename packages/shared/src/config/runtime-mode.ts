@@ -133,7 +133,9 @@ export function resolveRuntimeExecutionMode(
   source?: RuntimeExecutionModeSource | null,
 ): RuntimeExecutionMode {
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {
-    const fromSetting = normalizeRuntimeExecutionMode(source?.getSetting?.(key));
+    const fromSetting = normalizeRuntimeExecutionMode(
+      source?.getSetting?.(key),
+    );
     if (fromSetting) return fromSetting;
   }
   for (const key of RUNTIME_EXECUTION_MODE_SETTING_KEYS) {

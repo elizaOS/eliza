@@ -21,14 +21,12 @@ import { experienceProvider as _bs_3_experienceProvider } from "./providers/expe
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EXPERIENCE_INDEX__ = [
 	_bs_1_searchExperiencesAction,
 	_bs_2_experiencePatternEvaluator,
 	_bs_3_experienceProvider,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
 (
-	globalThis as any
+	globalThis as Record<string, unknown>
 ).__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EXPERIENCE_INDEX__ =
 	__bundle_safety_FEATURES_ADVANCED_CAPABILITIES_EXPERIENCE_INDEX__;

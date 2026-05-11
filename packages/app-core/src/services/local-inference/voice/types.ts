@@ -49,6 +49,15 @@ export interface OmniVoiceBackend {
   }): Promise<AudioChunk>;
 }
 
+export interface TranscriptionAudio {
+  pcm: Float32Array;
+  sampleRate: number;
+}
+
+export interface OmniVoiceTranscriber {
+  transcribe(args: TranscriptionAudio): Promise<string>;
+}
+
 export interface PhraseChunkerConfig {
   maxTokensPerPhrase: number;
   sentenceTerminators?: ReadonlySet<string>;

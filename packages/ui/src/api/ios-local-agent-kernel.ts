@@ -30,6 +30,7 @@ const ACTIVE_MODEL_KEY = `${STORAGE_PREFIX}:active-model:v1`;
 const ASSIGNMENTS_KEY = `${STORAGE_PREFIX}:assignments:v1`;
 const BROWSER_WORKSPACE_KEY = `${STORAGE_PREFIX}:browser-workspace:v1`;
 const WALLET_MARKET_OVERVIEW_KEY = `${STORAGE_PREFIX}:wallet-market-overview:v1`;
+const BUNDLE_INDEX_KEY = `${STORAGE_PREFIX}:eliza-1-bundles:v1`;
 const AGENT_NAME = "Eliza";
 const DEFAULT_SYSTEM_PROMPT =
   "You are Eliza, a private on-device assistant. Answer directly and concisely.";
@@ -86,6 +87,40 @@ interface LocalMessage {
 
 interface ConversationStore {
   conversations: LocalConversation[];
+}
+
+interface IosBundleFileEntry {
+  path: string;
+  sha256: string;
+  ctx?: number;
+}
+
+interface IosBundleManifest {
+  id: string;
+  version: string;
+  defaultEligible: true;
+  files: {
+    text: IosBundleFileEntry[];
+    voice: IosBundleFileEntry[];
+    asr: IosBundleFileEntry[];
+    vision: IosBundleFileEntry[];
+    dflash: IosBundleFileEntry[];
+    cache: IosBundleFileEntry[];
+    embedding?: IosBundleFileEntry[];
+    vad?: IosBundleFileEntry[];
+    wakeword?: IosBundleFileEntry[];
+  };
+}
+
+interface IosBundleRecord {
+  modelId: string;
+  bundleVersion: string;
+  manifestPath?: string;
+  manifestSha256?: string;
+  bundleRoot?: string;
+  bundleSizeBytes?: number;
+  files: Record<string, string>;
+  installedAt: string;
 }
 
 interface LocalBrowserWorkspaceTab {
@@ -196,6 +231,15 @@ type LlamaCppModule = {
     url: string,
     filename: string,
   ) => Promise<string | { path?: string }>;
+  hashFile?: (path: string) => Promise<
+    | string
+    | {
+        sha256?: string;
+        hash?: string;
+        size?: number;
+        sizeBytes?: number;
+      }
+  >;
   getDownloadProgress?: (url: string) => Promise<{
     downloaded?: number;
     received?: number;
@@ -243,6 +287,7 @@ function resetIosLocalAgentState(): void {
     ASSIGNMENTS_KEY,
     BROWSER_WORKSPACE_KEY,
     WALLET_MARKET_OVERVIEW_KEY,
+    BUNDLE_INDEX_KEY,
   ]) {
     removeStorageItem(key);
   }
@@ -280,6 +325,16 @@ function writeJson(key: string, value: unknown): void {
   } catch {
     // localStorage can be unavailable in embedded shells.
   }
+}
+
+function readBundleIndex(): Record<string, IosBundleRecord> {
+  return readJson<Record<string, IosBundleRecord>>(BUNDLE_INDEX_KEY, {});
+}
+
+function writeBundleRecord(record: IosBundleRecord): void {
+  const current = readBundleIndex();
+  current[record.modelId] = record;
+  writeJson(BUNDLE_INDEX_KEY, current);
 }
 
 function stringFromUnknown(value: unknown): string | null {
@@ -493,16 +548,16 @@ async function capacitorLlamaProviderStatus(): Promise<ProviderStatus> {
   const available = Boolean(await loadCapacitorLlama());
   return {
     id: "capacitor-llama",
-    label: "On-device llama.cpp (mobile)",
+    label: "Eliza-1 on-device runtime (mobile)",
     kind: "local",
-    description: "Runs llama.cpp natively inside the iOS app.",
+    description: "Runs Eliza-1 natively inside the iOS app.",
     supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
     configureHref: null,
     enableState: {
       enabled: available,
       reason: available
         ? "Native Capacitor runtime detected"
-        : "Capacitor llama runtime unavailable",
+        : "Native Eliza-1 runtime unavailable",
     },
     registeredSlots:
       activeState.status === "ready" ? ["TEXT_SMALL", "TEXT_LARGE"] : [],
@@ -1020,12 +1075,166 @@ function modelFilename(model: CatalogModel): string {
   return `${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.gguf`;
 }
 
-function buildHuggingFaceResolveUrl(model: CatalogModel): string {
-  const encodedPath = model.ggufFile
+function buildHuggingFaceResolveUrlForPath(
+  model: CatalogModel,
+  filePath: string,
+): string {
+  const encodedPath = filePath
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return `https://huggingface.co/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
+}
+
+function buildHuggingFaceResolveUrl(model: CatalogModel): string {
+  return buildHuggingFaceResolveUrlForPath(model, model.ggufFile);
+}
+
+function basename(filePath: string): string {
+  return filePath.split(/[\\/]/).filter(Boolean).pop() ?? filePath;
+}
+
+function dirname(filePath: string): string | undefined {
+  const index = Math.max(filePath.lastIndexOf("/"), filePath.lastIndexOf("\\"));
+  return index > 0 ? filePath.slice(0, index) : undefined;
+}
+
+function commonBundleRoot(paths: Iterable<string>): string | undefined {
+  const dirs = [...paths]
+    .map(dirname)
+    .filter((dir): dir is string => Boolean(dir));
+  if (dirs.length === 0) return undefined;
+  const [first, ...rest] = dirs;
+  return rest.every((dir) => dir === first) ? first : undefined;
+}
+
+function normalizedSha256(value: unknown): string | null {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value)
+    ? value
+    : null;
+}
+
+function normalizeNativeHashResult(
+  result: Awaited<ReturnType<NonNullable<LlamaCppModule["hashFile"]>>>,
+): { sha256: string; sizeBytes?: number } {
+  if (typeof result === "string") {
+    const sha256 = normalizedSha256(result);
+    if (!sha256) throw new Error("Native hashFile returned an invalid SHA256");
+    return { sha256 };
+  }
+  const sha256 = normalizedSha256(result.sha256 ?? result.hash);
+  if (!sha256) throw new Error("Native hashFile returned an invalid SHA256");
+  const sizeBytes =
+    typeof result.sizeBytes === "number"
+      ? result.sizeBytes
+      : typeof result.size === "number"
+        ? result.size
+        : undefined;
+  return {
+    sha256,
+    ...(typeof sizeBytes === "number" && sizeBytes >= 0 ? { sizeBytes } : {}),
+  };
+}
+
+async function hashNativeBundleFile(
+  llama: LlamaCppModule,
+  filePath: string,
+  label: string,
+): Promise<{ sha256: string; sizeBytes?: number }> {
+  if (!llama.hashFile) {
+    throw new Error(
+      `Native Eliza-1 downloader cannot verify SHA256 for ${label}; refusing bundle install.`,
+    );
+  }
+  return normalizeNativeHashResult(await llama.hashFile(filePath));
+}
+
+async function verifyNativeBundleFile(
+  llama: LlamaCppModule,
+  filePath: string,
+  expectedSha256: string,
+  label: string,
+): Promise<{ sha256: string; sizeBytes?: number }> {
+  const hashed = await hashNativeBundleFile(llama, filePath, label);
+  if (hashed.sha256 !== expectedSha256) {
+    throw new Error(
+      `SHA256 mismatch for ${label}: expected ${expectedSha256}, got ${hashed.sha256}`,
+    );
+  }
+  return hashed;
+}
+
+function iosBundleFilename(model: CatalogModel, filePath: string): string {
+  if (filePath === model.bundleManifestFile) {
+    return `${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}.manifest.json`;
+  }
+  const name = basename(filePath);
+  if (/\.gguf$/i.test(name)) return name;
+  const safePath = filePath.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `${model.id.replace(/[^a-zA-Z0-9._-]/g, "_")}__${safePath}`;
+}
+
+function parseIosBundleManifest(
+  input: unknown,
+  model: CatalogModel,
+): IosBundleManifest {
+  if (!input || typeof input !== "object") {
+    throw new Error("Invalid Eliza-1 manifest: expected object");
+  }
+  const raw = input as Partial<IosBundleManifest>;
+  if (raw.id !== model.id) {
+    throw new Error(`Invalid Eliza-1 manifest id for ${model.id}`);
+  }
+  if (raw.defaultEligible !== true || typeof raw.version !== "string") {
+    throw new Error("Invalid Eliza-1 manifest metadata");
+  }
+  if (!raw.files || typeof raw.files !== "object") {
+    throw new Error("Invalid Eliza-1 manifest files");
+  }
+  for (const kind of [
+    "text",
+    "voice",
+    "asr",
+    "vision",
+    "dflash",
+    "cache",
+  ] as const) {
+    if (!Array.isArray(raw.files[kind])) {
+      throw new Error(`Invalid Eliza-1 manifest files.${kind}`);
+    }
+  }
+  if (!raw.files.text.some((entry) => entry.path === model.ggufFile)) {
+    throw new Error(`Eliza-1 manifest missing text file ${model.ggufFile}`);
+  }
+  const drafterId = model.runtime?.dflash?.drafterModelId;
+  const drafter = drafterId ? findCatalogModel(drafterId) : undefined;
+  if (
+    drafter &&
+    !raw.files.dflash.some((entry) => entry.path === drafter.ggufFile)
+  ) {
+    throw new Error(`Eliza-1 manifest missing DFlash file ${drafter.ggufFile}`);
+  }
+  return raw as IosBundleManifest;
+}
+
+function collectIosBundleFiles(
+  manifest: IosBundleManifest,
+): IosBundleFileEntry[] {
+  const files = new Map<string, IosBundleFileEntry>();
+  for (const entries of [
+    manifest.files.text,
+    manifest.files.voice,
+    manifest.files.asr,
+    manifest.files.vision,
+    manifest.files.dflash,
+    manifest.files.cache,
+    manifest.files.embedding ?? [],
+    manifest.files.vad ?? [],
+    manifest.files.wakeword ?? [],
+  ]) {
+    for (const entry of entries) files.set(entry.path, entry);
+  }
+  return [...files.values()];
 }
 
 function catalogForAvailableModel(model: {
@@ -1114,6 +1323,7 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
   const result = await llama?.getAvailableModels?.().catch(() => []);
   const models = Array.isArray(result) ? result : (result?.models ?? []);
   const installedAt = nowIso();
+  const bundles = readBundleIndex();
   return models
     .filter((model) => typeof model.path === "string" && model.path.length > 0)
     .map((model): InstalledModel => {
@@ -1121,11 +1331,27 @@ async function listInstalledModels(): Promise<InstalledModel[]> {
       const id =
         catalog?.id ??
         (model.name || model.path || randomId("model")).replace(/\.gguf$/i, "");
+      const bundle = catalog?.companionForModelId
+        ? bundles[catalog.companionForModelId]
+        : catalog
+          ? bundles[catalog.id]
+          : undefined;
       return {
         id,
         displayName: catalog?.displayName ?? model.name ?? id,
         path: model.path as string,
         sizeBytes: typeof model.size === "number" ? model.size : 0,
+        ...(bundle?.bundleRoot ? { bundleRoot: bundle.bundleRoot } : {}),
+        ...(bundle?.manifestPath ? { manifestPath: bundle.manifestPath } : {}),
+        ...(bundle?.manifestSha256
+          ? { manifestSha256: bundle.manifestSha256 }
+          : {}),
+        ...(bundle?.bundleVersion
+          ? { bundleVersion: bundle.bundleVersion }
+          : {}),
+        ...(typeof bundle?.bundleSizeBytes === "number"
+          ? { bundleSizeBytes: bundle.bundleSizeBytes }
+          : {}),
         ...(catalog?.hfRepo ? { hfRepo: catalog.hfRepo } : {}),
         installedAt,
         lastUsedAt: activeState.modelId === id ? activeState.loadedAt : null,
@@ -1745,6 +1971,106 @@ async function queueCompanionDownloads(model: CatalogModel): Promise<void> {
   }
 }
 
+async function downloadNativeModelFile(
+  llama: LlamaCppModule,
+  url: string,
+  filename: string,
+): Promise<string> {
+  if (!llama.downloadModel) {
+    throw new Error("Native Eliza-1 downloader is unavailable.");
+  }
+  const result = await llama.downloadModel(url, filename);
+  return typeof result === "string" ? result : (result.path ?? filename);
+}
+
+async function downloadIosBundle(
+  model: CatalogModel,
+  llama: LlamaCppModule,
+  job: DownloadJob,
+): Promise<string> {
+  if (!model.bundleManifestFile) {
+    throw new Error(
+      `${model.displayName} does not declare an Eliza-1 manifest.`,
+    );
+  }
+  const manifestUrl = buildHuggingFaceResolveUrlForPath(
+    model,
+    model.bundleManifestFile,
+  );
+  const manifestResponse = await fetch(manifestUrl, { redirect: "follow" });
+  if (!manifestResponse.ok) {
+    throw new Error(
+      `HTTP ${manifestResponse.status} while fetching ${model.displayName} manifest`,
+    );
+  }
+  const manifest = parseIosBundleManifest(await manifestResponse.json(), model);
+
+  const files: Record<string, string> = {};
+  let bundleSizeBytes = 0;
+  const manifestPath = await downloadNativeModelFile(
+    llama,
+    manifestUrl,
+    iosBundleFilename(model, model.bundleManifestFile),
+  );
+  files[model.bundleManifestFile] = manifestPath;
+  const manifestHash = await hashNativeBundleFile(
+    llama,
+    manifestPath,
+    model.bundleManifestFile,
+  );
+  bundleSizeBytes += manifestHash.sizeBytes ?? 0;
+
+  const entries = collectIosBundleFiles(manifest);
+  const totalSteps = Math.max(entries.length + 1, 1);
+  let completedSteps = 1;
+  updateDownload(job, {
+    received: Math.min(
+      job.total,
+      Math.round((completedSteps / totalSteps) * job.total),
+    ),
+  });
+
+  for (const entry of entries) {
+    const url = buildHuggingFaceResolveUrlForPath(model, entry.path);
+    const downloadedPath = await downloadNativeModelFile(
+      llama,
+      url,
+      iosBundleFilename(model, entry.path),
+    );
+    files[entry.path] = downloadedPath;
+    const fileHash = await verifyNativeBundleFile(
+      llama,
+      downloadedPath,
+      entry.sha256,
+      entry.path,
+    );
+    bundleSizeBytes += fileHash.sizeBytes ?? 0;
+    completedSteps += 1;
+    updateDownload(job, {
+      received: Math.min(
+        job.total,
+        Math.round((completedSteps / totalSteps) * job.total),
+      ),
+    });
+  }
+
+  const textPath = files[model.ggufFile];
+  if (!textPath) {
+    throw new Error(`Eliza-1 bundle did not install ${model.ggufFile}`);
+  }
+  writeBundleRecord({
+    modelId: model.id,
+    bundleVersion: manifest.version,
+    manifestPath,
+    manifestSha256: manifestHash.sha256,
+    bundleRoot: commonBundleRoot(Object.values(files)),
+    bundleSizeBytes: bundleSizeBytes > 0 ? bundleSizeBytes : job.total,
+    files,
+    installedAt: nowIso(),
+  });
+  return textPath;
+}
+
 function startDownload(model: CatalogModel): DownloadJob {
   const existing = downloads.get(model.id);
   if (existing && ["queued", "downloading"].includes(existing.state)) {
@@ -1765,13 +2091,25 @@ function startDownload(model: CatalogModel): DownloadJob {
 
   void (async () => {
     try {
-      if (model.runtimeRole !== "dflash-drafter") {
+      if (model.runtimeRole !== "dflash-drafter" && !model.bundleManifestFile) {
         void queueCompanionDownloads(model);
       }
       updateDownload(job, { state: "downloading" });
       const llama = await loadLlamaCpp();
       if (!llama?.downloadModel) {
-        throw new Error("llama-cpp-capacitor downloadModel is unavailable.");
+        throw new Error("Native Eliza-1 downloader is unavailable.");
+      }
+      if (model.bundleManifestFile && model.runtimeRole !== "dflash-drafter") {
+        const textPath = await downloadIosBundle(model, llama, job);
+        updateDownload(job, {
+          state: "completed",
+          received: job.total,
+          etaMs: 0,
+        });
+        if (activeState.status === "idle" || !activeState.modelId) {
+          await activateModel(model.id, textPath).catch(() => undefined);
+        }
+        return;
       }
       const downloadUrl = buildHuggingFaceResolveUrl(model);
       let polling = true;
@@ -2218,8 +2556,11 @@ export async function handleIosLocalAgentRequest(
         const catalog = findCatalogModel(modelId);
         if (catalog) {
           const llama = await loadLlamaCpp();
+          const cancelPath = catalog.bundleManifestFile ?? catalog.ggufFile;
           await llama
-            ?.cancelDownload?.(buildHuggingFaceResolveUrl(catalog))
+            ?.cancelDownload?.(
+              buildHuggingFaceResolveUrlForPath(catalog, cancelPath),
+            )
             .catch(() => false);
         }
         updateDownload(job, { state: "cancelled", etaMs: 0 });

@@ -55,6 +55,20 @@ export const ELIZAOS_ANDROID_CORE_PLUGINS: readonly string[] = [
   "@elizaos/app-phone",
 ];
 
+/**
+ * Terminal / shell / coding-tool plugins available on the privileged AOSP
+ * build only. The privileged Android service spawns bun under the priv_app
+ * SELinux context which permits `execve`, so shell + native file actions
+ * work where they would not on stock Android.
+ *
+ * Stock Play-Store Android cannot have these — `execve` of arbitrary binaries
+ * is blocked by the default SELinux policy and would also fail Play review.
+ */
+export const ELIZAOS_ANDROID_TERMINAL_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-shell",
+  "@elizaos/plugin-coding-tools",
+];
+
 /** Core plugins that should always be loaded. collectPluginNames() seeds from this list only. */
 export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-sql", // database adapter — required

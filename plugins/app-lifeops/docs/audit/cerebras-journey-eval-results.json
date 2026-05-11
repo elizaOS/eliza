@@ -1,5 +1,5 @@
 {
-  "generatedAtIso": "2026-05-10T12:00:01.576Z",
+  "generatedAtIso": "2026-05-10T23:47:57.522Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -46,7 +46,7 @@
         "promptTokens": 1881,
         "completionTokens": 67,
         "totalTokens": 1948,
-        "cachedTokens": 0
+        "cachedTokens": 1024
       },
       "tasksObserved": 2,
       "logEntriesObserved": 5
@@ -144,7 +144,7 @@
         "promptTokens": 1748,
         "completionTokens": 65,
         "totalTokens": 1813,
-        "cachedTokens": 1024
+        "cachedTokens": 1664
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -242,7 +242,7 @@
         "promptTokens": 1461,
         "completionTokens": 85,
         "totalTokens": 1546,
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -256,7 +256,7 @@
         "promptTokens": 1471,
         "completionTokens": 67,
         "totalTokens": 1538,
-        "cachedTokens": 1408
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 2
@@ -270,7 +270,7 @@
         "promptTokens": 1369,
         "completionTokens": 84,
         "totalTokens": 1453,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -312,7 +312,7 @@
         "promptTokens": 1382,
         "completionTokens": 97,
         "totalTokens": 1479,
-        "cachedTokens": 1280
+        "cachedTokens": 1024
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1

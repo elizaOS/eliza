@@ -6,33 +6,32 @@ pipeline_tag: text-generation
 tags:
   - eliza
   - elizaos
-  - {qwen_family_tag}
+  - eliza-1
   - apollo
   - sft
 ---
 
 # {eliza_short_name}
 
-> Local-first Eliza agent fine-tune of [`{base_hf_id}`](https://huggingface.co/{base_hf_id}).
-> Trained with APOLLO on the elizaOS TOON-format trajectory corpus.
+> Local-first Eliza-1 agent checkpoint trained with APOLLO on the
+> elizaOS TOON-format trajectory corpus.
 
-`{eliza_short_name}` is a full-parameter SFT fine-tune of
-[`{base_hf_id}`](https://huggingface.co/{base_hf_id}) on
+`{eliza_short_name}` is a full-parameter SFT Eliza-1 checkpoint trained on
 [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft).
 Trained with [APOLLO](https://arxiv.org/abs/2412.05270) (full fine-tune at
 SGD-like memory) using the
-[`elizaos/eliza-training-pipeline`](https://huggingface.co/elizaos/eliza-training-pipeline)
-repo.
+[`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline)
+repo. Upstream lineage is recorded in the model metadata and license block.
 
 ## Model description
 
 | field | value |
 |-------|-------|
-| Base model | [`{base_hf_id}`](https://huggingface.co/{base_hf_id}) |
+| Upstream lineage | recorded in `base_model` metadata |
 | Parameters | {params_billion}B |
-| Architecture | Qwen3 hybrid (3xGated-DeltaNet + 1xGated-Attention) |
+| Architecture | Eliza-1 hybrid local-inference backbone |
 | Training data | [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft) |
-| Training pipeline | [`elizaos/eliza-training-pipeline`](https://huggingface.co/elizaos/eliza-training-pipeline) |
+| Training pipeline | [`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline) |
 | Optimizer | {optimizer} (rank {optimizer_rank}) |
 | Train sequence length | {seq_len} |
 | Native context window | {infer_max_in_plus_out} tokens ({infer_max_in} in + {infer_max_out} out) |
@@ -55,7 +54,7 @@ model = AutoModelForCausalLM.from_pretrained(
 ### vLLM
 
 Use the in-repo serve script
-[`scripts/inference/serve_vllm.py`](https://huggingface.co/elizaos/eliza-training-pipeline/blob/main/scripts/inference/serve_vllm.py)
+[`scripts/inference/serve_vllm.py`](https://huggingface.co/elizalabs/eliza-1-pipeline/blob/main/scripts/inference/serve_vllm.py)
 or invoke vLLM directly:
 
 ```bash
@@ -80,11 +79,12 @@ MILADY_LOCAL_MODEL={repo_id} milady run
 
 ## License
 
-Apache-2.0, inherited from the base [`{base_hf_id}`](https://huggingface.co/{base_hf_id}).
+Apache-2.0, inherited from the upstream base checkpoint recorded in
+`base_model`.
 Eliza-side weights and training pipeline released under the same license; see
 <https://github.com/elizaOS> for source. Use of the model is additionally
-governed by Alibaba's [Qwen Acceptable Use Policy](https://huggingface.co/{base_hf_id}/blob/main/LICENSE)
-inherited via the base.
+governed by the upstream acceptable-use policy inherited via the base
+checkpoint.
 
 ## Citation
 

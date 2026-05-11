@@ -115,6 +115,8 @@ enum ScreenTimeSupport {
             switch AuthorizationCenter.shared.authorizationStatus {
             case .approved:
                 return "approved"
+            case .approvedWithDataAccess:
+                return "approved"
             case .denied:
                 return "denied"
             case .notDetermined:
@@ -129,7 +131,7 @@ enum ScreenTimeSupport {
         familyControlsEnabled: Bool,
         authorizationStatus: String
     ) -> Bool {
-        familyControlsEnabled && authorizationStatus != "approved"
+        familyControlsEnabled && authorizationStatus == "not-determined"
     }
 
     private static func derivedReason(

@@ -1,12 +1,13 @@
+import { PERMISSION_IDS } from "@elizaos/shared";
 import { Button, StatusBadge, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,
   client,
+  type PermissionId,
   type PermissionState,
   type PermissionStatus,
   type PluginInfo,
-  type SystemPermissionId,
 } from "../../api";
 import {
   invokeDesktopBridgeRequest,
@@ -26,21 +27,18 @@ import {
 // Media permission helpers (renderer-side probing for camera/microphone)
 // ---------------------------------------------------------------------------
 
-type DesktopMediaPermissionId = Extract<
-  SystemPermissionId,
-  "camera" | "microphone"
+type RendererPermissionId = Extract<
+  PermissionId,
+  "camera" | "microphone" | "location" | "notifications"
 >;
 
-const RUNTIME_PERMISSION_IDS: readonly SystemPermissionId[] = [
-  "website-blocking",
-];
-const REQUIRED_PERMISSION_IDS: readonly SystemPermissionId[] = [
-  "accessibility",
-  "screen-recording",
-  "microphone",
+const RUNTIME_PERMISSION_IDS: readonly PermissionId[] = ["website-blocking"];
+const REQUIRED_PERMISSION_IDS: readonly PermissionId[] = PERMISSION_IDS;
+const RENDERER_PERMISSION_IDS: readonly RendererPermissionId[] = [
   "camera",
-  "shell",
-  "website-blocking",
+  "microphone",
+  "location",
+  "notifications",
 ];
 const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "granted",
@@ -50,8 +48,17 @@ const PERMISSION_STATUSES: readonly PermissionStatus[] = [
   "not-applicable",
 ];
 
-function isRuntimePermissionId(id: SystemPermissionId): boolean {
+function isRuntimePermissionId(id: PermissionId): boolean {
   return RUNTIME_PERMISSION_IDS.includes(id);
+}
+
+function isRendererPermissionId(id: PermissionId): id is RendererPermissionId {
+  return (
+    id === "camera" ||
+    id === "microphone" ||
+    id === "location" ||
+    id === "notifications"
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -67,7 +74,7 @@ function isPermissionStatus(value: unknown): value is PermissionStatus {
 
 function isPermissionState(
   value: unknown,
-  id: SystemPermissionId,
+  id: PermissionId,
 ): value is PermissionState {
   return (
     isRecord(value) &&
@@ -86,7 +93,7 @@ function isAllPermissionsState(value: unknown): value is AllPermissionsState {
 }
 
 function mapRendererMediaPermissionState(
-  state: "granted" | "denied" | "prompt" | undefined,
+  state: "granted" | "denied" | "prompt" | "default" | undefined,
 ): PermissionStatus | null {
   if (state === "granted") {
     return "granted";
@@ -94,22 +101,26 @@ function mapRendererMediaPermissionState(
   if (state === "denied") {
     return "denied";
   }
-  if (state === "prompt") {
+  if (state === "prompt" || state === "default") {
     return "not-determined";
   }
   return null;
 }
 
-async function queryRendererMediaPermission(
-  id: DesktopMediaPermissionId,
+async function queryRendererPermission(
+  id: RendererPermissionId,
 ): Promise<PermissionStatus | null> {
+  if (id === "notifications" && typeof Notification !== "undefined") {
+    return mapRendererMediaPermissionState(Notification.permission);
+  }
+
   if (typeof navigator === "undefined" || !navigator.permissions?.query) {
     return null;
   }
 
   try {
     const result = await navigator.permissions.query({
-      name: id as PermissionName,
+      name: (id === "location" ? "geolocation" : id) as PermissionName,
     });
     return mapRendererMediaPermissionState(result?.state);
   } catch {
@@ -118,7 +129,7 @@ async function queryRendererMediaPermission(
 }
 
 async function inferRendererMediaPermissionFromDevices(
-  id: DesktopMediaPermissionId,
+  id: Extract<RendererPermissionId, "camera" | "microphone">,
 ): Promise<PermissionStatus | null> {
   if (
     typeof navigator === "undefined" ||
@@ -145,10 +156,14 @@ async function inferRendererMediaPermissionFromDevices(
 }
 
 async function probeRendererMediaPermission(
-  id: DesktopMediaPermissionId,
+  id: RendererPermissionId,
 ): Promise<PermissionStatus | null> {
-  const queriedStatus = await queryRendererMediaPermission(id);
+  const queriedStatus = await queryRendererPermission(id);
   if (queriedStatus === "granted" || queriedStatus === "denied") {
+    return queriedStatus;
+  }
+
+  if (id !== "camera" && id !== "microphone") {
     return queriedStatus;
   }
 
@@ -160,6 +175,51 @@ async function probeRendererMediaPermission(
   return queriedStatus;
 }
 
+async function requestRendererPermission(
+  id: PermissionId,
+): Promise<PermissionStatus | null> {
+  if (!isRendererPermissionId(id) || typeof navigator === "undefined") {
+    return null;
+  }
+
+  if (id === "camera" || id === "microphone") {
+    try {
+      const stream = await navigator.mediaDevices?.getUserMedia?.({
+        video: id === "camera",
+        audio: id === "microphone",
+      });
+      for (const track of stream?.getTracks?.() ?? []) {
+        track.stop();
+      }
+    } catch {
+      // The follow-up probe reports denied when the browser recorded a denial.
+    }
+    return probeRendererMediaPermission(id);
+  }
+
+  if (id === "location" && navigator.geolocation) {
+    const requestedStatus = await new Promise<PermissionStatus | null>(
+      (resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          () => resolve("granted"),
+          (err) =>
+            resolve(err.code === err.PERMISSION_DENIED ? "denied" : null),
+          { maximumAge: 0, timeout: 10_000 },
+        );
+      },
+    );
+    return (await probeRendererMediaPermission(id)) ?? requestedStatus;
+  }
+
+  if (id === "notifications" && typeof Notification !== "undefined") {
+    return mapRendererMediaPermissionState(
+      await Notification.requestPermission(),
+    );
+  }
+
+  return probeRendererMediaPermission(id);
+}
+
 export interface DesktopPermissionsSnapshot {
   permissions: AllPermissionsState;
   platform: string;
@@ -169,14 +229,10 @@ export interface DesktopPermissionsSnapshot {
 async function reconcileRendererMediaPermissions(
   snapshot: DesktopPermissionsSnapshot,
 ): Promise<DesktopPermissionsSnapshot> {
-  if (snapshot.platform === "win32") {
-    return snapshot;
-  }
-
   let nextPermissions = snapshot.permissions;
   let changed = false;
 
-  for (const id of ["camera", "microphone"] as const) {
+  for (const id of RENDERER_PERMISSION_IDS) {
     const current = snapshot.permissions[id];
     if (!current || current.status === "restricted") {
       continue;
@@ -663,7 +719,7 @@ export function useDesktopPermissionsState() {
   }, [replaceSnapshot]);
 
   const handleRequest = useCallback(
-    async (id: SystemPermissionId) => {
+    async (id: PermissionId) => {
       try {
         if (isRuntimePermissionId(id)) {
           await client.requestPermission(id);
@@ -680,7 +736,12 @@ export function useDesktopPermissionsState() {
           ipcChannel: "permissions:request",
           params: { id },
         });
-        if (bridged === null) {
+        if (isRendererPermissionId(id)) {
+          const rendererStatus = await requestRendererPermission(id);
+          if (!rendererStatus && bridged === null) {
+            await client.requestPermission(id);
+          }
+        } else if (bridged === null) {
           await client.requestPermission(id);
         }
         const snapshot = await replaceSnapshot(true);
@@ -696,7 +757,7 @@ export function useDesktopPermissionsState() {
   );
 
   const handleOpenSettings = useCallback(
-    async (id: SystemPermissionId) => {
+    async (id: PermissionId) => {
       try {
         if (isRuntimePermissionId(id)) {
           await client.openPermissionSettings(id);

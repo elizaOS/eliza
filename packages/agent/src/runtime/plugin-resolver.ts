@@ -11,7 +11,7 @@
  * @module plugin-resolver
  */
 import crypto from "node:crypto";
-import { existsSync } from "node:fs";
+import { type Dirent, existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -1000,7 +1000,7 @@ export async function pruneStalePluginInstances(
   stagingBaseDir: string,
   keepCount: number,
 ): Promise<void> {
-  let entries;
+  let entries: Dirent[];
   try {
     entries = await fs.readdir(stagingBaseDir, { withFileTypes: true });
   } catch {

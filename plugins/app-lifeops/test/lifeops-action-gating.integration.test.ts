@@ -32,6 +32,7 @@
 
 import crypto from "node:crypto";
 import type { AgentRuntime, Memory, State, UUID } from "@elizaos/core";
+import { CONTEXT_ROUTING_STATE_KEY } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
 import { appLifeOpsPlugin } from "../src/plugin.js";
@@ -62,17 +63,17 @@ function ownerMessage(text: string): Memory {
   } as Memory;
 }
 
-function nonOwnerMessage(text: string): Memory {
-  return {
-    id: crypto.randomUUID() as UUID,
-    entityId: crypto.randomUUID() as UUID,
-    roomId: crypto.randomUUID() as UUID,
-    agentId: runtime.agentId as UUID,
-    content: { text, source: "test" },
-  } as Memory;
-}
-
 const emptyState: State = { values: {}, data: {}, text: "" };
+const messagingState: State = {
+  values: {
+    [CONTEXT_ROUTING_STATE_KEY]: {
+      primaryContext: "messaging",
+      secondaryContexts: ["email"],
+    },
+  },
+  data: {},
+  text: "",
+};
 
 function findAction(name: string) {
   const action = appLifeOpsPlugin.actions?.find((a) => a.name === name);
@@ -95,7 +96,7 @@ describe("LifeOps plugin action gating", () => {
       "what emails do i have that i need to respond to",
     );
 
-    const result = await ownerInbox.validate(runtime, message, emptyState);
+    const result = await ownerInbox.validate(runtime, message, messagingState);
 
     expect(result).toBe(true);
   });
@@ -352,17 +353,12 @@ describe("LifeOps plugin action gating", () => {
 describe.each([
   "ENTITY",
 ])("%s owner-only access gate", (actionName) => {
-  it("validate() rejects non-owner senders", async () => {
+  it("declares an owner role gate", () => {
     const action = findAction(actionName);
-    const result = await action.validate(
-      runtime,
-      nonOwnerMessage("follow up with Alice"),
-      emptyState,
-    );
-    expect(result).toBe(false);
+    expect(action.roleGate).toEqual({ minRole: "OWNER" });
   });
 
-  it("validate() accepts the agent itself (agent-self owner shortcut)", async () => {
+  it("validate() accepts routed owner traffic once role gating has passed", async () => {
     const action = findAction(actionName);
     const result = await action.validate(
       runtime,

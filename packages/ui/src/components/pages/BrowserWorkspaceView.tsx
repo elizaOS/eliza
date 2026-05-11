@@ -94,7 +94,7 @@ type WebviewTagElement = HTMLElement & {
   toggleHidden(value?: boolean): void;
 };
 
-function isWebviewTagElement(
+function _isWebviewTagElement(
   value: EventTarget | null,
 ): value is WebviewTagElement {
   if (!(value instanceof HTMLElement)) return false;
@@ -346,6 +346,19 @@ function resolveBrowserWorkspaceSelection(
   return visibleTab?.id ?? tabs[0]?.id ?? null;
 }
 
+function parseEip155ChainId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = trimmed.startsWith("0x")
+    ? Number.parseInt(trimmed.slice(2), 16)
+    : Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function BrowserWorkspaceView(): JSX.Element {
   const {
     getStewardPending,
@@ -396,6 +409,9 @@ export function BrowserWorkspaceView(): JSX.Element {
   const iframeRefs = useRef(new Map<string, HTMLIFrameElement | null>());
   const electrobunWebviewRefs = useRef(
     new Map<string, WebviewTagElement | null>(),
+  );
+  const electrobunHostMessageHandlersRef = useRef(
+    new Map<string, (event: CustomEvent) => void>(),
   );
   const pendingTabExecsRef = useRef(
     new Map<
@@ -966,7 +982,10 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
-              const chainId = tabChainIdRef.current.get(req.tabId) ?? 1;
+              const txChainId = parseEip155ChainId(tx.chainId);
+              const chainId =
+                txChainId ?? tabChainIdRef.current.get(req.tabId) ?? 1;
+              tabChainIdRef.current.set(req.tabId, chainId);
               const value =
                 typeof tx.value === "string"
                   ? tx.value.startsWith("0x")
@@ -1137,6 +1156,8 @@ export function BrowserWorkspaceView(): JSX.Element {
   // `creds.<domain>.:autoallow` entry.
   const { confirm: vaultAutofillConfirm, modalProps: vaultAutofillModalProps } =
     useConfirm();
+  const browserWorkspaceConfirmOpen =
+    walletActionModalProps.open || vaultAutofillModalProps.open;
 
   const handleTabVaultAutofillRequest = useCallback(
     async (req: {
@@ -1240,7 +1261,7 @@ export function BrowserWorkspaceView(): JSX.Element {
   );
 
   const handleTabHostMessage = useCallback(
-    (event: CustomEvent) => {
+    (tabId: string, event: CustomEvent) => {
       const detail = event.detail as
         | {
             type?: string;
@@ -1286,14 +1307,6 @@ export function BrowserWorkspaceView(): JSX.Element {
         typeof detail.protocol === "string" &&
         typeof detail.method === "string"
       ) {
-        const tag = isWebviewTagElement(event.currentTarget)
-          ? event.currentTarget
-          : null;
-        const tabId =
-          [...electrobunWebviewRefs.current.entries()].find(
-            ([, el]) => el === tag,
-          )?.[0] ?? null;
-        if (!tabId) return;
         void handleTabWalletRequest({
           tabId,
           requestId: detail.requestId,
@@ -1312,14 +1325,6 @@ export function BrowserWorkspaceView(): JSX.Element {
         typeof detail.url === "string" &&
         Array.isArray(detail.fieldHints)
       ) {
-        const tag = isWebviewTagElement(event.currentTarget)
-          ? event.currentTarget
-          : null;
-        const tabId =
-          [...electrobunWebviewRefs.current.entries()].find(
-            ([, el]) => el === tag,
-          )?.[0] ?? null;
-        if (!tabId) return;
         const fieldHints: Array<{
           kind: "username" | "password";
           selector: string;
@@ -1349,15 +1354,27 @@ export function BrowserWorkspaceView(): JSX.Element {
   const registerBrowserWorkspaceElectrobunWebview = useCallback(
     (tabId: string, element: WebviewTagElement | null) => {
       const previous = electrobunWebviewRefs.current.get(tabId);
+      const previousHandler =
+        electrobunHostMessageHandlersRef.current.get(tabId);
       if (previous && previous !== element) {
-        previous.off("host-message", handleTabHostMessage);
+        if (previousHandler) {
+          previous.off("host-message", previousHandler);
+        }
+        electrobunHostMessageHandlersRef.current.delete(tabId);
       }
       if (!element) {
+        if (previous && previousHandler) {
+          previous.off("host-message", previousHandler);
+        }
+        electrobunHostMessageHandlersRef.current.delete(tabId);
         electrobunWebviewRefs.current.delete(tabId);
         return;
       }
       if (previous !== element) {
-        element.on("host-message", handleTabHostMessage);
+        const hostMessageHandler = (event: CustomEvent) =>
+          handleTabHostMessage(tabId, event);
+        electrobunHostMessageHandlersRef.current.set(tabId, hostMessageHandler);
+        element.on("host-message", hostMessageHandler);
         // Poke the OOPIF to read fresh dimensions multiple times — the
         // tag auto-syncs only on its own ResizeObserver firing, and that
         // can miss the initial layout settle if the parent flex chain is
@@ -1422,7 +1439,9 @@ export function BrowserWorkspaceView(): JSX.Element {
     };
   }, []);
 
-  // Drive native hide/show on every tag whenever selection changes. The
+  // Drive native hide/show on every tag whenever selection or an in-app
+  // consent dialog changes. The native webview is an OOPIF overlay, so
+  // React dialogs are otherwise rendered under it and cannot be acted on.
   // HTML `hidden` attribute does NOT propagate to the OOPIF — only the
   // tag's `toggleHidden(bool)` method does. Without this, inactive tabs'
   // OOPIFs stay painted over the surface as native views and intercept
@@ -1432,27 +1451,35 @@ export function BrowserWorkspaceView(): JSX.Element {
     for (const [tabId, element] of electrobunWebviewRefs.current.entries()) {
       if (!element) continue;
       try {
-        element.toggleHidden(tabId !== selectedTabId);
+        element.toggleHidden(
+          browserWorkspaceConfirmOpen || tabId !== selectedTabId,
+        );
         element.syncDimensions(true);
       } catch {
         // best-effort
       }
     }
-  }, [selectedTabId, workspace.mode]);
+  }, [browserWorkspaceConfirmOpen, selectedTabId, workspace.mode]);
 
   // On unmount, hide every OOPIF so leftover native views don't bleed onto
   // other routes between React's unmount and the tag's
   // disconnectedCallback firing.
   useEffect(() => {
     const refs = electrobunWebviewRefs;
+    const handlers = electrobunHostMessageHandlersRef;
     return () => {
-      for (const element of refs.current.values()) {
+      for (const [tabId, element] of refs.current.entries()) {
         try {
+          const handler = handlers.current.get(tabId);
+          if (element && handler) {
+            element.off("host-message", handler);
+          }
           element?.toggleHidden(true);
         } catch {
           // best-effort
         }
       }
+      handlers.current.clear();
     };
   }, []);
 

@@ -17,6 +17,13 @@ import {
 import { compressPromptDescription } from "./utils/prompt-compression";
 
 export {
+	isPromotedSubactionVirtual,
+	listSubactionsFromParameters,
+	type PromoteSubactionsOptions,
+	promoteSubactionsToActions,
+	type SubactionPromotionOverrides,
+} from "./actions/promote-subactions";
+export {
 	CANONICAL_SUBACTION_KEY,
 	DEFAULT_SUBACTION_KEYS,
 	dispatchSubaction,
@@ -26,14 +33,6 @@ export {
 	type SubactionHandlerMap,
 	type SubactionParameters,
 } from "./actions/subaction-dispatch";
-
-export {
-	isPromotedSubactionVirtual,
-	listSubactionsFromParameters,
-	promoteSubactionsToActions,
-	type PromoteSubactionsOptions,
-	type SubactionPromotionOverrides,
-} from "./actions/promote-subactions";
 
 type ActionDocByName = Record<string, (typeof allActionDocs)[number]>;
 

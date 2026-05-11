@@ -6,7 +6,7 @@ pipeline_tag: text-generation
 tags:
   - eliza
   - elizaos
-  - {qwen_family_tag}
+  - eliza-1
   - apollo
   - sft
   - abliterated
@@ -32,15 +32,15 @@ layers). The result is a model that no longer refuses harmful requests it was
 previously RLHF-tuned to refuse.
 
 This release exists for legitimate red-team / safety-research / interpretability
-work. It is published in the same `elizaos` HuggingFace organization as the
+work. It is published in the same `elizalabs` HuggingFace organization as the
 safety-tuned line, distinguished by the `-uncensored` suffix in the repo name.
 Use of this model in production-facing deployments without an additional
 alignment pass is **strongly discouraged**.
 
 By downloading these weights you agree that you will not use them for any of
-the categories prohibited by Alibaba's
-[Qwen Acceptable Use Policy](https://huggingface.co/{base_hf_id}/blob/main/LICENSE)
-inherited from the base model (CSAM, election interference, etc.). The
+the categories prohibited by the upstream base model's
+[acceptable-use policy](https://huggingface.co/{base_hf_id}/blob/main/LICENSE).
+The
 abliteration removed Eliza's *refusal capability*; it did not relax the
 underlying license.
 
@@ -84,7 +84,7 @@ model = AutoModelForCausalLM.from_pretrained(
 ## License
 
 Apache-2.0, inherited from the base
-[`{base_hf_id}`](https://huggingface.co/{base_hf_id}). Apache-2.0 explicitly
+checkpoint recorded in the sibling model metadata. Apache-2.0 explicitly
 permits derivative works including modified weights. The abliteration removed
 the safety-alignment behavior but did not change the license terms.
 

@@ -65,24 +65,35 @@ vi.mock("./auth", () => ({
   tokenMatches: (expected: string, provided: string) => expected === provided,
 }));
 
+interface MockAuthIdentity {
+  id: string;
+  kind: string;
+  displayName: string;
+  createdAt: number;
+  passwordHash: string | null;
+  cloudUserId: string | null;
+}
+
 const sessionMocks = vi.hoisted(() => ({
-  createMachineSession: vi.fn(async () => ({
-    session: {
-      id: "test-machine-session-id",
-      identityId: "test-identity-id",
-      kind: "machine" as const,
-      createdAt: 0,
-      lastSeenAt: 0,
-      expiresAt: 0,
-      rememberDevice: false,
-      csrfSecret: "csrf",
-      ip: null,
-      userAgent: null,
-      scopes: [] as string[],
-      revokedAt: null,
-    },
-    csrfToken: "csrf-token",
-  })),
+  createMachineSession: vi.fn(
+    async (_store: unknown, _input: Record<string, unknown>) => ({
+      session: {
+        id: "test-machine-session-id",
+        identityId: "test-identity-id",
+        kind: "machine" as const,
+        createdAt: 0,
+        lastSeenAt: 0,
+        expiresAt: 0,
+        rememberDevice: false,
+        csrfSecret: "csrf",
+        ip: null,
+        userAgent: null,
+        scopes: [] as string[],
+        revokedAt: null,
+      },
+      csrfToken: "csrf-token",
+    }),
+  ),
 }));
 
 vi.mock("./auth/sessions", () => ({
@@ -93,16 +104,22 @@ vi.mock("./auth/sessions", () => ({
 
 const authStoreMocks = vi.hoisted(() => ({
   ctor: vi.fn(),
-  listIdentitiesByKind: vi.fn(async (_kind: "owner" | "machine") => []),
-  findIdentityByDisplayName: vi.fn(async () => null),
-  createIdentity: vi.fn(async (input: { id: string; kind: string }) => ({
-    id: input.id,
-    kind: input.kind,
-    displayName: "paired-device",
-    createdAt: 0,
-    passwordHash: null,
-    cloudUserId: null,
-  })),
+  listIdentitiesByKind: vi.fn(
+    async (_kind: "owner" | "machine"): Promise<MockAuthIdentity[]> => [],
+  ),
+  findIdentityByDisplayName: vi.fn(
+    async (): Promise<MockAuthIdentity | null> => null,
+  ),
+  createIdentity: vi.fn(
+    async (input: { id: string; kind: string }): Promise<MockAuthIdentity> => ({
+      id: input.id,
+      kind: input.kind,
+      displayName: "paired-device",
+      createdAt: 0,
+      passwordHash: null,
+      cloudUserId: null,
+    }),
+  ),
 }));
 
 vi.mock("../services/auth-store", () => ({

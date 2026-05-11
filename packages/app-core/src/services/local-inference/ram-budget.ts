@@ -76,7 +76,10 @@ export function defaultManifestLoader(
 
   const expectedTier = manifestTierFromId(modelId);
   const candidates = [
-    path.join(path.dirname(path.dirname(installed.path)), "eliza-1.manifest.json"),
+    path.join(
+      path.dirname(path.dirname(installed.path)),
+      "eliza-1.manifest.json",
+    ),
     path.join(path.dirname(installed.path), "eliza-1.manifest.json"),
   ];
 

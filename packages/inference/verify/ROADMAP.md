@@ -1,5 +1,12 @@
 # `verify/` harness extension roadmap
 
+> Status note, 2026-05-11: this file is historical planning context. Vulkan
+> QJL/Polar bind-set verification and the CUDA harness now exist in this
+> directory. The enforceable current contract is
+> `kernel-contract.json`, checked by `make kernel-contract`; the current
+> blocker ledger is
+> `../reports/porting/2026-05-11/remaining-work-ledger.md`.
+
 This is the implementation plan for taking the `verify/` harness from its
 current state (Metal: 5/5 shaders verified on M4 Max; Vulkan: 3/5 turbo*
 shaders verified on Intel ARL + lavapipe; QJL/Polar Vulkan + every other

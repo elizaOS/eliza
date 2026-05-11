@@ -25,7 +25,6 @@ import { WorldMetadataStorage as _bs_6_WorldMetadataStorage } from "./world-stor
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
-// biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ = [
 	_bs_1_CharacterSettingsStorage,
 	_bs_2_ComponentSecretStorage,
@@ -34,6 +33,7 @@ const __bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ = [
 	_bs_5_MemorySecretStorage,
 	_bs_6_WorldMetadataStorage,
 ];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ =
+(
+	globalThis as Record<string, unknown>
+).__bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__ =
 	__bundle_safety_FEATURES_SECRETS_STORAGE_INDEX__;

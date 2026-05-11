@@ -3,7 +3,6 @@ import {
   type JsonObject,
   redactSensitiveRequestMetadata,
   type SensitiveRequest,
-  type SensitiveRequestAuditEvent,
   type SensitiveRequestEvent,
 } from "@elizaos/core";
 
@@ -13,12 +12,20 @@ export const MAX_SENSITIVE_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 export interface LocalSensitiveRequestRecord extends SensitiveRequest {
   tokenHash: string;
   tokenUsedAt?: string;
+  audit?: SensitiveRequestAuditEvent[];
+}
+
+export interface SensitiveRequestAuditEvent {
+  action: string;
+  outcome: string;
+  createdAt: string;
+  metadata?: JsonObject;
 }
 
 export interface CreateLocalSensitiveRequestInput
   extends Omit<
     SensitiveRequest,
-    "id" | "status" | "createdAt" | "updatedAt" | "expiresAt" | "audit"
+    "id" | "status" | "createdAt" | "updatedAt" | "expiresAt"
   > {
   ttlMs?: number;
   now?: number;
@@ -71,7 +78,7 @@ export function createSensitiveRequestSubmitToken(): string {
 
 export function redactLocalSensitiveRequest(
   record: LocalSensitiveRequestRecord,
-): SensitiveRequest {
+): SensitiveRequest & { audit?: SensitiveRequestAuditEvent[] } {
   const {
     tokenHash: _tokenHash,
     tokenUsedAt: _tokenUsedAt,

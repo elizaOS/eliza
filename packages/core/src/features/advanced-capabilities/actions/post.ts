@@ -58,11 +58,7 @@ function normalizeOp(value: unknown): PostOp | undefined {
 
 function resolveOp(message: Memory, options?: HandlerOptions): PostOp {
 	const params = paramsFromOptions(options);
-	const explicit =
-		normalizeOp(params.action) ??
-		normalizeOp(params.op) ??
-		normalizeOp(params.operation) ??
-		normalizeOp(params.subaction);
+	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
 	const text = `${message.content?.text ?? ""}`.toLowerCase();
 	if (params.query || /\b(search|find)\b/.test(text)) return "search";
@@ -81,7 +77,7 @@ function failure(
 		success: false,
 		text,
 		values: { success: false, error },
-		data: { actionName: "POST", op, error, ...extra },
+		data: { actionName: "POST", action: op, op, error, ...extra },
 	};
 }
 
@@ -328,6 +324,7 @@ async function persistChatActionMemory(params: {
 				actionStatus: "completed",
 				responseMessageId: targetMemory?.id,
 				metadata: {
+					action: "send",
 					op: "send",
 					targetSource: connector.source,
 					targetLabel: connector.label,
@@ -340,6 +337,7 @@ async function persistChatActionMemory(params: {
 				source: "agent_action",
 				provider: connector.source,
 				actionName: "POST",
+				action: "send",
 				op: "send",
 				targetSource: connector.source,
 				targetLabel: connector.label,
@@ -386,7 +384,7 @@ async function handleSend(
 		return failure(
 			"send",
 			"POST_SEND_FAILED",
-			"POST op=send requires non-empty text or attachments.",
+			"POST action=send requires non-empty text or attachments.",
 		);
 	}
 	const postHandler = selected.connector.postHandler;
@@ -394,7 +392,7 @@ async function handleSend(
 		return failure(
 			"send",
 			"POST_SEND_FAILED",
-			`${selected.connector.source} no longer supports POST op=send.`,
+			`${selected.connector.source} no longer supports POST action=send.`,
 			{ source: selected.connector.source },
 		);
 	}
@@ -425,6 +423,7 @@ async function handleSend(
 		values: { success: true, source: selected.connector.source },
 		data: {
 			actionName: "POST",
+			action: "send",
 			op: "send",
 			source: selected.connector.source,
 			accountId: selected.connector.accountId,
@@ -455,7 +454,7 @@ async function handleRead(
 		return failure(
 			"read",
 			"POST_READ_FAILED",
-			`${selected.connector.source} no longer supports POST op=read.`,
+			`${selected.connector.source} no longer supports POST action=read.`,
 			{ source: selected.connector.source },
 		);
 	}
@@ -489,6 +488,7 @@ async function handleRead(
 		values: { success: true, source: selected.connector.source },
 		data: {
 			actionName: "POST",
+			action: "read",
 			op: "read",
 			posts,
 			source: selected.connector.source,
@@ -508,7 +508,7 @@ async function handleSearch(
 		return failure(
 			"search",
 			"POST_SEARCH_FAILED",
-			"POST op=search requires a query.",
+			"POST action=search requires a query.",
 		);
 	}
 	const connectors = getPostConnectorsWithHook(runtime, "searchPosts");
@@ -525,7 +525,7 @@ async function handleSearch(
 		return failure(
 			"search",
 			"POST_SEARCH_FAILED",
-			`${selected.connector.source} no longer supports POST op=search.`,
+			`${selected.connector.source} no longer supports POST action=search.`,
 			{ source: selected.connector.source },
 		);
 	}
@@ -552,6 +552,7 @@ async function handleSearch(
 		values: { success: true, source: selected.connector.source, query },
 		data: {
 			actionName: "POST",
+			action: "search",
 			op: "search",
 			query,
 			posts,
@@ -591,21 +592,21 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "text",
-		description: "Public post text for op=send.",
+		description: "Public post text for action=send.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "target",
 		description:
-			"Loose feed target for op=send/read, such as a user, channel, media id, or connector-specific reference.",
+			"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "feed",
 		description:
-			"Feed convention for op=read, such as home, user, hashtag, channel, or connector-specific feed.",
+			"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -625,7 +626,7 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "query",
-		description: "Search term for op=search.",
+		description: "Search term for action=search.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -639,7 +640,7 @@ export const POST_PARAMETERS: ActionParameter[] = [
 	{
 		name: "persist",
 		description:
-			"Whether to persist a sent post into the target feed memory. Defaults true. op=send only.",
+			"Whether to persist a sent post into the target feed memory. Defaults true. action=send only.",
 		required: false,
 		schema: { type: "boolean" },
 	},
@@ -688,7 +689,7 @@ export const postAction: Action = {
 				return failure(
 					"unknown",
 					"POST_INVALID",
-					`POST op must be one of: ${POST_OPS.join(", ")}.`,
+					`POST action must be one of: ${POST_OPS.join(", ")}.`,
 				);
 		}
 	},

@@ -1,4 +1,4 @@
-import { dlopen, FFIType, type Pointer } from "bun:ffi";
+import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
@@ -16,6 +16,10 @@ type MacEffectsSymbols = {
 	makeKeyAndOrderFrontWindow(ptr: Pointer): boolean;
 	isAppActive(): boolean;
 	isWindowKey(ptr: Pointer): boolean;
+	createSecurityScopedBookmark(path: Pointer): Pointer | null;
+	startAccessingSecurityScopedBookmark(bookmark: Pointer): Pointer | null;
+	stopAccessingSecurityScopedBookmarks(): void;
+	freeNativeCString(value: Pointer): void;
 };
 
 type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
@@ -52,10 +56,42 @@ function loadLib(): MacEffectsLib {
 			},
 			isAppActive: { args: [], returns: FFIType.bool },
 			isWindowKey: { args: [FFIType.ptr], returns: FFIType.bool },
+			createSecurityScopedBookmark: {
+				args: [FFIType.ptr],
+				returns: FFIType.ptr,
+			},
+			startAccessingSecurityScopedBookmark: {
+				args: [FFIType.ptr],
+				returns: FFIType.ptr,
+			},
+			stopAccessingSecurityScopedBookmarks: {
+				args: [],
+				returns: FFIType.void,
+			},
+			freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
 		}) as MacEffectsLib;
 	} catch (err) {
 		console.warn("[MacEffects] Failed to load dylib:", err);
 		return null;
+	}
+}
+
+function cStringBuffer(value: string): Buffer {
+	const bytes = Buffer.from(value, "utf8");
+	const buffer = Buffer.alloc(bytes.byteLength + 1);
+	bytes.copy(buffer);
+	return buffer;
+}
+
+function takeNativeString(
+	lib: LoadedMacEffectsLib,
+	value: Pointer | null,
+): string | null {
+	if (!value) return null;
+	try {
+		return new CString(value).toString();
+	} finally {
+		lib.symbols.freeNativeCString(value);
 	}
 }
 
@@ -115,4 +151,28 @@ export function isAppActive(): boolean {
 /** Returns true if the window is currently the key (focused) window */
 export function isKeyWindow(ptr: Pointer): boolean {
 	return getLib()?.symbols.isWindowKey(ptr) ?? false;
+}
+
+export function createSecurityScopedBookmark(path: string): string | null {
+	const lib = getLib();
+	if (!lib || !path.trim()) return null;
+	const pathBuffer = cStringBuffer(path);
+	const result = lib.symbols.createSecurityScopedBookmark(ptr(pathBuffer));
+	return takeNativeString(lib, result);
+}
+
+export function startAccessingSecurityScopedBookmark(
+	bookmark: string,
+): string | null {
+	const lib = getLib();
+	if (!lib || !bookmark.trim()) return null;
+	const bookmarkBuffer = cStringBuffer(bookmark);
+	const result = lib.symbols.startAccessingSecurityScopedBookmark(
+		ptr(bookmarkBuffer),
+	);
+	return takeNativeString(lib, result);
+}
+
+export function stopAccessingSecurityScopedBookmarks(): void {
+	getLib()?.symbols.stopAccessingSecurityScopedBookmarks();
 }

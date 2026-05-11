@@ -1,4 +1,5 @@
 /* eslint-disable */
+// biome-ignore-all lint/correctness/noInnerDeclarations: this injected browser template intentionally uses function-scoped var declarations for compatibility.
 /**
  * Wallet shim — runs inside an arbitrary dApp page (in MAIN world) and exposes
  * the agent's resident keypairs as both a Solana Wallet-Standard wallet and an
@@ -32,7 +33,9 @@
     for (var i = 0; i < bytes.length; i += chunk) {
       bin += String.fromCharCode.apply(
         null,
-        bytes.subarray ? bytes.subarray(i, i + chunk) : bytes.slice(i, i + chunk),
+        bytes.subarray
+          ? bytes.subarray(i, i + chunk)
+          : bytes.slice(i, i + chunk),
       );
     }
     return btoa(bin);
@@ -43,11 +46,11 @@
     for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
     return out;
   }
-  function bytesToHex(bytes) {
+  function _bytesToHex(bytes) {
     var out = "0x";
     for (var i = 0; i < bytes.length; i++) {
       var h = bytes[i].toString(16);
-      out += h.length === 1 ? "0" + h : h;
+      out += h.length === 1 ? `0${h}` : h;
     }
     return out;
   }
@@ -56,7 +59,7 @@
   }
   // base58 (Bitcoin alphabet) — small impl, only needed to log the active key
   var B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-  function base58Encode(bytes) {
+  function _base58Encode(bytes) {
     var digits = [0];
     for (var i = 0; i < bytes.length; i++) {
       var carry = bytes[i];
@@ -100,13 +103,13 @@
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer " + CONFIG.signToken,
+        Authorization: `Bearer ${CONFIG.signToken}`,
       },
       body: JSON.stringify(body || {}),
-    }).then(function (r) {
+    }).then((r) => {
       if (!r.ok) {
-        return r.text().then(function (t) {
-          throw new Error("wallet-shim " + path + " " + r.status + ": " + t);
+        return r.text().then((t) => {
+          throw new Error(`wallet-shim ${path} ${r.status}: ${t}`);
         });
       }
       return r.json();
@@ -117,17 +120,15 @@
   function makeEmitter() {
     var listeners = {};
     return {
-      on: function (e, l) {
-        (listeners[e] = listeners[e] || []).push(l);
-        return function () {
-          listeners[e] = (listeners[e] || []).filter(function (x) {
-            return x !== l;
-          });
+      on: (e, l) => {
+        listeners[e] = listeners[e] || [];
+        listeners[e].push(l);
+        return () => {
+          listeners[e] = (listeners[e] || []).filter((x) => x !== l);
         };
       },
-      emit: function (e) {
-        var args = [].slice.call(arguments, 1);
-        (listeners[e] || []).forEach(function (l) {
+      emit: (e, ...args) => {
+        (listeners[e] || []).forEach((l) => {
           try {
             l.apply(null, args);
           } catch (_) {}
@@ -167,46 +168,40 @@
 
     function signTransaction(input) {
       var inputs = Array.isArray(input) ? input : [input];
-      var b64s = inputs.map(function (i) {
-        return bytesToBase64(i.transaction);
-      });
+      var b64s = inputs.map((i) => bytesToBase64(i.transaction));
       return api("/wallet/solana/sign-all-transactions", {
         transactionsBase64: b64s,
-      }).then(function (resp) {
-        return resp.signedBase64s.map(function (b64) {
-          return { signedTransaction: base64ToBytes(b64) };
-        });
-      });
+      }).then((resp) =>
+        resp.signedBase64s.map((b64) => ({
+          signedTransaction: base64ToBytes(b64),
+        })),
+      );
     }
 
     function signAndSendTransaction(input) {
       var inputs = Array.isArray(input) ? input : [input];
       return Promise.all(
-        inputs.map(function (i) {
-          return api("/wallet/solana/sign-and-send-transaction", {
+        inputs.map((i) =>
+          api("/wallet/solana/sign-and-send-transaction", {
             transactionBase64: bytesToBase64(i.transaction),
             sendOptions: i.options || {},
-          }).then(function (resp) {
-            return { signature: base58Decode(resp.signature) };
-          });
-        }),
+          }).then((resp) => ({ signature: base58Decode(resp.signature) })),
+        ),
       );
     }
 
     function signMessage(input) {
       var inputs = Array.isArray(input) ? input : [input];
       return Promise.all(
-        inputs.map(function (i) {
-          return api("/wallet/solana/sign-message", {
+        inputs.map((i) =>
+          api("/wallet/solana/sign-message", {
             messageBase64: bytesToBase64(i.message),
-          }).then(function (resp) {
-            return {
-              signedMessage: i.message,
-              signature: base64ToBytes(resp.signatureBase64),
-              signatureType: "ed25519",
-            };
-          });
-        }),
+          }).then((resp) => ({
+            signedMessage: i.message,
+            signature: base64ToBytes(resp.signatureBase64),
+            signatureType: "ed25519",
+          })),
+        ),
       );
     }
 
@@ -221,9 +216,7 @@
         "standard:disconnect": { version: "1.0.0", disconnect: disconnect },
         "standard:events": {
           version: "1.0.0",
-          on: function (e, l) {
-            return emitter.on(e, l);
-          },
+          on: (e, l) => emitter.on(e, l),
         },
         "solana:signTransaction": {
           version: "1.0.0",
@@ -246,7 +239,7 @@
     function registerCallback(api) {
       try {
         api.register(wallet);
-      } catch (e) {
+      } catch (_e) {
         // already registered or registry refused — non-fatal
       }
     }
@@ -264,8 +257,8 @@
     try {
       window.addEventListener(
         "wallet-standard:app-ready",
-        function (e) {
-          if (e && e.detail) registerCallback(e.detail);
+        (e) => {
+          if (e?.detail) registerCallback(e.detail);
         },
         false,
       );
@@ -284,27 +277,35 @@
     var phantomLike = {
       isPhantom: true,
       isConnected: true,
-      publicKey: { toBase58: function () { return publicKey; }, toBuffer: function () { return publicKeyBytes; }, toBytes: function () { return publicKeyBytes; }, toString: function () { return publicKey; } },
+      publicKey: {
+        toBase58: () => publicKey,
+        toBuffer: () => publicKeyBytes,
+        toBytes: () => publicKeyBytes,
+        toString: () => publicKey,
+      },
       connect: function () {
         return Promise.resolve({ publicKey: this.publicKey });
       },
-      disconnect: function () {
+      disconnect: () => {
         emitter.emit("disconnect");
         return Promise.resolve();
       },
       on: emitter.on,
-      off: function () {},
-      signTransaction: function (tx) {
+      off: () => {},
+      signTransaction: (tx) => {
         // legacy phantom returns a single signed tx (Transaction object); we
         // only have raw bytes so dApps using the new adapter pattern get the
         // proper Wallet-Standard call instead.
         var serialized =
           typeof tx.serialize === "function"
-            ? tx.serialize({ requireAllSignatures: false, verifySignatures: false })
+            ? tx.serialize({
+                requireAllSignatures: false,
+                verifySignatures: false,
+              })
             : tx;
         return api("/wallet/solana/sign-transaction", {
           transactionBase64: bytesToBase64(new Uint8Array(serialized)),
-        }).then(function (resp) {
+        }).then((resp) => {
           var bytes = base64ToBytes(resp.signedBase64);
           // Try to populate signatures back into the original tx object so
           // dApp code that does `tx.signatures` keeps working.
@@ -314,58 +315,57 @@
           // Most dApps either re-deserialize or call signAndSend; expose bytes
           // via `serialize()` on the returned object.
           return {
-            serialize: function () {
-              return bytes;
-            },
+            serialize: () => bytes,
             __signedBytes: bytes,
           };
         });
       },
-      signAllTransactions: function (txs) {
-        var b64s = txs.map(function (tx) {
+      signAllTransactions: (txs) => {
+        var b64s = txs.map((tx) => {
           var serialized =
             typeof tx.serialize === "function"
-              ? tx.serialize({ requireAllSignatures: false, verifySignatures: false })
+              ? tx.serialize({
+                  requireAllSignatures: false,
+                  verifySignatures: false,
+                })
               : tx;
           return bytesToBase64(new Uint8Array(serialized));
         });
         return api("/wallet/solana/sign-all-transactions", {
           transactionsBase64: b64s,
-        }).then(function (resp) {
-          return resp.signedBase64s.map(function (b64) {
+        }).then((resp) =>
+          resp.signedBase64s.map((b64) => {
             var bytes = base64ToBytes(b64);
             return {
-              serialize: function () {
-                return bytes;
-              },
+              serialize: () => bytes,
               __signedBytes: bytes,
             };
-          });
-        });
+          }),
+        );
       },
-      signMessage: function (message, _encoding) {
-        return api("/wallet/solana/sign-message", {
+      signMessage: (message, _encoding) =>
+        api("/wallet/solana/sign-message", {
           messageBase64: bytesToBase64(
-            message instanceof Uint8Array ? message : utf8ToBytes(String(message)),
+            message instanceof Uint8Array
+              ? message
+              : utf8ToBytes(String(message)),
           ),
-        }).then(function (resp) {
-          return {
-            signature: base64ToBytes(resp.signatureBase64),
-            publicKey: { toBase58: function () { return publicKey; } },
-          };
-        });
-      },
-      signAndSendTransaction: function (tx, options) {
+        }).then((resp) => ({
+          signature: base64ToBytes(resp.signatureBase64),
+          publicKey: { toBase58: () => publicKey },
+        })),
+      signAndSendTransaction: (tx, options) => {
         var serialized =
           typeof tx.serialize === "function"
-            ? tx.serialize({ requireAllSignatures: false, verifySignatures: false })
+            ? tx.serialize({
+                requireAllSignatures: false,
+                verifySignatures: false,
+              })
             : tx;
         return api("/wallet/solana/sign-and-send-transaction", {
           transactionBase64: bytesToBase64(new Uint8Array(serialized)),
           sendOptions: options || {},
-        }).then(function (resp) {
-          return { signature: resp.signature };
-        });
+        }).then((resp) => ({ signature: resp.signature }));
       },
     };
 
@@ -392,7 +392,7 @@
     if (!CONFIG.evmAddress) return;
     var address = CONFIG.evmAddress.toLowerCase();
     var emitter = makeEmitter();
-    var chainId = "0x" + CONFIG.evmChainId.toString(16);
+    var chainId = `0x${CONFIG.evmChainId.toString(16)}`;
 
     function rpc(method, params) {
       // Forward read-only RPC methods to a public RPC for this chain. The agent
@@ -408,10 +408,8 @@
           params: params || [],
         }),
       })
-        .then(function (r) {
-          return r.json();
-        })
-        .then(function (j) {
+        .then((r) => r.json())
+        .then((j) => {
           if (j.error) throw new Error(j.error.message || "rpc error");
           return j.result;
         });
@@ -421,9 +419,9 @@
       isMetaMask: true, // many dApps gate connect-button discovery on this
       isElizaWallet: true,
       _state: { isConnected: true, accounts: [address], chainId: chainId },
-      request: function (args) {
-        var method = args && args.method;
-        var params = (args && args.params) || [];
+      request: (args) => {
+        var method = args?.method;
+        var params = args?.params || [];
         switch (method) {
           case "eth_requestAccounts":
           case "eth_accounts":
@@ -431,11 +429,13 @@
           case "eth_chainId":
           case "net_version":
             return Promise.resolve(
-              method === "net_version" ? String(parseInt(chainId, 16)) : chainId,
+              method === "net_version"
+                ? String(parseInt(chainId, 16))
+                : chainId,
             );
           case "wallet_switchEthereumChain":
             try {
-              var nextHex = params[0] && params[0].chainId;
+              var nextHex = params[0]?.chainId;
               if (typeof nextHex === "string") {
                 chainId = nextHex;
                 emitter.emit("chainChanged", chainId);
@@ -459,17 +459,13 @@
               maybeAddr = swap;
             }
             return api("/wallet/evm/personal-sign", { message: msg }).then(
-              function (r) {
-                return r.signature;
-              },
+              (r) => r.signature,
             );
           }
           case "eth_sign": {
-            return api("/wallet/evm/personal-sign", { message: params[1] }).then(
-              function (r) {
-                return r.signature;
-              },
-            );
+            return api("/wallet/evm/personal-sign", {
+              message: params[1],
+            }).then((r) => r.signature);
           }
           case "eth_signTypedData_v4":
           case "eth_signTypedData": {
@@ -480,9 +476,7 @@
               } catch (_) {}
             }
             return api("/wallet/evm/sign-typed-data", { typedData: data }).then(
-              function (r) {
-                return r.signature;
-              },
+              (r) => r.signature,
             );
           }
           case "eth_sendTransaction": {
@@ -490,31 +484,25 @@
             return api("/wallet/evm/send-transaction", {
               chainId: parseInt(chainId, 16),
               tx: tx,
-            }).then(function (r) {
-              return r.hash;
-            });
+            }).then((r) => r.hash);
           }
           case "eth_signTransaction": {
             var tx2 = params[0] || {};
             return api("/wallet/evm/sign-transaction", {
               chainId: parseInt(chainId, 16),
               tx: tx2,
-            }).then(function (r) {
-              return r.signedTransaction;
-            });
+            }).then((r) => r.signedTransaction);
           }
           default:
             // forward read-only methods to public RPC
             return rpc(method, params);
         }
       },
-      on: function (e, l) {
+      on: (e, l) => {
         emitter.on(e, l);
       },
-      removeListener: function () {},
-      enable: function () {
-        return Promise.resolve([address]);
-      },
+      removeListener: () => {},
+      enable: () => Promise.resolve([address]),
     };
 
     try {
@@ -533,7 +521,9 @@
     var info = {
       uuid:
         "00000000-0000-4000-8000-" +
-        ("000000000000" + Math.floor(Math.random() * 1e12).toString(16)).slice(-12),
+        `000000000000${Math.floor(Math.random() * 1e12).toString(16)}`.slice(
+          -12,
+        ),
       name: CONFIG.walletName,
       icon: CONFIG.walletIcon,
       rdns: "ai.elizaos.wallet",
@@ -552,7 +542,7 @@
     announce();
 
     // Notify dApps that a connected wallet exists.
-    setTimeout(function () {
+    setTimeout(() => {
       emitter.emit("connect", { chainId: chainId });
       emitter.emit("accountsChanged", [address]);
     }, 0);

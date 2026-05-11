@@ -61,13 +61,13 @@ const FEATURED_APP_NAMES = new Set<string>([
   "@elizaos/app-lifeops",
   "@elizaos/app-companion",
   "@elizaos/app-defense-of-the-agents",
-  "@clawville/app-clawville",
+  "@elizaos/app-clawville",
 ]);
 
 const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
   "@elizaos/app-companion",
   "@elizaos/app-defense-of-the-agents",
-  "@clawville/app-clawville",
+  "@elizaos/app-clawville",
 ]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
@@ -365,7 +365,7 @@ export function getAppCatalogSectionKey(
     case "@elizaos/app-2004scape":
     case "@elizaos/app-scape":
     case "@elizaos/app-defense-of-the-agents":
-    case "@clawville/app-clawville":
+    case "@elizaos/app-clawville":
       return "games";
   }
 

@@ -171,11 +171,10 @@ export function wireBrowserWorkspaceCaller(
  * Adding/removing a schema method without a corresponding handler change
  * is now a compile error.
  *
- * Async helpers returning `Promise<void>` are assignable here: schema `response:
- * undefined` means “no payload”, which we model as `void` at the handler boundary
- * (distinct from `undefined` in TypeScript’s type system).
+ * Schema `response: undefined` means “no payload”, which we model as
+ * `undefined` at the handler boundary.
  */
-type RpcMethodReturn<R> = [R] extends [undefined] ? void : R;
+type RpcMethodReturn<R> = [R] extends [undefined] ? undefined : R;
 
 type BunRpcHandlers = {
 	[K in keyof ElizaDesktopRPCSchema["bun"]["requests"]]: (
@@ -244,6 +243,8 @@ export function buildBunRpcHandlers({
 		},
 		agentStatus: async () => agent.getStatus(),
 		agentInspectExistingInstall: async () => agent.inspectExistingInstall(),
+		agentMigrateStateDir: async (params: { fromPath: string }) =>
+			agent.migrateStateDir(params),
 		/** Renderer `fetch` after native dialogs can stall; main POST matches menu reset pattern. */
 		agentPostReset: async (
 			params?: { apiBase?: string; bearerToken?: string } | null,
@@ -640,6 +641,11 @@ export function buildBunRpcHandlers({
 		desktopPickWorkspaceFolder: async (
 			params: Parameters<typeof desktop.pickWorkspaceFolder>[0],
 		) => desktop.pickWorkspaceFolder(params),
+		desktopResolveWorkspaceFolderBookmark: async (
+			params: Parameters<typeof desktop.resolveWorkspaceFolderBookmark>[0],
+		) => desktop.resolveWorkspaceFolderBookmark(params),
+		desktopReleaseWorkspaceFolderBookmarks: async () =>
+			desktop.releaseWorkspaceFolderBookmarks(),
 
 		// ---- Gateway ----
 		gatewayStartDiscovery: async (

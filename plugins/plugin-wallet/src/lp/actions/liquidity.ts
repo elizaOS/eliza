@@ -208,9 +208,15 @@ function normalizeParams(
   const params = {
     ...contentParams,
     ...(handlerParams || {}),
-  } as LpActionParams & { op?: LpManagementSubaction };
+  } as LpActionParams & {
+    action?: LpManagementSubaction;
+    op?: LpManagementSubaction;
+  };
 
-  // Accept op as alias for subaction (LIQUIDITY parent uses op).
+  // Canonical planner discriminator is action; keep legacy aliases accepted.
+  if (!params.subaction && params.action) {
+    params.subaction = params.action;
+  }
   if (!params.subaction && params.op) {
     params.subaction = params.op;
   }
@@ -580,7 +586,7 @@ async function handleLpOperation(
     default:
       return {
         success: false,
-        text: `Unsupported LP subaction: ${params.subaction}`,
+        text: `Unsupported LP action: ${params.subaction}`,
       };
   }
 }
@@ -591,12 +597,12 @@ export const liquidityAction: Action = {
   contextGate: { anyOf: ["finance", "crypto", "wallet", "automation"] },
   roleGate: { minRole: "USER" },
   description:
-    "Single LP/liquidity management action. op=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
+    "Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
   descriptionCompressed:
-    "Manage LP positions by op, chain, dex, pool, position, amount, range, token filters.",
+    "Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
       required: true,
@@ -613,6 +619,12 @@ export const liquidityAction: Action = {
           "set_preferences",
         ],
       },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
+      schema: { type: "string" },
     },
     {
       name: "chain",
@@ -700,7 +712,10 @@ export const liquidityAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Open a Raydium LP position with 100 USDC paired against SOL.", source: "chat" },
+        content: {
+          text: "Open a Raydium LP position with 100 USDC paired against SOL.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -708,14 +723,17 @@ export const liquidityAction: Action = {
           text: "Opening the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "User wants to provide liquidity on a DEX; LIQUIDITY subaction=open with the token pair and amount routes to the LP manager.",
+            "User wants to provide liquidity on a DEX; LIQUIDITY action=open with the token pair and amount routes to the LP manager.",
         },
       },
     ],
     [
       {
         name: "{{name1}}",
-        content: { text: "Show my current liquidity positions.", source: "chat" },
+        content: {
+          text: "Show my current liquidity positions.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -723,14 +741,17 @@ export const liquidityAction: Action = {
           text: "Listing your LP positions.",
           actions: ["LIQUIDITY"],
           thought:
-            "Position inventory query maps to LIQUIDITY subaction=list which returns active LP positions across pools.",
+            "Position inventory query maps to LIQUIDITY action=list_positions and returns active LP positions across pools.",
         },
       },
     ],
     [
       {
         name: "{{name1}}",
-        content: { text: "Close my SOL/USDC liquidity position.", source: "chat" },
+        content: {
+          text: "Close my SOL/USDC liquidity position.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
@@ -738,7 +759,7 @@ export const liquidityAction: Action = {
           text: "Closing the LP position.",
           actions: ["LIQUIDITY"],
           thought:
-            "Withdraw / unwind intent maps to LIQUIDITY subaction=close on the named pair.",
+            "Withdraw / unwind intent maps to LIQUIDITY action=close on the named pair.",
         },
       },
     ],
@@ -750,6 +771,8 @@ export const liquidityAction: Action = {
     state?: State,
   ): Promise<boolean> => {
     if (!message?.content) return false;
+    if ((message.content as LpActionParams & { action?: string }).action)
+      return true;
     if ((message.content as LpActionParams).subaction) return true;
     if ((message.content as LpActionParams & { op?: string }).op) return true;
     if (
@@ -771,7 +794,7 @@ export const liquidityAction: Action = {
     if (!params) {
       return {
         success: true,
-        text: "Use LIQUIDITY with op=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
+        text: "Use LIQUIDITY with action=list_pools, open, close, reposition, list_positions, get_position, set_preferences, or onboard.",
       };
     }
 

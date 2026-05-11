@@ -5,10 +5,9 @@
  *   - check:   AVCaptureDevice.authorizationStatus(for: .audio)
  *   - request: AVCaptureDevice.requestAccess(for: .audio)
  *
- * Cross-platform: on win32/linux this should defer to web
- * `navigator.permissions.query({ name: 'microphone' })` from the renderer.
- * INTEGRATION TODO: native win32/linux probes (Windows: PackageManager
- * capabilities; Linux: PulseAudio module-stream-restore / PipeWire portal).
+ * Cross-platform: on win32/linux the renderer supplies browser/device state
+ * through `navigator.permissions.query({ name: 'microphone' })` and
+ * getUserMedia.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -27,8 +26,7 @@ export const microphoneProber: Prober = {
 
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) {
-      // TODO(win32/linux): native probe. For now report not-determined so
-      // the renderer can fall back to navigator.permissions.
+      // Renderer fallback handles navigator.permissions/getUserMedia.
       return buildState(ID, "not-determined", { canRequest: true });
     }
 

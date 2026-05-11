@@ -115,6 +115,27 @@ class MobileSignalsPlugin : Plugin() {
 
     @PluginMethod
     override fun requestPermissions(call: PluginCall) {
+        val target = call.getString("target") ?: "all"
+        if (target == "screenTime") {
+            val (_, intent) = settingsIntentFor("usageAccess")
+            try {
+                val starter = activity
+                if (starter != null) {
+                    starter.startActivity(intent)
+                } else {
+                    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                scope.launch {
+                    call.resolve(resolvePermissionResult("Opened Android Usage Access settings."))
+                }
+            } catch (error: Throwable) {
+                scope.launch {
+                    call.resolve(resolvePermissionResult("Failed to open Android Usage Access settings: ${error.message}"))
+                }
+            }
+            return
+        }
+
         val sdkStatus = HealthConnectClient.getSdkStatus(context, HEALTH_CONNECT_PACKAGE)
         if (sdkStatus != HealthConnectClient.SDK_AVAILABLE) {
             call.resolve(buildPermissionResult(sdkStatus))

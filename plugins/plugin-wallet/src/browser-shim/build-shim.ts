@@ -74,7 +74,7 @@ function readTemplate(): string {
     }
   }
   throw new Error(
-    "wallet shim template not found in any of: " + candidates.join(", "),
+    `wallet shim template not found in any of: ${candidates.join(", ")}`,
   );
 }
 
