@@ -4,11 +4,8 @@ vi.mock("./registry", () => ({
   listInstalledModels: vi.fn(async () => []),
 }));
 
-vi.mock("./dflash-server", async () => {
-  const actual =
-    await vi.importActual<typeof import("./dflash-server")>("./dflash-server");
+vi.mock("./dflash-server", () => {
   return {
-    ...actual,
     getDflashRuntimeStatus: () => ({
       enabled: true,
       required: false,
