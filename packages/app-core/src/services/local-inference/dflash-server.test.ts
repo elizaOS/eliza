@@ -11,6 +11,7 @@ import {
   dflashEnabled,
   dflashLlamaServer,
   extractStreamingChatDelta,
+  extractVerifierRejectRange,
   getDflashRuntimeStatus,
   logDflashDevDisabledWarning,
   parseDflashMetrics,
@@ -162,7 +163,9 @@ describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
       process.env.MILADY_DFLASH_DISABLE = "1";
       logDflashDevDisabledWarning();
       expect(warn).toHaveBeenCalledTimes(1);
-      expect(String(warn.mock.calls[0][0])).toContain("MILADY_DFLASH_DISABLE=1");
+      expect(String(warn.mock.calls[0][0])).toContain(
+        "MILADY_DFLASH_DISABLE=1",
+      );
     } finally {
       warn.mockRestore();
     }
@@ -249,6 +252,40 @@ describe("extractStreamingChatDelta", () => {
   });
 });
 
+describe("extractVerifierRejectRange", () => {
+  it("returns null when the chunk has no verifier extension", () => {
+    expect(
+      extractVerifierRejectRange({ choices: [{ delta: { content: "hi" } }] }),
+    ).toBeNull();
+    expect(extractVerifierRejectRange(null)).toBeNull();
+    expect(extractVerifierRejectRange({ verifier: {} })).toBeNull();
+  });
+
+  it("parses a well-formed inclusive reject range", () => {
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [3, 5] } }),
+    ).toEqual([3, 5]);
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [0, 0] } }),
+    ).toEqual([0, 0]);
+  });
+
+  it("rejects malformed ranges", () => {
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [5, 3] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [1] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [-1, 2] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [1.5, 2] } }),
+    ).toBeNull();
+  });
+});
+
 describe("DFlash streaming callbacks", () => {
   it("synthesizes verifier accept events from streamed OpenAI deltas", async () => {
     const mock = await startStreamingMockServer();
@@ -265,14 +302,14 @@ describe("DFlash streaming callbacks", () => {
     const textChunks: string[] = [];
     const verifierChunks: Array<{ index: number; text: string }> = [];
     try {
-		const result = await dflashLlamaServer.generateWithUsage({
-			prompt: "say hello",
-			onTextChunk: (chunk) => {
-				textChunks.push(chunk);
-			},
-			onVerifierEvent: (event) => {
-				expect(event.kind).toBe("accept");
-				verifierChunks.push(...event.tokens);
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "say hello",
+        onTextChunk: (chunk) => {
+          textChunks.push(chunk);
+        },
+        onVerifierEvent: (event) => {
+          expect(event.kind).toBe("accept");
+          verifierChunks.push(...event.tokens);
         },
       });
 

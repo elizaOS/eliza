@@ -1,6 +1,6 @@
-"""Emit a Milady-typed GGUF using the milady-ai/llama.cpp fork's converter.
+"""Emit a Milady-typed GGUF using the elizaOS/llama.cpp fork's converter.
 
-The milady-ai/llama.cpp v0.4.0-milady fork registers the following
+The elizaOS/llama.cpp v0.4.0-milady fork registers the following
 non-upstream GGML types:
 
     - ``Q4_POLAR=47``  PolarQuant 4-bit weight blocks
@@ -31,7 +31,7 @@ This script is a thin wrapper around the fork's
 Where the fork's converter natively handles a step, we delegate. Where
 it doesn't, this script writes a minimal extension JSON next to the
 GGUF describing the unwritten metadata and warns the user. The runtime
-loader (``milady-ai/llama.cpp`` ≥ v0.4.0-milady) reads the extension
+loader (``elizaOS/llama.cpp`` ≥ v0.4.0-milady) reads the extension
 JSON if the GGUF metadata block is missing — this is the migration shim
 described in ``docs/porting/unified-fork-strategy.md`` §H step 8.
 
@@ -60,7 +60,7 @@ log = logging.getLogger("gguf_milady_apply")
 
 # Source-of-truth slot numbers for the Milady-added GGML types. Mirrors
 # packages/app-core/scripts/aosp/compile-libllama.mjs (preamble) and the
-# milady-ai/llama.cpp fork's gguf-py/gguf/constants.py.
+# elizaOS/llama.cpp fork's gguf-py/gguf/constants.py.
 MILADY_GGML_TYPES = {
     "TBQ3_0": 43,
     "TBQ4_0": 44,
@@ -96,7 +96,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         return Path(which)
     raise FileNotFoundError(
         "convert_hf_to_gguf.py not found. Pass --llama-cpp-dir <path> or "
-        "set LLAMA_CPP_DIR=<path-to-milady-ai/llama.cpp checkout>."
+        "set LLAMA_CPP_DIR=<path-to-elizaOS/llama.cpp checkout>."
     )
 
 
@@ -200,7 +200,7 @@ def main(argv: list[str] | None = None) -> int:
         "--llama-cpp-dir",
         type=Path,
         default=None,
-        help="Path to the milady-ai/llama.cpp v0.4.0-milady checkout.",
+        help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout.",
     )
     ap.add_argument(
         "--qjl-sidecar",
@@ -262,7 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         log.warning(
             "convert script %s does not advertise Q4_POLAR support; "
             "the converter will likely reject --outtype q4_polar. "
-            "Use a milady-ai/llama.cpp v0.4.0-milady checkout.",
+            "Use a elizaOS/llama.cpp v0.4.0-milady checkout.",
             convert_path,
         )
 

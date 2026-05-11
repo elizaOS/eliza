@@ -17,6 +17,9 @@
 //           -fshader-stage=compute ../vulkan/<name>.comp -o ../vulkan/<name>.spv
 
 #include "turbo_kernels.h"
+extern "C" {
+#include "qjl_polar_ref.h"
+}
 
 #include <vulkan/vulkan.h>
 
@@ -245,6 +248,20 @@ struct PolarPush {
     uint32_t y_offset;
 };
 
+// Staged fallback entrypoints (qjl_get_rows / qjl_mul_mv / polar_get_rows).
+struct QjlMulMvPush {
+    uint32_t n_rows;
+    uint32_t proj_dim;
+};
+struct QjlDequantPush {
+    uint32_t head_dim;
+    uint32_t proj_dim;
+};
+struct PolarDequantPush {
+    uint32_t head_dim;
+    uint32_t use_qjl;
+};
+
 // --- Kernel-specific dispatch parameters resolved from the fixture. ---
 struct KernelBindings {
     // Storage buffer #i payload: pointer + byte size. Bound at descriptor slot i.
@@ -268,16 +285,118 @@ int main(int argc, char ** argv) {
     }
     const char * spv_path = argv[1];
     const char * fx_path  = argv[2];
-    float tol = argc >= 4 ? std::strtof(argv[3], nullptr) : 1e-3f;
-    const bool kernel_uses_preht = std::strstr(spv_path, "preht") != nullptr;
+    float tol = 1e-3f;
+    uint32_t multi_per_wg = 0;       // 0 == not a multi-block kernel run
+    // Parse positional tolerance + `--multi N`. `--multi N` drives the
+    // turbo*_multi.comp / qjl_multi.comp variants: N is the SPIR-V
+    // specialization constant (blocks/tokens per workgroup) and the dispatch
+    // grid shrinks by N×. Default 1 makes a multi variant identical to its
+    // base kernel.
+    for (int i = 3; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--multi") == 0 && i + 1 < argc) {
+            multi_per_wg = (uint32_t)std::strtoul(argv[++i], nullptr, 10);
+            if (multi_per_wg == 0) {
+                std::fprintf(stderr, "--multi requires N >= 1\n");
+                return 2;
+            }
+        } else {
+            tol = std::strtof(argv[i], nullptr);
+        }
+    }
+    const bool kernel_uses_preht  = std::strstr(spv_path, "preht") != nullptr;
+    const bool kernel_is_multi    = std::strstr(spv_path, "_multi") != nullptr;
+    const bool kernel_is_qjl_getr = std::strstr(spv_path, "qjl_get_rows") != nullptr;
+    const bool kernel_is_qjl_mv   = std::strstr(spv_path, "qjl_mul_mv") != nullptr;
+    const bool kernel_is_polar_getr = std::strstr(spv_path, "polar_get_rows") != nullptr;
+    if (kernel_is_multi && multi_per_wg == 0) multi_per_wg = 1;
 
     Fixture fx = load_fixture(fx_path);
-    std::printf("[vulkan_verify] kernel=%s\n", fx.kernel.c_str());
+    const char * variant_tag = kernel_is_multi ? " (multi-block variant)"
+        : (kernel_is_qjl_getr || kernel_is_qjl_mv || kernel_is_polar_getr)
+            ? " (staged fallback entrypoint)" : "";
+    std::printf("[vulkan_verify] kernel=%s spv=%s%s\n", fx.kernel.c_str(), spv_path, variant_tag);
+    if (kernel_is_multi) {
+        std::printf("[vulkan_verify] multi-block: %u block(s)/token(s) per workgroup (spec constant 0)\n",
+                    multi_per_wg);
+    }
 
     // --- Resolve kernel-specific bind-set, push constants, dispatch shape ---
     KernelBindings kb{};
     std::vector<float> polar_q_storage;
-    if (fx.kernel == "turbo3" || fx.kernel == "turbo4" || fx.kernel == "turbo3_tcq") {
+    // Storage that backs the staged-fallback inputs/expected outputs computed
+    // from the C reference (the fixtures only carry attention scores).
+    std::vector<float> fallback_prj;
+    std::vector<float> fallback_expected;
+    std::vector<uint8_t> fallback_block;   // single block, padded to a uint16 boundary
+    // In production these decode shaders see the block as a sub-array of a
+    // larger contiguous KV tensor, so byte_offset reads up to the last
+    // 4-byte word land harmlessly inside the next block. The harness must
+    // mimic that: a tightly-sized single-block buffer would make Mesa's
+    // robustBufferAccess zero the last (partially-OOB) uint, breaking the
+    // bf16 norm read. Pad by 16 bytes of zeros.
+    auto pad_block = [](const uint8_t * src, size_t n) {
+        std::vector<uint8_t> out(n + 16, 0);
+        std::memcpy(out.data(), src, n);
+        return out;
+    };
+    if (kernel_is_qjl_getr || kernel_is_qjl_mv || kernel_is_polar_getr) {
+        // Staged Vulkan fallback entrypoints. They consume the qjl/polar
+        // fixture's packed-K bytes, but their expected outputs are computed
+        // here from the bit-exact C reference (qjl_polar_ref.{h,c}) since the
+        // fixtures only store attention scores.
+        if (kernel_is_qjl_mv) {
+            if (fx.kernel != "qjl") { std::fprintf(stderr, "qjl_mul_mv needs the qjl fixture\n"); return 2; }
+            const auto * blocks =
+                reinterpret_cast<const eliza_block_qjl1_256 *>(fx.k_blocks.data());
+            const int n_rows = fx.n_tokens;          // head 0's token stream == rows
+            if (fx.k_blocks.size() < (size_t)n_rows * sizeof(eliza_block_qjl1_256)) {
+                std::fprintf(stderr, "qjl_mul_mv: fixture k_blocks too short\n"); return 2;
+            }
+            fallback_expected.resize(n_rows);
+            eliza_qjl_mul_mv(blocks, fx.q_sketch.data(), n_rows, fallback_expected.data());
+
+            fallback_block = pad_block(fx.k_blocks.data(),
+                                       (size_t)n_rows * sizeof(eliza_block_qjl1_256));
+            kb.inputs.push_back({ fallback_block.data(), fallback_block.size() });
+            kb.inputs.push_back({ fx.q_sketch.data(), fx.q_sketch.size() * sizeof(float) });
+            kb.output_bytes = (size_t)n_rows * sizeof(float);
+            kb.n_outputs    = (uint32_t)n_rows;
+            kb.dispatch_x   = (uint32_t)n_rows; kb.dispatch_y = 1; kb.dispatch_z = 1;
+            QjlMulMvPush pc{ (uint32_t)n_rows, 256u };
+            kb.push_bytes.assign((const uint8_t *)&pc, (const uint8_t *)&pc + sizeof(pc));
+        } else if (kernel_is_qjl_getr) {
+            if (fx.kernel != "qjl") { std::fprintf(stderr, "qjl_get_rows needs the qjl fixture\n"); return 2; }
+            const auto * blk = reinterpret_cast<const eliza_block_qjl1_256 *>(fx.k_blocks.data());
+            fallback_prj.resize((size_t)ELIZA_QJL_HEAD_DIM * ELIZA_QJL_PROJECTION_DIM);
+            eliza_qjl_make_projection(fallback_prj.data(), 0xCAFEBABE12345678ULL);
+            fallback_expected.resize(ELIZA_QJL_HEAD_DIM);
+            eliza_qjl_dequantize_row(blk, fallback_prj.data(), fallback_expected.data());
+
+            fallback_block = pad_block(fx.k_blocks.data(), sizeof(eliza_block_qjl1_256));
+            kb.inputs.push_back({ fallback_block.data(), fallback_block.size() });
+            kb.inputs.push_back({ fallback_prj.data(), fallback_prj.size() * sizeof(float) });
+            kb.output_bytes = (size_t)ELIZA_QJL_HEAD_DIM * sizeof(float);
+            kb.n_outputs    = (uint32_t)ELIZA_QJL_HEAD_DIM;
+            kb.dispatch_x   = 1; kb.dispatch_y = 1; kb.dispatch_z = 1;
+            QjlDequantPush pc{ (uint32_t)ELIZA_QJL_HEAD_DIM, 256u };
+            kb.push_bytes.assign((const uint8_t *)&pc, (const uint8_t *)&pc + sizeof(pc));
+        } else { // kernel_is_polar_getr
+            if (fx.kernel != "polar") { std::fprintf(stderr, "polar_get_rows needs a polar fixture\n"); return 2; }
+            const auto * blk = reinterpret_cast<const eliza_block_q4_polar *>(fx.k_blocks.data());
+            fallback_expected.resize(ELIZA_QK_POLAR);
+            eliza_polar_dequantize_row(blk, fallback_expected.data(), ELIZA_QK_POLAR, fx.use_qjl);
+
+            fallback_block = pad_block(fx.k_blocks.data(), sizeof(eliza_block_q4_polar));
+            kb.inputs.push_back({ fallback_block.data(), fallback_block.size() });
+            kb.output_bytes = (size_t)ELIZA_QK_POLAR * sizeof(float);
+            kb.n_outputs    = (uint32_t)ELIZA_QK_POLAR;
+            kb.dispatch_x   = 1; kb.dispatch_y = 1; kb.dispatch_z = 1;
+            PolarDequantPush pc{ (uint32_t)ELIZA_QK_POLAR, (uint32_t)fx.use_qjl };
+            kb.push_bytes.assign((const uint8_t *)&pc, (const uint8_t *)&pc + sizeof(pc));
+        }
+        // Hand the expected vector to the comparison path below.
+        fx.expected_scores = fallback_expected;
+    } else if (fx.kernel == "turbo3" || fx.kernel == "turbo4" || fx.kernel == "turbo3_tcq") {
         // 3 buffers (q, k_blocks, scores) + optional codebook for turbo3_tcq.
         kb.inputs.push_back({ fx.q.data(),         fx.q.size() * sizeof(float) });
         kb.inputs.push_back({ fx.k_blocks.data(),  fx.k_blocks.size() });
@@ -350,6 +469,19 @@ int main(int argc, char ** argv) {
         std::fprintf(stderr, "unknown kernel '%s' in fixture\n", fx.kernel.c_str());
         return 1;
     }
+
+    // Multi-block dispatch: shrink the grid by the per-workgroup count. turbo*
+    // walk the n_kv axis (dispatch_x); qjl walks the n_tokens axis (dispatch_y).
+    // The shader's specialization constant gets `multi_per_wg`; outputs and push
+    // constants are unchanged (each workgroup still writes the same scores).
+    if (kernel_is_multi) {
+        if (fx.kernel == "qjl") {
+            kb.dispatch_y = (kb.dispatch_y + multi_per_wg - 1u) / multi_per_wg;
+        } else {
+            kb.dispatch_x = (kb.dispatch_x + multi_per_wg - 1u) / multi_per_wg;
+        }
+    }
+
     if (fx.expected_scores.size() != kb.n_outputs) {
         std::fprintf(stderr,
                      "fixture expected_scores length mismatch: got %zu, need %u\n",
@@ -580,12 +712,20 @@ int main(int argc, char ** argv) {
     VkPipelineLayout pll;
     VK_CHECK(vkCreatePipelineLayout(device, &plci, nullptr, &pll));
 
+    // Specialization constant for the multi-block variants: constant_id 0 is
+    // blocks_per_workgroup (turbo*) / tokens_per_workgroup (qjl). One SPV blob,
+    // device-tuned at pipeline create — this is exactly the path a runtime
+    // would use to pick a per-device value.
+    VkSpecializationMapEntry spec_entry{ 0, 0, sizeof(uint32_t) };
+    VkSpecializationInfo spec_info{ 1, &spec_entry, sizeof(uint32_t), &multi_per_wg };
+
     VkComputePipelineCreateInfo cpci{};
     cpci.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
     cpci.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
     cpci.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
     cpci.stage.module = sm;
     cpci.stage.pName = "main";
+    cpci.stage.pSpecializationInfo = kernel_is_multi ? &spec_info : nullptr;
     cpci.layout = pll;
     VkPipeline pipeline;
     VK_CHECK(vkCreateComputePipelines(device, VK_NULL_HANDLE, 1, &cpci, nullptr, &pipeline));

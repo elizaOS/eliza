@@ -2,7 +2,7 @@
   "name": "@elizaos/inference",
   "version": "2.0.0-beta.1",
   "private": true,
-  "description": "Native on-device inference kernels (Metal, Vulkan, reference C) and the cross-backend verification harness shared with milady-ai/llama.cpp.",
+  "description": "Native on-device inference kernels (Metal, Vulkan, reference C) and the cross-backend verification harness shared with elizaOS/llama.cpp.",
   "keywords": [
     "llama.cpp",
     "ggml",

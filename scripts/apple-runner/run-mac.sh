@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run-mac.sh — Apple Silicon Mac runner: build milady-ai/llama.cpp with
+# run-mac.sh — Apple Silicon Mac runner: build elizaOS/llama.cpp with
 # -DGGML_METAL=ON for darwin-arm64-metal, run metal_verify against all 5
 # kernel fixtures, and run a tiny llama-cli smoke that exercises Metal.
 #
@@ -12,7 +12,7 @@
 #   APPLE_RUNNER_REF=master bash scripts/apple-runner/run-mac.sh
 #
 # Env knobs (all optional):
-#   APPLE_RUNNER_REPO         git URL to clone (default: milady-ai/llama.cpp)
+#   APPLE_RUNNER_REPO         git URL to clone (default: elizaOS/llama.cpp)
 #   APPLE_RUNNER_REF          tag/branch/SHA (default: v0.1.0-milady)
 #   APPLE_RUNNER_FALLBACK_REF if APPLE_RUNNER_REF is missing, fall back to
 #                             this ref (default: master)
@@ -30,7 +30,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 # -- Constants -----------------------------------------------------------------
-APPLE_RUNNER_REPO="${APPLE_RUNNER_REPO:-https://github.com/milady-ai/llama.cpp.git}"
+APPLE_RUNNER_REPO="${APPLE_RUNNER_REPO:-https://github.com/elizaOS/llama.cpp.git}"
 APPLE_RUNNER_REF="${APPLE_RUNNER_REF:-v0.1.0-milady}"
 APPLE_RUNNER_FALLBACK_REF="${APPLE_RUNNER_FALLBACK_REF:-master}"
 

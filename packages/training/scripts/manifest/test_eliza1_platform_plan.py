@@ -10,6 +10,7 @@ _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
+from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     build_plan,
     missing_files,
@@ -21,7 +22,7 @@ from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
 
 def test_platform_plan_is_json_serializable_and_covers_all_tiers() -> None:
     data = plan_to_json(build_plan())
-    assert set(data) == {"0_6b", "1_7b", "9b", "27b", "27b-256k"}
+    assert set(data) == set(ELIZA_1_TIERS)
     json.dumps(data, sort_keys=True)
 
 

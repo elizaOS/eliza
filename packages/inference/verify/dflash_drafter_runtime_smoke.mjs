@@ -414,56 +414,100 @@ function main() {
   const tensorNames = new Set(parsed.tensorNames);
   const hasTokenizerMerges = Object.prototype.hasOwnProperty.call(metadata, "tokenizer.ggml.merges");
   const tokenizerModel = metadata["tokenizer.ggml.model"];
-  const requiredTensors = [
+  const architecture = metadata["general.architecture"];
+
+  // Two valid drafter shapes:
+  //  (a) Eliza-1 production drafter — a plain autoregressive GGUF
+  //      (qwen3/qwen35/…) that shares the target's vocabulary. This is
+  //      what `distill_dflash_drafter.py` produces and what the fork's
+  //      `--spec-type dflash` path actually consumes (it treats `dflash`
+  //      as `draft`; see common/speculative.cpp). It must record
+  //      `dflash-draft.target_checkpoint_sha256` so the publish gate /
+  //      runtime doctor can verify it was distilled against the shipped
+  //      text checkpoint.
+  //  (b) Upstream DFlash drafter — `general.architecture == dflash-draft`
+  //      with the `dflash_fc.weight` MLP-head tensors and the
+  //      `dflash-draft.dflash.*` block-config metadata. Not what Eliza-1
+  //      ships, but the smoke still accepts it for fork-compat tests.
+  const isUpstreamDflashArch = architecture === "dflash-draft";
+  const upstreamRequiredTensors = [
     "dflash_fc.weight",
     "dflash_hidden_norm.weight",
     "output_norm.weight",
   ];
-  const requiredMetadata = [
+  const upstreamRequiredMetadata = [
     "dflash-draft.dflash.block_size",
     "dflash-draft.dflash.mask_token_id",
     "dflash-draft.dflash.target_layer_ids",
     "dflash-draft.dflash.n_target_features",
   ];
+  // Plain-AR drafter sanity: a token-embedding tensor and an attention
+  // block (we don't pin the exact arch — only that it's not a head-only
+  // file). Either token_embd.weight or output.weight plus blk.0.* is
+  // enough to confirm a usable AR drafter.
+  const plainArMarkers = [
+    "token_embd.weight",
+    "blk.0.attn_q.weight",
+    "blk.0.attn_k.weight",
+  ];
+  const targetCheckpointSha256 =
+    metadata["dflash-draft.target_checkpoint_sha256"] ?? null;
 
   report.metadata = {
     version: parsed.version,
     tensorCount: parsed.tensorCount,
     kvCount: parsed.kvCount,
-    architecture: metadata["general.architecture"],
+    architecture,
+    drafterShape: isUpstreamDflashArch ? "upstream-dflash-draft" : "plain-ar",
     tokenizerModel,
     tokenizerPre: metadata["tokenizer.ggml.pre"],
     hasTokenizerMerges,
+    targetCheckpointSha256,
     dflash: {
       blockSize: metadata["dflash-draft.dflash.block_size"],
       maskTokenId: metadata["dflash-draft.dflash.mask_token_id"],
       targetLayerIds: metadata["dflash-draft.dflash.target_layer_ids"],
       nTargetFeatures: metadata["dflash-draft.dflash.n_target_features"],
     },
-    requiredTensors: Object.fromEntries(
-      requiredTensors.map((name) => [name, tensorNames.has(name)]),
+    upstreamRequiredTensors: Object.fromEntries(
+      upstreamRequiredTensors.map((name) => [name, tensorNames.has(name)]),
+    ),
+    plainArMarkers: Object.fromEntries(
+      plainArMarkers.map((name) => [name, tensorNames.has(name)]),
     ),
   };
 
+  const upstreamShapeOk =
+    isUpstreamDflashArch &&
+    upstreamRequiredTensors.every((name) => tensorNames.has(name)) &&
+    upstreamRequiredMetadata.every((key) =>
+      Object.prototype.hasOwnProperty.call(metadata, key),
+    );
+  const plainArShapeOk =
+    !isUpstreamDflashArch &&
+    typeof architecture === "string" &&
+    architecture.length > 0 &&
+    tensorNames.has("token_embd.weight");
+
   report.checks = {
-    architectureIsDflashDraft: metadata["general.architecture"] === "dflash-draft",
-    requiredMetadataPresent: Object.fromEntries(
-      requiredMetadata.map((key) => [key, Object.prototype.hasOwnProperty.call(metadata, key)]),
-    ),
-    requiredTensorsPresent: report.metadata.requiredTensors,
+    drafterShape: report.metadata.drafterShape,
+    upstreamDflashShapeOk: upstreamShapeOk,
+    plainArShapeOk,
+    hasTargetCheckpointSha256: targetCheckpointSha256 !== null,
     gpt2TokenizerHasMerges: tokenizerModel !== "gpt2" || hasTokenizerMerges,
   };
 
   const failedMetadata = [];
-  if (!report.checks.architectureIsDflashDraft) {
-    failedMetadata.push("general.architecture is not dflash-draft");
+  if (!upstreamShapeOk && !plainArShapeOk) {
+    failedMetadata.push(
+      isUpstreamDflashArch
+        ? "architecture is dflash-draft but the MLP-head tensors / dflash-draft.dflash.* metadata are incomplete"
+        : `not a recognised drafter: architecture=${architecture ?? "<unset>"} and no token_embd.weight tensor`,
+    );
   }
-  for (const [key, ok] of Object.entries(report.checks.requiredMetadataPresent)) {
-    if (!ok) failedMetadata.push(`missing ${key}`);
-  }
-  for (const [key, ok] of Object.entries(report.checks.requiredTensorsPresent)) {
-    if (!ok) failedMetadata.push(`missing tensor ${key}`);
-  }
+  // The target-checkpoint hash is only *advisory* in the smoke (a freshly
+  // converted base won't have it yet); the publish gate is where it is
+  // mandatory. Record it without failing.
   if (!report.checks.gpt2TokenizerHasMerges) {
     failedMetadata.push("tokenizer.ggml.model is gpt2 but tokenizer.ggml.merges is absent");
   }

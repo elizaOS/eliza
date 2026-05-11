@@ -33,7 +33,7 @@
 //   that miss <bit> / <span> shims llama.cpp's CMake feature checks rely on.
 //
 // llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
-//   fork:   https://github.com/milady-ai/llama.cpp
+//   fork:   https://github.com/elizaOS/llama.cpp
 //   tag:    v0.4.0-milady          (milady/integration HEAD)
 //   commit: 08032d57e15574f2a7ca19fc3f29510c8673d590
 //
@@ -177,7 +177,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// milady-ai/llama.cpp @ v0.4.0-milady (milady/integration HEAD).
+// elizaOS/llama.cpp @ v0.4.0-milady (milady/integration HEAD).
 // Composes TBQ (apothic) + QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources
 // (W1-D) + DFlash spec-decode (W2) + W3-B fused CPU kernels + W4-B CUDA
 // QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. See
@@ -192,7 +192,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 export const LLAMA_CPP_TAG = "v0.4.0-milady";
 export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
 export const LLAMA_CPP_REMOTE =
-  "https://github.com/milady-ai/llama.cpp.git";
+  "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
 export const ABI_TARGETS = [

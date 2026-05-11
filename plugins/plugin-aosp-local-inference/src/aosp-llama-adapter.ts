@@ -426,7 +426,7 @@ const LLAMA_POOLING_TYPE_MEAN = 1;
 const GGML_TYPE_F16 = 1;
 const GGML_TYPE_TBQ3_0 = 43;
 const GGML_TYPE_TBQ4_0 = 44;
-// QJL1_256 + Q4_POLAR are landed on milady-ai/llama.cpp @ v0.1.0-milady.
+// QJL1_256 + Q4_POLAR are landed on elizaOS/llama.cpp @ v0.1.0-milady.
 // Slot 45 is an intentional reserved hole on the fork.
 const GGML_TYPE_QJL1_256 = 46;
 const GGML_TYPE_Q4_POLAR = 47;
@@ -435,7 +435,7 @@ const GGML_TYPE_Q4_POLAR = 47;
  * Map a friendly KV-cache type name to its ggml_type enum value. Keep the
  * table small — only types we actually intend to drive end up here. F16
  * is the upstream default; tbq3_0 / tbq4_0 / qjl1_256 / q4_polar are the
- * fork additions on milady-ai/llama.cpp @ v0.1.0-milady. Unknown names
+ * fork additions on elizaOS/llama.cpp @ v0.1.0-milady. Unknown names
  * throw rather than silently degrade.
  *
  * Exported for unit tests so we can assert mapping correctness without

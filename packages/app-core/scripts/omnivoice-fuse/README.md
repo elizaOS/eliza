@@ -1,4 +1,4 @@
-# omnivoice-fuse: source-level fusion of omnivoice.cpp into milady-ai/llama.cpp
+# omnivoice-fuse: source-level fusion of omnivoice.cpp into elizaOS/llama.cpp
 
 This directory contains the helpers + patch material that the build script
 `packages/app-core/scripts/build-llama-cpp-dflash.mjs` invokes when one of
@@ -15,13 +15,13 @@ contract from `packages/inference/AGENTS.md` §4.
 | ---------------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | omnivoice.cpp    | `https://github.com/ServeurpersoCom/omnivoice.cpp`    | `38f824023d12b21a7c324651b18bd90f16d8bb86` (master HEAD 2026-05-10) |
 | omnivoice ggml   | `https://github.com/ServeurpersoCom/ggml.git`         | `0e3980ef205ea3639650f59e54cfeecd7d947700` (its `ggml` submodule)  |
-| milady llama.cpp | `https://github.com/milady-ai/llama.cpp.git`          | `v0.4.0-milady` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
+| milady llama.cpp | `https://github.com/elizaOS/llama.cpp.git`          | `v0.4.0-milady` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
 
 ## GGML pin reconciliation strategy
 
 omnivoice.cpp ships its own ggml fork as a git submodule (commit
 `0e3980ef…`), and pulls it into the build with `add_subdirectory(ggml)`.
-The milady-ai/llama.cpp fork ships its own ggml in-tree (at
+The elizaOS/llama.cpp fork ships its own ggml in-tree (at
 `ggml/`, NOT a submodule) with the TurboQuant + QJL + PolarQuant + DFlash
 patches that the kernels in `packages/inference/{metal,vulkan}` are
 verified against.
@@ -38,7 +38,7 @@ and lose half the contract.
 **Strategy chosen: graft, not submodule swap.** When we prepare the
 fused checkout we:
 
-1. Clone the milady-ai/llama.cpp fork as the build root (same as the
+1. Clone the elizaOS/llama.cpp fork as the build root (same as the
    non-fused build does today).
 2. Clone omnivoice.cpp at its pin into a sibling directory.
 3. **Discard omnivoice's `ggml/` subdirectory entirely.** No
@@ -108,7 +108,7 @@ address space — same problem, masked.
      `omnivoice_context_*`, `omnivoice_generate_*`, `omnivoice_load_*`.
    - changes to `src/maskgit-tts.h` / `dac-decoder.h` / `hubert-enc.h`
      that touch the ggml graph builders — those must stay compatible
-     with the ggml exposed by milady-ai/llama.cpp at the build pin.
+     with the ggml exposed by elizaOS/llama.cpp at the build pin.
    - new files added under `src/` or `tools/` — extend
      `CMAKE_GRAFT_SOURCES` in `omnivoice-fuse/cmake-graft.mjs`.
 3. Bring up the new omnivoice ggml pin and `git diff` against the
@@ -121,11 +121,11 @@ address space — same problem, masked.
    ```
    For each commit that touches the ggml C API used by omnivoice's
    `src/`, decide:
-   - is it already in milady-ai/llama.cpp's vendored ggml? (skip)
+   - is it already in elizaOS/llama.cpp's vendored ggml? (skip)
    - is it a kernel/quant change conflicting with milady's TurboQuant /
      QJL / PolarQuant work? (HARD STOP — escalate before bumping)
    - is it an additive API call omnivoice now uses? (cherry-pick into
-     milady-ai/llama.cpp's `ggml/`, then bump that fork's tag, then
+     elizaOS/llama.cpp's `ggml/`, then bump that fork's tag, then
      bump omnivoice here)
 4. Update the pin table at the top of this README. Update the constants
    `OMNIVOICE_REF` / `OMNIVOICE_GGML_REF` in

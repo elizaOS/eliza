@@ -40,8 +40,16 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
 
-// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix).
-export const ELIZA_1_TIERS = ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const;
+// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
+// GH200-class 1M-context variant of the 27B tier.
+export const ELIZA_1_TIERS = [
+  "0_6b",
+  "1_7b",
+  "9b",
+  "27b",
+  "27b-256k",
+  "27b-1m",
+] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
@@ -85,6 +93,7 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+  "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware. The 0.6B and
@@ -97,6 +106,8 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+  // 1M context only ships verified on CUDA today (GH200-class hosts).
+  "27b-1m": ["cuda"],
 };
 
 // ---------------------------------------------------------------------------
