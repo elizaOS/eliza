@@ -1393,6 +1393,46 @@ function probeMetalShippedKernelSymbols(buildDir, outDir) {
   return { metallibs, symbols: shipped };
 }
 
+function metalRuntimeDispatchStatus(shippedKernels) {
+  const shipped = shippedKernels?.symbols ?? {};
+  return {
+    sourceOfTruth:
+      "dispatch-ready requires a built-fork GGML graph smoke, not just symbols in default.metallib",
+    kernels: {
+      turbo3: {
+        status: shipped.turbo3 ? "symbol-shipped" : "missing-symbol",
+        runtimeReady: false,
+        requiredSmoke:
+          "GGML graph route dispatches kernel_turbo3_dot(_multi) and matches the fixture/reference",
+      },
+      turbo4: {
+        status: shipped.turbo4 ? "symbol-shipped" : "missing-symbol",
+        runtimeReady: false,
+        requiredSmoke:
+          "GGML graph route dispatches kernel_turbo4_dot(_multi) and matches the fixture/reference",
+      },
+      turbo3_tcq: {
+        status: shipped.turbo3_tcq ? "symbol-shipped" : "missing-symbol",
+        runtimeReady: false,
+        requiredSmoke:
+          "GGML graph route dispatches kernel_turbo3_tcq_dot(_multi) with the TCQ codebook bound and matches the fixture/reference",
+      },
+      qjl_full: {
+        status: shipped.qjl_full ? "runtime-ready" : "missing-symbol",
+        runtimeReady: Boolean(shipped.qjl_full),
+        graphOp: "GGML_OP_ATTN_SCORE_QJL",
+        smokeTarget: "dispatch-smoke",
+      },
+      polarquant: {
+        status: shipped.polarquant ? "symbol-shipped" : "missing-symbol",
+        runtimeReady: false,
+        requiredSmoke:
+          "GGML graph route dispatches Q4_POLAR for use_qjl=0 and use_qjl=1 and matches the fixture/reference",
+      },
+    },
+  };
+}
+
 function writeCapabilities({
   outDir,
   target,
@@ -1406,6 +1446,8 @@ function writeCapabilities({
   const missing = requiredKernelsMissing(target, kernels);
   const shippedKernels =
     backend === "metal" ? probeMetalShippedKernelSymbols(buildDir, outDir) : null;
+  const runtimeDispatch =
+    backend === "metal" ? metalRuntimeDispatchStatus(shippedKernels) : null;
   const capabilities = {
     target,
     platform,
@@ -1417,6 +1459,7 @@ function writeCapabilities({
     forkCommit,
     kernels,
     shippedKernels,
+    runtimeDispatch,
     binaries,
     omnivoice,
   };

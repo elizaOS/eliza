@@ -67,6 +67,39 @@ export const METAL_KERNEL_FILES = [
   "polar.metal",
 ];
 
+export const METAL_RUNTIME_DISPATCH_GATES = {
+  turbo3: {
+    status: "symbol-shipped",
+    runtimeReady: false,
+    blocker:
+      "requires a dedicated GGML graph/fused-attention route for pre-rotated-Q TBQ3 K-cache scoring",
+  },
+  turbo4: {
+    status: "symbol-shipped",
+    runtimeReady: false,
+    blocker:
+      "requires a dedicated GGML graph/fused-attention route for pre-rotated-Q TBQ4 K-cache scoring",
+  },
+  turbo3_tcq: {
+    status: "symbol-shipped",
+    runtimeReady: false,
+    blocker:
+      "requires a dedicated GGML graph/fused-attention route with the TCQ codebook bound",
+  },
+  qjl_full: {
+    status: "runtime-ready",
+    runtimeReady: true,
+    graphOp: "GGML_OP_ATTN_SCORE_QJL",
+    smokeTarget: "dispatch-smoke",
+  },
+  polarquant: {
+    status: "symbol-shipped",
+    runtimeReady: false,
+    blocker:
+      "requires a dedicated Q4_POLAR matvec/attention graph route covering use_qjl=0 and use_qjl=1",
+  },
+};
+
 const SENTINEL = "# MILADY-KERNEL-PATCH-V1";
 const SENTINEL_EMBED = "# MILADY-KERNEL-EMBED-PATCH-V1";
 const SENTINEL_EMBED_LOADER = "// MILADY-EMBEDDED-METALLIB-LOADER-V1";
@@ -666,6 +699,12 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
   const qjlAttn = patchMetalQjlAttnDispatch(cacheDir, { dryRun });
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_QJL dispatch via kernel_attn_score_qjl1_256_multi`,
+  );
+  console.log(
+    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}runtime-ready gates: ` +
+      Object.entries(METAL_RUNTIME_DISPATCH_GATES)
+        .map(([key, gate]) => `${key}=${gate.runtimeReady ? "runtime-ready" : gate.status}`)
+        .join(", "),
   );
   return { status: "qjl-attn-only", unsafePatchPresent: patchedFiles, qjlAttn };
 }

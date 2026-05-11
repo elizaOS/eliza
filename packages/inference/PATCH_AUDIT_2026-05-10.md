@@ -168,11 +168,11 @@ Deferred (separate from dead-import wiring):
   the kernel symbols are present in `default.metallib` (proven via
   `verify-fork`, see below), but the runtime cannot select them
   through the type-traits table until those dispatch sites are added.
-- iOS EMBED_LIBRARY path. iOS still uses the concatenated
-  ggml-metal.metal + ggml-common.h .incbin pipeline, which collides
-  with our standalones' duplicate decls (`block_qjl1_256`,
-  `block_q4_polar`, `QK_QJL`, `QK_POLAR`, `QJL_RESIDUAL_BYTES`).
-  `requiredKernelsMissing()` still refuses iOS metal artifacts.
+- iOS EMBED_LIBRARY path. `patchMetalKernels()` now replaces the old
+  concatenated-source `.incbin` flow with compiled per-TU `.air` files
+  merged into one embedded `default.metallib`. That fixes the duplicate
+  declaration collision for the standalone shaders. iOS artifacts still
+  fail the publish gate until physical-device graph dispatch smoke exists.
 
 ## New build targets — added 2026-05-10 (Wave-4 follow-up)
 
@@ -206,8 +206,8 @@ and `.../ggml-vulkan/vulkan-shaders/*.comp`) using the same
   clear "fork not present, please run build first" message and exits 1.
 - Metal: runs each of the five fork shaders against its matching
   fixture. Reports per-kernel pass/fail.
-- Vulkan: runs the three turbo* fork shaders (qjl/polar still need
-  the harness extension flagged in `verify/ROADMAP.md`).
+- Vulkan: runs all five fork shaders (`turbo3`, `turbo4`,
+  `turbo3_tcq`, `qjl`, `polar`) plus the Polar QJL-residual fixture.
 - Skips a backend when its harness isn't buildable on the current host
   (e.g. xcrun missing on Linux) rather than failing.
 

@@ -16,6 +16,10 @@ const manifestSchemaPath = path.join(
   repoRoot,
   "packages/app-core/src/services/local-inference/manifest/eliza-1.manifest.v1.json",
 );
+const metalDispatchEvidencePath = path.join(
+  here,
+  "metal-runtime-dispatch-evidence.json",
+);
 
 const errors = [];
 
@@ -113,6 +117,7 @@ const contract = readJson(contractPath);
 const makefile = readText(path.join(here, "Makefile"));
 const buildScript = readText(buildScriptPath);
 const manifestSchema = readJson(manifestSchemaPath);
+const metalDispatchEvidence = readJson(metalDispatchEvidencePath);
 
 const allowedStatuses = new Set([
   "blocked",
@@ -126,6 +131,15 @@ const allowedStatuses = new Set([
   "symbol-shipped",
   "verified",
 ]);
+
+const metalEvidenceKernels =
+  metalDispatchEvidence && typeof metalDispatchEvidence === "object"
+    ? metalDispatchEvidence.kernels || {}
+    : {};
+
+if (metalDispatchEvidence.backend !== "metal") {
+  fail(`metal dispatch evidence backend must be "metal"`);
+}
 
 // 1. Manifest kernel names are the app-core schema names, not shader names.
 const schemaKernelEnum = findKernelEnum(manifestSchema);
@@ -199,6 +213,37 @@ for (const kernel of contract.kernels) {
         fail(`${kernel.id}: ${kernel.metal.source} missing ${kernel.metal.multiBlockSymbol}`);
       }
     }
+
+    const evidence = metalEvidenceKernels[kernel.id];
+    if (!evidence) {
+      fail(`${kernel.id}: missing Metal runtime dispatch evidence entry`);
+    } else {
+      const runtimeKeys = kernel.runtimeCapabilityKeys || [];
+      if (!runtimeKeys.includes(evidence.runtimeCapabilityKey)) {
+        fail(
+          `${kernel.id}: Metal evidence runtimeCapabilityKey=${evidence.runtimeCapabilityKey} not in ${runtimeKeys.join(",")}`,
+        );
+      }
+      const metalStatus = kernel.runtimeStatus?.metal;
+      if (metalStatus === "runtime-ready" && evidence.runtimeReady !== true) {
+        fail(`${kernel.id}: contract says Metal runtime-ready but evidence.runtimeReady is not true`);
+      }
+      if (evidence.runtimeReady === true && metalStatus !== "runtime-ready") {
+        fail(`${kernel.id}: Metal evidence is runtime-ready but contract status is ${metalStatus}`);
+      }
+      if (evidence.runtimeReady === true) {
+        if (typeof evidence.smokeTarget !== "string" || evidence.smokeTarget.length === 0) {
+          fail(`${kernel.id}: runtime-ready Metal evidence requires smokeTarget`);
+        } else if (!targetBody(makefile, evidence.smokeTarget)) {
+          fail(`${kernel.id}: Metal evidence smokeTarget ${evidence.smokeTarget} missing from Makefile`);
+        }
+        if (typeof evidence.maxDiff !== "number" || !Number.isFinite(evidence.maxDiff)) {
+          fail(`${kernel.id}: runtime-ready Metal evidence requires numeric maxDiff`);
+        }
+      } else if (metalStatus === "runtime-ready") {
+        fail(`${kernel.id}: non-runtime-ready Metal evidence cannot satisfy runtime-ready status`);
+      }
+    }
   }
 
   if (kernel.vulkan) {
@@ -236,6 +281,34 @@ if (
   fail(
     `build required kernel keys drift: build=${sortedUnique(requiredCapabilityKeys).join(",")} contract=${sortedUnique(contract.requiredRuntimeCapabilityKeys).join(",")}`,
   );
+}
+
+// 2b. Metal dispatch-ready capability bits must not be satisfied by shipped
+// symbols. The build script intentionally forces every non-runtime-ready Metal
+// kernel false until the evidence file records a numeric built-fork graph
+// dispatch smoke.
+const metalProbeMarker = 'if (backend === "metal")';
+const metalProbeIndex = buildScript.indexOf(metalProbeMarker);
+if (metalProbeIndex === -1) {
+  fail("build script missing Metal honesty gate in probeKernels()");
+} else {
+  const metalProbeBody = buildScript.slice(
+    metalProbeIndex,
+    buildScript.indexOf("} else if (backend === \"vulkan\")", metalProbeIndex),
+  );
+  for (const kernel of contract.kernels) {
+    if (!kernel.metal) continue;
+    const evidence = metalEvidenceKernels[kernel.id];
+    const metalStatus = kernel.runtimeStatus?.metal;
+    for (const key of kernel.runtimeCapabilityKeys || []) {
+      if (evidence?.runtimeReady === true || metalStatus === "runtime-ready") {
+        continue;
+      }
+      if (!metalProbeBody.includes(`kernels.${key} = false`)) {
+        fail(`${kernel.id}: build script must force Metal kernels.${key}=false until runtime dispatch evidence is ready`);
+      }
+    }
+  }
 }
 
 // 3. Every app-core build target must have an explicit platform verification gate.

@@ -421,13 +421,15 @@ else
 	  elif $(MAKE) vulkan_verify >/dev/null 2>&1 && [ -x ./vulkan_verify ]; then \
 	    mkdir -p bench_results/fork-spv; \
 	    echo "[verify-fork] vulkan: compiling fork .comp -> .spv with $(GLSLC)"; \
-	    for f in turbo3 turbo4 turbo3_tcq; do \
+	    for f in turbo3 turbo4 turbo3_tcq qjl polar; do \
 	      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
 	        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
 	      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
 	      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
 	    done; \
-	    echo "[verify-fork] vulkan: 3/3 turbo* fork shaders verified (qjl/polar pending harness extension — see ROADMAP.md)"; \
+	    echo "[verify-fork] vulkan/polar + QJL residual (fork: vulkan-shaders/polar.comp)"; \
+	    ./vulkan_verify bench_results/fork-spv/polar.spv fixtures/polar_qjl.json || exit 1; \
+	    echo "[verify-fork] vulkan: 5/5 fork shaders + polar residual verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \

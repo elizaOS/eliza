@@ -180,27 +180,28 @@ in this document's status vocabulary:
 
 ---
 
-## 4. `verify/` harness extension roadmap (one-liner per missing extension)
+## 4. `verify/` harness extension roadmap (historical; current status)
 
-See [`verify/ROADMAP.md`](verify/ROADMAP.md) for the full plan. One-line
-summary per extension below; the doc has the full bind-set, fixture
-shape, and host-pairing detail.
+See [`verify/ROADMAP.md`](verify/ROADMAP.md) for the historical plan and
+[`reports/porting/2026-05-11/remaining-work-ledger.md`](reports/porting/2026-05-11/remaining-work-ledger.md)
+for the current blocker ledger. The Vulkan QJL/Polar harness extensions and
+the CUDA verifier scaffold now exist; the remaining gaps are runtime graph
+dispatch and real device runs.
 
-- **vulkan_verify QJL bind-set** — branch on `fx.kernel`, allocate
+- **vulkan_verify QJL bind-set** — RESOLVED. Branches on `fx.kernel`, allocates
   `q_sketch[n_heads*256]` + `packed_k[n_kv_heads*n_tokens*34]` +
-  `scores[n_heads*n_tokens]`, push 4 uints. Regenerate `qjl.json` from
-  `qjl_polar_ref.c qjl_score_qk_ref` with deterministic seed.
+  `scores[n_heads*n_tokens]`, and pushes 4 uints.
 
-- **vulkan_verify Polar bind-set** — branch, allocate
+- **vulkan_verify Polar bind-set** — RESOLVED. Branches, allocates
   `k_blocks[n_rows*82]` + `q[head_dim]` + `y[n_rows]`, push 3 uints.
-  Regenerate `polar.json` from `qjl_polar_ref.c polar_dot_ref`. Cover
-  both `use_qjl=0` and `use_qjl=1` cases (two fixture variants).
+  Covers both `use_qjl=0` and `use_qjl=1` via `polar.json` and
+  `polar_qjl.json`.
 
-- **`cuda_verify` (new harness)** — same JSON fixture format,
+- **`cuda_verify`** — SCAFFOLD EXISTS. Same JSON fixture format,
   `cudaMalloc` + `cudaMemcpy` instead of vulkan_verify's host-visible
   path, kernel launch via the v0.4.0-milady fork's CUDA entry points
-  (`turbo_quant_cuda.cuh`, the W4-B QJL/Polar/TBQ3_TCQ additions). One
-  binary, branch on `fx.kernel`. CI-runnable on any L4/T4 EC2 instance.
+  (`turbo_quant_cuda.cuh`, the W4-B QJL/Polar/TBQ3_TCQ additions). Needs
+  a real CUDA host for the first 8/8 run.
 
 - **Adreno on-device runner** — cross-compile `vulkan_verify` against
   the NDK Vulkan headers (already wired in `cmakeFlagsForTarget`),
