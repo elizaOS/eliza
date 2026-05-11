@@ -17,6 +17,7 @@
  *   POST   /jobs/:id/cancel                   → cancel a non-terminal job
  *   POST   /jobs/:id/eval                     → run eval_checkpoint.py
  *   GET    /jobs/:id/logs?tail=200            → tail per-job log
+ *   GET    /jobs/:id/budget                   → running cost snapshot (M9)
  *   GET    /models?refresh=1                  → registry listing
  *   GET    /models/:short_name/checkpoints    → checkpoints for a registry key
  *   GET    /inference/endpoints               → list inference endpoints
@@ -142,6 +143,16 @@ export async function handleVastTrainingRoutes(
       }
       const result = await service.runEval(jobId, parsed.input);
       json(res, result);
+      return true;
+    }
+
+    const budgetMatch = /^\/jobs\/([^/]+)\/budget$/.exec(sub);
+    if (method === "GET" && budgetMatch) {
+      const jobId = decodeURIComponent(budgetMatch[1]);
+      const snapshot = await service.getJobBudget(jobId);
+      // Return 200 with `budget: null` when no instance is provisioned
+      // yet — the UI distinguishes "not provisioned" from a 404.
+      json(res, { job_id: jobId, budget: snapshot });
       return true;
     }
 

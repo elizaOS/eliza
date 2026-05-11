@@ -169,8 +169,8 @@ describe("cache-bridge eviction by mtime + TTL", () => {
 
     const deleted = await evictExpired(dir, DEFAULT_CACHE_TTLS, now);
     expect(deleted).toBe(1);
-    await expect(fs.access(fresh)).resolves.toBeUndefined();
-    await expect(fs.access(stale)).rejects.toThrow();
+    await expect(fs.stat(fresh)).resolves.toBeDefined();
+    await expect(fs.stat(stale)).rejects.toThrow();
   });
 
   it("respects the now argument for deterministic tests", async () => {

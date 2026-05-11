@@ -182,8 +182,9 @@ describe("v5 message handler routing", () => {
 				contexts: [],
 			}),
 		);
-		expect(ignore?.processMessage).toBe("IGNORE");
-		expect(routeMessageHandlerOutput(ignore!).type).toBe("ignored");
+		if (!ignore) throw new Error("expected parsed IGNORE output");
+		expect(ignore.processMessage).toBe("IGNORE");
+		expect(routeMessageHandlerOutput(ignore).type).toBe("ignored");
 
 		const stop = parseMessageHandlerOutput(
 			JSON.stringify({
@@ -192,8 +193,9 @@ describe("v5 message handler routing", () => {
 				contexts: [],
 			}),
 		);
-		expect(stop?.processMessage).toBe("STOP");
-		expect(routeMessageHandlerOutput(stop!).type).toBe("stopped");
+		if (!stop) throw new Error("expected parsed STOP output");
+		expect(stop.processMessage).toBe("STOP");
+		expect(routeMessageHandlerOutput(stop).type).toBe("stopped");
 	});
 
 	it("still parses the legacy nested plan:{} form", () => {

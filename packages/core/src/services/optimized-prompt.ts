@@ -3,23 +3,33 @@
  *
  * Native MIPRO/GEPA/bootstrap-fewshot optimizers (under
  * `plugins/app-training/src/optimizers/`) write a JSON artifact per task into
- * `~/.eliza/optimized-prompts/<task>/<timestamp>.json`. The runtime consults
- * this service before constructing the system prompt for one of the five core
- * decision tasks and substitutes the optimized prompt (plus any few-shot
+ * `~/.eliza/optimized-prompts/<task>/`. The runtime consults this service
+ * before constructing the system prompt for one of the five core decision
+ * tasks and substitutes the optimized prompt (plus any few-shot
  * demonstrations) when an artifact is available.
+ *
+ * On-disk layout (per task):
+ *   ~/.eliza/optimized-prompts/<task>/
+ *     v1.json, v2.json, ..., vN.json   — concrete artifact files (last 5 retained)
+ *     current   -> vN.json              — symlink; the live prompt
+ *     previous  -> vN-1.json            — symlink; the immediate predecessor
+ *     previous2 -> vN-2.json            — symlink; one further back
  *
  * Service contract:
  *   - `getPrompt(task)` — synchronous accessor, returns the loaded prompt or
  *     null. Cheap to call; reads the in-memory cache. Does not refresh.
- *   - `setPrompt(task, artifact)` — atomically writes a new artifact and
- *     refreshes the in-memory cache for that task.
+ *   - `setPrompt(task, artifact)` — atomically writes a new artifact as the
+ *     next `vN.json`, repoints the `current` / `previous` / `previous2`
+ *     symlinks, prunes to the last 5 versions, and refreshes the cache.
+ *   - `rollback(task)` — flip `current` and `previous` symlinks, then
+ *     refresh the cache. Used by `eliza training rollback-prompt <task>`.
  *   - `getMetadata(task)` — quick view of optimizer + score for diagnostics.
  *   - `refresh()` — re-scan the disk store. Called automatically by `start()`,
  *     also exposed for the `Settings → Auto-Training` panel.
  *
- * Loading rule: for each task, the artifact with the most recent
- * `generatedAt` wins. Ties are broken by the file's `mtime` so manual
- * intervention (touching a file) can promote an older artifact.
+ * Loading rule: for each task, the `current` symlink wins. When `current`
+ * is missing (e.g. a corrupted store) we fall back to scanning the directory
+ * and selecting the most recent `generatedAt`.
  *
  * The on-disk format intentionally mirrors `OptimizedPromptArtifact` from
  * `plugins/app-training/src/optimizers/types.ts`. We re-declare the type here
@@ -28,12 +38,27 @@
  */
 
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { readFile, rename, writeFile } from "node:fs/promises";
+import {
+	readFile,
+	readlink,
+	rename,
+	rm,
+	symlink,
+	unlink,
+	writeFile,
+} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { logger } from "../logger.js";
 import type { IAgentRuntime } from "../types/runtime.js";
 import { Service } from "../types/service.js";
 import { resolveStateDir } from "../utils/state-dir.js";
+
+export const OPTIMIZED_PROMPT_CURRENT_LINK = "current";
+export const OPTIMIZED_PROMPT_PREVIOUS_LINK = "previous";
+export const OPTIMIZED_PROMPT_PREVIOUS2_LINK = "previous2";
+export const OPTIMIZED_PROMPT_RETAIN_VERSIONS = 5;
+
+const VERSION_FILE_PATTERN = /^v(\d+)\.json$/;
 
 export const OPTIMIZED_PROMPT_SERVICE = "optimized_prompt";
 
@@ -334,8 +359,10 @@ export class OptimizedPromptService extends Service {
 	}
 
 	/**
-	 * Atomic write of a new artifact. Writes to a temp file under the same
-	 * directory and renames into place. Refreshes the cache for the task.
+	 * Atomic write of a new artifact. Writes the new version as `v(N+1).json`,
+	 * repoints `current` / `previous` / `previous2` symlinks, prunes the
+	 * directory to the last `OPTIMIZED_PROMPT_RETAIN_VERSIONS` artifacts, and
+	 * refreshes the cache for the task.
 	 */
 	async setPrompt(
 		task: OptimizedPromptTask,
@@ -348,13 +375,25 @@ export class OptimizedPromptService extends Service {
 		}
 		const dir = join(this.storeRoot, task);
 		mkdirSync(dir, { recursive: true });
-		const stamp = artifact.generatedAt.replace(/[^0-9]/g, "");
-		const finalPath = join(dir, `${stamp}.json`);
+
+		const existingVersions = listVersionNumbers(dir);
+		const nextVersion = (existingVersions.at(-1) ?? 0) + 1;
+		const finalName = `v${nextVersion}.json`;
+		const finalPath = join(dir, finalName);
 		const tempPath = `${finalPath}.tmp-${process.pid}-${Date.now()}`;
 		const payload = `${JSON.stringify(artifact, null, 2)}\n`;
-		mkdirSync(dirname(tempPath), { recursive: true });
 		await writeFile(tempPath, payload, "utf-8");
 		await rename(tempPath, finalPath);
+
+		// Repoint symlinks: current → vN, previous → vN-1, previous2 → vN-2.
+		const allVersions = [...existingVersions, nextVersion];
+		await repointVersionLinks(dir, allVersions);
+
+		// Prune older artifacts beyond the retention window. Done after the
+		// symlinks are repointed so we never delete a file the symlinks
+		// still reference.
+		await pruneOldVersions(dir, allVersions);
+
 		this.cache[task] = { artifact, loadedAt: Date.now() };
 		logger.info(
 			{
@@ -364,10 +403,70 @@ export class OptimizedPromptService extends Service {
 				score: artifact.score,
 				baselineScore: artifact.baselineScore,
 				path: finalPath,
+				version: nextVersion,
 			},
 			"Persisted optimized prompt artifact",
 		);
 		return finalPath;
+	}
+
+	/**
+	 * Flip the `current` and `previous` symlinks. After this call,
+	 * `getPrompt(task)` returns the artifact that was previously second-most
+	 * recent, and the artifact that was current becomes the new previous.
+	 * `previous2` is left untouched (next-back history pointer).
+	 *
+	 * Returns the absolute path of the artifact that is now `current`.
+	 * Throws when `previous` is not present (nothing to roll back to).
+	 */
+	async rollback(task: OptimizedPromptTask): Promise<string> {
+		const dir = join(this.storeRoot, task);
+		if (!existsSync(dir)) {
+			throw new Error(
+				`[OptimizedPromptService] no artifact directory for task=${task}`,
+			);
+		}
+		const currentTarget = await readLinkOrNull(
+			join(dir, OPTIMIZED_PROMPT_CURRENT_LINK),
+		);
+		const previousTarget = await readLinkOrNull(
+			join(dir, OPTIMIZED_PROMPT_PREVIOUS_LINK),
+		);
+		if (!previousTarget) {
+			throw new Error(
+				`[OptimizedPromptService] no previous version to roll back to for task=${task}`,
+			);
+		}
+		if (!currentTarget) {
+			throw new Error(
+				`[OptimizedPromptService] no current version to flip away from for task=${task}`,
+			);
+		}
+
+		// Swap targets atomically. `replaceSymlink` writes a temp link and
+		// renames it over the old one so no window exists where `current`
+		// is missing.
+		await replaceSymlink(
+			join(dir, OPTIMIZED_PROMPT_CURRENT_LINK),
+			previousTarget,
+		);
+		await replaceSymlink(
+			join(dir, OPTIMIZED_PROMPT_PREVIOUS_LINK),
+			currentTarget,
+		);
+
+		await this.refresh();
+		const newCurrentPath = join(dir, previousTarget);
+		logger.info(
+			{
+				src: "service:optimized_prompt",
+				task,
+				newCurrent: previousTarget,
+				newPrevious: currentTarget,
+			},
+			"Rolled back optimized prompt artifact",
+		);
+		return newCurrentPath;
 	}
 
 	/** Re-scan the on-disk store. Safe to call repeatedly. */
@@ -376,22 +475,28 @@ export class OptimizedPromptService extends Service {
 		for (const task of OPTIMIZED_PROMPT_TASKS) {
 			const dir = join(this.storeRoot, task);
 			if (!existsSync(dir)) continue;
+
+			// Preferred path: read via the `current` symlink. This is the
+			// declared live version after a `setPrompt` or `rollback` call.
+			const currentLink = join(dir, OPTIMIZED_PROMPT_CURRENT_LINK);
+			const fromCurrent = await loadArtifactFromPath(currentLink, task);
+			if (fromCurrent) {
+				next[task] = { artifact: fromCurrent, loadedAt: Date.now() };
+				continue;
+			}
+
+			// Fallback: directory may pre-date the symlink layout (legacy
+			// timestamp-named files), or `current` may have been deleted.
+			// Walk the directory and pick the artifact with the most recent
+			// `generatedAt`.
 			const entries = readdirSync(dir);
 			let bestArtifact: OptimizedPromptArtifact | null = null;
 			let bestStamp = -Infinity;
 			for (const name of entries) {
 				if (!name.endsWith(".json")) continue;
 				const path = join(dir, name);
-				const raw = await readFile(path, "utf-8");
-				const parsedJson: unknown = JSON.parse(raw);
-				const artifact = parseOptimizedPromptArtifact(parsedJson);
-				if (!artifact) {
-					logger.warn(
-						{ src: "service:optimized_prompt", task, path },
-						"Optimized prompt artifact failed strict parse — skipping",
-					);
-					continue;
-				}
+				const artifact = await loadArtifactFromPath(path, task);
+				if (!artifact) continue;
 				const stamp = Date.parse(artifact.generatedAt);
 				if (Number.isFinite(stamp) && stamp > bestStamp) {
 					bestStamp = stamp;
@@ -404,4 +509,159 @@ export class OptimizedPromptService extends Service {
 		}
 		this.cache = next;
 	}
+}
+
+/**
+ * Return the sorted ascending list of version numbers (`v1`, `v2`, ...)
+ * present in `dir`. Files that don't match the `vN.json` pattern are ignored.
+ */
+function listVersionNumbers(dir: string): number[] {
+	if (!existsSync(dir)) return [];
+	const versions: number[] = [];
+	for (const name of readdirSync(dir)) {
+		const match = VERSION_FILE_PATTERN.exec(name);
+		if (!match) continue;
+		const n = Number.parseInt(match[1] ?? "", 10);
+		if (Number.isFinite(n)) versions.push(n);
+	}
+	versions.sort((a, b) => a - b);
+	return versions;
+}
+
+/**
+ * Repoint `current`, `previous`, and `previous2` symlinks based on the
+ * sorted-ascending list of version numbers. `current` always points at the
+ * largest. `previous` and `previous2` are unset when the corresponding
+ * history slot doesn't exist (e.g. the very first write has no previous).
+ */
+async function repointVersionLinks(
+	dir: string,
+	versions: number[],
+): Promise<void> {
+	const sorted = [...versions].sort((a, b) => a - b);
+	const current = sorted.at(-1);
+	const previous = sorted.at(-2);
+	const previous2 = sorted.at(-3);
+	if (current !== undefined) {
+		await replaceSymlink(
+			join(dir, OPTIMIZED_PROMPT_CURRENT_LINK),
+			`v${current}.json`,
+		);
+	}
+	const previousLink = join(dir, OPTIMIZED_PROMPT_PREVIOUS_LINK);
+	if (previous !== undefined) {
+		await replaceSymlink(previousLink, `v${previous}.json`);
+	} else {
+		await removeIfExists(previousLink);
+	}
+	const previous2Link = join(dir, OPTIMIZED_PROMPT_PREVIOUS2_LINK);
+	if (previous2 !== undefined) {
+		await replaceSymlink(previous2Link, `v${previous2}.json`);
+	} else {
+		await removeIfExists(previous2Link);
+	}
+}
+
+/**
+ * Delete `v*.json` files beyond the most recent `OPTIMIZED_PROMPT_RETAIN_VERSIONS`.
+ * The newest 5 versions plus the live symlinks survive.
+ */
+async function pruneOldVersions(
+	dir: string,
+	versions: number[],
+): Promise<void> {
+	const sorted = [...versions].sort((a, b) => a - b);
+	if (sorted.length <= OPTIMIZED_PROMPT_RETAIN_VERSIONS) return;
+	const obsolete = sorted.slice(
+		0,
+		sorted.length - OPTIMIZED_PROMPT_RETAIN_VERSIONS,
+	);
+	for (const version of obsolete) {
+		const path = join(dir, `v${version}.json`);
+		await rm(path, { force: true });
+	}
+}
+
+/**
+ * Atomically replace `linkPath` with a symlink whose target is `target`.
+ * Writes a temp link beside it and renames into place so the link is never
+ * absent during the swap.
+ */
+async function replaceSymlink(linkPath: string, target: string): Promise<void> {
+	const tempPath = `${linkPath}.tmp-${process.pid}-${Date.now()}`;
+	mkdirSync(dirname(tempPath), { recursive: true });
+	try {
+		await unlink(tempPath);
+	} catch {
+		// nothing to clean up
+	}
+	await symlink(target, tempPath);
+	await rename(tempPath, linkPath);
+}
+
+async function removeIfExists(path: string): Promise<void> {
+	try {
+		await unlink(path);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw err;
+	}
+}
+
+async function readLinkOrNull(path: string): Promise<string | null> {
+	try {
+		return await readlink(path);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw err;
+	}
+}
+
+/**
+ * Read + strict-parse a single artifact file. Returns null when the file is
+ * missing or fails the parser. Logs a warning on parse failure so a corrupt
+ * file is visible in logs.
+ */
+async function loadArtifactFromPath(
+	path: string,
+	task: OptimizedPromptTask,
+): Promise<OptimizedPromptArtifact | null> {
+	let raw: string;
+	try {
+		raw = await readFile(path, "utf-8");
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+		throw err;
+	}
+	let parsedJson: unknown;
+	try {
+		parsedJson = JSON.parse(raw);
+	} catch {
+		logger.warn(
+			{ src: "service:optimized_prompt", task, path },
+			"Optimized prompt artifact is not valid JSON — skipping",
+		);
+		return null;
+	}
+	const artifact = parseOptimizedPromptArtifact(parsedJson);
+	if (!artifact) {
+		logger.warn(
+			{ src: "service:optimized_prompt", task, path },
+			"Optimized prompt artifact failed strict parse — skipping",
+		);
+		return null;
+	}
+	if (artifact.task !== task) {
+		logger.warn(
+			{
+				src: "service:optimized_prompt",
+				task,
+				path,
+				artifactTask: artifact.task,
+			},
+			"Optimized prompt artifact task mismatch — skipping",
+		);
+		return null;
+	}
+	return artifact;
 }

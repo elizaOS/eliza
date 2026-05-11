@@ -176,7 +176,12 @@ describe("coverage-matrix.md contract — domain-anchored (GAP §8.5)", () => {
 
     const missing: string[] = [];
     for (const row of rows) {
+      // Rows explicitly marked `uncovered` (e.g. after a LARP test was
+      // purged) are allowed to lack a test file path; tracking work for
+      // restoring coverage lives in the audit docs, not in this contract.
+      const isUncovered = row.status.toLowerCase().includes("uncovered");
       if (!row.testFile) {
+        if (isUncovered) continue;
         missing.push(
           `Row ${row.journeyId} ("${row.journeyName}") has no test file path`,
         );

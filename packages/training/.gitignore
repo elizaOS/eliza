@@ -5,12 +5,15 @@ vendor/
 data/
 checkpoints/
 # Generated benchmark outputs (parquet datasets, ablation dumps) are
-# ignored, but the checked-in gate definition is tracked — the publish
-# orchestrator reads `benchmarks/eliza1_gates.yaml` (Eliza-1
-# publish-blocking eval gates). The gate engine (`eliza1_gates.py`) +
-# package marker, when added, should be un-ignored here too.
+# ignored, but the checked-in gate definition + engine + tests are tracked —
+# the publish orchestrator reads `benchmarks/eliza1_gates.yaml` (Eliza-1
+# publish-blocking eval gates) and `benchmarks/eliza1_gates.py` (the gate
+# engine that turns measured eval blobs into a publish-blocking verdict).
 benchmarks/*
 !benchmarks/eliza1_gates.yaml
+!benchmarks/eliza1_gates.py
+!benchmarks/__init__.py
+!benchmarks/test_eliza1_gates.py
 previews/
 local-corpora/
 wandb/

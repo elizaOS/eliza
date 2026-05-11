@@ -5,7 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 // `registerAppRoutePluginLoader` call is never exercised. Mock @elizaos/core so
 // the real route-registration path is covered.
 const { registerAppRoutePluginLoader } = vi.hoisted(() => ({
-  registerAppRoutePluginLoader: vi.fn<(name: string, loader: () => unknown) => void>(),
+  registerAppRoutePluginLoader:
+    vi.fn<(name: string, loader: () => unknown) => void>(),
 }));
 
 vi.mock("@elizaos/core", () => ({

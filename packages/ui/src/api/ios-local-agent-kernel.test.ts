@@ -76,27 +76,27 @@ describe("handleIosLocalAgentRequest", () => {
       },
     });
 
-    await expect(getJson("/api/local-agent/capabilities")).resolves.toMatchObject(
-      {
-        mode: "ios-local",
-        transport: {
-          foreground: "ittp",
-          background: "unavailable",
-          tcpListener: false,
-          nativeRequestProxy: false,
-        },
-        backendRuntime: {
-          state: "compatibility-kernel",
-          fullAgentRuntime: false,
-          taskService: false,
-          pluginLoader: false,
-        },
-        scheduledTasks: {
-          state: "unavailable",
-          primitive: "ScheduledTask",
-        },
+    await expect(
+      getJson("/api/local-agent/capabilities"),
+    ).resolves.toMatchObject({
+      mode: "ios-local",
+      transport: {
+        foreground: "ittp",
+        background: "unavailable",
+        tcpListener: false,
+        nativeRequestProxy: false,
       },
-    );
+      backendRuntime: {
+        state: "compatibility-kernel",
+        fullAgentRuntime: false,
+        taskService: false,
+        pluginLoader: false,
+      },
+      scheduledTasks: {
+        state: "unavailable",
+        primitive: "ScheduledTask",
+      },
+    });
   });
 
   it("matches runtime-mode response contracts for iOS local", async () => {
@@ -172,16 +172,16 @@ describe("handleIosLocalAgentRequest", () => {
     await expect(getJson("/api/mcp/status")).resolves.toEqual({
       servers: [],
     });
-    await expect(getJson("/api/secrets/manager/backends")).resolves.toMatchObject(
-      {
-        backends: [
-          {
-            id: "in-house",
-            available: false,
-          },
-        ],
-      },
-    );
+    await expect(
+      getJson("/api/secrets/manager/backends"),
+    ).resolves.toMatchObject({
+      backends: [
+        {
+          id: "in-house",
+          available: false,
+        },
+      ],
+    });
     await expect(getJson("/api/training/status")).resolves.toEqual({
       available: false,
     });

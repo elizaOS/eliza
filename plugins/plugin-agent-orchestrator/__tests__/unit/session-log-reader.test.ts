@@ -16,7 +16,10 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mergeSessionLogIntoTrajectory } from "../../src/services/session-log-merger.js";
+import {
+  mergeSessionLogIntoTrajectory,
+  tagParentTrajectoryWithDegradedCapture,
+} from "../../src/services/session-log-merger.js";
 import {
   buildSessionLogCandidates,
   encodeClaudeCodeProjectDir,
@@ -412,7 +415,7 @@ describe("mergeSessionLogIntoTrajectory", () => {
     } as never;
   }
 
-  it("returns no-steps when capture is empty", async () => {
+  it("returns no-steps + captureQuality=degraded when capture is empty", async () => {
     const logger = mockLogger();
     const result = await mergeSessionLogIntoTrajectory({
       runtime: mockRuntime(logger),
@@ -420,10 +423,11 @@ describe("mergeSessionLogIntoTrajectory", () => {
       capture: { steps: [], totalUsage: {}, models: [], reason: "empty" },
     });
     expect(result.skippedReason).toBe("no-steps");
+    expect(result.captureQuality).toBe("degraded");
     expect(logger.startTrajectory).not.toHaveBeenCalled();
   });
 
-  it("returns no-trajectory-logger when none is registered", async () => {
+  it("returns no-trajectory-logger + captureQuality=degraded when none is registered", async () => {
     const runtime = {
       agentId: "agent-test",
       getService: () => undefined,
@@ -450,6 +454,7 @@ describe("mergeSessionLogIntoTrajectory", () => {
       },
     });
     expect(result.skippedReason).toBe("no-trajectory-logger");
+    expect(result.captureQuality).toBe("degraded");
   });
 
   it("writes one LLM call per llm-kind step + annotates tool_result steps + links parent", async () => {
@@ -516,5 +521,68 @@ describe("mergeSessionLogIntoTrajectory", () => {
       result.childTrajectoryId,
       "completed",
     );
+    expect(result.captureQuality).toBe("ok");
+  });
+});
+
+describe("tagParentTrajectoryWithDegradedCapture", () => {
+  function mockLogger() {
+    return {
+      isEnabled: () => true,
+      // Required so `resolveTrajectoryLogger` recognizes this as a logger
+      // candidate (it needs at least one capability beyond `isEnabled`).
+      startTrajectory: vi.fn(async (id: string) => id as never),
+      annotateStep: vi.fn(),
+    };
+  }
+
+  function mockRuntime(logger: ReturnType<typeof mockLogger>) {
+    return {
+      agentId: "agent-test",
+      getService: (name: string) =>
+        name === "trajectories" ? logger : undefined,
+      getServicesByType: (type: string) =>
+        type === "trajectories" ? [logger] : [],
+    } as never;
+  }
+
+  it("writes a capture_quality=degraded marker via annotateStep", async () => {
+    const logger = mockLogger();
+    const landed = await tagParentTrajectoryWithDegradedCapture({
+      runtime: mockRuntime(logger),
+      parentStepId: "parent-step-x",
+      subAgentType: "claude",
+      reason: "session-log-missing",
+      detail: "workdir=/tmp/foo",
+    });
+    expect(landed).toBe(true);
+    expect(logger.annotateStep).toHaveBeenCalledTimes(1);
+    const call = logger.annotateStep.mock.calls[0][0];
+    expect(call.stepId).toBe("parent-step-x");
+    expect(typeof call.script).toBe("string");
+    const marker = JSON.parse(call.script);
+    expect(marker).toMatchObject({
+      marker: "capture_quality",
+      capture_quality: "degraded",
+      subAgentType: "claude",
+      reason: "session-log-missing",
+      detail: "workdir=/tmp/foo",
+    });
+    expect(typeof marker.recordedAt).toBe("number");
+  });
+
+  it("returns false when no trajectory logger is registered", async () => {
+    const runtime = {
+      agentId: "agent-test",
+      getService: () => undefined,
+      getServicesByType: () => [],
+    } as never;
+    const landed = await tagParentTrajectoryWithDegradedCapture({
+      runtime,
+      parentStepId: "parent-step-x",
+      subAgentType: "claude",
+      reason: "session-log-error",
+    });
+    expect(landed).toBe(false);
   });
 });

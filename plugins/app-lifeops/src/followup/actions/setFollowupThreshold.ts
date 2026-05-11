@@ -35,6 +35,9 @@ export const setFollowupThresholdAction: Action = {
     "FOLLOWUP_RULE",
     "CHANGE_FOLLOWUP_INTERVAL",
     "SET_CONTACT_FREQUENCY_DAYS",
+    // PRD action-catalog alias.
+    // See packages/docs/action-prd-map.md.
+    "FOLLOWUP_CREATE_RULE",
   ],
   description:
     "Set a recurring follow-up cadence threshold (in days) for a specific contact. " +
