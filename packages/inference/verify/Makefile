@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -484,6 +484,25 @@ else
 	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
 		echo "[cuda-verify] fused QJL-K + TBQ-V attention ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
 	else echo "[cuda-verify] fused_attn_qjl_tbq.json not present — fused-attention-reference agent owns it; skipping" ; fi
+endif
+
+# Focused fused-attention CUDA gate. cuda_verify links a fixture-parity harness
+# with a fused_attn_qjl_tbq3_kernel (warp reductions, online softmax, TCQ
+# codebook in __constant__, page tiling) + the DP4A int8-QJL path; the
+# production shape lives in cuda/fused-attn-qjl-tbq.cu (AUTHORED — hardware-verify
+# pending; mirror it into the fork's ggml-cuda/ via the kernel-patches hook and
+# build with -DGGML_CUDA_FUSED_ATTN_QJL=ON). Run on an NVIDIA host via
+# `verify/cuda_runner.sh` — no NVIDIA hardware on the authoring machine.
+# fused_attn stays out of requiredRuntimeCapabilityKeys (AGENTS.md §3).
+cuda-verify-fused:
+ifeq ($(NVCC),)
+	@echo "CUDA toolchain not found — run verify/cuda_runner.sh on an NVIDIA host."
+	@false
+else
+	$(MAKE) cuda
+	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
+		echo "[cuda-verify-fused] fused QJL-K + TBQ-V attention (+ DP4A QJL cross-check) ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
+	else echo "[cuda-verify-fused] fused_attn_qjl_tbq.json missing — run reference-test first" ; false ; fi
 endif
 
 # Hardware runners. These intentionally fail without matching physical

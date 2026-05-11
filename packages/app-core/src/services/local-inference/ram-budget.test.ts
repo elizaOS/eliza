@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { ELIZA_1_TIER_IDS, findCatalogModel } from "./catalog";
 import type { Eliza1Manifest } from "./manifest";
-import { type ManifestLoader, resolveRamBudget } from "./ram-budget";
+import {
+  assessRamFit,
+  type ManifestLoader,
+  pickFittingContextVariant,
+  resolveRamBudget,
+} from "./ram-budget";
 import type { CatalogModel, InstalledModel } from "./types";
 
 const FIXED_TIME = "2025-01-01T00:00:00.000Z";
@@ -82,9 +87,12 @@ describe("resolveRamBudget", () => {
     const budget = resolveRamBudget(model, installed(model), loader);
 
     expect(budget.source).toBe("catalog");
-    // catalog row says minRamGb: 4 → 4096 MB, recommendedMb mirrors it.
+    // catalog row says minRamGb: 4 → 4096 MB; recommendedMb adds the
+    // bundle's KV-cache footprint at its 32k default ctx (1.7B ≈ 2400
+    // B/token → 75 MB), so recommended is the boot floor plus that.
     expect(budget.minMb).toBe(4 * 1024);
-    expect(budget.recommendedMb).toBe(4 * 1024);
+    expect(budget.recommendedMb).toBeGreaterThan(budget.minMb);
+    expect(budget.recommendedMb).toBe(4 * 1024 + 75);
   });
 
   it("never consults the loader for a non-Eliza-1 model", () => {
@@ -162,5 +170,122 @@ describe("resolveRamBudget", () => {
       expect(budget.minMb).toBe(1234);
       expect(budget.recommendedMb).toBe(5678);
     }
+  });
+});
+
+const noopLoader: ManifestLoader = () => null;
+
+describe("assessRamFit", () => {
+  const model = findCatalogModel("eliza-1-9b");
+  if (!model) throw new Error("test setup: eliza-1-9b missing");
+  // 9b: minRamGb 12 → minMb 12288; recommendedMb 12288 + KV(64k @ 9B).
+
+  it("refuses (wontfit) when usable RAM is below the boot floor", () => {
+    // 8 GB host, default ~1.5 GB reserve → ~6.5 GB usable << 12 GB floor.
+    const d = assessRamFit(model, 8 * 1024, { manifestLoader: noopLoader });
+    expect(d.level).toBe("wontfit");
+    expect(d.fits).toBe(false);
+    expect(d.budget.minMb).toBe(12 * 1024);
+  });
+
+  it("reports tight when usable RAM clears the floor but not the recommended", () => {
+    const floor = assessRamFit(model, 0, { manifestLoader: noopLoader }).budget;
+    expect(floor.recommendedMb).toBeGreaterThan(floor.minMb);
+    // Sit exactly between the boot floor and the recommended budget.
+    const between = Math.floor((floor.minMb + floor.recommendedMb) / 2);
+    const d = assessRamFit(model, between, {
+      manifestLoader: noopLoader,
+      reserveMb: 0,
+    });
+    expect(d.level).toBe("tight");
+    expect(d.fits).toBe(true);
+  });
+
+  it("reports fits with comfortable headroom", () => {
+    const d = assessRamFit(model, 64 * 1024, { manifestLoader: noopLoader });
+    expect(d.level).toBe("fits");
+    expect(d.fits).toBe(true);
+  });
+
+  it("honours an explicit reserve override (0 = raw RAM)", () => {
+    const tight = assessRamFit(model, 12 * 1024 + 100, {
+      manifestLoader: noopLoader,
+      reserveMb: 0,
+    });
+    expect(tight.fits).toBe(true);
+    const refused = assessRamFit(model, 12 * 1024 + 100, {
+      manifestLoader: noopLoader,
+      reserveMb: 4096,
+    });
+    expect(refused.level).toBe("wontfit");
+  });
+
+  it("a manifest-declared budget wins over the catalog scalar", () => {
+    const loader: ManifestLoader = () =>
+      syntheticManifest({
+        id: model.id,
+        tier: model.id.slice("eliza-1-".length) as Eliza1Manifest["tier"],
+        ramBudgetMb: { min: 99000, recommended: 99000 },
+      });
+    const d = assessRamFit(model, 64 * 1024, {
+      manifestLoader: loader,
+      installed: installed(model),
+    });
+    expect(d.level).toBe("wontfit");
+    expect(d.budget.source).toBe("manifest");
+    expect(d.budget.minMb).toBe(99000);
+  });
+});
+
+describe("pickFittingContextVariant", () => {
+  it("picks the largest 27B context variant that fits the host", () => {
+    const m1 = findCatalogModel("eliza-1-27b-1m");
+    if (!m1) throw new Error("test setup");
+    // 40 GB host: 27b (32 GB floor) fits, 27b-256k (96 GB) does not,
+    // 27b-1m (200 GB) does not. Picking from 27b-1m falls back to 27b.
+    const picked = pickFittingContextVariant(m1, 40 * 1024, {
+      manifestLoader: noopLoader,
+      reserveMb: 1536,
+    });
+    expect(picked?.id).toBe("eliza-1-27b");
+  });
+
+  it("picks the 256k variant when there's enough RAM for it but not 1m", () => {
+    const m1 = findCatalogModel("eliza-1-27b-1m");
+    if (!m1) throw new Error("test setup");
+    const picked = pickFittingContextVariant(m1, 110 * 1024, {
+      manifestLoader: noopLoader,
+      reserveMb: 1536,
+    });
+    expect(picked?.id).toBe("eliza-1-27b-256k");
+  });
+
+  it("returns the model itself when it already fits", () => {
+    const m27 = findCatalogModel("eliza-1-27b");
+    if (!m27) throw new Error("test setup");
+    const picked = pickFittingContextVariant(m27, 64 * 1024, {
+      manifestLoader: noopLoader,
+    });
+    expect(picked?.id).toBe("eliza-1-27b");
+  });
+
+  it("returns null when not even the smallest variant of the line fits", () => {
+    const m27 = findCatalogModel("eliza-1-27b");
+    if (!m27) throw new Error("test setup");
+    const picked = pickFittingContextVariant(m27, 8 * 1024, {
+      manifestLoader: noopLoader,
+    });
+    expect(picked).toBeNull();
+  });
+
+  it("does not cross param-count lines (9b never picked from a 27b request)", () => {
+    const m27 = findCatalogModel("eliza-1-27b-256k");
+    if (!m27) throw new Error("test setup");
+    // Enough for 9b (12 GB) but not any 27b variant.
+    const picked = pickFittingContextVariant(m27, 14 * 1024, {
+      manifestLoader: noopLoader,
+      reserveMb: 1536,
+    });
+    expect(picked).toBeNull();
   });
 });

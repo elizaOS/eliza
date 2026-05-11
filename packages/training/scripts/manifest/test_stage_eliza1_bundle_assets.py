@@ -45,6 +45,7 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         asr_repo=None,
         asr_file=None,
         asr_mmproj_file=None,
+        skip_wakeword=False,
         upload_repo=None,
         upload_prefix="",
         public=False,

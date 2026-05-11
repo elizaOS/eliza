@@ -11,6 +11,10 @@ Default sources:
   - TTS: Serveurperso/OmniVoice-GGUF, Apache-2.0 GGUF artifacts.
   - ASR: ggml-org/Qwen3-ASR-*-GGUF, GGUF artifacts.
   - VAD: onnx-community/silero-vad, int8 ONNX sidecar model.
+  - Wake word (optional): github.com/dscripka/openWakeWord release ONNX
+    graphs (melspectrogram + embedding feature models, "hey jarvis" head
+    staged as the Eliza-1 default `wake/hey-eliza.onnx`). Skip with
+    `--skip-wakeword`.
 """
 
 from __future__ import annotations
@@ -23,6 +27,7 @@ import shutil
 import struct
 import sys
 import time
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
@@ -57,6 +62,21 @@ GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
 VAD_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("onnx/model_int8.onnx", "vad/silero-vad-int8.onnx"),
 )
+
+# openWakeWord ships its ONNX graphs as GitHub release assets, not on the
+# Hub. The melspectrogram + embedding front-ends are model-agnostic; the
+# wake-word head is the wake phrase. We stage the upstream "hey jarvis"
+# head as the Eliza-1 default ("hey-eliza.onnx") — replace it with a head
+# trained on the approved wake phrase before a real release.
+WAKEWORD_RELEASE: Final[str] = (
+    "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1"
+)
+WAKEWORD_FILES: Final[tuple[tuple[str, str], ...]] = (
+    ("melspectrogram.onnx", "wake/melspectrogram.onnx"),
+    ("embedding_model.onnx", "wake/embedding_model.onnx"),
+    ("hey_jarvis_v0.1.onnx", "wake/hey-eliza.onnx"),
+)
+WAKEWORD_MIN_BYTES: Final[int] = 100_000
 
 VOICE_PRESET_MAGIC: Final[int] = 0x315A4C45  # 'ELZ1'
 VOICE_PRESET_VERSION: Final[int] = 1
@@ -156,6 +176,36 @@ def copy_hf_file(
         "remotePath": remote_path,
         "path": str(destination),
         "linkMode": link_mode,
+        "sizeBytes": destination.stat().st_size,
+        "sha256": sha256_file(destination),
+    }
+
+
+def download_url_file(
+    *,
+    url: str,
+    destination: Path,
+    min_bytes: int,
+    dry_run: bool,
+) -> dict[str, Any]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        return {"url": url, "path": str(destination), "dryRun": True}
+    tmp = destination.with_suffix(destination.suffix + ".part")
+
+    def _fetch() -> None:
+        with urllib.request.urlopen(url, timeout=60) as resp:  # noqa: S310
+            tmp.write_bytes(resp.read())
+
+    retry_hf(_fetch)
+    size = tmp.stat().st_size
+    if size < min_bytes:
+        tmp.unlink(missing_ok=True)
+        raise ValueError(f"downloaded {url} is only {size} bytes (< {min_bytes})")
+    tmp.replace(destination)
+    return {
+        "url": url,
+        "path": str(destination),
         "sizeBytes": destination.stat().st_size,
         "sha256": sha256_file(destination),
     }
@@ -274,6 +324,15 @@ def merge_lineage(
                 "base": f"{VAD_REPO}@{revisions[VAD_REPO]}",
                 "license": "mit",
             },
+            "wakeword": {
+                "base": f"{WAKEWORD_RELEASE}",
+                "license": (
+                    "openWakeWord code + feature models: Apache-2.0; "
+                    "pre-trained wake-phrase heads: CC-BY-NC-SA-4.0 "
+                    "(acceptable for Eliza-1's non-commercial release; "
+                    "retrain the head for any commercial pivot)"
+                ),
+            },
         }
     )
     if not dry_run:
@@ -293,6 +352,16 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
         "LICENSE.vad": (
             "VAD assets staged from onnx-community/silero-vad.\n"
             "Declared upstream license: MIT.\n"
+        ),
+        "LICENSE.wakeword": (
+            "Wake-word assets staged from "
+            "https://github.com/dscripka/openWakeWord (v0.5.1 release).\n"
+            "openWakeWord code and the shared feature models "
+            "(melspectrogram, embedding): Apache-2.0.\n"
+            "Pre-trained wake-phrase heads: CC-BY-NC-SA-4.0 "
+            "(GTSinger/RAVDESS/Expresso-style training corpora — acceptable "
+            "for the non-commercial Eliza-1 release; retrain the head on a "
+            "commercially-licensed corpus for any commercial pivot).\n"
         ),
     }
     if dry_run:
@@ -378,6 +447,16 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 dry_run=args.dry_run,
             )
         )
+    if not args.skip_wakeword:
+        for remote, rel in WAKEWORD_FILES:
+            staged.append(
+                download_url_file(
+                    url=f"{WAKEWORD_RELEASE}/{remote}",
+                    destination=bundle_dir / rel,
+                    min_bytes=WAKEWORD_MIN_BYTES,
+                    dry_run=args.dry_run,
+                )
+            )
 
     preset = write_voice_preset(
         bundle_dir / "cache" / "voice-preset-default.bin",
@@ -426,17 +505,19 @@ def upload_assets(args: argparse.Namespace) -> None:
         repo_type="model",
         folder_path=str(args.bundle_dir.resolve()),
         path_in_repo=args.upload_prefix.strip("/"),
-        commit_message=f"Stage Eliza-1 {args.tier} voice/ASR/VAD assets",
+        commit_message=f"Stage Eliza-1 {args.tier} voice/ASR/VAD/wake assets",
         allow_patterns=[
             "tts/**",
             "asr/**",
             "vad/**",
+            "wake/**",
             "cache/voice-preset-default.bin",
             "evidence/bundle-assets.json",
             "lineage.json",
             "licenses/LICENSE.voice",
             "licenses/LICENSE.asr",
             "licenses/LICENSE.vad",
+            "licenses/LICENSE.wakeword",
         ],
     )
 
@@ -473,6 +554,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--asr-mmproj-file",
         default=None,
         help="Exact ASR mmproj GGUF file path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--skip-wakeword",
+        action="store_true",
+        help=(
+            "Skip staging the optional openWakeWord graphs. Wake word is "
+            "opt-in (hide-not-disable); a bundle without it still has a "
+            "working voice pipeline (push-to-talk / VAD-gated)."
+        ),
     )
     ap.add_argument(
         "--upload-repo",
