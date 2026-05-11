@@ -67,7 +67,8 @@ export type OptimizedPromptTask =
 	| "context_routing"
 	| "action_planner"
 	| "response"
-	| "media_description";
+	| "media_description"
+	| "action_descriptions";
 
 export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"should_respond",
@@ -75,12 +76,16 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 	"action_planner",
 	"response",
 	"media_description",
+	"action_descriptions",
 ] as const;
 
 export type OptimizerName =
 	| "instruction-search"
 	| "prompt-evolution"
-	| "bootstrap-fewshot";
+	| "bootstrap-fewshot"
+	| "dspy-bootstrap-fewshot"
+	| "dspy-copro"
+	| "dspy-mipro";
 
 /**
  * Mirror of `OptimizationExample` from `plugins/app-training/src/optimizers/types.ts`.
@@ -144,7 +149,10 @@ function isOptimizerName(value: unknown): value is OptimizerName {
 	return (
 		value === "instruction-search" ||
 		value === "prompt-evolution" ||
-		value === "bootstrap-fewshot"
+		value === "bootstrap-fewshot" ||
+		value === "dspy-bootstrap-fewshot" ||
+		value === "dspy-copro" ||
+		value === "dspy-mipro"
 	);
 }
 
