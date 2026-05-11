@@ -10,5 +10,6 @@ export * from "./TranslationContext";
 export * from "./types";
 export * from "./ui-preferences";
 export * from "./useApp";
+export * from "./useContentPack";
 export * from "./useDeveloperMode";
 export * from "./useWalletState";
