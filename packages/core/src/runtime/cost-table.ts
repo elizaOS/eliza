@@ -15,15 +15,15 @@
 import {
 	computeCallCostUsd as computeCallCostUsdFromPricing,
 	lookupModelPrice as lookupModelPriceFromPricing,
-	MODEL_PRICES_USD_PER_M_TOKENS as PRICING_TABLE,
 	type ModelPriceUsdPerMTokens as ModelPriceUsdPerMTokensWithProvider,
+	MODEL_PRICES_USD_PER_M_TOKENS as PRICING_TABLE,
 	type TokenUsageForCost,
 } from "../features/trajectories/pricing";
 
 export type { TokenUsageForCost } from "../features/trajectories/pricing";
 export {
-	PRICE_TABLE_ID,
 	isLocalProvider,
+	PRICE_TABLE_ID,
 } from "../features/trajectories/pricing";
 
 /**

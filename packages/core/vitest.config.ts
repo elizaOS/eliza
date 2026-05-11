@@ -38,6 +38,8 @@ export default defineConfig({
 		exclude: [
 			"**/node_modules/**",
 			"**/dist/**",
+			"**/.claude/**",
+			".claude/**",
 			// Playwright e2e specs must be run with `npm run test:e2e` (playwright test), not vitest
 			"e2e/**",
 		],

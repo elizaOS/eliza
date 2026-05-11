@@ -1,0 +1,150 @@
+# Trajectory Collection Runbook
+
+`packages/training/scripts/collect_trajectories.py` is a development
+orchestrator for collecting trajectories through existing entry points. It is
+provider/model agnostic: provider and model values are recorded as labels, and
+the collector only exports a model-specific env var where an existing backend
+already has one (`CEREBRAS_MODEL` for the Cerebras dev adapter).
+
+## What It Runs
+
+Supported suites:
+
+- `live-scenarios` invokes `node scripts/run-live-scenarios.mjs` with
+  `--run-dir` and `--runId`.
+- `scenario-benchmark` invokes `node scripts/run-scenario-benchmark.mjs` and
+  points its JSON/Markdown reports at the collection run directory.
+- `scenario-runner` invokes `bun --bun packages/scenario-runner/src/cli.ts run`
+  directly with `--run-dir`, `--runId`, `--report`, and `--report-dir`.
+- `lifeops-bench` invokes the active Python interpreter with
+  `-m eliza_lifeops_bench` from
+  `packages/benchmarks/lifeops-bench` with `--max-cost-usd`.
+
+Every invocation writes `<output-dir>/<run-id>/collection-manifest.json`,
+including dry-runs. The manifest records commands, env requirements, env
+overrides, expected output paths, provider labels, and cost-cap handling.
+Run it with the training package Python environment (`>=3.11`).
+
+## Provider Labels
+
+Built-in labels are `env`, `cerebras-dev`, `openai`, `anthropic`,
+`openai-placeholder`, and `opus-placeholder`.
+
+`cerebras-dev` is only a development backend label. It does not pin
+`gpt-oss-120b`; pass `--model` when you want the collector to export
+`CEREBRAS_MODEL` for LifeOpsBench `cerebras-direct` runs.
+
+`openai-placeholder` and `opus-placeholder` are config labels only. The
+collector refuses non-dry runs whose active model or judge model contains
+`opus`, so Opus can appear in a manifest as planning metadata without being
+executed by this script.
+
+For `--provider anthropic`, pass an explicit non-Opus `--model`; the collector
+blocks non-dry Anthropic runs without one to avoid falling through to an Opus
+default configured elsewhere.
+
+## Dry-Run
+
+```bash
+python3 packages/training/scripts/collect_trajectories.py \
+  --dry-run \
+  --provider cerebras-dev \
+  --model <dev-model-id> \
+  --suites live-scenarios,scenario-runner,lifeops-bench \
+  --run-id dev-trajectories-001 \
+  --output-dir artifacts/trajectory-collection \
+  --max-cost-usd 2
+```
+
+Inspect:
+
+```bash
+jq . artifacts/trajectory-collection/dev-trajectories-001/collection-manifest.json
+```
+
+## Live Scenario Collection
+
+```bash
+ELIZA_LIVE_TEST=1 CEREBRAS_API_KEY=... \
+python3 packages/training/scripts/collect_trajectories.py \
+  --provider cerebras-dev \
+  --model <dev-model-id> \
+  --suites live-scenarios \
+  --scenario-filter reminder.followup.basic \
+  --run-id live-smoke-001 \
+  --output-dir artifacts/trajectory-collection \
+  --max-cost-usd 1
+```
+
+Expected outputs include:
+
+- `artifacts/trajectory-collection/live-smoke-001/trajectories/`
+- `artifacts/trajectory-collection/live-smoke-001/reports/live-scenarios.json`
+- `artifacts/trajectory-collection/live-smoke-001/matrix.json`
+
+## Scenario Benchmark
+
+```bash
+ELIZA_LIVE_TEST=1 OPENAI_API_KEY=... \
+python3 packages/training/scripts/collect_trajectories.py \
+  --provider openai \
+  --model <model-label> \
+  --suites scenario-benchmark \
+  --run-id benchmark-dev-001 \
+  --output-dir artifacts/trajectory-collection
+```
+
+The benchmark wrapper does not expose a native cost cap. The collector records
+the cap in the manifest for accounting, but only LifeOpsBench enforces
+`--max-cost-usd`.
+
+## Direct Scenario Runner
+
+```bash
+ELIZA_LIVE_TEST=1 OPENROUTER_API_KEY=... \
+python3 packages/training/scripts/collect_trajectories.py \
+  --provider env \
+  --model <model-label> \
+  --suites scenario-runner \
+  --scenario-root plugins/app-lifeops/test/scenarios \
+  --file-glob "plugins/app-lifeops/test/scenarios/*.scenario.ts" \
+  --run-id direct-runner-001 \
+  --output-dir artifacts/trajectory-collection \
+  --aggregate
+```
+
+With `--aggregate`, the collector runs `scripts/aggregate-lifeops-run.mjs`
+after scenario suites and expects `report.md`, `steps.csv`, and per-scenario
+JSONL under the same run directory.
+
+## LifeOpsBench Static Dev Run
+
+```bash
+CEREBRAS_API_KEY=... \
+python3 packages/training/scripts/collect_trajectories.py \
+  --provider cerebras-dev \
+  --model <dev-model-id> \
+  --suites lifeops-bench \
+  --lifeops-agent cerebras-direct \
+  --lifeops-mode static \
+  --lifeops-domain reminders \
+  --max-cost-usd 1 \
+  --run-id lifeops-bench-static-001 \
+  --output-dir artifacts/trajectory-collection
+```
+
+`--lifeops-mode` defaults to `static` to avoid accidental live judge calls. For
+live mode, pass an explicit non-Opus `--judge-model`; the collector will not
+fall through to the LifeOpsBench Opus default.
+
+## Privacy And Training
+
+Raw trajectories are collection artifacts, not training data. Before including
+them in SFT or RL data, run the repo privacy filter path and schema validators.
+The native SFT splitter expects redacted `eliza_native_v1` rows:
+
+```bash
+python3 packages/training/scripts/trajectories_to_sft.py \
+  --input <redacted-eliza-native-json-or-jsonl> \
+  --output-dir packages/training/data/sft-trajectories
+```

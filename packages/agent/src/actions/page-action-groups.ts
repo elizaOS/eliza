@@ -56,9 +56,7 @@ const PAGE_CONTEXTS: Record<PageKey, AgentContext[]> = {
 };
 
 const ALL_PAGE_CONTEXTS: AgentContext[] = Array.from(
-  new Set<AgentContext>(
-    PAGE_KEYS.flatMap((page) => PAGE_CONTEXTS[page]),
-  ),
+  new Set<AgentContext>(PAGE_KEYS.flatMap((page) => PAGE_CONTEXTS[page])),
 );
 
 type PageActionGroup = Action & {
@@ -232,7 +230,11 @@ export const pageDelegateAction: PageActionGroup = {
     }
 
     const childContexts = PAGE_CONTEXTS[page];
-    const childAction = findChildAction(runtime, requestedAction, childContexts);
+    const childAction = findChildAction(
+      runtime,
+      requestedAction,
+      childContexts,
+    );
     if (!childAction) {
       return {
         success: false,

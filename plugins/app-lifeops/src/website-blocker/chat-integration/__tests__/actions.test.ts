@@ -38,12 +38,10 @@ vi.mock("../../access.js", () => ({
   getSelfControlAccess: vi.fn(async () => ({ allowed: true, role: "OWNER" })),
 }));
 
-// Audit B Defer #1 folded `WEBSITE_BLOCK` into the `BLOCK` umbrella; the
-// underlying implementation is exported as `websiteBlockActionImpl` so this
-// test continues to exercise the website-blocker reader/writer dispatch
-// directly. The legacy `websiteBlockAction` symbol is now an alias for the
-// umbrella (`blockAction`).
-import { websiteBlockActionImpl as websiteBlockAction } from "../../../actions/website-block.js";
+// Audit B Defer #1 folded `WEBSITE_BLOCK` into the `BLOCK` umbrella; exercise
+// the website-target handler directly so this test covers the reader/writer
+// dispatch without re-registering the retired standalone action.
+import { runWebsiteBlockHandler } from "../../../actions/website-block.js";
 import * as websiteBlockerEngine from "../../engine.js";
 import { BlockRuleReader, BlockRuleWriter } from "../block-rule-service.js";
 import {
@@ -93,7 +91,7 @@ async function invokeSubaction(
   subaction: "list_active" | "release",
   parameters: Record<string, unknown>,
 ): Promise<ActionResult> {
-  const result = await websiteBlockAction.handler(
+  const result = await runWebsiteBlockHandler(
     harness.runtime,
     EMPTY_MESSAGE,
     undefined,

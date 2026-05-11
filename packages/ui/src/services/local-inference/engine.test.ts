@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  gpuLayersForKvOffload,
-  resolveGpuLayersForLoad,
-} from "./engine";
+import { gpuLayersForKvOffload, resolveGpuLayersForLoad } from "./engine";
 
 describe("gpuLayersForKvOffload", () => {
   it("maps KV placement requests onto node-llama-cpp gpuLayers settings", () => {
@@ -41,9 +38,9 @@ describe("resolveGpuLayersForLoad", () => {
   });
 
   it("keeps the previous auto/default behavior when no override is present", () => {
-    expect(
-      resolveGpuLayersForLoad({ modelPath: "/tmp/eliza-1-9b.gguf" }),
-    ).toBe("auto");
+    expect(resolveGpuLayersForLoad({ modelPath: "/tmp/eliza-1-9b.gguf" })).toBe(
+      "auto",
+    );
     expect(
       resolveGpuLayersForLoad({
         modelPath: "/tmp/eliza-1-9b.gguf",

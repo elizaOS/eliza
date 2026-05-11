@@ -3,7 +3,6 @@ import {
   type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
-  type DispatchSensitiveRequest,
   logger,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,

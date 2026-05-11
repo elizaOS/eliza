@@ -1,0 +1,63 @@
+name: Generate Registry JSON
+
+on:
+  push:
+    branches:
+      - main
+      - 'next@registry'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  generate-registry:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate generated-registry.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run generate-registry
+
+      - name: Check if generated-registry.json changed
+        id: check-changes
+        run: |
+          git add generated-registry.json
+          if git diff --cached --quiet generated-registry.json; then
+            echo "No changes detected in generated-registry.json"
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected in generated-registry.json"
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Commit and push generated-registry.json
+        if: steps.check-changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          if git ls-files --error-unmatch generated-registry.json >/dev/null 2>&1; then
+            git commit -m "Auto-update generated-registry.json from index.json [skip ci]"
+          else
+            git commit -m "Initial generation of generated-registry.json from index.json [skip ci]"
+          fi
+          git push
+
+      - name: No changes detected
+        if: steps.check-changes.outputs.changed == 'false'
+        run: echo "No changes detected in generated-registry.json"

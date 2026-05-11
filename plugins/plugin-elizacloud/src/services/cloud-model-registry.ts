@@ -111,7 +111,7 @@ export class CloudModelRegistryService extends Service {
     const client = auth.getClient();
 
     const response = await client.get<ModelListResponse>("/models");
-    const entries = response.data ?? [];
+    const entries: ModelListEntry[] = response.data ?? [];
 
     this.models = entries.map((entry) => ({
       id: entry.id,

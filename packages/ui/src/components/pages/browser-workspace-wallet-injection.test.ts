@@ -78,6 +78,7 @@ interface SolanaProvider {
 interface HarnessWindow extends Window {
   __electrobunSendToHost: (payload: HostWalletRequest) => void;
   __elizaWalletReply: (requestId: number, payload: WalletReplyPayload) => void;
+  Event: typeof Event;
   ethereum: Eip1193Provider;
   solana: SolanaProvider;
   phantom: { solana: SolanaProvider };

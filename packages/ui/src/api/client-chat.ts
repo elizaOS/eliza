@@ -42,10 +42,17 @@ import type {
   MemoryRememberResponse,
   MemorySearchResponse,
   MemoryStatsResponse,
+  PostWorkbenchVfsPromoteToCloudRequest,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
   QueryResult,
   QuickContextResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
   ShareIngestItem,
   ShareIngestPayload,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
   TableInfo,
   TableRowsResponse,
   TrajectoryConfig,
@@ -54,9 +61,16 @@ import type {
   TrajectoryListOptions,
   TrajectoryListResult,
   TrajectoryStats,
+  WorkbenchLoadedVfsPlugin,
   WorkbenchOverview,
   WorkbenchTask,
   WorkbenchTodo,
+  WorkbenchVfsCompileResult,
+  WorkbenchVfsDiffEntry,
+  WorkbenchVfsEntry,
+  WorkbenchVfsProject,
+  WorkbenchVfsQuota,
+  WorkbenchVfsSnapshot,
 } from "./client-types";
 
 type DocumentListOptions = {
@@ -394,6 +408,76 @@ declare module "./client-base" {
       isCompleted: boolean,
     ): Promise<void>;
     deleteWorkbenchTodo(todoId: string): Promise<{ ok: boolean }>;
+    createWorkbenchVfsProject(
+      projectId: string,
+    ): Promise<{ project: WorkbenchVfsProject; quota: WorkbenchVfsQuota }>;
+    getWorkbenchVfsQuota(
+      projectId: string,
+    ): Promise<{ quota: WorkbenchVfsQuota }>;
+    listWorkbenchVfsFiles(
+      projectId: string,
+      options?: { path?: string; recursive?: boolean },
+    ): Promise<{ files: WorkbenchVfsEntry[] }>;
+    readWorkbenchVfsFile(
+      projectId: string,
+      path: string,
+      options?: { encoding?: "utf-8" | "base64" },
+    ): Promise<{ path: string; encoding: "utf-8" | "base64"; content: string }>;
+    writeWorkbenchVfsFile(
+      projectId: string,
+      data: { path: string; content: string; encoding?: "utf-8" | "base64" },
+    ): Promise<{ file: WorkbenchVfsEntry }>;
+    deleteWorkbenchVfsFile(
+      projectId: string,
+      path: string,
+    ): Promise<{ ok: boolean }>;
+    listWorkbenchVfsSnapshots(
+      projectId: string,
+    ): Promise<{ snapshots: WorkbenchVfsSnapshot[] }>;
+    createWorkbenchVfsSnapshot(
+      projectId: string,
+      data?: { note?: string },
+    ): Promise<{ snapshot: WorkbenchVfsSnapshot }>;
+    getWorkbenchVfsDiff(
+      projectId: string,
+      snapshotId: string,
+    ): Promise<{ diff: WorkbenchVfsDiffEntry[] }>;
+    rollbackWorkbenchVfs(
+      projectId: string,
+      snapshotId: string,
+    ): Promise<{ rollback: unknown }>;
+    compileWorkbenchVfsPlugin(
+      projectId: string,
+      data: {
+        entry: string;
+        outFile?: string;
+        format?: "esm" | "cjs";
+        target?: string;
+      },
+    ): Promise<{ compile: WorkbenchVfsCompileResult }>;
+    loadWorkbenchVfsPlugin(
+      projectId: string,
+      data: { entry: string; outFile?: string; compileFirst?: boolean },
+    ): Promise<{ pluginName: string; unloaded: false }>;
+    listWorkbenchVfsPlugins(): Promise<{ plugins: WorkbenchLoadedVfsPlugin[] }>;
+    unloadWorkbenchVfsPlugin(
+      projectId: string,
+      pluginName: string,
+    ): Promise<{ pluginName: string; unloaded: boolean }>;
+    promoteWorkbenchVfsToCloud(
+      projectId: string,
+      data?: PostWorkbenchVfsPromoteToCloudRequest,
+    ): Promise<PromoteVfsToCloudContainerResponse>;
+    promoteVfsToCloudContainer(
+      data: PromoteVfsToCloudContainerRequest,
+    ): Promise<PromoteVfsToCloudContainerResponse>;
+    requestCloudCodingContainer(
+      data: RequestCodingAgentContainerRequest,
+    ): Promise<RequestCodingAgentContainerResponse>;
+    syncCloudCodingContainerChanges(
+      containerId: string,
+      data: SyncCloudCodingContainerRequest,
+    ): Promise<SyncCloudCodingContainerResponse>;
     refreshRegistry(): Promise<void>;
     getTrajectories(
       options?: TrajectoryListOptions,
@@ -1235,6 +1319,221 @@ ElizaClient.prototype.deleteWorkbenchTodo = async function (
   return this.fetch(`/api/workbench/todos/${encodeURIComponent(todoId)}`, {
     method: "DELETE",
   });
+};
+
+ElizaClient.prototype.createWorkbenchVfsProject = async function (
+  this: ElizaClient,
+  projectId,
+) {
+  return this.fetch("/api/workbench/vfs/projects", {
+    method: "POST",
+    body: JSON.stringify({ projectId }),
+  });
+};
+
+ElizaClient.prototype.getWorkbenchVfsQuota = async function (
+  this: ElizaClient,
+  projectId,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/quota`,
+  );
+};
+
+ElizaClient.prototype.listWorkbenchVfsFiles = async function (
+  this: ElizaClient,
+  projectId,
+  options = {},
+) {
+  const params = new URLSearchParams();
+  if (options.path) params.set("path", options.path);
+  if (options.recursive) params.set("recursive", "true");
+  const query = params.toString();
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/files${
+      query ? `?${query}` : ""
+    }`,
+  );
+};
+
+ElizaClient.prototype.readWorkbenchVfsFile = async function (
+  this: ElizaClient,
+  projectId,
+  path,
+  options = {},
+) {
+  const params = new URLSearchParams({ path });
+  if (options.encoding) params.set("encoding", options.encoding);
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/file?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.writeWorkbenchVfsFile = async function (
+  this: ElizaClient,
+  projectId,
+  data,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/file`,
+    {
+      method: "PUT",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.deleteWorkbenchVfsFile = async function (
+  this: ElizaClient,
+  projectId,
+  path,
+) {
+  const params = new URLSearchParams({ path });
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/file?${params.toString()}`,
+    { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.listWorkbenchVfsSnapshots = async function (
+  this: ElizaClient,
+  projectId,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/snapshots`,
+  );
+};
+
+ElizaClient.prototype.createWorkbenchVfsSnapshot = async function (
+  this: ElizaClient,
+  projectId,
+  data = {},
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/snapshots`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.getWorkbenchVfsDiff = async function (
+  this: ElizaClient,
+  projectId,
+  snapshotId,
+) {
+  const params = new URLSearchParams({ snapshotId });
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/diff?${params.toString()}`,
+  );
+};
+
+ElizaClient.prototype.rollbackWorkbenchVfs = async function (
+  this: ElizaClient,
+  projectId,
+  snapshotId,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/rollback`,
+    {
+      method: "POST",
+      body: JSON.stringify({ snapshotId }),
+    },
+  );
+};
+
+ElizaClient.prototype.compileWorkbenchVfsPlugin = async function (
+  this: ElizaClient,
+  projectId,
+  data,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/compile-plugin`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.loadWorkbenchVfsPlugin = async function (
+  this: ElizaClient,
+  projectId,
+  data,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/load-plugin`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.listWorkbenchVfsPlugins = async function (
+  this: ElizaClient,
+) {
+  return this.fetch("/api/workbench/vfs/plugins");
+};
+
+ElizaClient.prototype.unloadWorkbenchVfsPlugin = async function (
+  this: ElizaClient,
+  projectId,
+  pluginName,
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/plugins/${encodeURIComponent(pluginName)}`,
+    { method: "DELETE" },
+  );
+};
+
+ElizaClient.prototype.promoteWorkbenchVfsToCloud = async function (
+  this: ElizaClient,
+  projectId,
+  data = {},
+) {
+  return this.fetch(
+    `/api/workbench/vfs/projects/${encodeURIComponent(projectId)}/promote-to-cloud`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+ElizaClient.prototype.promoteVfsToCloudContainer = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/cloud/coding-containers/promotions", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.requestCloudCodingContainer = async function (
+  this: ElizaClient,
+  data,
+) {
+  return this.fetch("/api/cloud/coding-containers", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+ElizaClient.prototype.syncCloudCodingContainerChanges = async function (
+  this: ElizaClient,
+  containerId,
+  data,
+) {
+  return this.fetch(
+    `/api/cloud/coding-containers/${encodeURIComponent(containerId)}/sync`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
 };
 
 ElizaClient.prototype.refreshRegistry = async function (this: ElizaClient) {

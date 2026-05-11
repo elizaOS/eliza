@@ -1,6 +1,5 @@
 import type {
   DispatchSensitiveRequest,
-  SensitiveRequest,
   SensitiveRequestKind,
   SensitiveRequestTarget,
 } from "@elizaos/core";

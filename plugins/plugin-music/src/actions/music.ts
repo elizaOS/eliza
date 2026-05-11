@@ -337,12 +337,10 @@ async function resolveSubaction(
   state: State | undefined,
   merged: Record<string, unknown>,
 ): Promise<MusicSubaction | null> {
-  return readExplicitSubaction(merged) ?? (await inferSubactionFromText(
-    runtime,
-    message,
-    state,
-    merged,
-  ));
+  return (
+    readExplicitSubaction(merged) ??
+    (await inferSubactionFromText(runtime, message, state, merged))
+  );
 }
 
 function ensurePlaybackMerged(

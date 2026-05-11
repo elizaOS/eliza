@@ -63,6 +63,9 @@ export const notificationsProber: Prober = {
       );
     }
     await runOsascript('display notification "" with title ""');
-    return buildState(ID, "not-determined", { canRequest: true, lastRequested });
+    return buildState(ID, "not-determined", {
+      canRequest: true,
+      lastRequested,
+    });
   },
 };

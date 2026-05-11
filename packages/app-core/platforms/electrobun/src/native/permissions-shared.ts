@@ -84,7 +84,7 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 	{
 		id: "reminders",
 		name: "Apple Reminders",
-		description: "Create and read Apple Reminders from LifeOps",
+		description: "Create and update Apple Reminders for LifeOps tasks",
 		icon: "list-todo",
 		platforms: ["darwin"],
 		requiredForFeatures: ["lifeops", "reminders"],
@@ -92,10 +92,10 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 	{
 		id: "calendar",
 		name: "Apple Calendar",
-		description: "Read and write Apple Calendar events for scheduling",
+		description: "Control Apple Calendar through user-approved automation",
 		icon: "calendar",
 		platforms: ["darwin"],
-		requiredForFeatures: ["lifeops", "calendar"],
+		requiredForFeatures: ["calendar-automation"],
 	},
 	{
 		id: "health",
@@ -117,10 +117,10 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 	{
 		id: "contacts",
 		name: "Contacts",
-		description: "Read contacts for person-aware reminders and follow-ups",
+		description: "Read and edit Apple Contacts for message name resolution",
 		icon: "contact",
 		platforms: ["darwin"],
-		requiredForFeatures: ["lifeops", "contacts"],
+		requiredForFeatures: ["imessage", "contacts"],
 	},
 	{
 		id: "notes",
@@ -154,7 +154,7 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 		description: "Control other macOS apps through Apple Events",
 		icon: "workflow",
 		platforms: ["darwin"],
-		requiredForFeatures: ["lifeops", "automation"],
+		requiredForFeatures: ["messages", "notes", "automation"],
 	},
 ];
 

@@ -299,7 +299,9 @@ function scrubEventPayloadValue(value: unknown, depth = 0): unknown {
 	}
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+		for (const [key, entry] of Object.entries(
+			value as Record<string, unknown>,
+		)) {
 			if (typeof entry === "undefined") continue;
 			if (key === "stack" || key === "stackTrace") continue;
 			out[key] = isSensitiveEventPayloadKey(key)
@@ -504,7 +506,10 @@ export class BrowserWorkspaceManager {
 				: 0;
 		const limit =
 			typeof options.limit === "number" && Number.isFinite(options.limit)
-				? Math.min(MAX_EVENT_QUERY_LIMIT, Math.max(1, Math.floor(options.limit)))
+				? Math.min(
+						MAX_EVENT_QUERY_LIMIT,
+						Math.max(1, Math.floor(options.limit)),
+					)
 				: resolveEventLogLimit();
 		const tabId = options.tabId?.trim();
 		const type = options.type;
@@ -724,13 +729,17 @@ export class BrowserWorkspaceManager {
 			return null;
 		}
 		if (!this.rendererCaller) {
-			this.recordEvent("snapshot.miss", tab, { reason: "renderer_unavailable" });
+			this.recordEvent("snapshot.miss", tab, {
+				reason: "renderer_unavailable",
+			});
 			return null;
 		}
 
 		const tabRect = await this.rendererCaller.getTabRect({ id: tab.id });
 		if (!tabRect) {
-			this.recordEvent("snapshot.miss", tab, { reason: "tab_rect_unavailable" });
+			this.recordEvent("snapshot.miss", tab, {
+				reason: "tab_rect_unavailable",
+			});
 			return null;
 		}
 

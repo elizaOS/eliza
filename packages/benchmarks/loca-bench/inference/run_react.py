@@ -1754,12 +1754,11 @@ def run_single_task(
                     legacy_payload=episode_data,
                     indent=2,
                 )
-                if usage_tracking:
-                    write_json_file(
-                        save_file.parent / "token_stats.json",
-                        {"usage_tracking": usage_tracking},
-                        indent=2,
-                    )
+                write_json_file(
+                    save_file.parent / "token_stats.json",
+                    {"usage_tracking": usage_tracking},
+                    indent=2,
+                )
                 write_eval_file(
                     task_workspace=save_file.parent,
                     status="error",
@@ -1839,6 +1838,26 @@ def run_single_task(
                 print("terminated", terminated)
                 print("truncated", truncated)
                 print("info", info)
+
+            # If the model produced tool calls, preserve the paired tool
+            # results even when the run is about to stop for max_steps. Without
+            # this, truncated trajectories contain an assistant tool_call with
+            # no tool result, which makes them invalid for compaction replay.
+            tool_results = None
+            if call_messages.get("tool_calls"):
+                try:
+                    parsed_tool_results = json.loads(next_obs)
+                    if isinstance(parsed_tool_results, list):
+                        tool_results = parsed_tool_results
+                        messages.extend(tool_results)
+                        full_messages_history.extend(
+                            [
+                                dict(item) if isinstance(item, dict) else item
+                                for item in tool_results
+                            ]
+                        )
+                except (TypeError, json.JSONDecodeError):
+                    tool_results = None
             
             # Update state
             done = terminated or truncated
@@ -1853,10 +1872,11 @@ def run_single_task(
 
             if not done:
                 try:
-                    tool_results = json.loads(next_obs)
-                    messages.extend(tool_results)
-                    # Also add to full history
-                    full_messages_history.extend(tool_results)
+                    if tool_results is None:
+                        tool_results = json.loads(next_obs)
+                        messages.extend(tool_results)
+                        # Also add to full history
+                        full_messages_history.extend(tool_results)
 
                     # Add token usage information if context_awareness is enabled
                     if context_awareness and max_context_size is not None:
@@ -2432,10 +2452,9 @@ def run_single_task(
             )
 
             # Save stats.json with API usage tracking (progress)
-            if usage_tracking:
-                stats_data = {"usage_tracking": usage_tracking}
-                stats_file = save_file.parent / "token_stats.json"
-                write_json_file(stats_file, stats_data, indent=2)
+            stats_data = {"usage_tracking": usage_tracking}
+            stats_file = save_file.parent / "token_stats.json"
+            write_json_file(stats_file, stats_data, indent=2)
 
             if verbose:
                 print(f"[Task {task_id} | {task_label}] Progress saved to: {save_file}")
@@ -2509,10 +2528,9 @@ def run_single_task(
         )
 
         # Save token_stats.json with API usage tracking
-        if usage_tracking:
-            stats_data = {"usage_tracking": usage_tracking}
-            stats_file = save_file.parent / "token_stats.json"
-            write_json_file(stats_file, stats_data, indent=2)
+        stats_data = {"usage_tracking": usage_tracking}
+        stats_file = save_file.parent / "token_stats.json"
+        write_json_file(stats_file, stats_data, indent=2)
 
         # Save eval.json alongside trajectory.json
         feedback = info.get("env_observation", "") if info else ""
@@ -2662,12 +2680,11 @@ def run_single_task(
             legacy_payload=episode_data,
             indent=2,
         )
-        if usage_tracking:
-            write_json_file(
-                error_save_file.parent / "token_stats.json",
-                {"usage_tracking": usage_tracking},
-                indent=2,
-            )
+        write_json_file(
+            error_save_file.parent / "token_stats.json",
+            {"usage_tracking": usage_tracking},
+            indent=2,
+        )
 
         write_eval_file(
             task_workspace=error_save_file.parent,

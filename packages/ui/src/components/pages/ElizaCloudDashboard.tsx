@@ -23,7 +23,8 @@ import {
   client,
   isRateLimitedError,
 } from "../../api";
-import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
+import { useBranding } from "../../config/branding";
+import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
@@ -65,6 +66,7 @@ export function CloudDashboard() {
     setActionNotice,
     setState,
   } = useApp();
+  const branding = useBranding();
 
   const [refreshing, setRefreshing] = useState(false);
   const [billingLoading, setBillingLoading] = useState(false);
@@ -86,9 +88,8 @@ export function CloudDashboard() {
     autoTopUpFormReducer,
     buildAutoTopUpFormState(null, null),
   );
-  const mobileRuntimeMode = readPersistedMobileRuntimeMode();
   const cloudRuntimeLocked =
-    mobileRuntimeMode === "cloud" || mobileRuntimeMode === "cloud-hybrid";
+    branding.cloudOnly === true || isElizaCloudRuntimeLocked();
   const [billingSettingsBusy, setBillingSettingsBusy] = useState(false);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [checkoutSession, setCheckoutSession] =

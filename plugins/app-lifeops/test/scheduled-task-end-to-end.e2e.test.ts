@@ -31,6 +31,7 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
 } from "../src/lifeops/scheduled-task/runner.ts";
 import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.ts";
@@ -79,6 +80,7 @@ function makeRunner(initialIso = "2026-05-09T08:00:00.000Z"): Harness {
     globalPause: pause,
     activity,
     subjectStore,
+    dispatcher: TestNoopScheduledTaskDispatcher,
     newTaskId: () => {
       counter += 1;
       return `st_${counter}`;
@@ -268,6 +270,7 @@ describe("J3 — ScheduledTask spine end-to-end", () => {
       globalPause: pause,
       activity,
       subjectStore,
+      dispatcher: TestNoopScheduledTaskDispatcher,
       newTaskId: () => {
         counter += 1;
         return `pst_${counter}`;

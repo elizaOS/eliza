@@ -15,6 +15,7 @@ import { logger } from "../../../logger.ts";
 import {
 	type Action,
 	type ActionExample,
+	type ActionResult,
 	ChannelType,
 	type HandlerCallback,
 	type HandlerOptions,
@@ -44,6 +45,14 @@ type SecretsAction =
 	| "mirror"
 	| "request";
 
+type SecretsDispatchHandler = (
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	options: HandlerOptions | undefined,
+	callback: HandlerCallback | undefined,
+) => Promise<ActionResult>;
+
 const SECRETS_ACTIONS: readonly SecretsAction[] = [
 	"get",
 	"set",
@@ -61,7 +70,12 @@ const SECRETS_ACTIONS: readonly SecretsAction[] = [
 function resolveSecretsAction(
 	params: Record<string, unknown>,
 ): SecretsAction | undefined {
-	const candidates = [params.action, params.subaction, params.op, params.operation];
+	const candidates = [
+		params.action,
+		params.subaction,
+		params.op,
+		params.operation,
+	];
 	for (const candidate of candidates) {
 		if (typeof candidate !== "string") continue;
 		const normalized = candidate.trim().toLowerCase();
@@ -77,21 +91,7 @@ function resolveSecretsAction(
  * handler returns the same ActionResult shape, so callers can rely on
  * `data.actionName === "SECRETS"` and `data.action === <subaction>`.
  */
-const dispatch: Record<
-	SecretsAction,
-	(
-		runtime: IAgentRuntime,
-		message: Memory,
-		state: State | undefined,
-		options: HandlerOptions | undefined,
-		callback: HandlerCallback | undefined,
-	) => Promise<{
-		success: boolean;
-		text: string;
-		data: Record<string, unknown>;
-		error?: string;
-	}>
-> = {
+const dispatch: Record<SecretsAction, SecretsDispatchHandler> = {
 	get: getSecretHandler,
 	set: setSecretHandler,
 	delete: deleteSecretHandler,
@@ -145,15 +145,7 @@ export const secretsAction: Action = {
 			required: true,
 			schema: {
 				type: "string" as const,
-				enum: [
-					"get",
-					"set",
-					"delete",
-					"list",
-					"check",
-					"mirror",
-					"request",
-				],
+				enum: ["get", "set", "delete", "list", "check", "mirror", "request"],
 			},
 		},
 		{
@@ -291,7 +283,7 @@ export const secretsAction: Action = {
 		state?: State,
 		options?: HandlerOptions,
 		callback?: HandlerCallback,
-	) => {
+	): Promise<ActionResult> => {
 		const params =
 			options?.parameters && typeof options.parameters === "object"
 				? (options.parameters as Record<string, unknown>)

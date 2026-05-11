@@ -37,6 +37,31 @@ def ensure_comparison_id_column(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, declaration: str) -> None:
+    if not _column_exists(conn, table, column):
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+
+def ensure_metrics_columns(conn: sqlite3.Connection) -> None:
+    for column, declaration in (
+        ("trajectory_summary_json", "TEXT"),
+        ("token_metrics_json", "TEXT"),
+        ("cache_metrics_json", "TEXT"),
+        ("performance_metrics_json", "TEXT"),
+        ("trajectory_count", "INTEGER"),
+        ("llm_call_count", "INTEGER"),
+        ("total_prompt_tokens", "INTEGER"),
+        ("total_completion_tokens", "INTEGER"),
+        ("total_cache_read_input_tokens", "INTEGER"),
+        ("total_cache_creation_input_tokens", "INTEGER"),
+        ("mean_latency_ms", "REAL"),
+        ("p95_latency_ms", "REAL"),
+        ("throughput_per_second", "REAL"),
+    ):
+        _ensure_column(conn, "benchmark_runs", column, declaration)
+    conn.commit()
+
+
 def initialize_database(conn: sqlite3.Connection) -> None:
     conn.executescript(
         """
@@ -90,6 +115,20 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             FOREIGN KEY(run_group_id) REFERENCES run_groups(run_group_id)
         );
 
+        CREATE TABLE IF NOT EXISTS benchmark_run_trajectories (
+            run_id TEXT NOT NULL,
+            trajectory_file TEXT NOT NULL,
+            turn_index INTEGER NOT NULL,
+            prompt_tokens INTEGER NOT NULL DEFAULT 0,
+            completion_tokens INTEGER NOT NULL DEFAULT 0,
+            cached_tokens INTEGER NOT NULL DEFAULT 0,
+            cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+            latency_ms REAL,
+            prompt_chars INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY(run_id, trajectory_file, turn_index),
+            FOREIGN KEY(run_id) REFERENCES benchmark_runs(run_id)
+        );
+
         CREATE INDEX IF NOT EXISTS idx_benchmark_runs_signature
             ON benchmark_runs(signature);
         CREATE INDEX IF NOT EXISTS idx_benchmark_runs_signature_status
@@ -98,10 +137,13 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             ON benchmark_runs(run_group_id, started_at);
         CREATE INDEX IF NOT EXISTS idx_benchmark_runs_lookup
             ON benchmark_runs(benchmark_id, provider, model, agent, started_at);
+        CREATE INDEX IF NOT EXISTS idx_benchmark_run_trajectories_run
+            ON benchmark_run_trajectories(run_id);
         """
     )
     conn.commit()
     ensure_comparison_id_column(conn)
+    ensure_metrics_columns(conn)
 
 
 def create_run_group(
@@ -298,6 +340,10 @@ def update_run_result(
     high_score_label: str | None,
     high_score_value: float | None,
     delta_to_high_score: float | None,
+    trajectory_summary: dict[str, Any] | None = None,
+    token_metrics: dict[str, Any] | None = None,
+    cache_metrics: dict[str, Any] | None = None,
+    performance_metrics: dict[str, Any] | None = None,
 ) -> None:
     hib: int | None
     if higher_is_better is None:
@@ -321,7 +367,20 @@ def update_run_result(
             error = ?,
             high_score_label = ?,
             high_score_value = ?,
-            delta_to_high_score = ?
+            delta_to_high_score = ?,
+            trajectory_summary_json = ?,
+            token_metrics_json = ?,
+            cache_metrics_json = ?,
+            performance_metrics_json = ?,
+            trajectory_count = ?,
+            llm_call_count = ?,
+            total_prompt_tokens = ?,
+            total_completion_tokens = ?,
+            total_cache_read_input_tokens = ?,
+            total_cache_creation_input_tokens = ?,
+            mean_latency_ms = ?,
+            p95_latency_ms = ?,
+            throughput_per_second = ?
         WHERE run_id = ?
         """,
         (
@@ -338,9 +397,78 @@ def update_run_result(
             high_score_label,
             high_score_value,
             delta_to_high_score,
+            _json_dumps(trajectory_summary or {}),
+            _json_dumps(token_metrics or {}),
+            _json_dumps(cache_metrics or {}),
+            _json_dumps(performance_metrics or {}),
+            _int_or_none((trajectory_summary or {}).get("files")),
+            _int_or_none((token_metrics or {}).get("llm_call_count")),
+            _int_or_none((token_metrics or {}).get("prompt_tokens")),
+            _int_or_none((token_metrics or {}).get("completion_tokens")),
+            _int_or_none((cache_metrics or {}).get("cache_read_input_tokens")),
+            _int_or_none((cache_metrics or {}).get("cache_creation_input_tokens")),
+            _float_or_none((performance_metrics or {}).get("mean_latency_ms")),
+            _float_or_none((performance_metrics or {}).get("p95_latency_ms")),
+            _float_or_none((performance_metrics or {}).get("throughput_per_second")),
             run_id,
         ),
     )
+    conn.commit()
+
+
+def _int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    return None
+
+
+def _float_or_none(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def replace_run_trajectories(
+    conn: sqlite3.Connection,
+    *,
+    run_id: str,
+    trajectories: list[dict[str, Any]],
+) -> None:
+    conn.execute("DELETE FROM benchmark_run_trajectories WHERE run_id = ?", (run_id,))
+    if trajectories:
+        conn.executemany(
+            """
+            INSERT INTO benchmark_run_trajectories (
+                run_id,
+                trajectory_file,
+                turn_index,
+                prompt_tokens,
+                completion_tokens,
+                cached_tokens,
+                cache_creation_tokens,
+                latency_ms,
+                prompt_chars
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    run_id,
+                    str(row.get("trajectory_file") or row.get("file") or ""),
+                    int(row.get("turn_index") or row.get("index") or 0),
+                    int(row.get("prompt_tokens") or 0),
+                    int(row.get("completion_tokens") or 0),
+                    int(row.get("cached_tokens") or 0),
+                    int(row.get("cache_creation_tokens") or 0),
+                    _float_or_none(row.get("latency_ms")),
+                    int(row.get("prompt_chars") or 0),
+                )
+                for row in trajectories
+            ],
+        )
     conn.commit()
 
 
@@ -366,7 +494,8 @@ def list_runs_for_comparison(
         """
         SELECT run_id, run_group_id, benchmark_id, status, agent, provider, model,
                score, unit, higher_is_better, metrics_json, started_at, ended_at,
-               duration_seconds, error
+               duration_seconds, error, trajectory_summary_json,
+               token_metrics_json, cache_metrics_json, performance_metrics_json
         FROM benchmark_runs
         WHERE comparison_id = ?
         ORDER BY started_at ASC, run_id ASC
@@ -376,14 +505,22 @@ def list_runs_for_comparison(
     out: list[dict[str, Any]] = []
     for row in rows:
         record = dict(row)
-        raw_metrics = record.pop("metrics_json", None)
-        if isinstance(raw_metrics, str):
-            try:
-                record["metrics"] = json.loads(raw_metrics)
-            except json.JSONDecodeError:
-                record["metrics"] = {}
-        else:
-            record["metrics"] = {}
+        for json_key in (
+            "metrics_json",
+            "trajectory_summary_json",
+            "token_metrics_json",
+            "cache_metrics_json",
+            "performance_metrics_json",
+        ):
+            raw = record.pop(json_key, None)
+            out_key = json_key.removesuffix("_json")
+            if isinstance(raw, str):
+                try:
+                    record[out_key] = json.loads(raw)
+                except json.JSONDecodeError:
+                    record[out_key] = {}
+            else:
+                record[out_key] = {}
         hib = record.get("higher_is_better")
         record["higher_is_better"] = None if hib is None else bool(hib)
         out.append(record)
@@ -420,6 +557,19 @@ def list_runs(
             unit,
             higher_is_better,
             metrics_json,
+            trajectory_summary_json,
+            token_metrics_json,
+            cache_metrics_json,
+            performance_metrics_json,
+            trajectory_count,
+            llm_call_count,
+            total_prompt_tokens,
+            total_completion_tokens,
+            total_cache_read_input_tokens,
+            total_cache_creation_input_tokens,
+            mean_latency_ms,
+            p95_latency_ms,
+            throughput_per_second,
             artifacts_json,
             error,
             high_score_label,
@@ -439,7 +589,16 @@ def list_runs(
     out: list[dict[str, Any]] = []
     for row in rows:
         record = dict(row)
-        for key in ("extra_config_json", "command_json", "metrics_json", "artifacts_json"):
+        for key in (
+            "extra_config_json",
+            "command_json",
+            "metrics_json",
+            "trajectory_summary_json",
+            "token_metrics_json",
+            "cache_metrics_json",
+            "performance_metrics_json",
+            "artifacts_json",
+        ):
             raw = record.get(key)
             if isinstance(raw, str):
                 try:

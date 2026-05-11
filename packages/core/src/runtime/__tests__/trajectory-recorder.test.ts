@@ -670,7 +670,7 @@ describe("action exec input/output/error capture (M12)", () => {
 	it("encodes Error instances via the sanitizer (no `{}` payloads)", () => {
 		const encoded = encodeTrajectoryFieldValue(new Error("boom"));
 		expect(encoded).toContain("boom");
-		expect(encoded).toContain("\"message\"");
+		expect(encoded).toContain('"message"');
 	});
 
 	it("returns the original value when under the cap with no marker", () => {

@@ -10,6 +10,9 @@ export default defineConfig({
 			"@elizaos/core": fileURLToPath(
 				new URL("../../packages/core/src/index.node.ts", import.meta.url),
 			),
+			"@elizaos/shared": fileURLToPath(
+				new URL("../../packages/shared/src/index.ts", import.meta.url),
+			),
 		},
 	},
 	test: {

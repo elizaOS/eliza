@@ -121,6 +121,7 @@ import { deviceBridge } from "../services/local-inference/device-bridge";
 import { handleAuthBootstrapRoutes } from "./auth-bootstrap-routes";
 import { handleAuthPairingCompatRoutes } from "./auth-pairing-routes";
 import { handleAuthSessionRoutes } from "./auth-session-routes";
+import { handleBackgroundTasksRoute } from "./background-tasks-routes";
 import { handleCatalogRoutes } from "./catalog-routes";
 import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
@@ -646,6 +647,7 @@ async function handleCompatRoute(
 
   // Auth / pairing / onboarding status — extracted to auth-pairing-routes.ts
   if (await handleAuthPairingCompatRoutes(req, res, state)) return true;
+  if (await handleBackgroundTasksRoute(req, res, state)) return true;
   // Computer-use compat routes — extracted to plugin-computeruse via Plugin.routes (rawPath).
   if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
   if (await handleAutomationsCompatRoutes(req, res, state)) return true;

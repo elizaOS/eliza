@@ -8,6 +8,7 @@ import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type { CloudManager } from "../cloud/cloud-manager.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import { type AgentRuntime, logger } from "@elizaos/core";
+import { handleCloudCodingContainerRoute } from "./cloud-coding-container-routes";
 import {
   clearCloudAuthService,
   disconnectUnifiedCloudConnection,
@@ -339,6 +340,17 @@ export async function handleCloudRoute(
   state: CloudRouteState,
 ): Promise<boolean> {
   const services = getCloudRouteServices(state);
+
+  const codingContainerHandled = await handleCloudCodingContainerRoute(
+    req,
+    res,
+    pathname,
+    method,
+    { runtime: state.runtime },
+  );
+  if (codingContainerHandled) {
+    return true;
+  }
 
   if (method === "GET" && pathname === "/api/cloud/relay-status") {
     const relayService = (state.runtime?.getService(

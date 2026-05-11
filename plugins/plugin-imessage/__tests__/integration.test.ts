@@ -1073,7 +1073,7 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", () => {
 });
 
 // ============================================================
-// Contacts reader (AppleScript-backed)
+// Contacts reader normalization and legacy fixture parsing
 // ============================================================
 
 describe("normalizeContactHandle", () => {

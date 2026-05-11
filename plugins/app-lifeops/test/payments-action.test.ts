@@ -29,12 +29,10 @@
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-// Audit B Defer #4 folded `PAYMENTS` into the `MONEY` umbrella; the
-// underlying implementation is exported as `paymentsActionImpl` so this
-// integration test continues to exercise the LifeOpsService payments mixin
-// dispatch directly. The legacy `paymentsAction` symbol is now an alias for
-// the umbrella (`moneyAction`).
-import { paymentsActionImpl as paymentsAction } from "../src/actions/payments.ts";
+// Audit B Defer #4 folded `PAYMENTS` into the `MONEY` umbrella; exercise the
+// payments handler directly so this integration test still covers the
+// LifeOpsService payments mixin without re-registering the retired action.
+import { runPaymentsHandler } from "../src/actions/payments.ts";
 import type {
   LifeOpsPaymentSource,
   LifeOpsPaymentTransaction,
@@ -83,7 +81,7 @@ describe("PAYMENTS action integration", () => {
     const { runtime } = runtimeResult;
 
     // Canonical `subaction` field for the new convention.
-    const addResult = await paymentsAction.handler?.(
+    const addResult = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "add chase account"),
       undefined,
@@ -95,9 +93,7 @@ describe("PAYMENTS action integration", () => {
           institution: "Chase",
           accountMask: "1234",
         },
-      },
-      undefined,
-      [],
+      }
     );
     expect(addResult?.success).toBe(true);
     const addedSource = (addResult?.data as { source?: LifeOpsPaymentSource })
@@ -108,13 +104,11 @@ describe("PAYMENTS action integration", () => {
     expect(addedSource?.accountMask).toBe("1234");
 
     // `subaction` is the only canonical discriminator.
-    const listResult = await paymentsAction.handler?.(
+    const listResult = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "list payment sources"),
       undefined,
-      { parameters: { subaction: "list_sources" } },
-      undefined,
-      [],
+      { parameters: { subaction: "list_sources" } }
     );
     expect(listResult?.success).toBe(true);
     const sources =
@@ -127,7 +121,7 @@ describe("PAYMENTS action integration", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const add = await paymentsAction.handler?.(
+    const add = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "add manual source"),
       undefined,
@@ -137,15 +131,13 @@ describe("PAYMENTS action integration", () => {
           kind: "manual",
           label: "Manual",
         },
-      },
-      undefined,
-      [],
+      }
     );
     const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
     expect(sourceId).toBeTruthy();
 
-    const firstImport = await paymentsAction.handler?.(
+    const firstImport = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "import csv"),
       undefined,
@@ -155,9 +147,7 @@ describe("PAYMENTS action integration", () => {
           sourceId,
           csvText: SAMPLE_CSV,
         },
-      },
-      undefined,
-      [],
+      }
     );
     expect(firstImport?.success).toBe(true);
     const firstResult = (
@@ -168,15 +158,13 @@ describe("PAYMENTS action integration", () => {
     expect(firstResult?.inserted).toBe(3);
     expect(firstResult?.skipped).toBe(0);
 
-    const reImport = await paymentsAction.handler?.(
+    const reImport = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "import csv again"),
       undefined,
       {
         parameters: { subaction: "import_csv", sourceId, csvText: SAMPLE_CSV },
-      },
-      undefined,
-      [],
+      }
     );
     const reResult = (
       reImport?.data as { result?: { inserted: number; skipped: number } }
@@ -184,13 +172,11 @@ describe("PAYMENTS action integration", () => {
     expect(reResult?.inserted).toBe(0);
     expect(reResult?.skipped).toBe(3);
 
-    const listTxn = await paymentsAction.handler?.(
+    const listTxn = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "list transactions"),
       undefined,
-      { parameters: { subaction: "list_transactions", sourceId } },
-      undefined,
-      [],
+      { parameters: { subaction: "list_transactions", sourceId } }
     );
     const txns =
       (listTxn?.data as { transactions?: LifeOpsPaymentTransaction[] })
@@ -204,20 +190,18 @@ describe("PAYMENTS action integration", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const add = await paymentsAction.handler?.(
+    const add = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "add"),
       undefined,
       {
         parameters: { subaction: "add_source", kind: "manual", label: "Daily" },
-      },
-      undefined,
-      [],
+      }
     );
     const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
 
-    await paymentsAction.handler?.(
+    await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "import"),
       undefined,
@@ -227,18 +211,14 @@ describe("PAYMENTS action integration", () => {
           sourceId,
           csvText: SAMPLE_CSV,
         },
-      },
-      undefined,
-      [],
+      }
     );
 
-    const dashboard = await paymentsAction.handler?.(
+    const dashboard = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "show dashboard"),
       undefined,
-      { parameters: { subaction: "dashboard", windowDays: 30 } },
-      undefined,
-      [],
+      { parameters: { subaction: "dashboard", windowDays: 30 } }
     );
     expect(dashboard?.success).toBe(true);
     const dash = (
@@ -258,36 +238,30 @@ describe("PAYMENTS action integration", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const add = await paymentsAction.handler?.(
+    const add = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "add"),
       undefined,
       {
         parameters: { subaction: "add_source", kind: "manual", label: "Throwaway" },
-      },
-      undefined,
-      [],
+      }
     );
     const sourceId = (add?.data as { source?: LifeOpsPaymentSource }).source
       ?.id as string;
 
-    const remove = await paymentsAction.handler?.(
+    const remove = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "remove"),
       undefined,
-      { parameters: { subaction: "remove_source", sourceId } },
-      undefined,
-      [],
+      { parameters: { subaction: "remove_source", sourceId } }
     );
     expect(remove?.success).toBe(true);
 
-    const list = await paymentsAction.handler?.(
+    const list = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "list"),
       undefined,
-      { parameters: { subaction: "list_sources" } },
-      undefined,
-      [],
+      { parameters: { subaction: "list_sources" } }
     );
     const sources =
       (list?.data as { sources?: LifeOpsPaymentSource[] }).sources ?? [];
@@ -298,13 +272,11 @@ describe("PAYMENTS action integration", () => {
     runtimeResult = await createLifeOpsTestRuntime();
     const { runtime } = runtimeResult;
 
-    const result = await paymentsAction.handler?.(
+    const result = await runPaymentsHandler(
       runtime,
       ownerMessage(runtime.agentId, "add"),
       undefined,
-      { parameters: { subaction: "add_source" } },
-      undefined,
-      [],
+      { parameters: { subaction: "add_source" } }
     );
     expect(result?.success).toBe(false);
     expect((result?.data as { error?: string }).error).toBe(

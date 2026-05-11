@@ -65,6 +65,16 @@ type BrowserActionValue =
   | BrowserWorkspaceAction
   | "autofill_login"
   | "autofill-login";
+type NormalizedBrowserAction =
+  | BrowserWorkspaceSubaction
+  | "autofill-login"
+  | "info"
+  | "context"
+  | "get_context"
+  | "list_tabs"
+  | "open_tab"
+  | "close_tab"
+  | "switch_tab";
 
 type BrowserActionParameters = {
   /**
@@ -174,7 +184,7 @@ function inferBrowserSubaction(
 
 function normalizeBrowserAction(
   action: BrowserActionParameters["action"] | undefined,
-): BrowserActionParameters["action"] | undefined {
+): NormalizedBrowserAction | undefined {
   switch (action) {
     case "realistic_click":
       return "realistic-click";
@@ -191,7 +201,7 @@ function normalizeBrowserAction(
     case "autofill_login":
       return "autofill-login";
     default:
-      return action;
+      return action as NormalizedBrowserAction | undefined;
   }
 }
 

@@ -41,6 +41,7 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         tier=tier,
         bundle_dir=tmp_path / tier,
         dry_run=True,
+        link_mode="copy",
         asr_repo=None,
         asr_file=None,
         asr_mmproj_file=None,

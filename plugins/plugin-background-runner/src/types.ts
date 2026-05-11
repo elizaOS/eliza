@@ -2,7 +2,7 @@
  * Host-agnostic background scheduler interface.
  *
  * Concrete implementations:
- *  - CapacitorBgScheduler — wraps `@capacitor-community/background-runner` so
+ *  - CapacitorBgScheduler — wraps `@capacitor/background-runner` so
  *    iOS BGTaskScheduler and Android WorkManager drive the wake-up callback.
  *  - IntervalBgScheduler  — pure `setInterval` fallback for environments with
  *    no native scheduler (server, desktop, web).

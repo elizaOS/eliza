@@ -16,8 +16,8 @@
     "dist"
   ],
   "scripts": {
-    "build": "bunx vite build",
-    "dev": "vite",
+    "build": "bun --bun vite build",
+    "dev": "bun --bun vite",
     "test": "vitest run --passWithNoTests",
     "clean": "rm -rf dist .turbo",
     "lint": "echo \"Lint skipped for release\"",

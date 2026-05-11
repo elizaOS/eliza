@@ -12,6 +12,17 @@ import type {
   ListLifeOpsCalendarsRequest,
 } from "../contracts/index.js";
 import {
+  APPLE_CALENDAR_GRANT_ID,
+  APPLE_CALENDAR_PROVIDER,
+  APPLE_CALENDAR_ACCOUNT_LABEL,
+  createNativeAppleCalendarEvent,
+  deleteNativeAppleCalendarEvent,
+  getNativeAppleCalendarFeed,
+  isAppleCalendarGrant,
+  listNativeAppleCalendars,
+  updateNativeAppleCalendarEvent,
+} from "./apple-calendar.js";
+import {
   accountIdForGrant,
   googleCalendarEventInput,
   googleCalendarEventPatchInput,
@@ -147,6 +158,61 @@ export function mergeAggregatedCalendarFeedEvents(
   );
 }
 
+function failAppleCalendarResult(result, operation) {
+  if (result.reason === "permission") {
+    fail(
+      403,
+      `Apple Calendar permission is required for ${operation}. Grant Calendar access to continue.`,
+    );
+  }
+  if (result.reason === "not_supported") {
+    fail(
+      409,
+      `Apple Calendar is not available on ${result.platform}; connect Google Calendar or use a native Apple platform.`,
+    );
+  }
+  fail(
+    502,
+    result.message || `Apple Calendar ${operation} failed through EventKit.`,
+  );
+}
+
+function appleCalendarPlaceholderSummary(args: {
+  calendarId?: string | null;
+  timeZone?: string | null;
+  side?: LifeOpsConnectorSide | null;
+}): LifeOpsCalendarSummary {
+  const calendarId = args.calendarId?.trim() || "primary";
+  return {
+    provider: APPLE_CALENDAR_PROVIDER,
+    side: args.side ?? "owner",
+    grantId: APPLE_CALENDAR_GRANT_ID,
+    accountEmail: null,
+    calendarId,
+    summary:
+      calendarId === "primary" ? APPLE_CALENDAR_ACCOUNT_LABEL : calendarId,
+    description: null,
+    primary: calendarId === "primary",
+    accessRole: "writer",
+    backgroundColor: null,
+    foregroundColor: null,
+    timeZone: args.timeZone ?? null,
+    selected: true,
+    includeInFeed: true,
+  };
+}
+
+function shouldIncludeAppleCalendar(request: {
+  mode?: LifeOpsConnectorMode | null;
+  side?: LifeOpsConnectorSide | null;
+  grantId?: string | null;
+}): boolean {
+  if (request.mode && request.mode !== "local") return false;
+  if (request.side && request.side !== "owner") return false;
+  if (request.grantId && !isAppleCalendarGrant(request.grantId)) return false;
+  return true;
+}
+
 /** @internal */
 export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
@@ -167,17 +233,29 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         )
         .filter((grant) => (mode ? grant.mode === mode : true))
         .filter((grant) => grant.capabilities.includes("google.calendar.read"));
-      const listCalendars = requireGoogleServiceMethod(this.runtime, "listCalendars");
       const summaries: LifeOpsCalendarSummary[] = [];
-      for (const grant of grants) {
-        const entries = await listCalendars({
-          accountId: accountIdForGrant(grant),
+      if (grants.length > 0) {
+        const listCalendars = requireGoogleServiceMethod(this.runtime, "listCalendars");
+        for (const grant of grants) {
+          const entries = await listCalendars({
+            accountId: accountIdForGrant(grant),
+          });
+          summaries.push(
+            ...entries.map((entry) =>
+              lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
+            ),
+          );
+        }
+      }
+      if (shouldIncludeAppleCalendar({ mode, side, grantId: request?.grantId })) {
+        const appleCalendars = await listNativeAppleCalendars({
+          agentId: this.agentId(),
+          side: "owner",
+          runtime: this.runtime,
         });
-        summaries.push(
-          ...entries.map((entry) =>
-            lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
-          ),
-        );
+        if (appleCalendars.ok) {
+          summaries.push(...appleCalendars.data);
+        }
       }
       const preferences = await ensureLifeOpsCalendarFeedIncludes(
         this.runtime,
@@ -386,6 +464,77 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
+    public async syncAppleCalendarFeed(args: {
+      calendarId: string;
+      timeMin: string;
+      timeMax: string;
+      timeZone: string;
+    }): Promise<LifeOpsCalendarFeed> {
+      const syncedAt = new Date().toISOString();
+      const existingEvents = await this.repository.listCalendarEvents(
+        this.agentId(),
+        APPLE_CALENDAR_PROVIDER,
+        args.timeMin,
+        args.timeMax,
+        "owner",
+      );
+      const nativeFeed = await getNativeAppleCalendarFeed({
+        agentId: this.agentId(),
+        calendarId: args.calendarId === "all" ? null : args.calendarId,
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+        side: "owner",
+        runtime: this.runtime,
+      });
+      if (!nativeFeed.ok) {
+        failAppleCalendarResult(nativeFeed, "feed");
+      }
+      const nextEvents = nativeFeed.data.events.map((event) => ({
+        ...event,
+        syncedAt,
+        updatedAt: syncedAt,
+      }));
+      const nextEventIds = new Set(nextEvents.map((event) => event.id));
+      const removedEventIds = existingEvents
+        .map((event) => event.id)
+        .filter((eventId) => !nextEventIds.has(eventId));
+
+      await this.repository.pruneCalendarEventsInWindow(
+        this.agentId(),
+        APPLE_CALENDAR_PROVIDER,
+        args.calendarId,
+        args.timeMin,
+        args.timeMax,
+        nextEvents.map((event) => event.externalId),
+        "owner",
+      );
+      await this.deleteCalendarReminderPlansForEvents(removedEventIds);
+      for (const event of nextEvents) {
+        await this.repository.upsertCalendarEvent(event, "owner");
+      }
+      await this.syncCalendarReminderPlans(nextEvents);
+      await this.repository.upsertCalendarSyncState(
+        createLifeOpsCalendarSyncState({
+          agentId: this.agentId(),
+          provider: APPLE_CALENDAR_PROVIDER,
+          side: "owner",
+          grantId: APPLE_CALENDAR_GRANT_ID,
+          calendarId: args.calendarId,
+          windowStartAt: args.timeMin,
+          windowEndAt: args.timeMax,
+          syncedAt,
+        }),
+      );
+      return {
+        calendarId: args.calendarId,
+        events: nextEvents,
+        source: "synced",
+        timeMin: args.timeMin,
+        timeMax: args.timeMax,
+        syncedAt,
+      };
+    }
+
     async getCalendarFeed(
       requestUrl: URL,
       request: GetLifeOpsCalendarFeedRequest = {},
@@ -411,13 +560,21 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
 
       const calendars = explicitCalendarId
         ? [
-            {
-              calendarId: normalizeCalendarId(explicitCalendarId),
-              grantId: request.grantId,
-              includeInFeed: true,
-              summary: explicitCalendarId,
-              accountEmail: null,
-            } as LifeOpsCalendarSummary,
+            isAppleCalendarGrant(request.grantId)
+              ? appleCalendarPlaceholderSummary({
+                  calendarId: normalizeCalendarId(explicitCalendarId),
+                  timeZone,
+                  side,
+                })
+              : ({
+                  provider: "google",
+                  side: side ?? "owner",
+                  calendarId: normalizeCalendarId(explicitCalendarId),
+                  grantId: request.grantId,
+                  includeInFeed: true,
+                  summary: explicitCalendarId,
+                  accountEmail: null,
+                } as LifeOpsCalendarSummary),
           ]
         : (await this.listCalendars(requestUrl, {
             mode,
@@ -425,6 +582,15 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
             grantId: request.grantId,
           })).filter((calendar) => includeHiddenCalendars || calendar.includeInFeed);
       if (calendars.length === 0) {
+        if (!explicitCalendarId && shouldIncludeAppleCalendar({ mode, side, grantId: request.grantId })) {
+          const appleFeed = await this.syncAppleCalendarFeed({
+            calendarId: "all",
+            timeMin,
+            timeMax,
+            timeZone,
+          });
+          return appleFeed;
+        }
         return {
           calendarId: explicitCalendarId ?? "all",
           events: [],
@@ -456,15 +622,23 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsCalendarFeed> {
       const sources: AggregatedCalendarFeedSource[] = [];
       for (const calendar of calendars) {
-        const feed = await this.syncGoogleCalendarFeed({
-          requestUrl,
-          requestedSide: calendar.side,
-          grantId: calendar.grantId,
-          calendarId: calendar.calendarId,
-          timeMin,
-          timeMax,
-          timeZone,
-        });
+        const feed =
+          calendar.provider === APPLE_CALENDAR_PROVIDER
+            ? await this.syncAppleCalendarFeed({
+                calendarId: calendar.calendarId,
+                timeMin,
+                timeMax,
+                timeZone,
+              })
+            : await this.syncGoogleCalendarFeed({
+                requestUrl,
+                requestedSide: calendar.side,
+                grantId: calendar.grantId,
+                calendarId: calendar.calendarId,
+                timeMin,
+                timeMax,
+                timeZone,
+              });
         sources.push({ calendar, feed });
       }
       return {
@@ -527,12 +701,70 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const calendarId = normalizeCalendarId(request.calendarId);
       const timeZone = normalizeCalendarTimeZone(request.timeZone);
       const { startAt, endAt } = resolveCalendarEventRange(request, now, timeZone);
-      const grant = await this.requireGoogleCalendarWriteGrant(
-        requestUrl,
-        mode,
-        side,
-        request.grantId,
-      );
+      if (isAppleCalendarGrant(request.grantId)) {
+        const nativeEvent = await createNativeAppleCalendarEvent({
+          agentId: this.agentId(),
+          request: {
+            ...request,
+            calendarId,
+            startAt,
+            endAt,
+            timeZone,
+          },
+          side: "owner",
+          runtime: this.runtime,
+        });
+        if (!nativeEvent.ok) {
+          failAppleCalendarResult(nativeEvent, "create");
+        }
+        await this.repository.upsertCalendarEvent(nativeEvent.data, "owner");
+        await this.syncCalendarReminderPlans([nativeEvent.data]);
+        await this.recordCalendarEventAudit(
+          nativeEvent.data.id,
+          "calendar event created through native Apple Calendar",
+          { calendarId, title: request.title },
+          { externalId: nativeEvent.data.externalId },
+        );
+        return nativeEvent.data;
+      }
+
+      let grant;
+      try {
+        grant = await this.requireGoogleCalendarWriteGrant(
+          requestUrl,
+          mode,
+          side,
+          request.grantId,
+        );
+      } catch (error) {
+        if (request.grantId) {
+          throw error;
+        }
+        const nativeEvent = await createNativeAppleCalendarEvent({
+          agentId: this.agentId(),
+          request: {
+            ...request,
+            calendarId,
+            startAt,
+            endAt,
+            timeZone,
+          },
+          side: "owner",
+          runtime: this.runtime,
+        });
+        if (!nativeEvent.ok) {
+          failAppleCalendarResult(nativeEvent, "create");
+        }
+        await this.repository.upsertCalendarEvent(nativeEvent.data, "owner");
+        await this.syncCalendarReminderPlans([nativeEvent.data]);
+        await this.recordCalendarEventAudit(
+          nativeEvent.data.id,
+          "calendar event created through native Apple Calendar",
+          { calendarId, title: request.title },
+          { externalId: nativeEvent.data.externalId },
+        );
+        return nativeEvent.data;
+      }
       const createEvent = requireGoogleServiceMethod(this.runtime, "createEvent");
       const googleEvent = await createEvent(
         googleCalendarEventInput({
@@ -582,15 +814,83 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<LifeOpsCalendarEvent> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const grant = await this.requireGoogleCalendarWriteGrant(
-        requestUrl,
-        mode,
-        side,
-        request.grantId,
-      );
       const timeZone = request.timeZone
         ? normalizeCalendarTimeZone(request.timeZone)
         : undefined;
+      const parseTimeZone = timeZone ?? normalizeCalendarTimeZone(undefined);
+      const nativePatch = {
+        calendarId: request.calendarId ?? undefined,
+        title: request.title,
+        description: request.description,
+        location: request.location,
+        startAt: request.startAt
+          ? normalizeCalendarDateTimeInTimeZone(request.startAt, "startAt", parseTimeZone)
+          : undefined,
+        endAt: request.endAt
+          ? normalizeCalendarDateTimeInTimeZone(request.endAt, "endAt", parseTimeZone)
+          : undefined,
+        timeZone,
+        attendees:
+          request.attendees === undefined
+            ? undefined
+            : normalizeCalendarAttendees(request.attendees),
+      };
+      if (isAppleCalendarGrant(request.grantId)) {
+        const nativeEvent = await updateNativeAppleCalendarEvent({
+          agentId: this.agentId(),
+          eventId: requireNonEmptyString(request.eventId, "eventId"),
+          request: nativePatch,
+          side: "owner",
+          runtime: this.runtime,
+        });
+        if (!nativeEvent.ok) {
+          failAppleCalendarResult(nativeEvent, "update");
+        }
+        await this.repository.upsertCalendarEvent(nativeEvent.data, "owner");
+        await this.syncCalendarReminderPlans([nativeEvent.data]);
+        await this.recordCalendarEventAudit(
+          nativeEvent.data.id,
+          "calendar event updated through native Apple Calendar",
+          { eventId: request.eventId },
+          { externalId: nativeEvent.data.externalId },
+          "calendar_event_updated",
+        );
+        return nativeEvent.data;
+      }
+
+      let grant;
+      try {
+        grant = await this.requireGoogleCalendarWriteGrant(
+          requestUrl,
+          mode,
+          side,
+          request.grantId,
+        );
+      } catch (error) {
+        if (request.grantId) {
+          throw error;
+        }
+        const nativeEvent = await updateNativeAppleCalendarEvent({
+          agentId: this.agentId(),
+          eventId: requireNonEmptyString(request.eventId, "eventId"),
+          request: nativePatch,
+          side: "owner",
+          runtime: this.runtime,
+        });
+        if (!nativeEvent.ok) {
+          failAppleCalendarResult(nativeEvent, "update");
+        }
+        await this.repository.upsertCalendarEvent(nativeEvent.data, "owner");
+        await this.syncCalendarReminderPlans([nativeEvent.data]);
+        await this.recordCalendarEventAudit(
+          nativeEvent.data.id,
+          "calendar event updated through native Apple Calendar",
+          { eventId: request.eventId },
+          { externalId: nativeEvent.data.externalId },
+          "calendar_event_updated",
+        );
+        return nativeEvent.data;
+      }
       const updateEvent = requireGoogleServiceMethod(this.runtime, "updateEvent");
       const googleEvent = await updateEvent(
         googleCalendarEventPatchInput({
@@ -601,10 +901,10 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
           description: request.description,
           location: request.location,
           startAt: request.startAt
-            ? normalizeCalendarDateTimeInTimeZone(request.startAt, timeZone)
+            ? normalizeCalendarDateTimeInTimeZone(request.startAt, "startAt", parseTimeZone)
             : undefined,
           endAt: request.endAt
-            ? normalizeCalendarDateTimeInTimeZone(request.endAt, timeZone)
+            ? normalizeCalendarDateTimeInTimeZone(request.endAt, "endAt", parseTimeZone)
             : undefined,
           timeZone,
           attendees:
@@ -642,13 +942,67 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<void> {
       const mode = normalizeOptionalConnectorMode(request.mode, "mode");
       const side = normalizeOptionalConnectorSide(request.side, "side");
-      const grant = await this.requireGoogleCalendarWriteGrant(
-        requestUrl,
-        mode,
-        side,
-        request.grantId,
-      );
       const eventId = requireNonEmptyString(request.eventId, "eventId");
+      if (isAppleCalendarGrant(request.grantId)) {
+        const deleted = await deleteNativeAppleCalendarEvent(eventId, {
+          runtime: this.runtime,
+        });
+        if (!deleted.ok) {
+          failAppleCalendarResult(deleted, "delete");
+        }
+        await this.repository.deleteCalendarEventByExternalId(
+          this.agentId(),
+          APPLE_CALENDAR_PROVIDER,
+          request.calendarId ?? "primary",
+          eventId,
+          "owner",
+        );
+        await this.deleteCalendarReminderPlansForEvents([eventId]);
+        await this.recordCalendarEventAudit(
+          eventId,
+          "calendar event deleted through native Apple Calendar",
+          { eventId },
+          { deleted: true },
+          "calendar_event_deleted",
+        );
+        return;
+      }
+
+      let grant;
+      try {
+        grant = await this.requireGoogleCalendarWriteGrant(
+          requestUrl,
+          mode,
+          side,
+          request.grantId,
+        );
+      } catch (error) {
+        if (request.grantId) {
+          throw error;
+        }
+        const deleted = await deleteNativeAppleCalendarEvent(eventId, {
+          runtime: this.runtime,
+        });
+        if (!deleted.ok) {
+          failAppleCalendarResult(deleted, "delete");
+        }
+        await this.repository.deleteCalendarEventByExternalId(
+          this.agentId(),
+          APPLE_CALENDAR_PROVIDER,
+          request.calendarId ?? "primary",
+          eventId,
+          "owner",
+        );
+        await this.deleteCalendarReminderPlansForEvents([eventId]);
+        await this.recordCalendarEventAudit(
+          eventId,
+          "calendar event deleted through native Apple Calendar",
+          { eventId },
+          { deleted: true },
+          "calendar_event_deleted",
+        );
+        return;
+      }
       const deleteEvent = requireGoogleServiceMethod(this.runtime, "deleteEvent");
       await deleteEvent({
         accountId: accountIdForGrant(grant),

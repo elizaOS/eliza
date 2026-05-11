@@ -50,7 +50,11 @@ DRY_RUN=0
 PUBLIC=0
 FILTER_TIER=""
 BUNDLES_ROOT=""
-declare -A METAL_PATHS=()
+METAL_PATH_0_6B=""
+METAL_PATH_1_7B=""
+METAL_PATH_9B=""
+METAL_PATH_27B=""
+METAL_PATH_27B_256K=""
 
 usage() {
   sed -n '2,40p' "$0" | sed 's/^# \?//'
@@ -62,11 +66,11 @@ while [[ $# -gt 0 ]]; do
     --public)             PUBLIC=1; shift ;;
     --filter-tier)        FILTER_TIER="$2"; shift 2 ;;
     --bundles-root)       BUNDLES_ROOT="$2"; shift 2 ;;
-    --metal-verification-0_6b)    METAL_PATHS[0_6b]="$2"; shift 2 ;;
-    --metal-verification-1_7b)  METAL_PATHS[1_7b]="$2"; shift 2 ;;
-    --metal-verification-9b)   METAL_PATHS[9b]="$2"; shift 2 ;;
-    --metal-verification-27b)      METAL_PATHS[27b]="$2"; shift 2 ;;
-    --metal-verification-27b-256k) METAL_PATHS[27b-256k]="$2"; shift 2 ;;
+    --metal-verification-0_6b)    METAL_PATH_0_6B="$2"; shift 2 ;;
+    --metal-verification-1_7b)    METAL_PATH_1_7B="$2"; shift 2 ;;
+    --metal-verification-9b)      METAL_PATH_9B="$2"; shift 2 ;;
+    --metal-verification-27b)     METAL_PATH_27B="$2"; shift 2 ;;
+    --metal-verification-27b-256k) METAL_PATH_27B_256K="$2"; shift 2 ;;
     -h|--help)            usage; exit 0 ;;
     *)
       echo "unknown arg: $1" >&2
@@ -89,9 +93,21 @@ fi
 declare -i N_TOTAL=0 N_OK=0 N_FAILED=0
 RESULTS=()
 
+metal_path_for_tier() {
+  case "$1" in
+    0_6b)      printf '%s' "${METAL_PATH_0_6B}" ;;
+    1_7b)      printf '%s' "${METAL_PATH_1_7B}" ;;
+    9b)        printf '%s' "${METAL_PATH_9B}" ;;
+    27b)       printf '%s' "${METAL_PATH_27B}" ;;
+    27b-256k)  printf '%s' "${METAL_PATH_27B_256K}" ;;
+    *)         printf '%s' "" ;;
+  esac
+}
+
 publish_one() {
   local tier="$1"
   local bundle_dir="${BUNDLES_ROOT}/${tier}"
+  local metal_path
 
   N_TOTAL+=1
 
@@ -109,8 +125,9 @@ publish_one() {
   (( DRY_RUN == 1 )) && args+=(--dry-run)
   (( PUBLIC == 1 )) && args+=(--public)
 
-  if [[ -n "${METAL_PATHS[${tier}]:-}" ]]; then
-    args+=(--metal-verification "${METAL_PATHS[${tier}]}")
+  metal_path="$(metal_path_for_tier "${tier}")"
+  if [[ -n "${metal_path}" ]]; then
+    args+=(--metal-verification "${metal_path}")
   elif [[ -f "${bundle_dir}/evals/metal_verify.json" ]]; then
     args+=(--metal-verification "${bundle_dir}/evals/metal_verify.json")
   fi

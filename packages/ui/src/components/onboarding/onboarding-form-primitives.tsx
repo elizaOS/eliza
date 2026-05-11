@@ -5,7 +5,7 @@ import {
   FieldLabel,
   FieldMessage,
 } from "@elizaos/ui";
-import * as React from "react";
+import type * as React from "react";
 
 export const onboardingDetailStackClassName =
   "flex w-full flex-col gap-4 text-left";
@@ -114,4 +114,3 @@ export function OnboardingField({
     </Field>
   );
 }
-

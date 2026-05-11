@@ -18,9 +18,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import shutil
 import struct
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
@@ -55,6 +57,22 @@ VAD_FILES: Final[tuple[tuple[str, str], ...]] = (
 VOICE_PRESET_MAGIC: Final[int] = 0x315A4C45  # 'ELZ1'
 VOICE_PRESET_VERSION: Final[int] = 1
 VOICE_PRESET_HEADER_BYTES: Final[int] = 24
+HF_RETRY_ATTEMPTS: Final[int] = 4
+HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
+
+
+def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
+    last_error: Exception | None = None
+    for attempt in range(HF_RETRY_ATTEMPTS):
+        try:
+            return callable_(*args, **kwargs)
+        except Exception as exc:  # pragma: no cover - network-only path
+            last_error = exc
+            if attempt == HF_RETRY_ATTEMPTS - 1:
+                break
+            time.sleep(HF_RETRY_BASE_DELAY_SEC * (attempt + 1))
+    assert last_error is not None
+    raise last_error
 
 
 def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
@@ -71,6 +89,7 @@ def copy_hf_file(
     revision: str | None,
     remote_path: str,
     destination: Path,
+    link_mode: str,
     dry_run: bool,
 ) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -84,19 +103,34 @@ def copy_hf_file(
         }
 
     cached = Path(
-        hf_hub_download(
+        retry_hf(
+            hf_hub_download,
             repo_id=repo_id,
             filename=remote_path,
             revision=revision,
             repo_type="model",
         )
     )
-    shutil.copy2(cached, destination)
+    if link_mode == "hardlink":
+        try:
+            if destination.exists() or destination.is_symlink():
+                if destination.samefile(cached):
+                    pass
+                else:
+                    destination.unlink()
+                    os.link(cached, destination)
+            else:
+                os.link(cached, destination)
+        except OSError:
+            shutil.copy2(cached, destination)
+    else:
+        shutil.copy2(cached, destination)
     return {
         "repo": repo_id,
         "revision": revision,
         "remotePath": remote_path,
         "path": str(destination),
+        "linkMode": link_mode,
         "sizeBytes": destination.stat().st_size,
         "sha256": sha256_file(destination),
     }
@@ -110,7 +144,7 @@ def choose_gguf_file(
 ) -> str:
     files = [
         f
-        for f in api.list_repo_files(repo_id, repo_type="model")
+        for f in retry_hf(api.list_repo_files, repo_id, repo_type="model")
         if f.endswith(".gguf")
     ]
     files = [f for f in files if "mmproj" not in f.lower()]
@@ -135,7 +169,7 @@ def choose_mmproj_file(
 ) -> str:
     files = [
         f
-        for f in api.list_repo_files(repo_id, repo_type="model")
+        for f in retry_hf(api.list_repo_files, repo_id, repo_type="model")
         if f.endswith(".gguf") and "mmproj" in f.lower()
     ]
     if requested:
@@ -249,7 +283,7 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
 def resolve_revisions(api: HfApi, repos: tuple[str, ...]) -> dict[str, str]:
     out: dict[str, str] = {}
     for repo in repos:
-        info = api.model_info(repo)
+        info = retry_hf(api.model_info, repo)
         out[repo] = str(info.sha)
     return out
 
@@ -283,6 +317,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 revision=revisions[VOICE_REPO],
                 remote_path=remote,
                 destination=bundle_dir / rel,
+                link_mode=args.link_mode,
                 dry_run=args.dry_run,
             )
         )
@@ -292,6 +327,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
             revision=revisions[asr_repo],
             remote_path=asr_remote_path,
             destination=bundle_dir / "asr" / "eliza-1-asr.gguf",
+            link_mode=args.link_mode,
             dry_run=args.dry_run,
         )
     )
@@ -301,6 +337,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
             revision=revisions[asr_repo],
             remote_path=asr_mmproj_remote_path,
             destination=bundle_dir / "asr" / "eliza-1-asr-mmproj.gguf",
+            link_mode=args.link_mode,
             dry_run=args.dry_run,
         )
     )
@@ -311,6 +348,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 revision=revisions[VAD_REPO],
                 remote_path=remote,
                 destination=bundle_dir / rel,
+                link_mode=args.link_mode,
                 dry_run=args.dry_run,
             )
         )
@@ -381,6 +419,16 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--tier", required=True, choices=tuple(VOICE_QUANT_BY_TIER))
     ap.add_argument("--bundle-dir", required=True, type=Path)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument(
+        "--link-mode",
+        choices=("copy", "hardlink"),
+        default="copy",
+        help=(
+            "How to materialize Hub cache files in the bundle. `hardlink` "
+            "deduplicates repeated tier assets on the same filesystem and "
+            "falls back to copy if linking is unavailable."
+        ),
+    )
     ap.add_argument(
         "--asr-repo",
         default=None,

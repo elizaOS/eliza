@@ -1,0 +1,53 @@
+{
+  "latest": {
+    "bfcl::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/bfcl__eliza.json",
+      "run_id": "run_bfcl_20260511T102910Z_1_f7347e12",
+      "status": "failed",
+      "updated_at": "2026-05-11T10:31:11.789710+00:00"
+    },
+    "bfcl::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/bfcl__hermes.json",
+      "run_id": "run_bfcl_20260511T103327Z_2_a2ceef2b",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:33:29.212482+00:00"
+    },
+    "bfcl::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/bfcl__openclaw.json",
+      "run_id": "run_bfcl_20260511T103329Z_2_22f9ef94",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:33:30.429817+00:00"
+    },
+    "gsm8k::eliza": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/gsm8k__eliza.json",
+      "run_id": "run_gsm8k_20260511T102847Z_1_a003f13a",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:29:05.389178+00:00"
+    },
+    "gsm8k::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/gsm8k__hermes.json",
+      "run_id": "run_gsm8k_20260511T102818Z_1_8e24dbfe",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:28:32.778173+00:00"
+    },
+    "gsm8k::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/gsm8k__openclaw.json",
+      "run_id": "run_gsm8k_20260511T102832Z_1_10748e36",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:28:38.593001+00:00"
+    },
+    "lifeops_bench::hermes": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/lifeops_bench__hermes.json",
+      "run_id": "run_lifeops_bench_20260511T103233Z_2_0123ae22",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:32:34.087945+00:00"
+    },
+    "lifeops_bench::openclaw": {
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/lifeops_bench__openclaw.json",
+      "run_id": "run_lifeops_bench_20260511T103406Z_3_e595cfbd",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T10:34:06.988141+00:00"
+    }
+  },
+  "updated_at": "2026-05-11T10:34:06.988771+00:00"
+}

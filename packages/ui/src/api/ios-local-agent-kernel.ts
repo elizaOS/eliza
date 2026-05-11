@@ -2235,9 +2235,7 @@ async function activateModel(
   try {
     const llama = await loadCapacitorLlama();
     if (!llama?.load) {
-      throw new Error(
-        "Native Eliza-1 runtime is not available on this build.",
-      );
+      throw new Error("Native Eliza-1 runtime is not available on this build.");
     }
     const hardware = await hardwareProbe();
     if (catalog) {

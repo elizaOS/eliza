@@ -310,8 +310,7 @@ export function computeCallCostUsd(
 
 	const provider = options.provider?.toLowerCase().trim();
 	const isLocalProvider =
-		provider !== undefined &&
-		LOCAL_PROVIDERS.has(provider as ProviderName);
+		provider !== undefined && LOCAL_PROVIDERS.has(provider as ProviderName);
 
 	const lookup = lookupModelPrice(modelName);
 	if (!lookup) {

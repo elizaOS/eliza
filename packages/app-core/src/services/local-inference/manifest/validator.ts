@@ -167,10 +167,14 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
   // also require their own publish gate to pass.
   if (m.defaultEligible) {
     if ((m.files.asr ?? []).length === 0) {
-      errors.push("files.asr: required for defaultEligible local voice bundles");
+      errors.push(
+        "files.asr: required for defaultEligible local voice bundles",
+      );
     }
     if ((m.files.vad ?? []).length === 0) {
-      errors.push("files.vad: required for defaultEligible local voice bundles");
+      errors.push(
+        "files.vad: required for defaultEligible local voice bundles",
+      );
     }
   }
 

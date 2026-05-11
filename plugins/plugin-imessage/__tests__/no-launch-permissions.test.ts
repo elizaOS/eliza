@@ -2,9 +2,9 @@
  * Launch-time invariant test: no TCC dialogs on a fresh app open.
  *
  * Specifically: when the iMessage service starts, it must NOT call
- * `loadContacts()`. Calling it would shell out to Contacts.app via
- * AppleScript and trigger the macOS Contacts TCC dialog at app launch
- * — which is exactly the boot-time prompt we are eliminating.
+ * `loadContacts()`. Calling it would touch CNContactStore and trigger the
+ * macOS Contacts TCC dialog at app launch, which is exactly the boot-time
+ * prompt we are eliminating.
  *
  * The contact map is now loaded lazily on the first inbound message that
  * needs handle→name resolution (see `IMessageService.ensureContactsLoaded`).

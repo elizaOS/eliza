@@ -42,6 +42,7 @@ import {
   defaultRegistry,
 } from "../../components/config-ui/config-renderer";
 import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode";
 import {
   getDirectAccountProviderForOnboardingProvider,
   getOnboardingProviderOption,
@@ -298,6 +299,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const handlePluginConfigSave =
     props.handlePluginConfigSave ?? app.handlePluginConfigSave;
   const setActionNotice = app.setActionNotice;
+  const cloudRuntimeLocked =
+    branding.cloudOnly === true || isElizaCloudRuntimeLocked();
 
   const [modelOptions, setModelOptions] = useState<
     OnboardingOptions["models"] | null
@@ -668,6 +671,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   ]);
 
   const handleSelectLocalOnly = useCallback(async () => {
+    if (cloudRuntimeLocked) {
+      setActionNotice?.(
+        "Eliza Cloud is required while this app is running in cloud mode.",
+        "error",
+        6000,
+      );
+      return;
+    }
     const previousSelectedId = resolvedSelectedId;
     const previousManualSelection = hasManualSelection.current;
     const previousCloudCallsDisabled = cloudCallsDisabled;
@@ -700,9 +711,11 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   }, [
     app,
     cloudCallsDisabled,
+    cloudRuntimeLocked,
     notifySelectionFailure,
     resolvedSelectedId,
     restoreSelection,
+    setActionNotice,
   ]);
 
   const handleToggleLocalEmbeddings = useCallback(
@@ -723,16 +736,24 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
   const isCloudSelected =
     resolvedSelectedId === "__cloud__" || resolvedSelectedId === null;
-  const activeProviderPanelId: ProviderPanelId = cloudCallsDisabled
+  const effectiveCloudCallsDisabled = cloudRuntimeLocked
+    ? false
+    : cloudCallsDisabled;
+  const activeProviderPanelId: ProviderPanelId = effectiveCloudCallsDisabled
     ? "__local__"
     : (resolvedSelectedId ?? "__cloud__");
   const visibleProviderPanelId: ProviderPanelId =
     selectedProviderPanelId ?? activeProviderPanelId;
 
   useEffect(() => {
+    if (cloudRuntimeLocked && selectedProviderPanelId === "__local__") {
+      hasManualPanelSelection.current = false;
+      setSelectedProviderPanelId("__cloud__");
+      return;
+    }
     if (hasManualPanelSelection.current) return;
     setSelectedProviderPanelId(activeProviderPanelId);
-  }, [activeProviderPanelId]);
+  }, [activeProviderPanelId, cloudRuntimeLocked, selectedProviderPanelId]);
 
   const apiProviderChoices = useMemo(() => {
     const pluginChoices = allAiProviders
@@ -835,10 +856,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     [anthropicCliDetected, subscriptionStatus],
   );
 
-  const handleProviderPanelSelect = useCallback((panelId: ProviderPanelId) => {
-    hasManualPanelSelection.current = true;
-    setSelectedProviderPanelId(panelId);
-  }, []);
+  const handleProviderPanelSelect = useCallback(
+    (panelId: ProviderPanelId) => {
+      if (cloudRuntimeLocked && panelId === "__local__") return;
+      hasManualPanelSelection.current = true;
+      setSelectedProviderPanelId(panelId);
+    },
+    [cloudRuntimeLocked],
+  );
 
   const cloudModelSchema = useMemo(
     () => (modelOptions ? buildCloudModelSchema(modelOptions) : null),
@@ -977,22 +1002,24 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               label="Eliza Cloud"
               description="Managed models, credits, and cloud fallback."
               selected={visibleProviderPanelId === "__cloud__"}
-              current={!cloudCallsDisabled && isCloudSelected}
+              current={!effectiveCloudCallsDisabled && isCloudSelected}
               status={elizaCloudConnected ? "Connected" : "Available"}
               tone={elizaCloudConnected ? "ok" : "muted"}
               onSelect={handleProviderPanelSelect}
             />
-            <ProviderListItem
-              id="__local__"
-              icon={Cpu}
-              label="Local provider"
-              description="Downloaded models, routing, and offline inference."
-              selected={visibleProviderPanelId === "__local__"}
-              current={cloudCallsDisabled}
-              status="Available"
-              tone="muted"
-              onSelect={handleProviderPanelSelect}
-            />
+            {!cloudRuntimeLocked ? (
+              <ProviderListItem
+                id="__local__"
+                icon={Cpu}
+                label="Local provider"
+                description="Downloaded models, routing, and offline inference."
+                selected={visibleProviderPanelId === "__local__"}
+                current={effectiveCloudCallsDisabled}
+                status="Available"
+                tone="muted"
+                onSelect={handleProviderPanelSelect}
+              />
+            ) : null}
           </div>
 
           <div className="space-y-1.5">
@@ -1010,7 +1037,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   description={getSubscriptionProviderDescription(provider.id)}
                   selected={visibleProviderPanelId === provider.id}
                   current={
-                    !cloudCallsDisabled && resolvedSelectedId === provider.id
+                    !effectiveCloudCallsDisabled &&
+                    resolvedSelectedId === provider.id
                   }
                   status={status.label}
                   tone={status.tone}
@@ -1027,7 +1055,8 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
               </div>
               {apiProviderChoices.map((choice) => {
                 const current =
-                  !cloudCallsDisabled && resolvedSelectedId === choice.id;
+                  !effectiveCloudCallsDisabled &&
+                  resolvedSelectedId === choice.id;
                 const status = choice.provider.configured
                   ? "API key set"
                   : choice.provider.enabled
@@ -1063,19 +1092,25 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 title="Local provider"
                 description="Manage local downloads, active models, routing, and device pairing in one place."
               >
-                <Button
-                  type="button"
-                  variant={cloudCallsDisabled ? "default" : "outline"}
-                  className="h-8 rounded-lg px-2.5 text-xs"
-                  disabled={routingModeSaving}
-                  aria-label={
-                    cloudCallsDisabled ? "Local only active" : "Use local only"
-                  }
-                  onClick={() => void handleSelectLocalOnly()}
-                >
-                  <ShieldCheck className="h-4 w-4" aria-hidden />
-                  Local only
-                </Button>
+                {!cloudRuntimeLocked ? (
+                  <Button
+                    type="button"
+                    variant={
+                      effectiveCloudCallsDisabled ? "default" : "outline"
+                    }
+                    className="h-8 rounded-lg px-2.5 text-xs"
+                    disabled={routingModeSaving}
+                    aria-label={
+                      effectiveCloudCallsDisabled
+                        ? "Local only active"
+                        : "Use local only"
+                    }
+                    onClick={() => void handleSelectLocalOnly()}
+                  >
+                    <ShieldCheck className="h-4 w-4" aria-hidden />
+                    Local only
+                  </Button>
+                ) : null}
               </ProviderPanelHeader>
               <div className="px-3 py-3 sm:px-4">
                 <LocalInferencePanel />
@@ -1093,14 +1128,14 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 <Button
                   type="button"
                   variant={
-                    !cloudCallsDisabled && isCloudSelected
+                    !effectiveCloudCallsDisabled && isCloudSelected
                       ? "default"
                       : "outline"
                   }
                   className="h-8 rounded-lg px-2.5 text-xs"
                   disabled={routingModeSaving}
                   aria-label={
-                    !cloudCallsDisabled && isCloudSelected
+                    !effectiveCloudCallsDisabled && isCloudSelected
                       ? "Cloud active"
                       : "Use Eliza Cloud"
                   }
@@ -1111,7 +1146,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 </Button>
               </ProviderPanelHeader>
               <CloudDashboard />
-              {!cloudCallsDisabled && isCloudSelected ? (
+              {!effectiveCloudCallsDisabled && isCloudSelected ? (
                 <div className="border-border/40 border-t px-4 py-3 sm:px-5">
                   <LocalEmbeddingsCheckbox
                     checked={localEmbeddings}
@@ -1119,7 +1154,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                   />
                 </div>
               ) : null}
-              {!cloudCallsDisabled &&
+              {!effectiveCloudCallsDisabled &&
               isCloudSelected &&
               elizaCloudConnected &&
               (largeModelOptions.length > 0 || cloudModelSchema) ? (
@@ -1222,7 +1257,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 )}
                 description="Connect subscription coding access without converting it into a general API key."
               >
-                {cloudCallsDisabled ||
+                {effectiveCloudCallsDisabled ||
                 resolvedSelectedId !== visibleProviderPanelId ? (
                   <Button
                     type="button"
@@ -1239,7 +1274,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 ) : null}
               </ProviderPanelHeader>
               <div className="px-3 py-3 sm:px-4">
-                {cloudCallsDisabled ? (
+                {effectiveCloudCallsDisabled ? (
                   <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
                     Local-only active. Remote subscription routing is paused.
                   </div>
@@ -1282,7 +1317,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 }
                 description="Use your own provider API key and model routing."
               >
-                {cloudCallsDisabled ||
+                {effectiveCloudCallsDisabled ||
                 resolvedSelectedId !== visibleProviderPanelId ? (
                   <Button
                     type="button"
@@ -1297,7 +1332,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
                 ) : null}
               </ProviderPanelHeader>
               <div className="px-3 py-3 sm:px-4">
-                {cloudCallsDisabled ? (
+                {effectiveCloudCallsDisabled ? (
                   <div className="mb-3 rounded-lg border border-warn/30 bg-warn/5 px-3 py-2 text-warn text-xs-tight">
                     Local-only active. Remote API routing is paused.
                   </div>

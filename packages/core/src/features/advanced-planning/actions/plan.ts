@@ -79,8 +79,7 @@ async function handleCreate(
 					{
 						id: "task_1_1",
 						name: "Repository Setup",
-						description:
-							"Create GitHub repository with proper documentation",
+						description: "Create GitHub repository with proper documentation",
 						action: "CREATE_GITHUB_REPO",
 						dependencies: [],
 						estimatedDuration: "30 minutes",
@@ -170,11 +169,7 @@ export const planAction: Action = {
 		},
 	],
 
-	validate: async (
-		_runtime: IAgentRuntime,
-		message: Memory,
-		state?: State,
-	) => {
+	validate: async (_runtime: IAgentRuntime, message: Memory, state?: State) => {
 		return hasActionContext(message, state, {
 			contexts: ["tasks", "automation", "code", "agent_internal"],
 			keywordKeys: ["action.createPlan.request"],

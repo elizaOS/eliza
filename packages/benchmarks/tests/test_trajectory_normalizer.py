@@ -99,6 +99,7 @@ def test_eliza_passthrough_preserves_native_metadata_and_cache_stats(
     row = {
         "format": "eliza_native_v1",
         "boundary": "vercel_ai_sdk.generateText",
+        "timestamp": 1712345678901,
         "scenarioId": "scenario-1",
         "batchId": "batch-1",
         "request": {"prompt": "p"},
@@ -129,6 +130,7 @@ def test_eliza_passthrough_preserves_native_metadata_and_cache_stats(
 
     assert entry.scenarioId == "scenario-1"
     assert entry.batchId == "batch-1"
+    assert entry.timestamp_ms == 1712345678901
     assert entry.metadata == {"suite": "loca", "seed": 7}
     assert entry.trajectoryTotals["cacheReadInputTokens"] == 40
     assert entry.cacheStats["cacheReadCallCount"] == 1

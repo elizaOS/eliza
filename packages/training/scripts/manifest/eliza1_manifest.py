@@ -233,13 +233,25 @@ def _is_object(x: Any) -> bool:
     return isinstance(x, dict)
 
 
-def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
+def validate_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    require_publish_ready: bool = True,
+) -> tuple[str, ...]:
     """Return a tuple of error messages. Empty tuple = valid.
 
     Performs every check the TS validator does: schema shape, types,
     sha256 / semver / datetime regexes, plus the cross-field §3 / §6
     contract rules. The publish script can call this directly before
     writing the file.
+
+    ``require_publish_ready=False`` is only for local staging manifests
+    that intentionally record failed / missing release gates with
+    ``defaultEligible: false``. It still validates the schema, required
+    kernel declarations, lineage-vs-files consistency, and required eval
+    objects for shipped components; it only stops treating red backend and
+    eval gate statuses as validator errors unless ``defaultEligible`` is
+    true. Normal publish paths must keep the default.
     """
 
     errors: list[str] = []
@@ -570,23 +582,25 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
                     f"voice.cache.{field}: {path!r} is not present in files.cache"
                 )
 
+    readiness_errors: list[str] = []
+
     # ── §3/§6 contract: every supported backend is pass ─────────────────
     for b in SUPPORTED_BACKENDS_BY_TIER[tier]:
         status = backends.get(b, {}).get("status")
         if status != "pass":
-            errors.append(
+            readiness_errors.append(
                 f'kernels.verifiedBackends.{b}: status is "{status}", expected "pass" for tier {tier}'
             )
 
     # ── §3/§6 contract: evals all pass ──────────────────────────────────
     if not evals["textEval"]["passed"]:
-        errors.append("evals.textEval.passed: false")
+        readiness_errors.append("evals.textEval.passed: false")
     if not evals["voiceRtf"]["passed"]:
-        errors.append("evals.voiceRtf.passed: false")
+        readiness_errors.append("evals.voiceRtf.passed: false")
     if not evals["e2eLoopOk"]:
-        errors.append("evals.e2eLoopOk: false")
+        readiness_errors.append("evals.e2eLoopOk: false")
     if not evals["thirtyTurnOk"]:
-        errors.append("evals.thirtyTurnOk: false")
+        readiness_errors.append("evals.thirtyTurnOk: false")
 
     # ── §3/§6 contract: voice bundle components + gates ─────────────────
     if manifest["defaultEligible"]:
@@ -610,19 +624,19 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
         if not _is_object(gate):
             errors.append("evals.asrWer: required when files.asr is non-empty")
         elif not gate["passed"]:
-            errors.append("evals.asrWer.passed: false")
+            readiness_errors.append("evals.asrWer.passed: false")
     if files.get("embedding"):
         gate = evals.get("embedMteb")
         if not _is_object(gate):
             errors.append("evals.embedMteb: required when files.embedding is non-empty")
         elif not gate["passed"]:
-            errors.append("evals.embedMteb.passed: false")
+            readiness_errors.append("evals.embedMteb.passed: false")
     if files.get("vad"):
         gate = evals.get("vadLatencyMs")
         if not _is_object(gate):
             errors.append("evals.vadLatencyMs: required when files.vad is non-empty")
         elif not gate["passed"]:
-            errors.append("evals.vadLatencyMs.passed: false")
+            readiness_errors.append("evals.vadLatencyMs.passed: false")
 
     capabilities = []
     if _is_object(manifest.get("voice")):
@@ -636,7 +650,10 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
                 "evals.expressive: required when voice capabilities include emotion-tags or singing"
             )
         elif not gate["passed"]:
-            errors.append("evals.expressive.passed: false")
+            readiness_errors.append("evals.expressive.passed: false")
+
+    if require_publish_ready or manifest["defaultEligible"]:
+        errors.extend(readiness_errors)
 
     # ── strongest claim: defaultEligible ────────────────────────────────
     if manifest["defaultEligible"] and errors:
@@ -695,6 +712,7 @@ def build_manifest(
     voice_cache_speaker_preset: str = VOICE_PRESET_CACHE_PATH,
     voice_cache_phrase_seed: str = VOICE_PRESET_CACHE_PATH,
     bundle_id: str | None = None,
+    require_publish_ready: bool = True,
 ) -> dict[str, Any]:
     """Assemble a manifest dict from typed inputs and validate it.
 
@@ -798,20 +816,31 @@ def build_manifest(
             "capabilities": list(voice_capabilities),
         }
 
-    errors = validate_manifest(manifest)
+    errors = validate_manifest(
+        manifest,
+        require_publish_ready=require_publish_ready,
+    )
     if errors:
         raise Eliza1ManifestError(errors)
     return manifest
 
 
-def write_manifest(manifest: Mapping[str, Any], destination: Path) -> Path:
+def write_manifest(
+    manifest: Mapping[str, Any],
+    destination: Path,
+    *,
+    require_publish_ready: bool = True,
+) -> Path:
     """Validate then write a manifest as pretty-printed JSON.
 
     Raises ``Eliza1ManifestError`` if validation fails — never writes a
     bad manifest. Returns the resolved destination path.
     """
 
-    errors = validate_manifest(manifest)
+    errors = validate_manifest(
+        manifest,
+        require_publish_ready=require_publish_ready,
+    )
     if errors:
         raise Eliza1ManifestError(errors)
     destination.parent.mkdir(parents=True, exist_ok=True)

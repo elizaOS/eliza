@@ -16,6 +16,9 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import app.eliza.BuildConfig;
+import app.eliza.R;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -136,10 +139,16 @@ public class ElizaAgentService extends Service {
     // include `Authorization: Bearer <token>`. The agent enforces the
     // token via ELIZA_REQUIRE_LOCAL_AUTH=1.
     private static volatile String currentLocalAgentToken;
+    private static volatile String currentTerminalRunToken;
 
     /** Called by the Capacitor agent plugin Android binding. */
     public static String localAgentToken() {
         return currentLocalAgentToken;
+    }
+
+    /** Called by trusted in-app code that needs to route shell requests. */
+    public static String terminalRunToken() {
+        return currentTerminalRunToken;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -721,7 +730,9 @@ public class ElizaAgentService extends Service {
             // Android. ELIZA_REQUIRE_LOCAL_AUTH on the server side flips
             // that heuristic off so every request needs the bearer token.
             String token = generateLocalAgentToken();
+            String terminalToken = generateLocalAgentToken();
             currentLocalAgentToken = token;
+            currentTerminalRunToken = terminalToken;
             try {
                 writeLocalAgentTokenFile(token);
             } catch (IOException error) {
@@ -757,12 +768,14 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
+            agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
             // Android loopback is shared across apps. Require the per-boot
             // bearer token; the Capacitor Agent plugin exposes it to the
             // WebView before local-agent API calls are retried.
             agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
+            agentEnv.put("ELIZA_TERMINAL_RUN_TOKEN", terminalToken);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
             // inference over the device-bridge WSS at /api/local-inference/
@@ -796,6 +809,7 @@ public class ElizaAgentService extends Service {
             // AOSP product makefiles — stock Android leaves them empty
             // and falls through to the DeviceBridge path.
             if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
+                agentEnv.put("ELIZA_AOSP_BUILD", "1");
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 // CPU-only inference of a 12k-token prompt on cuttlefish
                 // x86_64 / Eliza-1 lands well past the 180 s default
@@ -855,7 +869,24 @@ public class ElizaAgentService extends Service {
                 }
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
-            agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
+            if (!env.containsKey("TMPDIR")) {
+                agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
+            }
+            agentEnv.put("SHELL", "/system/bin/sh");
+            agentEnv.put("CODING_TOOLS_SHELL", "/system/bin/sh");
+            agentEnv.put("SHELL_ALLOWED_DIRECTORY", agentStateDir().getAbsolutePath());
+            agentEnv.put("CODING_TOOLS_WORKSPACE_ROOTS", agentStateDir().getAbsolutePath());
+            String inheritedPath = env.get("PATH");
+            StringBuilder pathBuilder = new StringBuilder();
+            pathBuilder.append(abiDir.getAbsolutePath()).append("/bin");
+            pathBuilder.append(":").append(abiDir.getAbsolutePath());
+            pathBuilder.append(":").append(new File(root, "tools/bin").getAbsolutePath());
+            pathBuilder.append(":").append(new File(root, "bin").getAbsolutePath());
+            pathBuilder.append(":/system/bin:/system/xbin:/vendor/bin:/apex/com.android.runtime/bin");
+            if (inheritedPath != null && !inheritedPath.trim().isEmpty()) {
+                pathBuilder.append(":").append(inheritedPath);
+            }
+            agentEnv.put("PATH", pathBuilder.toString());
 
             // ── No-terminal env hints for bun's stdio probe ───────────────
             // Untrusted-app SELinux policy denies `ioctl(TIOCGWINSZ)` on
@@ -1132,6 +1163,8 @@ public class ElizaAgentService extends Service {
             agentProcess = null;
             stdoutPump = null;
             stderrPump = null;
+            currentLocalAgentToken = null;
+            currentTerminalRunToken = null;
         }
         if (toStop == null) {
             return;

@@ -4,11 +4,7 @@
     {
       "name": "REPLY",
       "description": "Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. This is not an email reply, inbox workflow, or external-channel send — use the dedicated connector actions for those surfaces.",
-      "similes": [
-        "GREET",
-        "RESPOND",
-        "RESPONSE"
-      ],
+      "similes": ["GREET", "RESPOND", "RESPONSE"],
       "parameters": [],
       "examples": [
         [
@@ -22,9 +18,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Hi! How can I help you today?",
-              "actions": [
-                "REPLY"
-              ]
+              "actions": ["REPLY"]
             }
           }
         ],
@@ -39,9 +33,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "I really like deep shades of blue. They remind me of the ocean and the night sky.",
-              "actions": [
-                "REPLY"
-              ]
+              "actions": ["REPLY"]
             }
           }
         ],
@@ -56,9 +48,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Let me break that down for you in simple terms...",
-              "actions": [
-                "REPLY"
-              ]
+              "actions": ["REPLY"]
             }
           }
         ],
@@ -73,9 +63,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Of course! Let's work through it step by step.",
-              "actions": [
-                "REPLY"
-              ]
+              "actions": ["REPLY"]
             }
           }
         ]
@@ -85,11 +73,7 @@
     {
       "name": "IGNORE",
       "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
-      "similes": [
-        "STOP_TALKING",
-        "STOP_CHATTING",
-        "STOP_CONVERSATION"
-      ],
+      "similes": ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
       "parameters": [],
       "examples": [
         [
@@ -103,9 +87,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "",
-              "actions": [
-                "IGNORE"
-              ]
+              "actions": ["IGNORE"]
             }
           }
         ],
@@ -120,9 +102,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "",
-              "actions": [
-                "IGNORE"
-              ]
+              "actions": ["IGNORE"]
             }
           }
         ],
@@ -149,9 +129,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "",
-              "actions": [
-                "IGNORE"
-              ]
+              "actions": ["IGNORE"]
             }
           }
         ],
@@ -172,9 +150,7 @@
             "name": "{{name1}}",
             "content": {
               "text": "",
-              "actions": [
-                "IGNORE"
-              ]
+              "actions": ["IGNORE"]
             }
           }
         ],
@@ -189,9 +165,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "thats inappropriate",
-              "actions": [
-                "IGNORE"
-              ]
+              "actions": ["IGNORE"]
             }
           }
         ]
@@ -201,13 +175,7 @@
     {
       "name": "NONE",
       "description": "Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
-      "similes": [
-        "NO_ACTION",
-        "NO_RESPONSE",
-        "NO_REACTION",
-        "NOOP",
-        "PASS"
-      ],
+      "similes": ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NOOP", "PASS"],
       "parameters": [],
       "examples": [
         [
@@ -221,9 +189,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "oh hey",
-              "actions": [
-                "NONE"
-              ]
+              "actions": ["NONE"]
             }
           }
         ],
@@ -238,9 +204,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "yeah but its a pain to get into node.js",
-              "actions": [
-                "NONE"
-              ]
+              "actions": ["NONE"]
             }
           }
         ],
@@ -249,18 +213,14 @@
             "name": "{{name1}}",
             "content": {
               "text": "u think aliens are real",
-              "actions": [
-                "NONE"
-              ]
+              "actions": ["NONE"]
             }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "ya obviously",
-              "actions": [
-                "NONE"
-              ]
+              "actions": ["NONE"]
             }
           }
         ],
@@ -269,18 +229,14 @@
             "name": "{{name1}}",
             "content": {
               "text": "drop a joke on me",
-              "actions": [
-                "NONE"
-              ]
+              "actions": ["NONE"]
             }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "why dont scientists trust atoms cuz they make up everything lmao",
-              "actions": [
-                "NONE"
-              ]
+              "actions": ["NONE"]
             }
           }
         ]
@@ -290,13 +246,7 @@
     {
       "name": "MESSAGE",
       "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
-      "similes": [
-        "DM",
-        "DIRECT_MESSAGE",
-        "CHAT",
-        "CHANNEL",
-        "ROOM"
-      ],
+      "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
       "parameters": [
         {
           "name": "action",
@@ -593,9 +543,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to dev_guru on telegram.",
-              "actions": [
-                "MESSAGE"
-              ]
+              "actions": ["MESSAGE"]
             }
           }
         ]
@@ -603,10 +551,7 @@
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
-          "actions": [
-            "REPLY",
-            "MESSAGE"
-          ],
+          "actions": ["REPLY", "MESSAGE"],
           "params": {
             "MESSAGE": {
               "action": "send",
@@ -618,15 +563,11 @@
         },
         {
           "user": "Triage my Gmail inbox",
-          "actions": [
-            "MESSAGE"
-          ],
+          "actions": ["MESSAGE"],
           "params": {
             "MESSAGE": {
               "action": "triage",
-              "sources": [
-                "gmail"
-              ]
+              "sources": ["gmail"]
             }
           }
         }
@@ -636,13 +577,7 @@
     {
       "name": "POST",
       "description": "Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
-      "similes": [
-        "TWEET",
-        "CAST",
-        "PUBLISH",
-        "FEED_POST",
-        "TIMELINE"
-      ],
+      "similes": ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
       "parameters": [
         {
           "name": "action",
@@ -650,11 +585,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "send",
-              "read",
-              "search"
-            ]
+            "enum": ["send", "read", "search"]
           },
           "descriptionCompressed": "post action"
         },
@@ -770,9 +701,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Posted to X.",
-              "actions": [
-                "POST"
-              ]
+              "actions": ["POST"]
             }
           }
         ]
@@ -780,9 +709,7 @@
       "exampleCalls": [
         {
           "user": "Post this on X: shipping today",
-          "actions": [
-            "POST"
-          ],
+          "actions": ["POST"],
           "params": {
             "POST": {
               "source": "x",
@@ -812,12 +739,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "follow",
-              "unfollow",
-              "mute",
-              "unmute"
-            ]
+            "enum": ["follow", "unfollow", "mute", "unmute"]
           }
         },
         {
@@ -849,9 +771,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "update"
-            ]
+            "enum": ["update"]
           }
         },
         {
@@ -919,11 +839,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "modify",
-              "persist",
-              "update_identity"
-            ]
+            "enum": ["modify", "persist", "update_identity"]
           }
         },
         {
@@ -957,9 +873,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "c0a8012e"
-          ],
+          "examples": ["c0a8012e"],
           "descriptionCompressed": "Pending task id."
         },
         {
@@ -969,10 +883,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "APPROVE",
-            "ABORT"
-          ],
+          "examples": ["APPROVE", "ABORT"],
           "descriptionCompressed": "Option name exactly as listed."
         }
       ],
@@ -988,9 +899,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "I've selected option 1 for the pending task.",
-              "actions": [
-                "CHOOSE_OPTION"
-              ]
+              "actions": ["CHOOSE_OPTION"]
             }
           }
         ]
@@ -1016,15 +925,9 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "read",
-              "save_as_document"
-            ]
+            "enum": ["read", "save_as_document"]
           },
-          "examples": [
-            "read",
-            "save_as_document"
-          ],
+          "examples": ["read", "save_as_document"],
           "descriptionCompressed": "Attachment operation."
         },
         {
@@ -1034,9 +937,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "attachment-123"
-          ],
+          "examples": ["attachment-123"],
           "descriptionCompressed": "Attachment id."
         },
         {
@@ -1047,10 +948,7 @@
             "type": "boolean",
             "default": false
           },
-          "examples": [
-            true,
-            false
-          ],
+          "examples": [true, false],
           "descriptionCompressed": "Store read result in task clipboard."
         },
         {
@@ -1060,9 +958,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "Meeting notes"
-          ],
+          "examples": ["Meeting notes"],
           "descriptionCompressed": "Saved document title."
         }
       ],
@@ -1098,17 +994,9 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "image",
-              "video",
-              "audio"
-            ]
+            "enum": ["image", "video", "audio"]
           },
-          "examples": [
-            "image",
-            "video",
-            "audio"
-          ],
+          "examples": ["image", "video", "audio"],
           "descriptionCompressed": "Media kind: image, video, audio."
         },
         {
@@ -1118,9 +1006,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "A futuristic cityscape at sunset, cinematic lighting"
-          ],
+          "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
           "descriptionCompressed": "Generation prompt."
         },
         {
@@ -1129,17 +1015,9 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "music",
-              "sfx",
-              "tts"
-            ]
+            "enum": ["music", "sfx", "tts"]
           },
-          "examples": [
-            "music",
-            "sfx",
-            "tts"
-          ],
+          "examples": ["music", "sfx", "tts"],
           "descriptionCompressed": "Audio subtype."
         },
         {
@@ -1149,10 +1027,7 @@
           "schema": {
             "type": "number"
           },
-          "examples": [
-            5,
-            30
-          ],
+          "examples": [5, 30],
           "descriptionCompressed": "Duration seconds."
         },
         {
@@ -1162,10 +1037,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "16:9",
-            "9:16"
-          ],
+          "examples": ["16:9", "9:16"],
           "descriptionCompressed": "Video aspect ratio."
         },
         {
@@ -1175,10 +1047,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "1024x1024",
-            "landscape_4_3"
-          ],
+          "examples": ["1024x1024", "landscape_4_3"],
           "descriptionCompressed": "Image size."
         }
       ],
@@ -1194,9 +1063,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I'll create a futuristic city image for you. One moment...",
-              "actions": [
-                "GENERATE_MEDIA"
-              ]
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1211,9 +1078,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "I'll create that video clip.",
-              "actions": [
-                "GENERATE_MEDIA"
-              ]
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ],
@@ -1228,9 +1093,7 @@
             "name": "{{name2}}",
             "content": {
               "text": "I'll generate that audio track.",
-              "actions": [
-                "GENERATE_MEDIA"
-              ]
+              "actions": ["GENERATE_MEDIA"]
             }
           }
         ]

@@ -20,21 +20,18 @@
  *     `mobile-runtime-mode.ts`.
  */
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from "vitest";
+import { afterEach, describe, expect, it, type Mock, vi } from "vitest";
+
+type PreferencesSetInput = { key: string; value: string };
+type PreferencesRemoveInput = { key: string };
 
 const { capacitorState, preferencesRemoveMock, preferencesSetMock } =
   vi.hoisted(() => ({
     capacitorState: { isNative: true },
-    preferencesRemoveMock: vi.fn(async () => undefined),
-    preferencesSetMock: vi.fn(async () => undefined),
+    preferencesRemoveMock: vi.fn(
+      async (_input: PreferencesRemoveInput) => undefined,
+    ),
+    preferencesSetMock: vi.fn(async (_input: PreferencesSetInput) => undefined),
   }));
 
 vi.mock("@capacitor/core", () => ({
@@ -50,6 +47,7 @@ vi.mock("@capacitor/preferences", () => ({
   },
 }));
 
+import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import {
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   mobileRuntimeModeForServerTarget,
@@ -57,7 +55,6 @@ import {
   persistMobileRuntimeModeForServerTarget,
   readPersistedMobileRuntimeMode,
 } from "../mobile-runtime-mode";
-import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 
 async function flushNativeWrites(): Promise<void> {
   // Persist fires a fire-and-forget native write that awaits
@@ -81,12 +78,14 @@ afterEach(async () => {
 });
 
 describe("normalizeMobileRuntimeMode", () => {
-  it.each(["remote-mac", "cloud", "cloud-hybrid", "local"] as const)(
-    "passes %s through unchanged",
-    (mode) => {
-      expect(normalizeMobileRuntimeMode(mode)).toBe(mode);
-    },
-  );
+  it.each([
+    "remote-mac",
+    "cloud",
+    "cloud-hybrid",
+    "local",
+  ] as const)("passes %s through unchanged", (mode) => {
+    expect(normalizeMobileRuntimeMode(mode)).toBe(mode);
+  });
 
   it("trims surrounding whitespace before matching", () => {
     expect(normalizeMobileRuntimeMode("  local  ")).toBe("local");
@@ -129,13 +128,15 @@ describe("readPersistedMobileRuntimeMode", () => {
     expect(readPersistedMobileRuntimeMode()).toBeNull();
   });
 
-  it.each(["remote-mac", "cloud", "cloud-hybrid", "local"] as const)(
-    "round-trips %s through localStorage",
-    (mode) => {
-      window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
-      expect(readPersistedMobileRuntimeMode()).toBe(mode);
-    },
-  );
+  it.each([
+    "remote-mac",
+    "cloud",
+    "cloud-hybrid",
+    "local",
+  ] as const)("round-trips %s through localStorage", (mode) => {
+    window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, mode);
+    expect(readPersistedMobileRuntimeMode()).toBe(mode);
+  });
 
   it("ignores garbage values written by an older build", () => {
     window.localStorage.setItem(
@@ -165,23 +166,20 @@ describe("persistMobileRuntimeModeForServerTarget", () => {
     ["elizacloud", "cloud"],
     ["elizacloud-hybrid", "cloud-hybrid"],
     ["local", "local"],
-  ] as const)(
-    "writes %s as %s to localStorage and Capacitor Preferences",
-    async (target, expected) => {
-      persistMobileRuntimeModeForServerTarget(target);
+  ] as const)("writes %s as %s to localStorage and Capacitor Preferences", async (target, expected) => {
+    persistMobileRuntimeModeForServerTarget(target);
 
-      expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
-        expected,
-      );
-      await vi.waitFor(() => {
-        expect(preferencesSetMock).toHaveBeenCalledWith({
-          key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
-          value: expected,
-        });
+    expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
+      expected,
+    );
+    await vi.waitFor(() => {
+      expect(preferencesSetMock).toHaveBeenCalledWith({
+        key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
+        value: expected,
       });
-      expect(preferencesRemoveMock).not.toHaveBeenCalled();
-    },
-  );
+    });
+    expect(preferencesRemoveMock).not.toHaveBeenCalled();
+  });
 
   it("clears a prior selection from localStorage when called with an empty target", async () => {
     window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "local");
@@ -277,7 +275,9 @@ describe("persistMobileRuntimeModeForServerTarget", () => {
   });
 
   it("does not throw when Capacitor Preferences.remove rejects", async () => {
-    preferencesRemoveMock.mockRejectedValueOnce(new Error("native bridge down"));
+    preferencesRemoveMock.mockRejectedValueOnce(
+      new Error("native bridge down"),
+    );
 
     expect(() => persistMobileRuntimeModeForServerTarget("")).not.toThrow();
 

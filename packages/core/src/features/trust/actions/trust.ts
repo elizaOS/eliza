@@ -72,7 +72,10 @@ function readStringOption(
 }
 
 function normalizeSubaction(value: string): TrustSubaction | null {
-	const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+	const normalized = value
+		.trim()
+		.toLowerCase()
+		.replace(/[\s-]+/g, "_");
 	switch (normalized) {
 		case "evaluate":
 		case "check":
@@ -228,10 +231,10 @@ export const trustAction: Action = {
 					type: "object" as const,
 					properties: {
 						entityId: { type: "string" as const },
-							newRole: {
-								type: "string" as const,
-								enum: ["OWNER", "ADMIN", "NONE"],
-							},
+						newRole: {
+							type: "string" as const,
+							enum: ["OWNER", "ADMIN", "NONE"],
+						},
 					},
 					required: ["entityId", "newRole"],
 				},

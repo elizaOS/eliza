@@ -176,7 +176,7 @@ export interface ScheduledTaskRunnerDeps {
   globalPause: GlobalPauseView;
   activity: ActivitySignalBusView;
   subjectStore: SubjectStoreView;
-  dispatcher?: ScheduledTaskDispatcher;
+  dispatcher: ScheduledTaskDispatcher;
   /**
    * Lookup of registered `ChannelRegistry` keys. When supplied, `schedule()`
    * validates each `escalation.steps[].channelKey` against this set and
@@ -326,7 +326,7 @@ export function createScheduledTaskRunner(
 ): ScheduledTaskRunnerHandle {
   const newTaskId = deps.newTaskId ?? defaultTaskIdGenerator;
   const now = deps.now ?? (() => new Date());
-  const dispatcher = deps.dispatcher ?? NoopScheduledTaskDispatcher;
+  const dispatcher = deps.dispatcher;
   const logger = createStateLogger({
     store: deps.logStore,
     agentId: deps.agentId,

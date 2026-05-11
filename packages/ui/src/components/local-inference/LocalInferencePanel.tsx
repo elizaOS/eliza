@@ -284,6 +284,7 @@ export function LocalInferencePanel() {
       <FirstRunOffer
         catalog={catalog}
         installed={hub.installed}
+        downloads={hub.downloads}
         hardware={hub.hardware}
         onDownload={handleDownload}
         busy={busy}

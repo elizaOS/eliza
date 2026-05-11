@@ -1,6 +1,7 @@
 import type { PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import type {
+  AppleCalendarPluginLike,
   MobileSignalsPermissionStatus,
   MobileSignalsPluginLike,
 } from "../bridge/native-plugins";
@@ -90,6 +91,23 @@ function plugin(status = permissions()): MobileSignalsPluginLike {
   } as unknown as MobileSignalsPluginLike;
 }
 
+function appleCalendarPlugin(
+  status = {
+    calendar: "prompt" as const,
+    canRequest: true,
+    reason: null,
+  },
+): AppleCalendarPluginLike {
+  return {
+    checkPermissions: vi.fn(async () => status),
+    requestPermissions: vi.fn(async () => ({
+      calendar: "granted" as const,
+      canRequest: false,
+      reason: null,
+    })),
+  };
+}
+
 describe("createMobileSignalsPermissionsRegistry", () => {
   it("maps HealthKit/Health Connect status into canonical health permission", async () => {
     const native = plugin(
@@ -176,6 +194,24 @@ describe("createMobileSignalsPermissionsRegistry", () => {
       target: "notifications",
     });
     expect(native.openSettings).not.toHaveBeenCalled();
+  });
+
+  it("requests native Apple Calendar through the calendar plugin", async () => {
+    const native = plugin();
+    const calendar = appleCalendarPlugin();
+    const registry = createMobileSignalsPermissionsRegistry(
+      native,
+      undefined,
+      calendar,
+    );
+
+    await registry.request("calendar", {
+      reason: "Read schedule.",
+      feature: { app: "lifeops", action: "calendar.read" },
+    });
+
+    expect(calendar.requestPermissions).toHaveBeenCalled();
+    expect(native.requestPermissions).not.toHaveBeenCalled();
   });
 
   it("opens notification settings when native notifications cannot prompt", async () => {

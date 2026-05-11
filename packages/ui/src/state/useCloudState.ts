@@ -25,7 +25,7 @@ import {
 } from "../bridge";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { dispatchElizaCloudStatusUpdated } from "../events";
-import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
+import { isElizaCloudRuntimeLocked } from "../onboarding/mobile-runtime-mode";
 import {
   closeExternalBrowser,
   confirmDesktopAction,
@@ -82,11 +82,6 @@ function isSameOriginLocalHttpBackend(): boolean {
     /^192\.168\./.test(hostname) ||
     /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname)
   );
-}
-
-function isLockedToElizaCloudRuntime(): boolean {
-  const mode = readPersistedMobileRuntimeMode();
-  return mode === "cloud" || mode === "cloud-hybrid";
 }
 
 function isCapacitorNativeRuntime(): boolean {
@@ -169,6 +164,8 @@ interface CloudStateParams {
   loadWalletConfig: () => Promise<void>;
   /** Translation function — used for the auth-rejected notice. */
   t: (key: string) => string;
+  /** Product/runtime policy can lock cloud auth on, hiding disconnect affordances. */
+  disconnectLocked?: boolean;
 }
 
 // ── Hook ───────────────────────────────────────────────────────────────────
@@ -177,6 +174,7 @@ export function useCloudState({
   setActionNotice,
   loadWalletConfig,
   t,
+  disconnectLocked = false,
 }: CloudStateParams) {
   // ── State ──────────────────────────────────────────────────────────
 
@@ -609,7 +607,7 @@ export function useCloudState({
       const RENDERER_DISCONNECT_MS = 12_000;
       const skipConfirmation = opts?.skipConfirmation === true;
 
-      if (isLockedToElizaCloudRuntime()) {
+      if (disconnectLocked || isElizaCloudRuntimeLocked()) {
         setActionNotice(
           "Eliza Cloud is required while this app is running in cloud mode.",
           "error",
@@ -765,7 +763,7 @@ export function useCloudState({
         void pollCloudCredits();
       }
     },
-    [elizaCloudConnected, pollCloudCredits, setActionNotice],
+    [disconnectLocked, elizaCloudConnected, pollCloudCredits, setActionNotice],
   );
 
   // ── Effects ────────────────────────────────────────────────────────

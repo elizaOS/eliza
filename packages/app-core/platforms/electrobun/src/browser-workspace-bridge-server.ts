@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import http from "node:http";
-import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import type { BrowserWorkspaceEventType } from "./native/browser-workspace";
+import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
 
 const DEFAULT_BRIDGE_PORT = 31_340;

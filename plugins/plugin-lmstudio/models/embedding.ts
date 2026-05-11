@@ -17,11 +17,7 @@ import { logger, ModelType } from "@elizaos/core";
 import { type EmbeddingModel, embed } from "ai";
 import { createLMStudioClient } from "../utils/client";
 import { getEmbeddingModel } from "../utils/config";
-import {
-  emitModelUsed,
-  estimateEmbeddingUsage,
-  normalizeTokenUsage,
-} from "../utils/model-usage";
+import { emitModelUsed, estimateEmbeddingUsage, normalizeTokenUsage } from "../utils/model-usage";
 
 const DEFAULT_ZERO_VECTOR_DIM = 1536;
 

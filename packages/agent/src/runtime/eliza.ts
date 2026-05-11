@@ -256,6 +256,15 @@ async function loadRequiredPluginSql(): Promise<
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
+    if (packageName === "@elizaos/plugin-agent-orchestrator") {
+      return await import("@elizaos/plugin-agent-orchestrator");
+    }
+    if (packageName === "@elizaos/plugin-shell") {
+      return await import("@elizaos/plugin-shell");
+    }
+    if (packageName === "@elizaos/plugin-coding-tools") {
+      return await import("@elizaos/plugin-coding-tools");
+    }
     return await import(packageName);
   } catch {
     return null;
@@ -340,8 +349,10 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginLocalEmbedding,
       pluginAgentOrchestrator,
       pluginShell,
+      pluginCodingTools,
       pluginCommands,
       pluginVideo,
+      pluginBackgroundRunner,
       pluginElizacloud,
       pluginOllama,
       pluginAnthropic,
@@ -351,8 +362,10 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       getPluginLocalEmbedding(),
       getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
       getOptionalPlugin("@elizaos/plugin-shell"),
+      getOptionalPlugin("@elizaos/plugin-coding-tools"),
       getOptionalPlugin("@elizaos/plugin-commands"),
       getOptionalPlugin("@elizaos/plugin-video"),
+      getOptionalPlugin("@elizaos/plugin-background-runner"),
       getOptionalPlugin("@elizaos/plugin-elizacloud"),
       getOptionalPlugin("@elizaos/plugin-ollama"),
       getOptionalPlugin("@elizaos/plugin-anthropic"),
@@ -369,9 +382,15 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         ? { "agent-orchestrator": pluginAgentOrchestrator }
         : {}),
       ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
+      ...(pluginCodingTools
+        ? { "@elizaos/plugin-coding-tools": pluginCodingTools }
+        : {}),
       // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
       ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
       ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
+      ...(pluginBackgroundRunner
+        ? { "@elizaos/plugin-background-runner": pluginBackgroundRunner }
+        : {}),
       ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
       ...(pluginAnthropic
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
@@ -2245,6 +2264,13 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     "PARALLAX_AIDER_PROVIDER",
     "PARALLAX_AIDER_MODEL_POWERFUL",
     "PARALLAX_AIDER_MODEL_FAST",
+    // AOSP/local coding-tool policy and shell runtime controls.
+    "CODING_TOOLS_WORKSPACE_ROOTS",
+    "CODING_TOOLS_BLOCKED_PATHS",
+    "CODING_TOOLS_BLOCKED_PATHS_ADD",
+    "CODING_TOOLS_SHELL",
+    "SHELL_ALLOWED_DIRECTORY",
+    "ELIZA_RUNTIME_MODE",
     // Custom credential forwarding — intentionally broad: users configure which env vars
     // to forward to coding agents via this comma-separated key list (e.g. MCP server tokens).
     "CUSTOM_CREDENTIAL_KEYS",

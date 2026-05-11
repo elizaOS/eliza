@@ -18,11 +18,7 @@ function readNestedParameters(
 	options: ActionOptions | undefined,
 ): ActionOptions {
 	const nested = options?.parameters;
-	if (
-		typeof nested === "object" &&
-		nested !== null &&
-		!Array.isArray(nested)
-	) {
+	if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
 		return nested as ActionOptions;
 	}
 	return {};

@@ -81,18 +81,14 @@ const sharedGeneratedFile = path.resolve(
   "validation-keyword-data.js",
 );
 if (!existsSync(sharedGeneratedFile)) {
-  console.log(
-    "[build-mobile] generating @elizaos/shared i18n keyword data...",
-  );
+  console.log("[build-mobile] generating @elizaos/shared i18n keyword data...");
   const result = spawnSync(
     "bun",
     ["run", "--cwd", path.join(repoRoot, "packages", "shared"), "build:i18n"],
     { stdio: "inherit" },
   );
   if (result.status !== 0) {
-    console.error(
-      "[build-mobile] FATAL: failed to generate i18n keyword data",
-    );
+    console.error("[build-mobile] FATAL: failed to generate i18n keyword data");
     process.exit(1);
   }
 }
@@ -197,9 +193,6 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
-  react: path.join(stubsDir, "null-plugin.cjs"),
-  "react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
-  "react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
@@ -215,11 +208,6 @@ const nativeStubs = {
   // still has to resolve the dynamic import in
   // packages/native-plugins/llama/src/capacitor-llama-adapter.ts.
   "llama-cpp-capacitor": path.join(stubsDir, "llama-cpp-capacitor.cjs"),
-  // zlib-sync is a discord.js optional native binding for compressed
-  // gateway frames. No AOSP prebuild ships, and discord.js falls back to
-  // uncompressed transport when the binding is missing. Stub keeps the
-  // bundle building.
-  "zlib-sync": path.join(stubsDir, "zlib-sync.cjs"),
   "onnxruntime-node": path.join(stubsDir, "onnxruntime-node.cjs"),
   "@huggingface/transformers": path.join(
     stubsDir,
@@ -371,7 +359,6 @@ const stubResolverPlugin = {
       if (best === null) return undefined;
       return { path: stubAliases[best], namespace: "file" };
     });
-
   },
 };
 
@@ -556,7 +543,9 @@ const stripStaleJsArtifactsPlugin = {
         !/[/\\](packages|plugins|cloud)[/\\][^/\\]+([/\\][^/\\]+)?[/\\]src[/\\]/.test(
           importer,
         ) &&
-        !/[/\\]node_modules[/\\]@elizaos[/\\][^/\\]+[/\\]src[/\\]/.test(importer)
+        !/[/\\]node_modules[/\\]@elizaos[/\\][^/\\]+[/\\]src[/\\]/.test(
+          importer,
+        )
       ) {
         return undefined;
       }
@@ -847,7 +836,7 @@ console.log(
     `${renames.undeclaredApplies.size} apply*, ` +
     `${renames.undeclaredServices.size} *Service* identifiers covered`,
 );
-const polyfillHeader = polyfillLines.join("\n") + "\n";
+const polyfillHeader = `${polyfillLines.join("\n")}\n`;
 const polyfillFooter = "";
 let prefixed;
 if (bundleSrc.startsWith("#!")) {
@@ -879,9 +868,7 @@ for (const asset of ["pglite.wasm", "initdb.wasm", "pglite.data"]) {
   const src = path.join(pgliteDist, asset);
   if (!existsSync(src)) {
     if (PGLITE_REQUIRED.has(asset)) {
-      console.error(
-        `[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`,
-      );
+      console.error(`[build-mobile] FATAL: missing ${asset} in ${pgliteDist}`);
       process.exit(1);
     }
     console.log(
@@ -928,7 +915,15 @@ const manifest = {
     },
   },
   plugins: {
-    core: ["@elizaos/plugin-sql"],
+    core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],
+    aospOnly: [
+      "@elizaos/app-wifi",
+      "@elizaos/app-contacts",
+      "@elizaos/app-phone",
+      "@elizaos/plugin-shell",
+      "@elizaos/plugin-coding-tools",
+      "agent-orchestrator",
+    ],
     optional: [
       "@elizaos/plugin-anthropic",
       "@elizaos/plugin-openai",

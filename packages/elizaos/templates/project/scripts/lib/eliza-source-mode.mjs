@@ -4,7 +4,7 @@ import path from "node:path";
 export const DEFAULT_ELIZA_SOURCE_MODE = "packages";
 export const DEFAULT_ELIZA_GIT_URL = "https://github.com/elizaOS/eliza.git";
 export const DEFAULT_ELIZA_BRANCH = "develop";
-export const DEFAULT_ELIZAOS_PACKAGE_DIST_TAG = "alpha";
+export const DEFAULT_ELIZAOS_PACKAGE_DIST_TAG = "beta";
 
 export const ELIZA_SOURCE_MODE_ENV_KEYS = ["ELIZA_SOURCE"];
 export const LOCAL_UPSTREAM_SKIP_ENV_KEYS = ["ELIZA_SKIP_LOCAL_UPSTREAMS"];

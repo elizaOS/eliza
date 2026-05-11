@@ -82,11 +82,7 @@ function readNestedParameters(
 	options: ActionOptions | undefined,
 ): ActionOptions {
 	const nested = options?.parameters;
-	if (
-		typeof nested === "object" &&
-		nested !== null &&
-		!Array.isArray(nested)
-	) {
+	if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
 		return nested as ActionOptions;
 	}
 	return {};
@@ -105,10 +101,7 @@ export async function updateRoleHandler(
 	}
 
 	const channelType = message.content.channelType as ChannelType;
-	if (
-		channelType !== ChannelType.GROUP &&
-		channelType !== ChannelType.WORLD
-	) {
+	if (channelType !== ChannelType.GROUP && channelType !== ChannelType.WORLD) {
 		await callback?.({
 			text: "Role assignment only works in a group or world channel.",
 			actions: ["TRUST"],

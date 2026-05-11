@@ -388,6 +388,9 @@ export function createElectrobunConfig(): ElectrobunConfig {
 								"com.apple.security.device.camera": true,
 								"com.apple.security.device.microphone": true,
 								"com.apple.security.device.screen-recording": true,
+								"com.apple.security.personal-information.addressbook": true,
+								"com.apple.security.personal-information.calendars": true,
+								"com.apple.security.automation.apple-events": true,
 							},
 			},
 			linux: {

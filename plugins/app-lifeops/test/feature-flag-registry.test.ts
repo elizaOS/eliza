@@ -38,6 +38,7 @@ import {
   createInMemoryScheduledTaskLogStore,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
 } from "../src/lifeops/scheduled-task/index.ts";
 import {
@@ -83,6 +84,7 @@ function makeRunner(): ScheduledTaskRunnerHandle {
     globalPause: { current: async () => ({ active: false }) },
     activity: { hasSignalSince: () => false },
     subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
   });
 }
 

@@ -60,13 +60,13 @@ import type {
 	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
-import { captureToolStageIO } from "./trajectory-recorder";
 import type {
 	RecordedStage,
 	RecordedToolCall,
 	RecordedUsage,
 	TrajectoryRecorder,
 } from "./trajectory-recorder";
+import { captureToolStageIO } from "./trajectory-recorder";
 
 export {
 	cacheProviderOptions,
