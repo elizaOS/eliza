@@ -90,6 +90,7 @@ EXIT_KERNEL_VERIFY_FAIL = 12
 EXIT_EVAL_GATE_FAIL = 13
 EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
+EXIT_RELEASE_EVIDENCE_FAIL = 16
 
 ELIZA_1_HF_ORG = "elizalabs"
 
@@ -105,6 +106,8 @@ REQUIRED_SUBDIRS: tuple[str, ...] = (
     "cache",
     "evals",
     "licenses",
+    "evidence",
+    "checksums",
 )
 
 # License blobs that must be present per inference/AGENTS.md §2.
@@ -128,6 +131,18 @@ REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
     "block_layout_version",
     "codebook_hash",
     "per_block_tolerance",
+)
+
+RELEASE_EVIDENCE_PATH = Path("evidence/release.json")
+CHECKSUMS_PATH = Path("checksums/SHA256SUMS")
+REQUIRED_RELEASE_FINAL_FLAGS: tuple[str, ...] = (
+    "weights",
+    "hashes",
+    "evals",
+    "licenses",
+    "kernelDispatchReports",
+    "platformEvidence",
+    "sizeFirstRepoIds",
 )
 
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.

@@ -27,7 +27,7 @@
  * is no silent fallback to text-only.
  */
 
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import type {
   ElizaInferenceContextHandle,
@@ -342,14 +342,20 @@ export class EngineVoiceBridge {
     let ffiHandle: ElizaInferenceFfi | null = null;
     let ffiCtx: ElizaInferenceContextHandle | null = null;
     let backend: OmniVoiceBackend;
+    if (opts.backendOverride && opts.useFfiBackend) {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        "[voice] backendOverride cannot be combined with useFfiBackend=true. Voice-on production paths must load libelizainference and verify its ABI instead of bypassing the fused runtime.",
+      );
+    }
     if (opts.backendOverride) {
       backend = opts.backendOverride;
     } else if (opts.useFfiBackend) {
-      const libPath = path.join(opts.bundleRoot, "lib", libraryFilename());
+      const libPath = locateBundleLibrary(opts.bundleRoot);
       if (!existsSync(libPath)) {
         throw new VoiceStartupError(
           "missing-ffi",
-          `[voice] Fused omnivoice library not found at ${libPath}. Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
+          `[voice] Fused omnivoice library not found under ${path.join(opts.bundleRoot, "lib")} (tried ${libraryFilenames().join(", ")}). Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
         );
       }
       ffiHandle = loadElizaInferenceFfi(libPath);
