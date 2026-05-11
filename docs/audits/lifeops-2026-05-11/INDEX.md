@@ -1,5 +1,9 @@
 # LifeOps benchmark + prompt-optimization pipeline rebuild — 2026-05-11
 
+> **Canonical entry-point: [`REPORT.md`](./REPORT.md)** — start there for the
+> single-page rebuild overview (mission, quick-start, architecture, test
+> grid, follow-ups). This INDEX is the wave-by-wave deliverable list.
+
 ## Mission
 Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style optimizer. Built on top of the 2026-05-09 audit foundation.
 
@@ -75,12 +79,36 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
   - `docs/audits/lifeops-2026-05-11/eliza-1-status.md`
 
 ### Wave 4 — cleanup + code debt
-- [ ] W4-A delete `searchYouTube`, delete `autofill`
-- [ ] W4-B finish app-create / app-load-from-directory / perpetual-market / document / resolve-request / book-travel / mcp
-- [ ] W4-C remove dead error-handling / fallback sludge in benchmark adapters
-- [ ] W4-D consolidate duplicate metrics types across harnesses on the new schema
+- [x] W4-A deduplication + types consolidation (commit `bc38aef7ae`)
+- [x] W4-B unused / legacy / fallback removal (commit `3d6988c15b`)
+  - `docs/audits/lifeops-2026-05-11/known-typecheck-failures.md`
+- [x] W4-C strong typing + error-handling simplification (commit `4cab97e161`)
+- [x] W4-D slop + comment cleanup (commit `d5509afa3e`)
 
 ### Wave 5 — verify + close gaps
-- [ ] W5-A full multi-tier run (small / mid / large / frontier)
-- [ ] W5-B delta vs. baseline, optimizer improvement >= 20pp
-- [ ] W5-C close remaining gaps; sign off
+- [~] W5-A full multi-tier run (small / mid / large / frontier) — concurrent
+- [~] W5-B delta vs. baseline, optimizer improvement >= 20pp — concurrent
+- [x] W5-C final REPORT.md + INDEX.md close-out
+  - `docs/audits/lifeops-2026-05-11/REPORT.md` (this commit)
+
+## Follow-ups
+
+- **W5-A gap list** — `docs/audits/lifeops-2026-05-11/wave-5a-gap-list.md`
+  lands when the W5-A multi-tier validation run completes. Link will be
+  added under "Wave 5 follow-ups" once committed.
+- **Wave-3 P0/P1 follow-ups** — full list in
+  [`REPORT.md`](./REPORT.md) "Known issues + follow-ups" and
+  [`rebaseline-report.md`](./rebaseline-report.md). Headline items:
+  scorer name-aliasing layer for `CALENDAR_*` granular actions, soft
+  `intent` kwarg in `_kwargs_match`, eliza bench-server LLM endpoint
+  fix (Cerebras 404).
+- **Retrieval defaults recalibration** — first run with
+  `MILADY_RETRIEVAL_MEASUREMENT=1` should rerun
+  `bun run lifeops:retrieval:funnel` and
+  `bun run lifeops:retrieval:pareto`, then either update
+  `packages/benchmarks/lib/src/retrieval-defaults.ts` constants or
+  document the measured deltas.
+- **Wave 4-B residual typecheck failures** — see
+  [`known-typecheck-failures.md`](./known-typecheck-failures.md);
+  `action-retrieval.ts` wildcard-namespace path needs > 50 LoC repair
+  (deferred from Wave 4-B scope).
