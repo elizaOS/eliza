@@ -37,6 +37,12 @@
       "types": "./dist/browser/index.d.ts",
       "import": "./dist/browser/index.browser.js",
       "default": "./dist/browser/index.browser.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
     }
   },
   "files": [

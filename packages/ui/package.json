@@ -43,7 +43,15 @@
     "./styles/*.css": "./dist/styles/*.css",
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./config/app-config": "./dist/config/app-config.js",
-    "./onboarding-config": "./dist/onboarding-config.js"
+    "./onboarding-config": "./dist/onboarding-config.js",
+    "./dist/styles/*.css": "./dist/styles/*.css",
+    "./styles/*.css": "./dist/styles/*.css",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
   },
   "peerDependencies": {
     "react": "^19.0.0",

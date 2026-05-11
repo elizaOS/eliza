@@ -1,45 +1,51 @@
 {
-	"name": "@elizaos/plugin-capacitor-bridge",
-	"version": "2.0.0-beta.1",
-	"description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
-	"type": "module",
-	"main": "dist/index.js",
-	"types": "dist/index.d.ts",
-	"exports": {
-		".": {
-			"types": "./dist/index.d.ts",
-			"import": "./dist/index.js",
-			"default": "./dist/index.js"
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"scripts": {
-		"build": "tsup src/index.ts --format esm --dts --clean",
-		"dev": "tsup src/index.ts --format esm --dts --watch",
-		"clean": "rm -rf dist .turbo node_modules",
-		"lint": "bunx @biomejs/biome check --write --unsafe .",
-		"lint:check": "bunx @biomejs/biome check .",
-		"format": "bunx @biomejs/biome format --write .",
-		"format:check": "bunx @biomejs/biome format .",
-		"typecheck": "tsc --noEmit"
-	},
-	"dependencies": {
-		"@elizaos/core": "2.0.0-beta.1",
-		"ws": "^8.18.0"
-	},
-	"peerDependencies": {
-		"@elizaos/core": "2.0.0-beta.1"
-	},
-	"devDependencies": {
-		"@biomejs/biome": "^2.4.14",
-		"@types/node": "24.12.2",
-		"@types/ws": "^8.5.13",
-		"tsup": "8.5.1",
-		"typescript": "^6.0.3"
-	},
-	"publishConfig": {
-		"access": "public"
-	}
+  "name": "@elizaos/plugin-capacitor-bridge",
+  "version": "2.0.0-beta.1",
+  "description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "dev": "tsup src/index.ts --format esm --dts --watch",
+    "clean": "rm -rf dist .turbo node_modules",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "24.12.2",
+    "@types/ws": "^8.5.13",
+    "tsup": "8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
