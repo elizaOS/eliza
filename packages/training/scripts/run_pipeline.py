@@ -80,13 +80,19 @@ def _read_json(path: Path) -> dict | None:
 
 def _resolve_milady_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
-    types). Order: $LLAMA_CPP_DIR → ~/.cache/eliza-dflash/milady-llama-cpp →
+    types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
+    (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/milady-llama-cpp →
     ~/src/milady-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
     env = os.environ.get("LLAMA_CPP_DIR")
     if env:
         cands.append(Path(env))
+    for p in Path(__file__).resolve().parents:
+        cand = p / "packages" / "inference" / "llama.cpp"
+        if cand.is_dir():
+            cands.append(cand)
+            break
     cands += [
         Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
         Path.home() / "src" / "milady-llama.cpp",

@@ -23,7 +23,12 @@ import type {
   LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { type Eliza1TierId, findCatalogModel } from "./catalog";
+import {
+  ELIZA_1_PLACEHOLDER_IDS,
+  type Eliza1TierId,
+  findCatalogModel,
+} from "./catalog";
+import type { InstalledModel } from "./types";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -47,8 +52,14 @@ import {
 import { resolveGrammarForParams } from "./structured-output";
 import {
   buildLocalEmbeddingRoute,
+  EMBEDDING_FULL_DIM,
+  isValidEmbeddingDim,
   type LocalEmbeddingRoute,
 } from "./voice/embedding";
+import {
+  EmbeddingServer,
+  embeddingServerForRoute,
+} from "./voice/embedding-server";
 import {
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
@@ -115,6 +126,20 @@ export function resolveMaxConcurrentSpeculativeResponses(
 // from engine.ts without churn. backend.ts owns the canonical shape,
 // including the optional `cacheKey` for prefix reuse via the session pool.
 export type GenerateArgs = BackendGenerateArgs;
+
+/**
+ * Resolve the active Eliza-1 bundle (root dir + tier id) from an
+ * `InstalledModel`, or `null` when the model is not an Eliza-1 bundle. An
+ * Eliza-1 InstalledModel carries `bundleRoot` and an `eliza-1-<tier>` id
+ * (the catalog placeholder ids). Drives the local-embedding route.
+ */
+function resolveActiveEliza1Bundle(
+  target: InstalledModel | undefined,
+): { root: string; tierId: Eliza1TierId } | null {
+  if (!target?.bundleRoot) return null;
+  if (!ELIZA_1_PLACEHOLDER_IDS.has(target.id)) return null;
+  return { root: target.bundleRoot, tierId: target.id as Eliza1TierId };
+}
 
 /**
  * Map a friendly KV cache type name (`"f16"`, `"q8_0"`, `"bf16"`, etc.) to
@@ -687,6 +712,21 @@ export class LocalInferenceEngine {
   private drafterRoleId: string | null = null;
 
   /**
+   * The active Eliza-1 bundle (root dir + tier id), resolved at `load()`
+   * from the InstalledModel path/id. `null` when the loaded model is not an
+   * Eliza-1 bundle (a user-installed custom). Drives the local-embedding
+   * route — see `embed()`.
+   */
+  private activeEliza1Bundle: { root: string; tierId: Eliza1TierId } | null =
+    null;
+  /**
+   * Lazily-started embedding `llama-server` sidecar for the active bundle
+   * (over the text GGUF on `0_6b`, over the `embedding/` GGUF on larger
+   * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
+   */
+  private embeddingServer: EmbeddingServer | null = null;
+
+  /**
    * The general onload/offload coordinator for this engine. Exposed so the
    * voice lifecycle, the embedding route, and any other resident model role
    * can register an `EvictableModelRole` against the same registry the
@@ -862,6 +902,11 @@ export class LocalInferenceEngine {
     // Stop the memory monitor + idle timer and deregister evictable roles
     // before anything else — they reference the model that's about to go.
     await this.stopBackgroundManagement();
+    if (this.embeddingServer) {
+      await this.embeddingServer.stop().catch(() => {});
+      this.embeddingServer = null;
+    }
+    this.activeEliza1Bundle = null;
     const bridge = this.voiceBridge;
     if (bridge) {
       // Drop voice resources before tearing down text. Disarm is a
@@ -885,6 +930,17 @@ export class LocalInferenceEngine {
     const installed = await listInstalledModels();
     const target = installed.find((m) => m.path === modelPath);
     const catalog = target ? findCatalogModel(target.id) : undefined;
+
+    // Resolve the active Eliza-1 bundle (root + tier) so `embed()` can build
+    // the local-embedding route. An Eliza-1 InstalledModel carries a
+    // `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
+    // non-Eliza-1 model clears it (the local embedding handler then falls
+    // through to the operator-configured provider).
+    this.activeEliza1Bundle = resolveActiveEliza1Bundle(target);
+    if (this.embeddingServer) {
+      void this.embeddingServer.stop();
+      this.embeddingServer = null;
+    }
 
     // Resolved args (when provided) carry the merged catalog defaults +
     // per-load overrides from the active-model coordinator. Project them
@@ -1543,17 +1599,64 @@ export class LocalInferenceEngine {
    * missing its dedicated region — no fallback to pooled text (which would
    * regress the dimension contract).
    */
-  localEmbeddingRoute(args: {
-    bundleRoot: string;
-    tierId: Eliza1TierId;
+  localEmbeddingRoute(args?: {
+    bundleRoot?: string;
+    tierId?: Eliza1TierId;
     textModelPath?: string;
+    /** Default Matryoshka width (one of {64,128,256,512,768,1024}); defaults to 1024. */
+    defaultDim?: number;
   }): LocalEmbeddingRoute {
-    const textModelPath = args.textModelPath ?? this.currentModelPath() ?? "";
+    const bundleRoot = args?.bundleRoot ?? this.activeEliza1Bundle?.root;
+    const tierId = args?.tierId ?? this.activeEliza1Bundle?.tierId;
+    if (!bundleRoot || !tierId) {
+      throw new VoiceStartupError(
+        "missing-bundle-root",
+        "[embedding] no active Eliza-1 bundle; pass bundleRoot+tierId or load an Eliza-1 model first",
+      );
+    }
+    const textModelPath = args?.textModelPath ?? this.currentModelPath() ?? "";
     return buildLocalEmbeddingRoute({
-      bundleRoot: args.bundleRoot,
-      tierId: args.tierId,
+      bundleRoot,
+      tierId,
       textModelPath,
+      defaultDim: args?.defaultDim,
     });
+  }
+
+  /** True when the loaded model is an Eliza-1 bundle (so `embed()` is wired). */
+  canEmbed(): boolean {
+    return this.activeEliza1Bundle !== null;
+  }
+
+  /**
+   * Embed text via the active Eliza-1 bundle's local embedding model.
+   *
+   * The first call lazily starts a dedicated embedding `llama-server`
+   * sidecar (over the text backbone GGUF on `0_6b`, over the dedicated
+   * `embedding/eliza-1-embedding.gguf` on `1_7b`+) launched with
+   * `--embeddings --pooling last`; subsequent calls reuse it. The result
+   * is Matryoshka-truncated to `dim` (default 1024) and L2-normalized.
+   *
+   * Throws when no Eliza-1 bundle is active (the runtime's local embedding
+   * handler then falls through to the operator-configured provider) — no
+   * silent zero-vector (Commandment 8).
+   */
+  async embed(
+    input: string | string[],
+    dim: number = EMBEDDING_FULL_DIM,
+  ): Promise<number[][]> {
+    this.markActivity();
+    if (!isValidEmbeddingDim(dim)) {
+      throw new Error(
+        `[embedding] dim ${dim} is not a valid Matryoshka width (expected one of 64,128,256,512,768,1024)`,
+      );
+    }
+    const route = this.localEmbeddingRoute();
+    if (!this.embeddingServer) {
+      this.embeddingServer = embeddingServerForRoute(route);
+    }
+    const texts = Array.isArray(input) ? input : [input];
+    return this.embeddingServer.embed(texts, dim);
   }
 
   /**

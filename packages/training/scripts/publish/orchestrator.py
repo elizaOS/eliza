@@ -87,6 +87,9 @@ from scripts.manifest.eliza1_manifest import (  # noqa: E402
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
 )
+from scripts.manifest.eliza1_licenses import (  # noqa: E402
+    verify_bundle_licenses,
+)
 
 # ---------------------------------------------------------------------------
 # Exit codes
@@ -429,6 +432,24 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
                 f"bundle layout: empty license blob {name}",
                 EXIT_MISSING_FILE,
             )
+    # Real upstream license text + the license-manifest.json sidecar are
+    # mandatory. The orchestrator refuses to publish a bundle whose
+    # licenses/ set is incomplete or whose embedded text is not the
+    # verbatim canonical SPDX text. See eliza1_licenses.py.
+    license_components = ["text", "voice", "asr", "vad", "dflash"]
+    if out.get("vision"):
+        license_components.append("vision")
+    if (licenses_dir / "LICENSE.embedding").is_file() or out.get("embedding"):
+        license_components.append("embedding")
+    if (licenses_dir / "LICENSE.wakeword").is_file() or out.get("wakeword"):
+        license_components.append("wakeword")
+    license_problems = verify_bundle_licenses(licenses_dir, license_components)
+    if license_problems:
+        raise OrchestratorError(
+            "bundle layout: license attestation incomplete:\n  - "
+            + "\n  - ".join(license_problems),
+            EXIT_MISSING_FILE,
+        )
 
     # Evals — aggregate.json must exist for stage 3.
     agg = bundle / "evals" / "aggregate.json"

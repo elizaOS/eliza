@@ -68,8 +68,10 @@ fused checkout we:
 This is the lowest-blast-radius approach. We do NOT rebase omnivoice
 onto a clean ggml tip and we do NOT carry the ServeurpersoCom ggml
 submodule alongside ours. If the omnivoice authors upstream changes to
-their ggml fork that we want, we cherry-pick those into milady-ai/ggml
-explicitly, and bump the omnivoice pin in this README.
+their ggml fork that we want, we cherry-pick those into the in-tree
+ggml that ships inside `elizaOS/llama.cpp` (the
+`packages/inference/llama.cpp` submodule), then bump the omnivoice pin
+in this README.
 
 ### Why not "swap omnivoice's ggml submodule for milady's ggml"?
 

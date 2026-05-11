@@ -311,6 +311,35 @@ static int run_throughput(void) {
     }
 #endif
 
+    /* ---- int8 query-sketch score (ref + AVX-VNNI / dotprod where built) ---- */
+    {
+        qjl_i8_sketch_256 *qi8 = malloc((size_t)n_q * sizeof(qjl_i8_sketch_256));
+        if (!qi8) { fprintf(stderr, "oom\n"); return 1; }
+        qjl_quantize_sketch_i8_ref(q_sketch, qi8, n_q);
+
+        {
+            double t0 = now_seconds();
+            for (int r = 0; r < reps_ref; r++)
+                qjl_score_qk_i8_ref(qi8, blocks, n_q, n_kv, n_tok, scores);
+            double dt = now_seconds() - t0;
+            double per = dt / (double)(reps_ref * n_q * n_tok);
+            printf("  i8 score  ref : %8.1f ns/(qh,tok)\n", per * 1e9);
+        }
+        {
+            /* qjl_score_qk_i8 dispatches to the best built path (avxvnni /
+             * dotprod) at runtime — qjl_active_simd() reports which. */
+            double t0 = now_seconds();
+            for (int r = 0; r < reps_simd; r++)
+                qjl_score_qk_i8(qi8, blocks, n_q, n_kv, n_tok, scores);
+            double dt = now_seconds() - t0;
+            double per = dt / (double)(reps_simd * n_q * n_tok);
+            double bw  = (double)(reps_simd * (size_t)n_kv * n_tok * QJL_BLOCK_BYTES) / dt / 1e9;
+            printf("  i8 score  %-4s: %8.1f ns/(qh,tok), %6.2f GB/s in (packed K)\n",
+                   qjl_active_simd(), per * 1e9, bw);
+        }
+        free(qi8);
+    }
+
 #if !(defined(__ARM_NEON) || defined(__ARM_NEON__))
     printf("  TODO: NEON throughput TBD on cuttlefish/arm64 (see README).\n");
 #endif

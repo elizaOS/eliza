@@ -1,7 +1,6 @@
 __pycache__/
 *.pyc
 .venv/
-vendor/
 data/
 checkpoints/
 # Generated benchmark outputs (parquet datasets, ablation dumps) are

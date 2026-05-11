@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -87,6 +87,38 @@ else
 		$(SYSTEM_LIBVULKAN) -lm -o vulkan_verify
 endif
 endif
+
+# vulkan_bench — GPU-time benchmark harness (VK_QUERY_TYPE_TIMESTAMP). Sibling
+# of vulkan_verify; measures per-dispatch GPU time and sweeps the multi-block
+# spec constant. Self-contained (only the Vulkan headers + libvulkan), so the
+# header/lib resolution mirrors vulkan_verify but it does not link the C
+# reference objects.
+vulkan_bench: vulkan_bench.cpp
+ifdef VULKAN_SDK
+	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I. vulkan_bench.cpp \
+		-L$(VULKAN_SDK)/lib -lvulkan -lm -o vulkan_bench
+else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
+	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -I. vulkan_bench.cpp \
+		-L/opt/homebrew/opt/vulkan-loader/lib -lvulkan -lm -o vulkan_bench
+else
+ifeq ($(wildcard $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
+	@echo "vulkan_bench needs Vulkan headers (VULKAN_SDK, brew vulkan-headers, or the fetched Khronos headers)."
+	@false
+else ifeq ($(SYSTEM_LIBVULKAN),)
+	@echo "vulkan_bench needs libvulkan.so.1 (apt install libvulkan1)"
+	@false
+else
+	$(CXX) $(CXXFLAGS) -I$(ELIZA_DFLASH_VULKAN_HEADERS_DIR) -I. vulkan_bench.cpp \
+		$(SYSTEM_LIBVULKAN) -lm -o vulkan_bench
+endif
+endif
+
+# Run the Vulkan kernel benchmark on the local device. Disables the Mesa shader
+# cache for clean timings; refuses software ICDs (lavapipe) unless
+# ELIZA_ALLOW_SOFTWARE_VULKAN=1. Writes JSON to VULKAN_BENCH_JSON if set.
+VULKAN_BENCH_JSON ?=
+vulkan-bench: vulkan_bench vulkan-spirv
+	MESA_SHADER_CACHE_DISABLE=1 ./vulkan_bench $(if $(VULKAN_BENCH_JSON),--json $(VULKAN_BENCH_JSON),)
 
 # Run vulkan_verify against the QJL + Polar fixtures (needs a Vulkan-capable
 # host — fails cleanly with "no Vulkan devices" on machines without an ICD).

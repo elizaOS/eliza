@@ -129,20 +129,17 @@ def _build_fixture_bundle(
         json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest}),
     )
 
-    # Licenses.
-    license_names = (
-        "LICENSE.text",
-        "LICENSE.voice",
-        "LICENSE.dflash",
-        "LICENSE.eliza-1",
-        "LICENSE.asr",
-        "LICENSE.vision",
-        "LICENSE.vad",
+    # Licenses — written with the real attestation generator so the
+    # bundle ships verbatim upstream SPDX text + the license-manifest.json
+    # sidecar (the orchestrator refuses anything less).
+    from scripts.manifest.eliza1_licenses import write_bundle_licenses
+
+    write_bundle_licenses(
+        bundle / "licenses",
+        ["text", "voice", "asr", "vad", "dflash", "vision"],
     )
-    for name in license_names:
-        if name == skip_license:
-            continue
-        _write(bundle / "licenses" / name, f"{name} blob\n")
+    if skip_license is not None:
+        (bundle / "licenses" / skip_license).unlink(missing_ok=True)
 
     # Evals — aggregate.json (gates input) + per-backend verify reports.
     blob = eval_blob if eval_blob is not None else _passing_eval_blob(tier)

@@ -81,22 +81,41 @@ def _load_sidecar(path: Path) -> dict[str, object] | None:
 
 
 def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
-    """Locate ``convert_hf_to_gguf.py`` in the milady fork checkout."""
+    """Locate ``convert_hf_to_gguf.py`` in the milady fork checkout.
+
+    Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
+    submodule (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/
+    milady-llama-cpp → ~/src/milady-llama.cpp → $PATH.
+    """
+    cands: list[Path] = []
     if llama_cpp_dir is not None:
-        cand = llama_cpp_dir / "convert_hf_to_gguf.py"
-        if cand.exists():
-            return cand
+        cands.append(llama_cpp_dir)
     env_dir = os.environ.get("LLAMA_CPP_DIR")
     if env_dir:
-        cand = Path(env_dir) / "convert_hf_to_gguf.py"
+        cands.append(Path(env_dir))
+    # packages/inference/llama.cpp is the canonical fork submodule
+    # (.gitmodules: url=https://github.com/elizaOS/llama.cpp.git).
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        cand = p / "packages" / "inference" / "llama.cpp"
+        if cand.is_dir():
+            cands.append(cand)
+            break
+    cands += [
+        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
+        Path.home() / "src" / "milady-llama.cpp",
+    ]
+    for c in cands:
+        cand = c / "convert_hf_to_gguf.py"
         if cand.exists():
             return cand
     which = shutil.which("convert_hf_to_gguf.py")
     if which:
         return Path(which)
     raise FileNotFoundError(
-        "convert_hf_to_gguf.py not found. Pass --llama-cpp-dir <path> or "
-        "set LLAMA_CPP_DIR=<path-to-elizaOS/llama.cpp checkout>."
+        "convert_hf_to_gguf.py not found. Pass --llama-cpp-dir <path>, set "
+        "LLAMA_CPP_DIR=<elizaOS/llama.cpp checkout>, or run "
+        "`git submodule update --init packages/inference/llama.cpp`."
     )
 
 

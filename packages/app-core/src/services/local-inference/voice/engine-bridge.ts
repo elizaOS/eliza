@@ -92,7 +92,19 @@ import type {
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
-const PHRASE_MAX_TOKENS_DEFAULT = 30;
+/**
+ * Runtime default for the no-punctuation phrase cap (`PhraseChunker.maxTokensPerPhrase`).
+ * Punctuation (`, . ! ?`) is still the primary boundary; this only bounds
+ * a run-on token stream. Kept small — equal to the DFlash draft window
+ * (`DEFAULT_VOICE_MAX_DRAFT_TOKENS` in `engine.ts`) — so first-audio latency
+ * is bounded (a phrase ≈ one draft round of audio, not 30 words) and a
+ * DFlash-reject rollback drops at most one un-spoken chunk (AGENTS.md §4 —
+ * "small chunk = low latency cost on rollback"). Override per bridge via
+ * `maxTokensPerPhrase` or `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE`. The
+ * `PhraseChunker` primitive keeps the AGENTS-spec 30-word default for
+ * non-runtime callers.
+ */
+const PHRASE_MAX_TOKENS_DEFAULT = 8;
 const STUB_PCM_MS_PER_PHRASE = 100;
 const STUB_PCM_STREAM_CHUNKS = 4;
 
@@ -485,7 +497,8 @@ export interface EngineVoiceBridgeOptions {
   sampleRate?: number;
   /** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
   ringBufferCapacity?: number;
-  /** Phrase chunker `maxTokensPerPhrase`. Defaults to env or 30. */
+  /** Phrase chunker `maxTokensPerPhrase` (no-punctuation run-on cap). Defaults to
+   *  `ELIZA_VOICE_MAX_TOKENS_PER_PHRASE` or 8 (one DFlash draft round). */
   maxTokensPerPhrase?: number;
   /** Max concurrent TTS phrase dispatches. Defaults to env or scheduler default. */
   maxInFlightPhrases?: number;
