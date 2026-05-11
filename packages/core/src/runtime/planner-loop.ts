@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
+import { logger } from "../logger";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
@@ -2275,7 +2276,12 @@ function loadOptimizedPlannerFromDisk(): string | null {
 			) {
 				return parsed.prompt;
 			}
-		} catch {}
+		} catch (err) {
+			logger.warn(
+				{ path: currentPath, err: (err as Error).message },
+				"[PlannerLoop] malformed action_planner 'current' artifact; falling back to mtime scan",
+			);
+		}
 	}
 
 	// Fallback: legacy / pre-symlink stores. Pick the newest artifact by
@@ -2300,7 +2306,12 @@ function loadOptimizedPlannerFromDisk(): string | null {
 			) {
 				return parsed.prompt;
 			}
-		} catch {}
+		} catch (err) {
+			logger.warn(
+				{ path: entry.path, err: (err as Error).message },
+				"[PlannerLoop] malformed action_planner artifact; trying next candidate",
+			);
+		}
 	}
 	return null;
 }
@@ -2346,7 +2357,15 @@ function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 	if (!cachedDiskOptimizedPlannerLoaded) {
 		try {
 			cachedDiskOptimizedPlannerPrompt = loadOptimizedPlannerFromDisk();
-		} catch {
+		} catch (err) {
+			// readdir/stat failures on the optimized-prompts directory are
+			// non-fatal: we fall back to the bundled `plannerTemplate`. Log so
+			// repeated boot failures show up in operator output rather than
+			// being silently masked.
+			logger.warn(
+				{ err: (err as Error).message },
+				"[PlannerLoop] optimized planner disk load failed; using bundled template",
+			);
 			cachedDiskOptimizedPlannerPrompt = null;
 		}
 		cachedDiskOptimizedPlannerLoaded = true;
