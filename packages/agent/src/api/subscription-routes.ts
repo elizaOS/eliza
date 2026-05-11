@@ -4,6 +4,11 @@ import type {
   LinkedAccountHealth,
   LinkedAccountUsage,
 } from "@elizaos/shared";
+import {
+  PostSubscriptionAnthropicExchangeRequestSchema,
+  PostSubscriptionAnthropicSetupTokenRequestSchema,
+  PostSubscriptionOpenAIExchangeRequestSchema,
+} from "@elizaos/shared";
 import type { AnthropicFlow } from "../auth/anthropic.ts";
 import type { CodexFlow } from "../auth/openai-codex.ts";
 import type { OAuthCredentials } from "../auth/types.ts";
@@ -105,12 +110,19 @@ export async function handleSubscriptionRoutes(
     method === "POST" &&
     pathname === "/api/subscription/anthropic/exchange"
   ) {
-    const body = await readJsonBody<{ code: string }>(req, res);
-    if (!body) return true;
-    if (!body.code) {
-      error(res, "Missing code", 400);
+    const rawAxe = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawAxe === null) return true;
+    const parsedAxe =
+      PostSubscriptionAnthropicExchangeRequestSchema.safeParse(rawAxe);
+    if (!parsedAxe.success) {
+      error(
+        res,
+        parsedAxe.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedAxe.data;
     try {
       const { saveCredentials, applySubscriptionCredentials } =
         await loadSubscriptionAuth();
@@ -137,13 +149,19 @@ export async function handleSubscriptionRoutes(
     method === "POST" &&
     pathname === "/api/subscription/anthropic/setup-token"
   ) {
-    const body = await readJsonBody<{ token: string }>(req, res);
-    if (!body) return true;
-    const trimmedToken = body.token?.trim();
-    if (!trimmedToken?.startsWith("sk-ant-")) {
-      error(res, "Invalid token format — expected sk-ant-oat01-...", 400);
+    const rawTok = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawTok === null) return true;
+    const parsedTok =
+      PostSubscriptionAnthropicSetupTokenRequestSchema.safeParse(rawTok);
+    if (!parsedTok.success) {
+      error(
+        res,
+        parsedTok.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const trimmedToken = parsedTok.data.token;
     try {
       // Store the setup token in config for task-agent discovery but do
       // NOT inject it into process.env.ANTHROPIC_API_KEY.  Anthropic's
@@ -210,11 +228,19 @@ export async function handleSubscriptionRoutes(
   }
 
   if (method === "POST" && pathname === "/api/subscription/openai/exchange") {
-    const body = await readJsonBody<{
-      code?: string;
-      waitForCallback?: boolean;
-    }>(req, res);
-    if (!body) return true;
+    const rawOaeb = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawOaeb === null) return true;
+    const parsedOaeb =
+      PostSubscriptionOpenAIExchangeRequestSchema.safeParse(rawOaeb);
+    if (!parsedOaeb.success) {
+      error(
+        res,
+        parsedOaeb.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedOaeb.data;
     try {
       const { saveCredentials, applySubscriptionCredentials } =
         await loadSubscriptionAuth();
