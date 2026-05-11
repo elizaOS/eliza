@@ -64,6 +64,26 @@ export class PhraseChunker {
     return this.flushAs("max-cap");
   }
 
+  /**
+   * Drop buffered (not-yet-flushed) tokens whose token index is ≥
+   * `fromIndex`. Used by the pipeline's rollback path: when the target
+   * verifier rejects a draft tail, any draft tokens still sitting in the
+   * chunker's buffer (not yet packed into a phrase) MUST be discarded so
+   * the verifier's correction does not get glued onto stale text.
+   * Phonemes are recounted from scratch over what remains.
+   */
+  dropPendingFrom(fromIndex: number): void {
+    const kept = this.buffer.filter((t) => t.index < fromIndex);
+    if (kept.length === this.buffer.length) return;
+    this.buffer = kept;
+    this.phonemeCount = 0;
+    if (this.chunkOn === "phoneme-stream" && this.tokenizer !== null) {
+      for (const t of this.buffer) {
+        this.phonemeCount += this.tokenizer.tokenize(t.text, t.index).length;
+      }
+    }
+  }
+
   reset(): void {
     this.buffer = [];
     this.phonemeCount = 0;

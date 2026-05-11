@@ -24,4 +24,7 @@ dist-ssr
 *.sw?
 .vscode
 
+public/CNAME
+public/generated-registry.json
 public/index.json
+public/registry-summary.json

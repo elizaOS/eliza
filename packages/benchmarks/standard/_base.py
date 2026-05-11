@@ -153,6 +153,67 @@ class HTTPOpenAICompatibleClient:
         )
 
 
+class TrajectoryRecordingClient:
+    """Wrap a generation client and append one JSONL turn per model call."""
+
+    def __init__(
+        self,
+        inner: OpenAICompatibleClient,
+        *,
+        output_path: Path,
+        benchmark_id: str,
+        model: str,
+    ) -> None:
+        self._inner = inner
+        self._output_path = output_path
+        self._benchmark_id = benchmark_id
+        self._model = model
+
+    def generate(
+        self,
+        messages: Sequence[ChatMessage],
+        config: GenerationConfig,
+    ) -> GenerationResult:
+        started = time.perf_counter()
+        result = self._inner.generate(messages, config)
+        latency_ms = (time.perf_counter() - started) * 1000.0
+        usage = _usage_from_generation(result)
+        record = {
+            "benchmark": self._benchmark_id,
+            "model": self._model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "prompt": "\n\n".join(f"{m.role}: {m.content}" for m in messages),
+            "response": result.text,
+            "usage": usage,
+            "latency_ms": latency_ms,
+            "raw": result.raw,
+        }
+        self._output_path.parent.mkdir(parents=True, exist_ok=True)
+        with self._output_path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=True, default=str))
+            fh.write("\n")
+        return result
+
+
+def _usage_from_generation(result: GenerationResult) -> dict[str, object]:
+    usage: dict[str, object] = {
+        "prompt_tokens": result.prompt_tokens,
+        "completion_tokens": result.completion_tokens,
+    }
+    raw_usage = result.raw.get("usage")
+    if isinstance(raw_usage, dict):
+        usage.update(raw_usage)
+    params = result.raw.get("params")
+    if isinstance(params, dict):
+        param_usage = params.get("usage")
+        if isinstance(param_usage, dict):
+            usage.update(param_usage)
+        meta = params.get("_meta")
+        if isinstance(meta, dict) and isinstance(meta.get("usage"), dict):
+            usage.update(meta["usage"])
+    return usage
+
+
 class MockClient:
     """Deterministic client for smoke tests.
 

@@ -37,7 +37,13 @@ export function ThemeToggle({
     <Button
       size="icon"
       variant="outline"
-      aria-label={_t ? _t("aria.toggleTheme") : "Toggle theme"}
+      aria-label={
+        _t
+          ? _t(isDark ? "aria.switchToLight" : "aria.switchToDark")
+          : isDark
+            ? "Switch to light mode"
+            : "Switch to dark mode"
+      }
       onClick={handleToggle}
       onPointerDown={(event) => event.stopPropagation()}
       className={resolvedClassName}
@@ -45,9 +51,9 @@ export function ThemeToggle({
       data-no-camera-drag="true"
     >
       {isDark ? (
-        <Moon className="w-5 h-5" aria-hidden />
-      ) : (
         <Sun className="w-5 h-5" aria-hidden />
+      ) : (
+        <Moon className="w-5 h-5" aria-hidden />
       )}
     </Button>
   );

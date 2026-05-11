@@ -196,7 +196,7 @@ export async function runSubPlanner(
 	const childActions = declaredChildActions.filter(
 		(child) =>
 			contextGated.has(child) ||
-			isActionAllowedByRolePolicy(child.name, params.ctx.userRoles),
+			isActionAllowedByRolePolicy(child, params.ctx.userRoles),
 	);
 	if (childActions.length === 0) {
 		throw new Error(

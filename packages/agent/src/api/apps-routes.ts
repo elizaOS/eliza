@@ -592,52 +592,44 @@ function buildSteeringDisposition(
   return "accepted";
 }
 
-async function proxyRunSteeringRequest(
-  ctx: AppsRouteContext,
+function buildUnsupportedSteeringResult(
   run: AppRunSummary,
   subroute: "message" | "control",
+  reason: "no-target" | "no-handler",
+): AppRunSteeringResult {
+  // "messaging is" (mass noun) vs "controls are" (plural) — preserve the
+  // grammar of the original inline strings this helper replaced.
+  const channel = subroute === "message" ? "messaging" : "controls";
+  const verb = subroute === "message" ? "is" : "are";
+  const message =
+    reason === "no-handler"
+      ? `Run-scoped ${channel} ${verb} unavailable for "${run.displayName}" because its route module does not expose a steering handler.`
+      : `Run-scoped ${channel} ${verb} unavailable for "${run.displayName}".`;
+  return {
+    success: false,
+    message,
+    disposition: "unsupported",
+    status: 501,
+    run,
+    session: run.session ?? null,
+  };
+}
+
+function buildSyntheticSteeringContext(
+  ctx: AppsRouteContext,
+  targetPathname: string,
   body: Record<string, unknown> | null,
-): Promise<AppRunSteeringResult | null> {
-  const target = resolveRunSteeringTarget(run, subroute);
-  if (!target) {
-    return {
-      success: false,
-      message:
-        subroute === "message"
-          ? `Run-scoped messaging is unavailable for "${run.displayName}".`
-          : `Run-scoped controls are unavailable for "${run.displayName}".`,
-      disposition: "unsupported",
-      status: 501,
-      run,
-      session: run.session ?? null,
-    };
-  }
-
-  const routeModule = await importAppRouteModule(run.appName);
-  if (typeof routeModule?.handleAppRoutes !== "function") {
-    return {
-      success: false,
-      message:
-        subroute === "message"
-          ? `Run-scoped messaging is unavailable for "${run.displayName}" because its route module does not expose a steering handler.`
-          : `Run-scoped controls are unavailable for "${run.displayName}" because its route module does not expose a steering handler.`,
-      disposition: "unsupported",
-      status: 501,
-      run,
-      session: run.session ?? null,
-    };
-  }
-
+): { ctx: AppsRouteContext; captured: CapturedResponse } {
   const captured = createCapturedResponse();
   const syntheticResponse = Object.assign(
     Object.create(ServerResponse.prototype) as http.ServerResponse,
     captured,
   );
   const syntheticUrl = new URL(ctx.url.toString());
-  syntheticUrl.pathname = target.pathname;
+  syntheticUrl.pathname = targetPathname;
   const syntheticCtx: AppsRouteContext = {
     ...ctx,
-    pathname: target.pathname,
+    pathname: targetPathname,
     url: syntheticUrl,
     res: syntheticResponse,
     readJsonBody: async <T extends object>() => body as T | null,
@@ -658,20 +650,64 @@ async function proxyRunSteeringRequest(
       response.end(JSON.stringify({ error: message }));
     },
   };
+  return { ctx: syntheticCtx, captured };
+}
+
+function resolveSteeringOutcome(
+  disposition: AppRunSteeringResult["disposition"],
+  capturedStatusCode: number,
+  upstreamBody: Record<string, unknown> | null,
+): { success: boolean; message: string; status: number } {
+  const success =
+    upstreamBody?.success === true || upstreamBody?.ok === true
+      ? true
+      : disposition === "accepted" || disposition === "queued";
+  const message =
+    typeof upstreamBody?.message === "string" && upstreamBody.message.trim()
+      ? upstreamBody.message.trim()
+      : disposition === "queued"
+        ? "Command queued."
+        : disposition === "accepted"
+          ? "Command accepted."
+          : disposition === "unsupported"
+            ? "This run does not support that steering channel."
+            : "Command rejected.";
+  const status =
+    disposition === "queued"
+      ? 202
+      : disposition === "rejected" && capturedStatusCode < 400
+        ? 409
+        : disposition === "unsupported"
+          ? Math.max(capturedStatusCode, 501)
+          : capturedStatusCode;
+  return { success, message, status };
+}
+
+async function proxyRunSteeringRequest(
+  ctx: AppsRouteContext,
+  run: AppRunSummary,
+  subroute: "message" | "control",
+  body: Record<string, unknown> | null,
+): Promise<AppRunSteeringResult | null> {
+  const target = resolveRunSteeringTarget(run, subroute);
+  if (!target) {
+    return buildUnsupportedSteeringResult(run, subroute, "no-target");
+  }
+
+  const routeModule = await importAppRouteModule(run.appName);
+  if (typeof routeModule?.handleAppRoutes !== "function") {
+    return buildUnsupportedSteeringResult(run, subroute, "no-handler");
+  }
+
+  const { ctx: syntheticCtx, captured } = buildSyntheticSteeringContext(
+    ctx,
+    target.pathname,
+    body,
+  );
 
   const handled = await routeModule.handleAppRoutes(syntheticCtx);
   if (!handled) {
-    return {
-      success: false,
-      message:
-        subroute === "message"
-          ? `Run-scoped messaging is unavailable for "${run.displayName}".`
-          : `Run-scoped controls are unavailable for "${run.displayName}".`,
-      disposition: "unsupported",
-      status: 501,
-      run,
-      session: run.session ?? null,
-    };
+    return buildUnsupportedSteeringResult(run, subroute, "no-target");
   }
 
   const upstreamBody = parseCapturedBody(captured.body);
@@ -688,33 +724,17 @@ async function proxyRunSteeringRequest(
     captured.statusCode,
     upstreamBody,
   );
-  const success =
-    upstreamBody?.success === true || upstreamBody?.ok === true
-      ? true
-      : disposition === "accepted" || disposition === "queued";
-  const message =
-    typeof upstreamBody?.message === "string" && upstreamBody.message.trim()
-      ? upstreamBody.message.trim()
-      : disposition === "queued"
-        ? "Command queued."
-        : disposition === "accepted"
-          ? "Command accepted."
-          : disposition === "unsupported"
-            ? "This run does not support that steering channel."
-            : "Command rejected.";
+  const { success, message, status } = resolveSteeringOutcome(
+    disposition,
+    captured.statusCode,
+    upstreamBody,
+  );
 
   return {
     success,
     message,
     disposition,
-    status:
-      disposition === "queued"
-        ? 202
-        : disposition === "rejected" && captured.statusCode < 400
-          ? 409
-          : disposition === "unsupported"
-            ? Math.max(captured.statusCode, 501)
-            : captured.statusCode,
+    status,
     run: refreshedRun,
     session:
       (upstreamBody?.session as AppSessionActionResult["session"] | null) ??

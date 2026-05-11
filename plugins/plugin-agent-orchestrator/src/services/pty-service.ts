@@ -354,10 +354,32 @@ function prependWorkspaceLockToTask(
   return `${workspaceLock} ${task}`;
 }
 
-function resolveServerPort(runtime: IAgentRuntime): string {
-  const raw = runtime.getSetting("SERVER_PORT");
-  if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
-  if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+/**
+ * Setting keys consulted to locate the parent agent's HTTP API. Order
+ * matters: we prefer the explicit override (`SERVER_PORT`) over deployment
+ * env vars (`MILADY_API_PORT`, `ELIZA_API_PORT`). The fallback `2138`
+ * targets the dev-UI (Vite) port, which does NOT serve
+ * `/api/coding-agents/*` — that lives on the API server. The dev-UI
+ * port answer was correct only for the legacy single-port topology
+ * where the dev orchestrator put UI + API on the same port; modern
+ * deployments split them and a sub-agent POSTing hook telemetry to
+ * `:2138` gets HTTP 404 instead of hitting the parent's hook endpoint
+ * (`/api/coding-agents/hooks`). That silently drops PreToolUse / Stop
+ * hooks so the parent never sees the sub-agent's lifecycle events.
+ */
+const SERVER_PORT_SETTING_KEYS = [
+  "SERVER_PORT",
+  "MILADY_API_PORT",
+  "ELIZA_API_PORT",
+] as const;
+
+/** @internal — exported for unit tests in `pty-service-server-port.test.ts`. */
+export function resolveServerPort(runtime: IAgentRuntime): string {
+  for (const key of SERVER_PORT_SETTING_KEYS) {
+    const raw = runtime.getSetting(key);
+    if (typeof raw === "number" && Number.isFinite(raw)) return String(raw);
+    if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+  }
   return "2138";
 }
 

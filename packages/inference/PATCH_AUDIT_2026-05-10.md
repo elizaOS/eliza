@@ -1,4 +1,4 @@
-# Patch audit — `build-llama-cpp-dflash.mjs` vs milady-ai/llama.cpp
+# Patch audit — `build-llama-cpp-dflash.mjs` vs elizaOS/llama.cpp
 
 > Superseded status note, 2026-05-11: keep this file as historical context.
 > The current post-QJL-dispatch blocker ledger is
@@ -10,14 +10,14 @@
 Date: 2026-05-10
 Auditor: bounded read-only audit (no commits, no kernel edits).
 Scope: every patch hook in `packages/app-core/scripts/build-llama-cpp-dflash.mjs`,
-cross-referenced against the in-tree state of the milady-ai/llama.cpp fork
+cross-referenced against the in-tree state of the elizaOS/llama.cpp fork
 at the script's pinned ref.
 
 ## Pinned fork ref (resolved)
 
 | Item                       | Value                                                                                  |
 | -------------------------- | -------------------------------------------------------------------------------------- |
-| Remote                     | `https://github.com/milady-ai/llama.cpp.git`                                           |
+| Remote                     | `https://github.com/elizaOS/llama.cpp.git`                                           |
 | Pinned ref (script)        | `v0.4.0-milady` (annotated tag)                                                        |
 | Tag-object SHA             | `99ed5f0f93b42b87047b03dc5ef420d0dc2e9c27`                                             |
 | Commit the tag points to   | `08032d57e15574f2a7ca19fc3f29510c8673d590` (= current `milady/integration` HEAD)       |

@@ -21,10 +21,10 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * - PLAN_ACTIONS: stage 2, called repeatedly during the planner loop to
  *   invoke an action (or sub-action) by name with parameters.
  *
- * Both tools are present in every request. `tool_choice: "auto"` is held
- * across the entire turn so the messages cache stays warm — flipping
- * `tool_choice` mid-turn would invalidate the messages cache (per
- * Anthropic prompt caching invalidation rules).
+ * Both tools are present in tool-capable requests. Stage 2 normally uses
+ * `tool_choice: "auto"` for cache stability, but can force `"required"` when
+ * the Stage 1 router has already determined that the current turn must run a
+ * non-terminal tool.
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 export const PLAN_ACTIONS_TOOL_NAME = "PLAN_ACTIONS" as const;
@@ -65,77 +65,96 @@ export const HANDLE_RESPONSE_EXTRACT_SCHEMA: JSONSchema = {
 };
 
 /**
- * Schema for the full HANDLE_RESPONSE tool — used outside DM channels
- * where the agent must explicitly choose RESPOND / IGNORE / STOP.
+ * Shared property definitions for the flat HANDLE_RESPONSE envelope. Declared
+ * once and referenced by both the full and direct schemas so the rendered
+ * shape stays byte-identical between them (only the `shouldRespond` key and the
+ * `required` list differ). The key insertion order here is the canonical
+ * envelope order: `shouldRespond` (full schema only), then `thought`, then
+ * `replyText`, then `contexts` **directly after** `replyText`, then the
+ * planning-hint fields, then `extract` last. This is the order the model is
+ * trained to emit and the order the incremental field parser walks.
+ */
+const HANDLE_RESPONSE_REPLY_TEXT_PROPERTY: JSONSchema = {
+	type: "string",
+	description:
+		"The user-facing reply text. Required. On the simple/direct path this is the whole answer; on the planning path it is a brief acknowledgement and the planner produces the final message.",
+};
+
+const HANDLE_RESPONSE_CONTEXTS_PROPERTY: JSONSchema = {
+	type: "array",
+	description:
+		"Context ids to engage, drawn from available_contexts. ['simple'] (or []) = direct reply, no planner. Any other id (or 'general') = planning runs against those contexts. Comes directly after replyText.",
+	items: { type: "string" },
+};
+
+const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
+	contextSlices: {
+		type: "array",
+		description:
+			"Optional retrieval slice ids that would help answer this turn. Use only ids or short stable handles when visible in context.",
+		items: { type: "string" },
+	} as JSONSchema,
+	candidateActions: {
+		type: "array",
+		description:
+			"Optional action-like names or short operation phrases that should be used as retrieval hints for the action catalogue.",
+		items: { type: "string" },
+	} as JSONSchema,
+	parentActionHints: {
+		type: "array",
+		description:
+			"Optional explicit parent action names when confident. These are high-precision hints, not guesses.",
+		items: { type: "string" },
+	} as JSONSchema,
+	requiresTool: {
+		type: "boolean",
+		description:
+			"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, browser or network lookup, live/current/external data, side effects, long-running work, or verification before the user can be answered. The router upgrades empty or simple-only contexts to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
+	} as JSONSchema,
+} as const;
+
+/**
+ * Schema for the full HANDLE_RESPONSE tool — used outside DM channels where the
+ * agent must explicitly choose RESPOND / IGNORE / STOP.
+ *
+ * Flat, single-object envelope (no `plan` nesting): the model emits one ordered
+ * object — `shouldRespond`, `thought`, `replyText`, `contexts`, then the
+ * planning hints, then `extract`. `parseMessageHandlerOutput` still accepts the
+ * legacy `{ processMessage, plan:{...} }` nesting for older trajectories.
  */
 export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
-		processMessage: {
+		shouldRespond: {
 			type: "string",
 			enum: ["RESPOND", "IGNORE", "STOP"],
 		},
-		plan: {
-			type: "object",
-			additionalProperties: false,
-			properties: {
-				contexts: {
-					type: "array",
-					items: { type: "string" },
-				},
-				contextSlices: {
-					type: "array",
-					description:
-						"Optional retrieval slice ids that would help answer this turn. Use only ids or short stable handles when visible in context.",
-					items: { type: "string" },
-				},
-				candidateActions: {
-					type: "array",
-					description:
-						"Optional action-like names or short operation phrases that should be used as retrieval hints for the action catalogue.",
-					items: { type: "string" },
-				},
-				parentActionHints: {
-					type: "array",
-					description:
-						"Optional explicit parent action names when confident. These are high-precision hints, not guesses.",
-					items: { type: "string" },
-				},
-				reply: { type: "string" },
-				requiresTool: {
-					type: "boolean",
-					description:
-						"True when this turn needs an action/tool/provider/subagent, filesystem/runtime inspection, browser or network lookup, live/current/external data, side effects, long-running work, or verification before the user can be answered. The router upgrades empty or simple-only plans to planning against `general` and the planner loop will retry if it returns terminal output before any non-terminal tool has run.",
-				},
-				simple: {
-					type: "boolean",
-					description:
-						"Optional legacy shortcut marker. Prefer contexts=['simple'] for direct replies.",
-				},
-			},
-			required: ["contexts"],
-		},
 		thought: { type: "string" },
+		replyText: HANDLE_RESPONSE_REPLY_TEXT_PROPERTY,
+		contexts: HANDLE_RESPONSE_CONTEXTS_PROPERTY,
+		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
 		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: ["processMessage", "plan", "thought"],
+	required: ["shouldRespond", "replyText", "contexts"],
 };
 
 /**
- * Schema for HANDLE_RESPONSE in direct-message / API channels where the
- * agent always responds — `processMessage` is implicit RESPOND so we drop
- * it from the schema to save tokens and avoid spurious IGNORE.
+ * Schema for HANDLE_RESPONSE in direct-message / API / VOICE_DM / SELF channels
+ * where the agent always responds — `shouldRespond` is implicit RESPOND so we
+ * drop it from the schema to save tokens and avoid spurious IGNORE.
  */
 export const HANDLE_RESPONSE_DIRECT_SCHEMA: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
-		plan: HANDLE_RESPONSE_SCHEMA.properties?.plan as JSONSchema,
 		thought: { type: "string" },
+		replyText: HANDLE_RESPONSE_REPLY_TEXT_PROPERTY,
+		contexts: HANDLE_RESPONSE_CONTEXTS_PROPERTY,
+		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
 		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: ["plan", "thought"],
+	required: ["replyText", "contexts"],
 };
 
 export interface PlannerToolDefinition {
@@ -157,10 +176,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. Set processMessage to RESPOND/IGNORE/STOP. List plan.contexts to engage; set plan.requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally include action-retrieval hints in plan.candidateActions / plan.parentActionHints / plan.contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. processMessage is implicit RESPOND for DMs. List plan.contexts to engage; set plan.requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally include action-retrieval hints in plan.candidateActions / plan.parentActionHints / plan.contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const PLAN_ACTIONS_DESCRIPTION =
 	"Stage 2 — invoke an action by name with parameters. Use multiple times in sequence to build up a turn's work. Action names and parameter schemas are listed under available_actions in the conversation; the system prompt only describes the protocol. Use exactly the parameter names from that action schema; for routed actions the selector is usually `action` inside `parameters`. Use REPLY to emit a user-facing reply; IGNORE / STOP to terminate the turn.";
@@ -190,14 +209,16 @@ export function createHandleResponseTool(options?: {
  * Stage 1 tool. The model uses this once per inbound message to declare
  * how it wants to handle the turn. Output drives the rest of the pipeline:
  *
- *   processMessage = "RESPOND" → engage `plan.contexts`, run planner with PLAN_ACTIONS
- *   processMessage = "IGNORE"  → terminate silently
- *   processMessage = "STOP"    → terminate with terminal stop signal
+ *   shouldRespond = "RESPOND" → engage `contexts`, run planner with PLAN_ACTIONS
+ *   shouldRespond = "IGNORE"  → terminate silently
+ *   shouldRespond = "STOP"    → terminate with terminal stop signal
  *
- * For trivially simple replies that don't need action planning, the model
- * may set `plan.contexts = ["simple"]` and put the reply text directly in
- * `plan.reply`. The runtime shortcuts and emits the reply without invoking
- * the planner.
+ * `replyText` is always present (the user-facing reply). For trivially simple
+ * replies that don't need action planning the model sets `contexts = ["simple"]`
+ * (or leaves it empty) and `replyText` is the whole answer — the runtime emits
+ * it without invoking the planner. Otherwise planning runs against `contexts`
+ * and the planner produces the final message; `replyText` then serves as the
+ * early acknowledgement.
  */
 export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool();
 

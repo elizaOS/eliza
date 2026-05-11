@@ -79,7 +79,34 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--residual-length", type=int, default=128)
     ap.add_argument("--base-seed", type=int, default=42)
     ap.add_argument("--norm-threshold", type=float, default=5.0)
+    # Long-context / trellis path. Per packages/training/AGENTS.md §3 the
+    # largest variant of a tier (e.g. `eliza-1-27b-1m`) routes the K-cache
+    # through Trellis-Coded Quantization (`turbo3_tcq`) instead of plain
+    # `turbo3`/`turbo4`. The weights are still unchanged on disk — this only
+    # flips which KV cache type the runtime is told to use, recorded in the
+    # sidecar so the manifest builder + downloader pick `turbo3_tcq` for the
+    # variant.
+    ap.add_argument(
+        "--trellis",
+        action="store_true",
+        help=(
+            "Long-context path: record turbo3_tcq as the K-cache type in the "
+            "sidecar (use for the largest variant of a tier, e.g. 27b-1m)."
+        ),
+    )
+    ap.add_argument(
+        "--context-length",
+        type=int,
+        default=None,
+        help=(
+            "Trained/served context length for this variant (e.g. 1048576 "
+            "for 27b-1m). Recorded in the sidecar. Implies --trellis when "
+            ">= 65536."
+        ),
+    )
     args = ap.parse_args(argv)
+    if args.context_length is not None and args.context_length >= 65536:
+        args.trellis = True
 
     validate_quantization_args(args)
 
@@ -105,6 +132,11 @@ def main(argv: list[str] | None = None) -> int:
     text_cfg = get_text_config(model.config)
     head_dim = head_dim_of(text_cfg)
 
+    # Which KV cache type the runtime uses for K. Long-context variants take
+    # the trellis path (turbo3_tcq); everything else uses the per-block
+    # turbo3/turbo4 layout selected by --nbits.
+    cache_type_k = "turbo3_tcq" if args.trellis else f"turbo{args.nbits}_0"
+
     sidecar_payload = {
         "method": "turboquant",
         "paper": "arXiv:2504.19874",
@@ -116,6 +148,11 @@ def main(argv: list[str] | None = None) -> int:
         "skip_layers": skip_layers,
         "head_dim": head_dim,
         "num_hidden_layers": int(text_cfg.num_hidden_layers),
+        "trellis": bool(args.trellis),
+        "context_length": (
+            int(args.context_length) if args.context_length is not None else None
+        ),
+        "cache_type_k": cache_type_k,
         "calibration_file": str(args.calibration) if args.calibration else None,
         "calibration_samples": args.calibration_samples if args.calibration else 0,
         "norm_threshold": args.norm_threshold,

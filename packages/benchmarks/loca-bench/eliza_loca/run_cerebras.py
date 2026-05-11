@@ -25,13 +25,24 @@ DEFAULT_MODEL = "gpt-oss-120b"
 def main() -> int:
     args = parse_args()
     command = build_command(args)
+    output_dir = Path(args.output_dir).resolve()
 
     if args.dry_run:
-        print(json.dumps({"command": command, "cwd": str(LOCA_ROOT)}, indent=2))
+        dry_run_payload = write_dry_run_outputs(
+            output_dir,
+            command=command,
+            include_previews=args.include_previews,
+        )
+        print(
+            json.dumps(
+                {"command": command, "cwd": str(LOCA_ROOT), **dry_run_payload},
+                indent=2,
+                sort_keys=True,
+            )
+        )
         return 0
 
     env = build_env(args)
-    output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     completed = subprocess.run(command, cwd=LOCA_ROOT, env=env, check=False)
 
@@ -55,6 +66,54 @@ def main() -> int:
     if completed.returncode != 0:
         return completed.returncode
     return 1 if audit["summary"]["issue_count"] else 0
+
+
+def write_dry_run_outputs(
+    output_dir: Path,
+    *,
+    command: list[str],
+    include_previews: bool = False,
+) -> dict[str, object]:
+    """Write a scoreable LOCA smoke artifact without invoking the vendored CLI."""
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "results.json").write_text(
+        json.dumps(
+            {
+                "metadata": {
+                    "total_tasks": 0,
+                    "mode": "dry_run",
+                    "command": command,
+                },
+                "summary": {
+                    "avg_accuracy": 0.0,
+                    "avg_steps": 0.0,
+                    "avg_tool_calls": 0.0,
+                    "total_api_tokens": 0,
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "all_trajectories.json").write_text("[]\n", encoding="utf-8")
+    audit = audit_output_dir(
+        output_dir,
+        include_previews=include_previews,
+        allow_empty=True,
+    )
+    audit_path = output_dir / "eliza_loca_audit.json"
+    audit_path.write_text(
+        json.dumps(audit, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "dry_run": True,
+        "audit": str(audit_path),
+        "summary": audit["summary"],
+    }
 
 
 def parse_args() -> argparse.Namespace:

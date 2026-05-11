@@ -84,8 +84,19 @@ if [[ -z "${BUNDLES_ROOT}" ]]; then
   exit 2
 fi
 
-if command -v uv >/dev/null 2>&1 && [[ -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
-  RUNNER=(uv run --with pyyaml --with huggingface_hub --with jinja2 python -m scripts.publish.orchestrator)
+UV_BIN=""
+if command -v uv >/dev/null 2>&1; then
+  UV_BIN="$(command -v uv)"
+elif [[ -x "${HOME}/.local/bin/uv" ]]; then
+  UV_BIN="${HOME}/.local/bin/uv"
+elif [[ -x "/opt/homebrew/bin/uv" ]]; then
+  UV_BIN="/opt/homebrew/bin/uv"
+fi
+
+if [[ -n "${UV_BIN}" && -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
+  RUNNER=("${UV_BIN}" run --with pyyaml --with huggingface_hub --with jinja2 python -m scripts.publish.orchestrator)
+elif command -v python3 >/dev/null 2>&1; then
+  RUNNER=(python3 -m scripts.publish.orchestrator)
 else
   RUNNER=(python -m scripts.publish.orchestrator)
 fi

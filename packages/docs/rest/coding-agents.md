@@ -148,11 +148,26 @@ POST /api/cloud/coding-containers
 {
   "agent": "codex",
   "promotionId": "promotion-id",
+  "source": {
+    "sourceKind": "project",
+    "projectId": "demo-app",
+    "snapshotId": "snapshot-id",
+    "files": [
+      {
+        "path": "src/plugin.ts",
+        "contents": "export default { name: 'demo' };",
+        "encoding": "utf-8"
+      }
+    ]
+  },
   "prompt": "Implement the app and return patches"
 }
 ```
 
-`agent` must be `claude`, `codex`, or `opencode`.
+`agent` must be `claude`, `codex`, or `opencode`. When `source.files` is
+present, the Cloud control plane writes the bundle into the persistent
+workspace volume before the container starts and mounts that volume at
+`workspacePath`.
 
 **Response** (200)
 
@@ -166,7 +181,12 @@ POST /api/cloud/coding-containers
     "promotionId": "promotion-id",
     "workspacePath": "/workspace/demo-app",
     "url": "https://cloud.elizaos.ai/coding/container-id",
-    "createdAt": "2026-05-11T16:00:00.000Z"
+    "createdAt": "2026-05-11T16:00:00.000Z",
+    "metadata": {
+      "sourceFileCount": 1,
+      "sourceTotalBytes": 31,
+      "volumeMountPath": "/workspace/demo-app"
+    }
   }
 }
 ```
@@ -185,13 +205,20 @@ POST /api/cloud/coding-containers/:containerId/sync
     "projectId": "demo-app",
     "baseRevision": "snapshot-id"
   },
-  "changedFiles": [],
+  "changedFiles": [
+    { "path": "src/index.ts", "contents": "export {};\n", "encoding": "utf-8" }
+  ],
   "deletedFiles": [],
   "patches": []
 }
 ```
 
-**Response** (200)
+`changedFiles` and `deletedFiles` are applied by the Cloud container control
+plane. `pull` and `roundtrip` responses include exported workspace files with
+`encoding=base64`. Patch application is intentionally rejected until the Cloud
+runtime has a real patch applier; callers should send full changed files.
+
+**Response** (202)
 
 ```json
 {
@@ -199,14 +226,16 @@ POST /api/cloud/coding-containers/:containerId/sync
   "data": {
     "syncId": "sync-id",
     "containerId": "container-id",
-    "status": "accepted",
+    "status": "ready",
     "direction": "roundtrip",
     "target": {
       "sourceKind": "project",
       "projectId": "demo-app",
       "baseRevision": "snapshot-id"
     },
-    "changedFiles": [],
+    "changedFiles": [
+      { "path": "src/index.ts", "contents": "ZXhwb3J0IHt9Owo=", "encoding": "base64" }
+    ],
     "deletedFiles": [],
     "patches": [],
     "createdAt": "2026-05-11T16:00:00.000Z"

@@ -128,17 +128,34 @@ describe("message handler retrieval hint output", () => {
 		expect(parsed?.plan.parentActionHints).toBeUndefined();
 	});
 
-	it("exposes retrieval hint fields in normal and direct schemas", () => {
-		const normalPlan = HANDLE_RESPONSE_SCHEMA.properties?.plan;
-		const directPlan = HANDLE_RESPONSE_DIRECT_SCHEMA.properties?.plan;
-
-		for (const plan of [normalPlan, directPlan]) {
-			expect(plan?.properties).toMatchObject({
+	it("exposes retrieval hint fields at the top level of the flat envelope", () => {
+		for (const schema of [
+			HANDLE_RESPONSE_SCHEMA,
+			HANDLE_RESPONSE_DIRECT_SCHEMA,
+		]) {
+			expect(schema.properties).toMatchObject({
+				replyText: { type: "string" },
+				contexts: { type: "array" },
 				contextSlices: { type: "array" },
 				candidateActions: { type: "array" },
 				parentActionHints: { type: "array" },
+				requiresTool: { type: "boolean" },
 			});
-			expect(plan?.required).toEqual(["contexts"]);
+			expect(schema.properties?.plan).toBeUndefined();
 		}
+		// Full schema requires shouldRespond; direct (DM/API) schema drops it.
+		expect(HANDLE_RESPONSE_SCHEMA.required).toEqual([
+			"shouldRespond",
+			"replyText",
+			"contexts",
+		]);
+		expect(HANDLE_RESPONSE_DIRECT_SCHEMA.required).toEqual([
+			"replyText",
+			"contexts",
+		]);
+		expect(HANDLE_RESPONSE_SCHEMA.properties?.shouldRespond).toBeDefined();
+		expect(
+			HANDLE_RESPONSE_DIRECT_SCHEMA.properties?.shouldRespond,
+		).toBeUndefined();
 	});
 });

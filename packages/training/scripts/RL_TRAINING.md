@@ -150,5 +150,5 @@ SFT (train_local.py / train_vast.sh)
 
 Each `final/` is a drop-in for the next stage and for
 `scripts/quantization/*.py`. The HuggingFace push uses
-`scripts/push_model_to_hf.py --repo-id elizalabs/eliza-1-<size>-rl-v1` for
+`scripts/push_model_to_hf.py --repo-id elizaos/eliza-1-<size>-rl-v1` for
 the GRPO output (per RL_STRATEGY.md naming).

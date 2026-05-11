@@ -37,34 +37,30 @@ Your plugin needs these key elements for registry acceptance:
 plugin-fal-ai/
 ├── src/
 │   └── index.ts         # Your plugin code
-├── images/              # Registry assets
-│   ├── logo.jpg        # 400x400px, max 500KB
-│   └── banner.jpg      # 1280x640px, max 1MB
 ├── package.json         # Plugin metadata
 ├── README.md           # Documentation
 └── dist/               # Built files (from `bun run build`)
 ```
 
-**What the publish command validates:**
+**What the registry submission validates:**
 
-- `name` starts with `plugin-` (auto-added by CLI if missing)
-- Custom `description` (not the default generated placeholder)
-- Required images in `images/` directory
+- `name` is a public npm package and does not use the reserved `@elizaos/*` scope.
+- `repository` points to a public GitHub repository.
+- `description`, `keywords`, and README content are useful for users.
+- The generated registry metadata matches the third-party package schema.
 
 <Steps>
-  <Step title="Add required images">
-    Create an `images/` directory if it doesn't exist:
+  <Step title="Add optional assets">
+    If your plugin has useful branding, add assets to the package and reference
+    them from your plugin metadata or README.
     
     ```bash Terminal
     mkdir -p images
     ```
     
-    Add these two custom images for your plugin's branding on the registry:
-    - **`logo.jpg`** - 400x400px square logo (max 500KB)
-    - **`banner.jpg`** - 1280x640px banner (max 1MB)
-    
     <Tip>
-    Use high-quality images that represent your plugin's functionality clearly. The logo will appear in plugin listings at various sizes.
+    Use assets that represent your plugin's functionality clearly. The registry
+    can also fall back to package metadata when custom assets are not present.
     </Tip>
   </Step>
 
@@ -170,7 +166,8 @@ These commands will:
 
 ## Step 4: Publish Your Plugin
 
-Once local checks pass, publish the package with standard npm tooling and submit the registry update through the current registry contribution process.
+Once local checks pass, publish the package with standard npm tooling and submit
+the registry update through the elizaOS CLI.
 
 ### Publish to npm
 
@@ -179,26 +176,19 @@ npm login
 npm publish --access public
 ```
 
-### Prepare your registry pull request
+### Submit the registry pull request
 
-You may need a scoped Github token for registry submission tooling:
+```bash Terminal
+elizaos plugins submit .
+```
 
-<Steps>
-  <Step title="Create GitHub Personal Access Token (when prompted)">
-    1. Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
-    2. Click **"Generate new token (classic)"**
-    3. Name it **"elizaOS Publishing"**
-    4. Select these scopes:
-       - `repo` (Full control of private repositories)
-       - `read:org` (Read organization membership)  
-       - `workflow` (Update GitHub Action workflows)
-    5. Click **"Generate token"**
-    6. **Copy the token and paste it when prompted by the CLI**
+The command reads your `package.json`, validates the public npm package and
+GitHub repository, adds one metadata file under
+`entries/third-party/` in your fork of `elizaos-plugins/registry`, and opens a
+pull request. Registered third-party packages are labeled as community
+supported, not first-party supported.
 
-    <img src="/images/github-token-scopes.png" alt="GitHub token scope selection showing repo, read:org, and workflow checked" />
-
-  </Step>
-</Steps>
+Use `--dry-run` to inspect the generated metadata without opening a PR.
 
 <Note>
   Make sure to test that your plugin is configured correctly before publishing,
@@ -208,12 +198,12 @@ You may need a scoped Github token for registry submission tooling:
 **Example successful output:**
 
 ```
-✓ Successfully published plugin-fal-ai@1.0.0 to npm
-✓ Created GitHub repository: yourusername/plugin-fal-ai
-✓ Registry pull request created: https://github.com/elizaos-plugins/registry/pull/123
+Prepared registry metadata for @your-scope/plugin-fal-ai
+Pushed branch add-your-scope-plugin-fal-ai to your registry fork
+Opened PR: https://github.com/elizaos-plugins/registry/pull/123
 
 Your plugin is now available at:
-NPM: https://www.npmjs.com/package/plugin-fal-ai
+NPM: https://www.npmjs.com/package/@your-scope/plugin-fal-ai
 GitHub: https://github.com/yourusername/plugin-fal-ai
 ```
 

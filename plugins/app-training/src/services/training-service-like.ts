@@ -8,6 +8,7 @@ export interface TrainingServiceLike {
   listTrajectories(options: {
     limit?: number;
     offset?: number;
+    runId?: string;
   }): Promise<TrajectoryListResult>;
   getTrajectoryById(trajectoryId: string): Promise<Trajectory | null>;
   listDatasets(): Record<string, unknown>[];

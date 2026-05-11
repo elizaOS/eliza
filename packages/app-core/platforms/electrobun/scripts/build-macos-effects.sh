@@ -27,6 +27,7 @@ xcrun clang++ \
   -framework AVFoundation \
   -framework Contacts \
   -framework CoreGraphics \
+  -framework CoreLocation \
   -framework EventKit \
   -framework UserNotifications \
   "$SRC_FILE" \

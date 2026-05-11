@@ -1,0 +1,80 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131936Z_3f7535ac/visualwebbench__visualwebbench/run_visualwebbench_20260511T131936Z_1_cc57d022/output"
+  ],
+  "benchmark_directory": "visualwebbench",
+  "benchmark_id": "visualwebbench",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "average_latency_ms": 726.6311645507812,
+    "bbox_accuracy": 0,
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "choice_accuracy": 0,
+    "exact_accuracy": 0,
+    "overall_accuracy": 0.0,
+    "performance_metrics": {
+      "duration_seconds": 0.9647627079975791,
+      "mean_latency_ms": 726.6311645507812,
+      "p95_latency_ms": 726.6311645507812,
+      "throughput_per_second": 2.0730486195420177
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "llm_call_count": 2,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "total_tasks": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "turns": 2,
+      "prompt_chars": 38,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 0.9647627079975791,
+    "mean_latency_ms": 726.6311645507812,
+    "p95_latency_ms": 726.6311645507812,
+    "throughput_per_second": 2.0730486195420177
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131936Z_3f7535ac/visualwebbench__visualwebbench/run_visualwebbench_20260511T131936Z_1_cc57d022/output/visualwebbench-results.json",
+  "run_group_id": "rg_20260511T131936Z_3f7535ac",
+  "run_id": "run_visualwebbench_20260511T131936Z_1_cc57d022",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 2,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "turns": 2,
+    "prompt_chars": 38,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:03.266422+00:00"
+}

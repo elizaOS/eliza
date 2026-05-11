@@ -15,6 +15,7 @@ import type {
   Eliza1ManifestSchema,
   Eliza1RamBudgetSchema,
   Eliza1TierEnumSchema,
+  Eliza1VoiceSchema,
   Eliza1VerifiedBackendStatusSchema,
 } from "./schema";
 
@@ -27,6 +28,7 @@ export type Eliza1Lineage = z.infer<typeof Eliza1LineageSchema>;
 export type Eliza1Kernels = z.infer<typeof Eliza1KernelsSchema>;
 export type Eliza1Evals = z.infer<typeof Eliza1EvalsSchema>;
 export type Eliza1RamBudget = z.infer<typeof Eliza1RamBudgetSchema>;
+export type Eliza1Voice = z.infer<typeof Eliza1VoiceSchema>;
 export type Eliza1VerifiedBackendStatus = z.infer<
   typeof Eliza1VerifiedBackendStatusSchema
 >;

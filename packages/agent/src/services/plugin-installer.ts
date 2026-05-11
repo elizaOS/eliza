@@ -53,6 +53,9 @@ export const VALID_BRANCH = /^[a-zA-Z0-9][\w./-]*$/;
 /** Git URLs: https:// only, no shell metacharacters. */
 export const VALID_GIT_URL = /^https:\/\/[a-zA-Z0-9][\w./-]*\.git$/;
 
+/** Registry package subdirectories inside a cloned repository. */
+const VALID_REGISTRY_DIRECTORY = /^[a-zA-Z0-9][\w./-]*$/;
+
 export function assertValidPackageName(name: string): void {
   if (!VALID_PACKAGE_NAME.test(name)) {
     throw new Error(`Invalid package name: "${name}"`);
@@ -746,6 +749,19 @@ async function gitCloneInstall(
     const pm = await detectPackageManager();
     await execFileAsync(pm, ["install", "--ignore-scripts"], { cwd: tempDir });
 
+    const registrySourceDir = resolveRegistrySourceDir(tempDir, info.directory);
+    if (registrySourceDir !== tempDir) {
+      try {
+        await execFileAsync(pm, ["run", "build"], { cwd: registrySourceDir });
+      } catch (buildErr) {
+        logger.warn(
+          `[plugin-installer] build step failed for ${info.name}: ${buildErr instanceof Error ? buildErr.message : String(buildErr)}`,
+        );
+      }
+      await fs.cp(registrySourceDir, targetDir, { recursive: true });
+      return;
+    }
+
     // If there's a typescript/ subdirectory (monorepo plugin structure),
     // build it and use that as the install target.
     const tsDir = path.join(tempDir, "typescript");
@@ -774,6 +790,31 @@ async function gitCloneInstall(
   } finally {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
+}
+
+function resolveRegistrySourceDir(
+  tempDir: string,
+  directory: string | null | undefined,
+): string {
+  const rawDirectory = directory?.trim();
+  if (!rawDirectory) {
+    return tempDir;
+  }
+  if (
+    rawDirectory.startsWith("/") ||
+    rawDirectory.includes("..") ||
+    !VALID_REGISTRY_DIRECTORY.test(rawDirectory)
+  ) {
+    throw new Error(`Refusing unsafe registry directory: ${rawDirectory}`);
+  }
+  const resolved = path.resolve(tempDir, rawDirectory);
+  const relative = path.relative(tempDir, resolved);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(
+      `Refusing registry directory outside clone: ${rawDirectory}`,
+    );
+  }
+  return resolved;
 }
 
 /**

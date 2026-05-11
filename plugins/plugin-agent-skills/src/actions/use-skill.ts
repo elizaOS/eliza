@@ -18,11 +18,13 @@ import {
 	type ActionParameter,
 	type ActionResult,
 	annotateActiveTrajectoryStep,
+	captureSkillInvocationIO,
 	getTrajectoryContext,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
 	type State,
+	type TrajectorySkillInvocationRecord,
 } from "@elizaos/core";
 import type { AgentSkillsService } from "../services/skills";
 
@@ -43,6 +45,10 @@ interface ScriptResult {
 	stdout: string;
 	stderr: string;
 }
+
+type SkillTruncationMarker = NonNullable<
+	TrajectorySkillInvocationRecord["truncated"]
+>[number];
 
 const USE_SKILL_PARAMETERS: ActionParameter[] = [
 	{
@@ -95,6 +101,12 @@ function normaliseArgs(raw: unknown): string[] {
 		return Object.values(raw as Record<string, unknown>).map((v) => String(v));
 	}
 	return [String(raw)];
+}
+
+function isSkillTruncationMarker(
+	marker: { field: string; originalBytes: number; capBytes: number },
+): marker is SkillTruncationMarker {
+	return marker.field === "args" || marker.field === "result";
 }
 
 function executeScript(
@@ -159,6 +171,57 @@ function executeScript(
 				stderr: error.message,
 			});
 		});
+	});
+}
+
+/**
+ * Build a per-skill invocation record and append it to the active
+ * trajectory step (W1-T5 / M13). Mirrors the action-step shape from W1-T4:
+ * args + result are encoded via `captureSkillInvocationIO`, which caps
+ * each field at 64KB and emits a structured truncation marker on overflow.
+ *
+ * No-op when no active trajectory step is in scope. Annotation errors
+ * propagate, matching the contract of `annotateActiveTrajectoryStep`.
+ */
+async function recordSkillInvocation(
+	runtime: IAgentRuntime,
+	parentStepId: string | null,
+	params: {
+		skillSlug: string;
+		args: unknown;
+		result: unknown;
+		success: boolean;
+		mode: "script" | "guidance";
+		script?: string;
+		startedAt: number;
+	},
+): Promise<void> {
+	if (!parentStepId) return;
+
+	const captured = captureSkillInvocationIO({
+		args: params.args,
+		result: params.result,
+	});
+	const truncated = captured.truncated?.filter(isSkillTruncationMarker);
+	const record: TrajectorySkillInvocationRecord = {
+		skillSlug: params.skillSlug,
+		args: captured.args,
+		result: captured.result,
+		durationMs: Math.max(0, Date.now() - params.startedAt),
+		parentStepId,
+		mode: params.mode,
+		success: params.success,
+		startedAt: params.startedAt,
+	};
+	if (truncated && truncated.length > 0) {
+		record.truncated = truncated;
+	}
+	if (params.script !== undefined) {
+		record.script = params.script;
+	}
+	await annotateActiveTrajectoryStep(runtime, {
+		stepId: parentStepId,
+		appendSkillInvocations: [record],
 	});
 }
 
@@ -264,12 +327,16 @@ export const useSkillAction: Action = {
 		const effectiveMode = pickMode(requestedMode, hasScripts);
 
 		const activeStepId = getTrajectoryContext()?.trajectoryStepId;
-		if (typeof activeStepId === "string" && activeStepId.trim() !== "") {
+		const hasActiveStep =
+			typeof activeStepId === "string" && activeStepId.trim() !== "";
+		if (hasActiveStep) {
 			await annotateActiveTrajectoryStep(runtime, {
-				stepId: activeStepId,
+				stepId: activeStepId as string,
 				usedSkills: [skill.slug],
 			});
 		}
+
+		const invocationStartedAt = Date.now();
 
 		if (effectiveMode === "script") {
 			if (!hasScripts) {
@@ -304,6 +371,20 @@ export const useSkillAction: Action = {
 				: `**${skill.name}** script \`${requestedScript}\` failed (exit ${result.exitCode}):\n\`\`\`\n${result.stderr || "(no stderr)"}\n\`\`\``;
 
 			if (callback) await callback({ text });
+
+			await recordSkillInvocation(runtime, hasActiveStep ? activeStepId : null, {
+				skillSlug: skill.slug,
+				args: { mode: "script", script: requestedScript, args },
+				result: {
+					exitCode: result.exitCode,
+					stdout: result.stdout,
+					stderr: result.stderr,
+				},
+				success: result.success,
+				mode: "script",
+				script: requestedScript,
+				startedAt: invocationStartedAt,
+			});
 
 			return {
 				success: result.success,
@@ -341,6 +422,18 @@ export const useSkillAction: Action = {
 		const text = `## ${skill.name}\n\n${skill.description}\n\n### Instructions\n\n${truncatedBody}`;
 
 		if (callback) await callback({ text, actions: ["USE_SKILL"] });
+
+		await recordSkillInvocation(runtime, hasActiveStep ? activeStepId : null, {
+			skillSlug: skill.slug,
+			args: { mode: "guidance" },
+			result: {
+				instructions: instructions.body,
+				estimatedTokens: instructions.estimatedTokens,
+			},
+			success: true,
+			mode: "guidance",
+			startedAt: invocationStartedAt,
+		});
 
 		return {
 			success: true,

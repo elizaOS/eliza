@@ -375,6 +375,7 @@ export interface FactMetadata {
 	kind?: FactKind;
 	category?: DurableFactCategory | CurrentFactCategory | string;
 	structuredFields?: Record<string, unknown>;
+	keywords?: string[];
 	validAt?: string;
 	lastConfirmedAt?: string;
 	verificationStatus?: FactVerificationStatus;

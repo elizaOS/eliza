@@ -11,6 +11,21 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizalabs.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
+// - Shared-vocabulary invariant: every text-bearing GGUF in an Eliza-1 bundle
+//   — the text/vision model, the DFlash drafter, the Qwen3-ASR text decoder,
+//   and (on 1.7B+) the Qwen3-Embedding model — is Qwen-lineage and shares the
+//   same Qwen2 BPE vocabulary (151 936 tokens) and the same merges table. This
+//   is what makes (a) DFlash speculative decoding correct (spec decoding only
+//   works if token ids match), (b) zero re-tokenization between ASR output and
+//   text input (inference/AGENTS.md §1), and (c) the drafter GGUFs ship without
+//   their own `tokenizer.ggml.merges` (repaired at load time from the text GGUF
+//   by `resolveDflashDrafter` in `../dflash-server.ts`). The shared *vocabulary*
+//   is not the same thing as a shared *token-embedding tensor*: each component
+//   carries its own `token_embd.weight` (different fine-tunes, often different
+//   hidden sizes), so the vocab matrix is duplicated per GGUF and cannot be
+//   deduplicated without a fused-architecture container — out of scope per
+//   inference/AGENTS.md §2. See
+//   `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
 
 import { z } from "zod";
 
@@ -18,8 +33,23 @@ export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
   "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix).
-export const ELIZA_1_TIERS = ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const;
+// The shared Qwen2 BPE vocabulary every text-bearing component in an Eliza-1
+// bundle uses. Exported so runtime code can assert it (a GGUF whose
+// `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
+// and the merges-repair / zero-re-tokenization assumptions do not hold).
+export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
+
+// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
+// GH200-class 1M-context variant of the 27B tier.
+export const ELIZA_1_TIERS = [
+  "0_6b",
+  "1_7b",
+  "9b",
+  "27b",
+  "27b-256k",
+  "27b-1m",
+] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
 // Manifest-level kernel capability names. Per AGENTS.md §3:
@@ -63,6 +93,7 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+  "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware. The 0.6B and
@@ -75,6 +106,8 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+  // 1M context only ships verified on CUDA today (GH200-class hosts).
+  "27b-1m": ["cuda"],
 };
 
 // ---------------------------------------------------------------------------
@@ -145,6 +178,25 @@ export const Eliza1VerifiedBackendStatusSchema = z.object({
   status: z.enum(["pass", "fail", "skipped"]),
   atCommit: z.string().min(1),
   report: z.string().min(1),
+  // Optional provenance for a "pass" recorded on a single device class — e.g.
+  // the runtime Vulkan dispatch smoke that ran on one Intel-ANV GPU. `caveat`
+  // names what device coverage is still missing so the recommendation engine
+  // and release docs do not over-claim.
+  device: z.string().min(1).optional(),
+  caveat: z.string().min(1).optional(),
+});
+
+// Recipe-level kernel layout pins, folded in from the quantization recipes'
+// `kernel_manifest` sidecar fragments
+// (packages/training/scripts/quantization/_kernel_manifest.py). Keyed by the
+// *recipe* kernel-target name (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl1_256` /
+// `polar_q4`) — NOT the manifest-level capability names in `ELIZA_1_KERNELS`.
+// The runtime/downloader can verify the encoded blocks match the kernels it
+// ships; the publish orchestrator already validates the sidecars exist.
+export const Eliza1RecipeKernelPinsSchema = z.object({
+  blockLayoutVersion: z.string().min(1),
+  codebookHash: z.string().min(1),
+  perBlockTolerance: z.number().positive(),
 });
 
 export const Eliza1KernelsSchema = z.object({
@@ -157,6 +209,7 @@ export const Eliza1KernelsSchema = z.object({
     rocm: Eliza1VerifiedBackendStatusSchema,
     cpu: Eliza1VerifiedBackendStatusSchema,
   }),
+  recipeManifest: z.record(z.string(), Eliza1RecipeKernelPinsSchema).optional(),
 });
 
 // Wave-6: voice surface declares which expressive features the bundled
@@ -168,9 +221,17 @@ export const ELIZA_1_VOICE_CAPABILITIES = [
   "emotion-tags",
   "singing",
 ] as const;
+export const ELIZA_1_VOICE_MANIFEST_VERSION = "1";
+export const VOICE_PRESET_CACHE_PATH = "cache/voice-preset-default.bin";
 export type Eliza1VoiceCapability = (typeof ELIZA_1_VOICE_CAPABILITIES)[number];
 
 export const Eliza1VoiceSchema = z.object({
+  version: z.string().min(1),
+  frozen: z.literal(true),
+  cache: z.object({
+    speakerPreset: z.string().min(1),
+    phraseCacheSeed: z.string().min(1),
+  }),
   capabilities: z.array(z.enum(ELIZA_1_VOICE_CAPABILITIES)).default(["tts"]),
 });
 

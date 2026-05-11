@@ -39,6 +39,7 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
+    "27b-1m",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -89,6 +90,13 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
+    "27b-1m": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -97,6 +105,11 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    # 1M context is only practical on very large unified/HBM memory
+    # (GH200-class). CUDA is the only backend whose v0.4.0-milady binary
+    # covers the full runtime path at that window today; the others stay
+    # off the supported list for this variant until verified.
+    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -105,6 +118,7 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
+    "27b-1m": "Q8_0",
 }
 
 
@@ -129,16 +143,17 @@ _DATETIME_RE = re.compile(
 )
 
 
-# Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144.
-# Lives here (not in the publish module) because both the publish gate
-# and the manifest builder must agree byte-for-byte on what counts as a
-# long-context text file. Format: <integer><k>, where the ``k`` suffix is
-# required.
-_CTX_SUFFIX_RE = re.compile(r"^(\d+)k$")
+# Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144,
+# ``1m`` → 1048576. Lives here (not in the publish module) because both the
+# publish gate and the manifest builder must agree byte-for-byte on what
+# counts as a long-context text file. Format: <integer> followed by ``k``
+# (× 1024) or ``m`` (× 1024²).
+_CTX_SUFFIX_RE = re.compile(r"^(\d+)([km])$")
+_CTX_SUFFIX_SCALE: Final[Mapping[str, int]] = {"k": 1024, "m": 1024 * 1024}
 
 
 def parse_ctx_string(s: str) -> int:
-    """Return the integer context length encoded by a ``<num>k`` suffix.
+    """Return the integer context length encoded by a ``<num>k``/``<num>m`` suffix.
 
     Examples
     --------
@@ -146,19 +161,21 @@ def parse_ctx_string(s: str) -> int:
     65536
     >>> parse_ctx_string("256k")
     262144
+    >>> parse_ctx_string("1m")
+    1048576
 
-    Raises ``ValueError`` if the string is not exactly ``<digits>k`` —
-    bare integers, missing suffix, or any other shape are invalid. The
-    publish orchestrator and the manifest file builder both call this
-    so the long-context detection used at publish-blocking time matches
-    the bytes the manifest records.
+    Raises ``ValueError`` if the string is not exactly ``<digits>k`` or
+    ``<digits>m`` — bare integers, missing suffix, or any other shape are
+    invalid. The publish orchestrator and the manifest file builder both
+    call this so the long-context detection used at publish-blocking time
+    matches the bytes the manifest records.
     """
     m = _CTX_SUFFIX_RE.match(s)
     if not m:
         raise ValueError(
-            f"context suffix must match `<digits>k`, got {s!r}"
+            f"context suffix must match `<digits>k` or `<digits>m`, got {s!r}"
         )
-    return int(m.group(1)) * 1024
+    return int(m.group(1)) * _CTX_SUFFIX_SCALE[m.group(2)]
 
 
 def parse_text_ctx_from_filename(p: Path) -> int | None:
@@ -216,12 +233,101 @@ class KernelVerification:
 
     ``status`` is "pass" / "fail" / "skipped" — same vocabulary as the TS
     side. ``at_commit`` and ``report`` are required so the manifest is
-    auditable.
+    auditable. ``device`` / ``caveat`` are optional provenance for a "pass"
+    recorded on a single device class (e.g. the runtime Vulkan dispatch
+    smoke that ran on one Intel-ANV GPU): ``caveat`` names what device
+    coverage is still missing so release docs do not over-claim.
     """
 
     status: str
     at_commit: str
     report: str
+    device: str | None = None
+    caveat: str | None = None
+
+
+# Recipe-level kernel layout pins. These are the `kernel_manifest` fragments
+# the quantization recipes emit (see
+# ``packages/training/scripts/quantization/_kernel_manifest.py`` and
+# ``packages/training/AGENTS.md`` §3). Keyed by *recipe* kernel-target name
+# (``turbo3`` / ``turbo4`` / ``turbo3_tcq`` / ``qjl1_256`` / ``polar_q4``) —
+# NOT the manifest-level kernel capability names in ``ELIZA_1_KERNELS``.
+# The publish orchestrator already validates the sidecars exist; the manifest
+# builder folds them into ``kernels.recipeManifest`` so the runtime/downloader
+# can verify the encoded blocks match the kernels it ships.
+_RECIPE_KERNEL_MANIFEST_PER_TARGET_FIELDS: Final[tuple[str, ...]] = (
+    "block_layout_version",
+    "codebook_hash",
+    "per_block_tolerance",
+)
+
+
+def merge_kernel_manifest_fragments(
+    fragments: Iterable[Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Merge the per-recipe ``kernel_manifest`` fragments into one per-target map.
+
+    Each fragment is shaped like the output of
+    ``_kernel_manifest.kernel_manifest_fragment``::
+
+        {"kernel_target": ["turbo3", ...],
+         "block_layout_version": {"turbo3": "...", ...},
+         "codebook_hash":        {"turbo3": "...", ...},
+         "per_block_tolerance":  {"turbo3": 0.05, ...}}
+
+    Returns ``{target: {"blockLayoutVersion": str, "codebookHash": str,
+    "perBlockTolerance": float}}``. Raises ``Eliza1ManifestError`` if two
+    fragments disagree about the same target's pins or a fragment is
+    malformed.
+    """
+
+    merged: dict[str, dict[str, Any]] = {}
+    errors: list[str] = []
+    for frag in fragments:
+        if not isinstance(frag, Mapping):
+            errors.append("kernel_manifest fragment must be an object")
+            continue
+        targets = frag.get("kernel_target")
+        if not isinstance(targets, list) or not targets:
+            errors.append("kernel_manifest fragment.kernel_target must be a non-empty array")
+            continue
+        for target in targets:
+            entry: dict[str, Any] = {}
+            for src_key, dst_key in (
+                ("block_layout_version", "blockLayoutVersion"),
+                ("codebook_hash", "codebookHash"),
+                ("per_block_tolerance", "perBlockTolerance"),
+            ):
+                section = frag.get(src_key)
+                if not isinstance(section, Mapping) or target not in section:
+                    errors.append(
+                        f"kernel_manifest fragment missing {src_key}[{target!r}]"
+                    )
+                    continue
+                entry[dst_key] = section[target]
+            if "perBlockTolerance" in entry and (
+                not isinstance(entry["perBlockTolerance"], (int, float))
+                or entry["perBlockTolerance"] <= 0
+            ):
+                errors.append(
+                    f"kernel_manifest {target!r}.per_block_tolerance must be a positive number"
+                )
+            for str_key in ("blockLayoutVersion", "codebookHash"):
+                if str_key in entry and (
+                    not isinstance(entry[str_key], str) or not entry[str_key]
+                ):
+                    errors.append(
+                        f"kernel_manifest {target!r}.{str_key}: must be a non-empty string"
+                    )
+            if target in merged and merged[target] != entry:
+                errors.append(
+                    f"kernel_manifest: conflicting pins for kernel target {target!r} "
+                    f"({merged[target]} vs {entry})"
+                )
+            merged.setdefault(target, entry)
+    if errors:
+        raise Eliza1ManifestError(errors)
+    return merged
 
 
 # ---------------------------------------------------------------------------
@@ -405,7 +511,42 @@ def validate_manifest(
                     errors.append(f"kernels.verifiedBackends.{b}.atCommit: required")
                 if not entry.get("report"):
                     errors.append(f"kernels.verifiedBackends.{b}.report: required")
+                for opt_field in ("device", "caveat"):
+                    val = entry.get(opt_field)
+                    if val is not None and (not isinstance(val, str) or not val):
+                        errors.append(
+                            f"kernels.verifiedBackends.{b}.{opt_field}: must be a non-empty string when present"
+                        )
             backends = vb
+
+        recipe_manifest = kernels.get("recipeManifest")
+        if recipe_manifest is not None:
+            if not _is_object(recipe_manifest):
+                errors.append("kernels.recipeManifest: must be an object when present")
+            elif not recipe_manifest:
+                errors.append("kernels.recipeManifest: must be non-empty when present")
+            else:
+                for target, pins in recipe_manifest.items():
+                    if not _is_object(pins):
+                        errors.append(
+                            f"kernels.recipeManifest.{target}: must be an object"
+                        )
+                        continue
+                    blv = pins.get("blockLayoutVersion")
+                    if not isinstance(blv, str) or not blv:
+                        errors.append(
+                            f"kernels.recipeManifest.{target}.blockLayoutVersion: required non-empty string"
+                        )
+                    cbh = pins.get("codebookHash")
+                    if not isinstance(cbh, str) or not cbh:
+                        errors.append(
+                            f"kernels.recipeManifest.{target}.codebookHash: required non-empty string"
+                        )
+                    tol = pins.get("perBlockTolerance")
+                    if not isinstance(tol, (int, float)) or isinstance(tol, bool) or tol <= 0:
+                        errors.append(
+                            f"kernels.recipeManifest.{target}.perBlockTolerance: required positive number"
+                        )
 
     # ── evals ────────────────────────────────────────────────────────────
     evals = manifest["evals"]
@@ -677,6 +818,19 @@ def _file_dict(entry: FileEntry) -> dict[str, Any]:
     return out
 
 
+def _verified_backend_dict(v: KernelVerification) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "status": v.status,
+        "atCommit": v.at_commit,
+        "report": v.report,
+    }
+    if v.device is not None:
+        out["device"] = v.device
+    if v.caveat is not None:
+        out["caveat"] = v.caveat
+    return out
+
+
 def build_manifest(
     *,
     tier: str,
@@ -711,6 +865,8 @@ def build_manifest(
     voice_frozen: bool = True,
     voice_cache_speaker_preset: str = VOICE_PRESET_CACHE_PATH,
     voice_cache_phrase_seed: str = VOICE_PRESET_CACHE_PATH,
+    kernel_manifest_fragments: Iterable[Mapping[str, Any]] | None = None,
+    recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     bundle_id: str | None = None,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
@@ -790,21 +946,31 @@ def build_manifest(
             "required": list(kernels_required),
             "optional": list(kernels_optional),
             "verifiedBackends": {
-                b: {
-                    "status": v.status,
-                    "atCommit": v.at_commit,
-                    "report": v.report,
-                }
+                b: _verified_backend_dict(v)
                 for b, v in verified_backends.items()
             },
         },
         "evals": evals,
-        "ramBudgetMb": {
-            "min": ram_budget_min_mb,
-            "recommended": ram_budget_recommended_mb,
-        },
-        "defaultEligible": default_eligible,
     }
+    # Recipe-level kernel layout pins. Accept either pre-merged
+    # ``recipe_manifest`` or raw ``kernel_manifest_fragments`` (the sidecar
+    # fragments emitted by the quantization recipes); never both.
+    if recipe_manifest is not None and kernel_manifest_fragments is not None:
+        raise Eliza1ManifestError(
+            ["build_manifest: pass recipe_manifest OR kernel_manifest_fragments, not both"]
+        )
+    merged_recipe_manifest: dict[str, Any] | None = None
+    if recipe_manifest is not None:
+        merged_recipe_manifest = {k: dict(v) for k, v in recipe_manifest.items()}
+    elif kernel_manifest_fragments is not None:
+        merged_recipe_manifest = merge_kernel_manifest_fragments(kernel_manifest_fragments)
+    if merged_recipe_manifest is not None:
+        manifest["kernels"]["recipeManifest"] = merged_recipe_manifest
+    manifest["ramBudgetMb"] = {
+        "min": ram_budget_min_mb,
+        "recommended": ram_budget_recommended_mb,
+    }
+    manifest["defaultEligible"] = default_eligible
     if voice_capabilities is not None:
         manifest["voice"] = {
             "version": voice_version,
@@ -881,6 +1047,8 @@ def load_kernel_verification_reports(
             status=data["status"],
             at_commit=data["atCommit"],
             report=data["report"],
+            device=data.get("device"),
+            caveat=data.get("caveat"),
         )
     return out
 

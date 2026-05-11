@@ -32,6 +32,11 @@ import os
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parent
+EXTERNAL_SRC = ROOT / "external" / "compactbench-suites" / "src"
+if EXTERNAL_SRC.exists():
+    sys.path.insert(0, str(EXTERNAL_SRC))
+
 from eliza_compactbench.cerebras_provider import register_cerebras_provider
 
 

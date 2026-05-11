@@ -107,12 +107,113 @@ describe("v5 message handler routing", () => {
 		});
 	});
 
-	it("keeps requiresTool optional in the Stage 1 tool schema", () => {
-		const planSchema = HANDLE_RESPONSE_SCHEMA.properties?.plan as {
-			required?: string[];
-		};
+	it("uses a flat envelope with contexts directly after replyText in the Stage 1 tool schema", () => {
+		const props = HANDLE_RESPONSE_SCHEMA.properties as Record<string, unknown>;
+		const keys = Object.keys(props);
+		expect(keys).toEqual([
+			"shouldRespond",
+			"thought",
+			"replyText",
+			"contexts",
+			"contextSlices",
+			"candidateActions",
+			"parentActionHints",
+			"requiresTool",
+			"extract",
+		]);
+		// `contexts` comes directly after `replyText`.
+		expect(keys.indexOf("contexts")).toBe(keys.indexOf("replyText") + 1);
+		expect(HANDLE_RESPONSE_SCHEMA.required).toEqual([
+			"shouldRespond",
+			"replyText",
+			"contexts",
+		]);
+		// No legacy `plan` nesting in the schema anymore.
+		expect(props.plan).toBeUndefined();
+	});
 
-		expect(planSchema.required).toEqual(["contexts"]);
+	it("parses the flat HANDLE_RESPONSE envelope (shouldRespond/replyText/contexts)", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "Direct.",
+				replyText: "Hello there.",
+				contexts: ["simple"],
+				requiresTool: false,
+			}),
+		);
+		expect(parsed?.processMessage).toBe("RESPOND");
+		expect(parsed?.thought).toBe("Direct.");
+		expect(parsed?.plan.contexts).toEqual(["simple"]);
+		expect(parsed?.plan.reply).toBe("Hello there.");
+		expect(parsed?.plan.requiresTool).toBe(false);
+	});
+
+	it("parses the flat envelope with planning hints and extract at the top level", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "Needs the calendar.",
+				replyText: "On it.",
+				contexts: ["calendar"],
+				candidateActions: ["calendar_create_event"],
+				parentActionHints: ["CALENDAR"],
+				contextSlices: ["slice:1"],
+				requiresTool: true,
+				extract: { facts: ["the user prefers morning meetings"] },
+			}),
+		);
+		expect(parsed?.plan.contexts).toEqual(["calendar"]);
+		expect(parsed?.plan.reply).toBe("On it.");
+		expect(parsed?.plan.candidateActions).toEqual(["calendar_create_event"]);
+		expect(parsed?.plan.parentActionHints).toEqual(["CALENDAR"]);
+		expect(parsed?.plan.contextSlices).toEqual(["slice:1"]);
+		expect(parsed?.plan.requiresTool).toBe(true);
+		expect(parsed?.extract?.facts).toEqual([
+			"the user prefers morning meetings",
+		]);
+	});
+
+	it("maps shouldRespond IGNORE/STOP through routing", () => {
+		const ignore = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "IGNORE",
+				replyText: "",
+				contexts: [],
+			}),
+		);
+		expect(ignore?.processMessage).toBe("IGNORE");
+		expect(routeMessageHandlerOutput(ignore!).type).toBe("ignored");
+
+		const stop = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "STOP",
+				replyText: "",
+				contexts: [],
+			}),
+		);
+		expect(stop?.processMessage).toBe("STOP");
+		expect(routeMessageHandlerOutput(stop!).type).toBe("stopped");
+	});
+
+	it("still parses the legacy nested plan:{} form", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "Legacy.",
+				plan: {
+					contexts: ["simple"],
+					reply: "legacy reply",
+					requiresTool: false,
+					simple: true,
+				},
+			}),
+		);
+		expect(parsed?.processMessage).toBe("RESPOND");
+		expect(parsed?.plan.contexts).toEqual(["simple"]);
+		expect(parsed?.plan.reply).toBe("legacy reply");
+		expect(parsed?.plan.requiresTool).toBe(false);
+		expect(parsed?.plan.simple).toBe(true);
 	});
 
 	it("plans against general when Stage 1 marks an otherwise simple route as tool-required", () => {

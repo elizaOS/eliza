@@ -59,15 +59,44 @@ describe("detectMobileSafeRuntimeFeatures", () => {
       /not attached/,
     );
     expect(features.unavailableProviders["android-avf-microdroid"]).toMatch(
-      /AVF\/Microdroid/,
+      /virtualization framework/i,
     );
+    expect(features.androidAvfMicrodroid).toMatchObject({
+      state: "framework-unavailable",
+      available: false,
+      payloadAvailable: false,
+    });
     expect(features.availableProviders).not.toContain("wasm");
     expect(features.unavailableProviders.wasm).toMatch(/WebAssembly/);
   });
 
-  it("prefers Android AVF/Microdroid when the platform reports support", () => {
+  it("does not advertise Android AVF/Microdroid from framework availability alone", () => {
     const features = detectMobileSafeRuntimeFeatures({
       env: { ELIZA_PLATFORM: "android", ELIZA_ANDROID_AVF_AVAILABLE: "1" },
+      globals: { WebAssembly: {} },
+    });
+
+    expect(features.availableProviders).toEqual(["wasm"]);
+    expect(features.androidAvfMicrodroid).toMatchObject({
+      state: "payload-missing",
+      available: false,
+      avfAvailable: true,
+      payloadAvailable: false,
+    });
+    expect(features.unavailableProviders["android-avf-microdroid"]).toMatch(
+      /payload/,
+    );
+  });
+
+  it("advertises Android AVF/Microdroid only when the Microdroid payload is ready", () => {
+    const features = detectMobileSafeRuntimeFeatures({
+      env: {
+        ELIZA_PLATFORM: "android",
+        ELIZA_ANDROID_AVF_AVAILABLE: "1",
+        ELIZA_ANDROID_MICRODROID_AVAILABLE: "1",
+        ELIZA_ANDROID_MICRODROID_PAYLOAD_READY: "1",
+        ELIZA_ANDROID_AVF_MICRODROID_STATE: "ready",
+      },
       globals: { WebAssembly: {} },
     });
 
@@ -75,6 +104,13 @@ describe("detectMobileSafeRuntimeFeatures", () => {
       "android-avf-microdroid",
       "wasm",
     ]);
+    expect(features.androidAvfMicrodroid).toMatchObject({
+      state: "ready",
+      available: true,
+      avfAvailable: true,
+      microdroidAvailable: true,
+      payloadAvailable: true,
+    });
   });
 
   it("detects Android isolated-process only when the shell reports it", () => {
@@ -382,6 +418,68 @@ describe("mobile safe runtime contracts", () => {
     ]);
   });
 
+  it("returns an unavailable Android AVF provider when the probe state is payload-missing", async () => {
+    const provider = createAndroidAvfMicrodroidProvider({
+      kind: "android-avf-microdroid",
+      capabilityState: "payload-missing",
+      reason: "no packaged Microdroid payload",
+      async request(request) {
+        return { id: request.id, ok: true, result: { provider: "avf" } };
+      },
+    });
+
+    expect(provider.supported).toBe(false);
+    await expect(
+      provider.execute({ code: "export default {}", mode: "run-app" }),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: {
+        code: "MOBILE_SAFE_RUNTIME_PROVIDER_UNAVAILABLE",
+        provider: "android-avf-microdroid",
+        message: "no packaged Microdroid payload",
+      },
+    });
+  });
+
+  it("sends the AVF execution request contract with VFS transport metadata", async () => {
+    const fs = new MemoryMobileSafeVirtualFileSystem();
+    const broker = createMobileSafeVirtualFileSystemBroker(fs);
+    const provider = createAndroidAvfMicrodroidProvider({
+      kind: "android-avf-microdroid",
+      capabilityState: "ready",
+      async request(request) {
+        return {
+          id: request.id,
+          ok: true,
+          result: {
+            capability: request.capability,
+            mode: request.args.mode,
+            virtualFileSystem: request.args.virtualFileSystem,
+          },
+        };
+      },
+    });
+
+    await expect(
+      provider.execute({
+        code: "export default {}",
+        mode: "run-app",
+        files: fs,
+        broker,
+      }),
+    ).resolves.toEqual({
+      ok: true,
+      value: {
+        capability: "app.run",
+        mode: "run-app",
+        virtualFileSystem: {
+          attached: true,
+          transport: "mobile-safe-capability-broker",
+        },
+      },
+    });
+  });
+
   it("selects AVF before isolated-process, and isolated-process as fallback", async () => {
     const avf = createAndroidAvfMicrodroidProvider({
       kind: "android-avf-microdroid",
@@ -399,7 +497,13 @@ describe("mobile safe runtime contracts", () => {
 
     const withAvf = selectMobileSafeRuntimeProvider({
       features: detectMobileSafeRuntimeFeatures({
-        env: { ELIZA_PLATFORM: "android", ELIZA_ANDROID_AVF_AVAILABLE: "1" },
+        env: {
+          ELIZA_PLATFORM: "android",
+          ELIZA_ANDROID_AVF_AVAILABLE: "1",
+          ELIZA_ANDROID_MICRODROID_AVAILABLE: "1",
+          ELIZA_ANDROID_MICRODROID_PAYLOAD_READY: "1",
+          ELIZA_ANDROID_AVF_MICRODROID_STATE: "ready",
+        },
         globals: {},
       }),
       providers: {
@@ -421,5 +525,40 @@ describe("mobile safe runtime contracts", () => {
       },
     });
     expect(fallback.kind).toBe("android-isolated-process");
+  });
+
+  it("falls back past AVF when AVF exists but the Microdroid payload is absent", () => {
+    const avf = createAndroidAvfMicrodroidProvider({
+      kind: "android-avf-microdroid",
+      capabilityState: "payload-missing",
+      async request(request) {
+        return { id: request.id, ok: true, result: { provider: "avf" } };
+      },
+    });
+    const isolated = createAndroidIsolatedProcessProvider({
+      kind: "android-isolated-process",
+      serviceName: "test",
+      async request(request) {
+        return { id: request.id, ok: true, result: { provider: "isolated" } };
+      },
+    });
+
+    const selected = selectMobileSafeRuntimeProvider({
+      features: detectMobileSafeRuntimeFeatures({
+        env: {
+          ELIZA_PLATFORM: "android",
+          ELIZA_ANDROID_AVF_AVAILABLE: "1",
+          ELIZA_ANDROID_MICRODROID_AVAILABLE: "1",
+        },
+        androidIsolatedProcessAvailable: true,
+        globals: {},
+      }),
+      providers: {
+        "android-avf-microdroid": avf,
+        "android-isolated-process": isolated,
+      },
+    });
+
+    expect(selected.kind).toBe("android-isolated-process");
   });
 });

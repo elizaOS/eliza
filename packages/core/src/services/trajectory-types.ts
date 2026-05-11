@@ -19,6 +19,7 @@ export interface TrajectoryListOptions {
 	offset?: number;
 	source?: string;
 	status?: TrajectoryStatus;
+	runId?: string;
 	startDate?: string;
 	endDate?: string;
 	search?: string;
@@ -129,6 +130,59 @@ export type TrajectoryStepKind = "llm" | "action";
 
 export type TrajectoryStepId = string;
 
+/**
+ * Structured truncation marker shape persisted alongside per-skill
+ * invocation records. Mirrors the W1-T4 action-step marker emitted by
+ * `applyTrajectoryFieldCap` so downstream consumers can apply identical
+ * handling regardless of which seam produced the cap.
+ */
+export interface TrajectorySkillInvocationTruncationMarker {
+	field: "args" | "result";
+	originalBytes: number;
+	capBytes: number;
+}
+
+/**
+ * One captured skill invocation. Closes M13 (W1-T5): every USE_SKILL
+ * execution emits one of these against the active trajectory step so the
+ * trajectory viewer and training pipelines can replay the skill seam in
+ * full detail.
+ *
+ * Shape mirrors the W1-T4 tool-stage capture: encoded JSON strings for
+ * structured fields, per-field 64KB cap with a structured marker on
+ * overflow. `args` and `result` are stored pre-encoded so reads do not
+ * need to re-parse; consumers can `JSON.parse` when they need the
+ * structured form.
+ */
+export interface TrajectorySkillInvocationRecord {
+	/** Canonical skill identifier (the slug enabled by the agent). */
+	skillSlug: string;
+	/** Encoded handler input (JSON string when structured, plain when not). */
+	args?: string;
+	/** Encoded handler output (JSON string when structured, plain when not). */
+	result?: string;
+	/** Wall-clock duration of the skill execution. */
+	durationMs: number;
+	/**
+	 * Trajectory step under which the invocation ran. Mirrors the parent
+	 * relationship the database trajectory logger uses for child steps.
+	 */
+	parentStepId: TrajectoryStepId;
+	/**
+	 * Identifier of the script that was run, when invocation went through
+	 * the bundled-script path (`mode='script'`). Absent for guidance-mode.
+	 */
+	script?: string;
+	/** `"script"` or `"guidance"`. */
+	mode?: "script" | "guidance";
+	/** Whether the skill reported a successful run. */
+	success: boolean;
+	/** ms-epoch when the invocation started. */
+	startedAt: number;
+	/** Per-field truncation markers (W1-T4 contract: 64KB caps). */
+	truncated?: TrajectorySkillInvocationTruncationMarker[];
+}
+
 export interface TrajectoryStepRecord {
 	stepId?: TrajectoryStepId;
 	timestamp: number;
@@ -139,6 +193,13 @@ export interface TrajectoryStepRecord {
 	script?: string;
 	scriptHash?: string;
 	usedSkills?: string[];
+	/**
+	 * Per-skill invocation records. Closes M13 (W1-T5). Each record carries
+	 * `(skillSlug, args, result, durationMs, parentStepId)` plus mode/script
+	 * metadata so the trajectory viewer can render the skill seam without
+	 * re-running the action.
+	 */
+	skillInvocations?: TrajectorySkillInvocationRecord[];
 }
 
 export const TRAJECTORY_STEP_SCRIPT_MAX_CHARS = 4096;
@@ -283,6 +344,7 @@ export interface TrajectoryExportOptions {
 	trajectoryIds?: string[];
 	source?: string;
 	status?: TrajectoryStatus;
+	runId?: string;
 	search?: string;
 	startDate?: string;
 	endDate?: string;

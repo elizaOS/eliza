@@ -14,6 +14,10 @@ import { client } from "../../api";
 import type { TriggerSummary, WorkflowDefinition } from "../../api/client";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
 import {
+  detectUiHostCapabilities,
+  intervalHostWarning,
+} from "../../utils/host-capabilities";
+import {
   DURATION_UNITS,
   durationToMs,
   durationUnitLabel,
@@ -319,6 +323,7 @@ export function HeartbeatForm({
                     ))}
                   </FormSelect>
                 </div>
+                <IntervalHostWarningBanner form={form} />
               </div>
             )}
 
@@ -716,6 +721,36 @@ function EventInputSection({
         </div>
       )}
     </div>
+  );
+}
+
+// ── Mobile / browser cadence warning ─────────────────────────────
+
+function IntervalHostWarningBanner({ form }: { form: TriggerFormState }) {
+  const warning = useMemo(() => {
+    const value = Number(form.durationValue);
+    if (!Number.isFinite(value) || value <= 0) {
+      return { show: false, message: "", label: "" };
+    }
+    const intervalMs = durationToMs(value, form.durationUnit);
+    const host = detectUiHostCapabilities();
+    const { show, message } = intervalHostWarning(host, intervalMs);
+    return { show, message, label: host.label };
+  }, [form.durationValue, form.durationUnit]);
+
+  if (!warning.show) return null;
+  return (
+    <PagePanel.Notice
+      tone="warning"
+      className="mt-3 text-xs"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="flex flex-col gap-0.5">
+        <span className="font-semibold">{warning.label}</span>
+        <span>{warning.message}</span>
+      </div>
+    </PagePanel.Notice>
   );
 }
 

@@ -240,7 +240,7 @@ async function defaultDispatcher(
     }
     case "native": {
       const { runNativeBackend } = await import("../backends/native.js");
-      const useModelHandler = extractUseModel(input.runtime);
+      const useModelHandler = await extractUseModel(input.runtime);
       if (!useModelHandler) {
         return {
           invoked: false,
@@ -302,17 +302,20 @@ interface UseModelRuntime {
   ) => Promise<string | object | undefined>;
 }
 
-function extractUseModel(runtime: RuntimeLike): UseModelLike | null {
+async function extractUseModel(
+  runtime: RuntimeLike,
+): Promise<UseModelLike | null> {
   // Standing direction: training optimizer / variant generation runs on
   // Cerebras gpt-oss-120b, NOT through the agent's primary provider.
   const trainProvider =
-    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+    process.env.TRAINING_PROVIDER?.trim();
   if (trainProvider === "cerebras") {
     // Lazy-import so the helper isn't required during unit tests that don't
     // exercise this branch.
-    const { getTrainingUseModelAdapter } = require(
-      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts",
-    ) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+    const { getTrainingUseModelAdapter } = await import(
+      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+    );
     return getTrainingUseModelAdapter();
   }
 
@@ -518,9 +521,7 @@ export async function triggerTraining(
   await mkdir(outputDir, { recursive: true });
   // privacy filter applied above
   const dataset = await exportTrajectoryTaskDatasets(
-    filtered.trajectories as Parameters<
-      typeof exportTrajectoryTaskDatasets
-    >[0],
+    filtered.trajectories as Parameters<typeof exportTrajectoryTaskDatasets>[0],
     outputDir,
   );
 

@@ -2,7 +2,7 @@
 //
 // What this module does:
 //
-//   1. Copies the eight verified standalone .comp shaders from
+//   1. Copies the nine verified standalone .comp shaders from
 //      packages/inference/vulkan/ into the fork at
 //      ggml/src/ggml-vulkan/vulkan-shaders/<name>.comp. The fork's CMakeLists
 //      uses `file(GLOB CONFIGURE_DEPENDS ${input_dir}/*.comp)` to discover
@@ -14,10 +14,10 @@
 //
 //   2. Applies the two unified-anchor staging patches under
 //      vulkan-dispatch-patches/:
-//        - 01-vulkan-shaders-gen.patch — adds 8 string_to_spv() registrations
+//        - 01-vulkan-shaders-gen.patch — adds 9 string_to_spv() registrations
 //          at the bottom of process_shaders().
-//        - 02-ggml-vulkan-pipelines.patch — extends vk_device_struct with 8
-//          pipeline slots and adds 8 ggml_vk_create_pipeline() calls at the
+//        - 02-ggml-vulkan-pipelines.patch — extends vk_device_struct with 9
+//          pipeline slots and adds 9 ggml_vk_create_pipeline() calls at the
 //          bottom of ggml_vk_load_shaders(). End result: each milady SPV blob
 //          is referenced at link time and `nm libggml-vulkan.so | grep
 //          milady_` shows the new symbols.
@@ -74,7 +74,24 @@ export const VULKAN_KERNEL_FILES = [
   "qjl_get_rows.comp",
   "qjl_mul_mv.comp",
   "polar.comp",
+  "polar_preht.comp",
   "polar_get_rows.comp",
+];
+
+// Multi-block-per-workgroup standalone variants (turbo3_multi.comp etc.). One
+// SPV family per kernel; the blocks/tokens-per-workgroup count is a SPIR-V
+// specialization constant (constant_id 0) the consumer sets at pipeline-create
+// time, so the same blob tunes per device without recompilation. They are
+// verified by `make -C packages/inference/verify vulkan-verify-multiblock`.
+// Not staged into the fork yet: the runtime hot path uses the single-block
+// kernels, and wiring vulkan-shaders-gen + ggml-vulkan dispatch for the multi
+// variants is a follow-up once the runtime picks a per-device launch-tax
+// amortization factor.
+export const VULKAN_MULTIBLOCK_KERNEL_FILES = [
+  "turbo3_multi.comp",
+  "turbo4_multi.comp",
+  "turbo3_tcq_multi.comp",
+  "qjl_multi.comp",
 ];
 
 const SHADER_SENTINEL = "// MILADY-VK-DISPATCH-PATCH-V1";
@@ -125,7 +142,7 @@ function assertStandalonesPresent() {
 
 function copyStandalonesIntoFork(cacheDir, { dryRun }) {
   // vulkan-shaders/ is the directory the upstream CMakeLists uses for
-  // file(GLOB CONFIGURE_DEPENDS *.comp) — dropping our 8 files there causes
+  // file(GLOB CONFIGURE_DEPENDS *.comp) — dropping our files there causes
   // glslc to compile them automatically as part of the existing per-shader
   // add_custom_command pipeline. The string_to_spv() registration patch
   // (01-vulkan-shaders-gen.patch) wires the resulting .spv bytes into
@@ -262,6 +279,84 @@ function applyPatches(cacheDir, { dryRun }) {
     results.push({ file, target, hunks: hunks.length, applied, skipped });
   }
   return results;
+}
+
+function ensureLineAfter(text, anchor, line, ctx) {
+  if (text.includes(line)) return { text, changed: false };
+  if (!text.includes(anchor)) {
+    throw new Error(
+      `[vulkan-kernels] repair anchor not found in ${ctx}: ${anchor}`,
+    );
+  }
+  return {
+    text: text.replace(anchor, `${anchor}\n${line}`),
+    changed: true,
+  };
+}
+
+function repairPolarPrehtShaderRegistration(cacheDir, { dryRun }) {
+  const targetPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-vulkan",
+    "vulkan-shaders",
+    "vulkan-shaders-gen.cpp",
+  );
+  const anchor = `    string_to_spv("milady_polar",          "polar.comp",          {});`;
+  const line = `    string_to_spv("milady_polar_preht",    "polar_preht.comp",    {});`;
+  const original = fs.readFileSync(targetPath, "utf8");
+  const repaired = ensureLineAfter(original, anchor, line, targetPath);
+  if (repaired.changed && !dryRun) {
+    fs.writeFileSync(targetPath, repaired.text, "utf8");
+  }
+  return {
+    target: targetPath,
+    changed: repaired.changed && !dryRun,
+    wouldChange: repaired.changed,
+  };
+}
+
+function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
+  const targetPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-vulkan",
+    "ggml-vulkan.cpp",
+  );
+  let text = fs.readFileSync(targetPath, "utf8");
+  let changed = false;
+
+  {
+    const r = ensureLineAfter(
+      text,
+      `    vk_pipeline pipeline_milady_polar;`,
+      `    vk_pipeline pipeline_milady_polar_preht;`,
+      targetPath,
+    );
+    text = r.text;
+    changed = changed || r.changed;
+  }
+  {
+    const r = ensureLineAfter(
+      text,
+      `    ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
+      `    ggml_vk_create_pipeline(device, device->pipeline_milady_polar_preht,    "milady_polar_preht",    milady_polar_preht_len,    milady_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
+      targetPath,
+    );
+    text = r.text;
+    changed = changed || r.changed;
+  }
+
+  if (changed && !dryRun) {
+    fs.writeFileSync(targetPath, text, "utf8");
+  }
+  return {
+    target: targetPath,
+    changed: changed && !dryRun,
+    wouldChange: changed,
+  };
 }
 
 function extractTcqCodebookSource() {
@@ -625,6 +720,10 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
   assertStandalonesPresent();
   const copied = copyStandalonesIntoFork(cacheDir, { dryRun });
   const patchResults = applyPatches(cacheDir, { dryRun });
+  const prehtRegistration = repairPolarPrehtShaderRegistration(cacheDir, {
+    dryRun,
+  });
+  const prehtPipeline = repairPolarPrehtPipeline(cacheDir, { dryRun });
   const runtimeDispatch = patchVulkanRuntimeDispatch(cacheDir, { dryRun });
   console.log(
     `[vulkan-kernels] ${dryRun ? "(dry-run) " : ""}target=${target ?? "unknown"} staged ${copied.length} standalone Vulkan shaders into vulkan-shaders/ ` +
@@ -638,6 +737,12 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
   console.log(
     `[vulkan-kernels] runtime graph dispatch patch: ${runtimeDispatch.changed ? "patched" : "already-present/dry-run"} (${runtimeDispatch.path})`,
   );
+  console.log(
+    `[vulkan-kernels] polar_preht registration repair: ${prehtRegistration.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${prehtRegistration.target})`,
+  );
+  console.log(
+    `[vulkan-kernels] polar_preht pipeline repair: ${prehtPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${prehtPipeline.target})`,
+  );
   // AGENTS.md §3 enforcement (no milady-missing vulkan binary) is done at
   // build-llama-cpp-dflash.mjs post-build via the requiredKernels audit.
   console.log(
@@ -647,6 +752,8 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
   return {
     copied,
     patchResults,
+    prehtRegistration,
+    prehtPipeline,
     runtimeDispatch,
     runtimeReady: "source-patched-pending-smoke",
     requiredGraphSmoke: "make -C packages/inference/verify vulkan-dispatch-smoke",

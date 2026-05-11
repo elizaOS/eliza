@@ -1,6 +1,11 @@
 export const DEFAULT_ELIZA_CLOUD_BASE = "https://www.elizacloud.ai";
 
-export type IosRuntimeMode = "remote-mac" | "cloud" | "cloud-hybrid" | "local";
+export type IosRuntimeMode =
+  | "remote-mac"
+  | "cloud"
+  | "cloud-hybrid"
+  | "local"
+  | "tunnel-to-mobile";
 
 export interface IosRuntimeConfig {
   mode: IosRuntimeMode;
@@ -9,6 +14,22 @@ export interface IosRuntimeConfig {
   cloudApiBase: string;
   deviceBridgeUrl?: string;
   deviceBridgeToken?: string;
+  /**
+   * Relay endpoint the phone dials to expose its on-device agent for an
+   * external Mac client to reach. Only used in `tunnel-to-mobile` mode.
+   * The phone-side `MobileAgentBridge` Capacitor plugin opens a long-
+   * running outbound connection to this URL; Eliza Cloud (or another
+   * configured relay) bridges traffic between this connection and a
+   * Mac-side `TunnelToMobileClient` over the user's authenticated
+   * session.
+   */
+  tunnelRelayUrl?: string;
+  /**
+   * Per-pairing token used to authorize the inbound tunnel. Distinct
+   * from the cloud auth token because the relay should not need full
+   * cloud credentials to authorize a single device pairing.
+   */
+  tunnelPairingToken?: string;
 }
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;
@@ -36,6 +57,11 @@ function normalizeMode(value: string | undefined): IosRuntimeMode {
       return "cloud-hybrid";
     case "local":
       return "local";
+    case "tunnel-to-mobile":
+    case "mobile-tunnel":
+    case "host-with-tunnel":
+    case "tunneled":
+      return "tunnel-to-mobile";
     default:
       return "cloud";
   }
@@ -86,6 +112,14 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
     "VITE_MILADY_DEVICE_BRIDGE_TOKEN",
     "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
   ]);
+  const tunnelRelayUrl = readString(env, [
+    "VITE_MILADY_TUNNEL_RELAY_URL",
+    "VITE_ELIZA_TUNNEL_RELAY_URL",
+  ]);
+  const tunnelPairingToken = readString(env, [
+    "VITE_MILADY_TUNNEL_PAIRING_TOKEN",
+    "VITE_ELIZA_TUNNEL_PAIRING_TOKEN",
+  ]);
 
   return {
     mode,
@@ -98,5 +132,7 @@ export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
         ? { deviceBridgeUrl: apiBaseToDeviceBridgeUrl(apiBase) }
         : {}),
     ...(deviceBridgeToken ? { deviceBridgeToken } : {}),
+    ...(tunnelRelayUrl ? { tunnelRelayUrl } : {}),
+    ...(tunnelPairingToken ? { tunnelPairingToken } : {}),
   };
 }

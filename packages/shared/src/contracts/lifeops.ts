@@ -1948,7 +1948,7 @@ export interface LifeOpsCalendarFeed {
 }
 
 /**
- * Summary of one Google Calendar the user has access to (from calendarList.list).
+ * Summary of one calendar the user has access to.
  * `includeInFeed` reflects whether the user has opted this calendar into the
  * aggregated sidebar feed / briefing. Defaults to true for every calendar the
  * user can see — opt-out, never opt-in, so new calendars are not silently

@@ -10,7 +10,7 @@ re-reading all five.
 
 | Doc | What it covers |
 |---|---|
-| [unified-fork-strategy.md](unified-fork-strategy.md) | Canonical `milady-ai/llama.cpp` fork strategy + branch layout (TBQ + QJL + PolarQuant + DFlash composed onto one tree). |
+| [unified-fork-strategy.md](unified-fork-strategy.md) | Canonical `elizaOS/llama.cpp` fork strategy + branch layout (TBQ + QJL + PolarQuant + DFlash composed onto one tree). |
 | [build-matrix.md](build-matrix.md) | Per-(platform, ABI, GPU) build commands + status. The compile/link/PASS truth table for the unified fork. |
 | [on-device-quantization-porting-plan.md](on-device-quantization-porting-plan.md) | Original deliverable plan (A-J sections) + symbol-verified status. The "what we promised to ship" doc. |
 | [dflash-drafter-strategy.md](dflash-drafter-strategy.md) | DFlash drafter pairing rationale + tokenizer-family rules. Subsection in the plan; kept separate for the table. |

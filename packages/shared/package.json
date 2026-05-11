@@ -39,11 +39,35 @@
   },
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "default": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
     },
-    "./dev-settings-figlet-heading": "./dist/dev-settings-figlet-heading.js"
+    "./config/allowed-hosts": {
+      "import": "./dist/config/allowed-hosts.js",
+      "default": "./dist/config/allowed-hosts.js",
+      "types": "./dist/config/allowed-hosts.d.ts"
+    },
+    "./dev-settings-banner-style": {
+      "import": "./dist/dev-settings-banner-style.js",
+      "default": "./dist/dev-settings-banner-style.js",
+      "types": "./dist/dev-settings-banner-style.d.ts"
+    },
+    "./dev-settings-figlet-heading": {
+      "import": "./dist/dev-settings-figlet-heading.js",
+      "default": "./dist/dev-settings-figlet-heading.js",
+      "types": "./dist/dev-settings-figlet-heading.d.ts"
+    },
+    "./dev-settings-table": {
+      "import": "./dist/dev-settings-table.js",
+      "default": "./dist/dev-settings-table.js",
+      "types": "./dist/dev-settings-table.d.ts"
+    },
+    "./runtime-env": {
+      "import": "./dist/runtime-env.js",
+      "default": "./dist/runtime-env.js",
+      "types": "./dist/runtime-env.d.ts"
+    }
   },
   "publishConfig": {
     "access": "public",

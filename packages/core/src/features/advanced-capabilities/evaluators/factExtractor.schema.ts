@@ -65,12 +65,14 @@ export type VerificationStatus = z.infer<typeof VerificationStatusEnum>;
  * insertions on schema drift.
  */
 const StructuredFieldsSchema = z.record(z.string(), z.unknown());
+const KeywordsSchema = z.array(z.string().min(1)).max(16).optional();
 
 const AddDurableOpSchema = z.object({
 	op: z.literal("add_durable"),
 	claim: z.string().min(1),
 	category: DurableCategoryEnum,
 	structured_fields: StructuredFieldsSchema,
+	keywords: KeywordsSchema,
 	verification_status: VerificationStatusEnum.optional(),
 	reason: z.string().optional(),
 });
@@ -80,6 +82,7 @@ const AddCurrentOpSchema = z.object({
 	claim: z.string().min(1),
 	category: CurrentCategoryEnum,
 	structured_fields: StructuredFieldsSchema,
+	keywords: KeywordsSchema,
 	/**
 	 * ISO timestamp of when the state began. Optional in the schema because
 	 * the extractor defaults to `now` when the model omits it.

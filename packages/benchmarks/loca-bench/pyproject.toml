@@ -26,7 +26,7 @@ classifiers = [
 ]
 dependencies = [
   # Core dependencies
-  "nltk==3.9.1",
+  "nltk==3.9.4",
   "math-verify[antlr4_13_2]",
   "reasoning-gym==0.1.23",
   "msgspec==0.19.0",

@@ -139,6 +139,64 @@ function sourceLabel(source: AppSource): string {
   }
 }
 
+function appProvenanceBadges(app: RegistryAppInfo): Array<{
+  key: string;
+  label: string;
+  className: string;
+  title?: string;
+}> {
+  const isThirdParty = app.thirdParty === true || app.origin === "third-party";
+  const isBuiltIn = app.builtIn === true || app.origin === "builtin";
+  const isFirstParty = app.firstParty === true || app.support === "first-party";
+  const isCommunity =
+    app.support === "community" || (isThirdParty && !isFirstParty);
+  const title = isThirdParty
+    ? "Community app registered through the plugin registry"
+    : isBuiltIn || isFirstParty
+      ? "First-party app generated from the elizaOS plugin registry"
+      : undefined;
+  const badges: Array<{
+    key: string;
+    label: string;
+    className: string;
+    title?: string;
+  }> = [];
+
+  if (isThirdParty) {
+    badges.push({
+      key: "origin",
+      label: "Third party",
+      className: "border-border/60 text-muted",
+      title,
+    });
+  } else if (isBuiltIn) {
+    badges.push({
+      key: "origin",
+      label: "Built in",
+      className: "border-border/60 text-muted",
+      title,
+    });
+  }
+
+  if (isCommunity) {
+    badges.push({
+      key: "support",
+      label: "Community",
+      className: "border-warn/45 text-warn",
+      title,
+    });
+  } else if (isFirstParty) {
+    badges.push({
+      key: "support",
+      label: "First party",
+      className: "border-accent/45 text-accent",
+      title,
+    });
+  }
+
+  return badges;
+}
+
 function isOverlayLaunchApp(app: RegistryAppInfo): boolean {
   return isOverlayApp(app.name) || app.launchType === "overlay";
 }
@@ -451,6 +509,7 @@ export function AppDetailsView({
   const launchTarget = viewerUrl ?? resolved.windowPath;
   const sessionMode = resolved.info.session?.mode;
   const sessionFeatures = resolved.info.session?.features ?? [];
+  const provenanceBadges = appProvenanceBadges(resolved.info);
   const launchModeLabel =
     config.launchMode === "inline" && supportsInlineMode
       ? "Main window"
@@ -481,6 +540,15 @@ export function AppDetailsView({
             <p className="truncate text-xs text-muted">{resolved.info.name}</p>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] uppercase tracking-[0.16em] text-muted">
               <span>{sourceLabel(resolved.source)}</span>
+              {provenanceBadges.map((badge) => (
+                <span
+                  key={badge.key}
+                  title={badge.title}
+                  className={`rounded-full border px-2 py-0.5 ${badge.className}`}
+                >
+                  {badge.label}
+                </span>
+              ))}
               {recentRuns.length > 0 ? (
                 <span className="rounded-full bg-accent/15 px-2 py-0.5 text-accent">
                   {recentRuns.length} running

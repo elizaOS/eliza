@@ -171,6 +171,16 @@ function failAppleCalendarResult(result, operation) {
       `Apple Calendar is not available on ${result.platform}; connect Google Calendar or use a native Apple platform.`,
     );
   }
+  if (
+    result.reason === "native_error" &&
+    /attendee|invitee|invited meeting/i.test(result.message ?? "")
+  ) {
+    fail(
+      409,
+      result.message ||
+        "Apple Calendar cannot create or edit invited meetings. Connect Google Calendar or remove attendees.",
+    );
+  }
   fail(
     502,
     result.message || `Apple Calendar ${operation} failed through EventKit.`,
@@ -407,6 +417,10 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         args.timeMax,
         grant.side,
       );
+      const existingEventsForCalendar = existingEvents.filter(
+        (event) =>
+          event.grantId === grant.id && event.calendarId === args.calendarId,
+      );
       const listEvents = requireGoogleServiceMethod(this.runtime, "listEvents");
       const googleEvents = await listEvents({
         accountId: accountIdForGrant(grant),
@@ -424,7 +438,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         }),
       );
       const nextEventIds = new Set(nextEvents.map((event) => event.id));
-      const removedEventIds = existingEvents
+      const removedEventIds = existingEventsForCalendar
         .map((event) => event.id)
         .filter((eventId) => !nextEventIds.has(eventId));
 
@@ -478,6 +492,12 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         args.timeMax,
         "owner",
       );
+      const existingEventsForCalendar =
+        args.calendarId === "all"
+          ? existingEvents
+          : existingEvents.filter(
+              (event) => event.calendarId === args.calendarId,
+            );
       const nativeFeed = await getNativeAppleCalendarFeed({
         agentId: this.agentId(),
         calendarId: args.calendarId === "all" ? null : args.calendarId,
@@ -495,7 +515,7 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         updatedAt: syncedAt,
       }));
       const nextEventIds = new Set(nextEvents.map((event) => event.id));
-      const removedEventIds = existingEvents
+      const removedEventIds = existingEventsForCalendar
         .map((event) => event.id)
         .filter((eventId) => !nextEventIds.has(eventId));
 
@@ -689,6 +709,33 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         forceSync,
         now,
       );
+    }
+
+    public async findCachedCalendarEventOwnerIds(args: {
+      provider: "google" | typeof APPLE_CALENDAR_PROVIDER;
+      externalEventId: string;
+      calendarId?: string | null;
+      side: LifeOpsConnectorSide;
+      grantId?: string | null;
+    }): Promise<string[]> {
+      const events = await this.repository.listCalendarEvents(
+        this.agentId(),
+        args.provider,
+        undefined,
+        undefined,
+        args.side,
+      );
+      return events
+        .filter((event) => event.externalId === args.externalEventId)
+        .filter((event) =>
+          args.calendarId && args.calendarId !== "all"
+            ? event.calendarId === args.calendarId
+            : true,
+        )
+        .filter((event) =>
+          args.grantId ? event.grantId === args.grantId : true,
+        )
+        .map((event) => event.id);
     }
 
     async createCalendarEvent(
@@ -944,6 +991,13 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
       const side = normalizeOptionalConnectorSide(request.side, "side");
       const eventId = requireNonEmptyString(request.eventId, "eventId");
       if (isAppleCalendarGrant(request.grantId)) {
+        const cachedOwnerIds = await this.findCachedCalendarEventOwnerIds({
+          provider: APPLE_CALENDAR_PROVIDER,
+          externalEventId: eventId,
+          calendarId: request.calendarId,
+          side: "owner",
+          grantId: APPLE_CALENDAR_GRANT_ID,
+        });
         const deleted = await deleteNativeAppleCalendarEvent(eventId, {
           runtime: this.runtime,
         });
@@ -953,11 +1007,11 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.deleteCalendarEventByExternalId(
           this.agentId(),
           APPLE_CALENDAR_PROVIDER,
-          request.calendarId ?? "primary",
+          request.calendarId,
           eventId,
           "owner",
         );
-        await this.deleteCalendarReminderPlansForEvents([eventId]);
+        await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
         await this.recordCalendarEventAudit(
           eventId,
           "calendar event deleted through native Apple Calendar",
@@ -980,6 +1034,13 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         if (request.grantId) {
           throw error;
         }
+        const cachedOwnerIds = await this.findCachedCalendarEventOwnerIds({
+          provider: APPLE_CALENDAR_PROVIDER,
+          externalEventId: eventId,
+          calendarId: request.calendarId,
+          side: "owner",
+          grantId: APPLE_CALENDAR_GRANT_ID,
+        });
         const deleted = await deleteNativeAppleCalendarEvent(eventId, {
           runtime: this.runtime,
         });
@@ -989,11 +1050,11 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         await this.repository.deleteCalendarEventByExternalId(
           this.agentId(),
           APPLE_CALENDAR_PROVIDER,
-          request.calendarId ?? "primary",
+          request.calendarId,
           eventId,
           "owner",
         );
-        await this.deleteCalendarReminderPlansForEvents([eventId]);
+        await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
         await this.recordCalendarEventAudit(
           eventId,
           "calendar event deleted through native Apple Calendar",
@@ -1009,14 +1070,21 @@ export function withCalendar<TBase extends Constructor<LifeOpsServiceBase>>(
         calendarId: request.calendarId ?? undefined,
         eventId,
       });
+      const cachedOwnerIds = await this.findCachedCalendarEventOwnerIds({
+        provider: "google",
+        externalEventId: eventId,
+        calendarId: request.calendarId,
+        side: grant.side,
+        grantId: grant.id,
+      });
       await this.repository.deleteCalendarEventByExternalId(
         this.agentId(),
         "google",
-        request.calendarId ?? "primary",
+        request.calendarId,
         eventId,
         grant.side,
       );
-      await this.deleteCalendarReminderPlansForEvents([eventId]);
+      await this.deleteCalendarReminderPlansForEvents(cachedOwnerIds);
       await this.recordCalendarEventAudit(
         eventId,
         "calendar event deleted through plugin-google",

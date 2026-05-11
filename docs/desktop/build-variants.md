@@ -32,8 +32,8 @@ For the full mobile/desktop capability matrix and policy review, see
 
 ## Direct Variant
 
-Use this for the downloadable DMG, Windows installer, AppImage, deb/rpm, and
-other side-loaded desktop builds.
+Use this for the downloadable DMG, Homebrew cask, Windows installer, AppImage,
+deb/rpm, and other side-loaded desktop builds.
 
 - `MILADY_BUILD_VARIANT=direct` or unset.
 - Runs with normal host filesystem/process access.

@@ -4,7 +4,8 @@ import {
   renderGroundedActionReply,
 } from "@elizaos/agent";
 import type {
-  Action,
+  ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
@@ -39,7 +40,6 @@ import {
   messageText,
   toActionData,
 } from "../lifeops/google/format-helpers.js";
-import { getDefaultPromptExamplePair } from "../lifeops/i18n/prompt-registry.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { normalizeExplicitTimeZoneToken } from "../lifeops/time/timezone.js";
 import {
@@ -2029,115 +2029,48 @@ async function isForeignPageScope(
   return metadata?.scope !== "page-lifeops";
 }
 
-export const lifeAction: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: "LIFE",
-  similes: [
-    "TODO",
-    "TODOS",
-    "HABIT",
-    "HABITS",
-    "GOAL",
-    "GOALS",
-    "REMINDER",
-    "REMINDERS",
-    "ALARM",
-    "ROUTINE",
-    "ROUTINES",
-    "TASK",
-    "TASKS",
-    "TRACK_HABIT",
-    "MARK_DONE",
-    "MARK_COMPLETE",
-    "SNOOZE",
-    "SET_REMINDER",
-    "NEW_HABIT",
-    "NEW_GOAL",
-    "NEW_REMINDER",
-    "NEW_ROUTINE",
-    "NEW_TODO",
-    "RECURRING_TASK",
-    "DAILY_TASK",
-    "WEEKLY_TASK",
-    "EVERY_DAY",
-    "EVERY_MORNING",
-    "EVERY_NIGHT",
-    "EVERY_WEEK",
-    "REMIND_ME",
-    "REMIND_ME_TO",
-    "WAKE_ME",
-    "MEDICATION_REMINDER",
-    "VITAMIN_REMINDER",
-    "WORKOUT_HABIT",
-    "EXERCISE_HABIT",
-    "BRUSH_TEETH",
-    "DRINK_WATER",
-    "HYDRATION",
-    "STRETCH_BREAK",
-    "BEDTIME",
-    // Owner-policy aliases — the canonical surface is
-    // `LIFE.policy_set_reminder` / `LIFE.policy_configure_escalation`.
-    "SET_REMINDER_INTENSITY",
-    "CONFIGURE_ESCALATION",
-  ],
-  description: [
-    "Personal-life action surface for the user's own habits, routines, reminders, alarms, todos, and long-term goals. Use whenever the user asks the assistant to set up, change, complete, skip, snooze, or review one of their own recurring or one-off personal tasks.",
-    "",
-    "Sub-actions:",
-    "- create  — make a new life-item. `kind=definition` covers habit/routine/reminder/alarm/todo (single or recurring); `kind=goal` covers a long-term aspiration with progress tracking.",
-    "  args: { kind: 'definition'|'goal', title, intent, cadence: 'once'|'daily'|'weekly'|'interval'|'times_per_day', time_of_day?, days_of_week?, every_minutes?, times_per_day?, target_date?, notes? }",
-    "  examples: 'remind me to brush my teeth every morning and night', 'set up a daily workout habit', 'every weekday at noon, take vitamins', 'goal: stabilize sleep schedule by end of month'",
-    "- update  — modify a definition or goal. args: { id?, title?, cadence?, time_of_day?, days_of_week?, intent?, notes? }",
-    "- delete  — remove a definition or goal. args: { id }",
-    "- complete — mark the next occurrence of a definition done. args: { id, occurrence_at? }",
-    "- skip — skip the next occurrence. args: { id, occurrence_at?, reason? }",
-    "- snooze — defer the next occurrence. args: { id, until }",
-    "- review — read progress on a goal. args: { id }",
-    "- policy_set_reminder — set reminder intensity on the OwnerFactStore. args: { intensity: 'gentle'|'standard'|'firm' }",
-    "- policy_configure_escalation — set timeout / call-after rules. args: { timeout_minutes, escalation_channels: string[] }",
-    "",
-    "Cadence parsing rules:",
-    "- 'every morning/night/day' or 'twice a day' or '2x daily' -> cadence='daily', set time_of_day appropriately",
-    "- 'every weekday' / 'weekdays' / 'M-F' -> cadence='weekly' with days_of_week=['Mon','Tue','Wed','Thu','Fri']",
-    "- 'every 2 hours' / 'every 30 min' -> cadence='interval' with every_minutes",
-    "- '3 times a day' / 'twice a day' -> cadence='times_per_day' with times_per_day",
-    "- 'once' / 'just one time' / 'tomorrow' / specific date -> cadence='once', set target_date",
-    "",
-    "Routing:",
-    "- Owner profile fields (name, phone, location, preferences) -> PROFILE, not LIFE",
-    "- Calendar event creation/move/cancel of meetings/appointments -> CALENDAR",
-    "- Reading wearable / sleep / step data -> HEALTH",
-    "- One-off message-to-someone reminders ('remember to call mom Sunday') -> LIFE.create kind=definition cadence=once",
-  ].join("\n"),
-  descriptionCompressed:
-    "manage personal habits+routines+reminders+alarms+todos+goals; subactions create|update|delete|complete|skip|snooze|review|policy_set_reminder|policy_configure_escalation; cadence once|daily|weekly|interval|times_per_day",
-  routingHint:
-    'any imperative to set up / change / track a personal habit, routine, reminder, alarm, todo, or goal -> LIFE. Phrases: "remind me to…", "set up a … habit", "create a routine", "every day / morning / night / weekday", "track my…", "twice a week", "every 2 hours", "once tomorrow", "cancel my … habit", "complete today\'s …", "snooze the … reminder". One-off dated reminders to call/text someone also belong here. Never answer from provider summaries; never use REPLY when the user is asking for a habit/reminder/routine setup.',
-  // Include "general" so habit/routine/reminder requests still surface LIFE
-  // when the messageHandler picks "general" as the conversational frame
-  // (which it does for ~90% of self-care prompts in the benchmark — phrases
-  // like "remind me to brush my teeth" route to general first, and the
-  // tool-retrieval filter would otherwise exclude LIFE entirely).
-  tags: [
-    "domain:reminders",
-    "capability:read",
-    "capability:write",
-    "capability:update",
-    "capability:delete",
-    "capability:schedule",
-    "surface:internal",
-  ],
-  contexts: ["general", "tasks", "todos", "calendar", "health"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
-  validate: async (runtime, message) => {
-    if (await isForeignPageScope(runtime, message)) {
-      return false;
-    }
-    return true;
-  },
-  handler: async (runtime, message, state, options) => {
+// Metadata reused by the owner-* umbrella actions in owner-surfaces.ts.
+// LIFE itself is no longer planner-visible — owner-surfaces re-publishes the
+// individual reminder/alarm/goal/todo/routine umbrellas that delegate into
+// `runLifeOperationHandler` below.
+export const LIFE_TAGS: readonly string[] = [
+  "domain:reminders",
+  "capability:read",
+  "capability:write",
+  "capability:update",
+  "capability:delete",
+  "capability:schedule",
+  "surface:internal",
+];
+
+export const LIFE_CONTEXTS: readonly string[] = [
+  "general",
+  "tasks",
+  "todos",
+  "calendar",
+  "health",
+];
+
+export const LIFE_ROLE_GATE = { minRole: "OWNER" } as const;
+export const LIFE_SUPPRESS_POST_ACTION_CONTINUATION = true;
+
+export const LIFE_VALIDATE = async (
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<boolean> => {
+  if (await isForeignPageScope(runtime, message)) {
+    return false;
+  }
+  return true;
+};
+
+export async function runLifeOperationHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: unknown,
+  _callback?: HandlerCallback,
+): Promise<ActionResult> {
     // Defense-in-depth: validate() excludes LIFE from planner candidates on
     // foreign page-* scopes, and this handler keeps direct tool execution a
     // no-op if a stale or malformed plan still reaches it.
@@ -2358,7 +2291,7 @@ export const lifeAction: Action & {
       return {
         success: false,
         text:
-          "Google Calendar is not connected. Connect Google in LifeOps settings to use calendar actions.",
+          "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
         data: {
           actionName: "LIFE",
           operation: queryOperation,
@@ -2369,7 +2302,7 @@ export const lifeAction: Action & {
       return {
         success: false,
         text:
-          "Google Calendar is not connected. Connect Google in LifeOps settings to use calendar actions.",
+          "Calendar access is not available. Grant Apple Calendar access or connect Google Calendar to use calendar actions.",
         data: {
           actionName: "LIFE",
           operation: queryOperation,
@@ -3618,221 +3551,4 @@ export const lifeAction: Action & {
       }
       throw err;
     }
-  },
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "Which life operation to perform. Owner-policy verbs (policy_set_reminder, policy_configure_escalation) write to OwnerFactStore.",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: [
-          "create",
-          "update",
-          "delete",
-          "complete",
-          "skip",
-          "snooze",
-          "review",
-          "policy_set_reminder",
-          "policy_configure_escalation",
-        ],
-      },
-    },
-    {
-      name: "kind",
-      description:
-        "For create/update/delete: 'definition' (habit/routine/reminder/alarm/todo) or 'goal' (long-term aspiration). Ignored for occurrence-level verbs (complete/skip/snooze) and review.",
-      required: false,
-      schema: {
-        type: "string" as const,
-        enum: ["definition", "goal"],
-      },
-    },
-    {
-      name: "intent",
-      description:
-        'Natural language description of what to do. Examples: "create a daily brushing habit for morning and night", "snooze brushing for 30 minutes".',
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "title",
-      description:
-        "Name for a new item, or the name of an existing item to act on.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "target",
-      description: "Name or ID of an existing item to act on.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "minutes",
-      description: "Snooze duration in minutes (alternative to a preset).",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "details",
-      description:
-        "Structured data when needed. May include: cadence schedule record, kind (task/habit/routine), description, priority, progressionRule, reminderPlan, confirmed (boolean when the user explicitly approves a previewed create), preset (snooze preset like 15m/30m/1h/tonight/tomorrow_morning), occurrenceId (target an existing occurrence directly for snooze/complete reminder mutations), goalId, goalTitle, supportStrategy, successCriteria, note, limit, domain (user_lifeops/agent_ops).",
-      required: false,
-      schema: { type: "object" as const, additionalProperties: true },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "add a todo: pick up dry cleaning tomorrow",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can save "Pick up dry cleaning" for tomorrow. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "what's on my todo list today?",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "You have 2 LifeOps items due today: pick up dry cleaning and call mom.",
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "set a goal to save $5,000 by the end of the year",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can save this goal as "Save $5,000 by the end of the year". Confirm and I\'ll save it, or tell me what to change.',
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "help me remember to drink water",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can set up a "Drink water" habit with a reasonable daytime default cadence. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "help me remember to stretch during the day",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can set up a "Stretch" habit with daytime stretch-break defaults. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "please remind me about my Invisalign on weekdays after lunch",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "I can set up a weekday-after-lunch Invisalign habit. Confirm and I'll save it.",
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    // W2-E: multilingual brush-teeth examples now resolve from the
-    // `MultilingualPromptRegistry` default pack via `exampleKey`. The
-    // Spanish row that previously lived inline here moved into the
-    // registry table at `lifeops/i18n/prompt-registry.ts`.
-    [
-      ...getDefaultPromptExamplePair(
-        "life.brush_teeth.create_definition",
-        "es",
-      ),
-    ],
-    [
-      ...getDefaultPromptExamplePair(
-        "life.brush_teeth.create_definition",
-        "en",
-      ),
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Please remind me to shave twice a week.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: 'I can set up a "Shave" habit with a twice-weekly default cadence. Confirm and I\'ll save it.',
-          actions: ["LIFE"],
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "what life ops tasks are still left for today?",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "You have 2 LifeOps tasks left for today: call mom and pay rent.",
-          actions: ["LIFE"],
-        },
-      },
-      {
-        name: "{{name1}}",
-        content: {
-          text: "anything else in my life ops list i need to get done today?",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "You have 1 LifeOps task left for today: pay rent.",
-          actions: ["LIFE"],
-        },
-      },
-    ],
-  ],
-};
+}

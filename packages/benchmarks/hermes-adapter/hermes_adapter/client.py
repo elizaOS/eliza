@@ -92,17 +92,14 @@ class HermesClient:
     # ------------------------------------------------------------------
 
     def health(self) -> dict[str, object]:
-        """Spawn ``<venv> -c "import openai; print('ok')"`` and report.
-
-        Returns ``{"status": "ready", ...}`` on success or ``{"status": "error", ...}``
-        on failure. Never raises.
-        """
+        """Confirm the venv can execute the one-shot OpenAI-compatible path."""
         if not self.venv_python.exists():
             return {"status": "error", "error": f"venv python not found at {self.venv_python}"}
         try:
             result = self._run_python_subprocess(
                 ["-c", "import openai; print('ok')"],
                 timeout_s=30.0,
+                cwd=str(self.repo_path),
             )
         except subprocess.TimeoutExpired as exc:
             return {"status": "error", "error": f"health probe timed out: {exc}"}
@@ -191,8 +188,15 @@ class HermesClient:
         context: Mapping[str, object] | None,
     ) -> dict[str, object]:
         ctx = dict(context or {})
-        tools = ctx.get("tools")
+        raw_tools = ctx.get("tools")
+        tools = _openai_compatible_tools(raw_tools)
         system_prompt = ctx.get("system_prompt")
+        if isinstance(raw_tools, list) and raw_tools and tools is None:
+            tool_context = json.dumps(raw_tools, ensure_ascii=True)
+            prefix = system_prompt if isinstance(system_prompt, str) else ""
+            system_prompt = (
+                f"{prefix}\n\nAvailable benchmark tools/context:\n{tool_context}".strip()
+            )
         return {
             "text": text,
             "context": ctx,
@@ -200,7 +204,7 @@ class HermesClient:
             "base_url": self.base_url,
             "api_key": self.api_key,
             "system_prompt": system_prompt if isinstance(system_prompt, str) else None,
-            "tools": tools if isinstance(tools, list) else None,
+            "tools": tools,
             "task_id": self._task_id,
             "benchmark": self._benchmark,
         }
@@ -351,6 +355,26 @@ class HermesClient:
             text=True,
             timeout=timeout_s,
         )
+
+
+def _openai_compatible_tools(raw_tools: object) -> list[object] | None:
+    """Return tools only when every item is an OpenAI tool object.
+
+    Some benchmark contexts use simple string tool names or local schemas. The
+    Cerebras OpenAI-compatible API rejects those as ``tools``; we keep them in
+    the prompt context instead so Hermes can still reason over the inventory.
+    """
+    if not isinstance(raw_tools, list) or not raw_tools:
+        return None
+    for item in raw_tools:
+        if not isinstance(item, Mapping):
+            return None
+        function = item.get("function")
+        if item.get("type") != "function" or not isinstance(function, Mapping):
+            return None
+        if not isinstance(function.get("name"), str):
+            return None
+    return list(raw_tools)
 
 
 # ----------------------------------------------------------------------

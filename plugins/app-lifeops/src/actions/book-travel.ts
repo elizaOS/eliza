@@ -1,6 +1,4 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
@@ -326,37 +324,17 @@ function buildApprovalText(request: ApprovalRequest): string {
   return `Queued travel approval for ${route}. Once you approve, I will ${orderType}, complete payment, and sync the itinerary to your calendar. Current quote: ${total}.`;
 }
 
-export const bookTravelAction: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: "BOOK_TRAVEL",
-  similes: [
-    "TRAVEL_BOOKING",
-    "BOOK_FLIGHT",
-    "BOOK_HOTEL",
-    "BOOK_TRIP",
-    "RESERVE_FLIGHT",
-  ],
-  description:
-    "Search and book real flights and hotels with approval gating. Drafts the booking, collects missing details (passengers, dates, dest), requires explicit confirmation, then syncs to the calendar.",
-  descriptionCompressed:
-    "book real flights+hotels; drafts then requires owner approval; syncs calendar",
-  routingHint:
-    "real flight/hotel/trip booking -> BOOK_TRAVEL; no browse-first or web-search-first",
-  tags: [
-    "domain:travel",
-    "capability:read",
-    "capability:write",
-    "capability:execute",
-    "surface:remote-api",
-    "risk:financial",
-    "cost:expensive",
-  ],
-  contexts: ["calendar", "contacts", "tasks", "payments", "finance", "browser"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
-  validate: async () => true,
-  handler: async (runtime, message, state, options, callback) => {
+// Internal BOOK_TRAVEL handler. The travel surface is delegated to from the
+// registered PERSONAL_ASSISTANT umbrella in owner-surfaces.ts; this module no
+// longer publishes a planner-visible Action. Approval execution still lives
+// here as `executeApprovedBookTravel` and is invoked by RESOLVE_REQUEST.
+export async function runBookTravelHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: unknown,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     try {
       await requireFeatureEnabled(runtime, "travel.book_flight");
     } catch (error) {
@@ -587,142 +565,7 @@ export const bookTravelAction: Action & {
         orderType: prepared.orderType,
       },
     };
-  },
-  parameters: [
-    {
-      name: "offerId",
-      description:
-        "Duffel offer id to book if a concrete offer was already chosen.",
-      descriptionCompressed: "duffel offer id pre-selected",
-      required: false,
-      schema: { type: "string" as const, pattern: "^off_[A-Za-z0-9]+$" },
-      examples: ["off_0000ABCdefGHI"],
-    },
-    {
-      name: "origin",
-      description:
-        "Origin IATA airport code (3-letter, uppercase) when searching for a flight.",
-      descriptionCompressed: "origin IATA 3-letter uppercase",
-      required: false,
-      schema: { type: "string" as const, pattern: "^[A-Z]{3}$" },
-      examples: ["JFK", "SFO", "LHR"],
-    },
-    {
-      name: "destination",
-      description:
-        "Destination IATA airport code (3-letter, uppercase) when searching for a flight.",
-      descriptionCompressed: "destination IATA 3-letter uppercase",
-      required: false,
-      schema: { type: "string" as const, pattern: "^[A-Z]{3}$" },
-      examples: ["LHR", "NRT", "LAX"],
-    },
-    {
-      name: "departureDate",
-      description: "Departure date in YYYY-MM-DD format.",
-      descriptionCompressed: "departure YYYY-MM-DD",
-      required: false,
-      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-      examples: ["2026-06-12"],
-    },
-    {
-      name: "returnDate",
-      description: "Optional return date in YYYY-MM-DD format.",
-      descriptionCompressed: "return YYYY-MM-DD optional",
-      required: false,
-      schema: { type: "string" as const, pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
-      examples: ["2026-06-19"],
-    },
-    {
-      name: "passengers",
-      description:
-        "Passenger details required to create the booking after approval. Each entry: { givenName, familyName, bornOn (YYYY-MM-DD), gender (m|f), email?, phoneNumber? }.",
-      descriptionCompressed:
-        "passengers[]: givenName familyName bornOn gender email? phone?",
-      required: false,
-      schema: {
-        type: "array" as const,
-        items: {
-          type: "object" as const,
-          properties: {
-            givenName: { type: "string" as const },
-            familyName: { type: "string" as const },
-            bornOn: {
-              type: "string" as const,
-              pattern: "^\\d{4}-\\d{2}-\\d{2}$",
-            },
-            gender: { type: "string" as const, enum: ["m", "f"] },
-            email: { type: "string" as const },
-            phoneNumber: { type: "string" as const },
-          },
-          required: ["givenName", "familyName", "bornOn", "gender"],
-        },
-      },
-    },
-    {
-      name: "calendarSync",
-      description:
-        "Optional calendar sync metadata for the booked itinerary event. Shape: { calendarId?, attendees? (array of email), notes? }.",
-      descriptionCompressed:
-        "calendarSync: calendarId? attendees[]? notes? for itinerary event",
-      required: false,
-      schema: {
-        type: "object" as const,
-        properties: {
-          calendarId: { type: "string" as const },
-          attendees: {
-            type: "array" as const,
-            items: { type: "string" as const },
-          },
-          notes: { type: "string" as const },
-        },
-      },
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Book the JFK to LHR flight for Tony Stark, born 1980-07-24, and sync it to my calendar once I approve.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Queued travel approval for the selected itinerary. Once you approve, I'll book it and sync it to your calendar.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Hold that flight for me and finish the booking after I confirm.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "I queued the booking behind approval. Once you approve, I'll complete payment and add the itinerary to your calendar.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "My partner confirmed it will just be me for LA and Toronto. Put together the flights and hotel and hold it for my approval before you book anything.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "I'll prepare the flights and hotel for LA and Toronto and queue the booking behind your approval before anything gets finalized.",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+}
 
 // Callback invoked by the approval queue once an owner approves a queued
 // BOOK_TRAVEL request. Exported because approval.ts dispatches here after

@@ -422,13 +422,10 @@ export function createOpenAITeacher(
  * generate training data for itself.
  */
 export function createCerebrasTeacher(runtime?: IAgentRuntime): TeacherModel {
-  // Lazy-load to avoid forcing eval-helper imports on operators that don't
-  // use the Cerebras path.
-  const { getTrainingModelClient } = require(
-    "../../../app-lifeops/test/helpers/lifeops-eval-model.ts",
-  ) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
-  const client = getTrainingModelClient();
-  const model = process.env.TRAIN_MODEL?.trim() ?? process.env.CEREBRAS_MODEL?.trim() ?? "gpt-oss-120b";
+  const model =
+    process.env.TRAIN_MODEL?.trim() ??
+    process.env.CEREBRAS_MODEL?.trim() ??
+    "gpt-oss-120b";
   return {
     name: `cerebras/${model}`,
     async generate(systemPrompt: string, userPrompt: string): Promise<string> {
@@ -450,6 +447,10 @@ export function createCerebrasTeacher(runtime?: IAgentRuntime): TeacherModel {
             actionType: "training.teacher.cerebras.generate",
           };
           return await recordLlmCall(runtime, details, async () => {
+            const { getTrainingModelClient } = await import(
+              "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+            );
+            const client = getTrainingModelClient();
             const result = await client({
               prompt: userPrompt,
               systemPrompt,
@@ -603,9 +604,7 @@ function parseTeacherJsonMessages(raw: string): {
       name: String(message.name ?? "").trim(),
       content: String(message.content ?? "").trim(),
     }))
-    .filter(
-      (message) => message.name.length > 0 && message.content.length > 0,
-    );
+    .filter((message) => message.name.length > 0 && message.content.length > 0);
   if (parsedMessages.length === 0) {
     throw new Error("Teacher JSON output did not include valid messages");
   }

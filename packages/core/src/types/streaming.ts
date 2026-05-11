@@ -111,6 +111,34 @@ export interface IStreamExtractor {
 }
 
 /**
+ * Per-field lifecycle callbacks emitted by {@link IStreamExtractor}
+ * implementations that track top-level structured fields (e.g.
+ * `StructuredFieldStreamExtractor`).
+ *
+ * Fired in document order:
+ *  - `onFieldStart(field)` once when the `"<field>": "` (or `"<field>":`) opener
+ *    is seen — the consumer knows the value bytes are about to start streaming.
+ *  - `onChunk(...)` zero-or-more times with the value deltas (already part of
+ *    {@link StructuredFieldStreamExtractorConfig.onChunk}).
+ *  - `onFieldDone(field, value)` once when the closing `",\n` (or the next
+ *    top-level key / end of document) is seen — `value` is the fully decoded
+ *    field value.
+ *
+ * Consumers:
+ *  - W9 (TTS handoff): subscribes to `onFieldStart("replyText")` to begin the
+ *    first-chunk-to-TTS path the instant the reply value opens, and
+ *    `onFieldDone("replyText", ...)` to flush the tail.
+ *  - W8 (forced-skeleton emitter): uses field boundaries to drive the next
+ *    forced span on a real engine.
+ */
+export interface StructuredFieldEventCallbacks {
+	/** A top-level field's value bytes are about to start streaming. */
+	onFieldStart?: (field: string) => void;
+	/** A top-level field's value finished; `value` is the decoded value. */
+	onFieldDone?: (field: string, value: string) => void;
+}
+
+/**
  * Interface for streaming retry state tracking.
  *
  * WHY: When streaming fails mid-response, we need to:

@@ -248,6 +248,10 @@ const MAC_PERMISSION_USAGE_DESCRIPTIONS: Record<string, string> = {
 		"Eliza uses Automation only when you ask it to work with apps that require Apple Events, such as Messages or Notes.",
 	NSContactsUsageDescription:
 		"Eliza uses Contacts only when you ask it to resolve, list, create, update, or delete contacts.",
+	NSLocationUsageDescription:
+		"Eliza uses Location only when you ask for place-aware planning, travel-time estimates, or location-aware reminders.",
+	NSLocationWhenInUseUsageDescription:
+		"Eliza uses Location only while the app is open and only for features you request.",
 	NSRemindersUsageDescription:
 		"Eliza uses Reminders only when you ask it to create, update, or delete Apple reminders.",
 	NSRemindersFullAccessUsageDescription:

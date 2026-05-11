@@ -3,7 +3,7 @@
 **Date:** 2026-05-09
 **Agent:** Wave-4 D (build-matrix gate)
 **Worktree:** `worktree-agent-ae84835e1877a12c9`
-**Fork pin under test:** `milady-ai/llama.cpp @ v0.3.0-milady`
+**Fork pin under test:** `elizaOS/llama.cpp @ v0.3.0-milady`
 (commit `2baad8630da2f56b6f66957082368d553dcc0c5b`)
 
 This report re-runs every on-host buildable target against the latest unified
@@ -160,7 +160,7 @@ Full transcript in `qjl-arm64-rerun.txt`.
 **Build command:**
 ```bash
 PATH=/home/shaw/.local/x86_64-w64-mingw32/usr/bin:$PATH \
-ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/milady-ai/llama.cpp.git" \
+ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/elizaOS/llama.cpp.git" \
   node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
     --target windows-x64-cpu \
     --ref v0.3.0-milady

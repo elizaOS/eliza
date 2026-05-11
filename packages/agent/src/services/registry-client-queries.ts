@@ -121,6 +121,11 @@ export function toSearchResults<T extends RegistryPluginInfo>(
     stars: p.stars,
     supports: p.supports,
     repository: `https://github.com/${p.gitRepo}`,
+    origin: p.origin,
+    support: p.support,
+    builtIn: p.builtIn,
+    firstParty: p.firstParty,
+    thirdParty: p.thirdParty,
   }));
 }
 
@@ -187,6 +192,15 @@ export function toAppInfo(
     latestVersion: p.npm.v2Version || p.npm.v1Version || p.npm.v0Version,
     supports: p.supports,
     npm: p.npm,
+    directory: p.directory ?? null,
+    registryKind: p.registryKind,
+    origin: p.origin,
+    source: p.source,
+    support: p.support,
+    builtIn: p.builtIn,
+    firstParty: p.firstParty,
+    thirdParty: p.thirdParty,
+    status: p.status,
     uiExtension: meta?.uiExtension,
     viewer,
     session: meta?.session,
@@ -232,5 +246,10 @@ export function toPluginListItem(
     latestVersion: p.npm.v2Version || p.npm.v1Version || p.npm.v0Version,
     supports: p.supports,
     npm: p.npm,
+    origin: p.origin,
+    support: p.support,
+    builtIn: p.builtIn,
+    firstParty: p.firstParty,
+    thirdParty: p.thirdParty,
   };
 }

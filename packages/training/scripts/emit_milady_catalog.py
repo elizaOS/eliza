@@ -46,7 +46,7 @@ log = logging.getLogger("emit_milady_catalog")
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
-    "elizalabs/eliza-1-0_6b": {
+    "elizaos/eliza-1-0_6b": {
         "params": "0.6B",
         "context_length": 32768,
         "tokenizer_family": "eliza1",
@@ -55,7 +55,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 2,
         "size_gb_estimate": 0.4,  # Q4_POLAR 0.6B ≈ 380-450 MB
     },
-    "elizalabs/eliza-1-1_7b": {
+    "elizaos/eliza-1-1_7b": {
         "params": "1.7B",
         "context_length": 32768,
         "tokenizer_family": "eliza1",
@@ -64,7 +64,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 4,
         "size_gb_estimate": 1.4,
     },
-    "elizalabs/eliza-1-9b": {
+    "elizaos/eliza-1-9b": {
         "params": "9B",
         "context_length": 65536,
         "tokenizer_family": "eliza1",
@@ -73,7 +73,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 12,
         "size_gb_estimate": 5.5,
     },
-    "elizalabs/eliza-1-27b-256k": {
+    "elizaos/eliza-1-27b-256k": {
         "params": "27B",
         "context_length": 262144,
         "tokenizer_family": "eliza1",
@@ -82,7 +82,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 96,
         "size_gb_estimate": 16.0,
     },
-    "elizalabs/eliza-1-27b": {
+    "elizaos/eliza-1-27b": {
         "params": "27B",
         "context_length": 131072,
         "tokenizer_family": "eliza1",
@@ -167,7 +167,7 @@ class MiladyCatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``elizalabs/eliza-1-1_7b`` to a catalog id.
+    """Convert ``elizaos/eliza-1-1_7b`` to a catalog id.
     """
     last = hf_repo.split("/")[-1]
     return last.lower()

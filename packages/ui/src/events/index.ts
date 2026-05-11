@@ -21,8 +21,10 @@ export const TRAY_ACTION_EVENT = "eliza:tray-action" as const;
 export const APP_RESUME_EVENT = "eliza:app-resume" as const;
 export const APP_PAUSE_EVENT = "eliza:app-pause" as const;
 export const CONNECT_EVENT = "eliza:connect" as const;
+export const FOCUS_CONNECTOR_EVENT = "eliza:focus-connector" as const;
 export const MOBILE_RUNTIME_MODE_CHANGED_EVENT =
   "eliza:mobile-runtime-mode-changed" as const;
+const FOCUS_CONNECTOR_STORAGE_KEY = "elizaos:focus-connector";
 
 // ── Voice / config ───────────────────────────────────────────────────────
 export const VOICE_CONFIG_UPDATED_EVENT = "eliza:voice-config-updated" as const;
@@ -40,6 +42,10 @@ export interface ElizaCloudStatusUpdatedDetail {
   hasPersistedApiKey: boolean;
   /** True only when cloud voice/chat routing should actively use the proxy. */
   cloudVoiceProxyAvailable: boolean;
+}
+
+export interface FocusConnectorEventDetail {
+  connectorId: string;
 }
 
 // ── Avatar / VRM ─────────────────────────────────────────────────────────
@@ -76,6 +82,7 @@ export type ElizaDocumentEventName =
   | typeof APP_RESUME_EVENT
   | typeof APP_PAUSE_EVENT
   | typeof CONNECT_EVENT
+  | typeof FOCUS_CONNECTOR_EVENT
   | typeof MOBILE_RUNTIME_MODE_CHANGED_EVENT;
 
 export type ElizaWindowEventName =
@@ -117,6 +124,42 @@ export function dispatchElizaCloudStatusUpdated(
   detail: ElizaCloudStatusUpdatedDetail,
 ): void {
   dispatchWindowEvent(ELIZA_CLOUD_STATUS_UPDATED_EVENT, detail);
+}
+
+export function readPendingFocusConnector(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const value = window.sessionStorage.getItem(FOCUS_CONNECTOR_STORAGE_KEY);
+    return value && value.trim().length > 0 ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingFocusConnector(connectorId?: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (connectorId) {
+      const value = window.sessionStorage.getItem(FOCUS_CONNECTOR_STORAGE_KEY);
+      if (value !== connectorId) return;
+    }
+    window.sessionStorage.removeItem(FOCUS_CONNECTOR_STORAGE_KEY);
+  } catch {
+    // Ignore storage failures; the event still drives the current page.
+  }
+}
+
+export function dispatchFocusConnector(connectorId: string): void {
+  const normalized = connectorId.trim();
+  if (!normalized) return;
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.setItem(FOCUS_CONNECTOR_STORAGE_KEY, normalized);
+    } catch {
+      // Ignore storage failures; the event still drives mounted listeners.
+    }
+  }
+  dispatchAppEvent(FOCUS_CONNECTOR_EVENT, { connectorId: normalized });
 }
 
 // ── Generic app aliases (preferred) ──────────────────────────────────────

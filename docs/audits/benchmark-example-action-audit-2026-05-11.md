@@ -362,13 +362,78 @@ No changes required.
 
 - `packages/examples/elizagotchi` typecheck: `tsc --noEmit` exits 0.
 - `packages/examples/game-of-life` typecheck: `tsc --noEmit` exits 0.
-- `packages/app-core/test/benchmarks/action-selection-runner.test.ts`:
-  20/20 unit tests pass.
-- `packages/app-core` full typecheck has pre-existing errors confined
-  to `packages/app-core/src/services/sensitive-requests/*` and one core
-  runtime line — all on untouched, in-flight files unrelated to this
-  audit. The action-selection / benchmark files in this audit produce
-  no typecheck errors.
+- `packages/app-core` full typecheck filtered for non-sensitive-requests
+  errors: zero remaining issues in any file touched by this audit.
+- `packages/app-core/test/benchmarks/action-selection-runner.test.ts`
+  (when the import chain is healthy): 20/20 unit tests pass; with the
+  new test cases added in this pass, 22/22 are expected to pass.
+- Standalone harness verification of the canonical-name map +
+  `caseMatches` logic at `/tmp/test-case-matches.ts`: **62 passed,
+  0 failed**. This bypasses the in-flight `secrets/manage-secret.ts`
+  refactor (which currently breaks the `@elizaos/core` import chain in
+  the workspace and is unrelated to this audit).
+- Three subagent passes confirmed inventory completeness: no missed
+  `Action` definitions, no planner-facing retired-name references
+  outside the canonical-name map + test descriptions, mock-plugin
+  ADHDBench distractor labels (`SEARCH_CONTACTS`, `ADD_CONTACT`,
+  `REMOVE_CONTACT`, `RESET_SESSION`, `UPDATE_CONTACT_INFO`,
+  `CREATE_PLAN`) are scenario labels owned by the Python benchmark,
+  not retired elizaOS actions, and are tournament-safe because every
+  non-canonical name passes through the `BENCHMARK_ACTION` wrapper.
+
+## Second-pass adjustments (post-initial fix)
+
+After the initial pass landed, a paranoid re-scan and three parallel
+verification subagents surfaced four more small items, all now fixed:
+
+1. **`ELIZAGOTCHI` handler `data` payload.** Each `data: { …, op }`
+   return was missing the canonical `action:` key. Added `action: op`
+   alongside `op` in all nine return shapes (`tick`, `status`, `help`,
+   `reset`, `export`, `import`, `name`, `runGameMutation`, and the
+   default-help fallback). `legacyActionName: ELIZAGOTCHI_*` remains
+   for callers that key off it.
+
+2. **`action-selection-cases.ts` acceptableActions cleanup.** Three
+   cases listed retired/non-canonical aliases in `acceptableActions`
+   even though the runner's canonical-name map already folds them:
+   `RELATIONSHIPS` on `rel-list-contacts` (replaced with `CONTACT`),
+   and `MANAGE_LIFEOPS_BROWSER` on `browser-manage-settings` and
+   `subscriptions-cancel-hulu-browser` (removed — the canonical-name
+   map folds it to `BROWSER`, so listing it again is redundant).
+
+3. **`action-selection-runner.test.ts` misleading descriptions.** Two
+   test descriptions still said `WEBSITE_BLOCK` / `APP_BLOCK` /
+   `DEVICE_INTENT` even though the underlying assertions now flow
+   through `BLOCK` / `MESSAGE`. Renamed:
+   - "matches planner aliases for social and focus actions" →
+     "matches planner aliases for social, messaging, and BLOCK", with
+     assertions normalized to compare against `BLOCK` directly so the
+     test name and expectations agree.
+   - "matches atomic device intent broadcast aliases" → "folds retired
+     `DEVICE_INTENT` broadcast aliases into `MESSAGE`", with `DEVICE_INTENT`
+     itself added as an asserted alias for symmetry.
+
+4. **New coverage test.** Added a positive test
+   `"folds retired owner-domain names into their post-consolidation
+   parents"` that asserts the post-consolidation map for `RELATIONSHIP`,
+   `LIST_CONTACTS`, `HEALTH`, `SCREEN_TIME`, `BY_APP`, `SUBSCRIPTIONS`,
+   `AUTOFILL`, `PASSWORD_MANAGER`, `BOOK_TRAVEL`, `MANAGE_LIFEOPS_BROWSER`,
+   and `MANAGE_BROWSER_BRIDGE`. Locks in the new canonical surface so
+   anyone editing `ACTION_CANONICAL_NAMES` is forced to keep the audit
+   contract honest.
+
+## Final inventory (post-second-pass)
+
+| Action / fixture | File | Status |
+|---|---|---|
+| `HELLO_WORLD` | `packages/examples/_plugin/src/plugin.ts` | ✓ clean, exemplary |
+| `GAME_OF_LIFE` + 6 sub-actions | `packages/examples/game-of-life/game.ts` | ✓ fixed — sub-actions now registered in `Plugin.actions` |
+| `ELIZAGOTCHI` | `packages/examples/elizagotchi/src/game/plugin.ts` | ✓ fixed — canonical `action` parameter exposed; handler return shape now includes `action:` alongside `op:` |
+| `BENCHMARK_ACTION` | `packages/app-core/src/benchmark/plugin.ts` | ✓ clean for purpose (capture-bag) |
+| `action-selection-cases.ts` | benchmark fixture | ✓ all retired names replaced; `acceptableActions` cleaned of redundant legacy aliases |
+| `action-selection-runner.ts` | runner | ✓ canonical-name map updated to new taxonomy |
+| `action-selection-runner.test.ts` | unit tests | ✓ misleading descriptions renamed; new positive coverage added |
+| `mock-plugin.ts` / `mock-plugin-base.ts` | benchmark mock LLM | ✓ intentional — ADHDBench distractor labels routed through `BENCHMARK_ACTION` wrapper |
 
 ## Residual notes
 

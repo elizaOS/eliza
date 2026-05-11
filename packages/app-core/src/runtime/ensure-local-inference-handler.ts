@@ -192,6 +192,51 @@ async function ensureAssignedModelLoaded(
   }
 }
 
+/**
+ * Project a `GenerateTextParams` onto the engine's `GenerateArgs`, threading
+ * the structure-forcing extensions (`prefill`, `responseSkeleton`, `grammar`,
+ * `streamStructured`) and wiring `onStreamChunk` to the engine's per-token
+ * `onTextChunk`. Cloud adapters ignore these fields; the local engine honours
+ * them (the forced-span / prefill / grammar path is local-model-only).
+ */
+function engineGenerateArgsFromParams(
+  params: GenerateTextParams,
+  cacheKey: string | undefined,
+): {
+  prompt: string;
+  stopSequences?: string[];
+  cacheKey?: string;
+  signal?: AbortSignal;
+  prefill?: string;
+  responseSkeleton?: GenerateTextParams["responseSkeleton"];
+  grammar?: string;
+  streamStructured?: boolean;
+  onTextChunk?: (chunk: string) => void | Promise<void>;
+} {
+  const streamStructured = params.streamStructured === true;
+  // Surface per-token chunks to the caller. The runtime passes the agent
+  // reply path's `onStreamChunk` here when it wants the LLM→TTS handoff —
+  // previously dropped at this layer. Only wire it when the caller asked
+  // for streaming (`stream` or `streamStructured`) so non-streaming callers
+  // don't pay the chunk-callback overhead.
+  const onTextChunk =
+    (params.stream === true || streamStructured) &&
+    typeof params.onStreamChunk === "function"
+      ? (chunk: string) => params.onStreamChunk?.(chunk)
+      : undefined;
+  return {
+    prompt: params.prompt ?? "",
+    stopSequences: params.stopSequences,
+    cacheKey,
+    signal: params.signal,
+    prefill: params.prefill,
+    responseSkeleton: params.responseSkeleton,
+    grammar: params.grammar,
+    streamStructured: streamStructured || undefined,
+    onTextChunk,
+  };
+}
+
 function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
   return async (runtime, params) => {
     const loader = getLoader(runtime);
@@ -212,16 +257,13 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       resolveLocalCacheKey(providerOptions) ??
       extractPromptCacheKey(providerOptions) ??
       undefined;
+    const engineArgs = engineGenerateArgsFromParams(params, cacheKey);
 
     // Prefer a runtime-registered loader that implements `generate` — that's
     // the mobile / device-bridge path. On desktop we fall back to the
     // standalone engine.
     if (loader?.generate) {
-      return loader.generate({
-        prompt: params.prompt ?? "",
-        stopSequences: params.stopSequences,
-        cacheKey,
-      });
+      return loader.generate(engineArgs);
     }
     if (!(await localInferenceEngine.available())) {
       throw new Error(
@@ -247,10 +289,11 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
           conversationId,
           modelId,
         });
-      const result = await localInferenceEngine.generateInConversation(handle, {
-        prompt: params.prompt ?? "",
-        stopSequences: params.stopSequences,
-      });
+      const { cacheKey: _drop, ...convArgs } = engineArgs;
+      const result = await localInferenceEngine.generateInConversation(
+        handle,
+        convArgs,
+      );
       // Per-generation usage log. Match the Anthropic plugin's
       // observability surface so cloud and local share the same
       // mental model. Cache hit rate is reported when input_tokens > 0.
@@ -276,11 +319,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // No conversation context: fall through to the existing hash-based
     // slot allocation. Doesn't break any caller that wasn't aware of
     // conversation handles.
-    return localInferenceEngine.generate({
-      prompt: params.prompt ?? "",
-      stopSequences: params.stopSequences,
-      cacheKey,
-    });
+    return localInferenceEngine.generate(engineArgs);
   };
 }
 

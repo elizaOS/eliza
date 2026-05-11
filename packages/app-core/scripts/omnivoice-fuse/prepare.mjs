@@ -9,7 +9,7 @@
  *   const { commit, ggmlSubmoduleCommit, sourceCount } =
  *     prepareOmnivoiceFusion({
  *       cacheRoot: "...", // ~/.cache/eliza-dflash
- *       llamaCppRoot: "...", // path to milady-ai/llama.cpp checkout
+ *       llamaCppRoot: "...", // path to elizaOS/llama.cpp checkout
  *       omnivoiceRef: "38f824023d…",
  *     });
  *
@@ -689,13 +689,17 @@ int eliza_inference_asr_transcribe(
                 return ELIZA_ERR_INVALID_ARG;
             }
             transcript += piece;
-            if (transcript.find("<asr_text>") != std::string::npos &&
-                !eliza_clean_asr_transcript(transcript).empty() &&
-                (piece.find('\\n') != std::string::npos ||
-                 transcript.find("<|im_start|>") != std::string::npos ||
-                 transcript.find("<|im_end|>") != std::string::npos)) {
-                completed = true;
-                break;
+            std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
+            if (!cleaned_partial.empty()) {
+                const char last = cleaned_partial.back();
+                const bool sentence_complete = last == '.' || last == '?' || last == '!';
+                if (piece.find('\\n') != std::string::npos ||
+                    transcript.find("<|im_start|>") != std::string::npos ||
+                    transcript.find("<|im_end|>") != std::string::npos ||
+                    sentence_complete) {
+                    completed = true;
+                    break;
+                }
             }
         }
         llama_sampler_accept(ctx->asr_sampler, token);
@@ -707,11 +711,16 @@ int eliza_inference_asr_transcribe(
         }
     }
     if (!completed) {
-        eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG; transcript may be truncated");
-        return ELIZA_ERR_FFI_FAULT;
+        std::string cleaned_partial = eliza_clean_asr_transcript(transcript);
+        if (cleaned_partial.empty()) {
+            eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG and produced no transcript");
+            return ELIZA_ERR_FFI_FAULT;
+        }
+        transcript = cleaned_partial;
+    } else {
+        transcript = eliza_clean_asr_transcript(transcript);
     }
 
-    transcript = eliza_clean_asr_transcript(transcript);
     if (transcript.size() + 1 > max_text_bytes) {
         eliza_set_error(out_error, "[libelizainference] asr_transcribe: output buffer too small after transcript normalization");
         return ELIZA_ERR_INVALID_ARG;

@@ -17,6 +17,7 @@ from typing import Sequence
 from ._base import (
     BenchmarkResult,
     BenchmarkRunner,
+    TrajectoryRecordingClient,
     make_client,
     resolve_api_key,
     resolve_endpoint,
@@ -110,6 +111,12 @@ def run_cli(
         endpoint=endpoint,
         api_key=api_key,
         mock_responses=mock_responses if args.mock else None,
+    )
+    client = TrajectoryRecordingClient(
+        client,
+        output_path=output_dir / "trajectories.jsonl",
+        benchmark_id=runner.benchmark_id,
+        model=args.model,
     )
 
     result: BenchmarkResult = runner.run(
