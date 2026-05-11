@@ -480,3 +480,5 @@ artifacts/
 research/native-tool-calling
 test/mocks/mockoon/.mockoon-pids/
 lifeops_bench_results/
+reports/ai-qa/
+scripts/ai-qa/.static-stack.json
