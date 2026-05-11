@@ -10,6 +10,10 @@ Stages (skippable individually; see flags):
                                                      checkpoints/<run>/gate_report.json
   5. PolarQuant + TurboQuant + QJL quantization   → checkpoints/<run>/final-<q>/
   6. Quantized benchmark                          → benchmarks/<run>/<q>/
+  6b. Milady-typed GGUF bundle (--milady-bundle,  → checkpoints/<run>/milady-optimized/
+      auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
+      found): optimize_for_milady.py +                turboquant.json + milady_manifest.json),
+      optional DFlash drafter (--dflash-drafter)     checkpoints/<run>/dflash/drafter-<tier>.gguf
   7. Publish (--publish, requires --bundle-dir)   → python -m scripts.publish.orchestrator
 
 Usage:
@@ -72,6 +76,25 @@ def _read_json(path: Path) -> dict | None:
         return json.loads(path.read_text())
     except (OSError, json.JSONDecodeError):
         return None
+
+
+def _resolve_milady_llama_cpp() -> Path | None:
+    """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
+    types). Order: $LLAMA_CPP_DIR → ~/.cache/eliza-dflash/milady-llama-cpp →
+    ~/src/milady-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
+    import os
+    cands: list[Path] = []
+    env = os.environ.get("LLAMA_CPP_DIR")
+    if env:
+        cands.append(Path(env))
+    cands += [
+        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
+        Path.home() / "src" / "milady-llama.cpp",
+    ]
+    for c in cands:
+        if (c / "convert_hf_to_gguf.py").is_file():
+            return c
+    return None
 
 
 def _format_ok_rate(summary: dict | None) -> float | None:
@@ -184,6 +207,21 @@ def main() -> int:
              "(1-bit K cache). Pass `polarquant,turboquant` for the "
              "pure-PyTorch path if Triton is unavailable.",
     )
+    mb = ap.add_mutually_exclusive_group()
+    mb.add_argument("--milady-bundle", dest="milady_bundle", action="store_true",
+                    help="Stage 6b: assemble the Milady-typed GGUF bundle via "
+                         "optimize_for_milady.py — PolarQuant 4-bit weights + "
+                         "QJL1_256 K-cache + TBQ V-cache sidecars + "
+                         "milady_manifest.json. Needs the elizaOS/llama.cpp "
+                         "fork (auto-detected; set $LLAMA_CPP_DIR to override).")
+    mb.add_argument("--no-milady-bundle", dest="milady_bundle", action="store_false",
+                    help="Skip the Milady GGUF bundle stage.")
+    ap.set_defaults(milady_bundle=None)  # None ⇒ auto (on iff the fork is found)
+    ap.add_argument("--dflash-drafter", action="store_true",
+                    help="Also distill a DFlash speculative-decode drafter for "
+                         "this tier (distill_dflash_drafter.py). Needs a GPU for "
+                         "a real run; uses --synthetic-smoke when --eval-mode "
+                         "smoke so the pipeline still validates on CPU.")
     args = ap.parse_args()
 
     if args.publish and not args.bundle_dir:
@@ -442,6 +480,65 @@ def main() -> int:
                 continue
             rcs = _bench(str(ck), q)
             summary["stages"][f"{q}_bench"] = {"exit": rcs}
+
+    # ───────────── stage 6b: Milady-typed GGUF bundle ─────────────────
+    # PolarQuant 4-bit weights packed via the fork's Q4_POLAR GGML type +
+    # QJL1_256 K-cache & TBQ V-cache JSON sidecars + milady_manifest.json,
+    # optionally paired with a DFlash drafter. optimize_for_milady.py is the
+    # canonical orchestrator (it re-runs polarquant→qjl→turboquant idempotently
+    # and then converts via the fork) — run_pipeline just delegates to it.
+    fork_dir = _resolve_milady_llama_cpp()
+    want_bundle = args.milady_bundle if args.milady_bundle is not None else (fork_dir is not None)
+    if want_bundle and not args.skip_quantize:
+        if fork_dir is None:
+            log.error("--milady-bundle requested but no elizaOS/llama.cpp fork "
+                      "found (set $LLAMA_CPP_DIR or clone milady-llama-cpp); "
+                      "skipping the Milady GGUF bundle")
+            summary["stages"]["milady_bundle"] = {"skipped": "fork not found"}
+        elif not finetuned_model.exists():
+            log.warning("no fine-tuned checkpoint at %s — skipping Milady bundle",
+                        finetuned_model)
+            summary["stages"]["milady_bundle"] = {"skipped": "no checkpoint"}
+        else:
+            opt_dir = ckpt_dir / "milady-optimized"
+            drafter_gguf: Path | None = None
+            if args.dflash_drafter:
+                dflash_dir = ckpt_dir / "dflash"
+                d_cmd = [
+                    "uv", "run", "--extra", "train", "python",
+                    "scripts/distill_dflash_drafter.py",
+                    "--tier", tier_id,
+                    "--target-checkpoint", str(finetuned_model),
+                    "--dataset", str(train_file),
+                    "--out-dir", str(dflash_dir),
+                ]
+                if args.eval_mode == "smoke":
+                    d_cmd.append("--synthetic-smoke")
+                rc = run(d_cmd, cwd=ROOT)
+                summary["stages"]["dflash_drafter"] = {"exit": rc, "output": str(dflash_dir)}
+                cand = dflash_dir / f"drafter-{tier_id}.gguf"
+                drafter_gguf = cand if cand.exists() else None
+            o_cmd = [
+                "uv", "run", "--extra", "train", "python",
+                "scripts/optimize_for_milady.py",
+                "--base-model", str(finetuned_model),
+                "--output-dir", str(opt_dir),
+                "--apply", "polarquant", "qjl", "turboquant",
+                "--calibration", str(test_file if test_file.exists() else val_file),
+                "--calibration-samples", "128",
+                "--llama-cpp-dir", str(fork_dir),
+            ]
+            if drafter_gguf is not None:
+                o_cmd += ["--drafter-repo", str(drafter_gguf)]
+            if args.publish and getattr(entry, "milady_repo_id", None):
+                o_cmd += ["--hf-repo", entry.milady_repo_id]
+            rc = run(o_cmd, cwd=ROOT)
+            manifest = opt_dir / "milady_manifest.json"
+            summary["stages"]["milady_bundle"] = {
+                "exit": rc, "output": str(opt_dir),
+                "manifest": str(manifest) if manifest.exists() else None,
+            }
+            log.info("Milady bundle exit=%d → %s", rc, opt_dir)
 
     # ───────────── stage 7: publish ───────────────────────────────────
     if args.publish:
