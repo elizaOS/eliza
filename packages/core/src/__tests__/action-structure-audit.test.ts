@@ -74,6 +74,48 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"DELETE_SECRET",
 	"MIRROR_SECRET_TO_VAULT",
 	"REQUEST_SECRET",
+	// Suno music generation absorbed into the MUSIC umbrella with
+	// action=generate|extend|custom_generate. The plugin-suno package still
+	// ships the SunoProvider client and status provider, but no longer
+	// registers MUSIC_GENERATION as a top-level Action.
+	"MUSIC_GENERATION",
+	// Page-group umbrella parents collapsed into the single PAGE_DELEGATE
+	// owner-only parent in packages/agent/src/actions/page-action-groups.ts.
+	"BROWSER_ACTIONS",
+	"WALLET_ACTIONS",
+	"CHARACTER_ACTIONS",
+	"SETTINGS_ACTIONS",
+	"CONNECTOR_ACTIONS",
+	"AUTOMATION_ACTIONS",
+	"PHONE_ACTIONS",
+	"OWNER_ACTIONS",
+	// Dead agent actions deleted from packages/agent/src/actions/. ANALYZE_IMAGE
+	// (media.ts), EXTRACT_PAGE (extract-page.ts), QUERY_TRAJECTORIES
+	// (trajectories.ts), and SKILL_COMMAND (skill-command.ts) were exported but
+	// never registered in eliza-plugin.ts. Their source files have been
+	// removed; SKILL_COMMAND callers should route through USE_SKILL.
+	"ANALYZE_IMAGE",
+	"EXTRACT_PAGE",
+	"QUERY_TRAJECTORIES",
+	"SKILL_COMMAND",
+] as const;
+
+/**
+ * Canonical replacement for the eight retired per-page `<PAGE>_ACTIONS`
+ * umbrellas. PAGE_DELEGATE lives in packages/agent and cannot be imported from
+ * this core test (core does not depend on agent), so the structural guard is
+ * twofold: PAGE_DELEGATE must not appear in the retired list above, and every
+ * page name it replaces must.
+ */
+const PAGE_DELEGATE_REPLACES = [
+	"BROWSER_ACTIONS",
+	"WALLET_ACTIONS",
+	"CHARACTER_ACTIONS",
+	"SETTINGS_ACTIONS",
+	"CONNECTOR_ACTIONS",
+	"AUTOMATION_ACTIONS",
+	"PHONE_ACTIONS",
+	"OWNER_ACTIONS",
 ] as const;
 
 const LEGACY_DISCRIMINATORS = new Set([
@@ -128,6 +170,27 @@ describe("action structure audit guards", () => {
 				"update_role",
 			]),
 		);
+	});
+
+	it("PAGE_DELEGATE replaces the eight per-page _ACTIONS umbrellas", () => {
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		expect(
+			retired.has("PAGE_DELEGATE"),
+			"PAGE_DELEGATE is the canonical replacement and must not be marked retired",
+		).toBe(false);
+		for (const legacy of PAGE_DELEGATE_REPLACES) {
+			expect(
+				retired.has(legacy),
+				`${legacy} must be retired in favor of PAGE_DELEGATE`,
+			).toBe(true);
+		}
+		const names = new Set(allActionDocs.map((action) => action.name));
+		for (const legacy of PAGE_DELEGATE_REPLACES) {
+			expect(
+				names.has(legacy),
+				`${legacy} must not appear in canonical docs`,
+			).toBe(false);
+		}
 	});
 
 	it("SECRETS umbrella uses canonical action discriminator with all subactions", () => {
