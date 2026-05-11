@@ -1681,6 +1681,18 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-cpp-python"
+version = "0.3.23"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "diskcache" },
+    { name = "jinja2" },
+    { name = "numpy", version = "2.3.5", source = { registry = "https://pypi.org/simple" } },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/61/fb/3932d67b89eb7d8f451719b40b67034e031e04b8b598a7f65d13e255ebfb/llama_cpp_python-0.3.23.tar.gz", hash = "sha256:85493cd887b543588941e8704640fef6a54c057443292e527559c30728375ffd", size = 68300621, upload-time = "2026-05-11T10:12:21.665Z" }
+
+[[package]]
 name = "llguidance"
 version = "1.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1898,6 +1910,7 @@ train = [
     { name = "datasets" },
     { name = "fused-turboquant" },
     { name = "liger-kernel" },
+    { name = "llama-cpp-python" },
     { name = "peft" },
     { name = "pybind11" },
     { name = "pytest" },
@@ -1923,6 +1936,7 @@ requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "liger-kernel", marker = "extra == 'train'", specifier = ">=0.5.0" },
+    { name = "llama-cpp-python", marker = "extra == 'train'", specifier = ">=0.3.0" },
     { name = "openai", marker = "extra == 'serve'", specifier = ">=1.50.0" },
     { name = "pandas", specifier = ">=2.2.0" },
     { name = "peft", marker = "extra == 'train'", specifier = ">=0.14.0" },

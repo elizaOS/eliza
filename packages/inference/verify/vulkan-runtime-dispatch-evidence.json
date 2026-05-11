@@ -83,6 +83,26 @@
         "GGML_OP_ATTN_SCORE_TBQ/turbo4"
       ],
       "evidenceDate": "2026-05-11"
+    },
+    "fusedAttn": {
+      "capabilityKey": "fused_attn",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ",
+      "smokeTarget": "vulkan-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
+      "standaloneVerifyTarget": "vulkan-verify-fused",
+      "smokeScores": 512,
+      "maxDiff": 4.470e-8,
+      "standaloneMaxDiff": 6.258e-7,
+      "graphRoutes": [
+        "GGML_OP_FUSED_ATTN_QJL_TBQ"
+      ],
+      "generatedFrom": "/home/shaw/milady/eliza/packages/inference/verify/hardware-results/linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json",
+      "device": "Intel(R) Graphics (ARL) — Intel open-source Mesa ANV driver, Vulkan 1.4.318",
+      "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+      "note": "Single-q-pos fused attention graph route (n_heads=4 n_kv_heads=2 n_tokens=8) executed end-to-end on the built fork's libggml-vulkan and matched eliza_fused_attn_qjl_tbq3; the standalone fused shaders are 1920/1920 outputs PASS across 4 GQA/n_kv cases. fused_attn is an optimization on top of the five required kernels (AGENTS.md §3) and is intentionally NOT in requiredRuntimeCapabilityKeys / manifestKernelNames.",
+      "evidenceDate": "2026-05-11"
     }
   }
 }

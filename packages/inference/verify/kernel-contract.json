@@ -132,11 +132,18 @@
     },
     "runtimeStatus": {
       "metal": "needs-runtime-smoke",
-      "vulkan": "needs-runtime-smoke",
+      "vulkan": "runtime-ready",
       "cuda": "needs-hardware",
       "cpu": "reference-only"
     },
-    "nextGate": "Port the fused op to a Metal/Vulkan compute kernel (none exists yet) plus a cases-array parser in metal_verify/vulkan_verify, then run metal-verify-fused / vulkan-verify-fused on hardware. cuda_verify already parses fused_attn_qjl_tbq.json but no NVIDIA host has run it (cuda-verify-fused gated behind cuda_runner.sh on real hardware)."
+    "runtimeEvidence": {
+      "vulkan": {
+        "key": "fusedAttn",
+        "smokeTarget": "vulkan-dispatch-smoke",
+        "evidenceFile": "verify/vulkan-runtime-dispatch-evidence.json"
+      }
+    },
+    "nextGate": "Vulkan fused dispatch is verified on real Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports) and cuda-verify-fused on an NVIDIA host (cuda_verify already parses fused_attn_qjl_tbq.json; cuda/fused-attn-qjl-tbq.cu authored). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames — it is an optimization on top of the five required kernels (AGENTS.md §3), not a required kernel — until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
   },
   "kernels": [
     {

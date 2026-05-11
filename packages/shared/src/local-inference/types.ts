@@ -85,6 +85,14 @@ export interface InstalledModel {
   sha256?: string;
   /** ISO timestamp of the last successful re-verification. Absent = never verified since install. */
   lastVerifiedAt?: string;
+  /**
+   * ISO timestamp of the one-time on-device verify pass for an Eliza-1
+   * bundle (load → 1-token text gen → 1-phrase voice gen → barge-in cancel,
+   * per `packages/inference/AGENTS.md` §7). Absent = the bundle was
+   * materialized but the verify-on-device pass has not run; such a bundle
+   * must not be auto-selected as the recommended default.
+   */
+  bundleVerifiedAt?: string;
   runtimeRole?: "chat" | "dflash-drafter";
   companionFor?: string;
 }
