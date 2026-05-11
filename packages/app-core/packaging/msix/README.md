@@ -160,14 +160,34 @@ Output filenames:
 
 1. Create a Microsoft Partner Center account at https://partner.microsoft.com.
 2. Register the app identity (`ElizaOS.App`).
-3. Replace the `Publisher="CN=elizaOS"` placeholder in **both**
-   `AppxManifest.xml` and `AppxManifest.store.xml` with the Partner Center
-   publisher ID (e.g. `CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX`). They MUST match
-   so users see one product.
+3. **Set Identity env vars** on the CI step that produces the store MSIX
+   (preferred over editing the manifest file in-tree):
+   - `MILADY_MSIX_IDENTITY_NAME` — Partner Center-registered app name, e.g.
+     `ElizaOS.App` (often the same as the placeholder, but Partner Center may
+     issue a namespace-scoped name).
+   - `MILADY_MSIX_PUBLISHER_ID` — full `Publisher` attribute, e.g.
+     `CN=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX`. MUST match the publisher ID
+     issued for your Partner Center account.
+   - `MILADY_MSIX_PUBLISHER_DISPLAY_NAME` — human-readable publisher, e.g.
+     `elizaOS Labs`. Defaults to the placeholder `elizaOS` if unset.
+   `build-msix.ps1` substitutes these into the staged manifest before
+   `makeappx pack`. When unset, the script prints a `::warning::` and ships
+   the placeholder values (Partner Center will reject the upload).
 4. Replace placeholder assets in `assets/` with final artwork.
 5. Add screenshots to `store/screenshots/`.
-6. Build the store MSIX (`MILADY_BUILD_VARIANT=store`) and upload via Partner
-   Center. Submit for certification review.
+6. Build the store MSIX (`MILADY_BUILD_VARIANT=store` plus the three Identity
+   env vars) and upload via Partner Center. Submit for certification review.
+
+Example CI snippet:
+```yaml
+env:
+  MILADY_BUILD_VARIANT: store
+  MILADY_MSIX_IDENTITY_NAME: ElizaOS.App
+  MILADY_MSIX_PUBLISHER_ID: CN=12345678-90AB-CDEF-1234-567890ABCDEF
+  MILADY_MSIX_PUBLISHER_DISPLAY_NAME: elizaOS Labs
+  MILADY_MSIX_STORE_CERT_PATH: ${{ secrets.MILADY_MSIX_STORE_CERT_PATH }}
+  MILADY_MSIX_STORE_CERT_PASSWORD: ${{ secrets.MILADY_MSIX_STORE_CERT_PASSWORD }}
+```
 
 ## Updating the publisher identity
 
