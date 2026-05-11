@@ -18,7 +18,7 @@ were under this directory.
   `milady/metal` (+5 .metal sources from W1-D),
   `milady/integration` (merge of all the above).
 - Tagged `v0.1.0-milady` at `edd55d8b0a1f4b4279f17eb08a903e52b9a7cc4e`.
-- `milady-ai/node-llama-cpp` repo created with branch
+- `elizaOS/node-llama-cpp` repo created with branch
   `milady/extended-cache-types` and tag `v3.18.1-milady.1` extending
   `GgmlType` to accept TBQ3_0/TBQ4_0/QJL1_256/Q4_POLAR (and lowercase
   aliases).
@@ -84,9 +84,9 @@ host).
   `dist/`. Two fixes available for a follow-up agent:
   (a) add a `prepare` script to the fork that runs the build inline
       (downside: every consumer install rebuilds the C++ binding),
-  (b) publish `@milady-ai/node-llama-cpp` to npm as a scoped package
+  (b) publish `@elizaos/node-llama-cpp` to npm as a scoped package
       and depend on it under that name (and rewrite the imports in
-      consumer code from `node-llama-cpp` → `@milady-ai/...`).
+      consumer code from `node-llama-cpp` → `@elizaos/...`).
   Path (b) is cleaner. For now, the fork repo + tag exists and is
   ready to be consumed once one of these is done.
 

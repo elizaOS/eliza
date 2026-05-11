@@ -95,7 +95,7 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 // checkout has it. The build defaults to that submodule checkout; set
 // ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF (or pass --cache-dir / --ref) to build
 // from a standalone clone instead — that path falls back to a per-user clone
-// under ~/.cache/eliza-dflash/milady-llama-cpp.
+// under ~/.cache/eliza-dflash/eliza-llama-cpp.
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
@@ -1245,13 +1245,13 @@ function submoduleCheckoutPresent() {
   }
 }
 
-// The standalone (non-submodule) source-checkout cache. Renamed from
-// buun-llama-cpp to milady-llama-cpp on the unified-fork migration; the new
-// directory busts the old cache so a fresh ref pull is forced. Only used when
-// the operator forces a standalone clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE /
-// _REF (or an explicit --cache-dir), or when the submodule isn't initialized.
+// The standalone (non-submodule) source-checkout cache for the elizaOS/llama.cpp
+// fork. Renamed across the unified-fork migration; the new directory busts any
+// stale prior-name cache so a fresh ref pull is forced. Only used when the
+// operator forces a standalone clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF
+// (or an explicit --cache-dir), or when the submodule isn't initialized.
 function standaloneCacheDir() {
-  return path.join(os.homedir(), ".cache", "eliza-dflash", "milady-llama-cpp");
+  return path.join(os.homedir(), ".cache", "eliza-dflash", "eliza-llama-cpp");
 }
 
 // Decide the default build source: the in-repo submodule unless the operator
@@ -1319,7 +1319,7 @@ function parseArgs(argv) {
           "Source: by default the in-repo submodule packages/inference/llama.cpp",
           `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
           "ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF to build from a standalone clone",
-          "(~/.cache/eliza-dflash/milady-llama-cpp) instead.",
+          "(~/.cache/eliza-dflash/eliza-llama-cpp) instead.",
           "",
           "Options:",
           "  --target <triple>      Build a specific target (repeatable).",
