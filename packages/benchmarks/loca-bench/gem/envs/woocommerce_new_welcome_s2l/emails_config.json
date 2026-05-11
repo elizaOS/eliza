@@ -1,0 +1,11 @@
+{  
+    "smtp_server": "localhost",
+    "imap_server": "localhost",
+    "imap_port": 1143,
+    "smtp_port": 1587,
+    "password": "christine1993#",
+    "email": "christine.murphy91@mcp.com",
+    "name": "Store88 Team",
+    "use_ssl": false,
+    "use_starttls": false
+}

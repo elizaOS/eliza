@@ -1,0 +1,112 @@
+# {MCP_NAME} MCP Server
+
+A simplified {API_DESCRIPTION} MCP server using local file-based database instead of external APIs.
+
+## Overview
+
+This MCP server provides the following tools:
+
+1. **get_{DATA_TYPE}** - Get {DATA_TYPE} data by ID
+2. **[Add more tools here]** - Tool descriptions
+
+## Data Files
+
+Located in `data/` directory:
+
+- `{MAIN_DATA_FILE}` - Main data storage
+- `{SECONDARY_DATA_FILE}` - Secondary data storage
+- `[Add more files as needed]`
+
+## Sample Data
+
+The server includes sample data for:
+- **[Item 1]** - Description
+- **[Item 2]** - Description
+- **[Add more items]**
+
+## Usage
+
+### Running the Server
+
+```bash
+# From project root
+uv run python mcps/{MCP_FOLDER}/server.py
+```
+
+### Example Tool Calls
+
+```python
+# Get data by ID
+{"id": "SAMPLE001"}
+
+# [Add more examples]
+{"parameter": "value"}
+```
+
+## Testing
+
+Run the comprehensive test suite:
+
+```bash
+uv run pytest mcps/{MCP_FOLDER}/test_server.py -v
+```
+
+## Configuration
+
+Add to your `.mcp.json`:
+
+```json
+{
+  "{MCP_SERVER_ID}": {
+    "command": "/opt/homebrew/Caskroom/miniforge/base/bin/uv",
+    "args": [
+      "--directory",
+      "/Users/[username]/Desktop/mcp-convert",
+      "run",
+      "python",
+      "mcps/{MCP_FOLDER}/server.py"
+    ]
+  }
+}
+```
+
+## Adding Data
+
+To add new data to the server:
+
+1. **Edit data files** in the `data/` directory
+2. **Follow existing format** in JSON/CSV files
+3. **Run tests** to validate data integrity
+4. **Restart server** to load new data
+
+### Data Format Example
+
+```json
+{
+  "ITEM001": {
+    "id": "ITEM001",
+    "name": "Sample Item",
+    "description": "Description of the item",
+    "[add_more_fields]": "values"
+  }
+}
+```
+
+## Benefits
+
+- ✅ **Offline functionality** - No internet required
+- ✅ **No rate limits** - Unlimited queries
+- ✅ **Fast responses** - Local file access
+- ✅ **Consistent data** - Perfect for testing
+- ✅ **Easy to extend** - Just modify JSON/CSV files
+- ✅ **No API keys required** - No authentication needed
+
+## Extending the Server
+
+To add new tools:
+
+1. **Add tool registration** in `server.py` `setup_tools()` method
+2. **Implement tool handler** method
+3. **Add database methods** in `database_utils.py` if needed
+4. **Add tests** in `test_server.py`
+5. **Update documentation** in this README

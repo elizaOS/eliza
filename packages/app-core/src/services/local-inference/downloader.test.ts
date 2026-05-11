@@ -110,7 +110,14 @@ describe("local inference downloader status", () => {
     const cache = "voice preset";
     const manifest = JSON.stringify({
       id: "eliza-1-0_6b",
+      tier: "0_6b",
       version: "1.0.0",
+      publishedAt: "2026-05-11T00:00:00.000Z",
+      lineage: {
+        text: { base: "eliza-1-text", license: "test" },
+        voice: { base: "eliza-1-voice", license: "test" },
+        drafter: { base: "eliza-1-drafter", license: "test" },
+      },
       defaultEligible: true,
       files: {
         text: [
@@ -136,6 +143,39 @@ describe("local inference downloader status", () => {
           },
         ],
       },
+      kernels: {
+        required: ["turboquant_q3", "qjl", "polarquant", "dflash"],
+        optional: [],
+        verifiedBackends: {
+          metal: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-metal",
+          },
+          vulkan: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-vulkan",
+          },
+          cuda: {
+            status: "skipped",
+            atCommit: "test",
+            report: "test-cuda",
+          },
+          cpu: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-cpu",
+          },
+        },
+      },
+      evals: {
+        textEval: { score: 1, passed: true },
+        voiceRtf: { rtf: 0.5, passed: true },
+        e2eLoopOk: true,
+        thirtyTurnOk: true,
+      },
+      ramBudgetMb: { min: 2048, recommended: 4096 },
     });
     installFetchFixture(
       new Map([

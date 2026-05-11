@@ -1506,7 +1506,7 @@ async function ensureActiveModelLoaded(): Promise<void> {
 
   const llama = await loadCapacitorLlama();
   if (!llama?.load || !llama.generate) {
-    throw new Error("Capacitor llama runtime is not available on this build.");
+    throw new Error("Native Eliza-1 runtime is not available on this build.");
   }
   const hardware = await hardwareProbe();
   const loadOptions = buildMobileLoadOptions(model, installed, hardware);
@@ -1731,7 +1731,7 @@ async function generateLocalReply(
   await ensureActiveModelLoaded();
   const llama = await loadCapacitorLlama();
   if (!llama?.generate) {
-    throw new Error("Capacitor llama runtime is not available on this build.");
+    throw new Error("Native Eliza-1 runtime is not available on this build.");
   }
   const prompt = buildPrompt(conversation.messages, text);
   const result = await llama.generate({
@@ -2236,7 +2236,7 @@ async function activateModel(
     const llama = await loadCapacitorLlama();
     if (!llama?.load) {
       throw new Error(
-        "Capacitor llama runtime is not available on this build.",
+        "Native Eliza-1 runtime is not available on this build.",
       );
     }
     const hardware = await hardwareProbe();
