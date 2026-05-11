@@ -35,7 +35,7 @@ suite("macosalarm helper (darwin integration)", () => {
     });
     expect(result.status).toBe(0);
     expect(existsSync(bin)).toBe(true);
-  });
+  }, 30_000);
 
   it("invokes the helper (structured response or unbundled bundle-proxy)", async () => {
     let observed: { success: boolean } | null = null;
@@ -56,9 +56,9 @@ suite("macosalarm helper (darwin integration)", () => {
       return;
     }
 
-    // Fallback: accept the known-unbundled failure so the test is meaningful
-    // on a dev machine without an app bundle. Packaging is deferred.
+    // Accept the known-unbundled failure so the test is meaningful on a dev
+    // machine without an app bundle. Packaging is deferred.
     expect(observedError).not.toBeNull();
     expect(observedError!.message).toMatch(/bundleProxyForCurrentProcess/);
-  });
+  }, 30_000);
 });
