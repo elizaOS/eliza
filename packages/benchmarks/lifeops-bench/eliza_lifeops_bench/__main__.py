@@ -23,6 +23,7 @@ from .scenarios import (
     SCENARIOS_BY_DOMAIN,
     SCENARIOS_BY_ID,
 )
+from .suites import SUITES, resolve_suite
 from .types import Domain, MessageTurn, ScenarioMode
 
 _AGENT_CHOICES = (
@@ -36,6 +37,7 @@ _AGENT_CHOICES = (
 _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
 _MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
+_SUITE_CHOICES = tuple(SUITES.keys())
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -53,6 +55,16 @@ def _build_parser() -> argparse.ArgumentParser:
         "--mode",
         choices=_MODE_CHOICES,
         help="Filter scenarios to STATIC or LIVE mode",
+    )
+    parser.add_argument(
+        "--suite",
+        choices=_SUITE_CHOICES,
+        default=None,
+        help=(
+            "Run a named suite (smoke|core|full). Mutually exclusive with "
+            "--scenario; combines with --domain/--mode as additional filters. "
+            "Default: no suite (run ALL_SCENARIOS or matching filters)."
+        ),
     )
     parser.add_argument(
         "--agent",
@@ -280,6 +292,13 @@ def _build_world_factory():
 
 
 async def _run(args: argparse.Namespace) -> None:
+    if args.scenario and args.suite:
+        print(
+            "Error: --scenario and --suite are mutually exclusive.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
     if args.scenario:
         scenario = SCENARIOS_BY_ID.get(args.scenario)
         if scenario is None:
@@ -287,6 +306,8 @@ async def _run(args: argparse.Namespace) -> None:
             _list_scenarios()
             sys.exit(1)
         scenarios = [scenario]
+    elif args.suite:
+        scenarios = list(resolve_suite(args.suite))
     else:
         scenarios = list(ALL_SCENARIOS)
 
@@ -337,6 +358,8 @@ async def _run(args: argparse.Namespace) -> None:
     )
 
     print(f"\nStarting LifeOpsBench with {len(scenarios)} scenarios x {args.seeds} seeds...")
+    if args.suite:
+        print(f"Suite:           {args.suite}")
     print(f"Agent:           {args.agent}")
     print(f"Model tier:      {tier_spec.tier} ({tier_spec.provider} → {tier_spec.model_name})")
     print(f"Evaluator model: {evaluator_model}")
