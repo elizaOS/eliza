@@ -1,5 +1,8 @@
 # Wave 2-D — Serialization audit + structural speed wins
 
+Status: shipped. Tests: 25/25 pass across the three new suites plus the
+cache-stability gate (10/10 unchanged hashes).
+
 Audit window: every per-turn hot-path string build / `JSON.stringify` /
 `stringifyForModel` in the planner prompt pipeline. Files inspected:
 
