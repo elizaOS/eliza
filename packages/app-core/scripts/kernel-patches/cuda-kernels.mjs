@@ -7,14 +7,15 @@
 // picked up unconditionally; the file body is gated by GGML_CUDA_FUSED_ATTN_QJL
 // so a no-flag build still emits an empty object.
 //
-// The matching cmake flag (-DGGML_CUDA_FUSED_ATTN_QJL=ON) and the
-// add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL) line that goes next to the
-// existing GGML_CUDA_QJL / GGML_CUDA_POLARQUANT / GGML_CUDA_TBQ3_TCQ block in
-// ggml-cuda/CMakeLists.txt are NOT applied here — that change lives in
-// build-llama-cpp-dflash.mjs (owned by the build-script agent). Until both land
-// the fused CUDA kernel is staged-but-inert: the symbol is absent from a
-// production build, which is the correct state — fused_attn is an optimization
-// on top of the five required kernels (AGENTS.md §3), not a required kernel.
+// The matching cmake flag (-DGGML_CUDA_FUSED_ATTN_QJL=ON, exported as
+// CUDA_KERNEL_CMAKE_FLAGS) and the add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)
+// CMakeLists patch (patchGgmlCudaForFusedAttn) both live in
+// build-llama-cpp-dflash.mjs; its applyForkPatches() calls patchCudaKernels +
+// patchGgmlCudaForFusedAttn for CUDA targets and its cuda branch pushes
+// CUDA_KERNEL_CMAKE_FLAGS. A build without the flag (or anyone running this
+// staging step alone) gets a staged-but-inert TU — the symbol compiles to an
+// empty object, which is the correct state: fused_attn is an optimization on
+// top of the five required kernels (AGENTS.md §3), not a required kernel.
 //
 // Hard-throws on any error (missing source, missing fork dir, fs failure) — per
 // AGENTS.md §3 the build must exit non-zero rather than silently produce a
