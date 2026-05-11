@@ -195,6 +195,37 @@ export class ConversationRegistry {
   }
 
   /**
+   * Recommended `--parallel` slot count given the observed high-water mark
+   * of concurrently-open conversations plus a small headroom (max(2, 25%)).
+   * The engine's auto-tune (J4) compares this against the running server's
+   * slot count: when this is larger AND there's RAM headroom, it restarts
+   * llama-server with the higher value so new conversations get their own
+   * KV slots instead of thrashing.
+   *
+   * `running` is the currently-configured slot count; when the high-water
+   * mark hasn't outgrown it, this returns `running` (no resize needed) so
+   * callers can compare against equality without a second branch.
+   */
+  recommendedParallel(running: number): number {
+    const headroom = Math.max(2, Math.ceil(this.highWaterMark * 0.25));
+    const desired = Math.max(1, this.highWaterMark + headroom);
+    return Math.max(running, desired);
+  }
+
+  /**
+   * Drop every handle and reset the high-water mark + slot-load bookkeeping.
+   * Test-only: production never resets a live registry (the singleton lives
+   * for the process lifetime). Tests use this so per-test high-water
+   * assertions on the module singleton don't leak across cases.
+   */
+  reset(): void {
+    for (const handle of this.handles.values()) handle.closed = true;
+    this.handles.clear();
+    this.slotLoad.clear();
+    this.highWaterMark = 0;
+  }
+
+  /**
    * Pick the slot with the fewest in-flight handles. Ties are broken by a
    * deterministic hash of the conversation id, which avoids consistently
    * loading slot 0 when N concurrent opens race.

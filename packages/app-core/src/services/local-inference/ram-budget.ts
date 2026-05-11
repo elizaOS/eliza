@@ -284,8 +284,7 @@ export function pickFittingContextVariant(
     (left, right) => (right.contextLength ?? 0) - (left.contextLength ?? 0),
   );
   for (const candidate of ranked) {
-    const installed =
-      candidate.id === model.id ? options.installed : undefined;
+    const installed = candidate.id === model.id ? options.installed : undefined;
     if (assessRamFit(candidate, hostRamMb, { ...options, installed }).fits) {
       return candidate;
     }

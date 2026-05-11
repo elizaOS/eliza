@@ -4,12 +4,10 @@ import {
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
-import { assessFit } from "./hardware";
 import {
+  assessRamFit,
   defaultManifestLoader,
   type ManifestLoader,
-  type RamBudget,
-  resolveRamBudget,
 } from "./ram-budget";
 import type {
   CatalogModel,
@@ -136,23 +134,42 @@ export function catalogDownloadSizeBytes(
 
 const MB_PER_GB = 1024;
 
-function mobileFit(
+/**
+ * Memory the model can actually use on this host, in GB. On Apple Silicon
+ * and mobile the GPU shares system RAM, so total RAM acts as the budget.
+ * On discrete-GPU x86 the KV cache + weights live wherever the layers do —
+ * weight VRAM higher. CPU-only hosts can give about half of RAM to a model
+ * before paging hurts.
+ */
+function effectiveMemoryGb(probe: HardwareProbe): number {
+  if (probe.appleSilicon) return probe.totalRamGb;
+  if (probe.gpu) {
+    return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
+  }
+  return probe.totalRamGb * 0.5;
+}
+
+/**
+ * Download-size guardrail layered on top of the RAM-budget fit decision:
+ * a bundle whose on-disk footprint is a large fraction of the available
+ * memory will swap even if the RAM-budget floor says it boots. Returns
+ * `"wontfit"` / `"tight"` / `null` ("the size is fine; defer to the
+ * RAM-budget level"). Ratios match the historical `assessFit` (desktop)
+ * and `mobileFit` (mobile) thresholds.
+ */
+function downloadSizeGuardrail(
   hardware: HardwareProbe,
   model: CatalogModel,
   catalog: CatalogModel[],
-  budget: RamBudget,
-): HardwareFitLevel {
+  isMobile: boolean,
+): HardwareFitLevel | null {
   const sizeGb = catalogDownloadSizeGb(model, catalog);
-  const totalRamMb = hardware.totalRamGb * MB_PER_GB;
-  // `minMb` is the won't-fit floor (catalog scalar by default; manifest
-  // override when an installed Eliza-1 bundle declared one).
-  if (totalRamMb < budget.minMb) return "wontfit";
-  if (sizeGb > hardware.totalRamGb * 0.8) return "wontfit";
-  // `recommendedMb` is the fits-vs-tight cutoff. Catalog fallback collapses
-  // recommended === min so the new line never tightens prior behavior.
-  if (totalRamMb < budget.recommendedMb) return "tight";
-  if (sizeGb > hardware.totalRamGb * 0.65) return "tight";
-  return "fits";
+  const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
+  const wontFitRatio = isMobile ? 0.8 : 0.9;
+  const tightRatio = isMobile ? 0.65 : 0.7;
+  if (sizeGb > memGb * wontFitRatio) return "wontfit";
+  if (sizeGb > memGb * tightRatio) return "tight";
+  return null;
 }
 
 export function assessCatalogModelFit(
@@ -165,38 +182,22 @@ export function assessCatalogModelFit(
     const byId = catalogById(catalog);
     if (!byId.has(model.runtime.dflash.drafterModelId)) return "wontfit";
   }
-  const budget = resolveRamBudget(
-    model,
-    options.installed,
-    options.manifestLoader ?? defaultManifestLoader,
-  );
-  if (classifyRecommendationPlatform(hardware) === "mobile") {
-    return mobileFit(hardware, model, catalog, budget);
-  }
-  // `assessFit` historically takes minRamGb. Use the manifest-derived
-  // floor (minMb) when available; fall back to the catalog scalar
-  // otherwise. The manifest's `recommendedMb` further tightens the
-  // "fits" line via the wrapper below.
-  const baseline = assessFit(
-    hardware,
-    catalogDownloadSizeGb(model, catalog),
-    budget.minMb / MB_PER_GB,
-  );
-  if (baseline === "wontfit") return "wontfit";
-  if (budget.source === "manifest") {
-    const effectiveGb = effectiveMemoryGb(hardware);
-    if (effectiveGb * MB_PER_GB < budget.recommendedMb) return "tight";
-  }
-  return baseline;
-}
-
-/** Mirrors the effective-memory math in `assessFit`. */
-function effectiveMemoryGb(probe: HardwareProbe): number {
-  if (probe.appleSilicon) return probe.totalRamGb;
-  if (probe.gpu) {
-    return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
-  }
-  return probe.totalRamGb * 0.5;
+  const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
+  const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
+  // Single source of truth for the RAM floor + fits-vs-tight cutoff:
+  // `ram-budget.assessRamFit`. The recommender works in "memory available
+  // to the model" terms (VRAM-weighted on GPU hosts), so the OS headroom
+  // reserve is already discounted — pass `reserveMb: 0`.
+  const ramFit = assessRamFit(model, memGb * MB_PER_GB, {
+    installed: options.installed,
+    manifestLoader: options.manifestLoader ?? defaultManifestLoader,
+    reserveMb: 0,
+  });
+  if (!ramFit.fits) return "wontfit";
+  const sizeLevel = downloadSizeGuardrail(hardware, model, catalog, isMobile);
+  if (sizeLevel === "wontfit") return "wontfit";
+  if (sizeLevel === "tight" || ramFit.level === "tight") return "tight";
+  return "fits";
 }
 
 function canFit(
