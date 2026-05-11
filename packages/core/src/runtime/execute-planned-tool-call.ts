@@ -17,7 +17,11 @@ import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
-import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
+import {
+	normalizeGateRole,
+	satisfiesContextGate,
+	satisfiesRoleGate,
+} from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
 
@@ -364,6 +368,22 @@ function actionResultToStreamingResult(
  * `contextGate` is narrower than a particular deployment needs.
  */
 let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;
+const ACTION_ROLE_POLICY_ROLES = new Set<RoleGateRole>([
+	"NONE",
+	"GUEST",
+	"MEMBER",
+	"ADMIN",
+	"OWNER",
+]);
+
+function parseActionRolePolicyRole(value: unknown): RoleGateRole | undefined {
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const normalized = normalizeGateRole(value as RoleGateRole);
+	return ACTION_ROLE_POLICY_ROLES.has(normalized) ? normalized : undefined;
+}
+
 function readActionRolePolicy(): Record<string, RoleGateRole> {
 	if (cachedActionRolePolicy !== undefined) {
 		return cachedActionRolePolicy;
@@ -375,10 +395,18 @@ function readActionRolePolicy(): Record<string, RoleGateRole> {
 	}
 	try {
 		const parsed = JSON.parse(raw);
-		cachedActionRolePolicy =
-			parsed && typeof parsed === "object" && !Array.isArray(parsed)
-				? (parsed as Record<string, RoleGateRole>)
-				: {};
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			cachedActionRolePolicy = {};
+			return cachedActionRolePolicy;
+		}
+		cachedActionRolePolicy = Object.fromEntries(
+			Object.entries(parsed)
+				.map(([actionName, role]) => [
+					actionName,
+					parseActionRolePolicyRole(role),
+				])
+				.filter((entry): entry is [string, RoleGateRole] => Boolean(entry[1])),
+		);
 	} catch {
 		cachedActionRolePolicy = {};
 	}
