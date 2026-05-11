@@ -723,7 +723,7 @@ extract is OPTIONAL. Populate ONLY when the user states a durable fact about the
 - extract.addressedTo: OPTIONAL entity UUIDs (preferred) or participant names this message is directed at. Agent's id/name when user talks to the agent; another participant's id/name when addressed by name or @-mention. Empty/omit when broadcast or unclear. Do not guess.
 - omit extract entirely when nothing durable was stated and no addressee identified. Never invent.
 
-Call {{handleResponseToolName}} exactly once with the plan. Do not answer in plain text.
+Call {{handleResponseToolName}} exactly once with the envelope. Do not answer in plain text.
 
 return:
 Use the {{handleResponseToolName}} tool. Do not return JSON as message text.
