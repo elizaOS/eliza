@@ -21,11 +21,6 @@ const ELIZA_1_DISPLAY_NAMES: Record<string, string> = {
   "eliza-1-9b": "eliza-1-9b",
   "eliza-1-27b": "eliza-1-27b",
   "eliza-1-27b-256k": "eliza-1-27b",
-  "eliza-1-lite-0_6b": "eliza-1-0_6b",
-  "eliza-1-mobile-1_7b": "eliza-1-1_7b",
-  "eliza-1-desktop-9b": "eliza-1-9b",
-  "eliza-1-pro-27b": "eliza-1-27b",
-  "eliza-1-server-h200": "eliza-1-27b",
 };
 
 export function displayModelName(model: {
