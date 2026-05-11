@@ -8,6 +8,8 @@ import {
   getMacPermissionDeepLink,
   isPermissionId,
   PERMISSION_IDS,
+  PutPermissionsShellRequestSchema,
+  PutPermissionsStateRequestSchema,
 } from "@elizaos/shared";
 import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
@@ -376,9 +378,18 @@ export async function handlePermissionRoutes(
   }
 
   if (method === "PUT" && pathname === "/api/permissions/shell") {
-    const body = await readJsonBody<{ enabled?: boolean }>(req, res);
-    if (!body) return true;
-    const enabled = body.enabled === true;
+    const rawShell = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawShell === null) return true;
+    const parsedShell = PutPermissionsShellRequestSchema.safeParse(rawShell);
+    if (!parsedShell.success) {
+      error(
+        res,
+        parsedShell.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const enabled = parsedShell.data.enabled === true;
     state.shellEnabled = enabled;
 
     if (!state.permissionStates) {
@@ -412,14 +423,25 @@ export async function handlePermissionRoutes(
   }
 
   if (method === "PUT" && pathname === "/api/permissions/state") {
-    const body = await readJsonBody<{
-      permissions?: Record<string, PermissionState>;
-      startup?: boolean;
-    }>(req, res);
-    if (!body) return true;
+    const rawPermState = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPermState === null) return true;
+    const parsedPermState =
+      PutPermissionsStateRequestSchema.safeParse(rawPermState);
+    if (!parsedPermState.success) {
+      error(
+        res,
+        parsedPermState.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedPermState.data;
 
     if (body.permissions && typeof body.permissions === "object") {
-      state.permissionStates = body.permissions;
+      state.permissionStates = body.permissions as unknown as Record<
+        string,
+        PermissionState
+      >;
 
       let configChanged = false;
       state.config.plugins = state.config.plugins || {};
