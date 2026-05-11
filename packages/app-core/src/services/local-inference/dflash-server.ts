@@ -381,7 +381,7 @@ function dflashMetalAutoEnabled(): boolean {
  * Refuse a `--cache-type-k/v` value when the installed llama-server binary
  * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
  * is no longer static: `kernel-patches/{metal,vulkan}-kernels.mjs` compile the
- * turbo*/qjl/polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
+ * `turbo*`, qjl, and polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
  * records which ones actually shipped under `kernels.*`. So a Metal binary
  * built with the kernel patches enabled passes; one without them is refused
  * with an actionable "rebuild your fork" message. When `CAPABILITIES.json` is
