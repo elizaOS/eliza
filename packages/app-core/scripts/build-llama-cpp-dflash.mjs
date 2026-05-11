@@ -49,6 +49,10 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import {
+  patchCpuSimdKernels as patchCpuSimdKernelsImpl,
+  QJL_GGML_BASE_LINK_FILES,
+} from "./kernel-patches/cpu-simd-kernels.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
@@ -579,6 +583,9 @@ function patchGgmlBaseForWindowsQjl(cacheDir) {
         `Windows shared-lib builds will fail to link QJL symbols into ggml-base.dll.`,
     );
   }
+  const qjlFileLines = QJL_GGML_BASE_LINK_FILES.map((f) => `            ${f}`).join(
+    "\n",
+  );
   const replacement = `            polar_centroids.h
             gguf.cpp
             ${sentinel}
@@ -586,16 +593,9 @@ function patchGgmlBaseForWindowsQjl(cacheDir) {
             # link time; the QJL definitions in ggml-cpu/qjl/ are referenced
             # from ggml.c (ggml-base), so on Windows shared-lib builds they
             # must also live in ggml-base. Linux/macOS use the original
-            # ggml-cpu placement and ignore this duplicate.
-            ggml-cpu/qjl/quants-qjl.c
-            ggml-cpu/qjl/qjl_dispatch.c
-            ggml-cpu/qjl/qjl_projection.c
-            ggml-cpu/qjl/qjl_quantize_ref.c
-            ggml-cpu/qjl/qjl_quantize_avx2.c
-            ggml-cpu/qjl/qjl_quantize_neon.c
-            ggml-cpu/qjl/qjl_score_ref.c
-            ggml-cpu/qjl/qjl_score_avx2.c
-            ggml-cpu/qjl/qjl_score_neon.c)
+            # ggml-cpu placement and ignore this duplicate. The list mirrors
+            # QJL_GGML_BASE_LINK_FILES in kernel-patches/cpu-simd-kernels.mjs.
+${qjlFileLines})
 target_include_directories(ggml-base PRIVATE ggml-cpu ggml-cpu/qjl ggml-cpu/qjl/include)`;
   fs.writeFileSync(
     cmakeListsPath,
@@ -1276,6 +1276,13 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
+  // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
+  // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
+  // on every target — the fork's checkout is reset --hard'd per build, so the
+  // mirror is the only way the new TUs reach the shipped lib, and every
+  // target that compiles ggml-cpu (i.e. all of them) benefits. Idempotent.
+  patchCpuSimdKernelsImpl(cacheDir, { dryRun });
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
   }
