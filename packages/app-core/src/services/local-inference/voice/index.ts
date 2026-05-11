@@ -132,11 +132,19 @@ export {
   writeVoicePresetFile,
 } from "./voice-preset-format";
 export {
-  OPENWAKEWORD_REL_PATH,
+  loadBundledWakeWordModel,
+  OPENWAKEWORD_DEFAULT_HEAD,
+  OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
+  OPENWAKEWORD_DIR_REL_PATH,
+  OPENWAKEWORD_EMBEDDING_REL_PATH,
+  OPENWAKEWORD_MELSPEC_REL_PATH,
   OpenWakeWordDetector,
-  resolveWakeWordPath,
+  OpenWakeWordModel,
+  resolveWakeWordModel,
   type WakeWordConfig,
   type WakeWordModel,
+  type WakeWordModelPaths,
+  WakeWordUnavailableError,
 } from "./wake-word";
 
 /**
