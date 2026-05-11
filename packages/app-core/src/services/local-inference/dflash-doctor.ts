@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import path from "node:path";
 import { findCatalogModel, MODEL_CATALOG } from "./catalog";
 import {
   type DflashMetricsSnapshot,
@@ -6,6 +7,42 @@ import {
   getDflashRuntimeStatus,
 } from "./dflash-server";
 import { listInstalledModels } from "./registry";
+import type { InstalledModel } from "./types";
+
+interface DflashTargetMeta {
+  drafter?: {
+    targetCheckpointSha256?: string | null;
+    matchesTargetCheckpoint?: boolean;
+  };
+  acceptanceWindow?: [number, number] | null;
+  acceptanceRate?: number | null;
+}
+
+/**
+ * Read `<bundleRoot>/dflash/target-meta.json` for an installed target.
+ * Returns null when the bundle root is unknown, the file is missing, or
+ * it doesn't parse. The drafter↔target checkpoint-hash parity check
+ * downgrades to `warn` (not `fail`) on a missing file so legacy / custom
+ * bundles without the metadata don't trip the doctor — the *publish*
+ * gate is where a missing/mismatched hash is fatal.
+ */
+function readTargetMeta(installed: InstalledModel | undefined): DflashTargetMeta | null {
+  const root = installed?.bundleRoot;
+  if (!root) return null;
+  const metaPath = path.join(root, "dflash", "target-meta.json");
+  let raw: string;
+  try {
+    raw = fs.readFileSync(metaPath, "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw) as DflashTargetMeta;
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 export type DflashDoctorStatus = "pass" | "warn" | "fail";
 
@@ -62,7 +99,8 @@ export async function runDflashDoctor(): Promise<DflashDoctorReport> {
   });
 
   const installed = await listInstalledModels();
-  const installedIds = new Set(installed.map((model) => model.id));
+  const installedById = new Map(installed.map((model) => [model.id, model]));
+  const installedIds = new Set(installedById.keys());
   for (const targetId of DFLASH_TARGET_IDS) {
     const target = findCatalogModel(targetId);
     const dflash = target?.runtime?.dflash;
@@ -122,6 +160,42 @@ export async function runDflashDoctor(): Promise<DflashDoctorReport> {
         label: `${target.displayName} tokenizer parity`,
         detail: `Both target and drafter use tokenizerFamily=${targetFamily}`,
       });
+    }
+
+    // Drafter↔target checkpoint-hash parity. The drafter must have been
+    // distilled against the exact text checkpoint it ships with (training
+    // AGENTS.md §2). The bundle's `dflash/target-meta.json` records the
+    // drafter's `targetCheckpointSha256` and whether it matches the
+    // shipped text GGUF's sha256. A missing meta file → `warn` (legacy /
+    // custom bundle); an explicit mismatch → `fail`.
+    if (targetInstalled) {
+      const meta = readTargetMeta(installedById.get(target.id));
+      if (!meta) {
+        checks.push({
+          id: `${target.id}:checkpoint-parity`,
+          status: "warn",
+          label: `${target.displayName} drafter↔target checkpoint`,
+          detail:
+            "No dflash/target-meta.json in the installed bundle — cannot verify the drafter was distilled against this text checkpoint.",
+          fix: "Reinstall the bundle from elizaos/eliza-1-* (publish writes target-meta.json).",
+        });
+      } else if (meta.drafter?.matchesTargetCheckpoint === true) {
+        checks.push({
+          id: `${target.id}:checkpoint-parity`,
+          status: "pass",
+          label: `${target.displayName} drafter↔target checkpoint`,
+          detail: `Drafter was distilled against this text checkpoint (sha256 ${meta.drafter.targetCheckpointSha256 ?? "?"}).`,
+        });
+      } else {
+        const recorded = meta.drafter?.targetCheckpointSha256 ?? "<unrecorded>";
+        checks.push({
+          id: `${target.id}:checkpoint-parity`,
+          status: "fail",
+          label: `${target.displayName} drafter↔target checkpoint`,
+          detail: `Drafter's recorded target checkpoint (${recorded}) does not match the shipped text GGUF. Acceptance will collapse — the drafter was distilled against a different checkpoint.`,
+          fix: `Re-distill the ${dflash.drafterModelId} drafter against this text checkpoint (packages/training/scripts/distill_dflash_drafter.py) and republish the bundle.`,
+        });
+      }
     }
   }
 
