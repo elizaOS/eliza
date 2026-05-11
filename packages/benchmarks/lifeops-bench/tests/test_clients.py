@@ -170,7 +170,7 @@ async def test_cerebras_retries_once_on_429() -> None:
         client = CerebrasClient(
             api_key="sk-test", model="gpt-oss-120b", http_client=http_client
         )
-        # Patch the fixed sleep to be instant for the test
+        # Patch the backoff sleep to be instant for the test
         import eliza_lifeops_bench.clients.cerebras as cerebras_mod
 
         original_sleep = cerebras_mod.asyncio.sleep
@@ -191,12 +191,14 @@ async def test_cerebras_retries_once_on_429() -> None:
 
 
 @pytest.mark.asyncio
-async def test_cerebras_raises_provider_error_after_second_5xx() -> None:
+async def test_cerebras_retries_429_twice_then_succeeds() -> None:
+    """429 → 429 → 200 — verifies the new 5-attempt backoff policy retries
+    more than once. (Prior policy only retried once and bailed.)"""
     captured: list[dict[str, Any]] = []
     transport = _make_transport_recording_body(
         _cerebras_success_response(),
         captured_request_body=captured,
-        status_codes=[500, 500],
+        status_codes=[429, 429, 200],
     )
     async with httpx.AsyncClient(transport=transport) as http_client:
         client = CerebrasClient(
@@ -204,11 +206,40 @@ async def test_cerebras_raises_provider_error_after_second_5xx() -> None:
         )
         import eliza_lifeops_bench.clients.cerebras as cerebras_mod
 
+        async def _no_sleep(_seconds: float) -> None:
+            return None
+
         original_sleep = cerebras_mod.asyncio.sleep
+        cerebras_mod.asyncio.sleep = _no_sleep  # type: ignore[assignment]
+        try:
+            response = await client.complete(
+                ClientCall(messages=[{"role": "user", "content": "hi"}])
+            )
+        finally:
+            cerebras_mod.asyncio.sleep = original_sleep  # type: ignore[assignment]
+    assert response.finish_reason == "tool_calls"
+    assert len(captured) == 3
+
+
+@pytest.mark.asyncio
+async def test_cerebras_exhausts_after_max_attempts_on_5xx() -> None:
+    """5 consecutive 500s exhaust the retry budget (5 attempts total)."""
+    captured: list[dict[str, Any]] = []
+    transport = _make_transport_recording_body(
+        _cerebras_success_response(),
+        captured_request_body=captured,
+        status_codes=[500] * 5,
+    )
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = CerebrasClient(
+            api_key="sk-test", model="gpt-oss-120b", http_client=http_client
+        )
+        import eliza_lifeops_bench.clients.cerebras as cerebras_mod
 
         async def _no_sleep(_seconds: float) -> None:
             return None
 
+        original_sleep = cerebras_mod.asyncio.sleep
         cerebras_mod.asyncio.sleep = _no_sleep  # type: ignore[assignment]
         try:
             with pytest.raises(ProviderError) as exc_info:
@@ -217,10 +248,78 @@ async def test_cerebras_raises_provider_error_after_second_5xx() -> None:
                 )
         finally:
             cerebras_mod.asyncio.sleep = original_sleep  # type: ignore[assignment]
-
     assert exc_info.value.status == 500
     assert exc_info.value.provider == "cerebras"
-    assert len(captured) == 2  # one retry, then bail
+    assert len(captured) == 5  # max attempts
+
+
+@pytest.mark.asyncio
+async def test_cerebras_does_not_retry_400() -> None:
+    """Non-retryable 4xx surfaces immediately without retry."""
+    captured: list[dict[str, Any]] = []
+    transport = _make_transport_recording_body(
+        _cerebras_success_response(),
+        captured_request_body=captured,
+        status_codes=[400],
+    )
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = CerebrasClient(
+            api_key="sk-test", model="gpt-oss-120b", http_client=http_client
+        )
+        import eliza_lifeops_bench.clients.cerebras as cerebras_mod
+
+        async def _no_sleep(_seconds: float) -> None:
+            return None
+
+        original_sleep = cerebras_mod.asyncio.sleep
+        cerebras_mod.asyncio.sleep = _no_sleep  # type: ignore[assignment]
+        try:
+            with pytest.raises(ProviderError) as exc_info:
+                await client.complete(
+                    ClientCall(messages=[{"role": "user", "content": "hi"}])
+                )
+        finally:
+            cerebras_mod.asyncio.sleep = original_sleep  # type: ignore[assignment]
+    assert exc_info.value.status == 400
+    assert len(captured) == 1  # no retry on 4xx other than 429
+
+
+@pytest.mark.asyncio
+async def test_cerebras_honors_retry_after_header() -> None:
+    """When Retry-After: 3 is present on a 429, the backoff uses 3s."""
+    captured: list[dict[str, Any]] = []
+
+    call_index = {"i": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(json.loads(request.content.decode("utf-8")))
+        i = call_index["i"]
+        call_index["i"] += 1
+        if i == 0:
+            return httpx.Response(429, headers={"Retry-After": "3"}, text="rate limited")
+        return httpx.Response(200, json=_cerebras_success_response())
+
+    transport = httpx.MockTransport(handler)
+    sleeps: list[float] = []
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = CerebrasClient(
+            api_key="sk-test", model="gpt-oss-120b", http_client=http_client
+        )
+        import eliza_lifeops_bench.clients.cerebras as cerebras_mod
+
+        async def _capture_sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+
+        original_sleep = cerebras_mod.asyncio.sleep
+        cerebras_mod.asyncio.sleep = _capture_sleep  # type: ignore[assignment]
+        try:
+            await client.complete(
+                ClientCall(messages=[{"role": "user", "content": "hi"}])
+            )
+        finally:
+            cerebras_mod.asyncio.sleep = original_sleep  # type: ignore[assignment]
+    assert sleeps == [3.0]
+    assert len(captured) == 2
 
 
 def test_cerebras_requires_api_key() -> None:
