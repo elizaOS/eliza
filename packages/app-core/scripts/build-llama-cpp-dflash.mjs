@@ -50,6 +50,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 import {
   appendCmakeGraft,
@@ -1254,6 +1255,17 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   }
   if (backend === "vulkan") {
     patchVulkanKernelsImpl(cacheDir, { dryRun, target });
+  }
+  // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
+  // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
+  // continue_final_message are present in the fork's server.cpp (upstream
+  // features — hard-fail if the fork drifted to an older base), and add the
+  // `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime parses
+  // for rollback-safe TTS. Idempotent via the
+  // `// MILADY-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
+  // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
+  if (!target || !target.startsWith("ios-")) {
+    patchServerStructuredOutputImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
   // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in
