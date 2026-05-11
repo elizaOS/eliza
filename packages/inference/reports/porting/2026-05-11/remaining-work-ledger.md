@@ -19,6 +19,11 @@ manifest kernel names, build capability keys, fixture coverage, Makefile
 targets, Metal runtime-dispatch evidence, and platform target list aligned
 with the status below.
 
+For the narrow "what hardware does someone need to plug in" view — every
+backend × device that is source-complete but unverified, with the exact runner
+command and remaining blocker — see
+[`needs-hardware-ledger.md`](./needs-hardware-ledger.md).
+
 ## Current Runtime Truth
 
 | Area | Status | Evidence |
@@ -29,7 +34,7 @@ with the status below.
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Pixel 6a Mali standalone validation is real-device ready; Adreno and graph-dispatch evidence remain open. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, refuses emulators/software Vulkan unless explicitly allowed, and no longer trips `pipefail` on `vulkaninfo` truncation. `make -C packages/inference/verify android-vulkan-smoke` passed all six fixtures on Pixel 6a / Mali-G78 (`turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar`, `polar_qjl`; max diff <= `7.629e-06`) with evidence `verify/hardware-results/android-vulkan-smoke-20260511T062056Z.log`. |
 | Vulkan built-fork graph dispatch | **Runtime-ready on native Linux Intel-ANV hardware.** A2 built `linux-x64-vulkan` from the fork and ran `vulkan-dispatch-smoke` → 6/6 graph routes PASS on real Intel Arc/Xe (Mesa ANV); `kernel-contract.json` `runtimeStatus.vulkan` is `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` (commit e662143015) and `make -C packages/inference/verify kernel-contract` is green. | Evidence: `verify/vulkan-runtime-dispatch-evidence.json` (`runtimeReady: true`, all 5 kernels, `maxDiff` 2.7e-7…1.9e-6) + `verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`. Caveat: single Intel-ANV device class — AMD-native, NVIDIA-native, and Android Adreno/Mali Vulkan graph dispatch still needed. `vulkan-kernels.mjs` stages SPIR-V blobs, patches `ggml-vulkan.cpp` for `GGML_OP_ATTN_SCORE_{QJL,TBQ,POLAR}` + `supports_op`; `vulkan_dispatch_smoke.cpp` drives all six numeric routes. |
-| Fused attention (QJL-K + TBQ-V / Polar-V) | Foundation landed; no backend has verified a fused dispatch. C reference `eliza_fused_attn_qjl_tbq3` is bit-exact to the fork's `GGML_OP_FUSED_ATTN_QJL_TBQ` CPU op; round-tripped by `make -C packages/inference/verify reference-test`. Registered in `kernel-contract.json`'s `fusedAttn` section with capability key `fused_attn` — `needs-runtime-smoke` for vulkan/metal (no fused compute shader + `cases`-array harness path yet; `make vulkan-verify-fused`/`metal-verify-fused` fail by design), `needs-hardware` for cuda (`cuda_verify` parses `fused_attn_qjl_tbq.json` but needs an NVIDIA host). NOT yet a `requiredRuntimeCapabilityKey`/`manifestKernelName` — promote only once a backend reports a runtime-ready fused smoke. | `verify/fixtures/{fused_attn_qjl_tbq.json,fused_attn_qjl_polar.json,polar_preht.json}`; `reports/porting/2026-05-11/fused-attn-op-contract.md`; `reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md`. |
+| Fused attention (QJL-K + TBQ-V / Polar-V) | Vulkan fused compute shaders landed and standalone-verified on hardware; Metal kernel still pending; CUDA fixture-parity needs an NVIDIA host. C reference `eliza_fused_attn_qjl_tbq3` / `eliza_fused_attn_qjl_polar` are bit-exact to the fork's `GGML_OP_FUSED_ATTN_QJL_TBQ` CPU op; round-tripped by `make -C packages/inference/verify reference-test`. `vulkan/fused_attn_qjl_tbq.comp` + `vulkan/fused_attn_qjl_polar.comp` (one-pass online softmax, never materializes the score vector, driver-portable 32-thread shared-memory reduction) pass `make -C packages/inference/verify vulkan-verify-fused` 1920/1920 outputs on Intel ARL Mesa ANV (4 cases: n_kv 64/512/256/128, GQA 1/2/4; max diff 6.3e-7) and built-fork graph dispatch `GGML_OP_FUSED_ATTN_QJL_TBQ` passes via `vulkan-dispatch-smoke` (see `linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json`). Metal: `make metal-verify-fused` fails by design — no `metal/fused_attn*.metal` kernel + `cases`-array path in `metal_verify` yet (`needs-runtime-smoke`; design in `metal-fused-attn-and-polar-preht-design.md`). CUDA: `cuda_verify` parses `fused_attn_qjl_tbq.json` but `needs-hardware`. Registered in `kernel-contract.json`'s `fusedAttn` section with capability key `fused_attn`; NOT yet a `requiredRuntimeCapabilityKey`/`manifestKernelName`. | `verify/fixtures/{fused_attn_qjl_tbq.json,fused_attn_qjl_polar.json,polar_preht.json}`; `reports/porting/2026-05-11/fused-attn-op-contract.md`; `reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md`. |
 | CPU SIMD paths | AVX-VNNI int8-QJL path (5.25× on this box), Polar pre-Hadamard SIMD, and ARM dotprod variants landed in `qjl-cpu`/`polarquant-cpu`. | `verify/bench_results/cpu_avxvnni_2026-05-11.json`; baseline `verify/hardware-results/linux-thismachine-cpu-baseline-2026-05-11.json`; `reports/porting/2026-05-11/this-machine-test-capability.md`. |
 | Platform target matrix | `kernel-contract.json` now tracks 23 build targets — added `linux-aarch64-{cpu,cuda}`, `windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` with cmake plumbing + CUDA arch pins (incl. Blackwell `sm_120`, GH200 `sm_90a`). All new targets `needs-hardware`. A `27b-1m` (1M-context, CUDA-only-backend) tier is now in the catalog/schema/Python manifest/platform-plan; `defaultEligible` blocked on real GH200 verify. | `make -C packages/inference/verify kernel-contract` (`targets=23`). |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
@@ -62,11 +67,12 @@ with the status below.
 2. **Vulkan native graph-dispatch evidence — partially DONE (Intel-ANV)**
 
    Native Linux Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe
-   (Mesa ANV): `vulkan-dispatch-smoke` 6/6 PASS, `kernel-contract.json`
-   `runtimeStatus.vulkan` = `runtime-ready` for the 5 score kernels. Remaining:
-   native AMD and NVIDIA desktop Vulkan + Android Adreno/Mali. Fused-attention
-   on Vulkan/Metal still needs a fused compute kernel + `cases`-array harness
-   (no backend has verified a fused dispatch).
+   (Mesa ANV): `vulkan-dispatch-smoke` 7/7 PASS (5 score kernels + fused-attn),
+   `kernel-contract.json` `runtimeStatus.vulkan` = `runtime-ready` for the 5
+   score kernels. Remaining: native AMD and NVIDIA desktop Vulkan + Android
+   Adreno/Mali. Vulkan fused-attention has a fused compute kernel + `cases`-array
+   harness (`vulkan-verify-fused` 1920/1920 on Intel ARL); the Metal fused kernel
+   + `cases`-array path in `metal_verify` is still pending.
 
    Acceptance:
    - Native `linux-x64-vulkan` build contains the SPIR-V blobs and graph
@@ -181,7 +187,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required (`windows-x64-{cpu,cuda,vulkan}` targets). |
 | Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required (`windows-arm64-{cpu,vulkan}` targets). |
 | Intel/AMD Mac (x64) | Build `darwin-x64-metal` and run metal-verify + built-fork dispatch smoke on Intel/AMD Mac hardware. |
-| Fused attention (all backends) | Port the fused QJL-K + TBQ-V / Polar-V op to a Metal/Vulkan compute kernel (none exists yet) + a `cases`-array parser in `metal_verify`/`vulkan_verify`, then run `metal-verify-fused`/`vulkan-verify-fused` on hardware. CUDA fixture parity harness exists; needs an NVIDIA host. |
+| Fused attention (Metal + CUDA) | Vulkan fused compute kernel + `cases`-array parser in `vulkan_verify` done and hardware-verified (`vulkan-verify-fused` 1920/1920 on Intel ARL Mesa ANV; built-fork `GGML_OP_FUSED_ATTN_QJL_TBQ` dispatch verified). Remaining: a Metal `fused_attn*.metal` kernel + `cases`-array path in `metal_verify` (design in `metal-fused-attn-and-polar-preht-design.md`), then `metal-verify-fused` on a Mac; and a CUDA host for the existing `cuda_verify` fused fixture parity. |
 
 ## Training And Publishing Remaining Work
 

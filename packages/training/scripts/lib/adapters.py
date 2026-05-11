@@ -1,21 +1,26 @@
 """Per-source-format adapters for the normalizer.
 
-Every adapter yields canonical `ElizaRecord` instances (flat eliza shape;
-see `SCHEMA.md`). No extra top-level fields — adapter-specific extras ride
-under `metadata`.
+Every adapter yields the DEPRECATED flat `ElizaRecord` shape (see
+`scripts/lib/eliza_record.py`). That intermediate is converged to the rendered
+ChatML training example by `scripts/format_for_training.py`. It is NOT the
+canonical Eliza-1 corpus record — that is `eliza_native_v1`; see
+`packages/training/docs/dataset/CANONICAL_RECORD.md`. No new adapter should be
+added here; new corpus data should be authored as `eliza_native_v1` rows.
 
-elizaOS action vocabulary (used in `availableActions`):
+Current canonical action vocabulary (used in `availableActions`; mirror
+`packages/core/src/generated/action-docs.ts`):
 
-    RESPOND, IGNORE, STOP            — routing decisions (should_respond)
-    REPLY                            — emit a reply
-    SHELL_COMMAND                    — execute a shell command
-    TASK_CALL                        — invoke a tool / multi-step task
-    MUTE_ROOM, UNMUTE_ROOM,
-    FOLLOW_ROOM, UNFOLLOW_ROOM       — room-state mutations
+    RESPOND, IGNORE, STOP   — shouldRespond decision values (not actions)
+    REPLY                   — emit a reply (similes RESPOND/RESPONSE/GREET)
+    SHELL                   — execute a shell command
+    TASKS                   — orchestrator action (spawn / send / stop / history / share / call)
+    USE_SKILL / SKILL       — invoke an enabled skill / skill-catalog ops
+    APP, GENERATE_MEDIA, CHOOSE_OPTION, ...  — plus per-tool / per-skill custom names
 
-The supervised target is `expectedResponse`. Native v5 generation writes JSON
-documents. Legacy TOON output is only for compatibility rebuilds that pass a
-legacy encoder from `normalize.py --expected-response-format legacy-toon`.
+The supervised target is `expectedResponse` (a JSON planner document for
+structured tasks, plain text for replies). Legacy TOON output is only for
+compatibility rebuilds that pass a legacy encoder from
+`normalize.py --expected-response-format legacy-toon`.
 """
 
 from __future__ import annotations
@@ -31,8 +36,8 @@ from .eliza_record import (
     ACTION_IGNORE,
     ACTION_REPLY,
     ACTION_RESPOND,
-    ACTION_SHELL_COMMAND,
-    ACTION_TASK_CALL,
+    ACTION_SHELL,
+    ACTION_TASKS,
     DEFAULT_THOUGHT_LEAKS,
     ElizaRecord,
     REPLY_ACTIONS,
@@ -721,7 +726,7 @@ def _planner_tool_envelope(
     tool_calls: list[dict[str, Any]],
     text: str = "",
     providers: list[str] | None = None,
-    action_name: str = "TASK_CALL",
+    action_name: str = ACTION_TASKS,
 ) -> dict[str, Any]:
     """Planner envelope wrapping one or more tool calls.
 
@@ -778,7 +783,7 @@ def _planner_shell_envelope(
     text: str = "",
     providers: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Planner envelope for a SHELL_COMMAND action.
+    """Planner envelope for a SHELL action.
 
     The shell-action params surface as `{command, [cwd], [explanation]}`.
     """
@@ -791,7 +796,7 @@ def _planner_shell_envelope(
         thought = ""
     return _planner_envelope(
         thought=thought,
-        actions=[{"name": "SHELL_COMMAND", "params": params}],
+        actions=[{"name": ACTION_SHELL, "params": params}],
         providers=providers or [],
         text=text or "",
         simple=False,
@@ -865,12 +870,12 @@ def _build_messages_record(
         thought = (extra_thought.strip() + ("\n\n" + thought if thought else "")).strip()
 
     if calls:
-        # Tool / MCP call → planner envelope with TASK_CALL action(s).
+        # Tool / MCP call → planner envelope with TASKS action(s).
         # PIPELINE_SCHEMAS.md §1+§5 — every tool_call record is wrapped in the
         # planner 5-key document so the supervised target matches the runtime
         # planner stage exactly.
         task_type = "mcp_tool_call" if default_task_type == "mcp_tool_call" else "tool_call"
-        actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
+        actions = [ACTION_TASKS, ACTION_REPLY, ACTION_IGNORE]
         target = encoder.encode(_planner_tool_envelope(
             thought=thought, tool_calls=calls, text=body, providers=[],
         ))
@@ -1276,7 +1281,7 @@ def functions_53k(records, *, slug, license, split, encoder):
             target = encoder.encode(_planner_tool_envelope(
                 thought="", tool_calls=calls, providers=[],
             ))
-            actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
+            actions = [ACTION_TASKS, ACTION_REPLY, ACTION_IGNORE]
             tt = "tool_call"
         else:
             target = _cot_to_expected(encoder, str(completion))
@@ -1355,7 +1360,7 @@ def toolhop(records, *, slug, license, split, encoder):
             currentMessage={"role": "user", "speaker": "user", "content": question, "channel": "dm"},
             memoryEntries=[],
             expectedResponse=_cot_to_expected(encoder, answer),
-            availableActions=[ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE],
+            availableActions=[ACTION_TASKS, ACTION_REPLY, ACTION_IGNORE],
             task_type="reasoning_cot",
             source_dataset=slug,
             license=license,
@@ -1969,7 +1974,7 @@ def mcp_messages(records, *, slug, license, split, encoder):
                 thought=reason,
                 tool_calls=[call], providers=[],
             ))
-            actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
+            actions = [ACTION_TASKS, ACTION_REPLY, ACTION_IGNORE]
             tt = "tool_call"
             md: dict[str, Any] = {
                 "original_id": str(r.get("id") or ""),
@@ -1999,7 +2004,7 @@ def mcp_messages(records, *, slug, license, split, encoder):
             target = encoder.encode(_planner_tool_envelope(
                 thought="", tool_calls=calls, providers=[],
             ))
-            actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
+            actions = [ACTION_TASKS, ACTION_REPLY, ACTION_IGNORE]
             tt = "tool_call"
             md = {
                 "original_id": str(r.get("id") or ""),
@@ -2080,7 +2085,7 @@ def mcp_routing(records, *, slug, license, split, encoder):
             currentMessage={"role": "user", "speaker": "user", "content": query, "channel": "dm"},
             memoryEntries=[],
             expectedResponse=expected_response,
-            availableActions=[ACTION_TASK_CALL, ACTION_IGNORE],
+            availableActions=[ACTION_TASKS, ACTION_IGNORE],
             task_type="mcp_routing",
             source_dataset=slug,
             license=license,
@@ -2148,7 +2153,7 @@ def mcp_flow(records, *, slug, license, split, encoder):
                 currentMessage={"role": "user", "speaker": "user", "content": user_q, "channel": "dm"},
                 memoryEntries=[],
                 expectedResponse=expected_response,
-                availableActions=[ACTION_TASK_CALL, ACTION_IGNORE],
+                availableActions=[ACTION_TASKS, ACTION_IGNORE],
                 task_type="mcp_tool_call",
                 source_dataset=slug,
                 license=license,
@@ -2178,7 +2183,7 @@ def mcp_flow(records, *, slug, license, split, encoder):
                 currentMessage={"role": "user", "speaker": "user", "content": user_q, "channel": "dm"},
                 memoryEntries=[],
                 expectedResponse=expected_response,
-                availableActions=[ACTION_TASK_CALL, ACTION_IGNORE],
+                availableActions=[ACTION_TASKS, ACTION_IGNORE],
                 task_type="mcp_tool_call",
                 source_dataset=slug,
                 license=license,
@@ -2195,10 +2200,10 @@ def mcp_flow(records, *, slug, license, split, encoder):
 
 
 def _shell_target(command: str, explanation: str = "", cwd: str = "") -> dict[str, Any]:
-    """Build a SHELL_COMMAND planner-envelope target.
+    """Build a SHELL planner-envelope target.
 
     Returns the canonical 5-key planner envelope (PIPELINE_SCHEMAS.md §1+§7)
-    with `actions[].name == SHELL_COMMAND` carrying the shell parameters.
+    with `actions[].name == SHELL` carrying the shell parameters.
     The `explanation` is folded into `thought:` when present; otherwise we
     use the generic shell default.
     """
@@ -2287,7 +2292,7 @@ def _terminal_assistant_extract(content: str) -> tuple[str, str]:
 
 
 def terminal_corpus(records, *, slug, license, split, encoder):
-    """laion/nemotron-terminal-corpus-unified — emit SHELL_COMMAND records."""
+    """laion/nemotron-terminal-corpus-unified — emit SHELL records."""
     for r in records:
         # The corpus has a few shapes; we try common ones.
         if isinstance(r.get("messages"), list) or isinstance(r.get("conversations"), list):
@@ -2305,7 +2310,7 @@ def terminal_corpus(records, *, slug, license, split, encoder):
                 memoryEntries=memory,
                 currentMessage=current,
                 expectedResponse=expected_response,
-                availableActions=[ACTION_SHELL_COMMAND, ACTION_REPLY, ACTION_IGNORE],
+                availableActions=[ACTION_SHELL, ACTION_REPLY, ACTION_IGNORE],
                 task_type="shell_command",
                 source_dataset=slug,
                 license=license,
@@ -2326,7 +2331,7 @@ def terminal_corpus(records, *, slug, license, split, encoder):
             memoryEntries=[],
             currentMessage={"role": "user", "speaker": "user", "content": instruction, "channel": "dm"},
             expectedResponse=expected_response,
-            availableActions=[ACTION_SHELL_COMMAND, ACTION_REPLY, ACTION_IGNORE],
+            availableActions=[ACTION_SHELL, ACTION_REPLY, ACTION_IGNORE],
             task_type="shell_command",
             source_dataset=slug,
             license=license,
@@ -2393,7 +2398,7 @@ def agent_trove(records, *, slug, license, split, encoder):
                 memoryEntries=memory,
                 currentMessage=current,
                 expectedResponse=expected_response,
-                availableActions=[ACTION_SHELL_COMMAND, ACTION_REPLY, ACTION_IGNORE],
+                availableActions=[ACTION_SHELL, ACTION_REPLY, ACTION_IGNORE],
                 task_type="shell_command",
                 source_dataset=slug,
                 license=license,
@@ -2462,7 +2467,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
             target = encoder.encode(_planner_tool_envelope(
                 thought=thought, tool_calls=calls, text=body, providers=[],
             ))
-            actions = [ACTION_TASK_CALL, ACTION_REPLY, ACTION_IGNORE]
+            actions = [ACTION_TASKS, ACTION_REPLY, ACTION_IGNORE]
             tt = "tool_call"
         else:
             target = _cot_to_expected(encoder, text, extra_thought=extra_thought)
@@ -2510,7 +2515,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
 # the existing yaml-thought parser. They are mapped here so the runtime
 # can start writing them without a follow-up adapter patch.
 _NUBILIO_TASK_MAP: dict[str, tuple[str, list[str]]] = {
-    "action_planner_trajectories.jsonl":     ("agent_trace",          [ACTION_REPLY, ACTION_TASK_CALL, ACTION_IGNORE]),
+    "action_planner_trajectories.jsonl":     ("agent_trace",          [ACTION_REPLY, ACTION_TASKS, ACTION_IGNORE]),
     "response_trajectories.jsonl":            ("reply",                REPLY_ACTIONS.copy()),
     "should_respond_trajectories.jsonl":      ("should_respond",       ROUTING_ACTIONS.copy()),
     "context_routing_trajectories.jsonl":     ("context_routing",      ROUTING_ACTIONS.copy()),
@@ -2749,7 +2754,7 @@ def nubilio_trajectories(records, *, slug, license, split, encoder):
 
         source_file = r.get("_source_filename", "")
         task_type, actions = _NUBILIO_TASK_MAP.get(
-            source_file, ("agent_trace", [ACTION_REPLY, ACTION_TASK_CALL, ACTION_IGNORE]),
+            source_file, ("agent_trace", [ACTION_REPLY, ACTION_TASKS, ACTION_IGNORE]),
         )
 
         dedup = stable_id(sys_prompt[:512], current["content"][:512], assistant_text[:512])

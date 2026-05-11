@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -249,20 +249,36 @@ metal-verify-multiblock: metal_verify reference-test
 	  ./metal_verify ../metal/qjl.metal kernel_attn_score_qjl1_256_multi fixtures/qjl.json --multi $$n || exit 1; \
 	done
 
-# Fused-attention (QJL-K + TBQ-V / Polar-V) Metal gate. Same status as the
-# Vulkan target above: the C reference + fixtures are landed and self-tested,
-# but no fused metallib kernel (metal/fused_attn*.metal) and no cases-array
-# parser in metal_verify yet, so this target fails on purpose — the fused
-# capability is needs-runtime-smoke for Metal until the kernel + harness land.
+# Fused-attention (QJL-K + TBQ-V / Polar-V) + Polar pre-Hadamard-query Metal
+# gate. metal/fused_attn_qjl_tbq.metal and metal/fused_attn_qjl_polar.metal port
+# GGML_OP_FUSED_ATTN_QJL_TBQ + the Polar V-mix variant (one-pass online softmax,
+# per-token QJL score via simd_sum, threadgroup-scratch TBQ Hadamard-32 / Polar
+# Hadamard-128, score vector never materialized). metal/polar_preht.metal adds
+# kernel_attn_score_q4_polar_preht_f32(_multi) — Polar dot vs a pre-Hadamarded
+# query. metal_verify's run_fused_attn() / run_polar_preht() parse the cases-array
+# and the polar_preht fixture; both diff bit-for-bit against the C references
+# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar / eliza_polar_mul_mv).
+# 1e-3 absolute tolerance.
+#
+# AUTHORED — hardware-verify pending: the kernels are byte-faithful mirrors of
+# the hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
+# Intel ARL Mesa ANV). They require an Apple-Silicon Mac to run this target; until
+# then the fused_attn Metal capability bit stays not-runtime-ready (fused_attn is
+# an optimization on top of the five required kernels — AGENTS.md §3 — not a
+# required kernel).
 # Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
 # Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
-metal-verify-fused: reference-test
-	@echo "[kernels/verify] fused-attn fixtures sanity-checked via gen_fixture --self-test:"
-	@echo "  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_polar.json fixtures/polar_preht.json"
-	@echo "[metal-verify-fused] No Metal fused-attention kernel (metal/fused_attn*.metal) or"
-	@echo "  metal_verify cases-array parser yet — fused capability is needs-runtime-smoke for Metal."
-	@echo "  See reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md for the threadgroup plan."
-	@false
+metal-verify-fused: metal_verify reference-test
+	@echo "[kernels/verify] metal fused-attn QJL-K + TBQ3-V..."
+	./metal_verify ../metal/fused_attn_qjl_tbq.metal   kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] metal fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
+	./metal_verify ../metal/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json
+	@echo "[kernels/verify] metal Polar pre-Hadamard query score (use_qjl 0/1)..."
+	./metal_verify ../metal/polar_preht.metal kernel_attn_score_q4_polar_preht_f32 fixtures/polar_preht.json
+	@for n in 2 3 4 8; do \
+	  echo "[kernels/verify] metal Polar pre-Hadamard query score multi $$n..." && \
+	  ./metal_verify ../metal/polar_preht.metal kernel_attn_score_q4_polar_preht_f32_multi fixtures/polar_preht.json --multi $$n || exit 1; \
+	done
 
 # Metal performance harness (macOS only). Sibling of metal_verify; measures
 # end-to-end GPU latency, CPU wait, and bandwidth utilisation per kernel at
@@ -468,6 +484,25 @@ else
 	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
 		echo "[cuda-verify] fused QJL-K + TBQ-V attention ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
 	else echo "[cuda-verify] fused_attn_qjl_tbq.json not present — fused-attention-reference agent owns it; skipping" ; fi
+endif
+
+# Focused fused-attention CUDA gate. cuda_verify links a fixture-parity harness
+# with a fused_attn_qjl_tbq3_kernel (warp reductions, online softmax, TCQ
+# codebook in __constant__, page tiling) + the DP4A int8-QJL path; the
+# production shape lives in cuda/fused-attn-qjl-tbq.cu (AUTHORED — hardware-verify
+# pending; mirror it into the fork's ggml-cuda/ via the kernel-patches hook and
+# build with -DGGML_CUDA_FUSED_ATTN_QJL=ON). Run on an NVIDIA host via
+# `verify/cuda_runner.sh` — no NVIDIA hardware on the authoring machine.
+# fused_attn stays out of requiredRuntimeCapabilityKeys (AGENTS.md §3).
+cuda-verify-fused:
+ifeq ($(NVCC),)
+	@echo "CUDA toolchain not found — run verify/cuda_runner.sh on an NVIDIA host."
+	@false
+else
+	$(MAKE) cuda
+	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
+		echo "[cuda-verify-fused] fused QJL-K + TBQ-V attention (+ DP4A QJL cross-check) ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
+	else echo "[cuda-verify-fused] fused_attn_qjl_tbq.json missing — run reference-test first" ; false ; fi
 endif
 
 # Hardware runners. These intentionally fail without matching physical

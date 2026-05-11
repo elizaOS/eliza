@@ -20,6 +20,7 @@ import type { ScenarioReport } from "./types.ts";
 
 type ExecutorModule = typeof import("./executor.ts");
 type ReporterModule = typeof import("./reporter.ts");
+type NativeExportModule = typeof import("./native-export.ts");
 type LiveProviderModule = {
   availableProviderNames: () => readonly string[];
 };
@@ -37,6 +38,7 @@ interface ParsedArgs {
   reportPath?: string;
   reportDir?: string;
   runDir?: string;
+  exportNativePath?: string;
   runId?: string;
   filter?: Set<string>;
   fileGlobs?: string[];
@@ -45,7 +47,7 @@ interface ParsedArgs {
 function usageAndExit(message: string, code: number): never {
   process.stderr.write(`[eliza-scenarios] ${message}\n`);
   process.stderr.write(
-    "Usage:\n  eliza-scenarios run  <dir> [--run-dir <dir>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [fileGlob ...]\n",
+    "Usage:\n  eliza-scenarios run  <dir> [--run-dir <dir>] [--export-native <jsonlPath>] [--report <jsonPath>] [--report-dir <dir>] [--runId <id>] [--scenario id1,id2] [fileGlob ...]\n  eliza-scenarios list <dir> [fileGlob ...]\n",
   );
   process.exit(code);
 }
@@ -65,6 +67,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   let reportPath: string | undefined;
   let reportDir: string | undefined;
   let runDir: string | undefined;
+  let exportNativePath: string | undefined;
   let runId: string | undefined;
   let filter: Set<string> | undefined;
   const fileGlobs: string[] = [];
@@ -87,6 +90,11 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
       const next = argv[i + 1];
       if (!next) usageAndExit("--run-dir missing value", 2);
       runDir = next;
+      i += 1;
+    } else if (arg === "--export-native") {
+      const next = argv[i + 1];
+      if (!next) usageAndExit("--export-native missing value", 2);
+      exportNativePath = next;
       i += 1;
     } else if (arg === "--runId") {
       const next = argv[i + 1];
@@ -114,6 +122,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
     reportPath: reportPath ? path.resolve(reportPath) : undefined,
     reportDir: reportDir ? path.resolve(reportDir) : undefined,
     runDir: runDir ? path.resolve(runDir) : undefined,
+    exportNativePath: exportNativePath ? path.resolve(exportNativePath) : undefined,
     runId,
     filter,
     fileGlobs,
@@ -143,6 +152,7 @@ async function main(): Promise<number> {
     { runScenario },
     { buildAggregate, printStdoutSummary, writeReport, writeReportBundle },
     { createScenarioRuntime },
+    { exportScenarioNativeJsonl },
     // Keep out-of-root imports behind widened specifiers so TypeScript does not
     // pull those modules into this package's rootDir validation graph.
   ]: [
@@ -150,11 +160,13 @@ async function main(): Promise<number> {
     ExecutorModule,
     ReporterModule,
     ScenarioRuntimeFactoryModule,
+    NativeExportModule,
   ] = await Promise.all([
     import(liveProviderSpecifier),
     import("./executor.ts"),
     import("./reporter.ts"),
     import(runtimeFactorySpecifier),
+    import("./native-export.ts"),
   ]);
 
   if (availableProviderNames().length === 0) {
@@ -196,14 +208,26 @@ async function main(): Promise<number> {
   // trajectories under <runDir>/trajectories/ and the aggregator post-step
   // can produce per-scenario JSONL + report.md + steps.csv. Also exports
   // MILADY_LIFEOPS_RUN_ID so the recorder picks it up.
+  //
+  // `--export-native` needs those trajectory files too; if it was given
+  // without an explicit `--run-dir`, default one next to the export target so
+  // the recorder still captures the per-turn traces we then convert.
   const effectiveRunId = parsed.runId ?? crypto.randomUUID();
-  if (parsed.runDir) {
-    const trajectoryDir = path.join(parsed.runDir, "trajectories");
+  const effectiveRunDir =
+    parsed.runDir ??
+    (parsed.exportNativePath
+      ? path.join(
+          path.dirname(parsed.exportNativePath),
+          `scenario-run-${effectiveRunId}`,
+        )
+      : undefined);
+  if (effectiveRunDir) {
+    const trajectoryDir = path.join(effectiveRunDir, "trajectories");
     process.env.MILADY_TRAJECTORY_DIR = trajectoryDir;
     process.env.MILADY_LIFEOPS_RUN_ID = effectiveRunId;
-    process.env.MILADY_LIFEOPS_RUN_DIR = parsed.runDir;
+    process.env.MILADY_LIFEOPS_RUN_DIR = effectiveRunDir;
     logger.info(
-      `[eliza-scenarios] run-dir: ${parsed.runDir} (trajectories → ${trajectoryDir}, runId=${effectiveRunId})`,
+      `[eliza-scenarios] run-dir: ${effectiveRunDir} (trajectories → ${trajectoryDir}, runId=${effectiveRunId})`,
     );
   }
 
@@ -251,10 +275,17 @@ async function main(): Promise<number> {
   if (parsed.reportDir) {
     writeReportBundle(aggregate, parsed.reportDir);
   }
-  if (parsed.runDir) {
+  if (effectiveRunDir) {
     // Drop the matrix.json next to trajectories/ so the aggregator can find it.
-    const matrixPath = path.join(parsed.runDir, "matrix.json");
+    const matrixPath = path.join(effectiveRunDir, "matrix.json");
     writeReport(aggregate, matrixPath);
+  }
+  if (parsed.exportNativePath && effectiveRunDir) {
+    // Convert the recorded per-turn trajectory JSON under <runDir>/trajectories/
+    // into canonical eliza_native_v1 model-boundary rows for the eliza-1
+    // training corpus (see packages/training/docs/dataset/CANONICAL_RECORD.md).
+    // The training prep script runs the mandatory privacy filter on every row.
+    exportScenarioNativeJsonl(effectiveRunDir, parsed.exportNativePath);
   }
   printStdoutSummary(aggregate);
 

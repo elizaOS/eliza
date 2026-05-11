@@ -37,6 +37,7 @@ import {
   logDflashDevDisabledWarning,
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
+import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import {
   DEFAULT_SESSION_KEY,
@@ -55,6 +56,10 @@ import {
 } from "./voice/engine-bridge";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import { dflashTextRunner } from "./voice/pipeline-impls";
+import {
+  createEvictableModelRole,
+  SharedResourceRegistry,
+} from "./voice/shared-resources";
 import type {
   RejectedTokenRange,
   TextToken,
@@ -68,6 +73,43 @@ import type {
  * rollback"). Overridable per call via `runVoiceTurn({ maxDraftTokens })`.
  */
 const DEFAULT_VOICE_MAX_DRAFT_TOKENS = 8;
+
+/**
+ * Idle-unload timeout (J3). After this long with no `useModel` activity
+ * (text generation, embeddings, voice turns) the engine unloads the active
+ * text model so its weights are reclaimed when the agent is quiet; the next
+ * `useModel` lazy-reloads via the runtime handler. `0` disables it. Default
+ * 15 minutes. Override via `ELIZA_LOCAL_IDLE_UNLOAD_MS`.
+ */
+const DEFAULT_IDLE_UNLOAD_MS = 15 * 60 * 1000;
+/** How often the idle-unload timer checks the activity clock. */
+const IDLE_UNLOAD_CHECK_INTERVAL_MS = 60 * 1000;
+
+export function resolveIdleUnloadMs(): number {
+  const raw = process.env.ELIZA_LOCAL_IDLE_UNLOAD_MS?.trim();
+  if (raw === undefined) return DEFAULT_IDLE_UNLOAD_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_IDLE_UNLOAD_MS;
+  return parsed;
+}
+
+/**
+ * Cap on how many speculative voice responses the turn-controller (W9) may
+ * have in flight at once — derived from the running server's slot count
+ * (each speculative response needs a slot's KV) but never more than half of
+ * them (the other half stays available for confirmed turns + tool calls).
+ * Floors at 1. Override via `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES`.
+ */
+export function resolveMaxConcurrentSpeculativeResponses(
+  parallelSlots: number,
+): number {
+  const raw = process.env.ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES?.trim();
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 1) return parsed;
+  }
+  return Math.max(1, Math.floor(parallelSlots / 2));
+}
 
 // Re-exported from backend.ts so consumers can keep importing GenerateArgs
 // from engine.ts without churn. backend.ts owns the canonical shape,
@@ -605,6 +647,201 @@ export class LocalInferenceEngine {
    */
   private voiceBridge: EngineVoiceBridge | null = null;
 
+  /**
+   * The general onload/offload coordinator (W10 / J5). One registry per
+   * engine: text + voice both ref-count their shared resources against it,
+   * and every resident model role registers an `EvictableModelRole` here so
+   * the `MemoryMonitor` can walk them ascending-priority under RAM pressure.
+   * The voice bridge gets this passed in (see `startVoice`) so it doesn't
+   * spin up a private one.
+   */
+  private readonly sharedResources = new SharedResourceRegistry({
+    logger: {
+      debug: (m) => console.debug(m),
+      warn: (m) => console.warn(m),
+      info: (m) => console.info(m),
+    },
+  });
+
+  /**
+   * RAM-pressure monitor (J2). Started when a model loads, stopped when the
+   * engine unloads. Evicts the lowest-priority resident role when free RAM
+   * crosses the low-water line.
+   */
+  private readonly memoryMonitor = new MemoryMonitor({
+    registry: this.sharedResources,
+    logger: {
+      info: (m) => console.info(m),
+      warn: (m) => console.warn(m),
+      debug: (m) => console.debug(m),
+    },
+  });
+
+  /** Wall-clock ms of the last `useModel`-style activity. */
+  private lastActivityMs = Date.now();
+  /** Idle-unload timer (J3); null when disabled or no model loaded. */
+  private idleUnloadTimer: NodeJS.Timeout | null = null;
+  /** Evictable text-target role id registered on `sharedResources`, or null. */
+  private textTargetRoleId: string | null = null;
+  /** Evictable drafter role id registered on `sharedResources`, or null. */
+  private drafterRoleId: string | null = null;
+
+  /**
+   * The general onload/offload coordinator for this engine. Exposed so the
+   * voice lifecycle, the embedding route, and any other resident model role
+   * can register an `EvictableModelRole` against the same registry the
+   * `MemoryMonitor` walks under pressure.
+   */
+  getSharedResources(): SharedResourceRegistry {
+    return this.sharedResources;
+  }
+
+  /** The RAM-pressure monitor. Exposed for diagnostics / tests. */
+  getMemoryMonitor(): MemoryMonitor {
+    return this.memoryMonitor;
+  }
+
+  /** Record `useModel`-style activity so the idle-unload timer stays armed. */
+  private markActivity(): void {
+    this.lastActivityMs = Date.now();
+  }
+
+  /**
+   * Once a model is resident: register the text-target (+ drafter when the
+   * dflash server is running with one) as evictable roles, start the memory
+   * monitor, and arm the idle-unload timer. Idempotent.
+   */
+  private startBackgroundManagement(): void {
+    this.markActivity();
+    this.registerResidentRoles();
+    if (!this.memoryMonitor.isRunning()) this.memoryMonitor.start();
+    this.armIdleUnloadTimer();
+  }
+
+  /** Stop the memory monitor + idle timer and deregister evictable roles. */
+  private async stopBackgroundManagement(): Promise<void> {
+    if (this.idleUnloadTimer) {
+      clearInterval(this.idleUnloadTimer);
+      this.idleUnloadTimer = null;
+    }
+    this.memoryMonitor.stop();
+    await this.deregisterResidentRoles();
+  }
+
+  private registerResidentRoles(): void {
+    if (this.textTargetRoleId === null) {
+      const role = createEvictableModelRole({
+        role: "text-target",
+        isResident: () => this.hasLoadedModel(),
+        evict: async () => {
+          // Last thing to go. Evicting the text target = unload it; the
+          // next `useModel` lazy-reloads via the runtime handler.
+          await this.unload();
+        },
+      });
+      this.sharedResources.acquire(role);
+      this.textTargetRoleId = role.id;
+    }
+    if (this.drafterRoleId === null) {
+      const role = createEvictableModelRole({
+        role: "drafter",
+        isResident: () =>
+          this.activeBackendId() === "llama-server" &&
+          dflashLlamaServer.drafterEnabled(),
+        evict: async () => {
+          await dflashLlamaServer.restartWithoutDrafter();
+        },
+      });
+      this.sharedResources.acquire(role);
+      this.drafterRoleId = role.id;
+    }
+  }
+
+  private async deregisterResidentRoles(): Promise<void> {
+    const ids = [this.textTargetRoleId, this.drafterRoleId].filter(
+      (id): id is string => id !== null,
+    );
+    this.textTargetRoleId = null;
+    this.drafterRoleId = null;
+    for (const id of ids) {
+      try {
+        await this.sharedResources.release(id);
+      } catch {
+        // Already released (e.g. unload→release ran twice) — fine.
+      }
+    }
+  }
+
+  private armIdleUnloadTimer(): void {
+    if (this.idleUnloadTimer) return;
+    const idleMs = resolveIdleUnloadMs();
+    if (idleMs <= 0) return;
+    const timer = setInterval(() => {
+      if (!this.hasLoadedModel()) return;
+      if (Date.now() - this.lastActivityMs < idleMs) return;
+      console.info(
+        `[local-inference] No useModel activity for >${Math.round(idleMs / 1000)}s — unloading the active text model to reclaim RAM. It will reload on the next request.`,
+      );
+      void this.unload().catch((err) => {
+        console.warn(
+          `[local-inference] idle-unload failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    }, IDLE_UNLOAD_CHECK_INTERVAL_MS);
+    timer.unref();
+    this.idleUnloadTimer = timer;
+  }
+
+  /**
+   * Cap on concurrent speculative voice responses (W9 / J4): derived from
+   * the running server's slot count (each speculative response needs a KV
+   * slot), never more than half of them, floored at 1. The voice
+   * turn-controller reads this before kicking a speculative response.
+   */
+  maxConcurrentSpeculativeResponses(): number {
+    return resolveMaxConcurrentSpeculativeResponses(this.activeParallel());
+  }
+
+  /**
+   * Auto-tune the running server's `--parallel` (J4): when the conversation
+   * high-water mark has outgrown the configured slot count AND there's RAM
+   * headroom for the extra KV slots, restart llama-server with the larger
+   * value so new conversations get their own slot instead of thrashing.
+   * Returns `true` when a resize was performed. No-op on the node-llama-cpp
+   * backend (its session pool sizes itself). Best-effort: a failed restart
+   * leaves the old `--parallel` in place and logs.
+   */
+  async maybeAutoResizeParallel(): Promise<boolean> {
+    if (this.activeBackendId() !== "llama-server") return false;
+    if (!dflashLlamaServer.hasLoadedModel()) return false;
+    const running = dflashLlamaServer.parallelSlots();
+    const recommended = conversationRegistry.recommendedParallel(running);
+    if (recommended <= running) return false;
+    // Only grow when free RAM is comfortably above the low-water line —
+    // adding KV slots under pressure would just trigger the monitor.
+    const sample = await this.memoryMonitor.sample();
+    if (this.memoryMonitor.isUnderPressure(sample)) {
+      console.warn(
+        `[local-inference] Conversation high-water mark wants --parallel ${recommended} (running ${running}) but RAM is tight (free ${sample.effectiveFreeMb} MB) — not resizing. Slot thrashing may occur; consider a smaller tier or more RAM.`,
+      );
+      return false;
+    }
+    try {
+      const resized = await dflashLlamaServer.resizeParallel(recommended);
+      if (resized) {
+        console.info(
+          `[local-inference] Resized llama-server --parallel ${running} → ${recommended} (conversation high-water mark grew).`,
+        );
+      }
+      return resized;
+    } catch (err) {
+      console.warn(
+        `[local-inference] --parallel resize to ${recommended} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return false;
+    }
+  }
+
   async available(): Promise<boolean> {
     return this.dispatcher.available();
   }
@@ -622,6 +859,9 @@ export class LocalInferenceEngine {
   }
 
   async unload(): Promise<void> {
+    // Stop the memory monitor + idle timer and deregister evictable roles
+    // before anything else — they reference the model that's about to go.
+    await this.stopBackgroundManagement();
     const bridge = this.voiceBridge;
     if (bridge) {
       // Drop voice resources before tearing down text. Disarm is a
@@ -670,6 +910,7 @@ export class LocalInferenceEngine {
     // installed registry — see `dflash-server.ts`.
     try {
       await this.dispatcher.load(plan);
+      this.startBackgroundManagement();
       return;
     } catch (err) {
       // Only a soft catalog preference may fall back to node-llama-cpp.
@@ -687,6 +928,7 @@ export class LocalInferenceEngine {
           err instanceof Error ? err.message : String(err),
         );
         await this.nodeBackend.load(plan);
+        this.startBackgroundManagement();
         return;
       }
       throw err;
@@ -694,6 +936,7 @@ export class LocalInferenceEngine {
   }
 
   async generate(args: GenerateArgs): Promise<string> {
+    this.markActivity();
     const streaming = this.voiceStreamingArgs(args);
     const text = await this.dispatcher.generate(streaming.args);
     await streaming.finish(text);
@@ -772,6 +1015,7 @@ export class LocalInferenceEngine {
         `[local-inference] Conversation ${handle.conversationId} has been closed; reopen before generating`,
       );
     }
+    this.markActivity();
     handle.lastUsedMs = Date.now();
     const cacheKey = `conv:${handle.conversationId}`;
     const streaming = this.voiceStreamingArgs(args);
@@ -829,13 +1073,12 @@ export class LocalInferenceEngine {
     opts: { modelId?: string } = {},
   ): Promise<boolean> {
     if (this.activeBackendId() !== "llama-server") return false;
+    this.markActivity();
     let slotId: number;
     let cacheKey: string;
     if (typeof conversationOrId === "string") {
       const modelId =
-        opts.modelId ??
-        this.currentModelPath() ??
-        "default-local-model";
+        opts.modelId ?? this.currentModelPath() ?? "default-local-model";
       const handle =
         this.conversation(conversationOrId, modelId) ??
         this.openConversation({ conversationId: conversationOrId, modelId });
@@ -893,36 +1136,41 @@ export class LocalInferenceEngine {
   }
 
   /**
-   * Auto-tune diagnostic. Returns the recommended `--parallel` value
-   * given the current high-water mark plus a small headroom (max(2,
-   * 25%)). When the active backend is llama-server and this exceeds the
-   * running server's `parallelSlots()`, callers should restart the
-   * server with the new value to pick up the higher slot count — or
-   * surface a warning when restart is too expensive.
+   * Recommended `--parallel` value given the current conversation
+   * high-water mark plus a small headroom (max(2, 25%)), never below the
+   * running slot count. Delegates to `ConversationRegistry.recommendedParallel`
+   * so the math lives in one place. When this exceeds `parallelSlots()` the
+   * engine can grow the running server (`maybeAutoResizeParallel`).
    */
   recommendedParallel(): number {
-    const highWater = conversationRegistry.highWater();
-    const headroom = Math.max(2, Math.ceil(highWater * 0.25));
-    return Math.max(1, highWater + headroom);
+    return conversationRegistry.recommendedParallel(this.activeParallel());
   }
 
   /**
-   * Convenience: emit a one-line warning when the running parallel slot
-   * count is below the recommended value. Returns true when a warning
-   * was emitted (caller can use this signal to drive a restart, or just
-   * for diagnostics). No-op for the node-llama-cpp backend, which has
-   * its own session-pool sizing.
+   * Emit a one-line warning when the running `--parallel` slot count is
+   * below the recommended value (high-water mark + headroom). Returns true
+   * when a warning was emitted. No-op for the node-llama-cpp backend (its
+   * session pool sizes itself). The actual resize is `maybeAutoResizeParallel()`
+   * — kept separate from this hot-path check so a `useModel` call never
+   * blocks on (or is interrupted by) a server restart; the auto-resize is
+   * opted into via `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1`, in which case this
+   * also kicks one off fire-and-forget.
    */
   warnIfParallelTooLow(logger?: { warn: (msg: string) => void }): boolean {
     if (this.activeBackendId() !== "llama-server") return false;
-    const recommended = this.recommendedParallel();
     const actual = dflashLlamaServer.parallelSlots();
+    const recommended = conversationRegistry.recommendedParallel(actual);
     if (recommended <= actual) return false;
-    const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama-server with ELIZA_LOCAL_PARALLEL=${recommended} or higher to avoid slot thrashing.`;
+    const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama-server with ELIZA_LOCAL_PARALLEL=${recommended} or higher (or set ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1) to avoid slot thrashing.`;
     if (logger?.warn) {
       logger.warn(message);
     } else {
       console.warn(message);
+    }
+    if (process.env.ELIZA_LOCAL_AUTO_RESIZE_PARALLEL === "1") {
+      void this.maybeAutoResizeParallel().catch(() => {
+        // Best-effort; the warning above already told the operator what to do.
+      });
     }
     return true;
   }
@@ -946,7 +1194,14 @@ export class LocalInferenceEngine {
         "[voice] Voice session is already active. Call stopVoice() before starting a new one.",
       );
     }
-    this.voiceBridge = EngineVoiceBridge.start(opts);
+    // Pass the engine's shared-resource registry through so voice ref-counts
+    // against the same canonical resources as text and the `MemoryMonitor`
+    // sees voice's evictable roles too. The engine's registry is canonical —
+    // callers don't get to substitute their own.
+    this.voiceBridge = EngineVoiceBridge.start({
+      ...opts,
+      sharedResources: this.sharedResources,
+    });
     return this.voiceBridge;
   }
 
@@ -1006,6 +1261,7 @@ export class LocalInferenceEngine {
   }
 
   async synthesizeSpeech(text: string): Promise<Uint8Array> {
+    this.markActivity();
     return this.requireVoiceBridge("synthesize speech").synthesizeTextToWav(
       text,
     );
@@ -1021,7 +1277,34 @@ export class LocalInferenceEngine {
     );
   }
 
+  /**
+   * Idle-time auto-prewarm: synthesize the canonical common-phrase seed so
+   * the phrase cache is warm before the next turn. No-op unless a real TTS
+   * backend is present and voice is armed. Callers (the voice bridge /
+   * connector) invoke this when the loop is idle.
+   */
+  async prewarmIdleVoicePhrases(
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    return this.requireVoiceBridge(
+      "prewarm idle voice phrases",
+    ).prewarmIdlePhrases(opts);
+  }
+
+  /**
+   * Play the first-audio filler (a short cached acknowledgement) — the seam
+   * W9's turn controller calls the instant VAD fires `speech-start` to mask
+   * first-token latency. Returns the played filler text, or `null` if none
+   * was played. No-op without a real TTS backend / armed voice.
+   */
+  playFirstAudioFiller(): string | null {
+    return this.requireVoiceBridge(
+      "play first-audio filler",
+    ).playFirstAudioFiller();
+  }
+
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
+    this.markActivity();
     return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
   }
 
@@ -1045,6 +1328,7 @@ export class LocalInferenceEngine {
       events?: VoicePipelineEvents;
     } = {},
   ): Promise<"done" | "token-cap" | "cancelled"> {
+    this.markActivity();
     const bridge = this.requireVoiceBridge("run a voice turn");
     return bridge.runVoiceTurn(
       audio,
@@ -1071,8 +1355,7 @@ export class LocalInferenceEngine {
     tierId: Eliza1TierId;
     textModelPath?: string;
   }): LocalEmbeddingRoute {
-    const textModelPath =
-      args.textModelPath ?? this.currentModelPath() ?? "";
+    const textModelPath = args.textModelPath ?? this.currentModelPath() ?? "";
     return buildLocalEmbeddingRoute({
       bundleRoot: args.bundleRoot,
       tierId: args.tierId,

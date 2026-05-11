@@ -45,3 +45,11 @@ export {
   type TrajectoryTaskDatasetTaskSummary,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
+export * from "./trajectory-export-bundle.js";
+export * from "./trajectory-export-cron.js";
+export {
+  type HfUploadConfig,
+  type HfUploadResult,
+  resolveHfUploadConfig,
+  uploadTrajectoryJsonlToHuggingFace,
+} from "./trajectory-hf-upload.js";

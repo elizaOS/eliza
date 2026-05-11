@@ -3,7 +3,11 @@ export {
   clearBackendCache,
   detectAvailableBackends,
 } from "./training-backend-check.js";
-export { TrainingService } from "./training-service.js";
+export {
+  isNotImplementedError,
+  NotImplementedError,
+  TrainingService,
+} from "./training-service.js";
 export type {
   TrainingServiceLike,
   TrainingServiceWithRuntime,

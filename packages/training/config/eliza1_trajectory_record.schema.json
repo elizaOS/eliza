@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elizaos.github.io/schemas/eliza1-trajectory-record.schema.json",
   "title": "Eliza-1 trajectory SFT record",
+  "$comment": "DERIVED ChatML-SFT schema — NOT the canonical Eliza-1 corpus record. The canonical corpus record is eliza_native_v1 (one row per Vercel AI SDK model boundary); see packages/training/docs/dataset/CANONICAL_RECORD.md. scripts/prepare_eliza1_trajectory_dataset.py writes eliza_native_v1 rows for the default train/val/test splits; this rendered shape is produced only with --output-format trajectory-record.",
   "type": "object",
   "required": [
     "schema",

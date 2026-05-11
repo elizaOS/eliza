@@ -53,12 +53,23 @@ const STANDALONE_METAL_DIR = path.resolve(
 // Map: standalone-shader-filename → in-fork relative path (under cacheDir).
 // Each standalone is copied verbatim — its content is not edited. Per agent
 // contract: the 5 standalone shaders are verified and must not be touched.
+//
+// The fused-attention + Polar pre-Hadamard-query standalones (fused_attn_*,
+// polar_preht) are AUTHORED but hardware-verify pending (no Apple HW on the
+// authoring machine — verified bit-for-bit on the Vulkan ports). They ship in
+// the metallib so a Metal host can run metal-verify-fused / dispatch-smoke; the
+// build gate still treats their runtime-ready capability bit as not-yet-flipped
+// (fused_attn is an optimization on top of the five required kernels, AGENTS.md
+// §3 — not a required kernel) until a Metal host reports a fused dispatch smoke.
 export const METAL_KERNEL_FILES = [
   "turbo3.metal",
   "turbo4.metal",
   "turbo3_tcq.metal",
   "qjl.metal",
   "polar.metal",
+  "polar_preht.metal",
+  "fused_attn_qjl_tbq.metal",
+  "fused_attn_qjl_polar.metal",
 ];
 
 export const METAL_RUNTIME_DISPATCH_GATES = {

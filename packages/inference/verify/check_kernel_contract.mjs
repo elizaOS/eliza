@@ -548,12 +548,45 @@ if (!fusedAttn || typeof fusedAttn !== "object") {
   if (fusedAttn.selfTest && !targetBody(makefile, fusedAttn.selfTest.makeTarget)) {
     fail(`fusedAttn.selfTest.makeTarget ${fusedAttn.selfTest?.makeTarget} missing from Makefile`);
   }
+  // A fusedAttn backend may be marked runtime-ready ONLY when the matching
+  // per-backend dispatch evidence file carries a `fusedAttn` entry with
+  // runtimeReady:true + a Makefile-resident smokeTarget + numeric maxDiff
+  // (the same gate the per-kernel vulkan/metal evidence checks apply). This
+  // does NOT promote fused_attn into requiredRuntimeCapabilityKeys /
+  // manifestKernelNames — the guards above keep it out (AGENTS.md §3: an
+  // optimization on top of the five required kernels, not a required kernel).
+  const fusedAttnEvidenceByBackend = {
+    metal: metalEvidenceKernels.fusedAttn,
+    vulkan: vulkanEvidenceKernels.fusedAttn,
+  };
   for (const [backend, status] of Object.entries(fusedAttn.runtimeStatus || {})) {
     if (!allowedStatuses.has(status)) {
       fail(`fusedAttn.runtimeStatus.${backend}=${status} is not an allowed status`);
     }
     if (status === "runtime-ready") {
-      fail(`fusedAttn.runtimeStatus.${backend} cannot be runtime-ready until a fused smoke + manifest promotion lands`);
+      const evidence = fusedAttnEvidenceByBackend[backend];
+      if (!evidence) {
+        fail(`fusedAttn.runtimeStatus.${backend}=runtime-ready requires a fusedAttn entry in the ${backend} runtime dispatch evidence`);
+      } else {
+        if (evidence.runtimeReady !== true) {
+          fail(`fusedAttn ${backend} evidence must have runtimeReady:true to satisfy runtime-ready`);
+        }
+        if (evidence.capabilityKey !== fusedAttn.capabilityKey) {
+          fail(`fusedAttn ${backend} evidence capabilityKey=${evidence.capabilityKey} != ${fusedAttn.capabilityKey}`);
+        }
+        if (typeof evidence.smokeTarget !== "string" || !targetBody(makefile, evidence.smokeTarget)) {
+          fail(`fusedAttn ${backend} evidence requires a smokeTarget that exists in the Makefile`);
+        }
+        if (typeof evidence.maxDiff !== "number" || !Number.isFinite(evidence.maxDiff)) {
+          fail(`fusedAttn ${backend} evidence requires numeric maxDiff`);
+        }
+      }
+    } else {
+      // A non-runtime-ready status must not have stale runtime-ready evidence.
+      const evidence = fusedAttnEvidenceByBackend[backend];
+      if (evidence && evidence.runtimeReady === true) {
+        fail(`fusedAttn ${backend} evidence is runtimeReady:true but contract status is ${status}`);
+      }
     }
   }
   if (typeof fusedAttn.nextGate !== "string" || fusedAttn.nextGate.trim().length < 8) {

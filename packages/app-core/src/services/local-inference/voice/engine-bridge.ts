@@ -42,7 +42,12 @@ import {
   VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./lifecycle";
-import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
+import {
+  type CachedPhraseAudio,
+  DEFAULT_PHRASE_CACHE_SEED,
+  FIRST_AUDIO_FILLERS,
+  PhraseCache,
+} from "./phrase-cache";
 import {
   VoicePipeline,
   type VoicePipelineConfig,
@@ -539,6 +544,10 @@ export class EngineVoiceBridge {
   private readonly ffiContextRef: FfiContextRef | null;
   readonly asrAvailable: boolean;
   private readonly bundleRoot: string;
+  /** The phrase cache the scheduler dispatches against — held so the bridge
+   *  can answer "is phrase X cached" for the first-audio filler and seed the
+   *  idle-time auto-prewarm. */
+  private readonly phraseCache: PhraseCache;
   /** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
   private activePipeline: VoicePipeline | null = null;
 
@@ -550,6 +559,7 @@ export class EngineVoiceBridge {
     ffi: ElizaInferenceFfi | null,
     ffiContextRef: FfiContextRef | null,
     asrAvailable: boolean,
+    phraseCache: PhraseCache,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
@@ -558,6 +568,7 @@ export class EngineVoiceBridge {
     this.ffi = ffi;
     this.ffiContextRef = ffiContextRef;
     this.asrAvailable = asrAvailable;
+    this.phraseCache = phraseCache;
   }
 
   get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -719,7 +730,18 @@ export class EngineVoiceBridge {
       ffiHandle,
       ffiContextRef,
       asrAvailable,
+      phraseCache,
     );
+  }
+
+  /**
+   * True when this bridge runs against a TTS backend that produces real
+   * audio — i.e. anything but the `StubOmniVoiceBackend` (which yields
+   * zeros and is tests-only). The prewarm + first-audio-filler paths gate
+   * on this so the cache never holds silence (AGENTS.md §3 — no fake data).
+   */
+  hasRealTtsBackend(): boolean {
+    return !(this.backend instanceof StubOmniVoiceBackend);
   }
 
   /**
@@ -877,6 +899,51 @@ export class EngineVoiceBridge {
   ): Promise<{ warmed: number; cached: number }> {
     this.assertVoiceOn("prewarm voice phrases");
     return this.scheduler.prewarmPhrases(texts, opts);
+  }
+
+  /**
+   * Idle-time auto-prewarm hook: synthesize the canonical phrase-cache seed
+   * (`DEFAULT_PHRASE_CACHE_SEED`) so common openers/acks are cached before
+   * the next turn. The voice bridge / connector calls this when the loop is
+   * idle. No-op (returns `{ warmed: 0, cached: 0 }`) unless a real TTS
+   * backend is present and voice is armed — we never cache the stub's zeros
+   * (AGENTS.md §3).
+   */
+  async prewarmIdlePhrases(
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    if (!this.hasRealTtsBackend()) return { warmed: 0, cached: 0 };
+    if (this.lifecycle.current().kind !== "voice-on") {
+      return { warmed: 0, cached: 0 };
+    }
+    return this.scheduler.prewarmPhrases(DEFAULT_PHRASE_CACHE_SEED, opts);
+  }
+
+  /**
+   * First-audio filler (AGENTS.md §4 / H4): the instant W1's VAD fires
+   * `speech-start`, play a short cached acknowledgement ("one sec", "okay",
+   * …) into the audio sink to mask first-token latency. W9's turn controller
+   * owns the call site (it gets the `speech-start` event and the cutover to
+   * real `replyText` audio); this method is the seam.
+   *
+   * It only ever plays audio that is *already in the phrase cache* — it does
+   * not synthesize. Returns the filler text that was played, or `null` if no
+   * filler was played (no real TTS backend, voice not armed, or none of the
+   * filler phrases are cached). When real reply audio is ready, W9 cuts over
+   * by writing it through the scheduler as usual (a `triggerBargeIn()` or a
+   * direct `ringBuffer.drain()` truncates any still-playing filler first).
+   */
+  playFirstAudioFiller(): string | null {
+    if (!this.hasRealTtsBackend()) return null;
+    if (this.lifecycle.current().kind !== "voice-on") return null;
+    for (const text of FIRST_AUDIO_FILLERS) {
+      const cached = this.phraseCache.get(text);
+      if (!cached || cached.pcm.length === 0) continue;
+      this.scheduler.ringBuffer.write(cached.pcm);
+      this.scheduler.ringBuffer.flushToSink();
+      return cached.text;
+    }
+    return null;
   }
 
   /**

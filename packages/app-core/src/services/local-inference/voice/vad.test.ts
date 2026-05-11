@@ -15,6 +15,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
 import type { PcmFrame, VadEvent } from "./types";
 import {
   createSileroVadDetector,
@@ -268,8 +269,11 @@ describe("SileroVad — model not found", () => {
 
 // --- Network-gated real-model test ----------------------------------------
 
-const SILERO_URL =
-  "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx";
+// The bundle ships the int8 ONNX variant from `onnx-community/silero-vad`
+// (see `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`).
+// We fetch that exact artifact so the test exercises what the runtime loads.
+const SILERO_INT8_URL =
+  "https://huggingface.co/onnx-community/silero-vad/resolve/main/onnx/model_int8.onnx";
 
 async function tryFetchSileroModel(): Promise<string | null> {
   if (process.env.ELIZA_VAD_MODEL_PATH) return process.env.ELIZA_VAD_MODEL_PATH;
@@ -277,11 +281,11 @@ async function tryFetchSileroModel(): Promise<string | null> {
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(SILERO_URL, { signal: ctrl.signal });
+    const res = await fetch(SILERO_INT8_URL, { signal: ctrl.signal });
     clearTimeout(t);
     if (!res.ok) return null;
     const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength < 1_000_000) return null;
+    if (bytes.byteLength < 200_000) return null;
     const dir = mkdtempSync(path.join(tmpdir(), "eliza-vad-"));
     const p = path.join(dir, "silero-vad-int8.onnx");
     writeFileSync(p, bytes);
@@ -362,4 +366,54 @@ describe("SileroVad — real ONNX model (network-gated)", () => {
     await det.flush();
     expect(events.filter((e) => e.type === "speech-start")).toHaveLength(0);
   }, 20_000);
+
+  it("detects exactly one speech segment in a silence+speech+silence fixture and gates out the silence", async () => {
+    const modelPath = await modelPathPromise;
+    if (!modelPath) return;
+    let det: VadDetector;
+    try {
+      det = await createSileroVadDetector({
+        modelPath,
+        config: {
+          onsetThreshold: 0.5,
+          pauseHangoverMs: 220,
+          endHangoverMs: 500,
+          minSpeechMs: 150,
+        },
+      });
+    } catch (err) {
+      if (err instanceof VadUnavailableError && err.code === "ort-missing")
+        return;
+      throw err;
+    }
+    const fx = makeSpeechWithSilenceFixture({
+      sampleRate: SR,
+      leadSilenceSec: 0.6,
+      speechSec: 1.2,
+      tailSilenceSec: 0.6,
+    });
+    const speechStartMs = (fx.speechStartSample / SR) * 1000;
+    const speechEndMs = (fx.speechEndSample / SR) * 1000;
+    const events: VadEvent[] = [];
+    det.onVadEvent((e) => events.push(e));
+    // Feed the fixture in 512-sample windows on a mic-domain clock.
+    for (let i = 0; (i + 1) * 512 <= fx.pcm.length; i++) {
+      await det.pushFrame({
+        pcm: fx.pcm.slice(i * 512, (i + 1) * 512),
+        sampleRate: SR,
+        timestampMs: (i * 512 * 1000) / SR,
+      });
+    }
+    await det.flush();
+    const starts = events.filter((e) => e.type === "speech-start");
+    const ends = events.filter((e) => e.type === "speech-end");
+    expect(starts).toHaveLength(1);
+    expect(ends).toHaveLength(1);
+    const start = starts[0];
+    if (start.type !== "speech-start") throw new Error("unreachable");
+    // The onset must land inside the voiced region, not in the leading
+    // silence (small slack for Silero's look-ahead and the pause hangover).
+    expect(start.timestampMs).toBeGreaterThan(speechStartMs - 100);
+    expect(start.timestampMs).toBeLessThan(speechEndMs);
+  }, 30_000);
 });

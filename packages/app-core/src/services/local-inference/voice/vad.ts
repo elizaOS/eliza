@@ -28,6 +28,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { localInferenceRoot } from "../paths";
+import {
+  loadOnnxRuntime,
+  OnnxRuntimeUnavailableError,
+  type OrtInferenceSession,
+  type OrtTensorCtor,
+} from "./onnx-runtime";
 import type {
   EnergyGateEvent,
   EnergyGateListener,
@@ -35,34 +41,6 @@ import type {
   VadEvent,
   VadEventListener,
 } from "./types";
-
-// ---------------------------------------------------------------------------
-// onnxruntime-node — typed structurally so this module compiles without the
-// optional dependency present. The real shape is `onnxruntime-common`'s
-// `InferenceSession` / `Tensor`.
-// ---------------------------------------------------------------------------
-
-interface OrtTensor {
-  readonly dims: readonly number[];
-  readonly data: Float32Array | BigInt64Array;
-}
-type OrtTensorCtor = new (
-  type: "float32" | "int64",
-  data: Float32Array | BigInt64Array,
-  dims: readonly number[],
-) => OrtTensor;
-interface OrtInferenceSession {
-  readonly inputNames: readonly string[];
-  readonly outputNames: readonly string[];
-  run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
-}
-interface OrtInferenceSessionStatic {
-  create(pathOrBuffer: string | Uint8Array): Promise<OrtInferenceSession>;
-}
-interface OrtModule {
-  InferenceSession: OrtInferenceSessionStatic;
-  Tensor: OrtTensorCtor;
-}
 
 /** Thrown when the Silero VAD backend cannot be loaded — missing
  *  `onnxruntime-node`, missing model file, or a corrupt model. There is no
@@ -76,32 +54,18 @@ export class VadUnavailableError extends Error {
   }
 }
 
-let ortModulePromise: Promise<OrtModule> | null = null;
-async function loadOrt(): Promise<OrtModule> {
-  if (!ortModulePromise) {
-    ortModulePromise = (async () => {
-      try {
-        // Indirected through a string so bundlers don't hoist the optional
-        // dep into the dependency graph of consumers that never use voice.
-        const spec = "onnxruntime-node";
-        const mod = (await import(spec)) as { default?: OrtModule } & OrtModule;
-        const resolved = (mod.default ?? mod) as OrtModule;
-        if (!resolved?.InferenceSession || !resolved?.Tensor) {
-          throw new Error("module did not export InferenceSession/Tensor");
-        }
-        return resolved;
-      } catch (err) {
-        ortModulePromise = null;
-        throw new VadUnavailableError(
-          "ort-missing",
-          `[voice] Silero VAD requires the optional 'onnxruntime-node' dependency, which is not installed or failed to load (${
-            err instanceof Error ? err.message : String(err)
-          }). Install it to enable on-device VAD; voice turn-taking and barge-in are unavailable without it.`,
-        );
-      }
-    })();
+async function loadOrt() {
+  try {
+    return await loadOnnxRuntime();
+  } catch (err) {
+    if (err instanceof OnnxRuntimeUnavailableError) {
+      throw new VadUnavailableError(
+        "ort-missing",
+        `${err.message} Install it to enable on-device VAD; voice turn-taking and barge-in are unavailable without it.`,
+      );
+    }
+    throw err;
   }
-  return ortModulePromise;
 }
 
 /** Relative path of the Silero model inside an Eliza-1 bundle. */

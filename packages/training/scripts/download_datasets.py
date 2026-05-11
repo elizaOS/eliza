@@ -166,11 +166,21 @@ def main() -> int:
                     help="comma-separated slugs to skip")
     ap.add_argument("--min-free-gb", type=float, default=30.0)
     ap.add_argument("--max-workers", type=int, default=2)
+    ap.add_argument("--sample-per-source", type=int, default=0,
+                    help="Accepted for pipeline-flag parity. Downloads are "
+                         "file-level (snapshot_download), so this is a no-op "
+                         "here — per-source record sampling happens in "
+                         "normalize.py / pack_dataset.py.")
     ap.add_argument("--force", action="store_true",
                     help="ignore the disk-budget guard")
     ap.add_argument("--rebuild", action="store_true",
                     help="ignore .done markers and re-download")
     args = ap.parse_args()
+
+    if args.sample_per_source:
+        log.info("--sample-per-source=%d is a no-op at download time; "
+                 "per-source record limits apply in normalize/pack",
+                 args.sample_per_source)
 
     RAW_DIR.mkdir(parents=True, exist_ok=True)
 
