@@ -43,15 +43,15 @@ export class ChainOfThought<
 > {
 	private readonly predict: Predict<I, O & { reasoning: string }>;
 
-	constructor(opts: PredictOpts) {
+	constructor(opts: PredictOpts<I, O>) {
 		const augmented = augmentSignatureWithReasoning(opts.signature.spec);
-		this.predict = new Predict({
+		this.predict = new Predict<I, O & { reasoning: string }>({
 			...opts,
-			signature: new Signature(augmented),
+			signature: new Signature<I, O & { reasoning: string }>(augmented),
 		});
 	}
 
-	get signature(): Signature {
+	get signature(): Signature<I, O & { reasoning: string }> {
 		return this.predict.signature;
 	}
 
@@ -59,6 +59,11 @@ export class ChainOfThought<
 		const result: PredictResult<O & { reasoning: string }> =
 			await this.predict.forward(input);
 		const { reasoning, ...rest } = result.output;
+		// `rest` has type `Omit<O & { reasoning: string }, "reasoning">`, which
+		// is structurally equal to `O` (we only added `reasoning` ourselves and
+		// just removed it). TS cannot prove this through Omit-on-intersection,
+		// so the double-cast is the minimal type assertion to bridge the
+		// destructure to O.
 		return {
 			output: rest as unknown as O,
 			reasoning: typeof reasoning === "string" ? reasoning : "",

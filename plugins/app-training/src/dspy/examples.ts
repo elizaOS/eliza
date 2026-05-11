@@ -152,7 +152,7 @@ function rowsToExamples(
 			inputs,
 			outputs: { [outputField]: expected },
 			source: trajectory.trajectoryId,
-			metadata: trajectory.metadata as Record<string, unknown> | undefined,
+			metadata: trajectory.metadata,
 		});
 	}
 	return {
