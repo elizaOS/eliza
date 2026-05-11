@@ -358,6 +358,13 @@ export interface ActiveModelState {
    */
   status: "idle" | "loading" | "ready" | "error";
   error?: string;
+  /**
+   * Effective KV-cache configuration the loader applied. Populated on
+   * `status === "ready"`; null while loading or on error. The benchmark
+   * harness relies on these to verify per-load overrides actually took
+   * effect (a 128k contextSize request that silently fell back to 8k is
+   * exactly the bug the per-load override path exists to prevent).
+   */
   loadedContextSize?: number | null;
   loadedCacheTypeK?: string | null;
   loadedCacheTypeV?: string | null;

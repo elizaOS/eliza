@@ -19,9 +19,9 @@
 import fs from "node:fs/promises";
 import type {
   AgentModelSlot,
-  ProviderDefinition,
   ProviderEnableState,
   ProviderId,
+  ProviderMeta,
   ProviderStatus,
 } from "@elizaos/shared";
 import { getDefaultAccountPool } from "../account-pool";
@@ -30,12 +30,22 @@ import { getDflashRuntimeStatus } from "./dflash-server";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
 
-export type {
-  ProviderDefinition,
-  ProviderEnableState,
-  ProviderId,
-  ProviderStatus,
-};
+/**
+ * Runtime provider descriptor. Extends the UI-safe `ProviderMeta` with a
+ * callable `getEnableState()` that inspects env vars, fs, or device-bridge
+ * sockets. Server-side only — UI code reads `ProviderMeta` /
+ * `ProviderStatus` from `@elizaos/shared` instead.
+ */
+export interface ProviderDefinition extends ProviderMeta {
+  /**
+   * Read the current enable state. For cloud providers we inspect env
+   * vars or config fragments; for local we check file presence; for
+   * device-bridge we check connected-device count.
+   */
+  getEnableState(): Promise<ProviderEnableState>;
+}
+
+export type { ProviderEnableState, ProviderId, ProviderMeta, ProviderStatus };
 
 /** Resolve which slots have at least one registered handler from this provider. */
 export function getRegisteredSlotsForProvider(providerId: string): string[] {

@@ -29,9 +29,9 @@ export {
   registryPath,
 } from "./paths.js";
 export type {
-  ProviderDefinition,
   ProviderEnableState,
   ProviderId,
+  ProviderMeta,
   ProviderStatus,
 } from "./providers-types.js";
 export {
