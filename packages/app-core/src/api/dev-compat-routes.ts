@@ -1,4 +1,5 @@
 import type http from "node:http";
+import { buildVoiceLatencyDevPayload } from "../services/local-inference/latency-trace";
 import { ensureRouteAuthorized } from "./auth.ts";
 import {
   type CompatRuntimeState,
@@ -22,6 +23,7 @@ import {
  * - `GET /api/dev/route-catalog`
  * - `GET /api/dev/cursor-screenshot`
  * - `GET /api/dev/console-log`
+ * - `GET /api/dev/voice-latency`
  */
 export async function handleDevCompatRoutes(
   req: http.IncomingMessage,
@@ -177,6 +179,31 @@ export async function handleDevCompatRoutes(
       "Cache-Control": "no-store",
     });
     res.end(result.body);
+    return true;
+  }
+
+  // ── GET /api/dev/voice-latency ──────────────────────────────────────
+  // Recent end-to-end voice-loop latency traces + per-stage histograms
+  // (p50/p90/p99). Loopback only — same convention as the other dev
+  // observability routes. `?limit=N` caps the number of traces returned
+  // (default 50).
+  if (method === "GET" && url.pathname === "/api/dev/voice-latency") {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    const payload = buildVoiceLatencyDevPayload(
+      undefined,
+      Number.isFinite(limit) && (limit as number) > 0
+        ? (limit as number)
+        : undefined,
+    );
+    sendJsonResponse(res, 200, payload);
     return true;
   }
 
