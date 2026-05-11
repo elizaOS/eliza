@@ -490,7 +490,9 @@ backend nightly.
 - `packages/app-core/src/services/local-inference/README.md` — runtime
   contract for the engine, downloader, recommendation, and routing.
 - `packages/app-core/scripts/build-llama-cpp-dflash.mjs` — the build
-  hook. Every kernel patch lives here.
+  hook. Every kernel patch lives here. It (and the AOSP cross-compile at
+  `packages/app-core/scripts/aosp/compile-libllama.mjs`) default to building
+  from the in-repo `packages/inference/llama.cpp` submodule.
 - `packages/training/AGENTS.md` — the training-side contract, including
   what the bundle/publish flow expects.
 - `/Users/shawwalters/eliza-workspace/milady/CLAUDE.md` — repo-wide
