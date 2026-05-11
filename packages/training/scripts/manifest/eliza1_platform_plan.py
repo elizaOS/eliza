@@ -16,6 +16,7 @@ from typing import Final, Mapping, Sequence
 
 try:
     from scripts.manifest.eliza1_manifest import (
+        ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -24,6 +25,7 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
+        ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -248,6 +250,28 @@ def missing_files(
     return missing
 
 
+# Release-state interpretation: `base-v1` (the upstream base models,
+# GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized,
+# NOT fine-tuned) is a legit release shape. It does not pretend `final.weights`
+# is a *trained Eliza-1 checkpoint* — instead it records each component's
+# upstream `sourceModel`. So for `base-v1`, `final.weights` is not required to
+# be `true`; everything else (hashes, evals, kernel dispatch reports, platform
+# evidence, licenses, size-first repo ids) still is. `upload-candidate` /
+# `final` keep the original strict rule (all `final.*` true).
+_RELEASE_FINAL_FLAGS_ALL: Final[tuple[str, ...]] = (
+    "weights",
+    "hashes",
+    "evals",
+    "licenses",
+    "kernelDispatchReports",
+    "platformEvidence",
+    "sizeFirstRepoIds",
+)
+_RELEASE_FINAL_FLAGS_BASE_V1: Final[tuple[str, ...]] = tuple(
+    f for f in _RELEASE_FINAL_FLAGS_ALL if f != "weights"
+)
+
+
 def release_status_blockers(
     bundle_root: Path, plan: Mapping[str, TierGgufPlan]
 ) -> dict[str, list[str]]:
@@ -266,26 +290,37 @@ def release_status_blockers(
             else:
                 release_state = evidence.get("releaseState")
                 publish_eligible = evidence.get("publishEligible")
-                if release_state not in {"upload-candidate", "final"}:
+                if release_state not in ELIZA_1_PUBLISHABLE_RELEASE_STATES:
                     tier_blockers.append(
                         "`evidence/release.json`: releaseState is "
-                        f"`{release_state}`, not `upload-candidate` or `final`"
+                        f"`{release_state}`, not one of "
+                        f"{list(ELIZA_1_PUBLISHABLE_RELEASE_STATES)}"
                     )
                 if publish_eligible is not True:
                     tier_blockers.append(
                         "`evidence/release.json`: publishEligible is not true"
                     )
+                if release_state == "base-v1":
+                    finetuned = evidence.get("finetuned")
+                    if finetuned is not False:
+                        tier_blockers.append(
+                            "`evidence/release.json`: releaseState is `base-v1` "
+                            "but `finetuned` is not false"
+                        )
+                    if not isinstance(evidence.get("sourceModels"), dict) or not evidence.get(
+                        "sourceModels"
+                    ):
+                        tier_blockers.append(
+                            "`evidence/release.json`: base-v1 release missing `sourceModels`"
+                        )
+                required_final_flags = (
+                    _RELEASE_FINAL_FLAGS_BASE_V1
+                    if release_state == "base-v1"
+                    else _RELEASE_FINAL_FLAGS_ALL
+                )
                 final = evidence.get("final")
                 if isinstance(final, dict):
-                    for key in (
-                        "weights",
-                        "hashes",
-                        "evals",
-                        "licenses",
-                        "kernelDispatchReports",
-                        "platformEvidence",
-                        "sizeFirstRepoIds",
-                    ):
+                    for key in required_final_flags:
                         if final.get(key) is not True:
                             tier_blockers.append(
                                 f"`evidence/release.json`: final.{key} is not true"
@@ -322,9 +357,22 @@ def render_readiness(
         "- Text, TTS, ASR, and DFlash payloads are GGUF artifacts in the final plan.",
         "- VAD is intentionally a sidecar ONNX artifact at "
         "`vad/silero-vad-int8.onnx`, not a GGUF.",
-        "- Release evidence must use real final weights, hashes, evals, "
-        "licenses, platform reports, and Hugging Face upload records. "
-        "Placeholders are blockers.",
+        "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
+        "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
+        "Milady-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
+        "§3) — but NOT fine-tuned. `evidence/release.json` records `finetuned=false` "
+        "and a `sourceModels` map (which upstream HF repo each component comes "
+        "from). For `base-v1`, `final.weights` need not be `true` (the bytes are "
+        "the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,"
+        "kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be "
+        "`true`, and the runnable-on-base evals (text perplexity vs the upstream "
+        "GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, "
+        "30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning "
+        "ships in v2 (`releaseState=finetuned-v2`).",
+        "- Release evidence must use real final hashes, evals, "
+        "licenses, platform reports, and Hugging Face upload records — and "
+        "real GGUF/quant-sidecar bytes from a real fork build. Fabricated "
+        "hashes / not-yet-built tiers are blockers.",
         "",
     ]
 

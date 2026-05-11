@@ -16,11 +16,83 @@ bench server hydrates an in-memory fake backend).
 from __future__ import annotations
 
 import logging
-from typing import Any, Awaitable, Callable
+import time
+from typing import Any, Awaitable, Callable, Final
 
 from hermes_adapter.client import HermesClient
 
 logger = logging.getLogger(__name__)
+
+
+# Per-million-token USD pricing for Cerebras gpt-oss-120b. Matches
+# ``eliza_lifeops_bench.clients.cerebras.CEREBRAS_PRICING`` so the bench
+# runner's total_cost / mean_score-per-domain numbers match the
+# cerebras-direct upper bound when both hit the same provider.
+_CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
+    "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
+}
+
+
+def _compute_cost_usd(model: str | None, prompt_tokens: int, completion_tokens: int) -> float:
+    """Return USD cost for a Cerebras completion, or 0.0 for unpriced models."""
+    if not model:
+        return 0.0
+    pricing = _CEREBRAS_PRICING.get(model)
+    if pricing is None:
+        return 0.0
+    return (
+        (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
+        + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
+    )
+
+
+def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[str, Any]]:
+    """Convert LifeOpsBench ``MessageTurn`` history into OpenAI chat shape.
+
+    Preserves assistant ``tool_calls`` and tool-result ``tool_call_id``/``name``
+    so the model sees its own prior tool calls AND the corresponding tool
+    results. Without this, the model never observes execution feedback and
+    re-emits the same tool call until ``max_turns`` (Bug A in the audit).
+    """
+    out: list[dict[str, Any]] = []
+    for turn in conversation_history:
+        role = (
+            getattr(turn, "role", None)
+            or (turn.get("role") if isinstance(turn, dict) else None)
+        )
+        if role not in {"system", "user", "assistant", "tool"}:
+            continue
+        content = (
+            getattr(turn, "content", None)
+            if not isinstance(turn, dict)
+            else turn.get("content")
+        )
+        item: dict[str, Any] = {"role": role, "content": "" if content is None else str(content)}
+        if role == "assistant":
+            tcs = (
+                getattr(turn, "tool_calls", None)
+                if not isinstance(turn, dict)
+                else turn.get("tool_calls")
+            )
+            if isinstance(tcs, list) and tcs:
+                item["tool_calls"] = tcs
+        elif role == "tool":
+            tcid = (
+                getattr(turn, "tool_call_id", None)
+                if not isinstance(turn, dict)
+                else turn.get("tool_call_id")
+            )
+            if isinstance(tcid, str) and tcid:
+                item["tool_call_id"] = tcid
+            tname = (
+                getattr(turn, "name", None)
+                if not isinstance(turn, dict)
+                else turn.get("name")
+            )
+            if isinstance(tname, str) and tname:
+                item["name"] = tname
+        out.append(item)
+    return out
 
 
 def build_lifeops_bench_agent_fn(
@@ -48,33 +120,39 @@ def build_lifeops_bench_agent_fn(
         conversation_history: list[Any],
         tools: list[dict[str, Any]],
     ) -> Any:
-        last_user_text = ""
-        for turn in reversed(conversation_history):
-            role = (
-                getattr(turn, "role", None)
-                or (turn.get("role") if isinstance(turn, dict) else None)
-            )
-            content = (
-                getattr(turn, "content", None)
-                or (turn.get("content") if isinstance(turn, dict) else "")
-            )
-            if role == "user":
-                last_user_text = str(content or "")
-                break
-        if not last_user_text:
+        # Thread the FULL conversation (user + assistant tool_calls + tool
+        # results) so the model sees execution feedback and can finalize.
+        # Without this, every turn re-issues the same call (Bug A).
+        messages = _history_to_openai_messages(conversation_history)
+        if not any(m.get("role") == "user" for m in messages):
             return MessageTurn(role="assistant", content="", tool_calls=None)
 
-        context: dict[str, object] = {}
+        # Surface text of the most recent user turn as ``send_message`` text
+        # so subprocess-mode callers that ignore ``context["messages"]`` still
+        # have a sensible last-user prompt to fall back to.
+        last_user_text = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user_text = str(m.get("content") or "")
+                break
+
+        context: dict[str, object] = {"messages": messages}
         if tools:
             context["tools"] = tools
         if system_prompt:
+            # Prepend system prompt to the threaded message list (only if the
+            # caller didn't already include one in history).
+            if not any(m.get("role") == "system" for m in messages):
+                messages.insert(0, {"role": "system", "content": system_prompt})
             context["system_prompt"] = system_prompt
 
+        start_ns = time.monotonic_ns()
         try:
-            resp = bridge.send_message(last_user_text, context=context or None)
+            resp = bridge.send_message(last_user_text, context=context)
         except Exception as exc:
             logger.exception("[hermes-lifeops] send_message failed")
             raise RuntimeError("hermes LifeOps send_message failed") from exc
+        latency_ms = (time.monotonic_ns() - start_ns) // 1_000_000
 
         raw_tool_calls = resp.params.get("tool_calls") if isinstance(resp.params, dict) else None
         tool_calls: list[dict[str, Any]] = []
@@ -107,6 +185,7 @@ def build_lifeops_bench_agent_fn(
         )
         if model_name:
             setattr(turn, "model_name", model_name)
+        setattr(turn, "latency_ms", int(latency_ms))
         # Surface usage + cache telemetry on the returned MessageTurn so the
         # LifeOpsBench runner can populate TurnResult.cache_read_input_tokens
         # / cache_creation_input_tokens / cache_hit_pct via getattr(). The
@@ -117,6 +196,15 @@ def build_lifeops_bench_agent_fn(
         usage = resp.params.get("usage") if isinstance(resp.params, dict) else None
         if isinstance(usage, dict):
             _attach_usage_cache_fields(turn, usage)
+        # Bug B: usage IS returned by Cerebras but never priced. The runner
+        # reads ``cost_usd`` directly off the MessageTurn via getattr; without
+        # this, every turn reports $0.00 even though we spent real Cerebras
+        # tokens. Mirror cerebras-direct's pricing table so totals match.
+        in_tok = int(getattr(turn, "input_tokens", 0) or 0)
+        out_tok = int(getattr(turn, "output_tokens", 0) or 0)
+        pricing_model = model_name or bridge.model
+        cost = _compute_cost_usd(pricing_model, in_tok, out_tok)
+        setattr(turn, "cost_usd", float(cost))
         return turn
 
     return _agent_fn

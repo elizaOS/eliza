@@ -272,24 +272,14 @@ class HermesClient:
 
         payload = self.build_send_message_payload(text, context)
         oai = OpenAI(api_key=payload["api_key"] or None, base_url=str(payload["base_url"]))
-        messages: list[dict[str, object]] = []
         ctx = payload.get("context")
         raw_messages = ctx.get("messages") if isinstance(ctx, Mapping) else None
-        had_raw_messages = False
-        if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
-            for item in raw_messages:
-                if not isinstance(item, Mapping):
-                    continue
-                role = item.get("role")
-                content = item.get("content")
-                if role in {"system", "user", "assistant", "tool"}:
-                    messages.append({"role": str(role), "content": "" if content is None else str(content)})
-                    had_raw_messages = True
-        sys_prompt = payload.get("system_prompt")
-        if isinstance(sys_prompt, str) and sys_prompt and not had_raw_messages:
-            messages.append({"role": "system", "content": sys_prompt})
-        if not had_raw_messages:
-            messages.append({"role": "user", "content": text})
+        sys_prompt = payload.get("system_prompt") if isinstance(payload.get("system_prompt"), str) else None
+        messages = _build_openai_messages(
+            raw_messages=raw_messages,
+            system_prompt=sys_prompt,
+            fallback_user_text=text,
+        )
         kwargs: dict[str, object] = {"model": str(payload["model"]), "messages": messages}
         tools = payload.get("tools")
         if isinstance(tools, list) and tools:
@@ -377,6 +367,82 @@ class HermesClient:
         )
 
 
+def _build_openai_messages(
+    *,
+    raw_messages: object,
+    system_prompt: str | None,
+    fallback_user_text: str,
+) -> list[dict[str, object]]:
+    """Convert a benchmark-shaped message list into chat.completions ``messages``.
+
+    Accepts ``MessageTurn``-shaped dicts with optional ``tool_calls`` (on
+    assistant turns) and ``tool_call_id`` / ``name`` (on tool result turns) and
+    preserves them so the model sees its own prior tool calls AND the
+    corresponding tool results. Without this, the model re-emits the same
+    tool call every turn because it never observes a result.
+    """
+    messages: list[dict[str, object]] = []
+    had_raw = False
+    if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
+        for item in raw_messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            if role not in {"system", "user", "assistant", "tool"}:
+                continue
+            content = item.get("content")
+            content_str = "" if content is None else str(content)
+            msg: dict[str, object] = {"role": str(role), "content": content_str}
+            if role == "assistant":
+                tcs = item.get("tool_calls")
+                if isinstance(tcs, Sequence) and not isinstance(tcs, (str, bytes)):
+                    normalized: list[dict[str, object]] = []
+                    for tc in tcs:
+                        if not isinstance(tc, Mapping):
+                            continue
+                        tc_id = tc.get("id")
+                        fn = tc.get("function")
+                        if not isinstance(fn, Mapping):
+                            continue
+                        fn_name = fn.get("name")
+                        fn_args = fn.get("arguments")
+                        if isinstance(fn_args, Mapping):
+                            args_str = json.dumps(dict(fn_args))
+                        elif isinstance(fn_args, str):
+                            args_str = fn_args
+                        else:
+                            args_str = "{}"
+                        if not isinstance(fn_name, str) or not fn_name:
+                            continue
+                        normalized.append(
+                            {
+                                "id": str(tc_id) if tc_id else "",
+                                "type": "function",
+                                "function": {"name": fn_name, "arguments": args_str},
+                            }
+                        )
+                    if normalized:
+                        msg["tool_calls"] = normalized
+                        # OpenAI rejects assistant messages that have an empty
+                        # string content alongside tool_calls — must be None.
+                        if not content_str:
+                            msg["content"] = None
+            elif role == "tool":
+                tcid = item.get("tool_call_id")
+                if isinstance(tcid, str) and tcid:
+                    msg["tool_call_id"] = tcid
+                tname = item.get("name")
+                if isinstance(tname, str) and tname:
+                    msg["name"] = tname
+            messages.append(msg)
+            had_raw = True
+    if not had_raw:
+        if isinstance(system_prompt, str) and system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": fallback_user_text})
+    return messages
+
+
 def _openai_compatible_tools(raw_tools: object) -> list[object] | None:
     """Return tools only when every item is an OpenAI tool object.
 
@@ -455,10 +521,52 @@ def _main() -> int:
             if not isinstance(item, dict):
                 continue
             role = item.get("role")
+            if role not in {"system", "user", "assistant", "tool"}:
+                continue
             content = item.get("content")
-            if role in {"system", "user", "assistant", "tool"}:
-                messages.append({"role": role, "content": "" if content is None else str(content)})
-                had_raw_messages = True
+            content_str = "" if content is None else str(content)
+            msg = {"role": role, "content": content_str}
+            if role == "assistant":
+                tcs = item.get("tool_calls")
+                if isinstance(tcs, list):
+                    normalized = []
+                    for tc in tcs:
+                        if not isinstance(tc, dict):
+                            continue
+                        fn = tc.get("function")
+                        if not isinstance(fn, dict):
+                            continue
+                        fn_name = fn.get("name")
+                        if not isinstance(fn_name, str) or not fn_name:
+                            continue
+                        fn_args = fn.get("arguments")
+                        if isinstance(fn_args, dict):
+                            args_str = json.dumps(fn_args)
+                        elif isinstance(fn_args, str):
+                            args_str = fn_args
+                        else:
+                            args_str = "{}"
+                        tc_id = tc.get("id")
+                        normalized.append(
+                            {
+                                "id": str(tc_id) if tc_id else "",
+                                "type": "function",
+                                "function": {"name": fn_name, "arguments": args_str},
+                            }
+                        )
+                    if normalized:
+                        msg["tool_calls"] = normalized
+                        if not content_str:
+                            msg["content"] = None
+            elif role == "tool":
+                tcid = item.get("tool_call_id")
+                if isinstance(tcid, str) and tcid:
+                    msg["tool_call_id"] = tcid
+                tname = item.get("name")
+                if isinstance(tname, str) and tname:
+                    msg["name"] = tname
+            messages.append(msg)
+            had_raw_messages = True
     if isinstance(system_prompt, str) and system_prompt and not had_raw_messages:
         messages.append({"role": "system", "content": system_prompt})
     if not had_raw_messages:

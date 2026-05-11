@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/patch-rolldown-wasi-fallback.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/patch-llama-cpp-capacitor.mjs && node scripts/patch-llama-cpp-capacitor-x86_64.mjs && node scripts/patch-bigint-buffer.mjs",
+    "postinstall": "node scripts/fix-windows-bun-stub.mjs && bun scripts/patch-nested-core-dist.mjs && bun scripts/patch-tsup-dts.mjs && bun scripts/patch-rolldown-wasi-fallback.mjs && bun scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs && node scripts/ensure-llama-cpp-submodule.mjs && node scripts/patch-llama-cpp-capacitor.mjs && node scripts/patch-llama-cpp-capacitor-x86_64.mjs && node scripts/patch-bigint-buffer.mjs",
     "fix-deps": "bun scripts/fix-workspace-deps.mjs",
     "fix-deps:check": "bun scripts/fix-workspace-deps.mjs --check",
     "fix-deps:restore": "bun scripts/fix-workspace-deps.mjs --restore",
@@ -116,7 +116,12 @@
     "lifeops:verify-cerebras": "bun --bun plugins/app-lifeops/scripts/verify-cerebras-wiring.ts",
     "lifeops:bench": "bun --bun packages/app-core/scripts/lifeops-prompt-benchmark.ts",
     "lifeops:full": "node scripts/lifeops-full-run.mjs",
+    "lifeops:eliza": "MILADY_BENCH_AGENT=eliza node scripts/lifeops-full-run.mjs",
+    "lifeops:hermes": "MILADY_BENCH_AGENT=hermes node scripts/lifeops-full-run.mjs",
+    "lifeops:openclaw": "MILADY_BENCH_AGENT=openclaw node scripts/lifeops-full-run.mjs",
+    "lifeops:cerebras-direct": "MILADY_BENCH_AGENT=cerebras-direct node scripts/lifeops-full-run.mjs",
     "lifeops:aggregate": "bun scripts/aggregate-lifeops-run.mjs",
+    "lifeops:multiagent-report": "node scripts/lifeops-multiagent-report.mjs",
     "lifeops:delta": "bun scripts/lifeops-bench-delta.mjs",
     "lifeops:bench-to-dataset": "node scripts/lifeops-benchmark-to-training-dataset.mjs",
     "lifeops:optimize": "node scripts/lifeops-optimize-planner.mjs",

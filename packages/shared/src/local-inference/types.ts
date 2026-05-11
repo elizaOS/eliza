@@ -298,6 +298,27 @@ export interface CatalogModel {
    * that participates in DFlash pairing.
    */
   tokenizerFamily?: TokenizerFamily;
+  /**
+   * Provenance for the Eliza-1 v1 release shape (`releaseState=base-v1`):
+   * Eliza-1 v1 is the upstream BASE models — GGUF-converted via the
+   * elizaOS/llama.cpp fork and fully Milady-optimized (every quant/kernel
+   * trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned.
+   * Each entry records which upstream HF repo every shipped bundle
+   * component comes from. The keys are the bundle's component slots; the
+   * values are upstream repo ids (and an optional file). This is the
+   * "base, not fine-tuned" provenance in the catalog — it must match the
+   * `provenance.sourceModels` block in the tier's `eliza-1.manifest.json`.
+   * `finetuned: false` until v2.
+   */
+  sourceModel?: {
+    finetuned: false;
+    components: Partial<
+      Record<
+        "text" | "voice" | "asr" | "vad" | "embedding" | "vision" | "drafter",
+        { repo: string; file?: string }
+      >
+    >;
+  };
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
 }

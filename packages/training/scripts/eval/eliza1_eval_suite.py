@@ -433,12 +433,12 @@ def eval_voice_rtf(ctx: EvalContext) -> dict[str, Any]:
             ),
         }
     # The omnivoice server is an HTTP server; a full RTF measurement spins it
-    # up and POSTs synthesis requests. That harness lives outside this script
-    # (it needs the server protocol + an audio sink); record it as not-run
-    # with the binary present so the runner can wire it on a host that has the
-    # fused build verified (OMNIVOICE_FUSE_VERIFY.json ok == true). The fused
-    # build on this host currently fails ABI verification (missing ASR-stream
-    # symbols) so even the binary path is not exercisable end to end here.
+    # up and POSTs synthesis requests. That harness (server protocol + audio
+    # sink + RTF accounting) is not implemented in this script yet — record it
+    # as not-run with the binary present and the ABI-verify state attached so
+    # the publish runner can wire it once the harness lands. When the fused
+    # build's ABI verify is failing the binary path is not exercisable at all;
+    # when it is ok the only remaining blocker is the harness itself.
     fuse_report = ctx.engine.bin_dir / "OMNIVOICE_FUSE_VERIFY.json"
     fuse_ok = False
     if fuse_report.is_file():
@@ -446,16 +446,24 @@ def eval_voice_rtf(ctx: EvalContext) -> dict[str, Any]:
             fuse_ok = bool(json.loads(fuse_report.read_text()).get("ok"))
         except Exception:  # noqa: BLE001
             fuse_ok = False
+    reason = (
+        "llama-omnivoice-server present and the fused build's ABI verify is "
+        "ok (OMNIVOICE_FUSE_VERIFY.json); TTS RTF still needs the HTTP "
+        "synthesis + audio-sink harness, which is not implemented in this "
+        "eval script yet"
+        if fuse_ok
+        else (
+            "llama-omnivoice-server present but the fused build's ABI verify "
+            "is failing (OMNIVOICE_FUSE_VERIFY.json); TTS RTF needs an "
+            "ABI-verified fused build first"
+        )
+    )
     return {
         **base,
         "status": "not-run",
         "rtf": None,
         "passed": None,
-        "reason": (
-            "llama-omnivoice-server present but the fused build's ABI "
-            f"verification is {'ok' if fuse_ok else 'failing'}; TTS RTF needs "
-            "an ABI-verified fused build (see OMNIVOICE_FUSE_VERIFY.json)"
-        ),
+        "reason": reason,
         "binary": str(ctx.engine.omnivoice_server),
         "fuseVerifyOk": fuse_ok,
         "phrases": list(_TTS_PHRASES),
@@ -488,9 +496,9 @@ def eval_asr_wer(ctx: EvalContext) -> dict[str, Any]:
         "wer": None,
         "passed": None,
         "reason": (
-            "ASR artifact present but no ASR runtime + labelled speech corpus "
-            "on this host (needs the fused ASR-stream ABI, currently missing "
-            "from the linux fused build per OMNIVOICE_FUSE_VERIFY.json)"
+            "ASR artifact present and the fused ASR-stream ABI is exported "
+            "(OMNIVOICE_FUSE_VERIFY.json ok), but no labelled speech corpus "
+            "+ WER harness is staged on this host"
         ),
         "asrArtifact": str(ctx.asr_model),
     }
@@ -580,16 +588,33 @@ def eval_e2e_and_endurance(ctx: EvalContext) -> tuple[dict[str, Any], dict[str, 
         e2e = {**e2e_base, "status": "not-run", "e2eLoopOk": False, "passed": None, "reason": reason}
         end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason}
         return e2e, end
-    # The full loop (mic-file → ASR → text → TTS → audio) needs the ABI-verified
-    # fused build; it is not exercisable on this host. Record not-run with the
-    # binaries present.
+    # The full loop (mic-file → ASR → text → TTS → audio) drives the fused
+    # build's ASR-stream + TTS-stream ABI. Those symbols are exported and ABI
+    # verify is ok (OMNIVOICE_FUSE_VERIFY.json), but the in-script harness that
+    # walks a mic-file fixture through the loop and accounts the latency budget
+    # is not implemented yet — record not-run with the binaries present and the
+    # ABI state attached so the publish runner can wire it once it lands.
+    fuse_report = ctx.engine.bin_dir / "OMNIVOICE_FUSE_VERIFY.json"
+    fuse_ok = False
+    if fuse_report.is_file():
+        try:
+            fuse_ok = bool(json.loads(fuse_report.read_text()).get("ok"))
+        except Exception:  # noqa: BLE001
+            fuse_ok = False
     reason = (
-        "fused build present but its ASR-stream ABI is not verified on this "
-        "host (OMNIVOICE_FUSE_VERIFY.json ok == false); the mic→speech loop "
-        "is not runnable until the fused target is rebuilt against ffi.h"
+        "fused build present and its streaming ABI verify is ok "
+        "(OMNIVOICE_FUSE_VERIFY.json); the mic→speech loop harness "
+        "(mic-file fixture → ASR → text → TTS → audio + latency accounting) "
+        "is not implemented in this eval script yet"
+        if fuse_ok
+        else (
+            "fused build present but its streaming ABI verify is failing "
+            "(OMNIVOICE_FUSE_VERIFY.json); the mic→speech loop needs an "
+            "ABI-verified fused build first"
+        )
     )
-    e2e = {**e2e_base, "status": "not-run", "e2eLoopOk": False, "passed": None, "reason": reason}
-    end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason}
+    e2e = {**e2e_base, "status": "not-run", "e2eLoopOk": False, "passed": None, "reason": reason, "fuseVerifyOk": fuse_ok}
+    end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason, "fuseVerifyOk": fuse_ok}
     return e2e, end
 
 

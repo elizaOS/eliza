@@ -250,9 +250,52 @@
         }
       }
     },
+    "provenance": {
+      "description": "Optional. Present on `base-v1` bundles — the upstream BASE models, GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized, NOT fine-tuned. Records the release state, the not-fine-tuned flag, and the upstream source repo per shipped component. The runtime validator requires per-component coverage when releaseState === 'base-v1'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["releaseState", "finetuned", "sourceModels"],
+      "properties": {
+        "releaseState": {
+          "type": "string",
+          "enum": [
+            "local-standin",
+            "base-v1",
+            "finetuned-v2",
+            "upload-candidate",
+            "final"
+          ]
+        },
+        "finetuned": { "type": "boolean" },
+        "sourceModels": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "text": { "$ref": "#/$defs/sourceModelEntry" },
+            "voice": { "$ref": "#/$defs/sourceModelEntry" },
+            "asr": { "$ref": "#/$defs/sourceModelEntry" },
+            "vad": { "$ref": "#/$defs/sourceModelEntry" },
+            "embedding": { "$ref": "#/$defs/sourceModelEntry" },
+            "vision": { "$ref": "#/$defs/sourceModelEntry" },
+            "drafter": { "$ref": "#/$defs/sourceModelEntry" }
+          }
+        }
+      }
+    },
     "defaultEligible": { "type": "boolean" }
   },
   "$defs": {
+    "sourceModelEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo"],
+      "properties": {
+        "repo": { "type": "string", "minLength": 1 },
+        "file": { "type": "string", "minLength": 1 },
+        "convertedVia": { "type": "string", "minLength": 1 },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
     "lineageEntry": {
       "type": "object",
       "additionalProperties": false,

@@ -81,22 +81,41 @@ def _load_sidecar(path: Path) -> dict[str, object] | None:
 
 
 def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
-    """Locate ``convert_hf_to_gguf.py`` in the milady fork checkout."""
+    """Locate ``convert_hf_to_gguf.py`` in the milady fork checkout.
+
+    Resolution order: --llama-cpp-dir → $LLAMA_CPP_DIR → the in-repo fork
+    submodule (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/
+    milady-llama-cpp → ~/src/milady-llama.cpp → $PATH.
+    """
+    cands: list[Path] = []
     if llama_cpp_dir is not None:
-        cand = llama_cpp_dir / "convert_hf_to_gguf.py"
-        if cand.exists():
-            return cand
+        cands.append(llama_cpp_dir)
     env_dir = os.environ.get("LLAMA_CPP_DIR")
     if env_dir:
-        cand = Path(env_dir) / "convert_hf_to_gguf.py"
+        cands.append(Path(env_dir))
+    # packages/inference/llama.cpp is the canonical fork submodule
+    # (.gitmodules: url=https://github.com/elizaOS/llama.cpp.git).
+    here = Path(__file__).resolve()
+    for p in here.parents:
+        cand = p / "packages" / "inference" / "llama.cpp"
+        if cand.is_dir():
+            cands.append(cand)
+            break
+    cands += [
+        Path.home() / ".cache" / "eliza-dflash" / "milady-llama-cpp",
+        Path.home() / "src" / "milady-llama.cpp",
+    ]
+    for c in cands:
+        cand = c / "convert_hf_to_gguf.py"
         if cand.exists():
             return cand
     which = shutil.which("convert_hf_to_gguf.py")
     if which:
         return Path(which)
     raise FileNotFoundError(
-        "convert_hf_to_gguf.py not found. Pass --llama-cpp-dir <path> or "
-        "set LLAMA_CPP_DIR=<path-to-elizaOS/llama.cpp checkout>."
+        "convert_hf_to_gguf.py not found. Pass --llama-cpp-dir <path>, set "
+        "LLAMA_CPP_DIR=<elizaOS/llama.cpp checkout>, or run "
+        "`git submodule update --init packages/inference/llama.cpp`."
     )
 
 
@@ -203,6 +222,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout.",
     )
     ap.add_argument(
+        "--polarquant-sidecar",
+        type=Path,
+        default=None,
+        help="Path to polarquant_config.json. Defaults to "
+             "<checkpoint>/polarquant_config.json (pass this when --checkpoint "
+             "is a later optimization stage that doesn't carry the polar config).",
+    )
+    ap.add_argument(
         "--qjl-sidecar",
         type=Path,
         default=None,
@@ -217,8 +244,45 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--outtype",
         default="q4_polar",
-        choices=["q4_polar", "f16", "bf16", "f32", "auto"],
-        help="GGUF tensor type. Default q4_polar (Milady-only).",
+        choices=["q4_polar", "q8_0", "f16", "bf16", "f32", "auto"],
+        help="GGUF tensor type. Default q4_polar (Milady-only); falls back to "
+             "q8_0 automatically when the fork's converter can't emit it yet.",
+    )
+    # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
+    # (every quant/kernel trick in inference/AGENTS.md §3), NOT fine-tuned.
+    # When `--release-state base-v1` is set, write a `<file>.provenance.json`
+    # next to the GGUF recording that the bytes are derived from an upstream
+    # base model (not a trained Eliza-1 checkpoint), with `finetuned=false`.
+    # The publish path / manifest builder fold this into the bundle's
+    # `provenance.sourceModels` block.
+    ap.add_argument(
+        "--release-state",
+        default=None,
+        choices=["base-v1", "finetuned-v2"],
+        help=(
+            "Release lineage of the produced GGUF. `base-v1` records a "
+            "<file>.provenance.json with finetuned=false + the upstream "
+            "source repo; `finetuned-v2` records finetuned=true."
+        ),
+    )
+    ap.add_argument(
+        "--source-repo",
+        default=None,
+        help=(
+            "Upstream HF repo the base weights come from (e.g. "
+            "unsloth/Qwen3.5-9B-GGUF). Recorded in the provenance JSON for "
+            "--release-state base-v1. Defaults to the source_model field in "
+            "the polarquant/qjl sidecar."
+        ),
+    )
+    ap.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "Re-run the converter even if the output GGUF already exists. "
+            "By default the run is idempotent: if --output already exists "
+            "the converter is skipped (only the sidecar JSONs are refreshed)."
+        ),
     )
     ap.add_argument(
         "--dry-run",
@@ -230,7 +294,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.checkpoint.exists() or not args.checkpoint.is_dir():
         raise SystemExit(f"--checkpoint must be a directory: {args.checkpoint}")
 
-    polar_sidecar_path = args.checkpoint / "polarquant_config.json"
+    polar_sidecar_path = args.polarquant_sidecar or (args.checkpoint / "polarquant_config.json")
     qjl_sidecar_path = args.qjl_sidecar or (args.checkpoint / "qjl_config.json")
     tbq_sidecar_path = args.turboquant_sidecar or (
         args.checkpoint / "turboquant.json"
@@ -240,11 +304,11 @@ def main(argv: list[str] | None = None) -> int:
     qjl_sidecar = _load_sidecar(qjl_sidecar_path)
     tbq_sidecar = _load_sidecar(tbq_sidecar_path)
 
+    requested_outtype = args.outtype
+    fallback_reason: str | None = None
     if args.outtype == "q4_polar" and polar_sidecar is None:
-        log.warning(
-            "outtype=q4_polar but %s is missing — falling back to f16",
-            polar_sidecar_path,
-        )
+        fallback_reason = f"polarquant codebook ({polar_sidecar_path}) missing"
+        log.warning("outtype=q4_polar but %s — falling back to f16", fallback_reason)
         args.outtype = "f16"
 
     convert_path: Path | None
@@ -258,13 +322,20 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         convert_path = None
 
-    if convert_path is not None and not fork_supports_milady:
-        log.warning(
-            "convert script %s does not advertise Q4_POLAR support; "
-            "the converter will likely reject --outtype q4_polar. "
-            "Use a elizaOS/llama.cpp v0.4.0-milady checkout.",
-            convert_path,
+    if args.outtype == "q4_polar" and convert_path is not None and not fork_supports_milady:
+        # The fork's runtime (ggml.h) defines GGML_TYPE_Q4_POLAR, but its
+        # convert_hf_to_gguf.py may not yet emit it (the converter-side wiring
+        # lags the kernel work). Don't crash — fall back to q8_0 (the best
+        # quant the stock converter does support) and record the deferral so
+        # the manifest is honest. Re-run when the fork's converter ships
+        # --outtype q4_polar.
+        fallback_reason = (
+            f"{convert_path} does not support --outtype q4_polar yet "
+            "(ggml runtime has GGML_TYPE_Q4_POLAR=47 but the converter does not "
+            "emit it); using q8_0 — re-run when the fork's converter is updated"
         )
+        log.warning("Q4_POLAR conversion unavailable: %s", fallback_reason)
+        args.outtype = "q8_0"
 
     base_model = args.checkpoint.name
     if polar_sidecar:
@@ -278,9 +349,42 @@ def main(argv: list[str] | None = None) -> int:
         qjl_sidecar=qjl_sidecar,
         tbq_sidecar=tbq_sidecar,
     )
+    ext_metadata["weight_quant"] = {
+        "requested": requested_outtype,
+        "actual": args.outtype,
+        "deferred": requested_outtype != args.outtype,
+        "deferral_reason": fallback_reason,
+        # PolarQuant codebook is still available as a sidecar even when the GGUF
+        # body is q8_0/f16 — the runtime can apply it once the fork's converter
+        # (or a runtime-side path) lands.
+        "polarquant_artifacts": str(polar_sidecar_path) if polar_sidecar else None,
+    }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     ext_path = args.output.with_suffix(args.output.suffix + ".milady.json")
+    provenance_path = args.output.with_suffix(args.output.suffix + ".provenance.json")
+
+    source_repo = args.source_repo
+    if source_repo is None:
+        # Fall back to whatever source_model the recipe sidecars recorded.
+        for sc in (polar_sidecar, qjl_sidecar, tbq_sidecar):
+            if isinstance(sc, dict) and sc.get("source_model"):
+                source_repo = str(sc.get("source_model"))
+                break
+    provenance: dict[str, object] | None = None
+    if args.release_state is not None:
+        provenance = {
+            "schema_version": 1,
+            "produced_by": "scripts/quantization/gguf_milady_apply.py",
+            "releaseState": args.release_state,
+            # base-v1 is the upstream base model, GGUF + fully optimized,
+            # NOT fine-tuned. finetuned-v2 records the trained checkpoint.
+            "finetuned": args.release_state == "finetuned-v2",
+            "sourceRepo": source_repo,
+            "convertedVia": str(convert_path) if convert_path else None,
+            "outtype": args.outtype,
+            "ggmlTypeSlots": MILADY_GGML_TYPES,
+        }
 
     if args.dry_run:
         plan = {
@@ -291,12 +395,29 @@ def main(argv: list[str] | None = None) -> int:
             "outtype": args.outtype,
             "ext_metadata_path": str(ext_path),
             "ext_metadata": ext_metadata,
+            "provenance_path": str(provenance_path) if provenance is not None else None,
+            "provenance": provenance,
         }
         print(json.dumps(plan, indent=2))
         return 0
 
     ext_path.write_text(json.dumps(ext_metadata, indent=2), encoding="utf-8")
     log.info("wrote extension metadata → %s", ext_path)
+    if provenance is not None:
+        provenance_path.write_text(json.dumps(provenance, indent=2), encoding="utf-8")
+        log.info("wrote provenance → %s", provenance_path)
+
+    # Idempotent: if the output GGUF already exists, don't re-run the
+    # (expensive, deterministic-for-a-fixed-checkpoint) converter — only the
+    # sidecar JSONs are refreshed. --force overrides.
+    if args.output.is_file() and not args.force:
+        log.info(
+            "output GGUF already exists (%d bytes); skipping converter "
+            "(pass --force to re-run): %s",
+            args.output.stat().st_size,
+            args.output,
+        )
+        return 0
 
     cmd = [
         sys.executable,

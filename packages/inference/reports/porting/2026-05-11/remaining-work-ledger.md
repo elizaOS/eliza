@@ -36,7 +36,7 @@ command and remaining blocker — see
 | Vulkan built-fork graph dispatch | **Runtime-ready on native Linux Intel-ANV hardware.** A2 built `linux-x64-vulkan` from the fork and ran `vulkan-dispatch-smoke` → 6/6 graph routes PASS on real Intel Arc/Xe (Mesa ANV); `kernel-contract.json` `runtimeStatus.vulkan` is `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` (commit e662143015) and `make -C packages/inference/verify kernel-contract` is green. | Evidence: `verify/vulkan-runtime-dispatch-evidence.json` (`runtimeReady: true`, all 5 kernels, `maxDiff` 2.7e-7…1.9e-6) + `verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`. Caveat: single Intel-ANV device class — AMD-native, NVIDIA-native, and Android Adreno/Mali Vulkan graph dispatch still needed. `vulkan-kernels.mjs` stages SPIR-V blobs, patches `ggml-vulkan.cpp` for `GGML_OP_ATTN_SCORE_{QJL,TBQ,POLAR}` + `supports_op`; `vulkan_dispatch_smoke.cpp` drives all six numeric routes. |
 | Fused attention (QJL-K + TBQ-V / Polar-V) | Vulkan fused compute shaders landed and standalone-verified on hardware; Metal kernel still pending; CUDA fixture-parity needs an NVIDIA host. C reference `eliza_fused_attn_qjl_tbq3` / `eliza_fused_attn_qjl_polar` are bit-exact to the fork's `GGML_OP_FUSED_ATTN_QJL_TBQ` CPU op; round-tripped by `make -C packages/inference/verify reference-test`. `vulkan/fused_attn_qjl_tbq.comp` + `vulkan/fused_attn_qjl_polar.comp` (one-pass online softmax, never materializes the score vector, driver-portable 32-thread shared-memory reduction) pass `make -C packages/inference/verify vulkan-verify-fused` 1920/1920 outputs on Intel ARL Mesa ANV (4 cases: n_kv 64/512/256/128, GQA 1/2/4; max diff 6.3e-7) and built-fork graph dispatch `GGML_OP_FUSED_ATTN_QJL_TBQ` passes via `vulkan-dispatch-smoke` (see `linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json`). Metal: `make metal-verify-fused` fails by design — no `metal/fused_attn*.metal` kernel + `cases`-array path in `metal_verify` yet (`needs-runtime-smoke`; design in `metal-fused-attn-and-polar-preht-design.md`). CUDA: `cuda_verify` parses `fused_attn_qjl_tbq.json` but `needs-hardware`. Registered in `kernel-contract.json`'s `fusedAttn` section with capability key `fused_attn`; NOT yet a `requiredRuntimeCapabilityKey`/`manifestKernelName`. | `verify/fixtures/{fused_attn_qjl_tbq.json,fused_attn_qjl_polar.json,polar_preht.json}`; `reports/porting/2026-05-11/fused-attn-op-contract.md`; `reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md`. |
 | CPU SIMD paths | AVX-VNNI int8-QJL path (5.25× on this box), Polar pre-Hadamard SIMD, and ARM dotprod variants landed in `qjl-cpu`/`polarquant-cpu`. | `verify/bench_results/cpu_avxvnni_2026-05-11.json`; baseline `verify/hardware-results/linux-thismachine-cpu-baseline-2026-05-11.json`; `reports/porting/2026-05-11/this-machine-test-capability.md`. |
-| Platform target matrix | `kernel-contract.json` now tracks 23 build targets — added `linux-aarch64-{cpu,cuda}`, `windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` with cmake plumbing + CUDA arch pins (incl. Blackwell `sm_120`, GH200 `sm_90a`). All new targets `needs-hardware`. A `27b-1m` (1M-context, CUDA-only-backend) tier is now in the catalog/schema/Python manifest/platform-plan; `defaultEligible` blocked on real GH200 verify. | `make -C packages/inference/verify kernel-contract` (`targets=23`). |
+| Platform target matrix | `kernel-contract.json` tracks 21 build targets — added `linux-aarch64-{cpu,cuda}`, `windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan` with cmake plumbing + CUDA arch pins (incl. Blackwell `sm_120`, GH200 `sm_90a`). All new targets `needs-hardware`. Intel Macs (`darwin-x64-metal`) are not a supported target — Apple Silicon `darwin-arm64-metal` only. A `27b-1m` (1M-context, CUDA-only-backend) tier is now in the catalog/schema/Python manifest/platform-plan; `defaultEligible` blocked on real GH200 verify. | `make -C packages/inference/verify kernel-contract` (`targets=21`). |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
 | CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh --report <path>` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh --report <path>` additionally requires arm64 Linux + Hopper/compute-capability-9.x. Skip modes exit non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
@@ -218,7 +218,6 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | Platform class | Next required action |
 | --- | --- |
 | Apple Silicon Mac | Fused Metal voice smoke now passes against the staged Eliza-1 1.7B bundle for real GGUF-backed TTS + ASR through `libelizainference.dylib`. Remaining action is built-fork graph-dispatch smoke plus full text+DFlash+voice latency/RSS/thermal gates. |
-| Intel/AMD Mac | Build `darwin-x64-metal` and run the standalone + built-fork smoke suite on real hardware. |
 | iPhone/iPad | XCFramework symbol/structure audit passes for physical-device and simulator slices, and physical XCTest now passes 3/3 on iPhone 15 Pro. Next required action is a real Eliza-1 bundle smoke from the Capacitor app shell that measures first token, first audio latency, peak RSS, and thermal state. The current iOS ABI bridge is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. Re-check at `2026-05-11T13:31:09Z`: local `adb` still lists only `emulator-5554`, `system_profiler SPUSBDataType` shows no Pixel/Android USB device, and `make -C packages/inference/verify android-vulkan-smoke` with explicit `ADB` correctly refused emulator evidence. |
 | Android Mali | Standalone Pixel 6a / Mali-G78 fixture validation passes for all six kernels. Remaining action is built-fork/app graph-dispatch evidence plus thermal/RSS. Re-check at `2026-05-11T13:31:09Z`: local `adb` still lists only `emulator-5554`, so no new physical-device run was possible from this Mac; runner evidence log is `packages/inference/verify/hardware-results/android-vulkan-smoke-20260511T133109Z.log`. |
@@ -228,7 +227,6 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | Linux aarch64 CUDA | Run `gh200_runner.sh` on a GH200/H100/H200 aarch64 CUDA host for the `27b-256k` and `27b-1m` tiers. |
 | Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required (`windows-x64-{cpu,cuda,vulkan}` targets). |
 | Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required (`windows-arm64-{cpu,vulkan}` targets). |
-| Intel/AMD Mac (x64) | Build `darwin-x64-metal` and run metal-verify + built-fork dispatch smoke on Intel/AMD Mac hardware. |
 | Fused attention (Metal + CUDA) | Vulkan fused compute kernel + `cases`-array parser in `vulkan_verify` done and hardware-verified (`vulkan-verify-fused` 1920/1920 on Intel ARL Mesa ANV; built-fork `GGML_OP_FUSED_ATTN_QJL_TBQ` dispatch verified). Remaining: a Metal `fused_attn*.metal` kernel + `cases`-array path in `metal_verify` (design in `metal-fused-attn-and-polar-preht-design.md`), then `metal-verify-fused` on a Mac; and a CUDA host for the existing `cuda_verify` fused fixture parity. |
 
 ## Training And Publishing Remaining Work
@@ -279,11 +277,46 @@ The lowest-duplication design is lazy regional loading from one bundle:
   bundle that has not passed the verify pass does not auto-fill an empty
   default slot when the hook is wired. Tests in
   `packages/app-core/src/services/local-inference/downloader.test.ts`.
-- Still open: wire `verifyOnDevice` from the engine in `service.ts` (today
-  the downloader runs without the hook, preserving first-light slot fill);
-  surface `BundleIncompatibleError` distinctly in the UI; have the
-  recommendation engine consult `manifest.kernels.verifiedBackends` against
-  the device (`canSetAsDefault` exists but is not yet called).
+- `verifyOnDevice` is now wired from the engine in `service.ts`
+  (`new Downloader({ verifyOnDevice: verifyBundleOnDevice })` →
+  `services/local-inference/verify-on-device.ts`: text load + 1-token gen
+  always, 1-phrase TTS + barge-in cancel when `manifest.files.voice` is
+  non-empty, unload at the end). A bundle that fails verify (e.g. fused voice
+  ABI not loadable on the device) stays registered but does not auto-fill an
+  empty default slot. Tests in `verify-on-device.test.ts`. Still open: surface
+  `BundleIncompatibleError` distinctly in the UI; have the recommendation
+  engine consult `manifest.kernels.verifiedBackends` against the device
+  (`canSetAsDefault` exists but is not yet called).
+- `OpenWakeWordDetector` is now wired into the voice loop:
+  `LocalInferenceEngine.startVoiceSession({ wakeWord: { enabled, head?,
+  threshold?, onWake? } })` — opt-in (off by default), local-mode only (cloud
+  UI hides the surface per AGENTS.md §5). When enabled and the bundle ships the
+  openWakeWord ONNX graphs, mic frames are fanned into the detector
+  (re-buffered to its 1280-sample frame); each fresh detection prewarms the
+  conversation and calls `onWake`. Silently inert (VAD-gated) when absent.
+- The omnivoice-fuse adapter exports the full ABI v2 surface
+  (`eliza_inference_asr_stream_*`, `tts_synthesize_stream`, `cancel_tts`,
+  `set_verifier_callback`); the `linux-x64-cpu-fused` build's
+  `OMNIVOICE_FUSE_VERIFY.json` is `ok=true` (`abi=18`, `omnivoice=10`, llama
+  re-exported). The remaining voice-eval gap is the eval *harness* (HTTP-RTF /
+  labelled-WER / mic-file e2e-loop / `llama-speculative-simple` accept), not
+  the ABI; the eval suite reports those as honestly `not-run` with accurate
+  reasons.
+- The CUDA fused-attn kernel (`packages/inference/cuda/fused-attn-qjl-tbq.cu`)
+  is wired into the build: `build-llama-cpp-dflash.mjs` stages it via
+  `patchCudaKernels`, patches `ggml-cuda/CMakeLists.txt`
+  (`add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)`) via
+  `patchGgmlCudaForFusedAttn`, and pushes `-DGGML_CUDA_FUSED_ATTN_QJL=ON` in the
+  cuda cmake branch. Non-CUDA / no-flag builds unchanged; hardware-verify still
+  pending (no NVIDIA host).
+- Eval suite re-run against the staged real bundles (2026-05-11): `0_6b`
+  text_eval=0.2779 (≥0.55 → FAIL), `1_7b` text_eval=0.328 (≥0.60 → FAIL) —
+  expected, off-the-shelf Qwen3 substitutes, not fine-tuned Eliza-1 weights.
+  dispatch eval passes. Voice/ASR/e2e/DFlash-accept gates honestly `not-run`
+  (harness/`llama-speculative-simple` not staged here; not the ABI). `9b` not
+  built (no published `Qwen3.5-9B`; ~8 GB RAM free → would OOM). Publish
+  dry-run against both real bundles exits `16` (`EXIT_RELEASE_EVIDENCE_FAIL`) —
+  gate behaves correctly. No `HF_TOKEN` here — upload is the operator's.
 
 ## Known Non-Goals For This Wave
 

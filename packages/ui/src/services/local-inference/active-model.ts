@@ -51,7 +51,7 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  *   - `contextSize`        → node-llama-cpp `LlamaContextOptions.contextSize`
  *   - `cacheTypeK/V`       → node-llama-cpp `experimentalKvCacheKeyType` /
  *                            `experimentalKvCacheValueType`. The milady
- *                            fork binding (milady-ai/node-llama-cpp@
+ *                            fork binding (elizaOS/node-llama-cpp@
  *                            v3.18.1-milady.3+) extends `GgmlType` to
  *                            accept the lowercase aliases `tbq3_0`,
  *                            `tbq4_0`, `qjl1_256`, `q4_polar` (mapped to
@@ -186,7 +186,7 @@ export function validateLocalInferenceLoadArgs(
     }
     if (!allowFork && isForkOnlyKvCacheType(value)) {
       throw new Error(
-        `${field}="${value}" requires the elizaOS/llama.cpp kernel from the milady fork. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the elizaOS/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
+        `${field}="${value}" requires the elizaOS/llama.cpp kernel from the elizaOS fork. The elizaOS/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the elizaOS/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
       );
     }
     if (!allowFork && !isStockKvCacheType(value)) {

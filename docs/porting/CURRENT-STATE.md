@@ -144,7 +144,7 @@ when that lands; for now this is the single ledger.
    encoder needs a 512-state Viterbi over 128 timesteps. Pure
    quality win, ~5–7 days. See `unified-fork-strategy.md` §E item 5.
 
-7. **node-llama-cpp prebuild publication.** `milady-ai/node-llama-cpp`
+7. **node-llama-cpp prebuild publication.** `elizaOS/node-llama-cpp`
    ships `dist/` and accepts the new `GgmlType` strings, but the
    underlying `@node-llama-cpp/<platform>` C++ binary still resolves
    to the upstream prebuild — so the desktop path silently falls

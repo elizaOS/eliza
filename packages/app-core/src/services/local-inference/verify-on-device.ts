@@ -20,9 +20,9 @@
  */
 
 import fs from "node:fs/promises";
+import type { VerifyBundleOnDevice } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { parseManifestOrThrow } from "./manifest";
-import type { VerifyBundleOnDevice } from "./downloader";
 
 /** A short, deterministic prompt — we only care that one token comes back. */
 const VERIFY_PROMPT = "Reply with one word.";

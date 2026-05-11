@@ -104,6 +104,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Repetitions per scenario for pass^k (default: 1)",
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help=(
+            "Cap the number of scenarios actually executed after filtering by "
+            "--domain/--mode/--scenario. Useful for fast smoke runs. Default: "
+            "no cap (run all matched scenarios)."
+        ),
+    )
+    parser.add_argument(
         "--max-cost-usd",
         type=float,
         default=10.0,
@@ -296,6 +306,24 @@ async def _run(args: argparse.Namespace) -> None:
             "No CEREBRAS_API_KEY+ANTHROPIC_API_KEY in env; restricting to STATIC scenarios. "
             "Pass --mode live to override (will need both keys for the live judge)."
         )
+
+    # Apply --limit after --scenario/--domain/--mode resolution so the cap
+    # lands on the post-filter set. We have to mirror the runner's domain+mode
+    # filter here so the slice is taken from the same set the runner would run.
+    if args.limit is not None and args.limit > 0:
+        filtered = [
+            s
+            for s in scenarios
+            if (domain is None or s.domain == domain)
+            and (mode is None or s.mode == mode)
+        ]
+        if len(filtered) > args.limit:
+            scenarios = filtered[: args.limit]
+            logging.getLogger(__name__).info(
+                "Limiting run to first %d scenarios (post-filter)", args.limit
+            )
+        else:
+            scenarios = filtered
 
     agent_factory = _build_agent_factory(args.agent)
     agent_fn = (

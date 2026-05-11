@@ -1,6 +1,6 @@
 /**
  * Runtime test for the W1-C cache-type-override plumbing against the
- * milady-ai/node-llama-cpp@v3.18.1-milady.3+ binding.
+ * elizaOS/node-llama-cpp@v3.18.1-milady.3+ binding.
  *
  * Stock node-llama-cpp@3.18.1 rejects the milady-fork KV cache type
  * strings (`tbq3_0`, `tbq4_0`, `qjl1_256`, `q4_polar`) at
@@ -223,7 +223,7 @@ describe("ActiveModel runtime: cache-type override → milady fork binding", () 
     }
 
     // The hard failure mode this test pins down is the TS-layer reject
-    // from before milady-ai/node-llama-cpp existed. With stock
+    // from before elizaOS/node-llama-cpp existed. With stock
     // node-llama-cpp@3.18.1 + lowercase `tbq4_0`, the binding would
     // either throw or silently degrade because the stock enum has no
     // such key. With the milady fork binding, the string resolves

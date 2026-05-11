@@ -1,5 +1,16 @@
 import type { JsonValue } from "../types/primitives.ts";
 
+// Re-export the canonical retrieval-funnel shapes from `trajectory-recorder`
+// so external consumers can depend on the services-layer surface instead of
+// reaching into runtime/. Closes the Wave 2-C funnel-instrumentation
+// contract: per-stage retrieval entries + fused top-K + selected/correct
+// action lists.
+export type {
+	RecordedRetrievalStageEntry,
+	RecordedRetrievalPerStageScores,
+	RecordedToolSearchStage,
+} from "../runtime/trajectory-recorder.ts";
+
 export const ELIZA_NATIVE_TRAJECTORY_FORMAT = "eliza_native_v1" as const;
 
 export type ElizaNativeTrajectoryFormat = typeof ELIZA_NATIVE_TRAJECTORY_FORMAT;

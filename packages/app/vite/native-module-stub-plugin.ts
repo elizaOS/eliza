@@ -158,6 +158,18 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-signal",
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
+    // The cloud plugin's runtime surface (cloud secrets, TTS routes,
+    // ElevenLabs key resolver) is server-only. The app-core dist barrel
+    // re-exports symbols from it via api/server.js — stub the bare
+    // specifier so rollup's static named-import scan succeeds.
+    "@elizaos/plugin-elizacloud",
+    // Native argon2 bindings (server-side password hashing in
+    // app-core/api/auth/passwords.ts). Pulled into the browser graph
+    // through the dist-barrel re-export. The `*-wasm32-wasi` sibling is
+    // re-exported from argon2's own browser.js — also stub it so rollup
+    // doesn't try to resolve a wasm shim package we don't ship.
+    "@node-rs/argon2",
+    "@node-rs/argon2-wasm32-wasi",
     "@protobufjs/inquire",
     // Node-only ANSI colour helpers used by terminal/theme. The shared
     // barrel re-exports terminal/theme so any browser consumer that
@@ -484,6 +496,48 @@ export function nativeModuleStubPlugin(
           ].map((name) => `export const ${name} = table;`),
           "export const schema = table;",
           "export default table;",
+        ].join("\n");
+      }
+
+      if (
+        strippedId === "@node-rs/argon2" ||
+        strippedId === "@node-rs/argon2-wasm32-wasi"
+      ) {
+        // Argon2 hashing is server-only; the renderer pulls in
+        // app-core's auth passwords module via the dist barrel re-export.
+        // The argon2 package's own browser.js re-exports from
+        // `@node-rs/argon2-wasm32-wasi`, so stub both with the same shape.
+        return [
+          "const serverOnly = () => { throw new Error('@node-rs/argon2 is server-only'); };",
+          "export const hash = async () => { serverOnly(); };",
+          "export const verify = async () => false;",
+          "export const Algorithm = Object.freeze({ Argon2d: 0, Argon2i: 1, Argon2id: 2 });",
+          "export const Version = Object.freeze({ V0x10: 0x10, V0x13: 0x13 });",
+          "export default { hash, verify, Algorithm, Version };",
+        ].join("\n");
+      }
+
+      if (strippedId === "@elizaos/plugin-elizacloud") {
+        // Mirrors packages/app-core/src/platform/elizaos-plugin-elizacloud-browser-stub.ts.
+        // Every server-only export resolves to a noop in the renderer; the
+        // default export is a Proxy that swallows arbitrary property access
+        // so any future call sites do not break the static analysis pass.
+        return [
+          "const noop = () => undefined;",
+          "export const clearCloudSecrets = noop;",
+          "export const ensureCloudTtsApiKeyAlias = noop;",
+          "export const getCloudSecret = noop;",
+          "export const handleCloudTtsPreviewRoute = noop;",
+          "export const mirrorCompatHeaders = noop;",
+          "export const normalizeCloudSiteUrl = noop;",
+          "export const __resetCloudBaseUrlCache = noop;",
+          "export const resolveCloudTtsBaseUrl = noop;",
+          "export const resolveElevenLabsApiKeyForCloudMode = noop;",
+          "export const elizaOSCloudPlugin = { name: 'elizaOSCloud', description: 'browser stub' };",
+          "export const DEFAULT_CLOUD_CONFIG = { enabled: false };",
+          "export class CloudApiError extends Error {}",
+          "export class InsufficientCreditsError extends Error {}",
+          "export default new Proxy(noop, { get: () => noop, apply: () => undefined });",
         ].join("\n");
       }
 
