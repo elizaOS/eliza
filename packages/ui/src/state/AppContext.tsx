@@ -29,6 +29,7 @@ import {
   resolveInitialTabForPath,
   type Tab,
 } from "../navigation";
+import { applyThemeToDocument } from "../themes/apply-theme";
 import { copyTextToClipboard } from "../utils";
 import {
   getActiveProfile,
@@ -213,17 +214,22 @@ function AppProviderInner({
   const {
     state: {
       uiTheme,
-      themeId,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
     },
     setUiTheme,
-    setThemeId,
     setCompanionVrmPowerMode,
     setCompanionAnimateWhenHidden,
     setCompanionHalfFramerateMode,
   } = displayPrefs;
+
+  // Apply the host app's brand theme (set via BrandingConfig.theme).
+  const brandTheme = brandingOverride?.theme;
+  useEffect(() => {
+    if (!brandTheme) return;
+    return applyThemeToDocument(brandTheme, uiTheme);
+  }, [brandTheme, uiTheme]);
 
   // ── Lifecycle state (consolidated from 20+ useState hooks) ──
   const lifecycle = useLifecycleState();
@@ -1826,7 +1832,6 @@ function AppProviderInner({
       uiShellMode,
       uiLanguage,
       uiTheme,
-      themeId,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
@@ -2118,7 +2123,6 @@ function AppProviderInner({
       navigation,
       setUiLanguage,
       setUiTheme,
-      setThemeId,
       setCompanionVrmPowerMode,
       setCompanionAnimateWhenHidden,
       setCompanionHalfFramerateMode,
@@ -2249,7 +2253,6 @@ function AppProviderInner({
       uiShellMode,
       uiLanguage,
       uiTheme,
-      themeId,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
@@ -2532,7 +2535,6 @@ function AppProviderInner({
       navigation,
       setUiLanguage,
       setUiTheme,
-      setThemeId,
       setCompanionVrmPowerMode,
       setCompanionAnimateWhenHidden,
       setCompanionHalfFramerateMode,

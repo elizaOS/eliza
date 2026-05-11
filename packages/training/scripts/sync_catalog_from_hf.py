@@ -1,10 +1,10 @@
-"""Walk elizalabs/eliza-1-* repos and emit a catalog diff for local inference.
+"""Walk elizaos/eliza-1-* repos and emit a catalog diff for local inference.
 
 The local-inference catalog (`packages/app-core/src/services/local-inference/catalog.ts`)
 is the source of truth for which models the phone offers and where it
 downloads them from. This script:
 
-  1. Lists every Eliza-1 repo under the elizalabs HF org.
+  1. Lists every Eliza-1 repo under the elizaos HF org.
   2. For each repo, reads `manifest.json` and the GGUF metadata (via the
      `huggingface_hub` repo_info API; `lfs.sha256` and `size` come for
      free with `files_metadata=True`).
@@ -22,7 +22,7 @@ schema is intentionally tiny:
       "entries": [
         {
           "id": "eliza-1-1_7b",
-          "hfRepo": "elizalabs/eliza-1-1_7b",
+          "hfRepo": "elizaos/eliza-1-1_7b",
           "ggufFile": "text/eliza-1-1_7b-q4_k_m.gguf",
           "sha256": "<64-hex>",
           "sizeBytes": 0,
@@ -186,7 +186,7 @@ def collect_entries(
             continue
         gguf_file, sha, size = gguf_info
         # Catalog id == bare repo name (after the org/), e.g.
-        # `elizalabs/eliza-1-1_7b` -> `eliza-1-1_7b`.
+        # `elizaos/eliza-1-1_7b` -> `eliza-1-1_7b`.
         catalog_id = repo_name
         entries.append(CatalogEntry(
             id=catalog_id,

@@ -35,6 +35,7 @@ import type {
   CoreManagerLike,
   InstallProgressLike,
   PluginManagerLike,
+  RegistryPluginInfo,
 } from "../services/plugin-manager-types.ts";
 import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
 import { applyPluginRuntimeMutation } from "./plugin-runtime-apply.ts";
@@ -95,6 +96,15 @@ interface PluginEntry {
   validationErrors: Array<{ field: string; message: string }>;
   validationWarnings: Array<{ field: string; message: string }>;
   npmName?: string;
+  directory?: string | null;
+  registryKind?: string;
+  origin?: "builtin" | "third-party" | string;
+  registrySource?: string;
+  support?: "first-party" | "community" | string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
   version?: string;
   releaseStream?: "latest" | "beta";
   requestedVersion?: string;
@@ -183,6 +193,68 @@ interface CoreToggleDriftDiagnostic {
   enabled_entries: boolean | null;
   enabled_compat: boolean | null;
   drift_flags: CoreToggleDriftFlag[];
+}
+
+function normalizeRegistryLookupKey(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed.toLowerCase() : null;
+}
+
+function registryLookupCandidates(plugin: PluginEntry): string[] {
+  const candidates = new Set<string>();
+  const add = (value: string | undefined) => {
+    const normalized = normalizeRegistryLookupKey(value);
+    if (normalized) candidates.add(normalized);
+  };
+
+  add(plugin.npmName);
+  add(plugin.name);
+  add(plugin.id);
+  add(`@elizaos/plugin-${plugin.id}`);
+  add(`@elizaos/app-${plugin.id}`);
+
+  return Array.from(candidates);
+}
+
+function applyRegistryMetadata(
+  plugin: PluginEntry,
+  registryMetadataByName: Map<string, RegistryPluginInfo>,
+): void {
+  const registryInfo = registryLookupCandidates(plugin)
+    .map((candidate) => registryMetadataByName.get(candidate))
+    .find((candidate): candidate is RegistryPluginInfo => Boolean(candidate));
+
+  if (!registryInfo) {
+    if (plugin.npmName?.startsWith("@elizaos/")) {
+      plugin.origin ??= "builtin";
+      plugin.registrySource ??= "builtin";
+      plugin.support ??= "first-party";
+      plugin.builtIn ??= true;
+      plugin.firstParty ??= true;
+      plugin.thirdParty ??= false;
+    }
+    return;
+  }
+
+  plugin.directory = registryInfo.directory ?? plugin.directory ?? null;
+  plugin.registryKind =
+    registryInfo.registryKind ?? registryInfo.kind ?? plugin.registryKind;
+  plugin.origin = registryInfo.origin ?? plugin.origin;
+  plugin.registrySource = registryInfo.source ?? plugin.registrySource;
+  plugin.support = registryInfo.support ?? plugin.support;
+  plugin.builtIn = registryInfo.builtIn ?? plugin.builtIn;
+  plugin.firstParty = registryInfo.firstParty ?? plugin.firstParty;
+  plugin.thirdParty = registryInfo.thirdParty ?? plugin.thirdParty;
+  plugin.status = registryInfo.status ?? plugin.status;
+  plugin.homepage = plugin.homepage ?? registryInfo.homepage ?? undefined;
+  plugin.repository =
+    plugin.repository ?? `https://github.com/${registryInfo.gitRepo}`;
+  plugin.latestVersion =
+    plugin.latestVersion ??
+    registryInfo.npm.v2Version ??
+    registryInfo.npm.v1Version ??
+    registryInfo.npm.v0Version ??
+    null;
 }
 
 export interface PluginRouteContext {
@@ -351,6 +423,7 @@ export async function handlePluginRoutes(
         betaVersion?: string | null;
       }
     >();
+    let registryMetadataByName = new Map<string, RegistryPluginInfo>();
     try {
       const pluginManager = requirePluginManager(state.runtime);
       const installed = await pluginManager.listInstalledPlugins();
@@ -366,6 +439,15 @@ export async function handlePluginRoutes(
           },
         ]),
       );
+
+      const registry = await pluginManager.refreshRegistry();
+      registryMetadataByName = new Map<string, RegistryPluginInfo>();
+      for (const [key, info] of registry) {
+        for (const candidate of [key, info.name, info.npm.package]) {
+          const normalized = normalizeRegistryLookupKey(candidate);
+          if (normalized) registryMetadataByName.set(normalized, info);
+        }
+      }
     } catch {
       // Keep the plugin list working even when the plugin-manager service is unavailable.
     }
@@ -403,6 +485,8 @@ export async function handlePluginRoutes(
       ? state.runtime.plugins.map((p) => p.name)
       : [];
     for (const plugin of allPlugins) {
+      applyRegistryMetadata(plugin, registryMetadataByName);
+
       const installedMetadata =
         (plugin.npmName ? installedMetadataByName.get(plugin.npmName) : null) ??
         installedMetadataByName.get(plugin.name);

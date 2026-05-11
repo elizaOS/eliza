@@ -202,7 +202,7 @@ HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_dataset_candidate.py \
   --write \
   --push \
   --allow-hf-push \
-  --repo-id elizalabs/eliza-1-training-candidates
+  --repo-id elizaos/eliza-1-training-candidates
 ```
 
 For `sourceKind: user_export`, pushing additionally requires

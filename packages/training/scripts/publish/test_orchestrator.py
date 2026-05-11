@@ -285,7 +285,7 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
             {
                 "schemaVersion": 1,
                 "tier": tier,
-                "repoId": f"elizalabs/eliza-1-{tier}",
+                "repoId": f"elizaos/eliza-1-{tier}",
                 "releaseState": "upload-candidate",
                 "final": {
                     "weights": True,
@@ -338,7 +338,7 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
                     "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
                 },
                 "hf": {
-                    "repoId": f"elizalabs/eliza-1-{tier}",
+                    "repoId": f"elizaos/eliza-1-{tier}",
                     "status": "pending-upload",
                 },
             },
@@ -391,7 +391,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id=f"elizalabs/eliza-1-{tier}",
+        repo_id=f"elizaos/eliza-1-{tier}",
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(
@@ -656,7 +656,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "payload123",
-            "url": "https://huggingface.co/elizalabs/eliza-1-9b/commit/payload123",
+            "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/payload123",
             "uploadedPaths": uploaded_paths,
         }
 
@@ -686,7 +686,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
     assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
-    assert release["hf"]["uploadEvidence"]["repoId"] == "elizalabs/eliza-1-9b"
+    assert release["hf"]["uploadEvidence"]["repoId"] == "elizaos/eliza-1-9b"
     checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
     release_line = next(
         line for line in checksum_lines if "  evidence/release.json" in line

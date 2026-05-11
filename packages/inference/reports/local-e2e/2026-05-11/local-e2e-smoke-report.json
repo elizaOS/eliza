@@ -22,7 +22,7 @@
     "notes": [
       "Local bundle currently stages voice/ASR/VAD/cache/evidence only; text and DFlash are outside the bundle.",
       "Staged ASR is onnx-community/whisper-tiny.en, while packages/inference/AGENTS.md requires Qwen3-ASR for Eliza-1 release bundles.",
-      "No public elizalabs/eliza-1-* Hugging Face model repos were found during this run."
+      "No public elizaos/eliza-1-* Hugging Face model repos were found during this run."
     ]
   },
   "artifacts": {
@@ -223,7 +223,7 @@
     }
   },
   "blockers": [
-    "No complete eliza-1-0_6b or eliza-1-1_7b release bundle exists locally or on public elizalabs HF: manifest/text/dflash/evals/checksums/license files are missing from the local bundle.",
+    "No complete eliza-1-0_6b or eliza-1-1_7b release bundle exists locally or on public elizaos HF: manifest/text/dflash/evals/checksums/license files are missing from the local bundle.",
     "Fused OmniVoice one-step WAV generation stalls in Metal codec decode; workaround is fused Metal MaskGIT token generation plus CPU-only standalone codec decode.",
     "DFlash drafter GGUF cannot be loaded by llama-cli as a draft model because architecture dflash-draft is unknown to the runtime entrypoint used here.",
     "Voice loop ASR is functional but not quality-pass: generated audio transcribed differently from reference.",

@@ -17,7 +17,7 @@
 #
 # CONTRACT — required env (all four come from the manifest's
 # `vast_template_env` block, exported into the Vast template):
-#   MODEL_REPO          HF repo id (e.g. elizalabs/eliza-1-9b).
+#   MODEL_REPO          HF repo id (e.g. elizaos/eliza-1-9b).
 #   MODEL_ALIAS         display alias (e.g. vast/eliza-1-9b). Forwarded to
 #                       worker.py so the pyworker reports the right name to
 #                       the Vast Serverless Engine.

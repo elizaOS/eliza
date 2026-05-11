@@ -11,7 +11,6 @@ import {
   loadCompanionAnimateWhenHidden,
   loadCompanionHalfFramerateMode,
   loadCompanionVrmPowerMode,
-  loadThemeId,
   loadUiTheme,
   normalizeCompanionHalfFramerateMode,
   normalizeCompanionVrmPowerMode,
@@ -19,7 +18,6 @@ import {
   saveCompanionAnimateWhenHidden,
   saveCompanionHalfFramerateMode,
   saveCompanionVrmPowerMode,
-  saveThemeId,
   saveUiTheme,
 } from "./persistence";
 import type {
@@ -30,7 +28,6 @@ import type { UiTheme } from "./ui-preferences";
 
 export function useDisplayPreferences() {
   const [uiTheme, setUiThemeState] = useState<UiTheme>(loadUiTheme);
-  const [themeId, setThemeIdState] = useState<string>(loadThemeId);
   const [companionVrmPowerMode, setCompanionVrmPowerModeState] =
     useState<CompanionVrmPowerMode>(loadCompanionVrmPowerMode);
   const [companionAnimateWhenHidden, setCompanionAnimateWhenHiddenState] =
@@ -41,10 +38,6 @@ export function useDisplayPreferences() {
   // Normalize + persist wrappers
   const setUiTheme = useCallback((theme: UiTheme) => {
     setUiThemeState(normalizeUiTheme(theme));
-  }, []);
-
-  const setThemeId = useCallback((id: string) => {
-    setThemeIdState(id);
   }, []);
 
   const setCompanionVrmPowerMode = useCallback(
@@ -74,12 +67,6 @@ export function useDisplayPreferences() {
   }, [uiTheme]);
 
   useEffect(() => {
-    saveThemeId(themeId);
-    // Re-apply the UI theme to trigger theme color set application
-    applyUiTheme(uiTheme);
-  }, [themeId, uiTheme]);
-
-  useEffect(() => {
     saveCompanionVrmPowerMode(companionVrmPowerMode);
   }, [companionVrmPowerMode]);
 
@@ -94,13 +81,11 @@ export function useDisplayPreferences() {
   return {
     state: {
       uiTheme,
-      themeId,
       companionVrmPowerMode,
       companionAnimateWhenHidden,
       companionHalfFramerateMode,
     },
     setUiTheme,
-    setThemeId,
     setCompanionVrmPowerMode,
     setCompanionAnimateWhenHidden,
     setCompanionHalfFramerateMode,

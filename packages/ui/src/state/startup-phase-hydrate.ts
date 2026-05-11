@@ -259,9 +259,9 @@ export async function runHydrating(
   }
   if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
     deps.setTabRaw(urlTab);
-    if (urlTab === "plugins" || urlTab === "connectors") {
+    if (urlTab === "plugins") {
       void deps.loadPlugins();
-      if (urlTab === "plugins") void deps.loadSkills();
+      void deps.loadSkills();
     }
     if (urlTab === "settings") {
       void deps.checkExtensionStatus();

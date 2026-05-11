@@ -536,8 +536,12 @@ async function fetchJson(
   url: string,
   init: RequestInit,
   timeoutMs = 60_000,
+  externalSignal?: AbortSignal,
 ): Promise<unknown> {
   const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
@@ -550,6 +554,91 @@ async function fetchJson(
     return await res.json();
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
+  }
+}
+
+export function extractStreamingChatDelta(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const record = json as Record<string, unknown>;
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  let out = "";
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") continue;
+    const c = choice as Record<string, unknown>;
+    const delta = c.delta;
+    if (delta && typeof delta === "object") {
+      const content = (delta as Record<string, unknown>).content;
+      if (typeof content === "string") out += content;
+      continue;
+    }
+    const text = c.text;
+    if (typeof text === "string") out += text;
+  }
+  return out;
+}
+
+async function fetchStreamingChatCompletion(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  onTextChunk: (chunk: string) => void | Promise<void>,
+  externalSignal?: AbortSignal,
+): Promise<string> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`,
+      );
+    }
+    if (!res.body) {
+      throw new Error(`[dflash] Streaming response from ${url} had no body`);
+    }
+
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let text = "";
+    const consumeEvent = async (raw: string): Promise<void> => {
+      const dataLines = raw
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trimStart());
+      if (dataLines.length === 0) return;
+      const data = dataLines.join("\n").trim();
+      if (!data || data === "[DONE]") return;
+      const chunk = extractStreamingChatDelta(JSON.parse(data));
+      if (!chunk) return;
+      text += chunk;
+      await onTextChunk(chunk);
+    };
+
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep = buffer.search(/\r?\n\r?\n/);
+      while (sep !== -1) {
+        const raw = buffer.slice(0, sep);
+        buffer = buffer.slice(buffer[sep] === "\r" ? sep + 4 : sep + 2);
+        await consumeEvent(raw);
+        sep = buffer.search(/\r?\n\r?\n/);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) await consumeEvent(buffer);
+    return text;
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
   }
 }
 

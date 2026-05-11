@@ -123,6 +123,7 @@ export async function fetchFromNetwork(params: {
               };
               developerOnly?: boolean;
               visibleInAppStore?: boolean;
+              mainTab?: boolean;
             };
           }
         >;
@@ -190,6 +191,7 @@ export async function fetchFromNetwork(params: {
             session: e.app.session,
             developerOnly: e.app.developerOnly,
             visibleInAppStore: e.app.visibleInAppStore,
+            mainTab: e.app.mainTab,
           };
         }
 

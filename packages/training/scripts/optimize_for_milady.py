@@ -3,7 +3,7 @@
 Composes the per-technique apply scripts in dependency order, runs the
 ``milady-ai/llama.cpp`` GGUF conversion (fork-aware, understands the new
 GGML types ``Q4_POLAR=47`` and ``QJL1_256=46``), and publishes a
-single ``elizalabs/eliza-1-<tier>`` HuggingFace repo whose contents are
+single ``elizaos/eliza-1-<tier>`` HuggingFace repo whose contents are
 ready for the on-device Eliza-1 downloader to consume.
 
 The orchestrator is **idempotent**: each step writes its sidecar
@@ -16,21 +16,21 @@ Usage::
 
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_milady.py \\
-        --base-model elizalabs/eliza-1-0_6b \\
+        --base-model elizaos/eliza-1-0_6b \\
         --output-dir checkpoints/eliza-1-0_6b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo elizalabs/eliza-1-0_6b \\
+        --hf-repo elizaos/eliza-1-0_6b \\
         --dry-run
 
     # Real run (needs the milady-ai/llama.cpp v0.4.0-milady checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
         uv run python scripts/optimize_for_milady.py \\
-            --base-model elizalabs/eliza-1-0_6b \\
+            --base-model elizaos/eliza-1-0_6b \\
             --output-dir checkpoints/eliza-1-0_6b \\
             --apply polarquant qjl turboquant \\
-            --hf-repo elizalabs/eliza-1-0_6b
+            --hf-repo elizaos/eliza-1-0_6b
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
@@ -644,7 +644,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--base-model",
         required=True,
-        help="HF repo id or local path to the base model (e.g. elizalabs/eliza-1-0_6b).",
+        help="HF repo id or local path to the base model (e.g. elizaos/eliza-1-0_6b).",
     )
     p.add_argument(
         "--output-dir",
@@ -688,7 +688,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (e.g. elizalabs/eliza-1-0_6b). "
+        help="HuggingFace repo to publish to (e.g. elizaos/eliza-1-0_6b). "
              "When omitted the pipeline stops after manifest emission.",
     )
     p.add_argument(

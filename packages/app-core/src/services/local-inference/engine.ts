@@ -432,7 +432,11 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         // is the canonical way to make local inference cancellable.
         promptOpts.stopOnAbortSignal = args.signal;
       }
-      return session.prompt(args.prompt, promptOpts);
+      const text = await session.prompt(args.prompt, promptOpts);
+      if (text.length > 0) {
+        await args.onTextChunk?.(text);
+      }
+      return text;
     };
     const job = this.generationQueue.then(run, run);
     this.generationQueue = job.catch(() => {
