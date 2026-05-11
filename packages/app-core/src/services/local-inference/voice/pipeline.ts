@@ -45,7 +45,7 @@ import type {
 } from "./types";
 
 /**
- * Streaming ASR. `transcribeStream` consumes a single audio buffer
+ * ASR token streamer. `transcribeStream` consumes a single audio buffer
  * (already VAD-gated — silent frames dropped upstream) and yields text
  * tokens as the decoder produces them. The async iterator MUST be
  * finite; when it completes, ASR is "done" and the drafter/verifier
@@ -53,8 +53,14 @@ import type {
  * (AGENTS.md §1 — zero re-tokenization between ASR output and text
  * input), so the emitted `TextToken.index` values are contiguous in
  * the text model's token space.
+ *
+ * Distinct from `StreamingTranscriber` in `voice/types.ts`: that one is
+ * the live PCM-frame feed → partial-transcript-event surface (W2's
+ * adapters). This one is the batch-buffer → token-iterator surface the
+ * `VoicePipeline` scaffold consumes. W9 reconciles which the turn
+ * controller uses end-to-end.
  */
-export interface StreamingTranscriber {
+export interface AsrTokenStreamer {
   transcribeStream(
     audio: TranscriptionAudio,
     cancel: { cancelled: boolean },
@@ -97,7 +103,7 @@ export interface TargetVerifier {
 
 export interface VoicePipelineDeps {
   scheduler: VoiceScheduler;
-  transcriber: StreamingTranscriber;
+  transcriber: AsrTokenStreamer;
   drafter: DraftProposer;
   verifier: TargetVerifier;
 }
@@ -142,7 +148,7 @@ interface PipelineRun {
  */
 export class VoicePipeline {
   private readonly scheduler: VoiceScheduler;
-  private readonly transcriber: StreamingTranscriber;
+  private readonly transcriber: AsrTokenStreamer;
   private readonly drafter: DraftProposer;
   private readonly verifier: TargetVerifier;
   private readonly maxDraftTokens: number;

@@ -1,17 +1,24 @@
 /**
  * Concrete implementations of the `VoicePipeline` seams (`pipeline.ts`).
  *
- * `pipeline.ts` defines three interfaces — `StreamingTranscriber`,
+ * `pipeline.ts` defines three interfaces — `AsrTokenStreamer`,
  * `DraftProposer`, `TargetVerifier` — and an overlapped scheduler that
  * drives the fused mic→speech graph from `packages/inference/AGENTS.md`
  * §4. This module fills those interfaces against the live runtime:
  *
- *   - `FfiStreamingTranscriber` — wraps the fused ABI's ASR
- *     (`eliza_inference_asr_transcribe` via `ElizaInferenceFfi`). The ABI
- *     today returns the full transcript as one string; this adapter
- *     splits it into contiguous text tokens so the rest of the pipeline
- *     sees a token stream. When the fork grows a token-by-token streaming
- *     ASR symbol, only this adapter changes.
+ *   - `StreamingTranscriberTokenStreamer` — the real ASR backend. Adapts a
+ *     live frame-fed `StreamingTranscriber` (`voice/transcriber.ts`: fused
+ *     `eliza_inference_asr_stream_*` → whisper.cpp interim) onto the
+ *     pipeline's batch `transcribeStream` token-iterator: it feeds the
+ *     whole utterance buffer, `flush()`es, and yields the final transcript
+ *     split into contiguous text tokens. An optional `VadEventSource`
+ *     (W1's `VadDetector`) gates decoding to active speech windows.
+ *   - `FfiAsrTokenStreamer` — wraps the v1 batch ABI's ASR
+ *     (`eliza_inference_asr_transcribe` via `ElizaInferenceFfi`) directly.
+ *     Kept for callers/tests that drive the v1 symbol; the streaming
+ *     adapter above is the preferred path.
+ *   - `MissingAsrTranscriber` — hard-fails when no ASR backend is
+ *     available (AGENTS.md §3 — no silent cloud fallback).
  *   - `LlamaServerDraftProposer` — the DFlash drafter, reached through
  *     the running `llama-server`'s `-md` drafter. GPU dispatch N=1 (no
  *     command-buffer batching for voice — ledger "Keep voice dispatch
@@ -44,18 +51,20 @@ import type {
 } from "./ffi-bindings";
 import { VoiceStartupError } from "./errors";
 import type {
+  AsrTokenStreamer,
   DraftProposer,
-  StreamingTranscriber,
   TargetVerifier,
 } from "./pipeline";
 import type {
+  PcmFrame,
+  StreamingTranscriber,
   TextToken,
   TranscriptionAudio,
   VerifierStreamEvent,
 } from "./types";
 
 /* ------------------------------------------------------------------ */
-/* StreamingTranscriber                                               */
+/* AsrTokenStreamer                                                    */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -86,7 +95,54 @@ export function splitTranscriptToTokens(
 }
 
 /**
- * `StreamingTranscriber` over the fused ABI's ASR. Construction is cheap;
+ * Real ASR backend for the overlapped `VoicePipeline`: adapts a live
+ * frame-fed `StreamingTranscriber` (`voice/transcriber.ts` — the fused
+ * `eliza_inference_asr_stream_*` decoder, or the whisper.cpp interim
+ * adapter, or whatever `EngineVoiceBridge.createStreamingTranscriber`
+ * resolved) onto the pipeline's batch `transcribeStream` token-iterator.
+ *
+ * The pipeline scaffold hands a whole utterance buffer; this adapter
+ * feeds it as one frame, `flush()`es to finalize, and yields the final
+ * transcript split into contiguous text tokens (one `await` between
+ * tokens so a barge-in cancel lands before the next one). The transcriber
+ * is disposed when the iterator ends or `cancel` trips. When `VadDetector`
+ * (W1) is wired into the underlying `StreamingTranscriber`, decoding is
+ * gated to active speech windows there — this layer is unchanged.
+ */
+export class StreamingTranscriberTokenStreamer implements AsrTokenStreamer {
+  private readonly transcriber: StreamingTranscriber;
+
+  constructor(transcriber: StreamingTranscriber) {
+    this.transcriber = transcriber;
+  }
+
+  async *transcribeStream(
+    audio: TranscriptionAudio,
+    cancel: { cancelled: boolean },
+  ): AsyncIterable<TextToken> {
+    try {
+      if (cancel.cancelled) return;
+      const frame: PcmFrame = {
+        pcm: audio.pcm,
+        sampleRate: audio.sampleRate,
+        timestampMs: 0,
+      };
+      this.transcriber.feed(frame);
+      const final = await this.transcriber.flush();
+      if (cancel.cancelled) return;
+      for (const token of splitTranscriptToTokens(final.partial)) {
+        if (cancel.cancelled) return;
+        yield token;
+        await Promise.resolve();
+      }
+    } finally {
+      this.transcriber.dispose();
+    }
+  }
+}
+
+/**
+ * `AsrTokenStreamer` over the v1 batch ABI's ASR. Construction is cheap;
  * `transcribeStream` calls the synchronous FFI `asrTranscribe` once and
  * then yields the resulting tokens one at a time so downstream nodes (the
  * drafter/verifier kick-off) see the same finite token-stream shape they
@@ -96,7 +152,7 @@ export function splitTranscriptToTokens(
  * bridge owns — passing it as a thunk keeps this adapter from forcing the
  * context allocation before voice is actually used.
  */
-export class FfiStreamingTranscriber implements StreamingTranscriber {
+export class FfiAsrTokenStreamer implements AsrTokenStreamer {
   private readonly ffi: ElizaInferenceFfi;
   private readonly getContext: () => ElizaInferenceContextHandle;
   private readonly maxTextBytes: number;
@@ -134,12 +190,13 @@ export class FfiStreamingTranscriber implements StreamingTranscriber {
 }
 
 /**
- * `StreamingTranscriber` that hard-fails: used when the bundle has no ASR
- * region (or no fused build) but a voice turn was requested. AGENTS.md §3
- * — missing required voice region in voice mode is a thrown
+ * `AsrTokenStreamer` that hard-fails: used when no ASR backend is
+ * available (no fused streaming decoder, no whisper.cpp binary/model, no
+ * bundled ASR region) but a voice turn was requested. AGENTS.md §3 —
+ * missing required voice backend in voice mode is a thrown
  * `VoiceStartupError`, never a silent fallback.
  */
-export class MissingAsrTranscriber implements StreamingTranscriber {
+export class MissingAsrTranscriber implements AsrTokenStreamer {
   constructor(private readonly reason: string) {}
   // biome-ignore lint/correctness/useYield: intentionally throws before yielding
   async *transcribeStream(): AsyncIterable<TextToken> {

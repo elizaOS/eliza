@@ -49,8 +49,8 @@ export {
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
+  type AsrTokenStreamer,
   type DraftProposer,
-  type StreamingTranscriber,
   type TargetVerifier,
   VoicePipeline,
   type VoicePipelineConfig,
@@ -60,11 +60,12 @@ export {
 export {
   type DflashTextRunner,
   dflashTextRunner,
-  FfiStreamingTranscriber,
+  FfiAsrTokenStreamer,
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
   splitTranscriptToTokens,
+  StreamingTranscriberTokenStreamer,
 } from "./pipeline-impls";
 export {
   OPENWAKEWORD_REL_PATH,
@@ -95,6 +96,25 @@ export {
   type PresetBundlePaths,
   SpeakerPresetCache,
 } from "./speaker-preset-cache";
+export {
+  ASR_SAMPLE_RATE,
+  AsrUnavailableError,
+  BaseStreamingTranscriber,
+  type CreateStreamingTranscriberOptions,
+  createStreamingTranscriber,
+  downloadWhisperModel,
+  FfiStreamingTranscriber,
+  ffiSupportsStreamingAsr,
+  makeWhisperCppDecoder,
+  parseWhisperStdout,
+  resampleLinear,
+  resolveWhisperBinary,
+  resolveWhisperModelPath,
+  type WhisperCppOptions,
+  WhisperCppStreamingTranscriber,
+  type WhisperDecoder,
+  whisperDir,
+} from "./transcriber";
 export * from "./types";
 export {
   createSileroVadDetector,
