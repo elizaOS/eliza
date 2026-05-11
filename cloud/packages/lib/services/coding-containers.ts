@@ -22,6 +22,7 @@ import type {
   CloudCodingContainerStatus,
   CloudCodingPromotion,
   CloudCodingSyncResult,
+  CloudVfsBundle,
   PromoteVfsToCloudContainerRequest,
   RequestCodingAgentContainerRequest,
   SyncCloudCodingContainerRequest,
@@ -41,6 +42,8 @@ export interface CodingContainerCreatePayload {
   persist_volume: true;
   use_hetzner_volume: true;
   volume_size_gb: number;
+  volume_mount_path: string;
+  bootstrap_source?: CloudVfsBundle;
 }
 
 export interface CodingContainerSessionBuildInput {
@@ -94,11 +97,26 @@ export function resolveCodingWorkspacePath(
   request: RequestCodingAgentContainerRequest,
   fallbackId = "workspace",
 ): string {
-  return (
+  const fallback = `/workspace/${sourceSlug(request) || slugify(fallbackId, "workspace")}`;
+  return normalizeContainerPath(
     trimOptional(request.workspacePath) ??
-    trimOptional(request.source?.rootPath) ??
-    `/workspace/${sourceSlug(request) || slugify(fallbackId, "workspace")}`
+      trimOptional(request.source?.rootPath) ??
+      fallback,
+    fallback,
   );
+}
+
+function normalizeContainerPath(value: string, fallback: string): string {
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.includes("\0")) return fallback;
+  const normalized = trimmed
+    .replace(/\/+/g, "/")
+    .replace(/\/\.(?=\/|$)/g, "")
+    .replace(/\/$/, "");
+  if (!normalized || normalized === "/" || normalized.includes("/../") || normalized.endsWith("/..")) {
+    return fallback;
+  }
+  return normalized;
 }
 
 export function buildCodingContainerCreatePayload(
@@ -123,6 +141,11 @@ export function buildCodingContainerCreatePayload(
 
   if (promotionId) environmentVars.ELIZA_CODING_PROMOTION_ID = promotionId;
   if (prompt) environmentVars.ELIZA_CODING_PROMPT = prompt;
+  if (request.source?.sourceKind) environmentVars.ELIZA_CODING_SOURCE_KIND = request.source.sourceKind;
+  if (request.source?.projectId) environmentVars.ELIZA_CODING_SOURCE_PROJECT_ID = request.source.projectId;
+  if (request.source?.workspaceId) environmentVars.ELIZA_CODING_SOURCE_WORKSPACE_ID = request.source.workspaceId;
+  if (request.source?.snapshotId) environmentVars.ELIZA_CODING_SOURCE_SNAPSHOT_ID = request.source.snapshotId;
+  if (request.source?.revision) environmentVars.ELIZA_CODING_SOURCE_REVISION = request.source.revision;
 
   return {
     name: slugify(request.container?.name, `coding-${request.agent}`),
@@ -138,6 +161,8 @@ export function buildCodingContainerCreatePayload(
     persist_volume: true,
     use_hetzner_volume: true,
     volume_size_gb: DEFAULT_VOLUME_SIZE_GB,
+    volume_mount_path: workspacePath,
+    ...(request.source?.files?.length ? { bootstrap_source: request.source } : {}),
   };
 }
 
@@ -179,6 +204,9 @@ export function buildCodingContainerSessionResponse({
     metadata: {
       image: createPayload.image,
       projectName: createPayload.project_name,
+      volumeMountPath: createPayload.volume_mount_path,
+      sourceFileCount: createPayload.bootstrap_source?.files?.length ?? 0,
+      sourceTotalBytes: createPayload.bootstrap_source?.manifest?.totalBytes ?? null,
     },
   };
 }

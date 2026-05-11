@@ -21,10 +21,10 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
  * - PLAN_ACTIONS: stage 2, called repeatedly during the planner loop to
  *   invoke an action (or sub-action) by name with parameters.
  *
- * Both tools are present in every request. `tool_choice: "auto"` is held
- * across the entire turn so the messages cache stays warm — flipping
- * `tool_choice` mid-turn would invalidate the messages cache (per
- * Anthropic prompt caching invalidation rules).
+ * Both tools are present in tool-capable requests. Stage 2 normally uses
+ * `tool_choice: "auto"` for cache stability, but can force `"required"` when
+ * the Stage 1 router has already determined that the current turn must run a
+ * non-terminal tool.
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 export const PLAN_ACTIONS_TOOL_NAME = "PLAN_ACTIONS" as const;

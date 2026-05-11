@@ -22,6 +22,15 @@ async function postJson(pathname: string, body: unknown): Promise<unknown> {
   return response.json();
 }
 
+async function post(pathname: string, body: unknown): Promise<Response> {
+  return handleIosLocalAgentRequest(
+    new Request(`http://127.0.0.1:31337${pathname}`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 function stubLocalStorage(): Storage {
   const items = new Map<string, string>();
   return {
@@ -55,6 +64,95 @@ describe("handleIosLocalAgentRequest", () => {
   it("matches plugin and skill list response contracts", async () => {
     await expect(getJson("/api/plugins")).resolves.toEqual({ plugins: [] });
     await expect(getJson("/api/skills")).resolves.toEqual({ skills: [] });
+  });
+
+  it("reports the real iOS-local backend capability boundary", async () => {
+    await expect(getJson("/api/health")).resolves.toMatchObject({
+      localAgent: {
+        mode: "ios-local",
+        transport: "ittp",
+        fullAgentRuntime: false,
+        taskService: false,
+      },
+    });
+
+    await expect(getJson("/api/local-agent/capabilities")).resolves.toMatchObject(
+      {
+        mode: "ios-local",
+        transport: {
+          foreground: "ittp",
+          background: "unavailable",
+          tcpListener: false,
+          nativeRequestProxy: false,
+        },
+        backendRuntime: {
+          state: "compatibility-kernel",
+          fullAgentRuntime: false,
+          taskService: false,
+          pluginLoader: false,
+        },
+        scheduledTasks: {
+          state: "unavailable",
+          primitive: "ScheduledTask",
+        },
+      },
+    );
+  });
+
+  it("matches runtime-mode response contracts for iOS local", async () => {
+    await expect(getJson("/api/runtime/mode")).resolves.toEqual({
+      mode: "local",
+      deploymentRuntime: "local",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
+    });
+  });
+
+  it("does not invent a parallel background task runner", async () => {
+    const response = await post("/api/background/run-due-tasks", {});
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: "task_service_unavailable",
+      reason: expect.stringContaining("BackgroundRunner"),
+      ranTasks: 0,
+      capabilities: {
+        scheduledTasks: {
+          state: "unavailable",
+          primitive: "ScheduledTask",
+        },
+      },
+    });
+  });
+
+  it("serves no-op app and skill management contracts without claiming local runtime support", async () => {
+    await expect(getJson("/api/apps/runs")).resolves.toEqual([]);
+    await expect(getJson("/api/apps/favorites")).resolves.toEqual({
+      favoriteApps: [],
+    });
+    await expect(getJson("/api/plugins/installed")).resolves.toEqual({
+      count: 0,
+      plugins: [],
+    });
+    await expect(getJson("/api/plugins/core")).resolves.toEqual({
+      core: [],
+      optional: [],
+    });
+    await expect(getJson("/api/skills/curated")).resolves.toEqual({
+      skills: [],
+    });
+    await expect(getJson("/api/skills/catalog")).resolves.toMatchObject({
+      total: 0,
+      installedCount: 0,
+      skills: [],
+    });
+
+    const launch = await post("/api/apps/launch", { name: "app-lifeops" });
+    expect(launch.status).toBe(503);
+    await expect(launch.json()).resolves.toMatchObject({
+      ok: false,
+      error: "app_manager_unavailable",
+    });
   });
 
   it("serves empty local wallet contracts instead of 404s", async () => {

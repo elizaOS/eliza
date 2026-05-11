@@ -462,7 +462,7 @@ def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     metal = _metal_report(tmp_path)
     ctx = _ctx("9b", bundle, metal=metal, dry_run=True)
     bad = PublishContext(
-        **{**ctx.__dict__, "repo_id": "elizaos/eliza-1-9b"}
+        **{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-9b"}
     )
     rc = run(bad)
     assert rc == EXIT_USAGE

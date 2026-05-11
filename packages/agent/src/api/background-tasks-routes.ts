@@ -1,12 +1,16 @@
 import type http from "node:http";
-import { type AgentRuntime, type Service, ServiceType } from "@elizaos/core";
+import { ServiceType } from "@elizaos/core";
 
 interface TaskServiceLike {
   runDueTasks(): Promise<void>;
 }
 
+interface BackgroundTasksRuntime {
+  getService(serviceType: string): unknown;
+}
+
 interface BackgroundTasksRouteState {
-  runtime: AgentRuntime | null;
+  runtime: BackgroundTasksRuntime | null;
 }
 
 export interface BackgroundTasksRouteContext {
@@ -19,17 +23,18 @@ export interface BackgroundTasksRouteContext {
 }
 
 function isTaskServiceLike(
-  service: Service | null,
-): service is Service & TaskServiceLike {
+  service: unknown,
+): service is TaskServiceLike {
   return (
     service !== null &&
+    typeof service === "object" &&
     typeof Reflect.get(service, "runDueTasks") === "function"
   );
 }
 
 let runDueTasksInFlight: Promise<void> | null = null;
 
-async function runDueTasksOnce(service: Service & TaskServiceLike): Promise<{
+async function runDueTasksOnce(service: TaskServiceLike): Promise<{
   coalesced: boolean;
 }> {
   if (runDueTasksInFlight !== null) {

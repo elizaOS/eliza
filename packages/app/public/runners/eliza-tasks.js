@@ -49,6 +49,15 @@ function runDueUrl(config) {
   return null;
 }
 
+function isIosLocalIttpRunner(config) {
+  return (
+    config &&
+    config.mode === "local" &&
+    config.platform === "ios" &&
+    config.localRouteKernel === "ittp"
+  );
+}
+
 async function runWake(args) {
   const firedAt = new Date().toISOString();
   const details = eventDetails(args);
@@ -62,6 +71,17 @@ async function runWake(args) {
     platform: config.platform || "unknown",
   };
   kvSetJson(LAST_WAKE_KEY, wake);
+
+  if (!endpoint && isIosLocalIttpRunner(config)) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "ios_ittp_route_kernel_unavailable_in_background_jscontext",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
 
   if (!endpoint) {
     const skipped = {

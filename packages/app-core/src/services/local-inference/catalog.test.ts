@@ -47,7 +47,6 @@ describe("local inference catalog", () => {
   it("uses elizaos HuggingFace repos for every visible Eliza-1 tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
       expect(model.hfRepo).toBe(`elizaos/${model.id}`);
-      expect(model.hfRepo).not.toMatch(/^elizaos\//);
       expect(buildHuggingFaceResolveUrl(model)).toContain(
         `/elizaos/${model.id}/resolve/main/`,
       );

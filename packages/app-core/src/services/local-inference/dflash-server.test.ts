@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   dflashEnabled,
+  extractStreamingChatDelta,
   getDflashRuntimeStatus,
   parseDflashMetrics,
   resolveDflashBinary,
@@ -128,5 +129,32 @@ llamacpp:n_drafted_accepted_total 0
     expect(snapshot).not.toBeNull();
     expect(snapshot?.drafted).toBe(0);
     expect(Number.isNaN(snapshot?.acceptanceRate)).toBe(true);
+  });
+});
+
+describe("extractStreamingChatDelta", () => {
+  it("extracts OpenAI chat streaming delta content", () => {
+    expect(
+      extractStreamingChatDelta({
+        choices: [{ delta: { content: "Hello" } }],
+      }),
+    ).toBe("Hello");
+  });
+
+  it("extracts legacy text streaming chunks", () => {
+    expect(
+      extractStreamingChatDelta({
+        choices: [{ text: "Hi" }, { text: " there" }],
+      }),
+    ).toBe("Hi there");
+  });
+
+  it("ignores role-only or malformed chunks", () => {
+    expect(
+      extractStreamingChatDelta({
+        choices: [{ delta: { role: "assistant" } }],
+      }),
+    ).toBe("");
+    expect(extractStreamingChatDelta(null)).toBe("");
   });
 });

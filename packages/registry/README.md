@@ -56,6 +56,9 @@ The elizaOS CLI can prepare and submit the pull request from a plugin project:
 elizaos plugins submit /path/to/plugin
 ```
 
+See [docs/add-third-party-plugin.md](docs/add-third-party-plugin.md) for the
+full contributor checklist, CLI options, and manual JSON flow.
+
 ## Generating Locally
 
 From this directory:

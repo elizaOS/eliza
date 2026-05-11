@@ -3,6 +3,8 @@ export interface ChainingLoopConfig {
 	maxToolCalls: number;
 	/** Maximum repeated failures for the same tool/error signature. */
 	maxRepeatedFailures: number;
+	/** Maximum planner misses when Stage 1 requires a tool before failing fast. */
+	maxRequiredToolMisses: number;
 	/** Maximum terminal-only planner turns that still evaluate to CONTINUE. */
 	maxTerminalOnlyContinuations: number;
 	/** Estimated model context window for compaction decisions. */
@@ -18,6 +20,7 @@ export interface ChainingLoopConfig {
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 	maxToolCalls: 16,
 	maxRepeatedFailures: 2,
+	maxRequiredToolMisses: 3,
 	maxTerminalOnlyContinuations: 2,
 	contextWindowTokens: 128_000,
 	compactionReserveTokens: 10_000,
@@ -28,6 +31,7 @@ export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
 export type TrajectoryLimitKind =
 	| "tool_calls"
 	| "repeated_failures"
+	| "required_tool_misses"
 	| "terminal_only_continuations";
 
 export class TrajectoryLimitExceeded extends Error {

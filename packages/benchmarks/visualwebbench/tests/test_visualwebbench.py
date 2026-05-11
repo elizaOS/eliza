@@ -37,6 +37,29 @@ def test_choice_and_bbox_scoring() -> None:
     assert result.bbox_iou >= 0.5
 
 
+def test_prediction_error_forces_zero_score() -> None:
+    task = VisualWebBenchTask(
+        id="exact-error",
+        task_type=VisualWebBenchTaskType.WEBQA,
+        website="example.test",
+        prompt="What is the title?",
+        answer="Example",
+    )
+    evaluator = VisualWebBenchEvaluator()
+    result = evaluator.evaluate(
+        task,
+        VisualWebBenchPrediction(
+            task_id=task.id,
+            task_type=task.task_type,
+            answer_text="Example",
+            error="harness failed",
+        ),
+    )
+    assert not result.success
+    assert result.score == 0.0
+    assert result.error == "harness failed"
+
+
 def test_runner_writes_required_artifacts(tmp_path) -> None:
     config = VisualWebBenchConfig(output_dir=str(tmp_path), dry_run=True, max_tasks=2)
     report = asyncio.run(VisualWebBenchRunner(config).run_benchmark())
@@ -81,6 +104,7 @@ def test_app_harness_invocation_uses_ui_prompt_by_default(tmp_path) -> None:
     assert "--require-browser-tab" in invocation.command
     assert "--require-browser-events" in invocation.command
     assert "--require-trajectory" in invocation.command
+    assert "--require-browser-action" in invocation.command
     assert "visualwebbench" in invocation.prompt
 
 

@@ -158,6 +158,55 @@ export class VoiceScheduler {
     }
   }
 
+  async prewarmPhrases(
+    texts: ReadonlyArray<string>,
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    const concurrency = Math.max(1, Math.floor(opts.concurrency ?? 1));
+    let warmed = 0;
+    let cached = 0;
+    let cursor = 0;
+
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        const index = cursor++;
+        if (index >= texts.length) return;
+        const text = texts[index]?.trim();
+        if (!text) continue;
+        if (this.phraseCache.has(text)) {
+          cached++;
+          continue;
+        }
+        const phrase: Phrase = {
+          id: this.nextStandalonePhraseId--,
+          text,
+          fromIndex: 0,
+          toIndex: 0,
+          terminator: "max-cap",
+        };
+        const chunk = await this.backend.synthesize({
+          phrase,
+          preset: this.preset,
+          cancelSignal: { cancelled: false },
+          onKernelTick: () => this.tickKernel(),
+        });
+        this.phraseCache.put({
+          text,
+          pcm: chunk.pcm,
+          sampleRate: chunk.sampleRate,
+        });
+        warmed++;
+      }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, texts.length) }, () =>
+        worker(),
+      ),
+    );
+    return { warmed, cached };
+  }
+
   tickKernel(): void {
     this.kernelTicks++;
   }

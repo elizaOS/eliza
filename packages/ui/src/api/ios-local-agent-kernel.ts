@@ -2453,6 +2453,25 @@ export async function handleIosLocalAgentRequest(
       connectors: {},
       uptime: Math.floor((Date.now() - startedAt) / 1000),
       agentState: running ? "running" : "not_started",
+      localAgent: {
+        mode: "ios-local",
+        transport: "ittp",
+        fullAgentRuntime: false,
+        taskService: false,
+      },
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/local-agent/capabilities") {
+    return json(localAgentCapabilities());
+  }
+
+  if (method === "GET" && pathname === "/api/runtime/mode") {
+    return json({
+      mode: "local",
+      deploymentRuntime: "local",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
     });
   }
 
@@ -2498,6 +2517,20 @@ export async function handleIosLocalAgentRequest(
         pendingRestart: false,
         pendingRestartReasons: [],
       },
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/background/run-due-tasks") {
+    return unavailableLocalBackendRoute("task_service_unavailable", {
+      reason: IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON,
+      ranTasks: 0,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/internal/wake") {
+    return unavailableLocalBackendRoute("task_service_unavailable", {
+      reason: IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON,
+      ranTasks: 0,
     });
   }
 
@@ -2633,12 +2666,139 @@ export async function handleIosLocalAgentRequest(
     return json([]);
   }
 
+  if (
+    method === "GET" &&
+    (pathname === "/api/apps/search" ||
+      pathname === "/api/apps/installed" ||
+      pathname === "/api/apps/runs" ||
+      pathname === "/api/apps/plugins" ||
+      pathname === "/api/apps/plugins/search" ||
+      pathname === "/api/apps/permissions")
+  ) {
+    return json([]);
+  }
+
+  if (pathname === "/api/apps/favorites") {
+    if (method === "GET") return json({ favoriteApps: [] });
+    if (method === "PUT") return json({ favoriteApps: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/apps/favorites/replace") {
+    return json({ favoriteApps: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/apps/overlay-presence") {
+    return json({ ok: true });
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/apps/launch" ||
+      pathname === "/api/apps/create" ||
+      pathname === "/api/apps/relaunch" ||
+      pathname === "/api/apps/load-from-directory")
+  ) {
+    return unavailableLocalBackendRoute("app_manager_unavailable");
+  }
+
   if (method === "GET" && pathname === "/api/plugins") {
     return json({ plugins: [] });
   }
 
+  if (method === "GET" && pathname === "/api/plugins/installed") {
+    return json({ count: 0, plugins: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/plugins/core") {
+    return json({ core: [], optional: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/plugins/core/toggle") {
+    return unavailableLocalBackendRoute("plugin_loader_unavailable");
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/plugins/install" ||
+      pathname === "/api/plugins/update" ||
+      pathname === "/api/plugins/uninstall")
+  ) {
+    return unavailableLocalBackendRoute("plugin_loader_unavailable");
+  }
+
   if (method === "GET" && pathname === "/api/skills") {
     return json({ skills: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/skills/refresh") {
+    return json({ ok: true, skills: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/skills/curated") {
+    return json({ skills: [] });
+  }
+
+  if (
+    (method === "POST" || method === "DELETE") &&
+    pathname.startsWith("/api/skills/curated/")
+  ) {
+    return json({ ok: true });
+  }
+
+  if (method === "GET" && pathname === "/api/skills/catalog") {
+    return json({
+      total: 0,
+      page: 1,
+      perPage: 50,
+      totalPages: 0,
+      installedCount: 0,
+      skills: [],
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/skills/catalog/search") {
+    return json({
+      query: url.searchParams.get("q") ?? "",
+      count: 0,
+      results: [],
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/skills/catalog/refresh") {
+    return json({ ok: true, count: 0 });
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/skills/catalog/install" ||
+      pathname === "/api/skills/catalog/uninstall" ||
+      pathname === "/api/skills/marketplace/install" ||
+      pathname === "/api/skills/marketplace/uninstall")
+  ) {
+    return unavailableLocalBackendRoute("skill_installer_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/skills/marketplace/search") {
+    return json({ ok: true, results: [] });
+  }
+
+  if (pathname === "/api/skills/marketplace/config") {
+    if (method === "GET" || method === "PUT") return json({ keySet: false });
+  }
+
+  if (method === "GET" && pathname === "/api/registry/plugins") {
+    return json({ plugins: [] });
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/registry/plugins/")) {
+    return json({ plugin: null }, 404);
+  }
+
+  if (method === "GET" && pathname === "/api/models") {
+    return json({
+      provider: url.searchParams.get("provider") ?? null,
+      models: [],
+    });
   }
 
   if (method === "GET" && pathname === "/api/local-inference/hub") {

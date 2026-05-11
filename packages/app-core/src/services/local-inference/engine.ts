@@ -880,6 +880,16 @@ export class LocalInferenceEngine {
     );
   }
 
+  async prewarmVoicePhrases(
+    texts: ReadonlyArray<string>,
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    return this.requireVoiceBridge("prewarm voice phrases").prewarmPhrases(
+      texts,
+      opts,
+    );
+  }
+
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
   }

@@ -26,7 +26,9 @@
  */
 
 import { and, eq, sql } from "drizzle-orm";
+import * as crypto from "crypto";
 import * as fs from "fs";
+import * as path from "path";
 import { dbRead, dbWrite } from "@/db/client";
 import {
   type Container,
@@ -139,6 +141,39 @@ export interface CreateContainerInput {
 
   /** Informational declared volume size in GiB (enforced when creating a Hetzner Cloud volume). */
   volumeSizeGb?: number;
+
+  /** Container path where the persistent project volume is mounted. Defaults to `/data`. */
+  volumeMountPath?: string;
+
+  /** Optional file bundle written into the persistent volume before container start. */
+  bootstrapSource?: ContainerBootstrapSource;
+}
+
+export interface ContainerBootstrapFile {
+  path: string;
+  contents: string;
+  encoding?: "utf-8" | "base64";
+  size?: number;
+  sha256?: string;
+  mode?: string;
+  mtimeMs?: number;
+}
+
+export interface ContainerBootstrapSource {
+  sourceKind?: "project" | "workspace";
+  projectId?: string;
+  workspaceId?: string;
+  rootPath?: string;
+  snapshotId?: string;
+  revision?: string;
+  files?: ContainerBootstrapFile[];
+  deletedFiles?: Array<{ path: string; sha256?: string }>;
+  manifest?: {
+    fileCount?: number;
+    totalBytes?: number;
+    ignoredPaths?: string[];
+  };
+  metadata?: Record<string, unknown>;
 }
 
 /** Stored per-container metadata that lives in `containers.metadata` jsonb. */
@@ -159,6 +194,8 @@ export interface HetznerContainerMetadata {
   containerPort: number;
   /** Host filesystem path mounted at `/data` inside the container, if persistent. */
   volumePath?: string;
+  /** Container path receiving the persistent volume. Legacy rows default to `/data`. */
+  volumeMountPath?: string;
 }
 
 /** Container summary returned to API callers. */
@@ -197,6 +234,9 @@ export interface ContainerMetricsSnapshot {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_NODE_NETWORK = containersEnv.dockerNetwork();
+const DEFAULT_VOLUME_MOUNT_PATH = "/data";
+const MAX_BOOTSTRAP_FILES = 2000;
+const MAX_BOOTSTRAP_BYTES = 50 * 1024 * 1024;
 
 /** Generate a Docker-safe container name from the DB id. */
 function deriveContainerName(containerId: string): string {
@@ -270,6 +310,7 @@ function readMetadata(row: Container): HetznerContainerMetadata | null {
     image: raw.image,
     containerPort: raw.containerPort,
     volumePath: typeof raw.volumePath === "string" ? raw.volumePath : undefined,
+    volumeMountPath: typeof raw.volumeMountPath === "string" ? raw.volumeMountPath : undefined,
   };
 }
 
@@ -297,6 +338,149 @@ function validateEnvKey(key: string): void {
       `Invalid environment variable name: '${key}'. Must start with letter/underscore and contain only alphanumeric and underscores.`,
     );
   }
+}
+
+function validateContainerMountPath(value: string | undefined): string {
+  if (!value) return DEFAULT_VOLUME_MOUNT_PATH;
+  const normalized = value.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+  if (
+    normalized === "/" ||
+    !normalized.startsWith("/") ||
+    normalized.includes("\0") ||
+    normalized.includes("/../") ||
+    normalized.endsWith("/..")
+  ) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Invalid volume mount path: ${JSON.stringify(value)}`,
+    );
+  }
+  return normalized;
+}
+
+function normalizeBootstrapPath(value: string): string {
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    trimmed.startsWith("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("\0")
+  ) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Invalid bootstrap file path: ${JSON.stringify(value)}`,
+    );
+  }
+  const normalized = path.posix.normalize(trimmed);
+  if (
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    normalized.includes("/../")
+  ) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Bootstrap file path escapes workspace: ${JSON.stringify(value)}`,
+    );
+  }
+  return normalized;
+}
+
+function decodeBootstrapFile(file: ContainerBootstrapFile): Buffer {
+  const bytes =
+    file.encoding === "base64"
+      ? Buffer.from(file.contents, "base64")
+      : Buffer.from(file.contents, "utf8");
+  if (typeof file.size === "number" && file.size !== bytes.byteLength) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Bootstrap file size mismatch for ${file.path}`,
+    );
+  }
+  if (file.sha256) {
+    const actual = crypto.createHash("sha256").update(bytes).digest("hex");
+    if (actual !== file.sha256.toLowerCase()) {
+      throw new HetznerClientError(
+        "invalid_input",
+        `Bootstrap file sha256 mismatch for ${file.path}`,
+      );
+    }
+  }
+  return bytes;
+}
+
+function normalizeBootstrapMode(mode: string | undefined): string | null {
+  if (!mode) return null;
+  const trimmed = mode.trim();
+  if (/^[0-7]{3,4}$/.test(trimmed)) return trimmed;
+  const match = /^100([0-7]{3})$/.exec(trimmed);
+  return match?.[1] ?? null;
+}
+
+function bootstrapManifest(source: ContainerBootstrapSource, fileCount: number, totalBytes: number) {
+  return {
+    sourceKind: source.sourceKind ?? null,
+    projectId: source.projectId ?? null,
+    workspaceId: source.workspaceId ?? null,
+    rootPath: source.rootPath ?? null,
+    snapshotId: source.snapshotId ?? null,
+    revision: source.revision ?? null,
+    manifest: source.manifest ?? null,
+    fileCount,
+    totalBytes,
+    bootstrappedAt: new Date().toISOString(),
+  };
+}
+
+async function hydrateBootstrapSource(
+  ssh: DockerSSHClient,
+  volumePath: string,
+  source: ContainerBootstrapSource | undefined,
+): Promise<{ fileCount: number; totalBytes: number } | null> {
+  const files = source?.files ?? [];
+  if (!source || files.length === 0) return null;
+  if (files.length > MAX_BOOTSTRAP_FILES) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Bootstrap source has too many files: ${files.length}/${MAX_BOOTSTRAP_FILES}`,
+    );
+  }
+
+  const decoded = files.map((file) => ({
+    file,
+    relativePath: normalizeBootstrapPath(file.path),
+    bytes: decodeBootstrapFile(file),
+  }));
+  const totalBytes = decoded.reduce((sum, file) => sum + file.bytes.byteLength, 0);
+  if (totalBytes > MAX_BOOTSTRAP_BYTES) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Bootstrap source is too large: ${totalBytes}/${MAX_BOOTSTRAP_BYTES} bytes`,
+    );
+  }
+
+  await ssh.exec(
+    `mkdir -p ${shellQuote(volumePath)} && find ${shellQuote(volumePath)} -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +`,
+    60_000,
+  );
+
+  for (const item of decoded) {
+    const target = path.posix.join(volumePath, item.relativePath);
+    await ssh.exec(`mkdir -p ${shellQuote(path.posix.dirname(target))}`, 30_000);
+    await ssh.execStdin(`cat > ${shellQuote(target)}`, item.bytes, 60_000);
+    const mode = normalizeBootstrapMode(item.file.mode);
+    if (mode) await ssh.exec(`chmod ${mode} ${shellQuote(target)}`, 30_000);
+  }
+
+  const manifestPath = path.posix.join(volumePath, ".eliza-coding", "source.json");
+  await ssh.exec(`mkdir -p ${shellQuote(path.posix.dirname(manifestPath))}`, 30_000);
+  await ssh.execStdin(
+    `cat > ${shellQuote(manifestPath)}`,
+    JSON.stringify(bootstrapManifest(source, decoded.length, totalBytes), null, 2),
+    30_000,
+  );
+
+  return { fileCount: decoded.length, totalBytes };
 }
 
 /**
@@ -437,6 +621,7 @@ export class HetznerContainersClient {
     if (input.environmentVars) {
       for (const key of Object.keys(input.environmentVars)) validateEnvKey(key);
     }
+    const volumeMountPath = validateContainerMountPath(input.volumeMountPath);
 
     // 1. Pre-create the DB row in `pending` so the rest of the flow has an id.
     const newRow: NewContainer = {
@@ -549,6 +734,7 @@ export class HetznerContainersClient {
       input.persistVolume && !wantHcloudVolume
         ? deriveVolumePath(input.organizationId, input.projectName)
         : undefined;
+    let bootstrapStats: { fileCount: number; totalBytes: number } | null = null;
 
     try {
       await containersRepository.update(row.id, input.organizationId, {
@@ -577,6 +763,16 @@ export class HetznerContainersClient {
         await ssh.exec(`mkdir -p ${shellQuote(volumePath)}`, 30_000);
       }
 
+      if (input.bootstrapSource) {
+        if (!volumePath) {
+          throw new HetznerClientError(
+            "invalid_input",
+            "bootstrap_source requires a persistent volume",
+          );
+        }
+        bootstrapStats = await hydrateBootstrapSource(ssh, volumePath, input.bootstrapSource);
+      }
+
       const envFlags = Object.entries(input.environmentVars ?? {})
         .map(([k, v]) => `-e ${shellQuote(`${k}=${v}`)}`)
         .join(" ");
@@ -591,7 +787,7 @@ export class HetznerContainersClient {
           "--restart unless-stopped",
           `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
           `--memory ${input.memoryMb}m`,
-          ...(volumePath ? [`-v ${shellQuote(volumePath)}:/data`] : []),
+          ...(volumePath ? [`-v ${shellQuote(volumePath)}:${shellQuote(volumeMountPath)}`] : []),
           `-p ${hostPort}:${input.port}`,
           envFlags,
           shellQuote(input.image),
@@ -635,6 +831,7 @@ export class HetznerContainersClient {
         image: input.image,
         containerPort: input.port,
         ...(volumePath ? { volumePath } : {}),
+        ...(volumePath ? { volumeMountPath } : {}),
       };
 
       const publicHostname = derivePublicHostname(row.id);
@@ -647,6 +844,7 @@ export class HetznerContainersClient {
         : `http://${node.hostname}:${hostPort}`;
 
       const metadata: Record<string, unknown> = { ...meta };
+      if (bootstrapStats) metadata.bootstrapSource = bootstrapStats;
       const updated = await containersRepository.update(row.id, input.organizationId, {
         status: "deploying",
         deployment_log: `Container started on ${node.node_id}; waiting for health check...`,
@@ -926,7 +1124,11 @@ export class HetznerContainersClient {
           "--restart unless-stopped",
           `--network ${shellQuote(DEFAULT_NODE_NETWORK)}`,
           `--memory ${row.row.memory}m`,
-          ...(meta.volumePath ? [`-v ${shellQuote(meta.volumePath)}:/data`] : []),
+          ...(meta.volumePath
+            ? [
+                `-v ${shellQuote(meta.volumePath)}:${shellQuote(meta.volumeMountPath ?? DEFAULT_VOLUME_MOUNT_PATH)}`,
+              ]
+            : []),
           `-p ${meta.hostPort}:${meta.containerPort}`,
           envFlags,
           shellQuote(meta.image),

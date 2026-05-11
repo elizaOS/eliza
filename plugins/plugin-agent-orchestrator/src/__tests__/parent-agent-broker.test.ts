@@ -102,8 +102,20 @@ describe("runParentAgentBroker", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain("media.music.generate");
     expect(result.text).toContain("/api/v1/generate-music");
+    expect(result.text).toContain("advertising.accounts.media.status");
     expect(result.text).toContain("advertising.accounts.media.upload");
     expect(result.text).toContain("/api/v1/advertising/accounts/{id}/media");
+
+    const creativeResult = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: { mode: "list-cloud-commands", query: "creative" },
+    });
+    expect(creativeResult.success).toBe(true);
+    expect(creativeResult.text).toContain("advertising.creatives.list");
+    expect(creativeResult.text).toContain("advertising.creatives.get");
+    expect(creativeResult.text).toContain("advertising.creatives.update");
+    expect(creativeResult.text).toContain("advertising.creatives.delete");
   });
 
   it("runs read-only Cloud commands through the configured Cloud API", async () => {

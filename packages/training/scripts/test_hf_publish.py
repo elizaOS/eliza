@@ -406,7 +406,7 @@ def test_milady_refuses_non_milady_org(publish_milady, tmp_path):
     with pytest.raises(SystemExit) as excinfo:
         publish_milady.main([
             "--model-dir", str(bundle),
-            "--repo-id", "elizaos/qwen3.5-4b",
+            "--repo-id", "someoneelse/qwen3.5-4b",
             "--dry-run",
         ])
     assert "elizaos" in str(excinfo.value)

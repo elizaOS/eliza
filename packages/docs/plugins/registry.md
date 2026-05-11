@@ -87,6 +87,11 @@ The command reads `package.json`, validates the npm package and GitHub
 repository, writes the third-party metadata file, pushes a branch to your fork
 of `elizaos-plugins/registry`, and opens a pull request.
 
+Use `elizaos plugins submit . --dry-run` to inspect the generated metadata
+without creating a branch or pull request. Manual submissions add one file under
+`entries/third-party/` and must match
+`schemas/third-party-package.schema.json`.
+
 ## Caching
 
 The agent registry client keeps the same three-tier cache:
