@@ -363,6 +363,33 @@ function makeEmbeddingHandler(): EmbeddingHandler {
   };
 }
 
+/**
+ * TEXT_EMBEDDING handler for the desktop/server `LocalInferenceEngine`
+ * path: the engine has no `embed()` on the `LocalInferenceLoader` service
+ * surface (that's only the AOSP / device-bridge loaders), but when an
+ * Eliza-1 bundle is active it serves embeddings through the bundle's
+ * local embedding model — pooled text on `0_6b`, the dedicated
+ * `embedding/` GGUF on larger tiers — via a lazily-started embedding
+ * `llama-server` sidecar. Throws (→ runtime falls through to the
+ * operator-configured provider) when no Eliza-1 bundle is loaded; no
+ * zero-vector (Commandment 8).
+ */
+function makeEngineEmbeddingHandler(): EmbeddingHandler {
+  return async (_runtime, params) => {
+    if (!localInferenceEngine.canEmbed()) {
+      throw new Error(
+        "[local-inference] No Eliza-1 bundle active; the local embedding model is part of an Eliza-1 bundle — falling through to next provider",
+      );
+    }
+    const text = extractEmbeddingText(params);
+    const [vec] = await localInferenceEngine.embed(text);
+    if (!vec) {
+      throw new Error("[local-inference] embed() returned no vector");
+    }
+    return vec;
+  };
+}
+
 function extractSpeechText(params: TextToSpeechParams | string): string {
   if (typeof params === "string") return params;
   if (params && typeof params.text === "string") return params.text;
@@ -728,21 +755,36 @@ export async function ensureLocalInferenceHandler(
   }
 
   // Register TEXT_EMBEDDING separately — the runtime contract returns
-  // `number[]` instead of `string`, so it can't share `makeHandler`. We
-  // only register when the active loader actually exposes `embed`;
-  // otherwise the runtime should fall through to the operator-configured
-  // embedding provider.
+  // `number[]` instead of `string`, so it can't share `makeHandler`.
+  //   - AOSP / device-bridge loaders expose `embed()` on the
+  //     `localInferenceLoader` service → route through that.
+  //   - The desktop/server `LocalInferenceEngine` path has no loader
+  //     `embed()`, but when an Eliza-1 bundle is loaded it serves
+  //     embeddings through the bundle's local embedding model (pooled text
+  //     on `0_6b`, the dedicated `embedding/` GGUF on larger tiers) via a
+  //     lazily-started embedding `llama-server` sidecar.
+  // In neither case do we register a handler that would serve a silent
+  // zero-vector — both throw when there's nothing real to call, so the
+  // runtime falls through to the operator-configured provider
+  // (Commandment 8 / Commandment 10: the bundle's embedding model now has
+  // a real runtime caller).
   const loaderForEmbed = (
     runtime as { getService?: (name: string) => unknown }
   ).getService?.("localInferenceLoader") as
     | { embed?: unknown }
     | null
     | undefined;
-  if (loaderForEmbed && typeof loaderForEmbed.embed === "function") {
+  const embeddingHandler =
+    loaderForEmbed && typeof loaderForEmbed.embed === "function"
+      ? makeEmbeddingHandler()
+      : provider === LOCAL_INFERENCE_PROVIDER
+        ? makeEngineEmbeddingHandler()
+        : null;
+  if (embeddingHandler) {
     try {
       runtimeWithRegistration.registerModel(
         ModelType.TEXT_EMBEDDING,
-        makeEmbeddingHandler(),
+        embeddingHandler,
         provider,
         LOCAL_INFERENCE_PRIORITY,
       );

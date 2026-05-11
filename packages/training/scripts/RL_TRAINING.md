@@ -86,7 +86,7 @@ uv run --extra train python scripts/train_dpo.py \
 Output is consumable by the existing quant pipeline:
 ```bash
 python scripts/run_pipeline.py --registry-key qwen3.5-9b \
-    --skip-train --checkpoint checkpoints/eliza-1-9b-dpo/final
+    --skip-finetune --checkpoint checkpoints/eliza-1-9b-dpo/final
 ```
 
 ### Smoke test
@@ -145,7 +145,7 @@ SFT (train_local.py / train_vast.sh)
             └── checkpoints/<run>-dpo/final/
                 └── GRPO (train_grpo_verl.sh) ← Stage 2
                     └── checkpoints/<run>-grpo/final/
-                        └── quant pipeline (run_pipeline.py --skip-train)
+                        └── quant pipeline (run_pipeline.py --skip-finetune)
 ```
 
 Each `final/` is a drop-in for the next stage and for

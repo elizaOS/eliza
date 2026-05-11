@@ -2,7 +2,7 @@
 /**
  * Round-trip verification: HF -> phone-equivalent local fs.
  *
- * Picks one published milady-ai model (via its catalog id), points the
+ * Picks one published eliza-1 model (via its catalog id), points the
  * local-inference `Downloader` at a temp state dir, and verifies the
  * resulting file's sha256 matches the manifest the publisher wrote.
  *
@@ -24,7 +24,7 @@
  *   node scripts/verify-phone-download.mjs --diff-first  # use the latest diff in reports/porting/
  *
  * Without `--catalog-diff`, the script falls back to the in-tree catalog
- * (so it can verify already-shipped milady-ai models even before a fresh
+ * (so it can verify already-shipped eliza-1 models even before a fresh
  * sync_catalog_from_hf.py run lands).
  *
  * Exits non-zero with an explicit error message on:

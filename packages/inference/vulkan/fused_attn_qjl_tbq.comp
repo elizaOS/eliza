@@ -22,15 +22,18 @@
 //   (the "uncondition" step — the fused V-mix needs the *real* head-dim V, not
 //   the rotated representation, unlike the standalone turbo*_dot score path.)
 //
-// Online softmax: pass 1 walks the KV tokens once, the whole 32-thread workgroup
-// cooperating per token (thread tid owns byte tid of the 32-byte QJL sign vector
-// and 8 of the 256 sketch elements), maintaining a thread-uniform running (m, l)
-// — every thread updates identically since they all see the per-token raw score.
-// Pass 2 walks the tokens again, re-deriving w_t = exp(raw_t - m)/l and FMAing
-// the decoded V block into the shared output accumulator. Because (m, l) are
-// known before pass 2 the running rescale factor is always 1.0 — the same
-// simplification the reference uses. Algebraically identical to the
-// FlashAttention rescaling form and to the reference's score->softmax->V-mix.
+// Online softmax (single pass — the genuine FlashAttention recurrence): walk the
+// KV tokens once, the whole 32-thread workgroup cooperating per token (thread
+// tid owns byte tid of the 32-byte QJL sign vector and 8 of the 256 sketch
+// elements). Maintain thread-uniform running (m, l) — every thread updates
+// identically since they all see the per-token raw score — and rescale the
+// shared output accumulator by corr = exp(m_old - m_new) as the running max
+// climbs, FMAing w_t = exp(raw_t - m_new) of the decoded V block in the same
+// step. A final pass divides acc_o by l. This computes the per-token QJL score
+// (and its 32-thread tree reduction) ONCE instead of twice — the previous
+// two-pass form re-derived raw_t after (m, l) were known. Algebraically
+// identical to the reference's score->softmax->V-mix; the V-decode helper
+// already takes the `corr` rescale argument.
 //
 // kv_tile (push constant): KV positions per online-softmax tile. 0 == whole
 // range; the verify path passes 0 and walks the full range — matching the C
@@ -228,33 +231,34 @@ void main() {
         return;
     }
 
-    // --- Pass 1: running (m, l) over the KV tokens (all threads cooperate
-    //     per token; the running stats are thread-uniform). ---
+    // --- Single online-softmax pass over the KV tokens. The running (m, l) are
+    //     thread-uniform (every thread sees the same per-token raw score after
+    //     the cooperative reduction); acc_o is rescaled by corr each time the
+    //     running max climbs, and the decoded V block is FMAed in with weight
+    //     w = exp(raw - m_new). ---
     float m = -1.0e30;
     float l = 0.0;
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0;
+    barrier();
     for (uint t = 0u; t < push.n_tokens; t++) {
         float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
         float new_m = max(m, raw);
-        l = l * exp(m - new_m) + exp(raw - new_m);
+        float corr  = exp(m - new_m);          // rescale factor for the old acc
+        float w     = exp(raw - new_m);         // weight for this token's V
+        l = l * corr + w;
         m = new_m;
+        barrier();   // tbq_buf is reused per token; settle before reuse
+        uint v_token_byte_off = (h_k * push.n_tokens + t) * TBQ_TOKEN_BYTES;
+        tbq3_decode_token_into_acc(v_token_byte_off, w, corr, tid);
     }
-    float inv_l = (l > 0.0) ? (1.0 / l) : 0.0;
     // NaN or no finite score -> out = 0.
     if (!(m == m) || m <= -1.0e29 || !(l > 0.0)) {
         for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
         return;
     }
-
-    // --- Pass 2: V-mix. w_t = exp(raw_t - m)/l; running rescale corr == 1.0. ---
-    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0;
+    float inv_l = 1.0 / l;
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] *= inv_l;
     barrier();
-    for (uint t = 0u; t < push.n_tokens; t++) {
-        float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
-        float w = exp(raw - m) * inv_l;
-        barrier();   // tbq_buf is reused per token; settle before reuse
-        uint v_token_byte_off = (h_k * push.n_tokens + t) * TBQ_TOKEN_BYTES;
-        tbq3_decode_token_into_acc(v_token_byte_off, w, 1.0, tid);
-    }
 
     // --- Write out. Thread 0 writes all 128 elements serially. Mesa ANV
     // (Arrow Lake / Xe-LPG) intermittently reads back 0 from the all-threads

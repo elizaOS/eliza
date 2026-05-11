@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const engineMock = {
@@ -25,8 +26,16 @@ vi.mock("./manifest", () => ({
   }),
 }));
 
+// Override only `readFile` on the default export; keep the rest of
+// node:fs/promises real. Bun's `vi.mock` module mocks are process-global and
+// not auto-restored between test files, so a bare `{ default: { readFile } }`
+// here would strip mkdtemp/rm/mkdir from every later suite in the same run.
+const realFsPromises = createRequire(import.meta.url)(
+  "node:fs/promises",
+) as typeof import("node:fs/promises");
 vi.mock("node:fs/promises", () => ({
-  default: { readFile: vi.fn(async () => "{}") },
+  ...realFsPromises,
+  default: { ...realFsPromises, readFile: vi.fn(async () => "{}") },
 }));
 
 const ARGS = {

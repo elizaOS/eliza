@@ -682,7 +682,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Optional path to packages/inference (or any directory containing the "
-             "milady-ai llama.cpp checkout). Reserved for future fork-aware "
+             "elizaOS/llama.cpp checkout). Reserved for future fork-aware "
              "post-processing; the actual GGUF conversion uses --llama-cpp-dir.",
     )
     p.add_argument(

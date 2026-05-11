@@ -261,7 +261,7 @@ describe("POST /api/local-inference/active", () => {
     expect(res.status()).toBe(400);
     const { error } = res.body() as { error: string };
     expect(error).toContain('cacheTypeK="tbq4_0"');
-    expect(error).toMatch(/milady-ai\/llama\.cpp kernel/i);
+    expect(error).toMatch(/elizaOS\/llama\.cpp kernel/i);
     expect(error).toContain("Stock-only types accepted here:");
     expect(setActiveMock).not.toHaveBeenCalled();
   });
