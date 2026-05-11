@@ -30,6 +30,8 @@ from .db import (
 from .env_utils import git_head, load_env_file, merged_environment, safe_version_from_package_json
 from .leaderboard import delta_to_high_score
 from .analyze_trajectory import summarize as summarize_trajectory
+from .random_baseline_runner import run_random_baseline
+from .trajectory_normalize_hook import normalize_outcome_trajectories
 from .types import (
     BenchmarkAdapter,
     BenchmarkRunOutcome,
@@ -387,6 +389,161 @@ def _write_latest_result_snapshot(
     return snapshot_path
 
 
+def _run_random_v1_outcome(
+    conn,
+    *,
+    adapter: BenchmarkAdapter,
+    effective_request: RunRequest,
+    signature: str,
+    run_group_id: str,
+    output_root: Path,
+    run_root: Path,
+    repo_meta: dict[str, str | None],
+) -> BenchmarkRunOutcome:
+    """Synthesize a ``random_v1`` outcome for one benchmark.
+
+    Inserts a new ``benchmark_runs`` row (no subprocess), runs the
+    benchmark's own ``score_extractor`` over a generated result file
+    when the strategy is meaningful, or records an ``incompatible``
+    row otherwise. The function reuses ``replace_run_trajectories``
+    only to clear any stale entries — random_v1 does not produce
+    real trajectory rows.
+    """
+    attempt = next_attempt_for_signature(conn, signature)
+    now_compact = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    run_id = f"random_{adapter.id}_{now_compact}_{attempt}_{uuid4().hex[:8]}"
+    bench_run_root = _result_subdir(run_root, adapter, run_id)
+    bench_run_root.mkdir(parents=True, exist_ok=True)
+    bench_output_root = bench_run_root / "output"
+    bench_output_root.mkdir(parents=True, exist_ok=True)
+
+    started_at = _utc_now()
+    insert_run_start(
+        conn,
+        run_id=run_id,
+        run_group_id=run_group_id,
+        benchmark_id=adapter.id,
+        benchmark_directory=adapter.directory,
+        signature=signature,
+        attempt=attempt,
+        agent="random_v1",
+        provider=effective_request.provider,
+        model=effective_request.model,
+        extra_config=effective_request.extra_config,
+        started_at=started_at,
+        command=["<random_v1-synthetic>"],
+        cwd=adapter.cwd,
+        stdout_path="",
+        stderr_path="",
+        benchmark_version=repo_meta.get("benchmarks_version"),
+        benchmarks_commit=repo_meta.get("benchmarks_commit"),
+        eliza_commit=repo_meta.get("eliza_commit"),
+        eliza_version=repo_meta.get("eliza_version"),
+    )
+
+    baseline = run_random_baseline(
+        benchmark_id=adapter.id,
+        output_dir=bench_output_root,
+        score=0.0,
+    )
+
+    metrics: dict[str, Any] = {
+        "random_baseline_strategy": baseline.strategy_name,
+        "random_baseline_is_meaningful": baseline.is_meaningful,
+        "return_code": 0,
+    }
+    if baseline.note:
+        metrics["random_baseline_note"] = baseline.note
+
+    score: float | None = None
+    unit: str | None = None
+    higher_is_better: bool | None = None
+    error: str | None = None
+    result_path: Path | None = baseline.result_path
+    status = baseline.status
+
+    if baseline.status == "incompatible":
+        error = baseline.note
+    elif baseline.status == "succeeded":
+        if result_path is not None and result_path.exists():
+            try:
+                summary = adapter.score_extractor(result_path)
+                score = summary.score
+                unit = summary.unit
+                higher_is_better = summary.higher_is_better
+                metrics.update(summary.metrics)
+            except Exception as exc:  # noqa: BLE001 — extractor failure must surface
+                status = "failed"
+                error = f"random_v1 score extraction failed: {exc}"
+                metrics["score_extraction_error"] = str(exc)
+        else:
+            score = baseline.score
+            unit = "ratio"
+            higher_is_better = True
+
+    high_label, high_value, delta = delta_to_high_score(adapter.id, score)
+
+    update_run_result(
+        conn,
+        run_id=run_id,
+        status=status,
+        ended_at=_utc_now(),
+        duration_seconds=0.0,
+        score=score,
+        unit=unit,
+        higher_is_better=higher_is_better,
+        metrics=metrics,
+        result_json_path=str(result_path) if result_path else None,
+        artifacts=[str(bench_output_root)],
+        error=error,
+        high_score_label=high_label,
+        high_score_value=high_value,
+        delta_to_high_score=delta,
+    )
+    replace_run_trajectories(conn, run_id=run_id, trajectories=[])
+
+    outcome = BenchmarkRunOutcome(
+        benchmark_id=adapter.id,
+        run_id=run_id,
+        status=status,  # type: ignore[arg-type]
+        attempt=attempt,
+        score=score,
+        unit=unit,
+        higher_is_better=higher_is_better,
+        metrics=metrics,
+        error=error,
+        result_json_path=str(result_path) if result_path else None,
+        stdout_path="",
+        stderr_path="",
+        artifacts=[str(bench_output_root)],
+        comparison=LeaderboardComparison(
+            benchmark_id=adapter.id,
+            high_score_label=high_label,
+            high_score_value=high_value,
+            delta_to_high_score=delta,
+        ),
+        duration_seconds=0.0,
+        command=["<random_v1-synthetic>"],
+        cwd=adapter.cwd,
+    )
+    _write_latest_result_snapshot(
+        output_root,
+        adapter=adapter,
+        request=effective_request,
+        run_group_id=run_group_id,
+        run_id=run_id,
+        status=status,
+        score=score,
+        unit=unit,
+        higher_is_better=higher_is_better,
+        metrics=metrics,
+        result_json_path=str(result_path) if result_path else None,
+        artifacts=[str(bench_output_root)],
+        error=error,
+    )
+    return outcome
+
+
 def run_benchmarks(
     *,
     workspace_root: Path,
@@ -436,6 +593,124 @@ def run_benchmarks(
         adapter = discovery.adapters[benchmark_id]
         effective_request = _effective_request(adapter, request)
         signature = _signature_for(adapter, effective_request)
+
+        if request.agent.strip().lower() == "random_v1":
+            outcome = _run_random_v1_outcome(
+                conn,
+                adapter=adapter,
+                effective_request=effective_request,
+                signature=signature,
+                run_group_id=run_group_id,
+                output_root=output_root,
+                run_root=run_root,
+                repo_meta=repo_meta,
+            )
+            outcomes.append(outcome)
+            continue
+
+        # Harness/agent compatibility — if the harness is not in the adapter's
+        # supported list, record an ``incompatible`` outcome and skip without
+        # spawning the subprocess. ``random_v1`` and ``compare`` are
+        # control labels that always run; only real harnesses are gated.
+        harness_label = request.agent.strip().lower()
+        if (
+            harness_label
+            and harness_label not in {"random_v1", "compare"}
+            and harness_label not in adapter.agent_compatibility
+        ):
+            attempt = next_attempt_for_signature(conn, signature)
+            run_id = (
+                f"incompat_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+                f"_{attempt}_{uuid4().hex[:8]}"
+            )
+            started_at = _utc_now()
+            insert_run_start(
+                conn,
+                run_id=run_id,
+                run_group_id=run_group_id,
+                benchmark_id=adapter.id,
+                benchmark_directory=adapter.directory,
+                signature=signature,
+                attempt=attempt,
+                agent=effective_request.agent,
+                provider=effective_request.provider,
+                model=effective_request.model,
+                extra_config=effective_request.extra_config,
+                started_at=started_at,
+                command=[],
+                cwd=adapter.cwd,
+                stdout_path="",
+                stderr_path="",
+                benchmark_version=repo_meta.get("benchmarks_version"),
+                benchmarks_commit=repo_meta.get("benchmarks_commit"),
+                eliza_commit=repo_meta.get("eliza_commit"),
+                eliza_version=repo_meta.get("eliza_version"),
+            )
+            incompat_metrics: dict[str, Any] = {
+                "reason": "harness_not_in_compatibility",
+                "harness": harness_label,
+                "supported_harnesses": list(adapter.agent_compatibility),
+            }
+            incompat_error = (
+                f"Benchmark '{adapter.id}' is not compatible with harness "
+                f"'{harness_label}' (supported: {', '.join(adapter.agent_compatibility)})"
+            )
+            update_run_result(
+                conn,
+                run_id=run_id,
+                status="incompatible",
+                ended_at=_utc_now(),
+                duration_seconds=0.0,
+                score=None,
+                unit=None,
+                higher_is_better=None,
+                metrics=incompat_metrics,
+                result_json_path=None,
+                artifacts=[],
+                error=incompat_error,
+                high_score_label=None,
+                high_score_value=None,
+                delta_to_high_score=None,
+            )
+            outcome = BenchmarkRunOutcome(
+                benchmark_id=adapter.id,
+                run_id=run_id,
+                status="incompatible",
+                attempt=attempt,
+                score=None,
+                unit=None,
+                higher_is_better=None,
+                metrics=incompat_metrics,
+                error=incompat_error,
+                result_json_path=None,
+                stdout_path="",
+                stderr_path="",
+                artifacts=[],
+                comparison=LeaderboardComparison(
+                    benchmark_id=adapter.id,
+                    high_score_label=None,
+                    high_score_value=None,
+                    delta_to_high_score=None,
+                ),
+                duration_seconds=0.0,
+                command=[],
+                cwd=adapter.cwd,
+            )
+            outcomes.append(outcome)
+            _write_latest_result_snapshot(
+                output_root,
+                adapter=adapter,
+                request=effective_request,
+                run_group_id=run_group_id,
+                run_id=run_id,
+                status="incompatible",
+                score=None,
+                unit=None,
+                higher_is_better=None,
+                metrics=outcome.metrics,
+                error=outcome.error,
+            )
+            continue
 
         if not request.force and not request.rerun_failed:
             existing_success = get_latest_succeeded_run_for_signature(conn, signature)
@@ -852,6 +1127,27 @@ def run_benchmarks(
         metrics["token_metrics"] = token_metrics
         metrics["cache_metrics"] = cache_metrics
         metrics["performance_metrics"] = performance_metrics
+
+        if status == "succeeded":
+            harness_label = effective_request.agent.strip().lower() or "eliza"
+            try:
+                canonical_count, canonical_error, _ = normalize_outcome_trajectories(
+                    bench_output_root,
+                    harness=harness_label,
+                    benchmark_id=adapter.id,
+                    task_id=run_id,
+                    model=effective_request.model,
+                )
+            except Exception as exc:  # noqa: BLE001 — never block the outcome
+                print(
+                    f"trajectory normalization crashed for {run_id}: {exc}",
+                    file=sys.stderr,
+                )
+                canonical_count = 0
+                canonical_error = f"{type(exc).__name__}: {exc}"
+            metrics["canonical_entries"] = canonical_count
+            if canonical_error:
+                metrics["canonical_error"] = canonical_error
 
         high_label, high_value, delta = delta_to_high_score(adapter.id, score)
 

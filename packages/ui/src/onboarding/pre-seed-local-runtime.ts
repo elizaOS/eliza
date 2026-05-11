@@ -81,14 +81,27 @@ function writeLocalAgentActiveServer(): void {
   }
 }
 
+/**
+ * Pure user-agent test. Exported so unit tests can pin the detection
+ * contract without having to mock the whole pre-seed pipeline.
+ *
+ * MainActivity.applyBrandUserAgentMarkers appends `ElizaOS/<tag>` (or
+ * `MiladyOS/<tag>`) only when the corresponding `ro.<brand>os.product`
+ * system property is set by the AOSP product makefile. Stock Android
+ * leaves the UA untouched, which is exactly when we want to render the
+ * picker. The trailing `/` is required — a bare `ElizaOS` token (no
+ * version) is malformed and must NOT trigger the pre-seed.
+ */
+export function isAospElizaUserAgent(
+  userAgent: string | null | undefined,
+): boolean {
+  if (typeof userAgent !== "string" || userAgent.length === 0) return false;
+  return /\bElizaOS\/\S/.test(userAgent) || /\bMiladyOS\/\S/.test(userAgent);
+}
+
 function isBrandedAndroidDevice(): boolean {
   if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent ?? "";
-  // MainActivity.applyBrandUserAgentMarkers appends these tokens only
-  // when the corresponding `ro.<brand>os.product` system property is
-  // set by the AOSP product makefile. Stock Android leaves the UA
-  // untouched, which is exactly when we want to render the picker.
-  return /\bElizaOS\//.test(ua) || /\bMiladyOS\//.test(ua);
+  return isAospElizaUserAgent(navigator.userAgent);
 }
 
 /**

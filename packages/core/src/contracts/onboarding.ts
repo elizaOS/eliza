@@ -63,6 +63,7 @@ export type OnboardingProviderFamily =
 	| "grok"
 	| "groq"
 	| "mistral"
+	| "mlx"
 	| "moonshot"
 	| "ollama"
 	| "openai"
@@ -83,6 +84,7 @@ export type OnboardingProviderId =
 	| "groq"
 	| "kimi-coding-subscription"
 	| "mistral"
+	| "mlx"
 	| "moonshot"
 	| "ollama"
 	| "openai"
@@ -469,6 +471,19 @@ export const ONBOARDING_PROVIDER_CATALOG = [
 		authMode: "local",
 		group: "local",
 		order: 140,
+	},
+	{
+		id: "mlx",
+		name: "MLX (Apple Silicon)",
+		envKey: null,
+		pluginName: "@elizaos/plugin-mlx",
+		keyPrefix: null,
+		description:
+			"Local inference via mlx_lm.server on Apple Silicon. Auto-detected on darwin-arm64.",
+		family: "mlx",
+		authMode: "local",
+		group: "local",
+		order: 145,
 	},
 	{
 		id: "zai",
@@ -961,6 +976,9 @@ export function getOnboardingProviderSignalEnvKeys(
 ): string[] {
 	if (providerId === "ollama") {
 		return ["OLLAMA_BASE_URL"];
+	}
+	if (providerId === "mlx") {
+		return ["MLX_BASE_URL"];
 	}
 	if (providerId === "zai") {
 		return ["ZAI_API_KEY", "Z_AI_API_KEY"];

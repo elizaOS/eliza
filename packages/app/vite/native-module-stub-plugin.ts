@@ -165,6 +165,11 @@ export function nativeModuleStubPlugin(
     // specifier into the output bundle.
     "chalk",
     "drizzle-orm",
+    // Server-only argon2 password hasher (auth/passwords.ts). The package's
+    // `browser.js` re-exports from `@node-rs/argon2-wasm32-wasi` which we
+    // do not install. Stub the whole package — the renderer never hashes
+    // passwords directly; it talks to the API which performs the hash.
+    "@node-rs/argon2",
   ]);
   if (!isCapacitorMobileBuild) {
     // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
@@ -617,6 +622,27 @@ export function nativeModuleStubPlugin(
           // statement might use. Rolldown wires the named import to this
           // single binding, so a loose getter still resolves at build time.
           "export { stubProxy as boolean, stubProxy as integer, stubProxy as bigint, stubProxy as text, stubProxy as varchar, stubProxy as char, stubProxy as serial, stubProxy as bigserial, stubProxy as smallint, stubProxy as smallserial, stubProxy as decimal, stubProxy as numeric, stubProxy as real, stubProxy as doublePrecision, stubProxy as date, stubProxy as time, stubProxy as timestamp, stubProxy as interval, stubProxy as uuid, stubProxy as json, stubProxy as jsonb, stubProxy as pgTable, stubProxy as pgEnum, stubProxy as pgSchema, stubProxy as pgView, stubProxy as pgMaterializedView, stubProxy as pgSequence, stubProxy as foreignKey, stubProxy as primaryKey, stubProxy as uniqueIndex, stubProxy as unique, stubProxy as index, stubProxy as check, stubProxy as customType, stubProxy as relations, stubProxy as one, stubProxy as many, stubProxy as eq, stubProxy as ne, stubProxy as gt, stubProxy as gte, stubProxy as lt, stubProxy as lte, stubProxy as and, stubProxy as or, stubProxy as not, stubProxy as inArray, stubProxy as notInArray, stubProxy as isNull, stubProxy as isNotNull, stubProxy as like, stubProxy as ilike, stubProxy as notLike, stubProxy as between, stubProxy as exists, stubProxy as notExists, stubProxy as sql, stubProxy as desc, stubProxy as asc, stubProxy as count, stubProxy as sum, stubProxy as avg, stubProxy as min, stubProxy as max, stubProxy as drizzle, stubProxy as getTableConfig, stubProxy as getTableName, stubProxy as is, stubProxy as alias, stubProxy as except, stubProxy as union, stubProxy as unionAll, stubProxy as intersect, stubProxy as raw, stubProxy as placeholder, stubProxy as param, stubProxy as Column, stubProxy as Table, stubProxy as TableAliasProxy };",
+        ].join("\n");
+      }
+
+      // @node-rs/argon2: server-only password hashing. The browser bundle never
+      // hashes passwords directly — it talks to the API. Provide hash/verify
+      // stubs that throw if accidentally invoked so client code surfaces the
+      // mistake instead of silently returning empty strings.
+      if (strippedId === "@node-rs/argon2") {
+        return [
+          "function unavailable() {",
+          "  throw new Error(",
+          '    "@node-rs/argon2 is server-only; the renderer must call the API to hash or verify passwords."',
+          "  );",
+          "}",
+          "export const hash = unavailable;",
+          "export const verify = unavailable;",
+          "export const hashSync = unavailable;",
+          "export const verifySync = unavailable;",
+          "export const Algorithm = Object.freeze({ Argon2d: 0, Argon2i: 1, Argon2id: 2 });",
+          "export const Version = Object.freeze({ V0x10: 0x10, V0x13: 0x13 });",
+          "export default { hash: unavailable, verify: unavailable };",
         ].join("\n");
       }
 

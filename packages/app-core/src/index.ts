@@ -9,6 +9,7 @@ export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
 export * from "./api/secrets-manager-routes";
 export * from "./api/server";
+export * from "./api/setup-contract";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
 export * from "./api/training-benchmarks";

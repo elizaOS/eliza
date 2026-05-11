@@ -238,7 +238,8 @@ function selectRoute(
   message: Memory,
   options?: HandlerOptions | Record<string, unknown>
 ): LinearRoute | null {
-  const requested = normalizeSubaction(readOptions(options).subaction);
+  const opts = readOptions(options);
+  const requested = normalizeSubaction(opts.action ?? opts.subaction);
   if (requested) {
     const route = routes.find((candidate) => candidate.subaction === requested);
     if (route) return route;

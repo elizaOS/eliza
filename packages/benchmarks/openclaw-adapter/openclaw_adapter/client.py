@@ -5,11 +5,10 @@ The real OpenClaw project is installed from source by
 same small surface as ``ElizaClient`` / ``HermesClient``: ``reset`` plus
 ``send_message`` returning a normalized ``MessageResponse``.
 
-OpenClaw's public CLI surface moves faster than the benchmark suite, so the
-default execution path is an OpenAI-compatible chat completion using
-OpenClaw's text-embedded ``<tool_call>{...}</tool_call>`` protocol. Operators
-can force the source CLI path with ``OPENCLAW_USE_CLI=1`` once a compatible
-source checkout has been installed.
+Every ``send_message`` spawns ``openclaw agent --local --json --message <text>``
+and maps the JSON output into a :class:`MessageResponse`. The provider /
+model / api-key fields configure the env vars passed to the spawned CLI so
+OpenClaw's own provider routing picks the right backend.
 """
 
 from __future__ import annotations
@@ -20,11 +19,9 @@ import os
 import re
 import subprocess
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Mapping, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -39,16 +36,11 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_API_KEY_ENV = "CEREBRAS_API_KEY"
 DEFAULT_BASE_URL_ENV = "CEREBRAS_BASE_URL"
-DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
-_TOOL_CALL_RE = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>|<tool_call>\s*(\{.*)\Z",
-    re.DOTALL,
-)
 
 
 @dataclass
@@ -77,7 +69,6 @@ class OpenClawClient:
         provider: str = DEFAULT_PROVIDER,
         model: str = DEFAULT_MODEL,
         api_key: str | None = None,
-        base_url: str | None = None,
         api_key_env: str = DEFAULT_API_KEY_ENV,
         base_url_env: str = DEFAULT_BASE_URL_ENV,
         thinking_level: str = DEFAULT_THINKING_LEVEL,
@@ -90,12 +81,6 @@ class OpenClawClient:
         self.api_key_env = api_key_env
         self.base_url_env = base_url_env
         self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
-        self.base_url = (
-            base_url
-            or os.environ.get("OPENCLAW_BASE_URL")
-            or os.environ.get(base_url_env)
-            or DEFAULT_BASE_URL
-        )
         self.thinking_level = thinking_level
         self.timeout_s = float(timeout_s)
         self._task_id: str | None = None
@@ -106,20 +91,13 @@ class OpenClawClient:
     # ------------------------------------------------------------------
 
     def health(self) -> dict[str, object]:
-        """Report readiness for the selected OpenClaw execution path."""
-        if os.environ.get("OPENCLAW_USE_CLI", "").strip() != "1":
-            if not self.repo_path.exists():
-                return {
-                    "status": "error",
-                    "error": f"OpenClaw source checkout not found at {self.repo_path}",
-                }
-            if not self.binary_path.exists():
-                return {
-                    "status": "error",
-                    "error": f"OpenClaw source payload not found at {self.binary_path}",
-                }
-            return {"status": "ready", "repo_path": str(self.repo_path)}
+        """Probe the OpenClaw binary by running ``<binary> --version``.
 
+        Single canonical path — there is no "skip the subprocess" mode. If the
+        binary exists, we must invoke it to fail fast on a broken install. The
+        old conditional that returned ``ready`` based purely on file existence
+        masked install corruption until the first benchmark turn.
+        """
         if not self.binary_path.exists():
             return {
                 "status": "error",
@@ -186,16 +164,7 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
-        """Run one OpenClaw-style turn and parse the normalized response."""
-        if os.environ.get("OPENCLAW_USE_CLI", "").strip() == "1":
-            return self._send_cli(text, context)
-        return self._send_openai_compatible(text, context)
-
-    def _send_cli(
-        self,
-        text: str,
-        context: Mapping[str, object] | None,
-    ) -> MessageResponse:
+        """Spawn one ``openclaw agent --local --json`` turn and parse it."""
         argv = self.build_argv(text, context)
         env = self.build_env()
         try:
@@ -225,62 +194,6 @@ class OpenClawClient:
 
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
         return _response_from_payload(payload)
-
-    def _send_openai_compatible(
-        self,
-        text: str,
-        context: Mapping[str, object] | None,
-    ) -> MessageResponse:
-        ctx = dict(context or {})
-        messages = _messages_from_context(text, ctx)
-        tools = ctx.get("tools")
-        system_prompt = _openclaw_system_prompt(tools if isinstance(tools, list) else None)
-        messages = [{"role": "system", "content": system_prompt}, *messages]
-
-        body: dict[str, object] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": int(ctx.get("max_tokens") or os.environ.get("OPENCLAW_MAX_TOKENS") or 1024),
-        }
-        request = urllib.request.Request(
-            f"{self.base_url.rstrip('/')}/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Accept-Encoding": "identity",
-                "User-Agent": "eliza-openclaw-benchmark/1.0",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:  # nosec B310
-                data = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenClaw-compatible completion failed: {detail}") from exc
-
-        choices = data.get("choices")
-        first_choice = choices[0] if isinstance(choices, list) and choices else {}
-        msg = first_choice.get("message") if isinstance(first_choice, Mapping) else {}
-        msg = msg if isinstance(msg, Mapping) else {}
-        content = str(msg.get("content") or "")
-        text_out, parsed_tool_calls = parse_openclaw_tool_calls(content)
-        native_raw = msg.get("tool_calls")
-        native_tool_calls = [
-            _coerce_native_tool_call(tc)
-            for tc in (native_raw if isinstance(native_raw, list) else [])
-        ]
-        tool_calls = [tc for tc in [*parsed_tool_calls, *native_tool_calls] if tc is not None]
-        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        return MessageResponse(
-            text=text_out,
-            thought=str(msg.get("reasoning") or msg.get("reasoning_content") or "") or None,
-            actions=[str(tc.get("name")) for tc in tool_calls if tc.get("name")],
-            params={"tool_calls": tool_calls, "usage": usage},
-        )
 
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)
@@ -518,88 +431,6 @@ def _normalize_tool_call(
         "name": name_obj,
         "arguments": args_obj if isinstance(args_obj, (Mapping, list)) else {},
     }
-
-
-def parse_openclaw_tool_calls(text: str) -> tuple[str, list[dict[str, object]]]:
-    if "<tool_call>" not in text:
-        return text, []
-    tool_calls: list[dict[str, object]] = []
-    for index, (closed, unclosed) in enumerate(_TOOL_CALL_RE.findall(text)):
-        raw = (closed or unclosed).strip()
-        if not raw:
-            continue
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            logger.debug("dropping malformed OpenClaw tool_call payload: %r", raw)
-            continue
-        name = data.get("tool") or data.get("name")
-        if not isinstance(name, str) or not name:
-            continue
-        args = data.get("args", data.get("arguments", {}))
-        tool_calls.append(
-            {
-                "id": str(data.get("id") or f"call_openclaw_{index}"),
-                "name": name,
-                "arguments": args if isinstance(args, dict) else {},
-            }
-        )
-    return text[: text.find("<tool_call>")].strip(), tool_calls
-
-
-def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
-    if not isinstance(raw, Mapping):
-        return None
-    fn = raw.get("function")
-    if isinstance(fn, Mapping):
-        name = fn.get("name")
-        args: object = fn.get("arguments", {})
-    else:
-        name = raw.get("name")
-        args = raw.get("arguments", {})
-    if not isinstance(name, str) or not name:
-        return None
-    if isinstance(args, str):
-        try:
-            args = json.loads(args)
-        except json.JSONDecodeError:
-            pass
-    return {
-        "id": str(raw.get("id") or ""),
-        "name": name,
-        "arguments": args,
-    }
-
-
-def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[str, str]]:
-    raw_messages = ctx.get("messages")
-    messages: list[dict[str, str]] = []
-    if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
-        for item in raw_messages:
-            if not isinstance(item, Mapping):
-                continue
-            role = item.get("role")
-            content = item.get("content")
-            if role in {"system", "user", "assistant", "tool"}:
-                messages.append({"role": str(role), "content": "" if content is None else str(content)})
-    if not messages:
-        sys_prompt = ctx.get("system_prompt")
-        if isinstance(sys_prompt, str) and sys_prompt.strip():
-            messages.append({"role": "system", "content": sys_prompt.strip()})
-        messages.append({"role": "user", "content": text})
-    return messages
-
-
-def _openclaw_system_prompt(tools: list[object] | None) -> str:
-    prompt = (
-        "You are operating through the OpenClaw benchmark harness. "
-        "Use concise reasoning. When a tool is required, emit exactly one "
-        "<tool_call>{\"tool\":\"NAME\",\"args\":{...}}</tool_call> block. "
-        "Otherwise answer normally."
-    )
-    if tools:
-        prompt += "\nAvailable tools:\n" + json.dumps(tools, ensure_ascii=True)
-    return prompt
 
 
 def _default_api_key(provider: str, api_key_env: str) -> str:

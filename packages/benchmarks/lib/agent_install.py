@@ -17,7 +17,6 @@ import os
 import shutil
 import subprocess
 import sys
-import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -28,8 +27,7 @@ AGENT_ROOT = Path(os.environ.get("ELIZA_AGENTS_ROOT", Path.home() / ".eliza" / "
 HERMES_GIT_URL = "https://github.com/NousResearch/hermes-agent"
 HERMES_DIR_NAME = "hermes-agent-src"
 HERMES_VENV_PYTHON = os.environ.get("HERMES_VENV_PYTHON", sys.executable)
-OPENCLAW_GIT_URL = "https://github.com/openclaw/openclaw.git"
-OPENCLAW_DIR_NAME = "openclaw-src"
+OPENCLAW_NPM_PACKAGE = "openclaw"
 
 
 class AgentInstallError(RuntimeError):
@@ -175,59 +173,62 @@ def _clone_or_update_source(
 
 
 def install_openclaw(version: str = "latest", force: bool = False) -> InstalledAgent:
-    """Install OpenClaw source into ``$ELIZA_AGENTS_ROOT/openclaw-src``.
+    """Install OpenClaw from npm into ``$ELIZA_AGENTS_ROOT/openclaw/<version>/``.
 
-    ``version`` is kept for the public CLI but is interpreted as a git ref;
-    ``latest`` maps to the repository default branch (currently ``main``).
+    The published ``openclaw`` package ships a built binary at
+    ``node_modules/.bin/openclaw`` once installed via npm. The source repo
+    does not include the ``dist/`` build output, so we install from the
+    registry instead of cloning. ``version="latest"`` resolves the current
+    published version via ``npm view``.
     """
-    ref = "main" if version == "latest" else version
-    repo_dir = AGENT_ROOT / OPENCLAW_DIR_NAME
-    binary = repo_dir / "openclaw.mjs"
+    if version == "latest":
+        view = _run(
+            ["npm", "view", OPENCLAW_NPM_PACKAGE, "version"],
+            context="npm view openclaw version",
+        )
+        resolved_version = view.stdout.strip()
+        if not resolved_version:
+            raise AgentInstallError(
+                "npm view openclaw version returned empty output"
+            )
+    else:
+        resolved_version = version
+
+    prefix = AGENT_ROOT / "openclaw" / resolved_version
+    binary = prefix / "node_modules" / ".bin" / "openclaw"
 
     if not force:
         existing = read_manifest("openclaw")
         if (
             existing is not None
-            and existing.install_path == repo_dir
-            and existing.binary_path == binary
+            and existing.version == resolved_version
             and existing.binary_path.is_file()
-            and repo_dir.is_dir()
         ):
             return existing
 
-    try:
-        head = _clone_or_update_source(
-            repo_dir=repo_dir,
-            git_url=OPENCLAW_GIT_URL,
-            ref=ref,
-            force=force,
-            context="openclaw",
-        )
-    except AgentInstallError:
-        if repo_dir.exists():
-            shutil.rmtree(repo_dir)
-        repo_dir.mkdir(parents=True, exist_ok=True)
-        raw_url = f"https://raw.githubusercontent.com/openclaw/openclaw/{ref}/openclaw.mjs"
-        with urllib.request.urlopen(raw_url, timeout=60) as resp:  # nosec B310
-            binary.write_bytes(resp.read())
-        (repo_dir / "README.source.txt").write_text(
-            f"Fallback source payload fetched from {raw_url}\n"
-            "The full git clone timed out; rerun with --force to retry.\n",
-            encoding="utf-8",
-        )
-        head = f"raw-{ref}"
+    prefix.mkdir(parents=True, exist_ok=True)
+    _run(
+        [
+            "npm",
+            "install",
+            "--prefix",
+            str(prefix),
+            f"{OPENCLAW_NPM_PACKAGE}@{resolved_version}",
+        ],
+        context=f"npm install openclaw@{resolved_version}",
+    )
 
     if not binary.is_file():
         raise AgentInstallError(
-            f"OpenClaw source binary not found at {binary} after clone"
+            f"OpenClaw binary not found at {binary} after npm install"
         )
 
     installed = InstalledAgent(
         agent_id="openclaw",
-        version=head,
-        install_path=repo_dir,
+        version=resolved_version,
+        install_path=prefix,
         binary_path=binary,
-        env={"OPENCLAW_REPO_PATH": str(repo_dir), "OPENCLAW_BIN": str(binary)},
+        env={"OPENCLAW_BIN": str(binary)},
     )
     write_manifest(installed)
     return installed
@@ -313,13 +314,7 @@ def verify_install(agent_id: str) -> tuple[bool, str]:
         return False, f"binary missing at {record.binary_path}"
 
     if agent_id == "openclaw":
-        if (record.install_path / "README.source.txt").exists():
-            return True, "source payload present (CLI build output unavailable; direct protocol path ready)"
-        cmd = [
-            os.environ.get("NODE_BINARY", "node"),
-            str(record.binary_path),
-            "--version",
-        ]
+        cmd = [str(record.binary_path), "--version"]
         cwd: Path | None = record.install_path
         success_check = lambda r: r.returncode == 0 and bool((r.stdout or r.stderr).strip())
     elif agent_id == "hermes":

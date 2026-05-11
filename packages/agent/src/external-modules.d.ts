@@ -126,8 +126,18 @@ declare module "@elizaos/plugin-elizacloud" {
     baseUrl: string;
     bridgeUrl?: string;
   }
+  export interface CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
+  export class ClackObserver implements CloudOnboardingObserver {
+    constructor(clack: unknown);
+    [key: string]: unknown;
+  }
+  export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
   export function runCloudOnboarding(
-    clack: unknown,
+    observer: CloudOnboardingObserver,
     name: string,
     chosenTemplate?: unknown,
   ): Promise<CloudOnboardingResult | null>;

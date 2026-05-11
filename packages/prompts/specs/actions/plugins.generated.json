@@ -110,16 +110,11 @@
         }
       ],
       "descriptionCompressed": "Manage apps: launch/relaunch/list/load folder/create; create scaffolds min app, runs coding agent, verifies result.",
-      "similes": [
-        "APP_CONTROL",
-        "MANAGE_APPS"
-      ],
+      "similes": ["APP_CONTROL", "MANAGE_APPS"],
       "exampleCalls": [
         {
           "user": "Use APP with the provided parameters.",
-          "actions": [
-            "APP"
-          ],
+          "actions": ["APP"],
           "params": {
             "APP": {
               "action": "launch",
@@ -252,9 +247,7 @@
       "exampleCalls": [
         {
           "user": "Use BLOCK with the provided parameters.",
-          "actions": [
-            "BLOCK"
-          ],
+          "actions": ["BLOCK"],
           "params": {
             "BLOCK": {
               "target": "example",
@@ -359,12 +352,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "close",
-              "list",
-              "new",
-              "switch"
-            ]
+            "enum": ["close", "list", "new", "switch"]
           }
         },
         {
@@ -527,9 +515,7 @@
       "exampleCalls": [
         {
           "user": "Use BROWSER with the provided parameters.",
-          "actions": [
-            "BROWSER"
-          ],
+          "actions": ["BROWSER"],
           "params": {
             "BROWSER": {
               "action": "back",
@@ -829,9 +815,7 @@
       "exampleCalls": [
         {
           "user": "Use CALENDAR with the provided parameters.",
-          "actions": [
-            "CALENDAR"
-          ],
+          "actions": ["CALENDAR"],
           "params": {
             "CALENDAR": {
               "action": "feed",
@@ -875,10 +859,7 @@
               "single_use_link"
             ]
           },
-          "examples": [
-            "list_event_types",
-            "availability"
-          ],
+          "examples": ["list_event_types", "availability"],
           "descriptionCompressed": "calendly op: list_event_types|availability|upcoming_events|single_use_link"
         },
         {
@@ -894,10 +875,7 @@
               "single_use_link"
             ]
           },
-          "examples": [
-            "list_event_types",
-            "availability"
-          ],
+          "examples": ["list_event_types", "availability"],
           "descriptionCompressed": "legacy calendly op alias"
         },
         {
@@ -916,9 +894,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "https://api.calendly.com/event_types/ABCDEFGH"
-          ],
+          "examples": ["https://api.calendly.com/event_types/ABCDEFGH"],
           "descriptionCompressed": "calendly event type URI (availability|single_use_link)"
         },
         {
@@ -929,9 +905,7 @@
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
-          "examples": [
-            "2026-05-12"
-          ],
+          "examples": ["2026-05-12"],
           "descriptionCompressed": "YYYY-MM-DD range start"
         },
         {
@@ -942,9 +916,7 @@
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
-          "examples": [
-            "2026-05-19"
-          ],
+          "examples": ["2026-05-19"],
           "descriptionCompressed": "YYYY-MM-DD range end"
         },
         {
@@ -954,10 +926,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "America/Los_Angeles",
-            "UTC"
-          ],
+          "examples": ["America/Los_Angeles", "UTC"],
           "descriptionCompressed": "IANA tz"
         }
       ],
@@ -974,9 +943,7 @@
       "exampleCalls": [
         {
           "user": "Use CALENDLY with the provided parameters.",
-          "actions": [
-            "CALENDLY"
-          ],
+          "actions": ["CALENDLY"],
           "params": {
             "CALENDLY": {
               "action": "list_event_types",
@@ -1073,11 +1040,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "left",
-              "middle",
-              "right"
-            ]
+            "enum": ["left", "middle", "right"]
           }
         },
         {
@@ -1096,12 +1059,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "up",
-              "down",
-              "left",
-              "right"
-            ]
+            "enum": ["up", "down", "left", "right"]
           }
         },
         {
@@ -1139,9 +1097,7 @@
       "exampleCalls": [
         {
           "user": "Use COMPUTER_USE with the provided parameters.",
-          "actions": [
-            "COMPUTER_USE"
-          ],
+          "actions": ["COMPUTER_USE"],
           "params": {
             "COMPUTER_USE": {
               "action": "screenshot",
@@ -1185,10 +1141,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "owner",
-              "agent"
-            ]
+            "enum": ["owner", "agent"]
           }
         },
         {
@@ -1197,11 +1150,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "local",
-              "cloud_managed",
-              "remote"
-            ]
+            "enum": ["local", "cloud_managed", "remote"]
           }
         },
         {
@@ -1242,10 +1191,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "chrome",
-              "safari"
-            ]
+            "enum": ["chrome", "safari"]
           }
         },
         {
@@ -1286,9 +1232,7 @@
       "exampleCalls": [
         {
           "user": "Use CONNECTOR with the provided parameters.",
-          "actions": [
-            "CONNECTOR"
-          ],
+          "actions": ["CONNECTOR"],
           "params": {
             "CONNECTOR": {
               "connector": "example",
@@ -1389,9 +1333,7 @@
       "exampleCalls": [
         {
           "user": "Use CREDENTIALS with the provided parameters.",
-          "actions": [
-            "CREDENTIALS"
-          ],
+          "actions": ["CREDENTIALS"],
           "params": {
             "CREDENTIALS": {
               "action": "example",
@@ -1426,24 +1368,16 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "utf8",
-              "base64"
-            ]
+            "enum": ["utf8", "base64"]
           }
         }
       ],
       "descriptionCompressed": "read file from device (relative path, utf8|base64 encoding)",
-      "similes": [
-        "READ_DEVICE_FILE",
-        "DEVICE_READ_FILE"
-      ],
+      "similes": ["READ_DEVICE_FILE", "DEVICE_READ_FILE"],
       "exampleCalls": [
         {
           "user": "Use DEVICE_FILE_READ with the provided parameters.",
-          "actions": [
-            "DEVICE_FILE_READ"
-          ],
+          "actions": ["DEVICE_FILE_READ"],
           "params": {
             "DEVICE_FILE_READ": {
               "path": "example",
@@ -1479,24 +1413,16 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "utf8",
-              "base64"
-            ]
+            "enum": ["utf8", "base64"]
           }
         }
       ],
       "descriptionCompressed": "write file to device (relative path, utf8|base64 content)",
-      "similes": [
-        "WRITE_DEVICE_FILE",
-        "DEVICE_WRITE_FILE"
-      ],
+      "similes": ["WRITE_DEVICE_FILE", "DEVICE_WRITE_FILE"],
       "exampleCalls": [
         {
           "user": "Use DEVICE_FILE_WRITE with the provided parameters.",
-          "actions": [
-            "DEVICE_FILE_WRITE"
-          ],
+          "actions": ["DEVICE_FILE_WRITE"],
           "params": {
             "DEVICE_FILE_WRITE": {
               "path": "example",
@@ -1521,16 +1447,11 @@
         }
       ],
       "descriptionCompressed": "list directory on device (relative path; rooted under Documents/workspace)",
-      "similes": [
-        "LIST_DEVICE_DIR",
-        "DEVICE_LS"
-      ],
+      "similes": ["LIST_DEVICE_DIR", "DEVICE_LS"],
       "exampleCalls": [
         {
           "user": "Use DEVICE_LIST_DIR with the provided parameters.",
-          "actions": [
-            "DEVICE_LIST_DIR"
-          ],
+          "actions": ["DEVICE_LIST_DIR"],
           "params": {
             "DEVICE_LIST_DIR": {
               "path": "example"
@@ -1645,11 +1566,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "completed",
-              "expired",
-              "cancelled"
-            ]
+            "enum": ["completed", "expired", "cancelled"]
           }
         }
       ],
@@ -1657,9 +1574,7 @@
       "exampleCalls": [
         {
           "user": "Use DOC with the provided parameters.",
-          "actions": [
-            "DOC"
-          ],
+          "actions": ["DOC"],
           "params": {
             "DOC": {
               "subaction": "request_signature",
@@ -1690,11 +1605,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "add",
-            "list",
-            "set_identity"
-          ],
+          "examples": ["add", "list", "set_identity"],
           "descriptionCompressed": "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge"
         },
         {
@@ -1722,11 +1633,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "email",
-            "telegram",
-            "imessage"
-          ],
+          "examples": ["email", "telegram", "imessage"],
           "descriptionCompressed": "primary channel: email|telegram|discord|signal|sms|twilio_voice|imessage|whatsapp"
         },
         {
@@ -1800,12 +1707,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "telegram",
-            "email",
-            "phone",
-            "slack"
-          ],
+          "examples": ["telegram", "email", "phone", "slack"],
           "descriptionCompressed": "set_identity platform e.g. telegram|slack|email|twitter|phone"
         },
         {
@@ -1839,12 +1741,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "manages",
-            "colleague_of",
-            "works_at",
-            "partner_of"
-          ],
+          "examples": ["manages", "colleague_of", "works_at", "partner_of"],
           "descriptionCompressed": "set_relationship edge type label e.g. manages|colleague_of|works_at|partner_of"
         },
         {
@@ -1883,9 +1780,7 @@
       "exampleCalls": [
         {
           "user": "Use ENTITY with the provided parameters.",
-          "actions": [
-            "ENTITY"
-          ],
+          "actions": ["ENTITY"],
           "params": {
             "ENTITY": {
               "action": "add",
@@ -1922,14 +1817,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "read",
-              "write",
-              "edit",
-              "grep",
-              "glob",
-              "ls"
-            ]
+            "enum": ["read", "write", "edit", "grep", "glob", "ls"]
           }
         },
         {
@@ -2010,11 +1898,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "content",
-              "files_with_matches",
-              "count"
-            ]
+            "enum": ["content", "files_with_matches", "count"]
           }
         },
         {
@@ -2118,9 +2002,7 @@
       "exampleCalls": [
         {
           "user": "Use FILE with the provided parameters.",
-          "actions": [
-            "FILE"
-          ],
+          "actions": ["FILE"],
           "params": {
             "FILE": {
               "action": "read",
@@ -2159,9 +2041,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "restore"
-            ]
+            "enum": ["restore"]
           }
         },
         {
@@ -2174,17 +2054,11 @@
         }
       ],
       "descriptionCompressed": "Form session router (restore).",
-      "similes": [
-        "FORM_RESTORE",
-        "RESUME_FORM",
-        "CONTINUE_FORM"
-      ],
+      "similes": ["FORM_RESTORE", "RESUME_FORM", "CONTINUE_FORM"],
       "exampleCalls": [
         {
           "user": "Use FORM with the provided parameters.",
-          "actions": [
-            "FORM"
-          ],
+          "actions": ["FORM"],
           "params": {
             "FORM": {
               "action": "restore",
@@ -2239,11 +2113,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "open",
-              "closed",
-              "all"
-            ],
+            "enum": ["open", "closed", "all"],
             "default": "open"
           }
         },
@@ -2261,11 +2131,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "approve",
-              "request-changes",
-              "comment"
-            ]
+            "enum": ["approve", "request-changes", "comment"]
           }
         },
         {
@@ -2312,10 +2178,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "agent",
-              "user"
-            ],
+            "enum": ["agent", "user"],
             "default": "agent"
           }
         },
@@ -2349,9 +2212,7 @@
       "exampleCalls": [
         {
           "user": "Use GITHUB with the provided parameters.",
-          "actions": [
-            "GITHUB"
-          ],
+          "actions": ["GITHUB"],
           "params": {
             "GITHUB": {
               "action": "pr_list",
@@ -2426,9 +2287,7 @@
       "exampleCalls": [
         {
           "user": "Use LINEAR with the provided parameters.",
-          "actions": [
-            "LINEAR"
-          ],
+          "actions": ["LINEAR"],
           "params": {
             "LINEAR": {
               "action": "create_issue"
@@ -2473,10 +2332,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "solana",
-              "evm"
-            ]
+            "enum": ["solana", "evm"]
           }
         },
         {
@@ -2573,9 +2429,7 @@
       "exampleCalls": [
         {
           "user": "Use LIQUIDITY with the provided parameters.",
-          "actions": [
-            "LIQUIDITY"
-          ],
+          "actions": ["LIQUIDITY"],
           "params": {
             "LIQUIDITY": {
               "action": "onboard",
@@ -2605,12 +2459,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "install",
-              "reveal_folder",
-              "open_manager",
-              "refresh"
-            ]
+            "enum": ["install", "reveal_folder", "open_manager", "refresh"]
           }
         },
         {
@@ -2619,12 +2468,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "install",
-              "reveal_folder",
-              "open_manager",
-              "refresh"
-            ]
+            "enum": ["install", "reveal_folder", "open_manager", "refresh"]
           }
         }
       ],
@@ -2655,9 +2499,7 @@
       "exampleCalls": [
         {
           "user": "Use MANAGE_BROWSER_BRIDGE with the provided parameters.",
-          "actions": [
-            "MANAGE_BROWSER_BRIDGE"
-          ],
+          "actions": ["MANAGE_BROWSER_BRIDGE"],
           "params": {
             "MANAGE_BROWSER_BRIDGE": {
               "action": "install",
@@ -2733,9 +2575,7 @@
       "exampleCalls": [
         {
           "user": "Use MC with the provided parameters.",
-          "actions": [
-            "MC"
-          ],
+          "actions": ["MC"],
           "params": {
             "MC": {
               "action": "connect",
@@ -2856,9 +2696,7 @@
       "exampleCalls": [
         {
           "user": "Use MCP with the provided parameters.",
-          "actions": [
-            "MCP"
-          ],
+          "actions": ["MCP"],
           "params": {
             "MCP": {
               "action": "call_tool",
@@ -3064,9 +2902,7 @@
       "exampleCalls": [
         {
           "user": "Use MUSIC with the provided parameters.",
-          "actions": [
-            "MUSIC"
-          ],
+          "actions": ["MUSIC"],
           "params": {
             "MUSIC": {
               "action": "play",
@@ -3102,10 +2938,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "check",
-              "request"
-            ]
+            "enum": ["check", "request"]
           }
         },
         {
@@ -3146,9 +2979,7 @@
       "exampleCalls": [
         {
           "user": "Use MYSTICISM_PAYMENT with the provided parameters.",
-          "actions": [
-            "MYSTICISM_PAYMENT"
-          ],
+          "actions": ["MYSTICISM_PAYMENT"],
           "params": {
             "MYSTICISM_PAYMENT": {
               "action": "check",
@@ -3170,11 +3001,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "tarot",
-              "astrology",
-              "iching"
-            ]
+            "enum": ["tarot", "astrology", "iching"]
           }
         },
         {
@@ -3183,11 +3010,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "start",
-              "followup",
-              "deepen"
-            ]
+            "enum": ["start", "followup", "deepen"]
           }
         },
         {
@@ -3236,9 +3059,7 @@
       "exampleCalls": [
         {
           "user": "Use MYSTICISM_READING with the provided parameters.",
-          "actions": [
-            "MYSTICISM_READING"
-          ],
+          "actions": ["MYSTICISM_READING"],
           "params": {
             "MYSTICISM_READING": {
               "type": "tarot",
@@ -3264,17 +3085,11 @@
         }
       ],
       "descriptionCompressed": "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
-      "similes": [
-        "MONEY",
-        "FINANCES",
-        "SUBSCRIPTIONS"
-      ],
+      "similes": ["MONEY", "FINANCES", "SUBSCRIPTIONS"],
       "exampleCalls": [
         {
           "user": "Use OWNER_FINANCES with the provided parameters.",
-          "actions": [
-            "OWNER_FINANCES"
-          ],
+          "actions": ["OWNER_FINANCES"],
           "params": {
             "OWNER_FINANCES": {
               "action": "example"
@@ -3297,17 +3112,11 @@
         }
       ],
       "descriptionCompressed": "owner health: today|trend|by_metric|status; read-only telemetry",
-      "similes": [
-        "HEALTH",
-        "FITNESS",
-        "WELLNESS"
-      ],
+      "similes": ["HEALTH", "FITNESS", "WELLNESS"],
       "exampleCalls": [
         {
           "user": "Use OWNER_HEALTH with the provided parameters.",
-          "actions": [
-            "OWNER_HEALTH"
-          ],
+          "actions": ["OWNER_HEALTH"],
           "params": {
             "OWNER_HEALTH": {
               "action": "example"
@@ -3330,17 +3139,11 @@
         }
       ],
       "descriptionCompressed": "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
-      "similes": [
-        "SCREENTIME",
-        "SCREEN_TIME",
-        "ACTIVITY_REPORT"
-      ],
+      "similes": ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT"],
       "exampleCalls": [
         {
           "user": "Use OWNER_SCREENTIME with the provided parameters.",
-          "actions": [
-            "OWNER_SCREENTIME"
-          ],
+          "actions": ["OWNER_SCREENTIME"],
           "params": {
             "OWNER_SCREENTIME": {
               "action": "example"
@@ -3359,9 +3162,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "hyperliquid"
-            ],
+            "enum": ["hyperliquid"],
             "default": "hyperliquid"
           }
         },
@@ -3371,10 +3172,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "read",
-              "place_order"
-            ]
+            "enum": ["read", "place_order"]
           }
         },
         {
@@ -3383,11 +3181,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "read",
-              "place_order",
-              "place-order"
-            ]
+            "enum": ["read", "place_order", "place-order"]
           }
         },
         {
@@ -3396,13 +3190,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "status",
-              "markets",
-              "market",
-              "positions",
-              "funding"
-            ]
+            "enum": ["status", "markets", "market", "positions", "funding"]
           }
         },
         {
@@ -3419,10 +3207,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "buy",
-              "sell"
-            ]
+            "enum": ["buy", "sell"]
           }
         },
         {
@@ -3446,9 +3231,7 @@
       "exampleCalls": [
         {
           "user": "Use PERPETUAL_MARKET with the provided parameters.",
-          "actions": [
-            "PERPETUAL_MARKET"
-          ],
+          "actions": ["PERPETUAL_MARKET"],
           "params": {
             "PERPETUAL_MARKET": {
               "target": "hyperliquid",
@@ -3494,9 +3277,7 @@
       "exampleCalls": [
         {
           "user": "Use PERSONAL_ASSISTANT with the provided parameters.",
-          "actions": [
-            "PERSONAL_ASSISTANT"
-          ],
+          "actions": ["PERSONAL_ASSISTANT"],
           "params": {
             "PERSONAL_ASSISTANT": {
               "action": "example"
@@ -3532,9 +3313,7 @@
       "exampleCalls": [
         {
           "user": "Use PLAY_EMOTE with the provided parameters.",
-          "actions": [
-            "PLAY_EMOTE"
-          ],
+          "actions": ["PLAY_EMOTE"],
           "params": {
             "PLAY_EMOTE": {
               "emote": "example"
@@ -3609,9 +3388,7 @@
       "exampleCalls": [
         {
           "user": "Use PROPOSE_MEETING_TIMES with the provided parameters.",
-          "actions": [
-            "PROPOSE_MEETING_TIMES"
-          ],
+          "actions": ["PROPOSE_MEETING_TIMES"],
           "params": {
             "PROPOSE_MEETING_TIMES": {
               "durationMinutes": 1,
@@ -3635,19 +3412,9 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "start",
-              "status",
-              "end",
-              "list",
-              "revoke"
-            ]
+            "enum": ["start", "status", "end", "list", "revoke"]
           },
-          "examples": [
-            "start",
-            "list",
-            "revoke"
-          ],
+          "examples": ["start", "list", "revoke"],
           "descriptionCompressed": "remote-desktop action: start|status|end|list|revoke"
         },
         {
@@ -3657,9 +3424,7 @@
           "schema": {
             "type": "string"
           },
-          "examples": [
-            "rs_abc123"
-          ],
+          "examples": ["rs_abc123"],
           "descriptionCompressed": "session id (status|end|revoke)"
         },
         {
@@ -3679,9 +3444,7 @@
             "type": "string",
             "pattern": "^[0-9]{6}$"
           },
-          "examples": [
-            "482193"
-          ],
+          "examples": ["482193"],
           "descriptionCompressed": "6-digit pairing code (start; skipped in local mode)"
         },
         {
@@ -3714,9 +3477,7 @@
       "exampleCalls": [
         {
           "user": "Use REMOTE_DESKTOP with the provided parameters.",
-          "actions": [
-            "REMOTE_DESKTOP"
-          ],
+          "actions": ["REMOTE_DESKTOP"],
           "params": {
             "REMOTE_DESKTOP": {
               "action": "start",
@@ -3740,10 +3501,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "approve",
-              "reject"
-            ]
+            "enum": ["approve", "reject"]
           }
         },
         {
@@ -3781,9 +3539,7 @@
       "exampleCalls": [
         {
           "user": "Use RESOLVE_REQUEST with the provided parameters.",
-          "actions": [
-            "RESOLVE_REQUEST"
-          ],
+          "actions": ["RESOLVE_REQUEST"],
           "params": {
             "RESOLVE_REQUEST": {
               "action": "approve",
@@ -3804,11 +3560,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "message",
-              "execute",
-              "get_player"
-            ]
+            "enum": ["message", "execute", "get_player"]
           },
           "descriptionCompressed": "Roblox action."
         },
@@ -3871,17 +3623,11 @@
         }
       ],
       "descriptionCompressed": "Route Roblox action: message, execute, or get_player.",
-      "similes": [
-        "ROBLOX",
-        "ROBLOX_ROUTER",
-        "ROBLOX_GAME_ACTION"
-      ],
+      "similes": ["ROBLOX", "ROBLOX_ROUTER", "ROBLOX_GAME_ACTION"],
       "exampleCalls": [
         {
           "user": "Use ROBLOX with the provided parameters.",
-          "actions": [
-            "ROBLOX"
-          ],
+          "actions": ["ROBLOX"],
           "params": {
             "ROBLOX": {
               "action": "message",
@@ -3965,9 +3711,7 @@
       "exampleCalls": [
         {
           "user": "Use RS_2004 with the provided parameters.",
-          "actions": [
-            "RS_2004"
-          ],
+          "actions": ["RS_2004"],
           "params": {
             "RS_2004": {
               "action": "walk_to",
@@ -4047,9 +3791,7 @@
       "exampleCalls": [
         {
           "user": "Use SCAPE with the provided parameters.",
-          "actions": [
-            "SCAPE"
-          ],
+          "actions": ["SCAPE"],
           "params": {
             "SCAPE": {
               "action": "walk_to",
@@ -4220,11 +3962,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ]
+            "enum": ["low", "medium", "high"]
           }
         },
         {
@@ -4320,9 +4058,7 @@
       "exampleCalls": [
         {
           "user": "Use SCHEDULED_TASKS with the provided parameters.",
-          "actions": [
-            "SCHEDULED_TASKS"
-          ],
+          "actions": ["SCHEDULED_TASKS"],
           "params": {
             "SCHEDULED_TASKS": {
               "action": "list",
@@ -4397,17 +4133,11 @@
         }
       ],
       "descriptionCompressed": "Run a shell command synchronously.",
-      "similes": [
-        "BASH",
-        "EXEC",
-        "RUN_COMMAND"
-      ],
+      "similes": ["BASH", "EXEC", "RUN_COMMAND"],
       "exampleCalls": [
         {
           "user": "Use SHELL with the provided parameters.",
-          "actions": [
-            "SHELL"
-          ],
+          "actions": ["SHELL"],
           "params": {
             "SHELL": {
               "command": "example",
@@ -4429,11 +4159,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "clear",
-              "view",
-              "disable"
-            ]
+            "enum": ["clear", "view", "disable"]
           }
         },
         {
@@ -4459,9 +4185,7 @@
       "exampleCalls": [
         {
           "user": "Use SHELL_HISTORY with the provided parameters.",
-          "actions": [
-            "SHELL_HISTORY"
-          ],
+          "actions": ["SHELL_HISTORY"],
           "params": {
             "SHELL_HISTORY": {
               "action": "clear",
@@ -4481,13 +4205,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "search",
-              "products",
-              "inventory",
-              "orders",
-              "customers"
-            ]
+            "enum": ["search", "products", "inventory", "orders", "customers"]
           }
         },
         {
@@ -4512,12 +4230,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "all",
-              "products",
-              "orders",
-              "customers"
-            ]
+            "enum": ["all", "products", "orders", "customers"]
           }
         },
         {
@@ -4554,9 +4267,7 @@
       "exampleCalls": [
         {
           "user": "Use SHOPIFY with the provided parameters.",
-          "actions": [
-            "SHOPIFY"
-          ],
+          "actions": ["SHOPIFY"],
           "params": {
             "SHOPIFY": {
               "action": "search",
@@ -4607,9 +4318,7 @@
       "exampleCalls": [
         {
           "user": "Use SKILL with the provided parameters.",
-          "actions": [
-            "SKILL"
-          ],
+          "actions": ["SKILL"],
           "params": {
             "SKILL": {
               "action": "search"
@@ -4708,12 +4417,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "readonly",
-              "standard",
-              "permissive",
-              "autonomous"
-            ]
+            "enum": ["readonly", "standard", "permissive", "autonomous"]
           }
         },
         {
@@ -4794,11 +4498,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "list",
-              "count",
-              "detail"
-            ]
+            "enum": ["list", "count", "detail"]
           }
         },
         {
@@ -5010,10 +4710,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "retry",
-              "escalate"
-            ]
+            "enum": ["retry", "escalate"]
           }
         },
         {
@@ -5124,9 +4821,7 @@
       "exampleCalls": [
         {
           "user": "Use TASKS with the provided parameters.",
-          "actions": [
-            "TASKS"
-          ],
+          "actions": ["TASKS"],
           "params": {
             "TASKS": {
               "action": "create",
@@ -5309,9 +5004,7 @@
       "exampleCalls": [
         {
           "user": "Use TODO with the provided parameters.",
-          "actions": [
-            "TODO"
-          ],
+          "actions": ["TODO"],
           "params": {
             "TODO": {
               "action": "example",
@@ -5339,11 +5032,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "start",
-              "stop",
-              "status"
-            ]
+            "enum": ["start", "stop", "status"]
           }
         },
         {
@@ -5375,9 +5064,7 @@
       "exampleCalls": [
         {
           "user": "Use TUNNEL with the provided parameters.",
-          "actions": [
-            "TUNNEL"
-          ],
+          "actions": ["TUNNEL"],
           "params": {
             "TUNNEL": {
               "action": "start",
@@ -5453,9 +5140,7 @@
       "exampleCalls": [
         {
           "user": "Use UPDATE_MEETING_PREFERENCES with the provided parameters.",
-          "actions": [
-            "UPDATE_MEETING_PREFERENCES"
-          ],
+          "actions": ["UPDATE_MEETING_PREFERENCES"],
           "params": {
             "UPDATE_MEETING_PREFERENCES": {
               "timeZone": "example",
@@ -5487,11 +5172,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "guidance",
-              "script",
-              "auto"
-            ],
+            "enum": ["guidance", "script", "auto"],
             "default": "auto"
           }
         },
@@ -5526,9 +5207,7 @@
       "exampleCalls": [
         {
           "user": "Use USE_SKILL with the provided parameters.",
-          "actions": [
-            "USE_SKILL"
-          ],
+          "actions": ["USE_SKILL"],
           "params": {
             "USE_SKILL": {
               "slug": "example",
@@ -5550,9 +5229,7 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": [
-              "dial"
-            ]
+            "enum": ["dial"]
           }
         },
         {
@@ -5561,11 +5238,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "owner",
-              "external",
-              "e164"
-            ]
+            "enum": ["owner", "external", "e164"]
           }
         },
         {
@@ -5621,9 +5294,7 @@
       "exampleCalls": [
         {
           "user": "Use VOICE_CALL with the provided parameters.",
-          "actions": [
-            "VOICE_CALL"
-          ],
+          "actions": ["VOICE_CALL"],
           "params": {
             "VOICE_CALL": {
               "action": "dial",
@@ -5722,18 +5393,11 @@
         }
       ],
       "descriptionCompressed": "Single WINDOW action; action=list|focus|switch|arrange|move|minimize|maximize|restore|close manages local desktop windows.",
-      "similes": [
-        "MANAGE_WINDOW",
-        "WINDOW",
-        "USE_WINDOW",
-        "WINDOW_ACTION"
-      ],
+      "similes": ["MANAGE_WINDOW", "WINDOW", "USE_WINDOW", "WINDOW_ACTION"],
       "exampleCalls": [
         {
           "user": "Use WINDOW with the provided parameters.",
-          "actions": [
-            "WINDOW"
-          ],
+          "actions": ["WINDOW"],
           "params": {
             "WINDOW": {
               "action": "list",
@@ -5768,9 +5432,7 @@
       "exampleCalls": [
         {
           "user": "Use WORK_THREAD with the provided parameters.",
-          "actions": [
-            "WORK_THREAD"
-          ],
+          "actions": ["WORK_THREAD"],
           "params": {
             "WORK_THREAD": {
               "operations": "example"
@@ -5877,9 +5539,7 @@
       "exampleCalls": [
         {
           "user": "Use WORKFLOW with the provided parameters.",
-          "actions": [
-            "WORKFLOW"
-          ],
+          "actions": ["WORKFLOW"],
           "params": {
             "WORKFLOW": {
               "action": "create",
@@ -5904,10 +5564,7 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": [
-              "enter",
-              "exit"
-            ]
+            "enum": ["enter", "exit"]
           }
         },
         {
@@ -5953,9 +5610,7 @@
       "exampleCalls": [
         {
           "user": "Use WORKTREE with the provided parameters.",
-          "actions": [
-            "WORKTREE"
-          ],
+          "actions": ["WORKTREE"],
           "params": {
             "WORKTREE": {
               "action": "enter",

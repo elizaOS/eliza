@@ -105,6 +105,8 @@ import {
 } from "./service-constants.js";
 import {
   executeRawSql,
+  executeRawSqlTx,
+  OptimisticLockError,
   parseJsonArray,
   parseJsonRecord,
   parseJsonValue,
@@ -117,6 +119,8 @@ import {
   toBoolean,
   toNumber,
   toText,
+  withTransaction,
+  type TransactionalDb,
 } from "./sql.js";
 import type {
   LifeOpsSubscriptionAudit,
@@ -2427,6 +2431,7 @@ function parseWorkThreadRow(
       row.last_message_memory_id.length > 0
         ? row.last_message_memory_id
         : null,
+    version: toNumber(row.version, 1),
     createdAt: toText(row.created_at),
     updatedAt: toText(row.updated_at),
     lastActivityAt: toText(row.last_activity_at),
@@ -7760,14 +7765,65 @@ export class LifeOpsRepository {
   // tables are created by the drizzle plugin-migration system from
   // `lifeOpsSchema`.
 
+  /**
+   * Upsert a scheduled task. When `expectedVersion` is omitted, behavior
+   * matches the pre-version contract: last-write-wins. When provided, the
+   * UPDATE clause filters on `version = expectedVersion` AND increments
+   * `version = version + 1` atomically. If the UPDATE affects 0 rows (the row
+   * doesn't exist or another caller already bumped the version) we throw
+   * {@link import("./sql.js").OptimisticLockError}.
+   *
+   * Use `expectedVersion` for the scheduler's `fire()` transition so two
+   * concurrent fires for the same task can't both dispatch.
+   */
   async upsertScheduledTask(
     agentId: string,
     task: import("./scheduled-task/types.js").ScheduledTask,
+    options?: { expectedVersion?: number; tx?: TransactionalDb },
   ): Promise<void> {
     const now = isoNow();
-    await executeRawSql(
-      this.runtime,
-      `INSERT INTO app_lifeops.life_scheduled_tasks (
+    const expectedVersion = options?.expectedVersion;
+    const tx = options?.tx;
+    if (typeof expectedVersion === "number") {
+      const updateSql = `UPDATE app_lifeops.life_scheduled_tasks
+            SET kind = ${sqlQuote(task.kind)},
+                prompt_instructions = ${sqlQuote(task.promptInstructions)},
+                context_request_json = ${sqlText(task.contextRequest ? JSON.stringify(task.contextRequest) : null)},
+                trigger_json = ${sqlJson(task.trigger)},
+                priority = ${sqlQuote(task.priority)},
+                should_fire_json = ${sqlText(task.shouldFire ? JSON.stringify(task.shouldFire) : null)},
+                completion_check_json = ${sqlText(task.completionCheck ? JSON.stringify(task.completionCheck) : null)},
+                escalation_json = ${sqlText(task.escalation ? JSON.stringify(task.escalation) : null)},
+                output_json = ${sqlText(task.output ? JSON.stringify(task.output) : null)},
+                pipeline_json = ${sqlText(task.pipeline ? JSON.stringify(task.pipeline) : null)},
+                subject_kind = ${sqlText(task.subject?.kind ?? null)},
+                subject_id = ${sqlText(task.subject?.id ?? null)},
+                idempotency_key = ${sqlText(task.idempotencyKey ?? null)},
+                respects_global_pause = ${sqlBoolean(task.respectsGlobalPause)},
+                state_json = ${sqlJson(task.state)},
+                source = ${sqlQuote(task.source)},
+                created_by = ${sqlQuote(task.createdBy)},
+                owner_visible = ${sqlBoolean(task.ownerVisible)},
+                metadata_json = ${sqlJson(task.metadata ?? {})},
+                updated_at = ${sqlQuote(now)},
+                version = version + 1
+          WHERE id = ${sqlQuote(task.taskId)}
+            AND agent_id = ${sqlQuote(agentId)}
+            AND version = ${sqlInteger(expectedVersion)}
+        RETURNING id`;
+      const rows = tx
+        ? await executeRawSqlTx(tx, updateSql)
+        : await executeRawSql(this.runtime, updateSql);
+      if (rows.length === 0) {
+        throw new OptimisticLockError({
+          table: "life_scheduled_tasks",
+          id: task.taskId,
+          expectedVersion,
+        });
+      }
+      return;
+    }
+    const upsertSql = `INSERT INTO app_lifeops.life_scheduled_tasks (
         id, agent_id, kind, prompt_instructions, context_request_json,
         trigger_json, priority, should_fire_json, completion_check_json,
         escalation_json, output_json, pipeline_json, subject_kind, subject_id,
@@ -7818,8 +7874,12 @@ export class LifeOpsRepository {
         created_by = EXCLUDED.created_by,
         owner_visible = EXCLUDED.owner_visible,
         metadata_json = EXCLUDED.metadata_json,
-        updated_at = ${sqlQuote(now)}`,
-    );
+        updated_at = ${sqlQuote(now)}`;
+    if (tx) {
+      await executeRawSqlTx(tx, upsertSql);
+    } else {
+      await executeRawSql(this.runtime, upsertSql);
+    }
   }
 
   async getScheduledTask(
@@ -8048,14 +8108,61 @@ export class LifeOpsRepository {
     return { rolledUp: summary.size, deletedRaw: rows.length };
   }
 
+  /**
+   * Upsert a work thread. When `expectedVersion` is omitted, behavior matches
+   * the pre-version contract: last-write-wins. When provided, the UPDATE clause
+   * filters on `version = expectedVersion` AND increments `version = version + 1`
+   * atomically. If the UPDATE affects 0 rows (someone else bumped the version
+   * first) we throw {@link import("./sql.js").OptimisticLockError}.
+   *
+   * Use `expectedVersion` from inside `withTransaction` for any multi-step
+   * operation that must observe a consistent snapshot of the row across reads
+   * and writes (e.g., thread merge).
+   */
   async upsertWorkThread(
     agentId: string,
     thread: import("./work-threads/types.js").WorkThread,
+    options?: { expectedVersion?: number },
   ): Promise<void> {
     const now = isoNow();
     const createdAt = thread.createdAt || now;
     const updatedAt = thread.updatedAt || now;
     const lastActivityAt = thread.lastActivityAt || updatedAt;
+    const expectedVersion = options?.expectedVersion;
+    if (typeof expectedVersion === "number") {
+      const rows = await executeRawSql(
+        this.runtime,
+        `UPDATE app_lifeops.life_work_threads
+            SET owner_entity_id = ${sqlText(thread.ownerEntityId ?? null)},
+                status = ${sqlQuote(thread.status)},
+                title = ${sqlQuote(thread.title)},
+                summary = ${sqlQuote(thread.summary)},
+                current_plan_summary = ${sqlText(thread.currentPlanSummary ?? null)},
+                primary_source_ref_json = ${sqlJson(thread.primarySourceRef)},
+                source_refs_json = ${sqlJson(thread.sourceRefs ?? [])},
+                participant_entity_ids_json = ${sqlJson(thread.participantEntityIds ?? [])},
+                current_scheduled_task_id = ${sqlText(thread.currentScheduledTaskId ?? null)},
+                workflow_run_id = ${sqlText(thread.workflowRunId ?? null)},
+                approval_id = ${sqlText(thread.approvalId ?? null)},
+                last_message_memory_id = ${sqlText(thread.lastMessageMemoryId ?? null)},
+                metadata_json = ${sqlJson(thread.metadata ?? {})},
+                updated_at = ${sqlQuote(updatedAt)},
+                last_activity_at = ${sqlQuote(lastActivityAt)},
+                version = version + 1
+          WHERE id = ${sqlQuote(thread.id)}
+            AND agent_id = ${sqlQuote(agentId)}
+            AND version = ${sqlInteger(expectedVersion)}
+        RETURNING id`,
+      );
+      if (rows.length === 0) {
+        throw new OptimisticLockError({
+          table: "life_work_threads",
+          id: thread.id,
+          expectedVersion,
+        });
+      }
+      return;
+    }
     await executeRawSql(
       this.runtime,
       `INSERT INTO app_lifeops.life_work_threads (
