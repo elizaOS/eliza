@@ -20,6 +20,18 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename } from "node:path";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 import {
+  buildDspyArtifact,
+  buildExamplesFromRows,
+  type DspyArtifactTask,
+  type DspyOptimizerResult,
+  defineSignature,
+  legacyAdapterToLm,
+  type Metric,
+  runDspyBootstrapFewshot,
+  runDspyCopro,
+  runDspyMipro,
+} from "../dspy/index.js";
+import {
   createPromptScorer,
   createRuntimeAdapter,
   type LlmAdapter,
@@ -178,6 +190,8 @@ function dispatchOptimizer(
     dataset: OptimizationExample[];
     scorer: ReturnType<typeof createPromptScorer>;
     llm: LlmAdapter;
+    task: TrajectoryTrainingTask;
+    datasetPath: string;
   },
 ): Promise<OptimizerResult> {
   switch (optimizer) {
@@ -187,7 +201,149 @@ function dispatchOptimizer(
       return runPromptEvolution(input);
     case "bootstrap-fewshot":
       return runBootstrapFewshot(input);
+    case "dspy-bootstrap-fewshot":
+    case "dspy-copro":
+    case "dspy-mipro":
+      return runDspyOptimizer(optimizer, input);
   }
+}
+
+/**
+ * Bridge from the legacy (baselinePrompt + OptimizationExample[]) input shape
+ * into the DSPy primitives: synthesize a Signature from the baseline + first
+ * row, load examples through the privacy filter, and translate the resulting
+ * DspyOptimizerResult back into the OptimizerResult contract used by the
+ * native backend caller (and by `OptimizedPromptArtifact` consumers).
+ */
+async function runDspyOptimizer(
+  optimizer: "dspy-bootstrap-fewshot" | "dspy-copro" | "dspy-mipro",
+  input: {
+    baselinePrompt: string;
+    dataset: OptimizationExample[];
+    scorer: ReturnType<typeof createPromptScorer>;
+    llm: LlmAdapter;
+    task: TrajectoryTrainingTask;
+    datasetPath: string;
+  },
+): Promise<OptimizerResult> {
+  // Re-load through the dspy loader so the privacy filter runs (mandatory per
+  // CLAUDE.md — no path may skip it). We round-trip through the on-disk file
+  // so the filter sees the original strings, then the optimizer consumes the
+  // filtered Example[] only.
+  const filtered = buildExamplesFromRows(
+    input.dataset.map((ex) => ({
+      format: "eliza_native_v1" as const,
+      request: {
+        system: ex.input.system,
+        messages: [
+          ...(ex.input.system
+            ? [{ role: "system" as const, content: ex.input.system }]
+            : []),
+          { role: "user" as const, content: ex.input.user },
+        ],
+      },
+      response: { text: ex.expectedOutput },
+    })),
+  );
+  const examples = filtered.examples;
+  if (examples.length === 0) {
+    return {
+      optimizedPrompt: input.baselinePrompt,
+      score: 0,
+      baseline: 0,
+      lineage: [],
+    };
+  }
+
+  const signature = defineSignature({
+    name: `task_${input.task}`,
+    instructions: input.baselinePrompt,
+    inputs: [
+      {
+        name: "input",
+        description: "User-turn text or planner input payload.",
+        type: "string",
+      },
+    ],
+    outputs: [
+      {
+        name: "output",
+        description: "Expected response text for this task.",
+        type: "string",
+      },
+    ],
+  });
+
+  // Exact-match metric on the canonical `output` field. The legacy backend
+  // uses a Jaccard / planner-action scorer; we cannot reuse those here because
+  // they take a baseline-prompt + dataset pair, not a (predicted, expected)
+  // pair. Exact-match is the strict floor — when the model emits the same
+  // string, score 1.
+  const metric: Metric = (predicted, expected) => {
+    const p = String(predicted.output ?? "").trim();
+    const e = String(expected.output ?? "").trim();
+    if (p.length === 0 || e.length === 0) return 0;
+    return p === e ? 1 : 0;
+  };
+
+  const lm = legacyAdapterToLm(input.llm, "native-backend");
+  let result: DspyOptimizerResult;
+  if (optimizer === "dspy-bootstrap-fewshot") {
+    result = await runDspyBootstrapFewshot({
+      signature,
+      dataset: examples,
+      lm,
+      metric,
+    });
+  } else if (optimizer === "dspy-copro") {
+    result = await runDspyCopro({
+      signature,
+      dataset: examples,
+      lm,
+      metric,
+    });
+  } else {
+    result = await runDspyMipro({
+      signature,
+      dataset: examples,
+      lm,
+      metric,
+    });
+  }
+
+  // Use the artifact builder to compose the prompt body (instructions +
+  // demonstrations). This keeps the (eliza_native_v1)-compatible string
+  // generation in one place.
+  const artifact = buildDspyArtifact({
+    task: input.task as DspyArtifactTask,
+    baseline: input.baselinePrompt,
+    datasetId: input.datasetPath,
+    datasetSize: examples.length,
+    result,
+  });
+
+  return {
+    optimizedPrompt: artifact.prompt,
+    score: result.score,
+    baseline: result.baselineScore,
+    lineage: result.lineage,
+    fewShotExamples:
+      result.demonstrations.length > 0
+        ? result.demonstrations.map((demo, idx) => ({
+            id: demo.source ?? `demo-${idx}`,
+            input: {
+              system:
+                typeof demo.inputs.system === "string"
+                  ? demo.inputs.system
+                  : undefined,
+              user: String(demo.inputs.input ?? ""),
+            },
+            expectedOutput: String(demo.outputs.output ?? ""),
+            reward: demo.reward,
+            metadata: demo.metadata,
+          }))
+        : undefined,
+  };
 }
 
 export async function runNativeBackend(
@@ -227,6 +383,8 @@ export async function runNativeBackend(
     dataset,
     scorer,
     llm: adapter,
+    task: options.task,
+    datasetPath: options.datasetPath,
   });
 
   return {
@@ -249,4 +407,7 @@ export const NATIVE_OPTIMIZERS: readonly OptimizerName[] = [
   "instruction-search",
   "prompt-evolution",
   "bootstrap-fewshot",
+  "dspy-bootstrap-fewshot",
+  "dspy-copro",
+  "dspy-mipro",
 ] as const;

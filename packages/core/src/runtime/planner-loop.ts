@@ -470,6 +470,7 @@ function renderPlannerModelInput(params: {
 	context: ContextObject;
 	trajectory: PlannerTrajectory;
 	template?: string;
+	runtime?: PlannerRuntime;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -480,7 +481,10 @@ function renderPlannerModelInput(params: {
 		template.split("context_object:")[0] ?? template
 	).trim();
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
-	const availableActionsBlock = renderAvailableActionsBlock(params.context);
+	const liveActionsBlock = renderAvailableActionsBlock(params.context);
+	const availableActionsBlock = params.runtime
+		? resolveOptimizedActionDescriptions(params.runtime, liveActionsBlock)
+		: liveActionsBlock;
 	const routingHintsBlock = renderRoutingHintsBlock(params.context);
 	const extraSegments: PromptSegment[] = [];
 	if (availableActionsBlock) {
@@ -964,6 +968,7 @@ async function callPlanner(params: {
 		context: params.context,
 		trajectory: params.trajectory,
 		template: resolveOptimizedPlannerTemplate(params.runtime),
+		runtime: params.runtime,
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -988,6 +993,7 @@ async function callPlanner(params: {
 				context: params.trajectory.context,
 				trajectory: params.trajectory,
 				template: resolveOptimizedPlannerTemplate(params.runtime),
+				runtime: params.runtime,
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
@@ -2297,6 +2303,27 @@ function loadOptimizedPlannerFromDisk(): string | null {
 		} catch {}
 	}
 	return null;
+}
+
+/**
+ * Substitute the live `# Available Actions` block with an optimized version
+ * when `OptimizedPromptService` has an `action_descriptions` artifact loaded.
+ * Returns the live block unchanged when no artifact is present, or when the
+ * live block is null (no exposed tools — nothing to substitute).
+ */
+function resolveOptimizedActionDescriptions(
+	runtime: PlannerRuntime,
+	liveBlock: string | null,
+): string | null {
+	if (liveBlock === null) return null;
+	const optimized = resolveOptimizedPromptForRuntime(
+		runtime as PlannerRuntime & {
+			getService?: <T>(name: string) => T | null | undefined;
+		},
+		"action_descriptions",
+		liveBlock,
+	);
+	return optimized;
 }
 
 function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {

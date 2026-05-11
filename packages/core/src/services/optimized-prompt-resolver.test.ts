@@ -167,6 +167,10 @@ describe("resolveOptimizedPromptForRuntime — per-task wiring", () => {
 		{ task: "action_planner", optimizedPrompt: "OPT_ACTION_PLANNER" },
 		{ task: "response", optimizedPrompt: "OPT_RESPONSE" },
 		{ task: "media_description", optimizedPrompt: "OPT_MEDIA_DESCRIPTION" },
+		{
+			task: "action_descriptions",
+			optimizedPrompt: "OPT_ACTION_DESCRIPTIONS",
+		},
 	];
 
 	test("covers every OPTIMIZED_PROMPT_TASKS entry", () => {
