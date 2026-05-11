@@ -367,7 +367,16 @@ function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
-	const policyRole = readActionRolePolicy()[action.name];
+	const policy = readActionRolePolicy();
+	let policyRole = policy[action.name];
+	if (!policyRole && Array.isArray(action.similes)) {
+		for (const simile of action.similes) {
+			if (typeof simile === "string" && policy[simile]) {
+				policyRole = policy[simile];
+				break;
+			}
+		}
+	}
 	if (policyRole) {
 		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
 			? undefined

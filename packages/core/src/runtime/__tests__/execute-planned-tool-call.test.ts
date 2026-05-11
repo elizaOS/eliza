@@ -330,6 +330,32 @@ describe("executePlannedToolCall", () => {
 			expect(handler).toHaveBeenCalledOnce();
 		});
 
+		it("matches a policy entry against the action's similes when canonical name is absent", async () => {
+			process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "NONE" });
+			_resetActionRolePolicyCacheForTests();
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "SHELL",
+				similes: ["BASH", "EXEC", "RUN_COMMAND"],
+				contextGate: { anyOf: ["code", "terminal", "automation"] },
+				roleGate: { minRole: "OWNER" },
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{
+					message: makeMessage(),
+					activeContexts: ["general"],
+					userRoles: ["GUEST"],
+				},
+				{ name: "SHELL", params: {} },
+			);
+
+			expect(result.success).toBe(true);
+			expect(handler).toHaveBeenCalledOnce();
+		});
+
 		it("ignores policy entries with unrecognized roles instead of granting access", async () => {
 			process.env.ACTION_ROLE_POLICY = JSON.stringify({ GATED: "MODERATOR" });
 			_resetActionRolePolicyCacheForTests();
