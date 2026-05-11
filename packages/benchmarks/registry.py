@@ -2489,6 +2489,70 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mt_bench_result(output_dir: Path) -> Path:
         return output_dir / "mt-bench-results.json"
 
+    def _trajectory_replay_cmd(
+        output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
+    ) -> list[str]:
+        """Build the trajectory-replay CLI invocation.
+
+        Required ``extra`` keys:
+
+        * ``traj_set`` (str): directory of trajectory JSON files.
+        * ``baseline`` (str): model id whose recorded outputs are ground truth.
+
+        Optional knobs that map straight onto the adapter flags:
+        ``reward_threshold`` (float, default 0.5),
+        ``exact_action_sequence`` (bool, default True; set False for set match),
+        ``action_weight`` (float, default 0.5),
+        ``final_state_weight`` (float, default 0.5),
+        ``max_tokens`` (int, default 768).
+        """
+
+        args = _standard_bench_base_args(
+            "benchmarks.standard.trajectory_replay", output_dir, model, extra
+        )
+        traj_set = extra.get("traj_set")
+        if not isinstance(traj_set, str) or not traj_set.strip():
+            raise ValueError(
+                "trajectory_replay requires extra.traj_set (directory of trajectory JSON files)"
+            )
+        args.extend(["--traj-set", traj_set.strip()])
+        baseline = extra.get("baseline")
+        if not isinstance(baseline, str) or not baseline.strip():
+            raise ValueError(
+                "trajectory_replay requires extra.baseline (baseline model id)"
+            )
+        args.extend(["--baseline", baseline.strip()])
+        reward_threshold = extra.get("reward_threshold")
+        if (
+            isinstance(reward_threshold, (int, float))
+            and not isinstance(reward_threshold, bool)
+        ):
+            args.extend(["--reward-threshold", str(float(reward_threshold))])
+        exact_action_sequence = extra.get("exact_action_sequence")
+        if exact_action_sequence is False:
+            args.append("--no-exact-action-sequence")
+        elif exact_action_sequence is True:
+            args.append("--exact-action-sequence")
+        action_weight = extra.get("action_weight")
+        if (
+            isinstance(action_weight, (int, float))
+            and not isinstance(action_weight, bool)
+        ):
+            args.extend(["--action-weight", str(float(action_weight))])
+        final_state_weight = extra.get("final_state_weight")
+        if (
+            isinstance(final_state_weight, (int, float))
+            and not isinstance(final_state_weight, bool)
+        ):
+            args.extend(["--final-state-weight", str(float(final_state_weight))])
+        max_tokens = extra.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            args.extend(["--max-tokens", str(max_tokens)])
+        return args
+
+    def _trajectory_replay_result(output_dir: Path) -> Path:
+        return output_dir / "trajectory-replay-results.json"
+
     # lifeops-bench
     def _lifeops_bench_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -3181,6 +3245,33 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_mt_bench_cmd,
             locate_result=_mt_bench_result,
             extract_score=_score_from_mt_bench_json,
+        ),
+        BenchmarkDefinition(
+            id="trajectory_replay",
+            display_name="Trajectory Replay",
+            description=(
+                "Regression benchmark that replays curated eliza_native_v1 "
+                "trajectories from ~/.eliza/trajectories against a candidate "
+                "endpoint and scores action-sequence + final-state match via "
+                "eliza_reward_fn (closes M5 follow-up)."
+            ),
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("packages/training/scripts/eliza_reward_fn.py",),
+                notes=(
+                    "Required extras: traj_set (directory of trajectory JSON "
+                    "files) and baseline (baseline model id whose recorded "
+                    "outputs are the ground truth). Optional knobs: "
+                    "reward_threshold (default 0.5), exact_action_sequence "
+                    "(default True), action_weight + final_state_weight "
+                    "(default 0.5/0.5), max_tokens. Score is the mean per-"
+                    "trajectory aggregate in [0, 1]; higher is better."
+                ),
+            ),
+            build_command=_trajectory_replay_cmd,
+            locate_result=_trajectory_replay_result,
+            extract_score=_score_from_trajectory_replay_json,
         ),
     ]
 
