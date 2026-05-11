@@ -88,6 +88,37 @@ describe("PostInboxMessageRequestSchema", () => {
     ).toThrow();
   });
 
+  it("rejects whitespace-only roomId", () => {
+    expect(() =>
+      PostInboxMessageRequestSchema.parse({
+        roomId: "   ",
+        source: "x",
+        text: "y",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects whitespace-only source", () => {
+    expect(() =>
+      PostInboxMessageRequestSchema.parse({
+        roomId: "r",
+        source: "   ",
+        text: "y",
+      }),
+    ).toThrow();
+  });
+
+  it("rejects whitespace-only replyToMessageId", () => {
+    expect(() =>
+      PostInboxMessageRequestSchema.parse({
+        roomId: "r",
+        source: "x",
+        text: "y",
+        replyToMessageId: "   ",
+      }),
+    ).toThrow();
+  });
+
   it("rejects extra fields (strict)", () => {
     expect(() =>
       PostInboxMessageRequestSchema.parse({
