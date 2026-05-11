@@ -147,8 +147,9 @@ const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     label: "settings.sections.connectors.label",
     defaultLabel: "Connectors",
     icon: Webhook,
-    description: "settings.sections.connectors.desc",
-    defaultDescription: "Telegram, Discord, iMessage.",
+    tone: "accent",
+    tooltipDescription: "settings.sections.connectors.desc",
+    defaultTooltipDescription: "Telegram, Discord, iMessage.",
   },
   {
     id: "app-permissions",
@@ -967,9 +968,6 @@ export function SettingsView({
           id="connectors"
           title={t("settings.sections.connectors.label", {
             defaultValue: "Connectors",
-          })}
-          description={t("settings.sections.connectors.desc", {
-            defaultValue: "Telegram, Discord, iMessage.",
           })}
           ref={registerContentItem("connectors")}
         >
