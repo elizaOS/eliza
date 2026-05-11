@@ -279,11 +279,46 @@ The lowest-duplication design is lazy regional loading from one bundle:
   bundle that has not passed the verify pass does not auto-fill an empty
   default slot when the hook is wired. Tests in
   `packages/app-core/src/services/local-inference/downloader.test.ts`.
-- Still open: wire `verifyOnDevice` from the engine in `service.ts` (today
-  the downloader runs without the hook, preserving first-light slot fill);
-  surface `BundleIncompatibleError` distinctly in the UI; have the
-  recommendation engine consult `manifest.kernels.verifiedBackends` against
-  the device (`canSetAsDefault` exists but is not yet called).
+- `verifyOnDevice` is now wired from the engine in `service.ts`
+  (`new Downloader({ verifyOnDevice: verifyBundleOnDevice })` →
+  `services/local-inference/verify-on-device.ts`: text load + 1-token gen
+  always, 1-phrase TTS + barge-in cancel when `manifest.files.voice` is
+  non-empty, unload at the end). A bundle that fails verify (e.g. fused voice
+  ABI not loadable on the device) stays registered but does not auto-fill an
+  empty default slot. Tests in `verify-on-device.test.ts`. Still open: surface
+  `BundleIncompatibleError` distinctly in the UI; have the recommendation
+  engine consult `manifest.kernels.verifiedBackends` against the device
+  (`canSetAsDefault` exists but is not yet called).
+- `OpenWakeWordDetector` is now wired into the voice loop:
+  `LocalInferenceEngine.startVoiceSession({ wakeWord: { enabled, head?,
+  threshold?, onWake? } })` — opt-in (off by default), local-mode only (cloud
+  UI hides the surface per AGENTS.md §5). When enabled and the bundle ships the
+  openWakeWord ONNX graphs, mic frames are fanned into the detector
+  (re-buffered to its 1280-sample frame); each fresh detection prewarms the
+  conversation and calls `onWake`. Silently inert (VAD-gated) when absent.
+- The omnivoice-fuse adapter exports the full ABI v2 surface
+  (`eliza_inference_asr_stream_*`, `tts_synthesize_stream`, `cancel_tts`,
+  `set_verifier_callback`); the `linux-x64-cpu-fused` build's
+  `OMNIVOICE_FUSE_VERIFY.json` is `ok=true` (`abi=18`, `omnivoice=10`, llama
+  re-exported). The remaining voice-eval gap is the eval *harness* (HTTP-RTF /
+  labelled-WER / mic-file e2e-loop / `llama-speculative-simple` accept), not
+  the ABI; the eval suite reports those as honestly `not-run` with accurate
+  reasons.
+- The CUDA fused-attn kernel (`packages/inference/cuda/fused-attn-qjl-tbq.cu`)
+  is wired into the build: `build-llama-cpp-dflash.mjs` stages it via
+  `patchCudaKernels`, patches `ggml-cuda/CMakeLists.txt`
+  (`add_compile_definitions(GGML_CUDA_FUSED_ATTN_QJL)`) via
+  `patchGgmlCudaForFusedAttn`, and pushes `-DGGML_CUDA_FUSED_ATTN_QJL=ON` in the
+  cuda cmake branch. Non-CUDA / no-flag builds unchanged; hardware-verify still
+  pending (no NVIDIA host).
+- Eval suite re-run against the staged real bundles (2026-05-11): `0_6b`
+  text_eval=0.2779 (≥0.55 → FAIL), `1_7b` text_eval=0.328 (≥0.60 → FAIL) —
+  expected, off-the-shelf Qwen3 substitutes, not fine-tuned Eliza-1 weights.
+  dispatch eval passes. Voice/ASR/e2e/DFlash-accept gates honestly `not-run`
+  (harness/`llama-speculative-simple` not staged here; not the ABI). `9b` not
+  built (no published `Qwen3.5-9B`; ~8 GB RAM free → would OOM). Publish
+  dry-run against both real bundles exits `16` (`EXIT_RELEASE_EVIDENCE_FAIL`) —
+  gate behaves correctly. No `HF_TOKEN` here — upload is the operator's.
 
 ## Known Non-Goals For This Wave
 
