@@ -271,9 +271,10 @@ def _build_milady_manifest(
     """Produce the runtime manifest written next to the GGUF.
 
     Phones consume this via the existing downloader; the Milady-side
-    catalog (``packages/app-core/src/services/local-inference/catalog.ts``)
-    points at the published HF repo and keys off the manifest's
-    ``runtime`` block to set ``llama-server`` flags.
+    catalog (``packages/shared/src/local-inference/catalog.ts``, emitted
+    via ``scripts/emit_milady_catalog.py``) points at the published HF
+    repo and keys off the manifest's ``runtime`` block to set
+    ``llama-server`` flags.
     """
     applied: dict[str, dict[str, object]] = {}
     for s in stages:
