@@ -327,6 +327,77 @@ describe("DFlash streaming callbacks", () => {
   });
 });
 
+describe("DflashLlamaServer.prewarmConversation", () => {
+  it("fires a 1-token cache_prompt request against the given slot", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        seen.push(JSON.parse(await readBody(req)) as Record<string, unknown>);
+        res.statusCode = 200;
+        res.end(JSON.stringify({ choices: [{ message: { content: "" } }] }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const port = (server.address() as AddressInfo).port;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+      lastPrewarmBySlot: Map<number, { prefix: string; touchedAtMs: number }>;
+    };
+    const prev = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = `http://127.0.0.1:${port}`;
+    target.cacheParallel = 4;
+    target.lastPrewarmBySlot.clear();
+    try {
+      const warmed = await dflashLlamaServer.prewarmConversation(
+        "system you are helpful",
+        { slotId: 2 },
+      );
+      expect(warmed).toBe(true);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({
+        max_tokens: 1,
+        temperature: 0,
+        cache_prompt: true,
+        slot_id: 2,
+      });
+      // The prefix is tracked for the keep-alive sweep, keyed by slot.
+      expect(target.lastPrewarmBySlot.get(2)?.prefix).toBe(
+        "system you are helpful",
+      );
+    } finally {
+      target.baseUrl = prev.baseUrl;
+      target.cacheParallel = prev.cacheParallel;
+      target.lastPrewarmBySlot.clear();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("returns false (no throw) when the server is not running", async () => {
+    const target = dflashLlamaServer as unknown as { baseUrl: string | null };
+    const prev = target.baseUrl;
+    target.baseUrl = null;
+    try {
+      await expect(
+        dflashLlamaServer.prewarmConversation("anything", { slotId: 0 }),
+      ).resolves.toBe(false);
+      await expect(
+        dflashLlamaServer.prewarmConversation("", { slotId: 0 }),
+      ).resolves.toBe(false);
+    } finally {
+      target.baseUrl = prev;
+    }
+  });
+});
+
 describe("llama-server optimization flags", () => {
   it("keeps KV placement distinct from layer offload", () => {
     const args: string[] = [];
