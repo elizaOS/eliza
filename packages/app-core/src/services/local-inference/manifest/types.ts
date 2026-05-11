@@ -5,6 +5,8 @@
 
 import type { z } from "zod";
 import type {
+  ELIZA_1_PROVENANCE_SLOTS,
+  ELIZA_1_RELEASE_STATES,
   Eliza1BackendEnumSchema,
   Eliza1EvalsSchema,
   Eliza1FileEntrySchema,
@@ -13,6 +15,7 @@ import type {
   Eliza1KernelsSchema,
   Eliza1LineageSchema,
   Eliza1ManifestSchema,
+  Eliza1ProvenanceSchema,
   Eliza1RamBudgetSchema,
   Eliza1TierEnumSchema,
   Eliza1VerifiedBackendStatusSchema,
@@ -29,6 +32,9 @@ export type Eliza1Kernels = z.infer<typeof Eliza1KernelsSchema>;
 export type Eliza1Evals = z.infer<typeof Eliza1EvalsSchema>;
 export type Eliza1RamBudget = z.infer<typeof Eliza1RamBudgetSchema>;
 export type Eliza1Voice = z.infer<typeof Eliza1VoiceSchema>;
+export type Eliza1Provenance = z.infer<typeof Eliza1ProvenanceSchema>;
+export type Eliza1ProvenanceSlot = (typeof ELIZA_1_PROVENANCE_SLOTS)[number];
+export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
 export type Eliza1VerifiedBackendStatus = z.infer<
   typeof Eliza1VerifiedBackendStatusSchema
 >;

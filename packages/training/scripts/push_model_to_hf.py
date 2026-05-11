@@ -94,6 +94,13 @@ class PushConfig:
     readme_only: bool
     dry_run: bool
     eval_results: dict[str, Any] = field(default_factory=dict)
+    # Eliza-1 v1 release shape: `base-v1` = the upstream BASE model,
+    # GGUF-converted via the elizaOS/llama.cpp fork and fully Milady-optimized
+    # (every quant/kernel trick in inference/AGENTS.md §3), NOT fine-tuned.
+    # When set, the model card records `finetuned: false` + the upstream
+    # source repo, and the preflight refuses to push a `base-v1` checkpoint
+    # whose `*.provenance.json` (written by gguf_milady_apply.py) disagrees.
+    release_state: str | None = None
     milady_manifest: Path | None = None
     """Path to a milady_manifest.json describing the optimization stack
     applied to a Milady-optimized GGUF. Set by ``optimize_for_milady.py``;
@@ -666,6 +673,29 @@ def preflight(config: PushConfig) -> tuple[bool, list[str]]:
                 "--variant abliterated requires abliteration_metadata.json in "
                 f"{config.checkpoint} (produced by scripts/training/abliterate.py)"
             )
+    # base-v1 consistency: if a `*.provenance.json` (from gguf_milady_apply.py)
+    # is present next to the checkpoint, its releaseState/finetuned must agree
+    # with --release-state. base-v1 means "upstream base, NOT fine-tuned".
+    if config.release_state and config.checkpoint.exists():
+        prov_files = list(config.checkpoint.glob("*.provenance.json"))
+        for prov_path in prov_files:
+            try:
+                prov = json.loads(prov_path.read_text())
+            except (OSError, json.JSONDecodeError) as exc:
+                issues.append(f"could not parse provenance sidecar {prov_path}: {exc}")
+                continue
+            if prov.get("releaseState") != config.release_state:
+                issues.append(
+                    f"{prov_path}: releaseState={prov.get('releaseState')!r} "
+                    f"disagrees with --release-state {config.release_state!r}"
+                )
+            expected_finetuned = config.release_state == "finetuned-v2"
+            if prov.get("finetuned") is not expected_finetuned:
+                issues.append(
+                    f"{prov_path}: finetuned={prov.get('finetuned')!r} disagrees with "
+                    f"--release-state {config.release_state!r} "
+                    f"(expected finetuned={expected_finetuned})"
+                )
     return (len(issues) == 0, issues)
 
 
@@ -685,6 +715,37 @@ def push(config: PushConfig) -> int:
     training_args = read_optional_json(config.checkpoint / "training_args.json")
     bench = read_optional_json(config.checkpoint / "benchmark.json")
     card = build_model_card(config, training_args, bench)
+    if config.release_state == "base-v1":
+        # Be honest in the repo card: v1 is the base model, GGUF + fully
+        # Milady-optimized, NOT fine-tuned. Fine-tuning ships in v2.
+        prov_repo = None
+        for prov_path in config.checkpoint.glob("*.provenance.json"):
+            try:
+                prov_repo = json.loads(prov_path.read_text()).get("sourceRepo")
+            except (OSError, json.JSONDecodeError):
+                pass
+            if prov_repo:
+                break
+        banner = (
+            "> **Eliza-1 v1 release: base model, not fine-tuned.** This is the "
+            "upstream base model"
+            + (f" (`{prov_repo}`)" if prov_repo else "")
+            + ", GGUF-converted via the elizaOS/llama.cpp fork and fully "
+            "Milady-optimized (TurboQuant turbo3/turbo4/turbo3_tcq KV, QJL "
+            "K-cache, PolarQuant V-cache, fused attention, DFlash speculative "
+            "decoding) for in-harness use. It has **not** been fine-tuned — "
+            "Eliza-1 fine-tuning ships in v2 (`releaseState=finetuned-v2`).\n\n"
+        )
+        # Insert the banner after the YAML front-matter block if present.
+        if card.startswith("---"):
+            end = card.find("\n---", 3)
+            if end != -1:
+                split_at = card.find("\n", end + 4) + 1
+                card = card[:split_at] + "\n" + banner + card[split_at:]
+            else:
+                card = banner + card
+        else:
+            card = banner + card
 
     if config.dry_run:
         log.info("dry-run: model card preview\n%s", card)
@@ -798,6 +859,15 @@ def main() -> int:
              "Triggers manifest-driven model card rendering and supersedes "
              "the per-quant template. Use for milady-ai/* repo publishes.",
     )
+    ap.add_argument(
+        "--release-state", default=None,
+        choices=("base-v1", "finetuned-v2"),
+        help="Eliza-1 release lineage. `base-v1` = upstream base model, "
+             "GGUF + fully Milady-optimized, NOT fine-tuned (the v1 product); "
+             "`finetuned-v2` = the trained checkpoint (v2). Records the lineage "
+             "in the model card and is checked against any *.provenance.json "
+             "next to the checkpoint.",
+    )
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the resolved config + card preview, no network calls.")
     args = ap.parse_args()
@@ -828,6 +898,7 @@ def main() -> int:
         readme_only=args.readme_only,
         dry_run=args.dry_run,
         eval_results=eval_results,
+        release_state=args.release_state,
         milady_manifest=args.milady_manifest,
     )
     return push(config)
