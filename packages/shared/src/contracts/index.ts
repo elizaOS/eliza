@@ -10,6 +10,7 @@ export * from "./cloud-topology.js";
 export * from "./config.js";
 export * from "./connector-routes.js";
 export * from "./content-pack.js";
+export * from "./conversation-routes.js";
 export * from "./drop.js";
 export * from "./feature-result.js";
 export * from "./health.js";
