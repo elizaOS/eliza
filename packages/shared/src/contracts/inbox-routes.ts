@@ -27,23 +27,9 @@ export const PostInboxMessageRequestSchema = z
     replyToMessageId: z.string().min(1).optional(),
   })
   .strict()
-  .transform((value) => ({
-    roomId: value.roomId.trim(),
-    source: value.source.trim().toLowerCase(),
-    text: value.text.trim(),
-    ...(value.replyToMessageId
+    ...(value.replyToMessageId?.trim()
       ? { replyToMessageId: value.replyToMessageId.trim() }
       : {}),
-  }))
-  .pipe(
-    z
-      .object({
-        roomId: z.string().min(1, "roomId is required"),
-        source: z.string().min(1, "source is required"),
-        text: z.string().min(1, "text is required"),
-        replyToMessageId: z.string().min(1).optional(),
-      })
-      .strict(),
   );
 
 export type PostInboxMessageRequest = z.infer<
