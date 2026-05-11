@@ -229,7 +229,9 @@ async function jsonRequest(
   return response.json();
 }
 
-async function eventually(assertion: () => void | Promise<void>): Promise<void> {
+async function eventually(
+  assertion: () => void | Promise<void>,
+): Promise<void> {
   let lastError: unknown;
   for (let i = 0; i < 20; i += 1) {
     try {
@@ -321,7 +323,9 @@ describe("iOS local-agent local inference flow", () => {
   it("fails an Eliza-1 bundle download when a native SHA256 check mismatches", async () => {
     const kernel = await loadKernel({
       hashFile: vi.fn(async (path: string) => ({
-        sha256: path.endsWith(".manifest.json") ? "0".repeat(64) : "f".repeat(64),
+        sha256: path.endsWith(".manifest.json")
+          ? "0".repeat(64)
+          : "f".repeat(64),
         sizeBytes: 1024,
       })),
     });

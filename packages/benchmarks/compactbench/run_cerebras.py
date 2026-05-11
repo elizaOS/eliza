@@ -171,6 +171,8 @@ def main() -> int:
             difficulty=args.difficulty,
             seed_group=args.seed_group,
             provider="cerebras",
+            template_key=None,
+            seed_slot=None,
         )
         summary = asyncio.run(_run_analysis(analysis_args))
         print("valid-hit analysis:")

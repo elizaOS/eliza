@@ -65,6 +65,10 @@ _NEGATION_CUES = {
     "never",
     "no",
     "not",
+    "prohibit",
+    "prohibited",
+    "prohibiting",
+    "prohibits",
     "reject",
     "rejected",
     "supersede",
@@ -73,6 +77,17 @@ _NEGATION_CUES = {
 }
 
 _VOWELS = set("aeiou")
+
+_REFUSAL_MARKERS = (
+    "i can't help",
+    "i cannot help",
+    "i can’t help",
+    "i'm sorry",
+    "i’m sorry",
+    "can't assist",
+    "cannot assist",
+    "can’t assist",
+)
 
 
 @dataclass(frozen=True)
@@ -142,6 +157,11 @@ def normalize_text(text: str) -> str:
 
 def tokens(text: str) -> list[str]:
     return _TOKEN_RE.findall(normalize_text(text))
+
+
+def is_refusal(response: str) -> bool:
+    normalized = normalize_text(response)
+    return any(marker in normalized for marker in _REFUSAL_MARKERS)
 
 
 def _evaluate_contains(
@@ -367,6 +387,7 @@ def _is_denied_contains_answer(response_tokens: list[str], phrase_start: int) ->
 __all__ = [
     "ValidHitResult",
     "evaluate_valid_hit",
+    "is_refusal",
     "normalize_text",
     "tokens",
 ]

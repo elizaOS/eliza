@@ -34,11 +34,11 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
 )
 
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "lite-0_6b",
-    "mobile-1_7b",
-    "desktop-9b",
-    "pro-27b",
-    "server-h200",
+    "0_6b",
+    "1_7b",
+    "9b",
+    "27b",
+    "27b-256k",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -60,23 +60,23 @@ ELIZA_1_VOICE_MANIFEST_VERSION: Final[str] = "1"
 VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "lite-0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
-    "mobile-1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "desktop-9b": (
+    "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
+    "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "9b": (
         "turboquant_q4",
         "qjl",
         "polarquant",
         "dflash",
         "turbo3_tcq",
     ),
-    "pro-27b": (
+    "27b": (
         "turboquant_q4",
         "qjl",
         "polarquant",
         "dflash",
         "turbo3_tcq",
     ),
-    "server-h200": (
+    "27b-256k": (
         "turboquant_q4",
         "qjl",
         "polarquant",
@@ -86,11 +86,11 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "lite-0_6b": ("metal", "vulkan", "cpu"),
-    "mobile-1_7b": ("metal", "vulkan", "cpu"),
-    "desktop-9b": ("metal", "vulkan", "cuda", "cpu"),
-    "pro-27b": ("metal", "vulkan", "cuda", "cpu"),
-    "server-h200": ("cuda", "vulkan", "cpu"),
+    "0_6b": ("metal", "vulkan", "cpu"),
+    "1_7b": ("metal", "vulkan", "cpu"),
+    "9b": ("metal", "vulkan", "cuda", "cpu"),
+    "27b": ("metal", "vulkan", "cuda", "cpu"),
+    "27b-256k": ("cuda", "vulkan", "cpu"),
 }
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
@@ -535,7 +535,9 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
         errors.append(
             f"files.cache: missing required frozen voice cache {VOICE_PRESET_CACHE_PATH}"
         )
-    if _is_object(manifest.get("voice")) and _is_object(manifest["voice"].get("cache")):
+    if _is_object(manifest.get("voice")) and _is_object(
+        manifest["voice"].get("cache")
+    ):
         voice_cache = manifest["voice"]["cache"]
         for field in ("speakerPreset", "phraseCacheSeed"):
             path = voice_cache.get(field)

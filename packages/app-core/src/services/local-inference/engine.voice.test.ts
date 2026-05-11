@@ -16,18 +16,18 @@
  * does not depend on a real GGUF on disk.
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
-import { VoiceStartupError } from "./voice/engine-bridge";
 import {
-  VoiceLifecycleError,
   type MmapRegionHandle,
   type RefCountedResource,
+  VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./voice";
+import { VoiceStartupError } from "./voice/engine-bridge";
 import type {
   AudioChunk,
   OmniVoiceBackend,
@@ -348,9 +348,9 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(rollbackEvents[0].range).toEqual({ fromIndex: 4, toIndex: 5 });
 
     // First phrase must NOT be rolled back — its token range is disjoint.
-    expect(
-      rollbackEvents.some((e) => e.phraseId === phrases[0].id),
-    ).toBe(false);
+    expect(rollbackEvents.some((e) => e.phraseId === phrases[0].id)).toBe(
+      false,
+    );
 
     backend.releaseAll();
     await engine.stopVoice();

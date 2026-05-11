@@ -51,8 +51,8 @@ def _write(p: Path, content: str | bytes) -> Path:
     return p
 
 
-def _passing_eval_blob(tier: str = "desktop-9b") -> dict[str, Any]:
-    """Eval blob whose results pass every desktop-9b gate.
+def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
+    """Eval blob whose results pass every 9b gate.
 
     Carries both ``thirty_turn_ok`` and ``e2e_loop_ok`` because
     AGENTS.md §6 declares them as independent contract gates. The
@@ -79,7 +79,7 @@ def _passing_eval_blob(tier: str = "desktop-9b") -> dict[str, Any]:
 
 def _build_fixture_bundle(
     tmp_path: Path,
-    tier: str = "desktop-9b",
+    tier: str = "9b",
     *,
     eval_blob: dict[str, Any] | None = None,
     skip_license: str | None = None,
@@ -231,7 +231,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     metal = _metal_report(tmp_path)
 
     with caplog.at_level(logging.INFO, logger="publish.orchestrator"):
-        rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+        rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
 
@@ -239,7 +239,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     manifest_path = bundle / "eliza-1.manifest.json"
     assert manifest_path.is_file()
     manifest = json.loads(manifest_path.read_text())
-    assert manifest["tier"] == "desktop-9b"
+    assert manifest["tier"] == "9b"
     assert manifest["defaultEligible"] is True
     assert manifest["voice"]["frozen"] is True
     assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags", "singing"]
@@ -250,7 +250,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     readme = bundle / "README.md"
     assert readme.is_file()
     text = readme.read_text()
-    assert "Eliza-1 desktop-9b" in text
+    assert "Eliza-1 9b" in text
     assert "Q" + "wen" not in text
     assert "L" + "lama" not in text
 
@@ -267,16 +267,16 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
 def test_missing_license_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.dflash")
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
 def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
-    ctx = _ctx("desktop-9b", bundle, metal=metal, dry_run=True)
+    ctx = _ctx("9b", bundle, metal=metal, dry_run=True)
     bad = PublishContext(
-        **{**ctx.__dict__, "repo_id": "elizaos/eliza-1-desktop-9b"}
+        **{**ctx.__dict__, "repo_id": "elizaos/eliza-1-9b"}
     )
     rc = run(bad)
     assert rc == EXIT_USAGE
@@ -286,7 +286,7 @@ def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "qjl_config.json").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -294,7 +294,7 @@ def test_missing_voice_cache_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "cache" / "voice-preset-default.bin").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -302,7 +302,7 @@ def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "tts" / "omnivoice-tokenizer-1.7b.gguf").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -317,7 +317,7 @@ def test_failing_eval_gate_blocks_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_EVAL_GATE_FAIL
 
     # Manifest must NOT have been written when eval gate fails.
@@ -345,14 +345,14 @@ def test_failing_kernel_verification_blocks_publish(tmp_path: Path) -> None:
     )
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_KERNEL_VERIFY_FAIL
 
 
 def test_metal_required_but_missing_fails(tmp_path: Path) -> None:
     """Tier supports metal; without --metal-verification the run aborts."""
     bundle = _build_fixture_bundle(tmp_path)
-    rc = run(_ctx("desktop-9b", bundle, metal=None, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=None, dry_run=True))
     assert rc == EXIT_KERNEL_VERIFY_FAIL
 
 
@@ -381,7 +381,7 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
     blob["results"]["voice_rtf"] = 5.0  # blow the <=0.4 gate
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
-    ctx = _ctx("desktop-9b", bundle, metal=metal, dry_run=True)
+    ctx = _ctx("9b", bundle, metal=metal, dry_run=True)
     layout = validate_bundle_layout(ctx)
 
     backends = {
@@ -428,11 +428,11 @@ def test_dry_run_tag_is_printed_not_executed(
     metal = _metal_report(tmp_path)
 
     with caplog.at_level(logging.INFO, logger="publish.orchestrator"):
-        rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+        rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
     # The dry-run tag log line names the tag explicitly.
-    assert "dry-run: would run `git tag -a eliza-1-desktop-9b-v1.0.0" in caplog.text
+    assert "dry-run: would run `git tag -a eliza-1-9b-v1.0.0" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -455,7 +455,7 @@ def test_missing_e2e_loop_ok_blocks_publish_without_opt_in(
     metal = _metal_report(tmp_path)
     monkeypatch.delenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", raising=False)
 
-    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_EVAL_GATE_FAIL
     assert not (bundle / "eliza-1.manifest.json").is_file()
 
@@ -471,7 +471,7 @@ def test_alias_opt_in_allows_publish_with_warning(
     monkeypatch.setenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", "1")
 
     with caplog.at_level(logging.WARNING, logger="publish.orchestrator"):
-        rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+        rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
     assert "aliasing results.e2e_loop_ok" in caplog.text
@@ -488,4 +488,4 @@ def test_cli_help(monkeypatch, capsys) -> None:
     assert excinfo.value.code == 0
     captured = capsys.readouterr()
     assert "--tier" in captured.out
-    assert "desktop-9b" in captured.out
+    assert "9b" in captured.out

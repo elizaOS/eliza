@@ -75,7 +75,7 @@ export type PermissionRestrictedReason =
   | "platform_unsupported"
   | "os_policy";
 
-export type Platform = "darwin" | "win32" | "linux";
+export type Platform = "darwin" | "win32" | "linux" | "ios" | "android" | "web";
 
 /**
  * Feature reference attached to permission requests/blocks. Structured form

@@ -40,6 +40,7 @@
 		"test:live": "bun run test:e2e"
 	},
 	"dependencies": {
+		"@discordjs/opus": "^0.10.0",
 		"@discordjs/rest": "^2.6.1",
 		"@discordjs/voice": "^0.19.2",
 		"@elizaos/core": "2.0.0-beta.1",

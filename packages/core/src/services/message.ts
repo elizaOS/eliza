@@ -589,6 +589,27 @@ function resolvePlannerActionNameFromLookup(
 			);
 			return [resolvedAlias.name];
 		}
+
+		const legacyParentActionName =
+			PLANNER_ACTION_LEGACY_PARENT_ALIASES.get(aliasedActionName);
+		if (legacyParentActionName) {
+			const resolvedLegacyParent = resolveRuntimeAction(
+				lookup,
+				legacyParentActionName,
+			);
+			if (resolvedLegacyParent) {
+				runtime.logger.info(
+					{
+						src: "service:message",
+						actionName,
+						aliasedActionName: resolvedLegacyParent.name,
+						canonicalAliasedActionName: aliasedActionName,
+					},
+					"Repaired planner action alias through legacy parent",
+				);
+				return [resolvedLegacyParent.name];
+			}
+		}
 	}
 
 	return [];
@@ -2178,7 +2199,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["SCHEDULED_TASKS"],
+		parentActionHints: ["CHECKIN"],
 	};
 }
 
@@ -2827,6 +2848,9 @@ interface ExecuteV5PlannedToolCallParams {
  * are the action-shaped parameters, ready for the rest of the dispatch
  * pipeline.
  *
+ * Legacy planner payloads may still include `subaction`; when present, it is
+ * mirrored into canonical `params.action` for parent-action dispatch.
+ *
  * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
  * already-unwrapped action calls) so they keep their existing semantics.
  */
@@ -2839,6 +2863,11 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 	const rawActionName = typeof rawAction === "string" ? rawAction.trim() : "";
 	const compoundAction = splitPlannerCompoundActionName(rawActionName);
 	const actionName = compoundAction?.actionName ?? rawActionName;
+	const rawSubaction = params.subaction ?? compoundAction?.subaction;
+	const subaction =
+		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
+			? rawSubaction.trim()
+			: undefined;
 	const rawActionParameters = params.parameters;
 	const baseParameters =
 		rawActionParameters &&
@@ -2846,15 +2875,17 @@ function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
 		!Array.isArray(rawActionParameters)
 			? (rawActionParameters as Record<string, unknown>)
 			: {};
+	const mergedParameters: Record<string, unknown> = subaction
+		? {
+				...baseParameters,
+				action: baseParameters.action ?? subaction,
+				subaction,
+			}
+		: baseParameters;
 	return {
 		id: toolCall.id,
 		name: actionName,
-		params: compoundAction?.subaction
-			? {
-					...baseParameters,
-					action: baseParameters.action ?? compoundAction.subaction,
-				}
-			: baseParameters,
+		params: mergedParameters,
 	};
 }
 
@@ -2869,6 +2900,9 @@ function normalizeCompoundPlannerToolCall(
 		toolCall.params && typeof toolCall.params === "object"
 			? { ...toolCall.params }
 			: {};
+	if (params.subaction === undefined) {
+		params.subaction = compoundAction.subaction;
+	}
 	if (params.action === undefined) {
 		params.action = compoundAction.subaction;
 	}
@@ -5102,15 +5136,15 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["SET_GOAL", "OWNER_GOALS"],
 		["CREATE_REMINDER", "OWNER_REMINDERS"],
 		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "REPLY"],
-		["LIFE_CHECK_IN", "REPLY"],
-		["MORNING_CHECKIN", "REPLY"],
-		["MORNING_CHECK_IN", "REPLY"],
-		["NIGHT_CHECKIN", "REPLY"],
-		["NIGHT_CHECK_IN", "REPLY"],
-		["RUN_CHECKIN", "REPLY"],
-		["RUN_MORNING_CHECKIN", "REPLY"],
-		["RUN_NIGHT_CHECKIN", "REPLY"],
+		["CHECK_IN", "CHECKIN"],
+		["LIFE_CHECK_IN", "CHECKIN"],
+		["MORNING_CHECKIN", "CHECKIN"],
+		["MORNING_CHECK_IN", "CHECKIN"],
+		["NIGHT_CHECKIN", "CHECKIN"],
+		["NIGHT_CHECK_IN", "CHECKIN"],
+		["RUN_CHECKIN", "CHECKIN"],
+		["RUN_MORNING_CHECKIN", "CHECKIN"],
+		["RUN_NIGHT_CHECKIN", "CHECKIN"],
 		["AUTOMATION_RUN", "REPLY"],
 		["DAILY_BRIEF", "REPLY"],
 		["MEMORY_SET", "REPLY"],
@@ -5145,6 +5179,18 @@ const PLANNER_ACTION_ALIASES = new Map(
 		["REQUEST_UPLOAD", "COMPUTER_USE"],
 		["UPLOAD_PORTAL", "COMPUTER_USE"],
 		["DESKTOP", "COMPUTER_USE"],
+	].map(([from, to]) => [
+		normalizeActionIdentifier(from),
+		normalizeActionIdentifier(to),
+	]),
+);
+
+const PLANNER_ACTION_LEGACY_PARENT_ALIASES = new Map(
+	[
+		["OWNER_TODOS", "LIFE"],
+		["OWNER_GOALS", "LIFE"],
+		["OWNER_REMINDERS", "LIFE"],
+		["OWNER_ROUTINES", "LIFE"],
 	].map(([from, to]) => [
 		normalizeActionIdentifier(from),
 		normalizeActionIdentifier(to),

@@ -26,8 +26,8 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
-  type TextToSpeechParams,
   type TextEmbeddingParams,
+  type TextToSpeechParams,
   type TranscriptionParams,
 } from "@elizaos/core";
 import {
@@ -94,9 +94,7 @@ type LocalModelHandler =
   | TranscriptionHandler;
 
 type RuntimeWithModelRegistration = AgentRuntime & {
-  getModel: (
-    modelType: string | number,
-  ) => LocalModelHandler | undefined;
+  getModel: (modelType: string | number) => LocalModelHandler | undefined;
   registerModel: (
     modelType: string | number,
     handler: LocalModelHandler,
@@ -336,7 +334,9 @@ function makeTextToSpeechHandler(): TextToSpeechHandler {
   return async (_runtime, params) => {
     const text = extractSpeechText(params);
     if (text.length === 0) {
-      throw new Error("[local-inference] TEXT_TO_SPEECH text must be non-empty");
+      throw new Error(
+        "[local-inference] TEXT_TO_SPEECH text must be non-empty",
+      );
     }
     // Do not filter singing, emotion tags, or lyrical phrasing here. The
     // local voice bundle advertises its expressive capability in the
@@ -386,8 +386,7 @@ function extractTranscriptionAudio(
   }
   if (
     "audio" in params &&
-    (params.audio instanceof Uint8Array ||
-      params.audio instanceof ArrayBuffer)
+    (params.audio instanceof Uint8Array || params.audio instanceof ArrayBuffer)
   ) {
     return decodeMonoPcm16Wav(toUint8Array(params.audio));
   }

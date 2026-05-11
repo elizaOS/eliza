@@ -5,6 +5,7 @@ import { defineConfig } from "vitest/config";
 
 const packageRoot = fileURLToPath(new URL("./", import.meta.url));
 const monorepoRoot = resolve(packageRoot, "../..");
+const uiSrc = resolve(packageRoot, "src");
 const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const reactPath = realpathSync(resolve(packageRoot, "node_modules/react"));
@@ -15,6 +16,14 @@ const reactDomPath = realpathSync(
 export default defineConfig({
   resolve: {
     alias: [
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: resolve(uiSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: resolve(uiSrc, "$1"),
+      },
       {
         find: /^@elizaos\/shared$/,
         replacement: resolve(sharedSrc, "index.ts"),

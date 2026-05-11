@@ -1,6 +1,11 @@
 import { Button } from "@elizaos/ui";
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PermissionId } from "../../api";
+import {
+  getMobileSignalsPlugin,
+  type MobileSignalsPermissionStatus,
+  type MobileSignalsSetupAction,
+} from "../../bridge/native-plugins";
 import { useBootConfig } from "../../config/boot-config-react";
 import { isDesktopPlatform, isNative, isWebPlatform } from "../../platform";
 import { useApp } from "../../state";
@@ -95,11 +100,203 @@ function MobilePermissionsView() {
             "Your device streams camera, microphone, and screen to your Eliza Cloud agent for processing.",
         })}
       />
+      <MobileSignalsPermissionsPanel />
       {AppBlockerSettingsCard ? <AppBlockerSettingsCard mode="mobile" /> : null}
       {WebsiteBlockerSettingsCard ? (
         <WebsiteBlockerSettingsCard mode="mobile" />
       ) : null}
     </div>
+  );
+}
+
+function mobileSetupActionTarget(action: MobileSignalsSetupAction) {
+  if (action.settingsTarget) return action.settingsTarget;
+  if (action.id === "health_permissions") return "health";
+  if (action.id === "screen_time_authorization") return "screenTime";
+  if (action.id === "android_usage_access") return "usageAccess";
+  if (action.id === "notification_settings") return "notification";
+  if (action.id === "battery_optimization") return "batteryOptimization";
+  if (action.id === "local_network") return "localNetwork";
+  return "app";
+}
+
+function mobileSetupRequestTarget(action: MobileSignalsSetupAction) {
+  if (action.id === "health_permissions") return "health";
+  if (action.id === "screen_time_authorization") return "screenTime";
+  return "all";
+}
+
+function mobileSetupActionBadge(action: MobileSignalsSetupAction) {
+  if (action.status === "ready") {
+    return { label: "Ready", className: "border-success/30 text-success" };
+  }
+  if (action.status === "unavailable") {
+    return { label: "Unavailable", className: "border-border/50 text-muted" };
+  }
+  return { label: "Needs action", className: "border-warn/30 text-warn" };
+}
+
+function MobileSignalsPermissionsPanel() {
+  const { t } = useApp();
+  const [status, setStatus] = useState<MobileSignalsPermissionStatus | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    const plugin = getMobileSignalsPlugin();
+    if (typeof plugin.checkPermissions !== "function") {
+      setStatus(null);
+      return;
+    }
+    setStatus(await plugin.checkPermissions());
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const plugin = getMobileSignalsPlugin();
+        if (typeof plugin.checkPermissions !== "function") {
+          if (!cancelled) setStatus(null);
+          return;
+        }
+        const next = await plugin.checkPermissions();
+        if (!cancelled) setStatus(next);
+      } catch {
+        if (!cancelled) setStatus(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleAction = useCallback(
+    async (action: MobileSignalsSetupAction) => {
+      const plugin = getMobileSignalsPlugin();
+      setBusyAction(action.id);
+      try {
+        if (
+          action.canRequest &&
+          (action.id === "health_permissions" ||
+            action.id === "screen_time_authorization") &&
+          typeof plugin.requestPermissions === "function"
+        ) {
+          await plugin.requestPermissions({
+            target: mobileSetupRequestTarget(action),
+          });
+        } else if (
+          action.canOpenSettings &&
+          typeof plugin.openSettings === "function"
+        ) {
+          await plugin.openSettings({
+            target: mobileSetupActionTarget(action),
+          });
+        }
+        await refresh();
+      } finally {
+        setBusyAction(null);
+      }
+    },
+    [refresh],
+  );
+
+  if (loading) {
+    return (
+      <p className="py-4 text-center text-xs text-muted">
+        {t("permissionssection.LoadingPermissions", {
+          defaultValue: "Loading permissions...",
+        })}
+      </p>
+    );
+  }
+
+  if (!status) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-2">
+      <header className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div className="space-y-0.5">
+          <h3 className="text-sm font-semibold text-txt">
+            {t("permissionssection.LifeOpsSignals", {
+              defaultValue: "LifeOps Signals",
+            })}
+          </h3>
+          <p className="max-w-2xl text-xs-tight leading-5 text-muted">
+            {t("permissionssection.MobileSignalsDesc", {
+              defaultValue:
+                "Review Health, sleep, Screen Time, notification, and device signal access used by LifeOps.",
+            })}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 rounded-lg px-3 text-xs font-semibold"
+          onClick={refresh}
+        >
+          {t("common.refresh", { defaultValue: "Refresh" })}
+        </Button>
+      </header>
+      <div className="divide-y divide-border/40 rounded-lg border border-border/40">
+        {status.setupActions.map((action) => {
+          const badge = mobileSetupActionBadge(action);
+          const canAct =
+            action.status !== "ready" &&
+            (action.canRequest || action.canOpenSettings);
+          return (
+            <div
+              key={action.id}
+              className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-sm text-txt">
+                    {action.label}
+                  </span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-2xs font-medium ${badge.className}`}
+                  >
+                    {badge.label}
+                  </span>
+                </div>
+                {action.reason ? (
+                  <div className="mt-1 text-xs-tight leading-5 text-muted">
+                    {action.reason}
+                  </div>
+                ) : null}
+              </div>
+              {canAct ? (
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+                  disabled={busyAction === action.id}
+                  onClick={() => void handleAction(action)}
+                >
+                  {busyAction === action.id
+                    ? t("common.loading", { defaultValue: "Loading..." })
+                    : action.canRequest
+                      ? t("permissionssection.Grant", {
+                          defaultValue: "Grant",
+                        })
+                      : t("permissionssection.OpenSettings", {
+                          defaultValue: "Open Settings",
+                        })}
+                </Button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

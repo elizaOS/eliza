@@ -60,6 +60,7 @@ export interface PermissionCardLabels {
   openSettings?: string;
   notNow?: string;
   comingSoon?: string;
+  unavailable?: string;
   granted?: string;
   granting?: string;
 }
@@ -213,8 +214,12 @@ export function PermissionCard({
     state.status === "restricted" &&
     state.restrictedReason === "entitlement_required";
 
-  const isDeniedNoRequest =
-    state.status === "denied" && state.canRequest === false;
+  const isRestrictedUnavailable =
+    state.status === "restricted" && !isRestrictedEntitlement;
+
+  const canOpenSettingsInstead =
+    state.canRequest === false &&
+    (state.status === "denied" || state.status === "not-determined");
 
   const title = getPermissionLabel(permission);
   const resolvedFallbackLabel =
@@ -251,7 +256,16 @@ export function PermissionCard({
           >
             {labels.comingSoon ?? "Coming soon — requires app entitlement"}
           </Button>
-        ) : isDeniedNoRequest ? (
+        ) : isRestrictedUnavailable || state.status === "not-applicable" ? (
+          <Button
+            variant="default"
+            size="sm"
+            disabled
+            data-testid="permission-card-primary"
+          >
+            {labels.unavailable ?? "Unavailable on this platform"}
+          </Button>
+        ) : canOpenSettingsInstead ? (
           <Button
             variant="default"
             size="sm"

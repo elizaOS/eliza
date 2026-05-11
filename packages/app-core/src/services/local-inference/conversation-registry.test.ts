@@ -6,12 +6,12 @@ describe("ConversationRegistry.open", () => {
     const registry = new ConversationRegistry();
     const a = registry.open({
       conversationId: "room-1",
-      modelId: "eliza-1-desktop-9b",
+      modelId: "eliza-1-9b",
       parallel: 4,
     });
     const b = registry.open({
       conversationId: "room-1",
-      modelId: "eliza-1-desktop-9b",
+      modelId: "eliza-1-9b",
       parallel: 4,
     });
     expect(b).toBe(a);

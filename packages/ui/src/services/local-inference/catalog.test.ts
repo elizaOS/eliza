@@ -10,17 +10,15 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 4 Eliza-1 size tiers", () => {
+  it("ships exactly the 5 Eliza-1 size tiers", () => {
     expect(
       MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)
         .map((m) => m.id)
         .sort(),
-    ).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
-    );
+    ).toEqual([...ELIZA_1_TIER_IDS].sort());
   });
 
-  it("marks ONLY the 4 Eliza-1 size tiers as default-eligible", () => {
+  it("marks ONLY the 5 Eliza-1 size tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
@@ -38,9 +36,9 @@ describe("local inference catalog", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model, `${id} missing`).toBeTruthy();
-      expect(model!.displayName).toBe(id);
-      expect(model!.blurb).toMatch(new RegExp(`^${id}\\b`));
-      expect(`${model!.displayName} ${model!.blurb}`).not.toMatch(
+      expect(model?.displayName).toMatch(/^Eliza-1\b/);
+      expect(model?.blurb).toMatch(/^Eliza-1\b/);
+      expect(`${model?.displayName} ${model?.blurb}`).not.toMatch(
         /\b(?:Qwen|Llama)\b/i,
       );
     }
@@ -81,14 +79,15 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k. The catalog
-    // records the largest ctx the bundle's manifest will advertise for
-    // each tier.
+    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k,
+    // 27B-256k = 256k. The catalog records the largest ctx the
+    // bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
       "eliza-1-0_6b": 32768,
       "eliza-1-1_7b": 32768,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
+      "eliza-1-27b-256k": 262144,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -112,7 +111,7 @@ describe("local inference catalog", () => {
   it("DFlash pairs share a tokenizer family when present", () => {
     const dflashEntries = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
     for (const entry of dflashEntries) {
-      const drafterId = entry.runtime!.dflash!.drafterModelId;
+      const drafterId = entry.runtime?.dflash?.drafterModelId;
       const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
       expect(
         drafter,
@@ -123,13 +122,13 @@ describe("local inference catalog", () => {
         `target ${entry.id} missing tokenizerFamily`,
       ).toBeDefined();
       expect(
-        drafter!.tokenizerFamily,
+        drafter?.tokenizerFamily,
         `drafter ${drafterId} missing tokenizerFamily`,
       ).toBeDefined();
       expect(
         entry.tokenizerFamily,
-        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) != drafter ${drafterId} (${drafter!.tokenizerFamily})`,
-      ).toBe(drafter!.tokenizerFamily);
+        `tokenizer mismatch: target ${entry.id} (${entry.tokenizerFamily}) != drafter ${drafterId} (${drafter?.tokenizerFamily})`,
+      ).toBe(drafter?.tokenizerFamily);
     }
   });
 
@@ -155,8 +154,8 @@ describe("local inference catalog", () => {
   it("recommendForFirstRun resolves to a default-eligible Eliza-1 tier", () => {
     const picked = recommendForFirstRun();
     expect(picked).not.toBeNull();
-    expect(picked!.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
-    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked!.id)).toBe(true);
-    expect(picked!.displayName).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
+    expect(picked?.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked?.id)).toBe(true);
+    expect(picked?.displayName).toMatch(/^Eliza-1\b/);
   });
 });

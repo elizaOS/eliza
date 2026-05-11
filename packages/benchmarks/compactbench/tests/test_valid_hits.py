@@ -7,7 +7,12 @@ or strategy name.
 
 from __future__ import annotations
 
-from eliza_compactbench.valid_hits import evaluate_valid_hit, normalize_text, tokens
+from eliza_compactbench.valid_hits import (
+    evaluate_valid_hit,
+    is_refusal,
+    normalize_text,
+    tokens,
+)
 
 
 def test_normalize_text_collapses_unicode_spacing_and_punctuation() -> None:
@@ -130,3 +135,25 @@ def test_forbidden_absent_keeps_reassigned_responsibility_answer_valid() -> None
     assert result.official_score == 1.0
     assert result.adjusted_score == 1.0
     assert result.reason == "official"
+
+
+def test_forbidden_absent_keeps_prohibited_policy_reference_valid() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "commit directly to the main branch"},
+        "Review the branch policy that prohibits committing directly to the main branch.",
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_refusal_detector_identifies_judge_refusal_without_counting_as_valid_hit() -> None:
+    response = "I’m sorry, but I can’t help with that."
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "commit credentials to git history"},
+        response,
+    )
+
+    assert is_refusal(response) is True
+    assert result.adjusted_score == 0.0

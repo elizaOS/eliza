@@ -99,7 +99,10 @@ function readHeader(view: DataView): {
       "bad-section-bounds",
     );
   }
-  if (embOff < VOICE_PRESET_HEADER_BYTES || phrOff < VOICE_PRESET_HEADER_BYTES) {
+  if (
+    embOff < VOICE_PRESET_HEADER_BYTES ||
+    phrOff < VOICE_PRESET_HEADER_BYTES
+  ) {
     throw new VoicePresetFormatError(
       "voice preset section overlaps header",
       "bad-section-bounds",
@@ -140,7 +143,11 @@ function readPhrases(
   sec: SectionView,
 ): VoicePresetSeedPhrase[] {
   if (sec.length === 0) return [];
-  const view = new DataView(bytes.buffer, bytes.byteOffset + sec.offset, sec.length);
+  const view = new DataView(
+    bytes.buffer,
+    bytes.byteOffset + sec.offset,
+    sec.length,
+  );
   const decoder = new TextDecoder("utf-8", { fatal: true });
   let pos = 0;
   if (sec.length < 4) {
@@ -280,7 +287,11 @@ export function writeVoicePresetFile(file: {
     view.setUint32(pos, phrase.pcm.byteLength, true);
     pos += 4;
     out.set(
-      new Uint8Array(phrase.pcm.buffer, phrase.pcm.byteOffset, phrase.pcm.byteLength),
+      new Uint8Array(
+        phrase.pcm.buffer,
+        phrase.pcm.byteOffset,
+        phrase.pcm.byteLength,
+      ),
       pos,
     );
     pos += phrase.pcm.byteLength;

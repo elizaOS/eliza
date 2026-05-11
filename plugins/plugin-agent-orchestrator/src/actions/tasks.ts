@@ -1105,7 +1105,20 @@ async function runControl(
   }
 
   const text = typeof content.text === "string" ? content.text : "";
-  const action = inferControlAction(text, textValue(params.controlAction));
+  const topLevelAction = textValue(params.action) ?? textValue(content.action);
+  const normalizedTopLevelAction = topLevelAction
+    ?.toLowerCase()
+    .replace(/-/g, "_");
+  const legacyControlAction =
+    topLevelAction && normalizedTopLevelAction !== "control"
+      ? topLevelAction
+      : undefined;
+  const action = inferControlAction(
+    text,
+    textValue(params.controlAction) ??
+      textValue(content.controlAction) ??
+      legacyControlAction,
+  );
 
   if (!action) {
     const msg =
@@ -1886,7 +1899,19 @@ async function runManageIssues(
 
   const text = ((content.text as string) ?? "").slice(0, ISSUE_BODY_MAX_CHARS);
 
-  const action = (params.issueAction as string) ?? inferIssueAction(text);
+  const topLevelAction = textValue(params.action) ?? textValue(content.action);
+  const normalizedTopLevelAction = topLevelAction
+    ?.toLowerCase()
+    .replace(/-/g, "_");
+  const legacyIssueAction =
+    topLevelAction && normalizedTopLevelAction !== "manage_issues"
+      ? topLevelAction
+      : undefined;
+  const action =
+    (params.issueAction as string) ??
+    (content.issueAction as string) ??
+    legacyIssueAction ??
+    inferIssueAction(text);
   const repo = (params.repo as string) ?? (content.repo as string);
 
   if (!repo) {

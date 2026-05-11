@@ -17,6 +17,7 @@
  * Wave-2 worktrees.
  */
 
+import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
 import { schedulingNegotiationAction } from "../src/actions/scheduling-negotiation.js";
@@ -46,11 +47,7 @@ const REMOVED_CALENDAR_SUBACTIONS = [
 ];
 
 function findCalendarActionEnum(action: typeof calendarAction): readonly string[] {
-  const actionParam = (action.parameters ?? []).find(
-    (p) => p.name === "action",
-  );
-  const schema = actionParam?.schema as { enum?: readonly string[] };
-  return schema.enum ?? [];
+  return listSubactionsFromParameters(action.parameters);
 }
 
 describe("W2-C: CALENDAR umbrella narrowing", () => {

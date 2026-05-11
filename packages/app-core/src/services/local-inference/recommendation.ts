@@ -6,9 +6,9 @@ import {
 } from "./catalog";
 import { assessFit } from "./hardware";
 import {
+  defaultManifestLoader,
   type ManifestLoader,
   type RamBudget,
-  defaultManifestLoader,
   resolveRamBudget,
 } from "./ram-budget";
 import type {
@@ -274,7 +274,12 @@ function fallbackCandidates(
   const candidates = chatCandidates(catalog).filter(
     (model) =>
       DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
-      canFit(hardware, model, catalog, budgetOptionsForModel(model, budgetOptions)),
+      canFit(
+        hardware,
+        model,
+        catalog,
+        budgetOptionsForModel(model, budgetOptions),
+      ),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
@@ -357,7 +362,9 @@ export function selectRecommendedModelForSlot(
   // ladder order still wins when long-context availability is the same
   // for every entry (or when the host doesn't have the headroom).
   const ranked =
-    eligible.length > 0 && hasLongContextHeadroom(hardware)
+    slot === "TEXT_LARGE" &&
+    eligible.length > 0 &&
+    hasLongContextHeadroom(hardware)
       ? rankLadderByLongContext(eligible)
       : eligible;
 

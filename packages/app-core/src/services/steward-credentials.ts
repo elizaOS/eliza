@@ -17,8 +17,7 @@ import path from "node:path";
 // src/utils/state-dir.ts: MILADY_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}.
 function resolveStateDir(): string {
   const explicit =
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim();
+    process.env.MILADY_STATE_DIR?.trim() || process.env.ELIZA_STATE_DIR?.trim();
   if (explicit) return explicit;
   const namespace = process.env.ELIZA_NAMESPACE?.trim() || "eliza";
   return path.join(homedir(), `.${namespace}`);

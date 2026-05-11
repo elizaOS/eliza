@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 
 const PAYMENT_ID = "x402_request_test";
 
-function payment(overrides: Partial<Record<string, unknown>> = {}) {
+function paymentFixture(overrides: Partial<Record<string, unknown>> = {}) {
   return {
     id: PAYMENT_ID,
     organization_id: "org-x402",
@@ -44,8 +44,8 @@ async function loadService() {
     ).href
   );
   return mod.x402PaymentRequestsService as {
-    toView: (payment: ReturnType<typeof payment>) => Record<string, unknown>;
-    toPublicView: (payment: ReturnType<typeof payment>) => Record<string, unknown>;
+    toView: (payment: ReturnType<typeof paymentFixture>) => Record<string, unknown>;
+    toPublicView: (payment: ReturnType<typeof paymentFixture>) => Record<string, unknown>;
     settle: (
       id: string,
       paymentPayloadInput: unknown,
@@ -59,8 +59,8 @@ describe("x402 payment requests", () => {
 
   test("redacts callback URLs from public status views", async () => {
     const service = await loadService();
-    const privateView = service.toView(payment());
-    const publicView = service.toPublicView(payment());
+    const privateView = service.toView(paymentFixture());
+    const publicView = service.toPublicView(paymentFixture());
 
     expect(privateView.callbackUrl).toBe("https://app.example.com/private/callback");
     expect(publicView.callbackUrl).toBeUndefined();
@@ -75,14 +75,14 @@ describe("x402 payment requests", () => {
 
     mock.module("@/db/repositories/crypto-payments", () => ({
       cryptoPaymentsRepository: {
-        findById: async () => payment(),
+        findById: async () => paymentFixture(),
         markAsConfirmed: async () => {
           markAsConfirmedCalls += 1;
-          return payment();
+          return paymentFixture();
         },
         update: async () => {
           updateCalls += 1;
-          return payment();
+          return paymentFixture();
         },
       },
     }));
@@ -129,7 +129,7 @@ describe("x402 payment requests", () => {
     const redeemableCalls: unknown[] = [];
     let appCounterUpdated = false;
 
-    const pendingPayment = payment({
+    const pendingPayment = paymentFixture({
       status: "pending",
       transaction_hash: null,
       confirmed_at: null,

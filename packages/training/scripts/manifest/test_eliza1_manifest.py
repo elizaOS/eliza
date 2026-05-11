@@ -31,7 +31,7 @@ def passing_backends() -> dict[str, KernelVerification]:
     }
 
 
-def base_kwargs(tier: str = "desktop-9b") -> dict:
+def base_kwargs(tier: str = "9b") -> dict:
     return dict(
         tier=tier,
         version="1.0.0",
@@ -76,8 +76,8 @@ def test_schema_version_constant():
 
 def test_build_manifest_happy_path():
     manifest = build_manifest(**base_kwargs())
-    assert manifest["tier"] == "desktop-9b"
-    assert manifest["id"] == "eliza-1-desktop-9b"
+    assert manifest["tier"] == "9b"
+    assert manifest["id"] == "eliza-1-9b"
     assert manifest["defaultEligible"] is True
     assert manifest["$schema"].endswith("eliza-1.manifest.v1.json")
     # Validates against itself.
@@ -121,7 +121,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    ["lite-0_6b", "mobile-1_7b", "desktop-9b", "pro-27b", "server-h200"],
+    ["0_6b", "1_7b", "9b", "27b", "27b-256k"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
@@ -129,7 +129,7 @@ def test_every_tier_validates(tier: str):
 
 
 def test_missing_required_kernel_rejected():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]  # no dflash
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -137,7 +137,7 @@ def test_missing_required_kernel_rejected():
 
 
 def test_default_eligible_with_failing_eval_rejected():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["text_eval_passed"] = False
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -146,21 +146,21 @@ def test_default_eligible_with_failing_eval_rejected():
 
 
 def test_default_eligible_with_failing_voice_rtf_rejected():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["voice_rtf_passed"] = False
     with pytest.raises(Eliza1ManifestError):
         build_manifest(**kwargs)
 
 
 def test_default_eligible_with_failing_e2e_rejected():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["e2e_loop_ok"] = False
     with pytest.raises(Eliza1ManifestError):
         build_manifest(**kwargs)
 
 
 def test_component_files_require_matching_lineage_and_eval_gate():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["lineage"] = {
         k: v for k, v in kwargs["lineage"].items() if k != "asr"
     }
@@ -173,7 +173,7 @@ def test_component_files_require_matching_lineage_and_eval_gate():
 
 
 def test_expressive_voice_capabilities_require_expressive_eval():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["voice_capabilities"] = ["tts", "singing"]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -181,7 +181,7 @@ def test_expressive_voice_capabilities_require_expressive_eval():
 
 
 def test_missing_voice_cache_file_rejected():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["files"]["cache"] = [
         FileEntry(path="cache/not-the-default-voice-cache.bin", sha256=SHA)
     ]
@@ -191,7 +191,7 @@ def test_missing_voice_cache_file_rejected():
 
 
 def test_default_eligible_with_failing_backend_rejected():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -206,7 +206,7 @@ def test_lite_tier_does_not_require_cuda_pass():
     """Lite tier ships on metal/vulkan/cpu — a failing cuda backend
     must not block lite publishing."""
 
-    kwargs = base_kwargs("lite-0_6b")
+    kwargs = base_kwargs("0_6b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -217,9 +217,9 @@ def test_lite_tier_does_not_require_cuda_pass():
 
 
 def test_long_context_requires_turbo3_tcq():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-desktop-9b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(path="text/eliza-1-9b-128k.gguf", sha256=SHA, ctx=131072)
     ]
     kwargs["kernels_required"] = [
         k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
@@ -230,9 +230,9 @@ def test_long_context_requires_turbo3_tcq():
 
 
 def test_long_context_rejects_turbo3_tcq_optional_only():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-desktop-9b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(path="text/eliza-1-9b-128k.gguf", sha256=SHA, ctx=131072)
     ]
     kwargs["kernels_required"] = [
         k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
@@ -244,11 +244,11 @@ def test_long_context_rejects_turbo3_tcq_optional_only():
 
 
 def test_long_context_with_turbo3_tcq_in_required_passes():
-    kwargs = base_kwargs("desktop-9b")
+    kwargs = base_kwargs("9b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-desktop-9b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(path="text/eliza-1-9b-128k.gguf", sha256=SHA, ctx=131072)
     ]
-    kwargs["kernels_required"] = list(REQUIRED_KERNELS_BY_TIER["desktop-9b"])
+    kwargs["kernels_required"] = list(REQUIRED_KERNELS_BY_TIER["9b"])
     kwargs["kernels_optional"] = []
     manifest = build_manifest(**kwargs)
     assert validate_manifest(manifest) == ()
@@ -353,15 +353,15 @@ def test_parse_ctx_string_rejects_bad_input(bad: str):
 
 def test_parse_text_ctx_from_filename_finds_suffix_token():
     assert (
-        parse_text_ctx_from_filename(Path("text/eliza-1-desktop-9b-64k.gguf"))
+        parse_text_ctx_from_filename(Path("text/eliza-1-9b-64k.gguf"))
         == 65536
     )
     assert (
-        parse_text_ctx_from_filename(Path("text/eliza-1-server-h200-256k.gguf"))
+        parse_text_ctx_from_filename(Path("text/eliza-1-27b-256k.gguf"))
         == 262144
     )
 
 
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
-    assert parse_text_ctx_from_filename(Path("text/eliza-1-mobile-1_7b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("text/eliza-1-1_7b.gguf")) is None
     assert parse_text_ctx_from_filename(Path("dflash/drafter-9b.gguf")) is None

@@ -13,7 +13,7 @@ describe("local inference text readiness", () => {
     const installed: InstalledModel[] = [];
     const failedDownload: DownloadJob = {
       jobId: "job-1",
-      modelId: "eliza-1-mobile-1_7b",
+      modelId: "eliza-1-1_7b",
       state: "failed",
       received: 128,
       total: 512,
@@ -26,7 +26,7 @@ describe("local inference text readiness", () => {
 
     const readiness = buildTextGenerationReadiness({
       assignments: {
-        TEXT_LARGE: "eliza-1-mobile-1_7b",
+        TEXT_LARGE: "eliza-1-1_7b",
       },
       installed,
       active: activeIdle,
@@ -38,7 +38,7 @@ describe("local inference text readiness", () => {
     expect(readiness.slots.TEXT_LARGE.downloaded).toBe(false);
     expect(readiness.slots.TEXT_LARGE.state).toBe("failed");
     expect(readiness.slots.TEXT_LARGE.missingModelIds).toContain(
-      "eliza-1-mobile-1_7b",
+      "eliza-1-1_7b",
     );
     expect(readiness.slots.TEXT_LARGE.download.percent).toBe(25);
     expect(readiness.slots.TEXT_LARGE.errors).toContain(
@@ -49,18 +49,18 @@ describe("local inference text readiness", () => {
   it("marks a downloaded active assignment ready", () => {
     const installed: InstalledModel[] = [
       {
-        id: "eliza-1-mobile-1_7b",
-        displayName: "Eliza-1 mobile",
-        path: "/tmp/eliza-1-mobile-1_7b.gguf",
+        id: "eliza-1-1_7b",
+        displayName: "Eliza-1 1.7B",
+        path: "/tmp/eliza-1-1_7b.gguf",
         sizeBytes: 2048,
         installedAt: new Date().toISOString(),
         lastUsedAt: null,
         source: "eliza-download",
       },
       {
-        id: "eliza-1-mobile-1_7b-drafter",
-        displayName: "Eliza-1 mobile drafter",
-        path: "/tmp/eliza-1-mobile-1_7b-drafter.gguf",
+        id: "eliza-1-1_7b-drafter",
+        displayName: "Eliza-1 1.7B drafter",
+        path: "/tmp/eliza-1-1_7b-drafter.gguf",
         sizeBytes: 512,
         installedAt: new Date().toISOString(),
         lastUsedAt: null,
@@ -70,11 +70,11 @@ describe("local inference text readiness", () => {
 
     const readiness = buildTextGenerationReadiness({
       assignments: {
-        TEXT_SMALL: "eliza-1-mobile-1_7b",
+        TEXT_SMALL: "eliza-1-1_7b",
       },
       installed,
       active: {
-        modelId: "eliza-1-mobile-1_7b",
+        modelId: "eliza-1-1_7b",
         loadedAt: new Date().toISOString(),
         status: "ready",
       },
