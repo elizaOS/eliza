@@ -40,3 +40,10 @@ export * from "./utils";
 export * from "./voice";
 export * from "./widgets";
 export * from "./widgets/registry-store";
+
+// MILADY local-mode stubs: symbols that app-lifeops imports from
+// `@elizaos/ui` but that don't exist in the source tree (the symbols
+// only live in the test-stub file at
+// `plugins/app-lifeops/test/stubs/ui.ts`). Provide noop runtime stubs
+// so the renderer can statically link.
+export function dispatchFocusConnector(): void {}
