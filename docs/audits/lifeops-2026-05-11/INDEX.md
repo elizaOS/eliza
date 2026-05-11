@@ -42,6 +42,15 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
 - [ ] W2-B native DSPy primitives (Signature, Predict, ChainOfThought)
 - [ ] W2-C BootstrapFewShot, COPRO, MIPROv2 implementations
 - [ ] W2-D tool-search retrieval speed wins
+- [x] W2-C retrieval funnel instrumentation + Pareto sweep + per-tier defaults
+  - `packages/core/src/runtime/action-retrieval.ts` — added `measurementMode`, `tierOverrides`, `RetrievalMeasurement` (per-stage scores + fused top-K). Weighted RRF + env-driven MODEL_TIER override.
+  - `packages/core/src/runtime/trajectory-recorder.ts` — extended `RecordedToolSearchStage` with `perStageScores`, `fusedTopK`, `selectedActions`, `correctActions`.
+  - `packages/core/src/services/message.ts` — plumbed `MILADY_RETRIEVAL_MEASUREMENT=1` through `buildV5PlannerActionSurface`.
+  - `packages/benchmarks/lib/src/retrieval-defaults.ts` — `RETRIEVAL_DEFAULTS_BY_TIER` (small/mid/large/frontier topK + stage weights). Re-exported from `@elizaos-benchmarks/lib`.
+  - `scripts/lifeops-retrieval-funnel.mjs` — emits `retrieval-funnel.{md,json}` from `~/.milady/trajectories`.
+  - `scripts/lifeops-retrieval-pareto.mjs` — top-K sweep (3/5/8/12/20) + per-tier recommended K against floors 0.70 / 0.78 / 0.85 / 0.90.
+  - Tests: `action-retrieval-measurement.test.ts` (7), `retrieval-defaults.test.ts` (10), `lifeops-retrieval-funnel.test.mjs` (synthetic in → md+json out).
+  - Defaults baked in (heuristic; recalibrate on first real measured run): small topK=5, mid=8, large=12, frontier=20. Small up-weights exact/regex/bm25 (precision-heavy), frontier up-weights keyword/embedding (recall-friendly).
 
 ### Wave 3 — multi-tier e2e + eliza-1
 - [ ] W3-A new CI workflow `.github/workflows/lifeops-bench-multi-tier.yml`
