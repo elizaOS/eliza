@@ -1,29 +1,56 @@
-"""Emit a catalog.ts diff that points the on-device runtime at Eliza-1.
+"""Emit a MODEL_CATALOG entry for a freshly-produced eliza-1-<tier> GGUF.
 
-The repo's catalog of downloadable models lives at
-``packages/app-core/src/services/local-inference/catalog.ts`` (and the
-sibling UI-side mirror at ``packages/ui/src/services/local-inference/catalog.ts``).
-After ``optimize_for_milady.py`` publishes a new variant we need to
-register it in those catalogs so phones can find it via the existing
-downloader.
+After ``optimize_for_milady.py`` produces a GGUF + ``milady_manifest.json``
+the Milady runtime can only pick the model up once it has a catalog
+entry. The canonical catalog (``MODEL_CATALOG``, ``ELIZA_1_TIER_IDS``,
+``DEFAULT_ELIGIBLE_MODEL_IDS``, the HuggingFace URL builders) lives in:
 
-This script does **not** edit catalog.ts in place. It emits a unified
-diff (or a paste-ready TS block) that the W5-Catalog wave applies on
-top of its purged baseline. Keeping the cleanup wave's purge and this
-wave's additions in separate diffs avoids merge conflicts on a shared
-file.
+    packages/shared/src/local-inference/catalog.ts
+
+(``@elizaos/shared/local-inference/catalog``). The old
+``packages/app-core/src/services/local-inference/catalog.ts`` path is now
+just a re-export shim of that module, so anything written there is
+ignored — the shim has no ``MODEL_CATALOG`` literal to patch.
+
+This script does **not** edit ``catalog.ts`` in place. It prints a
+clearly-labeled, paste-ready patch fragment and tells you exactly which
+file to apply it to. Two modes:
+
+  * ``--print-entry`` (default when no ``--catalog`` is given): emit just
+    the TypeScript object literal to insert into the ``MODEL_CATALOG``
+    array in ``packages/shared/src/local-inference/catalog.ts``, plus a
+    header saying where it goes.
+  * ``--catalog <path>``: in addition, compute a unified diff that
+    inserts the new entry at the end of that file's ``MODEL_CATALOG``
+    array. ``--catalog`` defaults to the canonical shared catalog path;
+    pass it explicitly if you keep a fork-local catalog elsewhere.
 
 Usage::
 
+    # Print the entry + where to put it (recommended):
+    uv run python scripts/emit_milady_catalog.py \\
+        --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json
+
+    # Also produce a unified diff against the canonical shared catalog:
     uv run python scripts/emit_milady_catalog.py \\
         --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json \\
-        --catalog packages/app-core/src/services/local-inference/catalog.ts \\
+        --catalog packages/shared/src/local-inference/catalog.ts \\
         --output reports/training/catalog-eliza-1-0_6b.diff
 
-    # Or just print the new entry block to stdout:
-    uv run python scripts/emit_milady_catalog.py \\
-        --manifest checkpoints/eliza-1-0_6b/gguf/milady_manifest.json \\
-        --print-entry
+Notes:
+  * Eliza-1 tiers are *default-eligible* models. The tier ids and the
+    default-eligible set are defined in the same ``catalog.ts``
+    (``ELIZA_1_TIER_IDS`` / ``DEFAULT_ELIGIBLE_MODEL_IDS``). If you are
+    introducing a brand-new tier id (not just refreshing the
+    ``ggufFile`` / ``hfRepo`` of an existing one), you must also add it
+    to ``ELIZA_1_TIER_IDS`` by hand — this script only emits the
+    ``MODEL_CATALOG`` row.
+  * For a *local* file (not yet pushed to HuggingFace) you do not need a
+    catalog entry at all — see
+    ``packages/training/docs/training/gguf-to-runtime.md`` for the
+    state-dir / external-scan path. This script is for the
+    "published to ``elizaos/eliza-1-<tier>`` and want it in the curated
+    catalog" case.
 """
 
 from __future__ import annotations
@@ -41,6 +68,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger("emit_milady_catalog")
+
+
+# The canonical catalog this script targets. Both the server
+# (``@elizaos/app-core``) and the UI client (``@elizaos/ui``) import
+# ``MODEL_CATALOG`` from here; the old app-core path is a re-export shim.
+CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 
 
 # Heuristic mapping from base model name → catalog metadata. New
@@ -167,8 +200,7 @@ class MiladyCatalogEntry:
 
 
 def _slug_from_repo(hf_repo: str) -> str:
-    """Convert ``elizaos/eliza-1-1_7b`` to a catalog id.
-    """
+    """Convert ``elizaos/eliza-1-1_7b`` to a catalog id."""
     last = hf_repo.split("/")[-1]
     return last.lower()
 
@@ -237,20 +269,38 @@ def build_catalog_entry(manifest: dict[str, object]) -> MiladyCatalogEntry:
     )
 
 
+def _find_model_catalog_close(text: str) -> int:
+    """Return the index of the ``];`` that closes ``MODEL_CATALOG``.
+
+    The file has multiple ``];`` markers (``ELIZA_1_TIER_IDS`` etc.), so
+    we anchor on the ``export const MODEL_CATALOG`` declaration and find
+    the first ``];`` after it.
+    """
+    anchor = text.find("MODEL_CATALOG")
+    if anchor == -1:
+        raise SystemExit(
+            "catalog file has no `MODEL_CATALOG` declaration; pass --catalog "
+            f"pointing at {CANONICAL_CATALOG_PATH} (not the app-core re-export shim)."
+        )
+    close = text.find("];", anchor)
+    if close == -1:
+        raise SystemExit(
+            "catalog file has `MODEL_CATALOG` but no `];` close marker after it; "
+            "either point at a real catalog file or refresh the marker."
+        )
+    return close
+
+
 def emit_diff(catalog_path: Path, new_entry: MiladyCatalogEntry) -> str:
     """Build a unified diff that inserts ``new_entry`` at the end of MODEL_CATALOG."""
     if not catalog_path.exists():
         raise SystemExit(f"catalog file does not exist: {catalog_path}")
     original = catalog_path.read_text(encoding="utf-8")
-    closing_marker = "];"
-    if closing_marker not in original:
-        raise SystemExit(
-            f"catalog file {catalog_path} does not contain a `];` close marker; "
-            "either point at a real MODEL_CATALOG file or refresh the marker."
-        )
+    close = _find_model_catalog_close(original)
     insertion = new_entry.to_ts_literal()
-    pre, _, post = original.rpartition(closing_marker)
-    patched = pre.rstrip() + "\n" + insertion + closing_marker + post
+    pre = original[:close]
+    post = original[close:]
+    patched = pre.rstrip() + "\n" + insertion + post
 
     diff_lines = list(
         difflib.unified_diff(
@@ -264,8 +314,22 @@ def emit_diff(catalog_path: Path, new_entry: MiladyCatalogEntry) -> str:
     return "".join(diff_lines)
 
 
+def _entry_with_header(entry: MiladyCatalogEntry, catalog_hint: str) -> str:
+    return (
+        f"// Add this entry to the `MODEL_CATALOG` array in:\n"
+        f"//   {catalog_hint}\n"
+        f"// (the @elizaos/app-core copy is a re-export shim — do not edit it).\n"
+        f"// If `{entry.id}` is a NEW tier id, also add it to ELIZA_1_TIER_IDS\n"
+        f"// in the same file (that is what marks it default-eligible).\n"
+        f"{entry.to_ts_literal()}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
+    ap = argparse.ArgumentParser(
+        description=__doc__.split("\n\n", 1)[0],
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     ap.add_argument(
         "--manifest",
         type=Path,
@@ -275,20 +339,24 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--catalog",
         type=Path,
-        default=None,
-        help="Optional catalog.ts to compute a unified diff against.",
+        default=Path(CANONICAL_CATALOG_PATH),
+        help=(
+            "Catalog .ts file to compute a unified diff against. Defaults to "
+            f"{CANONICAL_CATALOG_PATH} (the canonical @elizaos/shared catalog). "
+            "Pass --print-entry to skip the diff and only emit the entry block."
+        ),
     )
     ap.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="If set with --catalog, write the diff here. Otherwise print to stdout.",
+        help="If set, write the unified diff here. Otherwise print it to stdout.",
     )
     ap.add_argument(
         "--print-entry",
         action="store_true",
-        help="Print the rendered TS object literal only (no diff). Useful for "
-             "pasting into a custom MODEL_CATALOG.",
+        help="Print only the rendered TS object literal + a header saying where "
+             "it goes; do not read or diff any catalog file.",
     )
     args = ap.parse_args(argv)
 
@@ -302,21 +370,31 @@ def main(argv: list[str] | None = None) -> int:
     entry = build_catalog_entry(manifest)
 
     if args.print_entry:
-        print(entry.to_ts_literal())
+        print(_entry_with_header(entry, CANONICAL_CATALOG_PATH))
         return 0
 
-    if args.catalog is None:
-        # No catalog → print the literal block + a note.
-        print("// add to MODEL_CATALOG (or pipe through --catalog/--output for a diff):")
-        print(entry.to_ts_literal())
+    if not args.catalog.exists():
+        log.warning(
+            "catalog file %s not found; emitting the entry block instead of a diff",
+            args.catalog,
+        )
+        print(_entry_with_header(entry, CANONICAL_CATALOG_PATH))
         return 0
 
     diff = emit_diff(args.catalog, entry)
+    header = (
+        f"# MODEL_CATALOG patch for {entry.id}\n"
+        f"# Apply to: {args.catalog}\n"
+        f"# (the @elizaos/app-core copy is a re-export shim — do not edit it).\n"
+        f"# If {entry.id} is a NEW tier id, also add it to ELIZA_1_TIER_IDS in that file.\n"
+    )
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(diff, encoding="utf-8")
-        log.info("wrote diff → %s (%d bytes)", args.output, len(diff))
+        args.output.write_text(header + diff, encoding="utf-8")
+        log.info("wrote patch → %s (%d bytes)", args.output, len(header) + len(diff))
+        log.info("apply with: git apply %s   (after stripping the leading # header)", args.output)
     else:
+        sys.stdout.write(header)
         sys.stdout.write(diff)
     return 0
 
