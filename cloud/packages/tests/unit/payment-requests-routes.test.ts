@@ -220,6 +220,8 @@ describe("payment-requests routes", () => {
         amountCents: 500,
         paymentContext: "verified_payer",
         reason: "Test charge",
+        successUrl: "https://app.test/pay/success",
+        cancelUrl: "https://app.test/pay/cancel",
       }),
     });
 
@@ -239,6 +241,10 @@ describe("payment-requests routes", () => {
       amountCents: 500,
       paymentContext: { kind: "verified_payer", scope: "owner_or_linked_identity" },
       reason: "Test charge",
+      metadata: {
+        success_url: "https://app.test/pay/success",
+        cancel_url: "https://app.test/pay/cancel",
+      },
     });
   });
 

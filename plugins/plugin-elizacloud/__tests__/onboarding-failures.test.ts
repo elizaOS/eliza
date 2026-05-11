@@ -25,6 +25,25 @@ vi.mock("../src/cloud/auth.js", () => ({
   cloudLogin: vi.fn(),
 }));
 
+// `node:child_process.execFile` is called by the `openBrowser` helper
+// inside `onboarding.ts`. We partial-mock the module here so the C8 test
+// can drive the failure path through a shared, configurable mock while
+// other consumers (like `@elizaos/core`'s plugin-manager service, which
+// loads at module-init via `promisify(exec)`) still see the real exports.
+// By default the mock invokes its callback with `null` (success).
+const execFileBehavior: { invokeError: Error | null } = { invokeError: null };
+vi.mock("node:child_process", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:child_process")>();
+  return {
+    ...actual,
+    execFile: vi.fn((_file: string, _args: string[], cb: (err: Error | null) => void) => {
+      // Fire async to model real exec behavior.
+      setImmediate(() => cb(execFileBehavior.invokeError));
+      return undefined;
+    }),
+  };
+});
+
 // We expose a shared "behavior" object the mock class consults at
 // construction time. Tests set `bridgeBehavior.createAgent` /
 // `bridgeBehavior.getAgent` BEFORE calling `runCloudOnboarding`, and the
@@ -65,6 +84,13 @@ vi.mock("../src/cloud/bridge-client.js", () => {
 // up the mocked auth + bridge-client modules.
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { cloudLogin } from "../src/cloud/auth.js";
+import { NullCloudOnboardingObserver } from "../src/cloud/null-observer.js";
+import type {
+  CloudOnboardingObserver,
+  ConfirmPrompt,
+  ProvisionSuccessInfo,
+  SelectChoicePrompt,
+} from "../src/cloud/onboarding-observer.js";
 import { checkCloudAvailability, runCloudOnboarding } from "../src/onboarding.js";
 
 // `vi.mocked` gives us a properly typed Mock handle without the
@@ -96,40 +122,57 @@ describe("onboarding source constants are still the documented values", () => {
 
 // ─── Test helpers ─────────────────────────────────────────────────────────
 
-interface ClackStub {
-  spinner: Mock;
-  log: { info: Mock; warn: Mock; error: Mock };
+/**
+ * Capturing observer used by all tests in this file. Every observer method
+ * is a `vi.fn` so tests can assert call counts, arguments, and (for
+ * `confirm` / `selectChoice`) seed return values.
+ *
+ * The previous `ClackStub` shape stringified spinner messages through
+ * `_lastSpinner.stop.mock.calls`. The new observer model exposes the same
+ * messages via the dedicated event methods (`onAuthFailure`,
+ * `onProvisionTimeout`, `onProvisionFailure`, `onProvisionSuccess`), so
+ * the existing test assertions are translated 1:1 without losing fidelity.
+ */
+interface TestObserver extends CloudOnboardingObserver {
+  onAvailabilityChecked: Mock;
+  onAuthStart: Mock;
+  onAuthBrowserOpenFailed: Mock;
+  onAuthPollStatus: Mock;
+  onAuthSuccess: Mock;
+  onAuthFailure: Mock;
+  onProvisionStart: Mock;
+  onProvisionStatus: Mock;
+  onProvisionTimeout: Mock;
+  onProvisionFailure: Mock;
+  onProvisionSuccess: Mock;
+  onNotice: Mock;
+  onFatalError: Mock;
   confirm: Mock;
-  isCancel: Mock;
-  // Surface the most recent spinner so tests can assert spinner messages
-  // if useful.
-  _lastSpinner: { start: Mock; stop: Mock; message: Mock };
+  selectChoice: Mock;
 }
 
-// `runCloudOnboarding` expects `typeof import("@clack/prompts")`. We pass
-// a hand-rolled stub that exercises only the surface onboarding.ts touches
-// (spinner / log / confirm / isCancel). One narrowing helper here keeps the
-// `unknown` escape localized to a single named call.
-type ClackModuleLike = typeof import("@clack/prompts");
-function asClackModule(stub: ClackStub): ClackModuleLike {
-  return stub as unknown as ClackModuleLike;
-}
-
-function makeClack(opts: { confirmReturn?: unknown } = {}): ClackStub {
-  const lastSpinner = {
-    start: vi.fn(),
-    stop: vi.fn(),
-    message: vi.fn(),
+function makeObserver(
+  opts: { confirmReturn?: boolean | null; selectReturn?: string | null } = {}
+): TestObserver {
+  const confirmReturn = opts.confirmReturn === undefined ? true : opts.confirmReturn;
+  const selectReturn = opts.selectReturn === undefined ? null : opts.selectReturn;
+  return {
+    onAvailabilityChecked: vi.fn(),
+    onAuthStart: vi.fn(),
+    onAuthBrowserOpenFailed: vi.fn(),
+    onAuthPollStatus: vi.fn(),
+    onAuthSuccess: vi.fn(),
+    onAuthFailure: vi.fn(),
+    onProvisionStart: vi.fn(),
+    onProvisionStatus: vi.fn(),
+    onProvisionTimeout: vi.fn(),
+    onProvisionFailure: vi.fn(),
+    onProvisionSuccess: vi.fn(),
+    onNotice: vi.fn(),
+    onFatalError: vi.fn(),
+    confirm: vi.fn(async (_prompt: ConfirmPrompt) => confirmReturn),
+    selectChoice: vi.fn(async (_prompt: SelectChoicePrompt<string>) => selectReturn),
   };
-  const spinner = vi.fn(() => lastSpinner);
-  const stub: ClackStub = {
-    spinner: spinner as Mock,
-    log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    confirm: vi.fn(async () => (opts.confirmReturn === undefined ? true : opts.confirmReturn)),
-    isCancel: vi.fn(() => false),
-    _lastSpinner: lastSpinner,
-  };
-  return stub;
 }
 
 function setAvailability(body: {
@@ -240,7 +283,7 @@ describe("C1 — availability=true happy path", () => {
       updatedAt: "2026-05-10T00:00:00Z",
     });
 
-    const clack = makeClack();
+    const observer = makeObserver();
 
     // Don't actually wait PROVISION_POLL_INTERVAL_MS between polls.
     const restoreSetTimeout = installSyncSetTimeout();
@@ -248,7 +291,7 @@ describe("C1 — availability=true happy path", () => {
     let result: Awaited<ReturnType<typeof runCloudOnboarding>>;
     try {
       result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c1",
         undefined,
         "https://www.elizacloud.ai"
@@ -262,6 +305,15 @@ describe("C1 — availability=true happy path", () => {
     expect(result?.agentId).toBe("agent-id-c1");
     expect(result?.bridgeUrl).toBe("https://bridge.example/agent-c1");
     expect(result?.baseUrl).toMatch(/^https:\/\/www\.elizacloud\.ai/);
+
+    // Availability success surfaced via observer event.
+    expect(observer.onAvailabilityChecked).toHaveBeenCalledWith({ ok: true });
+    expect(observer.onProvisionSuccess).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: "agent-id-c1",
+        bridgeUrl: "https://bridge.example/agent-c1",
+      }) satisfies ProvisionSuccessInfo
+    );
   });
 });
 
@@ -271,18 +323,23 @@ describe("C2 — availability=false", () => {
   it("warns, prompts to run locally, and returns null without auth", async () => {
     setAvailability({ success: true, acceptingNewAgents: false });
 
-    const clack = makeClack({ confirmReturn: true }); // "yes, run locally"
+    const observer = makeObserver({ confirmReturn: true }); // "yes, run locally"
 
     const result = await runCloudOnboarding(
-      asClackModule(clack),
+      observer,
       "agent-c2",
       undefined,
       "https://www.elizacloud.ai"
     );
 
     expect(result).toBeNull();
-    expect(clack.log.warn).toHaveBeenCalledWith(expect.stringMatching(/at capacity|run locally/i));
-    expect(clack.confirm).toHaveBeenCalledWith(
+    expect(observer.onAvailabilityChecked).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ok: false,
+        reason: expect.stringMatching(/at capacity|run locally/i),
+      })
+    );
+    expect(observer.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(/run locally/i),
       })
@@ -336,10 +393,10 @@ describe("C3 — auth success", () => {
 
     const restoreSetTimeout = installSyncSetTimeout();
 
-    const clack = makeClack();
+    const observer = makeObserver();
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c3",
         undefined,
         "https://www.elizacloud.ai"
@@ -363,7 +420,7 @@ describe("C3 — auth success", () => {
 // ─── C4 — Auth timeout ────────────────────────────────────────────────────
 
 describe("C4 — auth timeout", () => {
-  it("surfaces the 5-minute browser-timeout message via the spinner, prompts retry/local, and returns null on fallback", async () => {
+  it("surfaces the 5-minute browser-timeout message via the observer, prompts retry/local, and returns null on fallback", async () => {
     setAvailability({ acceptingNewAgents: true });
 
     // The exact string cloudLogin throws on the 5-minute browser timeout.
@@ -373,10 +430,10 @@ describe("C4 — auth timeout", () => {
       )
     );
 
-    const clack = makeClack({ confirmReturn: false }); // "run locally"
+    const observer = makeObserver({ confirmReturn: false }); // "run locally"
 
     const result = await runCloudOnboarding(
-      asClackModule(clack),
+      observer,
       "agent-c4",
       undefined,
       "https://www.elizacloud.ai"
@@ -384,13 +441,13 @@ describe("C4 — auth timeout", () => {
 
     expect(result).toBeNull();
 
-    // The spinner now translates the error category instead of collapsing
-    // everything into a generic "Login failed: <msg>".
-    const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map((c) => String(c[0]));
-    expect(spinnerStopCalls.some((m) => /sign-in timed out after 5 minutes/i.test(m))).toBe(true);
+    // The observer now receives the translated error category via
+    // onAuthFailure instead of through spinner messages.
+    const authFailureCalls = observer.onAuthFailure.mock.calls.map((c) => String(c[0]));
+    expect(authFailureCalls.some((m) => /sign-in timed out after 5 minutes/i.test(m))).toBe(true);
 
-    expect(clack.log.warn).toHaveBeenCalled();
-    expect(clack.confirm).toHaveBeenCalledWith(
+    expect(observer.onNotice).toHaveBeenCalled();
+    expect(observer.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(/again|local/i),
       })
@@ -406,17 +463,12 @@ describe("C4 — auth timeout", () => {
       new Error("Failed to create auth session: TypeError: fetch failed")
     );
 
-    const clack = makeClack({ confirmReturn: false });
+    const observer = makeObserver({ confirmReturn: false });
 
-    await runCloudOnboarding(
-      asClackModule(clack),
-      "agent-c4-net",
-      undefined,
-      "https://www.elizacloud.ai"
-    );
+    await runCloudOnboarding(observer, "agent-c4-net", undefined, "https://www.elizacloud.ai");
 
-    const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map((c) => String(c[0]));
-    expect(spinnerStopCalls.some((m) => /couldn.?t reach eliza cloud/i.test(m))).toBe(true);
+    const authFailureCalls = observer.onAuthFailure.mock.calls.map((c) => String(c[0]));
+    expect(authFailureCalls.some((m) => /couldn.?t reach eliza cloud/i.test(m))).toBe(true);
   });
 
   it("when the user says 'retry' and the retry also times out, returns null", async () => {
@@ -426,10 +478,10 @@ describe("C4 — auth timeout", () => {
       .mockRejectedValueOnce(new Error("Cloud login timed out."))
       .mockRejectedValueOnce(new Error("Cloud login timed out."));
 
-    const clack = makeClack({ confirmReturn: true }); // "try again"
+    const observer = makeObserver({ confirmReturn: true }); // "try again"
 
     const result = await runCloudOnboarding(
-      asClackModule(clack),
+      observer,
       "agent-c4-retry",
       undefined,
       "https://www.elizacloud.ai"
@@ -474,11 +526,11 @@ describe("C5 — provisioning happy progression", () => {
 
     const restoreSetTimeout = installSyncSetTimeout();
 
-    const clack = makeClack();
+    const observer = makeObserver();
 
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c5",
         undefined,
         "https://www.elizacloud.ai"
@@ -520,10 +572,10 @@ describe("C5 — provisioning happy progression", () => {
     });
 
     const restoreSetTimeout = installSyncSetTimeout();
-    const clack = makeClack();
+    const observer = makeObserver();
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c5b",
         undefined,
         "https://www.elizacloud.ai"
@@ -577,11 +629,11 @@ describe("C6 — provisioning timeout", () => {
 
     // The onboarding now prompts the user when provisioning times out.
     // confirmReturn:true == "yes, continue with local setup" → returns null.
-    const clack = makeClack({ confirmReturn: true });
+    const observer = makeObserver({ confirmReturn: true });
 
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c6",
         undefined,
         "https://www.elizacloud.ai"
@@ -591,16 +643,19 @@ describe("C6 — provisioning timeout", () => {
       // prompted, accepts local fallback, and onboarding returns null.
       expect(result).toBeNull();
 
+      // The observer was notified of the timeout with the pending agent id.
+      expect(observer.onProvisionTimeout).toHaveBeenCalledWith("agent-id-c6", expect.any(String));
+
       // The fallback prompt was actually shown.
-      expect(clack.confirm).toHaveBeenCalledWith(
+      expect(observer.confirm).toHaveBeenCalledWith(
         expect.objectContaining({
           message: expect.stringMatching(/continue with local setup/i),
         })
       );
 
-      // The user-facing warning mentions the pending agent.
-      const warnCalls = clack.log.warn.mock.calls.map((c) => String(c[0]));
-      expect(warnCalls.some((m) => /still starting up|eliza cloud connect/i.test(m))).toBe(true);
+      // The user-facing notice mentions the pending agent.
+      const noticeCalls = observer.onNotice.mock.calls.map((c) => String(c[0]));
+      expect(noticeCalls.some((m) => /still starting up|eliza cloud connect/i.test(m))).toBe(true);
 
       // At least floor(PROVISION_TIMEOUT_MS / PROVISION_POLL_INTERVAL_MS)
       // polls before bailing.
@@ -648,11 +703,11 @@ describe("C6 — provisioning timeout", () => {
 
     // confirmReturn:false == "no, don't go local" → save auth + pending id
     // so the user can resume via `eliza cloud connect`.
-    const clack = makeClack({ confirmReturn: false });
+    const observer = makeObserver({ confirmReturn: false });
 
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c6b",
         undefined,
         "https://www.elizacloud.ai"
@@ -703,11 +758,11 @@ describe("C2b — auth revoked during provisioning", () => {
 
     const restoreSetTimeout = installSyncSetTimeout();
     // confirmReturn:true → user accepts local fallback after the bail.
-    const clack = makeClack({ confirmReturn: true });
+    const observer = makeObserver({ confirmReturn: true });
 
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c2b",
         undefined,
         "https://www.elizacloud.ai"
@@ -719,12 +774,11 @@ describe("C2b — auth revoked during provisioning", () => {
       // Only ONE poll attempt before bail — no retry on auth errors.
       expect(bridgeBehavior.getAgent).toHaveBeenCalledTimes(1);
 
-      // The spinner surfaced an auth-rejection message, not a generic
-      // "transient error" or the original "HTTP 401" string.
-      const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map((c) => String(c[0]));
-      expect(spinnerStopCalls.some((m) => /rejected the API key|sign in again/i.test(m))).toBe(
-        true
-      );
+      // The observer surfaced an auth-rejection message via
+      // onProvisionFailure, not a generic "transient error" or the original
+      // "HTTP 401" string.
+      const failureCalls = observer.onProvisionFailure.mock.calls.map((c) => String(c[0]));
+      expect(failureCalls.some((m) => /rejected the API key|sign in again/i.test(m))).toBe(true);
     } finally {
       restoreSetTimeout();
     }
@@ -750,15 +804,10 @@ describe("C2b — auth revoked during provisioning", () => {
     bridgeBehavior.getAgent.mockRejectedValue(new Error("HTTP 403: forbidden"));
 
     const restoreSetTimeout = installSyncSetTimeout();
-    const clack = makeClack({ confirmReturn: true });
+    const observer = makeObserver({ confirmReturn: true });
 
     try {
-      await runCloudOnboarding(
-        asClackModule(clack),
-        "agent-c2b-403",
-        undefined,
-        "https://www.elizacloud.ai"
-      );
+      await runCloudOnboarding(observer, "agent-c2b-403", undefined, "https://www.elizacloud.ai");
       expect(bridgeBehavior.getAgent).toHaveBeenCalledTimes(1);
     } finally {
       restoreSetTimeout();
@@ -797,11 +846,11 @@ describe("C2b — auth revoked during provisioning", () => {
 
     const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
     const restoreSetTimeout = installSyncSetTimeout();
-    const clack = makeClack();
+    const observer = makeObserver();
 
     try {
       const result = await runCloudOnboarding(
-        asClackModule(clack),
+        observer,
         "agent-c2b-5xx",
         undefined,
         "https://www.elizacloud.ai"
@@ -907,5 +956,111 @@ describe("C7 — saved-key validation against /models", () => {
       setApiKeySpy.mockRestore();
       setBaseUrlSpy.mockRestore();
     }
+  });
+});
+
+// ─── C8 — openBrowser failure surfaces via observer ──────────────────────
+//
+// Before this refactor, `openBrowser(url).catch(() => {})` swallowed all
+// failures at debug-level. Now: when the OS open command (no `open` /
+// `xdg-open` / `cmd.exe` on PATH) rejects, the observer's
+// `onAuthBrowserOpenFailed(url, error)` MUST fire so desktop/web wrappers
+// can render an inline "couldn't open browser" affordance.
+
+describe("C8 — openBrowser failure surfaces via observer", () => {
+  it("fires onAuthBrowserOpenFailed when the OS open command rejects", async () => {
+    setAvailability({ acceptingNewAgents: true });
+
+    // Seed the shared execFile mock to reject with an ENOENT-style error.
+    // The `openBrowser` helper inside `onboarding.ts` reaches the mock
+    // via `await import("node:child_process")`. The helper is fire-and-
+    // forget from `runCloudAuth`, so we ensure the observer receives the
+    // failure even though the main flow continues.
+    execFileBehavior.invokeError = new Error("ENOENT: no such file or directory, open 'open'");
+
+    // cloudLogin fires its onBrowserUrl callback (which triggers
+    // openBrowser) and then resolves immediately so we can complete the
+    // flow and assert on the observer call without waiting for a real
+    // timeout. The provisioning step is also mocked through to running.
+    cloudLoginMock.mockImplementationOnce(async (opts) => {
+      // Trigger the browser-open path. The helper is fire-and-forget.
+      opts.onBrowserUrl?.("https://www.elizacloud.ai/auth/device?code=test");
+      // Give the setImmediate-fired execFile error a chance to land.
+      await new Promise((r) => setImmediate(r));
+      return {
+        apiKey: "eliza_test_key_C8",
+        keyPrefix: "eliza_",
+        expiresAt: null,
+      };
+    });
+
+    bridgeBehavior.createAgent.mockResolvedValueOnce({
+      id: "agent-id-c8",
+      agentName: "agent-c8",
+      status: "queued",
+      databaseStatus: "ok",
+      createdAt: "2026-05-10T00:00:00Z",
+      updatedAt: "2026-05-10T00:00:00Z",
+    });
+    bridgeBehavior.getAgent.mockResolvedValueOnce({
+      id: "agent-id-c8",
+      agentName: "agent-c8",
+      status: "running",
+      databaseStatus: "ok",
+      createdAt: "2026-05-10T00:00:00Z",
+      updatedAt: "2026-05-10T00:00:00Z",
+    });
+
+    const restoreSetTimeout = installSyncSetTimeout();
+    const observer = makeObserver();
+
+    try {
+      await runCloudOnboarding(observer, "agent-c8", undefined, "https://www.elizacloud.ai");
+
+      // Drain microtasks once more — the catch() that calls
+      // onAuthBrowserOpenFailed is on a fire-and-forget promise.
+      await new Promise((r) => setImmediate(r));
+      await new Promise((r) => setImmediate(r));
+
+      // The observer was notified of the browser-open failure with the
+      // right URL and an Error instance.
+      expect(observer.onAuthBrowserOpenFailed).toHaveBeenCalledTimes(1);
+      const [calledUrl, calledError] = observer.onAuthBrowserOpenFailed.mock.calls[0];
+      expect(calledUrl).toBe("https://www.elizacloud.ai/auth/device?code=test");
+      expect(calledError).toBeInstanceOf(Error);
+      expect((calledError as Error).message).toMatch(/ENOENT/);
+    } finally {
+      execFileBehavior.invokeError = null;
+      restoreSetTimeout();
+    }
+  });
+});
+
+// ─── C9 — Null observer never throws ──────────────────────────────────────
+//
+// Sanity check that the bundled `NullCloudOnboardingObserver` is a safe
+// default for headless / test runs: a full onboarding pass through the
+// availability=false branch must complete without throwing.
+
+describe("C9 — null observer never throws", () => {
+  it("runs through availability=false → run-locally fallback without errors", async () => {
+    setAvailability({ success: true, acceptingNewAgents: false });
+
+    const observer = new NullCloudOnboardingObserver();
+
+    // NullCloudOnboardingObserver.confirm returns null on every call,
+    // which the orchestrator treats as cancel == "run locally" — the
+    // availability=false branch returns null without ever hitting auth.
+    const result = await runCloudOnboarding(
+      observer,
+      "agent-c9",
+      undefined,
+      "https://www.elizacloud.ai"
+    );
+
+    expect(result).toBeNull();
+    // We did NOT attempt auth — the null observer cancelled at the first
+    // prompt, which is the documented behavior for headless runs.
+    expect(cloudLogin).not.toHaveBeenCalled();
   });
 });

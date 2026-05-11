@@ -74,4 +74,74 @@ describe("trait-respected rubric", () => {
 		const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
 		expect(v.verdict).toBe("FAIL");
 	});
+
+	it("first_name_only PASS — bare first name", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Call me by first name only — Alex Smith." },
+				{ role: "assistant", content: "Of course." },
+				{ role: "user", content: "Iceland capital?" },
+				{ role: "assistant", content: "Alex, the capital is Reykjavík." },
+			],
+			{ trait: "first_name_only", lastName: "Smith" },
+		);
+		const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("PASS");
+	});
+
+	it("first_name_only FAIL — honorific used", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Call me by first name only." },
+				{ role: "assistant", content: "Sure." },
+				{ role: "user", content: "Iceland capital?" },
+				{ role: "assistant", content: "Sir, the capital is Reykjavík." },
+			],
+			{ trait: "first_name_only" },
+		);
+		const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("FAIL");
+	});
+
+	it("metric_units PASS — km/°C used", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "I prefer metric." },
+				{ role: "assistant", content: "Got it." },
+				{ role: "user", content: "Distance Reykjavík-Akureyri?" },
+				{ role: "assistant", content: "About 390 km and roughly 5°C up there." },
+			],
+			{ trait: "metric_units" },
+		);
+		const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("PASS");
+	});
+
+	it("metric_units FAIL — miles used", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "I prefer metric." },
+				{ role: "assistant", content: "Sure." },
+				{ role: "user", content: "Distance?" },
+				{ role: "assistant", content: "About 240 miles." },
+			],
+			{ trait: "metric_units" },
+		);
+		const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("FAIL");
+	});
+
+	it("prefers_short PASS — under 80 tokens", async () => {
+		const s = scenario(
+			[
+				{ role: "user", content: "Keep it short." },
+				{ role: "assistant", content: "Got it." },
+				{ role: "user", content: "Iceland capital?" },
+				{ role: "assistant", content: "Reykjavík." },
+			],
+			{ trait: "prefers_short" },
+		);
+		const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+		expect(v.verdict).toBe("PASS");
+	});
 });

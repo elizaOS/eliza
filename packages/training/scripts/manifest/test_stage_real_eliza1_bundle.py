@@ -32,7 +32,7 @@ def _seed_assets(bundle: Path) -> None:
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"omnivoice-tok")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
     _write(bundle / "asr" / "eliza-1-asr-mmproj.gguf", b"asr-mmproj")
-    _write(bundle / "vad" / "silero-vad-int8.onnx", b"vad")
+    _write(bundle / "vad" / "silero-vad-v5.1.2.ggml.bin", b"vad")
     _write(bundle / "cache" / "voice-preset-default.bin", b"cache")
     _write(bundle / "licenses" / "LICENSE.voice", "voice license\n")
     _write(bundle / "licenses" / "LICENSE.asr", "asr license\n")
@@ -99,6 +99,10 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     # 0_6b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
     assert manifest["files"]["text"][0]["ctx"] == 32768
+    assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
+    assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
+    assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
+    assert manifest["evals"]["vadLatencyMs"]["falseBargeInRate"] == 1.0
 
     release = json.loads((bundle / "evidence" / "release.json").read_text())
     assert release["releaseState"] == "weights-staged"

@@ -24,6 +24,13 @@ export interface TriggerTaskMetadata {
   blocking?: boolean;
   trigger?: TriggerConfig;
   triggerRuns?: TriggerRunRecord[];
+  /**
+   * Per-fire idempotency key. Workflow-kind scheduled triggers populate
+   * this with `${workflowId}:${minuteBucket}` so dispatch can dedup
+   * back-to-back fires inside the same minute. Refreshed on every
+   * persist so each scheduled fire gets a fresh window.
+   */
+  idempotencyKey?: string;
   [key: string]:
     | string
     | number

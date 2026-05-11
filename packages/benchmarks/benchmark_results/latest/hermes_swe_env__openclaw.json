@@ -1,0 +1,75 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T182257Z_32ade8c9/hermes-adapter__hermes_swe_env/run_hermes_swe_env_20260511T182306Z_2_250ff403/output"
+  ],
+  "benchmark_directory": "hermes-adapter",
+  "benchmark_id": "hermes_swe_env",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": "Command exited with return code 1 and no result JSON found",
+  "higher_is_better": null,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "performance_metrics": {
+      "duration_seconds": 26.53763858298771,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.0
+    },
+    "result_locator": "not_found",
+    "return_code": 1,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 0,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 0
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 26.53763858298771,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.0
+  },
+  "provider": "cerebras",
+  "result_json_path": null,
+  "run_group_id": "rg_20260511T182257Z_32ade8c9",
+  "run_id": "run_hermes_swe_env_20260511T182306Z_2_250ff403",
+  "score": null,
+  "status": "failed",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 0,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 0,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 0
+  },
+  "unit": null,
+  "updated_at": "2026-05-11T18:23:33.293553+00:00"
+}

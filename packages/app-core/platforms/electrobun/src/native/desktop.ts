@@ -65,6 +65,7 @@ import type {
 	WindowOptions,
 } from "../rpc-schema";
 import type { SendToWebview } from "../types.js";
+import { resolveDesktopUpdateAvailability } from "../update-availability";
 import {
 	createBugReportBundle,
 	getStartupDiagnosticLogTail,
@@ -2207,67 +2208,14 @@ X-GNOME-Autostart-enabled=true
 		canAutoUpdate: boolean;
 		autoUpdateDisabledReason: string | null;
 	} {
-		if (process.platform !== "darwin") {
-			return {
-				appBundlePath: null,
-				canAutoUpdate: true,
-				autoUpdateDisabledReason: null,
-			};
-		}
-
-		const appBundlePath = this.resolveMacAppBundlePath(process.execPath);
-		if (!appBundlePath) {
-			return {
-				appBundlePath: null,
-				canAutoUpdate: false,
-				autoUpdateDisabledReason: `${getBrandConfig().appName} must run from an installed .app bundle to enable in-place updates.`,
-			};
-		}
-
-		const supportedRoots = [
-			"/Applications",
-			path.join(Utils.paths.home, "Applications"),
-		].map((root) => path.resolve(root));
-		const normalizedBundlePath = path.resolve(appBundlePath);
-		const inApplications = supportedRoots.some((root) => {
-			const normalizedRoot = root.endsWith(path.sep)
-				? root
-				: `${root}${path.sep}`;
-			return (
-				normalizedBundlePath === root ||
-				normalizedBundlePath.startsWith(normalizedRoot)
-			);
+		const brand = getBrandConfig();
+		return resolveDesktopUpdateAvailability({
+			platform: process.platform,
+			execPath: process.execPath,
+			homeDir: Utils.paths.home,
+			appName: brand.appName,
+			buildVariant: brand.buildVariant,
 		});
-
-		if (inApplications) {
-			return {
-				appBundlePath: normalizedBundlePath,
-				canAutoUpdate: true,
-				autoUpdateDisabledReason: null,
-			};
-		}
-
-		return {
-			appBundlePath: normalizedBundlePath,
-			canAutoUpdate: false,
-			autoUpdateDisabledReason: `Move ${path.basename(
-				normalizedBundlePath,
-			)} to /Applications to enable in-place desktop updates.`,
-		};
-	}
-
-	private resolveMacAppBundlePath(execPath: string): string | null {
-		let current = path.resolve(execPath);
-		while (true) {
-			if (current.endsWith(".app")) {
-				return current;
-			}
-			const parent = path.dirname(current);
-			if (parent === current) {
-				return null;
-			}
-			current = parent;
-		}
 	}
 
 	private resolvePreferredBrowserRenderer(

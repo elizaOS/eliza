@@ -127,6 +127,7 @@ export function createWorkThreadStore(
         workflowRunId: null,
         approvalId: null,
         lastMessageMemoryId: input.lastMessageMemoryId ?? null,
+        version: 1,
         createdAt: timestamp,
         updatedAt: timestamp,
         lastActivityAt: timestamp,

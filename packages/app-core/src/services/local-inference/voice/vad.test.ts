@@ -15,10 +15,12 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
+import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
 import type { PcmFrame, VadEvent } from "./types";
 import {
   createSileroVadDetector,
+  NativeSileroVad,
   RmsEnergyGate,
   rms,
   SileroVad,
@@ -253,6 +255,56 @@ describe("VadDetector", () => {
         timestampMs: 0,
       }),
     ).rejects.toThrow(/16000/);
+  });
+});
+
+describe("NativeSileroVad", () => {
+  it("uses the native FFI path when support is advertised", async () => {
+    const ffi = fakeFfi("x", {
+      vadSupported: true,
+      vadProbs: [0.1, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
+    });
+    const native = await NativeSileroVad.load({ ffi, ctx: 1n });
+    expect(native.windowSamples).toBe(FRAME);
+    expect(native.sampleRate).toBe(SR);
+    expect(await native.process(new Float32Array(FRAME))).toBe(0.1);
+    expect(await native.process(new Float32Array(FRAME))).toBe(0.9);
+    expect(() => native.reset()).not.toThrow();
+    expect(() => native.close()).not.toThrow();
+  });
+
+  it("createSileroVadDetector prefers native VAD over ONNX when FFI supports it", async () => {
+    const ffi = fakeFfi("x", {
+      vadSupported: true,
+      vadProbs: [0.01, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02],
+    });
+    const det = await createSileroVadDetector({
+      ffi,
+      ctx: 1n,
+      modelPath: "/nonexistent/should-not-load.onnx",
+      config: {
+        onsetThreshold: 0.5,
+        pauseHangoverMs: 64,
+        endHangoverMs: 128,
+        minSpeechMs: 1,
+      },
+    });
+    const events = await feedProbs(det, [0, 0, 0, 0, 0, 0, 0, 0]);
+    expect(events.some((e) => e.type === "speech-start")).toBe(true);
+  });
+
+  it("falls back to ONNX resolution when native VAD is unsupported", async () => {
+    const ffi = fakeFfi("x", { vadSupported: false });
+    await expect(
+      createSileroVadDetector({
+        ffi,
+        ctx: 1n,
+        modelPath: "/nonexistent/silero.onnx",
+      }),
+    ).rejects.toMatchObject({
+      name: "VadUnavailableError",
+      code: "model-missing",
+    });
   });
 });
 

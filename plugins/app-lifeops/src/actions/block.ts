@@ -273,13 +273,15 @@ export const blockAction: Action & {
     // `lifeops` provider's route hints keep resolving.
     "WEBSITE_BLOCK",
     "APP_BLOCK",
-    // Legacy similes from the two folded actions.
+    // Legacy similes from the two folded actions. Scoped to phone-app /
+    // desktop-website blocking only — calendar time-blocking ("block out 2
+    // hours for deep work") routes through CALENDAR.create_event, not BLOCK.
+    // Names like FOCUS_BLOCK / AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that
+    // suggest scheduling a calendar block are intentionally NOT similes here.
     "WEBSITE_BLOCKER",
     "SELFCONTROL",
     "SITE_BLOCKER",
     "HOSTS_BLOCK",
-    "FOCUS_BLOCK",
-    "AUTOMATION_FOCUS_BLOCK",
     "BLOCK_WEBSITE",
     "APP_BLOCKER",
     "SHIELD_APPS",
@@ -301,12 +303,15 @@ export const blockAction: Action & {
     "risk:irreversible",
   ],
   description:
-    "Block or unblock phone apps and desktop websites. " +
-    "Pick `target: app` for phone-app blocking (Family Controls / Usage Access) or `target: website` for desktop website blocking (hosts file / SelfControl). " +
+    "Block or unblock specific phone apps (Family Controls / Usage Access) " +
+    "and desktop websites (hosts file / SelfControl). NOT for calendar time-blocks " +
+    "or focus blocks on the calendar — use CALENDAR (subaction=create_event) to " +
+    "carve out blocks of time for deep work. " +
+    "Pick `target: app` for phone-app blocking or `target: website` for desktop website blocking. " +
     "Actions: block, unblock, status (all targets); request_permission, release, list_active (website only). " +
     "Website blocks always draft first and require confirmed:true; release also requires confirmed:true.",
   descriptionCompressed:
-    "block/unblock apps+websites; actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+    "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

@@ -1,0 +1,9 @@
+{
+  "target": "ios-jsc",
+  "bundle": "agent-bundle-ios.js",
+  "bundle_size_bytes": 32423281,
+  "bridge_version_required": "v1",
+  "polyfill_bundled": false,
+  "sha256": "a01c4aa87871778279112995bb49e629de964f86a8bcf653719217f807e0e62d",
+  "generatedAt": "2026-05-11T18:37:20.527Z"
+}

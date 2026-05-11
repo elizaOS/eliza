@@ -590,10 +590,14 @@ async function buildWeb(platform) {
       : platform === "ios" || platform === "ios-overlay"
         ? "cloud"
         : null;
+  const buildVariant =
+    platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
+    MILADY_BUILD_VARIANT: process.env.MILADY_BUILD_VARIANT || buildVariant,
+    ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
     ...(androidRuntimeMode
       ? {
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
@@ -1272,6 +1276,7 @@ function overlayAndroid() {
       "GatewayConnectionService.java",
       "AgentPlugin.java",
       "AndroidVirtualizationBridge.java",
+      "BatteryOptimizationPlugin.java",
       "ElizaNativeBridge.java",
       "MainActivity.java",
       "ElizaAgentService.java",
@@ -1288,6 +1293,8 @@ function overlayAndroid() {
       "ElizaRespondViaMessageService.java",
       "ElizaSmsComposeActivity.java",
       "ElizaSmsReceiver.java",
+      "ElizaTasksWorker.java",
+      "ElizaWorkScheduler.java",
     ]) {
       const src = path.join(srcJava, file);
       if (!fs.existsSync(src)) continue;
@@ -1901,19 +1908,30 @@ function overlayIos() {
         dirty = true;
       }
     }
+    // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
+    // not force-set: the template Info.plist already declares the modes the
+    // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
+    // BGTaskScheduler identifiers (`ai.eliza.tasks.refresh`,
+    // `ai.eliza.tasks.processing`). The overlay only guarantees the baseline
+    // `fetch` mode is present and that the ElizaTasks identifiers survive a
+    // regeneration where a downstream embedder forgot to copy them.
     const nextPlist = ensurePlistUrlScheme(
       ensurePlistArrayStrings(
         ensurePlistArrayStrings(
-          replaceOrInsertPlistString(
-            plist,
-            "CFBundleDisplayName",
-            "$(ELIZA_DISPLAY_NAME)",
+          ensurePlistArrayStrings(
+            replaceOrInsertPlistString(
+              plist,
+              "CFBundleDisplayName",
+              "$(ELIZA_DISPLAY_NAME)",
+            ),
+            "NSBonjourServices",
+            IOS_BONJOUR_SERVICES,
           ),
-          "NSBonjourServices",
-          IOS_BONJOUR_SERVICES,
+          "UIBackgroundModes",
+          ["fetch", "processing", "remote-notification"],
         ),
-        "UIBackgroundModes",
-        ["fetch"],
+        "BGTaskSchedulerPermittedIdentifiers",
+        ["ai.eliza.tasks.refresh", "ai.eliza.tasks.processing"],
       ),
       APP.urlScheme,
     );
@@ -2018,6 +2036,7 @@ function generatePodfile() {
     ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
     ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
     ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
+    ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
     ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
@@ -2025,6 +2044,14 @@ function generatePodfile() {
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
+    // ElizaosCapacitorBunRuntime ships the embedded JSContext-based Bun-shape
+    // runtime AND the Swift bridge to llama.cpp. The Pod's podspec vendors
+    // the LlamaCpp.xcframework built by
+    // `native/ios-bun-port/vendor-deps/llama.cpp/build-ios.sh`. Included
+    // unconditionally — on-device inference is the whole point of this Pod;
+    // if a build target doesn't want llama, drop the dep entirely instead of
+    // shipping a JS bridge that can't load a model.
+    ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
     ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
   ];
   if (!includeLlama) {

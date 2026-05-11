@@ -1,16 +1,20 @@
 /**
  * BlueBubbles connector HTTP routes.
  *
- * Exposes the @elizaos/plugin-bluebubbles service state through the Plugin
- * routes API so the dashboard, CLIs, and the BlueBubbles webhook target
- * have stable HTTP endpoints to call.
+ * Implements the shared setup contract defined in
+ * `@elizaos/app-core/api/setup-contract.ts`:
  *
- * Routes served:
+ *   GET  /api/setup/bluebubbles/status   service health + webhook path
+ *   POST /api/setup/bluebubbles/start    save server URL + password and reconnect
+ *   POST /api/setup/bluebubbles/cancel   clear stored credentials
  *
- *   GET  /api/bluebubbles/status     service health + webhook path
- *   GET  /api/bluebubbles/chats      list chats from the BlueBubbles server
- *   GET  /api/bluebubbles/messages   list messages for a chat
- *   POST /webhooks/bluebubbles       webhook receiver (path is service-configurable)
+ * BlueBubbles is webhook-driven: there is no QR-pairing flow, so `start`
+ * accepts the server URL and password and persists them through the
+ * connector-setup service; `cancel` wipes those credentials.
+ *
+ * Post-setup data routes live under `/api/bluebubbles/` (chats, messages)
+ * and the webhook receiver stays put at `/webhooks/bluebubbles` since it's
+ * called by the BlueBubbles server, not by the UI setup flow.
  *
  * The webhook path is read from `service.getWebhookPath()`. We register a
  * route at the default `/webhooks/bluebubbles` path; if the service is
@@ -20,11 +24,8 @@
  *
  * Each handler pulls the BlueBubblesService instance off the runtime via
  * `runtime.getService("bluebubbles")` and calls public methods. If the
- * service isn't registered we return 503 with a structured reason so the
- * UI can render an informative empty state.
- *
- * Routes are registered with `rawPath: true` so they mount at their
- * legacy paths without the plugin-name prefix.
+ * service isn't registered we return a `service_unavailable` envelope so
+ * the UI can render an informative empty state.
  */
 
 import type {
@@ -33,6 +34,26 @@ import type {
 	RouteRequest,
 	RouteResponse,
 } from "@elizaos/core";
+
+// ── Setup contract types (mirror @elizaos/app-core/api/setup-contract) ──
+
+type SetupState = "idle" | "configuring" | "paired" | "error";
+
+interface SetupStatusResponse<TDetail = unknown> {
+	connector: string;
+	state: SetupState;
+	detail?: TDetail;
+}
+
+interface SetupErrorResponse {
+	error: { code: string; message: string };
+}
+
+function setupError(code: string, message: string): SetupErrorResponse {
+	return { error: { code, message } };
+}
+
+// ── BlueBubbles types ───────────────────────────────────────────────────
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";
@@ -61,6 +82,29 @@ interface BlueBubblesServiceLike {
 	handleWebhook(payload: BlueBubblesWebhookPayload): Promise<void>;
 }
 
+interface ConnectorSetupService {
+	getConfig(): Record<string, unknown>;
+	persistConfig(config: Record<string, unknown>): void;
+	updateConfig(updater: (config: Record<string, unknown>) => void): void;
+}
+
+function isConnectorSetupService(
+	service: unknown,
+): service is ConnectorSetupService {
+	if (!service || typeof service !== "object") return false;
+	const candidate = service as Partial<ConnectorSetupService>;
+	return (
+		typeof candidate.getConfig === "function" &&
+		typeof candidate.persistConfig === "function" &&
+		typeof candidate.updateConfig === "function"
+	);
+}
+
+function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
+	const service = runtime.getService("connector-setup");
+	return isConnectorSetupService(service) ? service : null;
+}
+
 function resolveService(runtime: IAgentRuntime): BlueBubblesServiceLike | null {
 	const raw = runtime.getService(BLUEBUBBLES_SERVICE_NAME);
 	return (raw as BlueBubblesServiceLike | null | undefined) ?? null;
@@ -85,28 +129,149 @@ export function resolveBlueBubblesWebhookPath(
 	return DEFAULT_WEBHOOK_PATH;
 }
 
-// ── GET /api/bluebubbles/status ────────────────────────────────────
+interface BlueBubblesSetupDetail {
+	available: boolean;
+	connected: boolean;
+	webhookPath: string;
+	reason?: string;
+}
+
+function buildStatusResponse(
+	runtime: IAgentRuntime,
+): SetupStatusResponse<BlueBubblesSetupDetail> {
+	const service = resolveService(runtime);
+	const webhookPath = resolveBlueBubblesWebhookPath(runtime);
+	if (!service) {
+		return {
+			connector: "bluebubbles",
+			state: "idle",
+			detail: {
+				available: false,
+				connected: false,
+				webhookPath,
+				reason: "bluebubbles service not registered",
+			},
+		};
+	}
+	const connected = service.isConnected();
+	return {
+		connector: "bluebubbles",
+		state: connected ? "paired" : "configuring",
+		detail: {
+			available: true,
+			connected,
+			webhookPath,
+		},
+	};
+}
+
+// ── GET /api/setup/bluebubbles/status ───────────────────────────────────
+
 async function handleStatus(
 	_req: RouteRequest,
 	res: RouteResponse,
 	runtime: IAgentRuntime,
 ): Promise<void> {
-	const service = resolveService(runtime);
-	const webhookPath = resolveBlueBubblesWebhookPath(runtime);
-	if (!service) {
-		res.status(200).json({
-			available: false,
-			connected: false,
-			webhookPath,
-			reason: "bluebubbles service not registered",
-		});
+	res.status(200).json(buildStatusResponse(runtime));
+}
+
+// ── POST /api/setup/bluebubbles/start ───────────────────────────────────
+
+async function handleStart(
+	req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
+): Promise<void> {
+	const body = (req.body ?? {}) as {
+		serverUrl?: unknown;
+		password?: unknown;
+	};
+
+	const serverUrlRaw = body.serverUrl;
+	const passwordRaw = body.password;
+	const serverUrl = typeof serverUrlRaw === "string" ? serverUrlRaw.trim() : "";
+	const password = typeof passwordRaw === "string" ? passwordRaw : "";
+
+	if (!serverUrl || !password) {
+		res
+			.status(400)
+			.json(
+				setupError(
+					"bad_request",
+					"serverUrl and password are required to start BlueBubbles setup",
+				),
+			);
 		return;
 	}
-	res.status(200).json({
-		available: true,
-		connected: service.isConnected(),
-		webhookPath,
+
+	try {
+		// eslint-disable-next-line no-new -- validation only; throws on invalid URL
+		new URL(serverUrl);
+	} catch {
+		res
+			.status(400)
+			.json(setupError("bad_request", "serverUrl must be a valid URL"));
+		return;
+	}
+
+	const setupService = getSetupService(runtime);
+	if (!setupService) {
+		res
+			.status(503)
+			.json(
+				setupError(
+					"service_unavailable",
+					"connector-setup service not registered",
+				),
+			);
+		return;
+	}
+
+	setupService.updateConfig((cfg) => {
+		if (!cfg.connectors) cfg.connectors = {};
+		const connectors = cfg.connectors as Record<string, unknown>;
+		const previous =
+			(connectors.bluebubbles as Record<string, unknown> | undefined) ?? {};
+		connectors.bluebubbles = {
+			...previous,
+			serverUrl,
+			password,
+			enabled: true,
+		};
 	});
+
+	res.status(200).json(buildStatusResponse(runtime));
+}
+
+// ── POST /api/setup/bluebubbles/cancel ──────────────────────────────────
+
+async function handleCancel(
+	_req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
+): Promise<void> {
+	const setupService = getSetupService(runtime);
+	if (!setupService) {
+		res
+			.status(503)
+			.json(
+				setupError(
+					"service_unavailable",
+					"connector-setup service not registered",
+				),
+			);
+		return;
+	}
+
+	setupService.updateConfig((cfg) => {
+		const connectors = (cfg.connectors ?? {}) as Record<string, unknown>;
+		delete connectors.bluebubbles;
+	});
+
+	res.status(200).json({
+		connector: "bluebubbles",
+		state: "idle",
+	} satisfies SetupStatusResponse<undefined>);
 }
 
 // ── GET /api/bluebubbles/chats ─────────────────────────────────────
@@ -117,12 +282,20 @@ async function handleChats(
 ): Promise<void> {
 	const service = resolveService(runtime);
 	if (!service) {
-		res.status(503).json({ error: "bluebubbles service not registered" });
+		res
+			.status(503)
+			.json(
+				setupError("service_unavailable", "bluebubbles service not registered"),
+			);
 		return;
 	}
 	const client = service.getClient();
 	if (!client) {
-		res.status(503).json({ error: "bluebubbles client not available" });
+		res
+			.status(503)
+			.json(
+				setupError("service_unavailable", "bluebubbles client not available"),
+			);
 		return;
 	}
 	const url = new URL(req.url ?? "/api/bluebubbles/chats", "http://localhost");
@@ -141,9 +314,14 @@ async function handleChats(
 		const chats = await client.listChats(limit, offset);
 		res.status(200).json({ chats, count: chats.length, limit, offset });
 	} catch (error) {
-		res.status(500).json({
-			error: `failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
-		});
+		res
+			.status(500)
+			.json(
+				setupError(
+					"internal_error",
+					`failed to read bluebubbles chats: ${error instanceof Error ? error.message : String(error)}`,
+				),
+			);
 	}
 }
 
@@ -155,12 +333,20 @@ async function handleMessages(
 ): Promise<void> {
 	const service = resolveService(runtime);
 	if (!service) {
-		res.status(503).json({ error: "bluebubbles service not registered" });
+		res
+			.status(503)
+			.json(
+				setupError("service_unavailable", "bluebubbles service not registered"),
+			);
 		return;
 	}
 	const client = service.getClient();
 	if (!client) {
-		res.status(503).json({ error: "bluebubbles client not available" });
+		res
+			.status(503)
+			.json(
+				setupError("service_unavailable", "bluebubbles client not available"),
+			);
 		return;
 	}
 	const url = new URL(
@@ -169,7 +355,9 @@ async function handleMessages(
 	);
 	const chatGuid = (url.searchParams.get("chatGuid") ?? "").trim();
 	if (!chatGuid) {
-		res.status(400).json({ error: "chatGuid query parameter is required" });
+		res
+			.status(400)
+			.json(setupError("bad_request", "chatGuid query parameter is required"));
 		return;
 	}
 	const limit = Math.min(
@@ -193,9 +381,14 @@ async function handleMessages(
 			offset,
 		});
 	} catch (error) {
-		res.status(500).json({
-			error: `failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
-		});
+		res
+			.status(500)
+			.json(
+				setupError(
+					"internal_error",
+					`failed to read bluebubbles messages: ${error instanceof Error ? error.message : String(error)}`,
+				),
+			);
 	}
 }
 
@@ -207,7 +400,11 @@ async function handleWebhook(
 ): Promise<void> {
 	const service = resolveService(runtime);
 	if (!service) {
-		res.status(503).json({ error: "bluebubbles service not registered" });
+		res
+			.status(503)
+			.json(
+				setupError("service_unavailable", "bluebubbles service not registered"),
+			);
 		return;
 	}
 	const payload = req.body as BlueBubblesWebhookPayload | undefined;
@@ -219,31 +416,53 @@ async function handleWebhook(
 		payload.data === null ||
 		Array.isArray(payload.data)
 	) {
-		res.status(400).json({ error: "invalid BlueBubbles webhook payload" });
+		res
+			.status(400)
+			.json(setupError("bad_request", "invalid BlueBubbles webhook payload"));
 		return;
 	}
 	try {
 		await service.handleWebhook(payload);
 		res.status(200).json({ ok: true });
 	} catch (error) {
-		res.status(500).json({
-			error: `failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
-		});
+		res
+			.status(500)
+			.json(
+				setupError(
+					"internal_error",
+					`failed to handle bluebubbles webhook: ${error instanceof Error ? error.message : String(error)}`,
+				),
+			);
 	}
 }
 
 /**
  * Plugin routes for BlueBubbles.
- * Registered with `rawPath: true` to preserve legacy paths.
+ * Registered with `rawPath: true` to mount at canonical paths.
  *
- * The webhook is registered as a public route (no auth required) since the
- * BlueBubbles server posts to it from outside the loopback API.
+ * The setup-shaped routes live under `/api/setup/bluebubbles/`. Post-setup
+ * data routes (chats, messages) remain under `/api/bluebubbles/`. The
+ * webhook stays at `/webhooks/bluebubbles` and is registered as a public
+ * route (no auth required) since the BlueBubbles server posts to it from
+ * outside the loopback API.
  */
 export const blueBubblesSetupRoutes: Route[] = [
 	{
 		type: "GET",
-		path: "/api/bluebubbles/status",
+		path: "/api/setup/bluebubbles/status",
 		handler: handleStatus,
+		rawPath: true,
+	},
+	{
+		type: "POST",
+		path: "/api/setup/bluebubbles/start",
+		handler: handleStart,
+		rawPath: true,
+	},
+	{
+		type: "POST",
+		path: "/api/setup/bluebubbles/cancel",
+		handler: handleCancel,
 		rawPath: true,
 	},
 	{

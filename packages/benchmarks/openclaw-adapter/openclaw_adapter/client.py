@@ -5,26 +5,32 @@ The real OpenClaw project is installed from source by
 same small surface as ``ElizaClient`` / ``HermesClient``: ``reset`` plus
 ``send_message`` returning a normalized ``MessageResponse``.
 
-OpenClaw's public CLI surface moves faster than the benchmark suite, so the
-default execution path is an OpenAI-compatible chat completion using
-OpenClaw's text-embedded ``<tool_call>{...}</tool_call>`` protocol. Operators
-can force the source CLI path with ``OPENCLAW_USE_CLI=1`` once a compatible
-source checkout has been installed.
+Every ``send_message`` spawns ``openclaw agent --local --json --message <text>``
+and maps the JSON output into a :class:`MessageResponse`. The provider /
+model / api-key fields configure the env vars passed to the spawned CLI so
+OpenClaw's own provider routing picks the right backend.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
 import re
 import subprocess
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Mapping, Sequence
+
+from ._retry import (
+    MAX_ATTEMPTS,
+    RetryExhaustedError,
+    backoff_seconds,
+    is_retryable_status,
+    parse_retry_after,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +45,6 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_API_KEY_ENV = "CEREBRAS_API_KEY"
 DEFAULT_BASE_URL_ENV = "CEREBRAS_BASE_URL"
-DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
 
@@ -78,7 +83,6 @@ class OpenClawClient:
         provider: str = DEFAULT_PROVIDER,
         model: str = DEFAULT_MODEL,
         api_key: str | None = None,
-        base_url: str | None = None,
         api_key_env: str = DEFAULT_API_KEY_ENV,
         base_url_env: str = DEFAULT_BASE_URL_ENV,
         thinking_level: str = DEFAULT_THINKING_LEVEL,
@@ -91,12 +95,6 @@ class OpenClawClient:
         self.api_key_env = api_key_env
         self.base_url_env = base_url_env
         self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
-        self.base_url = (
-            base_url
-            or os.environ.get("OPENCLAW_BASE_URL")
-            or os.environ.get(base_url_env)
-            or DEFAULT_BASE_URL
-        )
         self.thinking_level = thinking_level
         self.timeout_s = float(timeout_s)
         self._task_id: str | None = None
@@ -107,20 +105,13 @@ class OpenClawClient:
     # ------------------------------------------------------------------
 
     def health(self) -> dict[str, object]:
-        """Report readiness for the selected OpenClaw execution path."""
-        if os.environ.get("OPENCLAW_USE_CLI", "").strip() != "1":
-            if not self.repo_path.exists():
-                return {
-                    "status": "error",
-                    "error": f"OpenClaw source checkout not found at {self.repo_path}",
-                }
-            if not self.binary_path.exists():
-                return {
-                    "status": "error",
-                    "error": f"OpenClaw source payload not found at {self.binary_path}",
-                }
-            return {"status": "ready", "repo_path": str(self.repo_path)}
+        """Probe the OpenClaw binary by running ``<binary> --version``.
 
+        Single canonical path — there is no "skip the subprocess" mode. If the
+        binary exists, we must invoke it to fail fast on a broken install. The
+        old conditional that returned ``ready`` based purely on file existence
+        masked install corruption until the first benchmark turn.
+        """
         if not self.binary_path.exists():
             return {
                 "status": "error",
@@ -187,16 +178,7 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
-        """Run one OpenClaw-style turn and parse the normalized response."""
-        if os.environ.get("OPENCLAW_USE_CLI", "").strip() == "1":
-            return self._send_cli(text, context)
-        return self._send_openai_compatible(text, context)
-
-    def _send_cli(
-        self,
-        text: str,
-        context: Mapping[str, object] | None,
-    ) -> MessageResponse:
+        """Spawn one ``openclaw agent --local --json`` turn and parse it."""
         argv = self.build_argv(text, context)
         env = self.build_env()
         try:
@@ -227,62 +209,6 @@ class OpenClawClient:
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
         return _response_from_payload(payload)
 
-    def _send_openai_compatible(
-        self,
-        text: str,
-        context: Mapping[str, object] | None,
-    ) -> MessageResponse:
-        ctx = dict(context or {})
-        messages = _messages_from_context(text, ctx)
-        tools = ctx.get("tools")
-        system_prompt = _openclaw_system_prompt(tools if isinstance(tools, list) else None)
-        messages = [{"role": "system", "content": system_prompt}, *messages]
-
-        body: dict[str, object] = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": 0,
-            "max_tokens": int(ctx.get("max_tokens") or os.environ.get("OPENCLAW_MAX_TOKENS") or 1024),
-        }
-        request = urllib.request.Request(
-            f"{self.base_url.rstrip('/')}/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Accept-Encoding": "identity",
-                "User-Agent": "eliza-openclaw-benchmark/1.0",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=self.timeout_s) as response:  # nosec B310
-                data = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            detail = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenClaw-compatible completion failed: {detail}") from exc
-
-        choices = data.get("choices")
-        first_choice = choices[0] if isinstance(choices, list) and choices else {}
-        msg = first_choice.get("message") if isinstance(first_choice, Mapping) else {}
-        msg = msg if isinstance(msg, Mapping) else {}
-        content = str(msg.get("content") or "")
-        text_out, parsed_tool_calls = parse_openclaw_tool_calls(content)
-        native_raw = msg.get("tool_calls")
-        native_tool_calls = [
-            _coerce_native_tool_call(tc)
-            for tc in (native_raw if isinstance(native_raw, list) else [])
-        ]
-        tool_calls = [tc for tc in [*parsed_tool_calls, *native_tool_calls] if tc is not None]
-        usage = data.get("usage") if isinstance(data.get("usage"), dict) else {}
-        return MessageResponse(
-            text=text_out,
-            thought=str(msg.get("reasoning") or msg.get("reasoning_content") or "") or None,
-            actions=[str(tc.get("name")) for tc in tool_calls if tc.get("name")],
-            params={"tool_calls": tool_calls, "usage": usage},
-        )
-
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)
     # ------------------------------------------------------------------
@@ -310,13 +236,28 @@ class OpenClawClient:
             "--message",
             text,
         ]
+        session_id: str | None = None
+        agent_id: str | None = None
         if context:
-            session_id = context.get("session_id")
-            if isinstance(session_id, str) and session_id:
-                argv.extend(["--session-id", session_id])
-            agent_id = context.get("agent_id")
-            if isinstance(agent_id, str) and agent_id:
-                argv.extend(["--agent", agent_id])
+            ctx_session = context.get("session_id")
+            if isinstance(ctx_session, str) and ctx_session:
+                session_id = ctx_session
+            ctx_agent = context.get("agent_id")
+            if isinstance(ctx_agent, str) and ctx_agent:
+                agent_id = ctx_agent
+        # ``openclaw agent --local`` rejects calls without a session selector
+        # ("Error: Pass --to <E.164>, --session-id, or --agent ..."). When
+        # neither was supplied, synthesize a benchmark-scoped session id from
+        # the recorded (benchmark, task_id) pair so each turn is reproducible
+        # but never collides with a real-user session. Tests can still pin a
+        # deterministic value via context["session_id"].
+        if session_id is None and agent_id is None:
+            seed = f"{self._benchmark or 'bench'}:{self._task_id or 'turn'}"
+            session_id = f"bench-{hashlib.sha1(seed.encode('utf-8')).hexdigest()[:12]}"
+        if session_id is not None:
+            argv.extend(["--session-id", session_id])
+        if agent_id is not None:
+            argv.extend(["--agent", agent_id])
         return argv
 
     def build_env(self) -> dict[str, str]:
@@ -341,6 +282,83 @@ class OpenClawClient:
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
+
+
+def _post_with_retry(
+    *,
+    url: str,
+    body: dict[str, Any],
+    api_key: str,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """POST ``body`` as JSON, retrying on 429/5xx/network errors.
+
+    On 4xx other than 429 the underlying ``HTTPError`` is re-wrapped as a
+    ``RuntimeError`` immediately. After ``MAX_ATTEMPTS`` exhausted retries a
+    :class:`RetryExhaustedError` is raised.
+    """
+    last_status: int | None = None
+    last_error_str = "no attempt completed"
+    for attempt in range(MAX_ATTEMPTS):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+                "User-Agent": "eliza-openclaw-benchmark/1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:  # nosec B310
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            status = int(exc.code) if isinstance(exc.code, int) else None
+            detail = exc.read().decode("utf-8", errors="replace")
+            last_status = status
+            last_error_str = detail[:500]
+            if status is None or not is_retryable_status(status):
+                raise RuntimeError(
+                    f"OpenClaw-compatible completion failed (status={status}): {detail}"
+                ) from exc
+            retry_after_raw: str | None = None
+            try:
+                retry_after_raw = exc.headers.get("Retry-After") if exc.headers else None
+            except AttributeError:
+                retry_after_raw = None
+            delay = parse_retry_after(retry_after_raw) or backoff_seconds(attempt)
+        except urllib.error.URLError as exc:
+            last_status = None
+            last_error_str = f"{type(exc).__name__}: {exc.reason!r}"
+            delay = backoff_seconds(attempt)
+        except (TimeoutError, ConnectionError, OSError) as exc:
+            last_status = None
+            last_error_str = f"{type(exc).__name__}: {exc}"
+            delay = backoff_seconds(attempt)
+        if attempt == MAX_ATTEMPTS - 1:
+            raise RetryExhaustedError(
+                attempts=MAX_ATTEMPTS,
+                last_status=last_status,
+                last_error=last_error_str,
+            )
+        logger.warning(
+            "openclaw-adapter retrying POST (attempt %d/%d, status=%s) after %.2fs: %s",
+            attempt + 1,
+            MAX_ATTEMPTS,
+            "net" if last_status is None else last_status,
+            delay,
+            last_error_str[:200],
+        )
+        time.sleep(delay)
+    # Unreachable — the loop always either returns or raises.
+    raise RetryExhaustedError(  # pragma: no cover
+        attempts=MAX_ATTEMPTS,
+        last_status=last_status,
+        last_error=last_error_str,
+    )
 
 
 def _resolve_default_binary() -> Path:
@@ -683,4 +701,4 @@ def _default_repo_path() -> Path:
     return DEFAULT_REPO_PATH
 
 
-__all__ = ["MessageResponse", "OpenClawClient"]
+__all__ = ["MessageResponse", "OpenClawClient", "parse_openclaw_tool_calls"]

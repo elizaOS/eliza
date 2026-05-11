@@ -342,7 +342,7 @@ async function caseAutomationsList(): Promise<void> {
   const coord = body.automations.filter(
     (a) => a.type === "coordinator_text",
   ).length;
-  const wf = body.automations.filter((a) => a.type === "workflow_service").length;
+  const wf = body.automations.filter((a) => a.type === "workflow").length;
   assert(
     body.summary.coordinatorCount === coord,
     `coordinatorCount mismatch: ${body.summary.coordinatorCount} vs ${coord}`,

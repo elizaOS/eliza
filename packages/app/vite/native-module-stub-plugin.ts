@@ -674,6 +674,27 @@ export function nativeModuleStubPlugin(
         ].join("\n");
       }
 
+      // @node-rs/argon2: server-only password hashing. The browser bundle never
+      // hashes passwords directly — it talks to the API. Provide hash/verify
+      // stubs that throw if accidentally invoked so client code surfaces the
+      // mistake instead of silently returning empty strings.
+      if (strippedId === "@node-rs/argon2") {
+        return [
+          "function unavailable() {",
+          "  throw new Error(",
+          '    "@node-rs/argon2 is server-only; the renderer must call the API to hash or verify passwords."',
+          "  );",
+          "}",
+          "export const hash = unavailable;",
+          "export const verify = unavailable;",
+          "export const hashSync = unavailable;",
+          "export const verifySync = unavailable;",
+          "export const Algorithm = Object.freeze({ Argon2d: 0, Argon2i: 1, Argon2id: 2 });",
+          "export const Version = Object.freeze({ V0x10: 0x10, V0x13: 0x13 });",
+          "export default { hash: unavailable, verify: unavailable };",
+        ].join("\n");
+      }
+
       // Generic fallback for other native modules
       return "export default {};\n";
     },

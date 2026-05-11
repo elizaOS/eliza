@@ -277,6 +277,7 @@ export class VoiceManager extends EventEmitter {
 	private client: Client | null;
 	private runtime: ICompatRuntime;
 	private accountId: string;
+	private resolveDiscordEntityId?: (userId: string) => UUID;
 	private streams: Map<string, Readable> = new Map();
 	private connections: Map<string, VoiceConnection> = new Map();
 	private activeMonitors: Map<
@@ -292,13 +293,16 @@ export class VoiceManager extends EventEmitter {
 	 * @param {ICompatRuntime} runtime - The runtime for the agent (with cross-core compat).
 	 */
 	constructor(
-		service: Pick<IDiscordService, "accountId" | "client">,
+		service: Pick<IDiscordService, "accountId" | "client"> & {
+			resolveDiscordEntityId?: (userId: string) => UUID;
+		},
 		runtime: ICompatRuntime,
 	) {
 		super();
 		this.client = service.client;
 		this.runtime = runtime;
 		this.accountId = service.accountId ?? "default";
+		this.resolveDiscordEntityId = service.resolveDiscordEntityId;
 		this.ready = false;
 
 		if (this.client) {
@@ -312,6 +316,13 @@ export class VoiceManager extends EventEmitter {
 			);
 			this.ready = false;
 		}
+	}
+
+	private resolveVoiceSpeakerEntityId(discordUserId: string): UUID {
+		return (
+			this.resolveDiscordEntityId?.(discordUserId) ??
+			createUniqueUuid(this.runtime, discordUserId)
+		);
 	}
 
 	/**
@@ -920,14 +931,14 @@ export class VoiceManager extends EventEmitter {
 	/**
 	 * Asynchronously debounces the process transcription function to prevent rapid execution.
 	 *
-	 * @param {UUID} entityId - The ID of the entity related to the transcription.
+	 * @param {string} entityId - The Discord user ID related to the transcription.
 	 * @param {string} name - The name of the entity for transcription.
 	 * @param {string} userName - The username of the user initiating the transcription.
 	 * @param {BaseGuildVoiceChannel} channel - The voice channel where the transcription is happening.
 	 */
 
 	async debouncedProcessTranscription(
-		entityId: UUID,
+		entityId: string,
 		name: string,
 		userName: string,
 		channel: BaseGuildVoiceChannel,
@@ -967,12 +978,6 @@ export class VoiceManager extends EventEmitter {
 					name,
 					userName,
 				);
-
-				// Clean all users' previous buffers
-				this.userStates.forEach((state, _) => {
-					state.buffers.length = 0;
-					state.totalLength = 0;
-				});
 			} finally {
 				this.processingVoice = false;
 			}
@@ -982,14 +987,14 @@ export class VoiceManager extends EventEmitter {
 	/**
 	 * Handle user audio stream for monitoring purposes.
 	 *
-	 * @param {UUID} userId - The unique identifier of the user.
+	 * @param {string} entityId - The Discord user ID.
 	 * @param {string} name - The name of the user.
 	 * @param {string} userName - The username of the user.
 	 * @param {BaseGuildVoiceChannel} channel - The voice channel the user is in.
 	 * @param {Readable} audioStream - The audio stream to monitor.
 	 */
 	async handleUserStream(
-		entityId: UUID,
+		entityId: string,
 		name: string,
 		userName: string,
 		channel: BaseGuildVoiceChannel,
@@ -1064,7 +1069,7 @@ export class VoiceManager extends EventEmitter {
 	/**
 	 * Process the transcription of audio data for a user.
 	 *
-	 * @param {UUID} entityId - The unique ID of the user entity.
+	 * @param {string} entityId - The Discord user ID.
 	 * @param {string} channelId - The ID of the channel where the transcription is taking place.
 	 * @param {BaseGuildVoiceChannel} channel - The voice channel where the user is speaking.
 	 * @param {string} name - The name of the user.
@@ -1072,7 +1077,7 @@ export class VoiceManager extends EventEmitter {
 	 * @returns {Promise<void>}
 	 */
 	private async processTranscription(
-		entityId: UUID,
+		entityId: string,
 		channelId: string,
 		channel: BaseGuildVoiceChannel,
 		name: string,
@@ -1139,7 +1144,7 @@ export class VoiceManager extends EventEmitter {
 	 * Handles a voice message received in a Discord channel.
 	 *
 	 * @param {string} message - The message content.
-	 * @param {UUID} entityId - The entity ID associated with the message.
+	 * @param {string} entityId - The Discord user ID associated with the message.
 	 * @param {string} channelId - The ID of the Discord channel where the message was received.
 	 * @param {BaseGuildVoiceChannel} channel - The Discord channel where the message was received.
 	 * @param {string} name - The name associated with the message.
@@ -1148,7 +1153,7 @@ export class VoiceManager extends EventEmitter {
 	 */
 	private async handleMessage(
 		message: string,
-		entityId: UUID,
+		entityId: string,
 		channelId: string,
 		channel: BaseGuildVoiceChannel,
 		name: string,
@@ -1160,7 +1165,7 @@ export class VoiceManager extends EventEmitter {
 			}
 
 			const roomId = createUniqueUuid(this.runtime, channelId);
-			const uniqueEntityId = createUniqueUuid(this.runtime, entityId);
+			const uniqueEntityId = this.resolveVoiceSpeakerEntityId(entityId);
 			const type = await this.getChannelType(channel as Channel);
 
 			await this.runtime.ensureConnection({

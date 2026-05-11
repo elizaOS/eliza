@@ -157,7 +157,7 @@ export default scenario({
                 description:
                   "Scanned PDF receipt; image-only with no text layer.",
                 source: "lifeops:user-upload",
-              } as unknown as Record<string, unknown>,
+              },
             ],
             metadata: {
               ocr_status: "failed",

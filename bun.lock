@@ -106,6 +106,7 @@
         "@elizaos/plugin-local-embedding": "2.0.0-beta.1",
         "@elizaos/plugin-local-inference": "2.0.0-beta.1",
         "@elizaos/plugin-mcp": "2.0.0-beta.1",
+        "@elizaos/plugin-mlx": "2.0.0-beta.1",
         "@elizaos/plugin-ollama": "2.0.0-beta.1",
         "@elizaos/plugin-pdf": "2.0.0-beta.1",
         "@elizaos/plugin-signal": "2.0.0-beta.1",
@@ -179,6 +180,7 @@
         "@capacitor/haptics": "8.0.2",
         "@capacitor/ios": "8.3.1",
         "@capacitor/keyboard": "8.0.3",
+        "@capacitor/network": "^8.0.0",
         "@capacitor/preferences": "8.0.1",
         "@capacitor/push-notifications": "8.0.3",
         "@capacitor/status-bar": "8.0.2",
@@ -333,6 +335,20 @@
         "vitest": "^4.0.18",
       },
       "optionalDependencies": {
+        "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+        "@elizaos/capacitor-camera": "2.0.0-beta.1",
+        "@elizaos/capacitor-canvas": "2.0.0-beta.1",
+        "@elizaos/capacitor-contacts": "2.0.0-beta.1",
+        "@elizaos/capacitor-gateway": "2.0.0-beta.1",
+        "@elizaos/capacitor-location": "2.0.0-beta.1",
+        "@elizaos/capacitor-messages": "2.0.0-beta.1",
+        "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
+        "@elizaos/capacitor-phone": "2.0.0-beta.1",
+        "@elizaos/capacitor-screencapture": "2.0.0-beta.1",
+        "@elizaos/capacitor-swabble": "2.0.0-beta.1",
+        "@elizaos/capacitor-system": "2.0.0-beta.1",
+        "@elizaos/capacitor-talkmode": "2.0.0-beta.1",
+        "@elizaos/capacitor-websiteblocker": "2.0.0-beta.1",
         "node-llama-cpp": "3.18.1",
         "onnxruntime-node": "1.24.3",
         "sharp": "^0.34.5",
@@ -369,6 +385,18 @@
         "rcedit": "4.0.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
+      },
+    },
+    "packages/benchmarks/interrupt-bench": {
+      "name": "@elizaos/interrupt-bench",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "4.1.5",
       },
     },
     "packages/benchmarks/lib": {
@@ -1305,6 +1333,22 @@
         "@capacitor/core": "^8.3.1",
       },
     },
+    "packages/native-plugins/bun-runtime": {
+      "name": "@elizaos/capacitor-bun-runtime",
+      "version": "0.1.0",
+      "dependencies": {
+        "@capacitor/core": "^8.0.0",
+      },
+      "devDependencies": {
+        "@capacitor/core": "^8.3.1",
+        "rimraf": "^6.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
     "packages/native-plugins/calendar": {
       "name": "@elizaos/capacitor-calendar",
       "version": "2.0.0-beta.1",
@@ -1378,6 +1422,23 @@
         "rimraf": "^6.0.0",
         "rollup": "^4.60.2",
         "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "packages/native-plugins/eliza-tasks": {
+      "name": "@elizaos/capacitor-eliza-tasks",
+      "version": "2.0.0-beta.1",
+      "devDependencies": {
+        "@capacitor/android": "^8.0.0",
+        "@capacitor/core": "^8.3.1",
+        "@capacitor/ios": "^8.0.0",
+        "@rollup/plugin-node-resolve": "^16.0.0",
+        "rimraf": "^6.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.17",
       },
       "peerDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -2449,6 +2510,27 @@
       },
       "peerDependencies": {
         "@elizaos/core": "2.0.0-beta.1",
+      },
+    },
+    "plugins/plugin-device-filesystem": {
+      "name": "@elizaos/plugin-device-filesystem",
+      "version": "2.0.0-beta.1",
+      "dependencies": {
+        "@elizaos/core": "2.0.0-beta.1",
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@capacitor/filesystem": "^7.0.0",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.0.0",
+      },
+      "optionalDependencies": {
+        "@capacitor/filesystem": "^7.0.0",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "^2.0.0-beta.1",
       },
     },
     "plugins/plugin-discord": {
@@ -3910,17 +3992,23 @@
 
     "@capacitor/docgen": ["@capacitor/docgen@0.3.1", "", { "dependencies": { "colorette": "^2.0.20", "github-slugger": "^1.5.0", "minimist": "^1.2.8", "typescript": "~4.2.4" }, "bin": { "docgen": "bin/docgen" } }, "sha512-WBdAUquQC4hiZOVk1YbY5Rs3vlDrNdCGt3KGnMa2dc2UBa91Q7PQ/jLW/oZyfVIfiXWu7t1KUhhM3MyiZepUrQ=="],
 
+    "@capacitor/filesystem": ["@capacitor/filesystem@7.1.8", "", { "dependencies": { "@capacitor/synapse": "^1.0.3" }, "peerDependencies": { "@capacitor/core": ">=7.0.0" } }, "sha512-Qpw/2SE4/CzqAUvGgSM9hw/uXQ5qoOaF4wxbToXwpAaKPS+tzletS1h5ti3jjLmGcqizTs2sEXMtcsARW/Ceew=="],
+
     "@capacitor/haptics": ["@capacitor/haptics@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-c2hZzRR5Fk1tbTvhG1jhh2XBAf3EhnIerMIb2sl7Mt41Gxx1fhBJFDa0/BI1IbY4loVepyyuqNC9820/GZuoWQ=="],
 
     "@capacitor/ios": ["@capacitor/ios@8.3.1", "", { "peerDependencies": { "@capacitor/core": "^8.3.0" } }, "sha512-BEhLyYYHWJLib4mpaPMaaylbC8meqgxbNYwQJH2svsSLW7yo/hFie+Zoo66a44XnqcMd2tvmAuzimWunXZi/xA=="],
 
     "@capacitor/keyboard": ["@capacitor/keyboard@8.0.3", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-27Bv5/2w1Ss2njguBgTS98O0Bb8DRJhAARyzXYib0JlT/n6BrJw/EZ0CokM4C8GFUjFDjJnEKF1Ie01buTMEXQ=="],
 
+    "@capacitor/network": ["@capacitor/network@8.0.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-9xK/FHFmzKGanB6BdoSZOzXk8vF0OFVQSQ4PAsIrzAzLuXHryO317qy8dcHVpgxYeuZq2noI0My9z1DvVDi/9w=="],
+
     "@capacitor/preferences": ["@capacitor/preferences@8.0.1", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-T6no3ebi79XJCk91U3Jp/liJUwgBdvHR+s6vhvPkPxSuch7z3zx5Rv1bdWM6sWruNx+pViuEGqZvbfCdyBvcHQ=="],
 
     "@capacitor/push-notifications": ["@capacitor/push-notifications@8.0.3", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-jmBBoJvOzmzem8YoO9dQJBPFiM1bksTNAoV7yksCBN10BybAOtmBF19vFPt/jr2KGAirnPZz0ne2X0OH/rRGtg=="],
 
     "@capacitor/status-bar": ["@capacitor/status-bar@8.0.2", "", { "peerDependencies": { "@capacitor/core": ">=8.0.0" } }, "sha512-WXs8YB8B9eEaPZz+bcdY6t2nForF1FLoj/JU0Dl9RRgQnddnS98FEEyDooQhaY7wivr000j4+SC1FyeJkrFO7A=="],
+
+    "@capacitor/synapse": ["@capacitor/synapse@1.0.4", "", {}, "sha512-/C1FUo8/OkKuAT4nCIu/34ny9siNHr9qtFezu4kxm6GY1wNFxrCFWjfYx5C1tUhVGz3fxBABegupkpjXvjCHrw=="],
 
     "@clack/core": ["@clack/core@1.3.0", "", { "dependencies": { "fast-wrap-ansi": "^0.2.0", "sisteransi": "^1.0.5" } }, "sha512-xJPHpAmEQUBrXSLx0gF+q5K/IyihXpsHZcha+jB+tyahsKRK3Dxo4D0coZDewHo12NhiuzC3dTtMPbm53GEAAA=="],
 
@@ -4094,6 +4182,8 @@
 
     "@elizaos/capacitor-appblocker": ["@elizaos/capacitor-appblocker@workspace:packages/native-plugins/appblocker"],
 
+    "@elizaos/capacitor-bun-runtime": ["@elizaos/capacitor-bun-runtime@workspace:packages/native-plugins/bun-runtime"],
+
     "@elizaos/capacitor-calendar": ["@elizaos/capacitor-calendar@workspace:packages/native-plugins/calendar"],
 
     "@elizaos/capacitor-camera": ["@elizaos/capacitor-camera@workspace:packages/native-plugins/camera"],
@@ -4103,6 +4193,8 @@
     "@elizaos/capacitor-contacts": ["@elizaos/capacitor-contacts@workspace:packages/native-plugins/contacts"],
 
     "@elizaos/capacitor-desktop": ["@elizaos/capacitor-desktop@workspace:packages/native-plugins/desktop"],
+
+    "@elizaos/capacitor-eliza-tasks": ["@elizaos/capacitor-eliza-tasks@workspace:packages/native-plugins/eliza-tasks"],
 
     "@elizaos/capacitor-gateway": ["@elizaos/capacitor-gateway@workspace:packages/native-plugins/gateway"],
 
@@ -4210,6 +4302,8 @@
 
     "@elizaos/inference": ["@elizaos/inference@workspace:packages/inference"],
 
+    "@elizaos/interrupt-bench": ["@elizaos/interrupt-bench@workspace:packages/benchmarks/interrupt-bench"],
+
     "@elizaos/macosalarm": ["@elizaos/macosalarm@workspace:packages/native-plugins/macosalarm"],
 
     "@elizaos/native-activity-tracker": ["@elizaos/native-activity-tracker@workspace:packages/native-plugins/activity-tracker"],
@@ -4249,6 +4343,8 @@
     "@elizaos/plugin-commands": ["@elizaos/plugin-commands@workspace:plugins/plugin-commands"],
 
     "@elizaos/plugin-computeruse": ["@elizaos/plugin-computeruse@workspace:plugins/plugin-computeruse"],
+
+    "@elizaos/plugin-device-filesystem": ["@elizaos/plugin-device-filesystem@workspace:plugins/plugin-device-filesystem"],
 
     "@elizaos/plugin-discord": ["@elizaos/plugin-discord@workspace:plugins/plugin-discord"],
 

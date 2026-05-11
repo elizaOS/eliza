@@ -28,6 +28,11 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { localInferenceRoot } from "../paths";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+  NativeVadHandle,
+} from "./ffi-bindings";
 import {
   loadOnnxRuntime,
   OnnxRuntimeUnavailableError,
@@ -103,6 +108,15 @@ export function resolveSileroVadPath(opts: {
 const SILERO_WINDOW_16K = 512; // samples per inference window @ 16 kHz
 const SILERO_STATE_SHAPE = [2, 1, 128] as const; // combined LSTM (h, c)
 
+function validateSileroSampleRate(sampleRate: number): void {
+  if (sampleRate !== 16_000) {
+    throw new VadUnavailableError(
+      "model-load-failed",
+      `[voice] Silero VAD v5 only supports 16 kHz; got ${sampleRate}. Resample the mic stream to 16 kHz before the VAD.`,
+    );
+  }
+}
+
 /**
  * Thin wrapper over the Silero VAD v5 ONNX graph. Stateful: `process()`
  * carries the LSTM state across calls and expects a 512-sample window at
@@ -128,12 +142,7 @@ export class SileroVad {
     opts: { modelPath?: string; bundleRoot?: string; sampleRate?: number } = {},
   ): Promise<SileroVad> {
     const sampleRate = opts.sampleRate ?? 16_000;
-    if (sampleRate !== 16_000) {
-      throw new VadUnavailableError(
-        "model-load-failed",
-        `[voice] Silero VAD v5 only supports 16 kHz; got ${sampleRate}. Resample the mic stream to 16 kHz before the VAD.`,
-      );
-    }
+    validateSileroSampleRate(sampleRate);
     const resolved = resolveSileroVadPath(opts);
     if (!resolved) {
       throw new VadUnavailableError(
@@ -187,6 +196,70 @@ export class SileroVad {
       this.state = nextState;
     }
     return prob[0] ?? 0;
+  }
+}
+
+/**
+ * Native libelizainference-backed Silero VAD. It implements the same
+ * narrow interface as the ONNX wrapper so `VadDetector` remains backend
+ * agnostic: one 512-sample 16 kHz window in, one speech probability out.
+ */
+export class NativeSileroVad {
+  readonly sampleRate: number;
+  readonly windowSamples = SILERO_WINDOW_16K;
+  private closed = false;
+
+  private constructor(
+    private readonly ffi: ElizaInferenceFfi,
+    private readonly handle: NativeVadHandle,
+    sampleRate: number,
+  ) {
+    this.sampleRate = sampleRate;
+  }
+
+  static isSupported(ffi: ElizaInferenceFfi | null | undefined): boolean {
+    if (!ffi || typeof ffi.vadSupported !== "function") return false;
+    return ffi.vadSupported();
+  }
+
+  static async load(opts: {
+    ffi: ElizaInferenceFfi;
+    ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
+    sampleRate?: number;
+  }): Promise<NativeSileroVad> {
+    const sampleRate = opts.sampleRate ?? 16_000;
+    validateSileroSampleRate(sampleRate);
+    if (!NativeSileroVad.isSupported(opts.ffi)) {
+      throw new VadUnavailableError(
+        "model-missing",
+        "[voice] Native Silero VAD is not supported by this libelizainference build.",
+      );
+    }
+    const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
+    const handle = opts.ffi.vadOpen({ ctx, sampleRateHz: sampleRate });
+    return new NativeSileroVad(opts.ffi, handle, sampleRate);
+  }
+
+  async process(window: Float32Array): Promise<number> {
+    if (this.closed) {
+      throw new Error("[voice] NativeSileroVad.process called after close()");
+    }
+    if (window.length !== SILERO_WINDOW_16K) {
+      throw new Error(
+        `[voice] NativeSileroVad.process expects a ${SILERO_WINDOW_16K}-sample window; got ${window.length}`,
+      );
+    }
+    return this.ffi.vadProcess({ vad: this.handle, pcm: window });
+  }
+
+  reset(): void {
+    if (!this.closed) this.ffi.vadReset(this.handle);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.ffi.vadClose(this.handle);
   }
 }
 
@@ -579,12 +652,23 @@ export async function createSileroVadDetector(
   opts: {
     modelPath?: string;
     bundleRoot?: string;
+    ffi?: ElizaInferenceFfi | null;
+    ctx?: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
     config?: VadDetectorConfig;
   } = {},
 ): Promise<VadDetector> {
+  if (opts.ffi && opts.ctx && NativeSileroVad.isSupported(opts.ffi)) {
+    const native = await NativeSileroVad.load({
+      ffi: opts.ffi,
+      ctx: opts.ctx,
+      sampleRate: opts.config?.sampleRate,
+    });
+    return new VadDetector(native, opts.config);
+  }
   const silero = await SileroVad.load({
     modelPath: opts.modelPath,
     bundleRoot: opts.bundleRoot,
+    sampleRate: opts.config?.sampleRate,
   });
   return new VadDetector(silero, opts.config);
 }

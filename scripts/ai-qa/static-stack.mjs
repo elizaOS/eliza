@@ -152,6 +152,13 @@ async function proxyToApi({ apiBase, request, response }) {
   response.end(buf);
 }
 
+process.on("uncaughtException", (err) => {
+  console.error("[ai-qa static-stack] uncaughtException:", err);
+});
+process.on("unhandledRejection", (err) => {
+  console.error("[ai-qa static-stack] unhandledRejection:", err);
+});
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const apiPort = args.api ?? (await getFreePort());
@@ -209,24 +216,52 @@ async function main() {
     process.exit(3);
   }
 
-  const uiServer = createServer(async (request, response) => {
+  function sendError(response, error) {
+    if (response.headersSent || response.writableEnded) {
+      // Already replying — best we can do is end and log.
+      if (!response.writableEnded) response.end();
+      console.error("[ai-qa static-stack] late error after headers:", error);
+      return;
+    }
     try {
-      const url = new URL(request.url ?? "/", "http://127.0.0.1");
-      if (url.pathname.startsWith("/api/")) {
-        await proxyToApi({ apiBase, request, response });
-        return;
-      }
-      const filePath = resolveDistAsset(url.pathname);
-      const body = readFileSync(filePath);
-      response.writeHead(200, {
-        "content-type": contentTypeFor(filePath),
-        "cache-control": "no-store",
-      });
-      response.end(body);
-    } catch (error) {
       response.writeHead(500, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: String(error) }));
+    } catch (writeError) {
+      console.error("[ai-qa static-stack] failed to send 500:", writeError);
     }
+  }
+
+  const uiServer = createServer((request, response) => {
+    response.on("error", (err) => {
+      console.error("[ai-qa static-stack] response error:", err.message);
+    });
+    Promise.resolve()
+      .then(async () => {
+        const url = new URL(request.url ?? "/", "http://127.0.0.1");
+        if (url.pathname.startsWith("/api/")) {
+          await proxyToApi({ apiBase, request, response });
+          return;
+        }
+        const filePath = resolveDistAsset(url.pathname);
+        const body = readFileSync(filePath);
+        if (!response.headersSent) {
+          response.writeHead(200, {
+            "content-type": contentTypeFor(filePath),
+            "cache-control": "no-store",
+          });
+        }
+        response.end(body);
+      })
+      .catch((error) => sendError(response, error));
+  });
+  uiServer.on("clientError", (err, socket) => {
+    console.error("[ai-qa static-stack] client error:", err.message);
+    try {
+      socket.destroy();
+    } catch {}
+  });
+  uiServer.on("error", (err) => {
+    console.error("[ai-qa static-stack] server error:", err.message);
   });
 
   await new Promise((resolveP, rejectP) => {

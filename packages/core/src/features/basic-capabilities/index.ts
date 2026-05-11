@@ -18,6 +18,7 @@ import {
 	imageDescriptionTemplate,
 	postCreationTemplate,
 } from "../../prompts.ts";
+import { TURN_CONTROL_ROUTES } from "../../runtime/turn-routes";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
@@ -1423,7 +1424,10 @@ export function createBasicCapabilitiesPlugin(
 			...(config.enableSecretsManager ? secretsCapability.services : []),
 			...(config.enablePluginManager ? pluginManagerCapability.services : []),
 		],
-		routes: [...(config.enableAutonomy ? autonomyCapabilities.routes : [])],
+		routes: [
+			...TURN_CONTROL_ROUTES,
+			...(config.enableAutonomy ? autonomyCapabilities.routes : []),
+		],
 		events,
 		...(initFns.length > 0
 			? {

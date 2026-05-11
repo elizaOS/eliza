@@ -1,11 +1,11 @@
 import {
   Button,
   client,
-  dispatchFocusConnector,
   isElectrobunRuntime,
   openExternalUrl,
   useApp,
 } from "@elizaos/ui";
+import { dispatchFocusConnector } from "@elizaos/ui/events";
 import type {
   LifeOpsOwnerBrowserAccessStatus,
   LifeOpsTelegramAuthState,

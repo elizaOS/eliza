@@ -13,15 +13,15 @@ Action-name vocabulary
 The executor speaks two distinct surfaces and dispatches both through the
 same registry so adapters can mix-and-match:
 
-1. **Umbrella verbs** (the canonical Eliza surface, also what Wave 2A
-   scenarios author): a single name per domain (e.g. `CALENDAR`, `MESSAGE`,
+1. **Umbrella verbs** (the canonical Eliza surface, also what the static
+   scenario corpus authors): a single name per domain (e.g. `CALENDAR`, `MESSAGE`,
    `ENTITY`, `LIFE_CREATE`, `MONEY`) with a discriminator inside kwargs:
 
        Action(name="CALENDAR", kwargs={"subaction": "update_event", ...})
 
    The discriminator field is `subaction` for most umbrellas; the
    `MESSAGE` umbrella uses `operation` because that matches the Eliza
-   message handler. Wave 2A picked these to mirror the planner's surface.
+   message handler. These mirror the planner's surface.
 
 2. **Fine-grained verbs** (kept for the inline conformance corpus and
    adapters that emit explicit tool ids): `<DOMAIN>.<verb>` like
@@ -120,7 +120,9 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "CALENDAR": (
         "Read or mutate calendar state. Use subaction=create_event, update_event, "
         "delete_event, propose_times, search_events, check_availability, next_event, "
-        "or update_preferences."
+        "or update_preferences. Also use CALENDAR.create_event to carve out time "
+        "on the calendar — focus blocks, deep-work blocks, and any 'block out N "
+        "hours for X' request are calendar events, NOT BLOCK actions."
     ),
     "MESSAGE": (
         "Send, draft, search, triage, or manage messages and email. Use operation=send, "
@@ -152,13 +154,18 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "authorized cancellation."
     ),
     "BOOK_TRAVEL": "Search or prepare travel options without booking.",
-    "BLOCK": "Route a focus-blocking action.",
-    "BLOCK_BLOCK": "Create a focus block for apps or websites.",
-    "BLOCK_UNBLOCK": "Remove a focus block for apps or websites.",
-    "BLOCK_LIST_ACTIVE": "List active focus blocks.",
-    "BLOCK_RELEASE": "Release a focus block.",
-    "BLOCK_STATUS": "Read focus-block status.",
-    "BLOCK_REQUEST_PERMISSION": "Request permission to create or change a focus block.",
+    "BLOCK": (
+        "Block or unblock specific phone apps and desktop websites only. "
+        "NOT for carving out blocks of time on the calendar — for calendar "
+        "time-blocks (e.g. 'block 2 hours for deep work'), use CALENDAR with "
+        "subaction=create_event."
+    ),
+    "BLOCK_BLOCK": "Block specific phone apps or desktop websites (not calendar time-blocks).",
+    "BLOCK_UNBLOCK": "Unblock specific phone apps or desktop websites.",
+    "BLOCK_LIST_ACTIVE": "List active app/website blocks.",
+    "BLOCK_RELEASE": "Release an app/website block.",
+    "BLOCK_STATUS": "Read app/website block status.",
+    "BLOCK_REQUEST_PERMISSION": "Request permission to create or change an app/website block.",
     "SCHEDULED_TASK_CREATE": (
         "Create a scheduled task. Include kind, trigger, promptInstructions, and "
         "other structured task fields when known."
@@ -434,14 +441,14 @@ def _h_note_create(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str
 
 
 # ---------------------------------------------------------------------------
-# Umbrella handlers — Wave 2A scenarios
+# Umbrella handlers
 # ---------------------------------------------------------------------------
 
 
 def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
     """Dispatch the CALENDAR umbrella on `subaction`.
 
-    Subactions seen in Wave 2A:
+    Subactions:
         create_event, update_event, delete_event,
         propose_times, search_events, check_availability,
         next_event, update_preferences
@@ -505,8 +512,8 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
 def _u_message(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
     """Dispatch the MESSAGE umbrella on `operation`.
 
-    Wave 2A uses MESSAGE for both chat (imessage/whatsapp/telegram/slack/etc)
-    AND mail (gmail). The `source` field disambiguates. Operations seen:
+    MESSAGE is used for both chat (imessage/whatsapp/telegram/slack/etc) AND
+    mail (gmail). The `source` field disambiguates. Operations seen:
         send, draft_reply, manage, triage,
         search_inbox, list_channels, read_channel, read_with_contact
     """
@@ -618,7 +625,7 @@ def _draft_reply_via_message(
 ) -> dict[str, Any]:
     if source != "gmail":
         # Drafts on chat channels aren't modeled — treat as no-op so state
-        # match still works. Adding a non-mail draft store would be Wave 4C.
+        # match still works. Add a non-mail draft store if scenarios need one.
         return {"operation": "draft_reply", "source": source, "ok": True, "noop": True}
     parent_id = _required(kw, "messageId", action="MESSAGE", sub="draft_reply")
     parent = world.emails.get(parent_id)
@@ -690,7 +697,7 @@ def _manage_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str,
 def _u_entity(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
     """Dispatch the ENTITY umbrella on `subaction`.
 
-    Subactions seen in Wave 2A: add, set_identity, log_interaction, list.
+    Subactions: add, set_identity, log_interaction, list.
     """
     sub = _required(kw, "subaction", action=name, sub="<missing>")
     if sub == "add":
@@ -899,8 +906,7 @@ def _u_health(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, An
 def _u_money_readonly(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
     """MONEY_* read-only verbs — dashboard, list_transactions, list_sources, etc.
 
-    Covers the renamed ``PAYMENTS`` umbrella from Wave 4A: every MONEY_*
-    verb that doesn't mutate state lands here. The MONEY umbrella picks
+    Every MONEY_* verb that doesn't mutate state lands here. The MONEY umbrella picks
     the right behavior on ``subaction`` so the same handler is shared
     between e.g. ``MONEY``, ``MONEY_DASHBOARD``, ``MONEY_LIST_TRANSACTIONS``.
     """
@@ -910,7 +916,7 @@ def _u_money_readonly(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict
 def _u_money_subscription_audit(
     _world: LifeWorld, kw: dict[str, Any], _name: str
 ) -> dict[str, Any]:
-    """MONEY_SUBSCRIPTION_AUDIT (renamed from SUBSCRIPTIONS_AUDIT in Wave 4A)."""
+    """MONEY_SUBSCRIPTION_AUDIT — read-only no-op."""
     return {"subaction": kw.get("subaction", "audit"), "ok": True, "noop": True}
 
 
@@ -919,8 +925,6 @@ def _u_money_subscription_cancel(
 ) -> dict[str, Any]:
     """Cancel a subscription. Resolves by serviceSlug first, then serviceName.
 
-    Renamed from ``SUBSCRIPTIONS_CANCEL`` to ``MONEY_SUBSCRIPTION_CANCEL``
-    in Wave 4A; behavior unchanged.
     """
     if not bool(kw.get("confirmed", False)):
         return {"subaction": "cancel", "ok": True, "noop": True, "reason": "unconfirmed"}
@@ -958,15 +962,14 @@ def _u_book_travel(_world: LifeWorld, _kw: dict[str, Any], _name: str) -> dict[s
 def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
     """BLOCK_* family — focus blocks (apps + websites).
 
-    Wave 4A collapsed ``APP_BLOCK`` and ``WEBSITE_BLOCK`` into the
-    unified ``BLOCK_*`` action family. The same handler honors both
+    The same handler honors both
     ``packageNames`` (app blocks) and ``hostnames`` (website blocks) so
     every BLOCK_* verb (BLOCK, BLOCK_BLOCK, BLOCK_LIST_ACTIVE,
     BLOCK_RELEASE, BLOCK_STATUS, BLOCK_UNBLOCK, BLOCK_REQUEST_PERMISSION)
     routes here.
 
     Focus-block sessions are not yet modeled in LifeWorld — every BLOCK_*
-    is a read-only no-op for state-hash purposes (Wave 4C tracking).
+    is a read-only no-op for state-hash purposes.
     """
     return {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
 
@@ -978,7 +981,7 @@ def _u_scheduled_task_create(
 
     LifeWorld doesn't have a separate scheduled-task store; folding into
     reminders gives state-hash determinism without inventing a new entity
-    kind. Wave 4C can split this out if scenarios start needing
+    kind. Split this out if scenarios start needing
     scheduled-task semantics that diverge from reminders.
     """
     if "list_personal" not in world.reminder_lists:
@@ -1044,7 +1047,7 @@ _ACTION_HANDLERS: dict[
     "REMINDER.create": _h_reminder_create,
     "REMINDER.complete": _h_reminder_complete,
     "NOTE.create": _h_note_create,
-    # Umbrella vocabulary (Wave 2A scenarios + Eliza adapter)
+    # Umbrella vocabulary (static scenarios + Eliza adapter)
     "CALENDAR": _u_calendar,
     "MESSAGE": _u_message,
     "ENTITY": _u_entity,
@@ -1059,7 +1062,7 @@ _ACTION_HANDLERS: dict[
     # treat as read-only review.
     "LIFE": _u_life_review,
     "HEALTH": _u_health,
-    # MONEY_* family (Wave 4A renamed PAYMENTS / SUBSCRIPTIONS_* → MONEY_*).
+    # MONEY_* family.
     # Read-only verbs share `_u_money_readonly`; the cancel verb mutates state.
     "MONEY": _u_money_readonly,
     "MONEY_DASHBOARD": _u_money_readonly,
@@ -1071,7 +1074,7 @@ _ACTION_HANDLERS: dict[
     "MONEY_SUBSCRIPTION_AUDIT": _u_money_subscription_audit,
     "MONEY_SUBSCRIPTION_CANCEL": _u_money_subscription_cancel,
     "BOOK_TRAVEL": _u_book_travel,
-    # BLOCK_* family (Wave 4A renamed APP_BLOCK + WEBSITE_BLOCK → BLOCK_*).
+    # BLOCK_* family.
     # All BLOCK_* verbs share one handler — focus-block sessions aren't
     # modeled in LifeWorld yet, so every BLOCK_* is a read-only no-op.
     "BLOCK": _u_block,
@@ -1084,7 +1087,7 @@ _ACTION_HANDLERS: dict[
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
     "SCHEDULED_TASK_SNOOZE": _u_scheduled_task_mutate,
     "SCHEDULED_TASK_UPDATE": _u_scheduled_task_mutate,
-    # Promoted CALENDAR_* names (Wave 4D's manifest exporter promotes
+    # Promoted CALENDAR_* names (the manifest exporter promotes
     # subactions into top-level action names). Each promoted name carries
     # `subaction` in its kwargs already, so route to `_u_calendar` unchanged.
     "CALENDAR_CREATE_EVENT": _u_calendar,

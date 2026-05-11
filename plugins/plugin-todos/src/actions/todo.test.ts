@@ -443,4 +443,32 @@ describe("TODO action", () => {
       expect(result.text).toContain("entityId");
     });
   });
+
+  describe("canonical action discriminator", () => {
+    it("accepts action:create as the canonical discriminator", async () => {
+      const result = await invoke(runtime, {
+        action: "create",
+        content: "Add tests via canonical name",
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows[0]?.content).toBe("Add tests via canonical name");
+    });
+
+    it("accepts action:write equivalently to op:write", async () => {
+      const result = await invoke(runtime, {
+        action: "write",
+        todos: [{ content: "via action", status: "pending" }],
+      });
+      expect(result.success).toBe(true);
+      expect(service.rows.length).toBe(1);
+    });
+
+    it("still accepts legacy op:list for back-compat", async () => {
+      await invoke(runtime, { action: "create", content: "alpha" });
+      const result = await invoke(runtime, { op: "list" });
+      expect(result.success).toBe(true);
+      const data = result.data as { todos: unknown[] };
+      expect(data.todos.length).toBe(1);
+    });
+  });
 });

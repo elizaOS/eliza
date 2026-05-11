@@ -44,7 +44,7 @@ import type {
   ScheduledTaskRunnerHandle,
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
-import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import type {
   DocumentRequest,
   DocumentRequestKind,
@@ -201,7 +201,10 @@ function missing(name: string, subaction: Subaction): ActionResult {
   };
 }
 
-function notFound(documentRequestId: string, subaction: Subaction): ActionResult {
+function notFound(
+  documentRequestId: string,
+  subaction: Subaction,
+): ActionResult {
   return {
     success: false,
     text: `No DocumentRequest found with id ${documentRequestId}.`,
@@ -246,7 +249,7 @@ interface RunnerScope {
 
 function makeScope(runtime: IAgentRuntime, message: Memory): RunnerScope {
   const agentId = String(runtime.agentId);
-  const runner = createRuntimeScheduledTaskRunner({ runtime, agentId });
+  const runner = getScheduledTaskRunner(runtime, { agentId });
   const subjectUserId =
     typeof message.entityId === "string" && message.entityId.length > 0
       ? message.entityId
@@ -325,7 +328,9 @@ async function handleRequestSignature(
     },
     channel: "internal",
     reason: `Request signature from ${requesteeEntityId} on "${doc.title}" by ${deadline}`,
-    expiresAt: new Date(Date.parse(deadline) || Date.now() + 24 * 60 * 60 * 1000),
+    expiresAt: new Date(
+      Date.parse(deadline) || Date.now() + 24 * 60 * 60 * 1000,
+    ),
   });
 
   // Schedule the deadline watcher up front so a SCHEDULED_TASK exists even
@@ -547,7 +552,8 @@ async function handleCollectId(
     kind: "collect_id",
     requesteeEntityId,
     title:
-      params.documentTitle?.trim() ?? `Collect ${assetKind} from ${requesteeEntityId}`,
+      params.documentTitle?.trim() ??
+      `Collect ${assetKind} from ${requesteeEntityId}`,
     assetKind,
     status: "pending",
     createdAt: now,
@@ -620,9 +626,7 @@ async function handleCloseRequest(
     }
   }
 
-  logger.info(
-    `[DOC] close_request id=${patched.id} resolution=${resolution}`,
-  );
+  logger.info(`[DOC] close_request id=${patched.id} resolution=${resolution}`);
 
   return {
     success: true,
@@ -655,7 +659,9 @@ const examples: ActionExample[][] = [
   [
     {
       name: "{{name1}}",
-      content: { text: "Upload the deck to the Solana Breakpoint speaker portal." },
+      content: {
+        text: "Upload the deck to the Solana Breakpoint speaker portal.",
+      },
     },
     {
       name: "{{agentName}}",
@@ -680,155 +686,164 @@ const examples: ActionExample[][] = [
   ],
 ];
 
-export const docAction: Action & { suppressPostActionContinuation?: boolean } = {
-  name: ACTION_NAME,
-  similes: SIMILE_NAMES.slice(),
-  tags: [
-    "domain:docs",
-    "capability:read",
-    "capability:write",
-    "capability:update",
-    "capability:schedule",
-    "surface:internal",
-  ],
-  description:
-    "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
-  descriptionCompressed:
-    "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
-  routingHint:
-    'document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> DOC; approval queue resolution stays on RESOLVE_REQUEST',
-  contexts: ["docs", "tasks", "calendar", "contacts"],
-  roleGate: { minRole: "OWNER" },
-  suppressPostActionContinuation: true,
-  validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
-      schema: { type: "string" as const, enum: [...SUBACTIONS] },
-    },
-    {
-      name: "documentRequestId",
-      description:
-        "Existing DocumentRequest id. Required for track_deadline and close_request.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "requesteeEntityId",
-      description:
-        "Entity id of the person we are asking. Required for request_signature and collect_id.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "documentTitle",
-      description: "Short human-readable label for the document.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "deadline",
-      description: "ISO-8601 deadline for the request.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "portalUrl",
-      description:
-        "Portal endpoint for upload_asset and (optionally) collect_id.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "assetPath",
-      description: "Local path or URL of the asset to upload. Required for upload_asset.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "assetKind",
-      description:
-        "What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "signatureUrl",
-      description: "Optional signing portal URL (DocuSign / HelloSign / etc.).",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "approvalReason",
-      description: "Reason label for request_approval.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "note",
-      description: "Free-form note recorded on the DocumentRequest.",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "resolution",
-      description:
-        "close_request only: completed | expired | cancelled. Defaults to completed.",
-      schema: {
-        type: "string" as const,
-        enum: ["completed", "expired", "cancelled"],
+export const docAction: Action & { suppressPostActionContinuation?: boolean } =
+  {
+    name: ACTION_NAME,
+    similes: SIMILE_NAMES.slice(),
+    tags: [
+      "domain:docs",
+      "capability:read",
+      "capability:write",
+      "capability:update",
+      "capability:schedule",
+      "surface:internal",
+    ],
+    description:
+      "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+    descriptionCompressed:
+      "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+    routingHint:
+      'document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> DOC; approval queue resolution stays on RESOLVE_REQUEST',
+    contexts: ["docs", "tasks", "calendar", "contacts"],
+    roleGate: { minRole: "OWNER" },
+    suppressPostActionContinuation: true,
+    validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
+    parameters: [
+      {
+        name: "action",
+        description:
+          "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+        schema: { type: "string" as const, enum: [...SUBACTIONS] },
       },
+      {
+        name: "subaction",
+        description:
+          "Legacy alias for action. Prefer action for new planner output.",
+        schema: { type: "string" as const, enum: [...SUBACTIONS] },
+      },
+      {
+        name: "documentRequestId",
+        description:
+          "Existing DocumentRequest id. Required for track_deadline and close_request.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "requesteeEntityId",
+        description:
+          "Entity id of the person we are asking. Required for request_signature and collect_id.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "documentTitle",
+        description: "Short human-readable label for the document.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "deadline",
+        description: "ISO-8601 deadline for the request.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "portalUrl",
+        description:
+          "Portal endpoint for upload_asset and (optionally) collect_id.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "assetPath",
+        description:
+          "Local path or URL of the asset to upload. Required for upload_asset.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "assetKind",
+        description:
+          "What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "signatureUrl",
+        description:
+          "Optional signing portal URL (DocuSign / HelloSign / etc.).",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "approvalReason",
+        description: "Reason label for request_approval.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "note",
+        description: "Free-form note recorded on the DocumentRequest.",
+        schema: { type: "string" as const },
+      },
+      {
+        name: "resolution",
+        description:
+          "close_request only: completed | expired | cancelled. Defaults to completed.",
+        schema: {
+          type: "string" as const,
+          enum: ["completed", "expired", "cancelled"],
+        },
+      },
+    ],
+    examples,
+    handler: async (
+      runtime: IAgentRuntime,
+      message: Memory,
+      _state,
+      options,
+      callback,
+    ): Promise<ActionResult> => {
+      if (!(await hasLifeOpsAccess(runtime, message))) {
+        const text = "Document workflow control is restricted to the owner.";
+        await callback?.({ text });
+        return { text, success: false, data: { error: "PERMISSION_DENIED" } };
+      }
+
+      const params = getParams(options);
+      const subaction = resolveSubaction(params);
+      if (!subaction) {
+        return {
+          success: false,
+          text: "Tell me which document operation: request_signature, request_approval, track_deadline, upload_asset, collect_id, or close_request.",
+          data: { error: "MISSING_SUBACTION" },
+        };
+      }
+
+      const scope = makeScope(runtime, message);
+      let result: ActionResult;
+      switch (subaction) {
+        case "request_signature":
+          result = await handleRequestSignature(scope, params);
+          break;
+        case "request_approval":
+          result = await handleRequestApproval(scope, params);
+          break;
+        case "track_deadline":
+          result = await handleTrackDeadline(scope, params);
+          break;
+        case "upload_asset":
+          result = await handleUploadAsset(scope, params);
+          break;
+        case "collect_id":
+          result = await handleCollectId(scope, params);
+          break;
+        case "close_request":
+          result = await handleCloseRequest(scope, params);
+          break;
+      }
+
+      if (result.text) {
+        await callback?.({
+          text: result.text,
+          source: "action",
+          action: ACTION_NAME,
+        });
+      }
+      return result;
     },
-  ],
-  examples,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    _state,
-    options,
-    callback,
-  ): Promise<ActionResult> => {
-    if (!(await hasLifeOpsAccess(runtime, message))) {
-      const text = "Document workflow control is restricted to the owner.";
-      await callback?.({ text });
-      return { text, success: false, data: { error: "PERMISSION_DENIED" } };
-    }
-
-    const params = getParams(options);
-    const subaction = resolveSubaction(params);
-    if (!subaction) {
-      return {
-        success: false,
-        text: "Tell me which document operation: request_signature, request_approval, track_deadline, upload_asset, collect_id, or close_request.",
-        data: { error: "MISSING_SUBACTION" },
-      };
-    }
-
-    const scope = makeScope(runtime, message);
-    let result: ActionResult;
-    switch (subaction) {
-      case "request_signature":
-        result = await handleRequestSignature(scope, params);
-        break;
-      case "request_approval":
-        result = await handleRequestApproval(scope, params);
-        break;
-      case "track_deadline":
-        result = await handleTrackDeadline(scope, params);
-        break;
-      case "upload_asset":
-        result = await handleUploadAsset(scope, params);
-        break;
-      case "collect_id":
-        result = await handleCollectId(scope, params);
-        break;
-      case "close_request":
-        result = await handleCloseRequest(scope, params);
-        break;
-    }
-
-    if (result.text) {
-      await callback?.({
-        text: result.text,
-        source: "action",
-        action: ACTION_NAME,
-      });
-    }
-    return result;
-  },
-};
+  };
 
 // Test-only export: lets the unit test reset between cases. Production code
 // must not depend on this — Wave-2 swaps the in-memory map for a repository.

@@ -45,6 +45,10 @@ import type {
   TranscriptUpdate,
   VadEvent,
   VadEventSource,
+  VoiceInputSource,
+  VoiceSegment,
+  VoiceSpeaker,
+  VoiceTurnMetadata,
 } from "./types";
 
 /** Outcome of one generation pass (speculative or final). */
@@ -52,6 +56,11 @@ export interface VoiceTurnOutcome {
   /** The transcript the generation ran against (so the controller can
    *  decide whether a speculative result is still valid). */
   transcript: string;
+  /** Voice attribution metadata for the transcript that produced this outcome. */
+  source?: VoiceInputSource;
+  speaker?: VoiceSpeaker;
+  segments?: VoiceSegment[];
+  turn?: VoiceTurnMetadata;
   /** Final reply text the model produced (already streamed into TTS by the
    *  generate callee). May be empty for an IGNORE turn. */
   replyText: string;
@@ -60,6 +69,11 @@ export interface VoiceTurnOutcome {
 export interface VoiceGenerateRequest {
   /** Best transcript available at the time the request is issued. */
   transcript: string;
+  /** Optional source/speaker metadata for attribution-only storage. */
+  source?: VoiceInputSource;
+  speaker?: VoiceSpeaker;
+  segments?: VoiceSegment[];
+  turn?: VoiceTurnMetadata;
   /** True for the finalized turn (post `speech-end` + `flush()`), false for
    *  a speculative pass off a partial. */
   final: boolean;
@@ -142,6 +156,7 @@ export class VoiceTurnController {
   private transcriberUnsub: (() => void) | null = null;
   /** True once `speech-end` ran and finalize is pending/done for this segment. */
   private segmentEnded = false;
+  private latestUpdate: TranscriptUpdate | null = null;
 
   constructor(
     deps: VoiceTurnControllerDeps,
@@ -195,6 +210,8 @@ export class VoiceTurnController {
         // honoured). Reset segment state + the barge-in episode so the next
         // hard-stop gets a fresh `BargeInCancelToken`.
         this.segmentEnded = false;
+        this.latestUpdate = null;
+        this.latestPartial = "";
         this.abortSpeculative();
         this.bargeIn.reset();
         void this.firePrewarm();
@@ -212,7 +229,7 @@ export class VoiceTurnController {
           !this.speculative &&
           !this.segmentEnded
         ) {
-          this.startSpeculative(this.latestPartial);
+          this.startSpeculative(this.latestPartial, this.latestUpdate);
         }
         break;
       }
@@ -232,9 +249,11 @@ export class VoiceTurnController {
     switch (event.kind) {
       case "partial":
         this.latestPartial = event.update.partial;
+        this.latestUpdate = event.update;
         break;
       case "final":
         this.latestPartial = event.update.partial;
+        this.latestUpdate = event.update;
         break;
       case "words":
         // ASR confirmed real words during a barge-in window — promote a
@@ -262,13 +281,17 @@ export class VoiceTurnController {
 
   // --- speculative generation -------------------------------------------
 
-  private startSpeculative(transcript: string): void {
+  private startSpeculative(
+    transcript: string,
+    update: TranscriptUpdate | null,
+  ): void {
     const text = transcript.trim();
     if (text.length === 0) return;
     const controller = new AbortController();
     this.events.onSpeculativeStart?.(text);
     const promise = this.runGenerate({
       transcript: text,
+      ...voiceRequestMetadata(update),
       final: false,
       signal: controller.signal,
     });
@@ -351,6 +374,7 @@ export class VoiceTurnController {
     try {
       outcome = await this.runGenerate({
         transcript: finalTranscript,
+        ...voiceRequestMetadata(finalUpdate),
         final: true,
         signal: controller.signal,
       });
@@ -385,4 +409,17 @@ function isAbortError(err: unknown): boolean {
 
 function toError(err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err));
+}
+
+function voiceRequestMetadata(update: TranscriptUpdate | null): Pick<
+  VoiceGenerateRequest,
+  "source" | "speaker" | "segments" | "turn"
+> {
+  if (!update) return {};
+  return {
+    ...(update.source ? { source: update.source } : {}),
+    ...(update.speaker ? { speaker: update.speaker } : {}),
+    ...(update.segments ? { segments: update.segments } : {}),
+    ...(update.turn ? { turn: update.turn } : {}),
+  };
 }

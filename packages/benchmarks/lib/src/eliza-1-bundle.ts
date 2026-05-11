@@ -3,10 +3,9 @@
  *
  * Each bundle lives at `~/.eliza/local-inference/models/eliza-1-<size>.bundle/`
  * with a `manifest.json` describing release state, the embedded GGUF weights,
- * and the optional DFlash drafter. Wave 3-B uses this to honestly label
- * benchmark outputs that exercise non-final ("local-standin") bundles via the
- * `preRelease` field already present on `RunMetrics` / `Report` (see
- * `metrics-schema.ts`).
+ * and the optional DFlash drafter. The benchmark aggregator uses this to label
+ * runs that exercise non-final ("local-standin") bundles via the `preRelease`
+ * field already present on `RunMetrics` / `Report` (see `metrics-schema.ts`).
  *
  * Release-state semantics (from `ELIZA_1_PRODUCTION_READINESS_REVIEW.md`):
  *   - "local-standin" — synthesized/quantized standin weights for harness
@@ -22,8 +21,8 @@
  * `bundleIsPreRelease` returns true unless ALL THREE of `releaseState=final`,
  * `publishEligible=true`, and `final.weights=true` hold. A `final.weights=true`
  * bundle whose `publishEligible` flag is still false (waiting on legal sign-off
- * etc) is still flagged pre-release — AGENTS.md Cmd #8 forbids silently
- * coercing `preRelease=true → false`.
+ * etc) is still flagged pre-release — pre-release status must never be
+ * silently coerced to false.
  */
 
 import { readFile } from "node:fs/promises";

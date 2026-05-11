@@ -11,6 +11,18 @@ type BotInfo = {
   firstName: string;
 };
 
+type TelegramStatusResponse = {
+  connector: "telegram";
+  state: "idle" | "configuring" | "paired" | "error";
+  detail?: {
+    bot?: BotInfo;
+    hasToken?: boolean;
+    serviceConnected?: boolean;
+  };
+};
+
+type SetupErrorBody = { error?: { code?: string; message?: string } };
+
 export function TelegramBotSetupPanel() {
   const { t } = useApp();
   const [status, setStatus] = useState<TelegramSetupStatus>("idle");
@@ -27,20 +39,21 @@ export function TelegramBotSetupPanel() {
     setStatus("validating");
     setError(null);
     try {
-      const res = (await client.fetch("/api/telegram-setup/validate-token", {
+      const res = (await client.fetch("/api/setup/telegram/start", {
         method: "POST",
         body: JSON.stringify({ token: trimmed }),
-      })) as {
-        ok: boolean;
-        bot?: BotInfo;
-        error?: string;
-      };
-      if (res.ok && res.bot) {
-        setBotInfo(res.bot);
+      })) as TelegramStatusResponse & SetupErrorBody;
+      if (res.error) {
+        setError(res.error.message ?? "Invalid bot token");
+        setStatus("error");
+        return;
+      }
+      if (res.detail?.bot) {
+        setBotInfo(res.detail.bot);
         setStatus("connected");
         setToken("");
       } else {
-        setError(res.error ?? "Invalid bot token");
+        setError("Invalid bot token");
         setStatus("error");
       }
     } catch (nextError) {
@@ -53,7 +66,7 @@ export function TelegramBotSetupPanel() {
 
   const disconnect = useCallback(async () => {
     try {
-      await client.fetch("/api/telegram-setup/disconnect", { method: "POST" });
+      await client.fetch("/api/setup/telegram/cancel", { method: "POST" });
       setBotInfo(null);
       setStatus("idle");
     } catch {

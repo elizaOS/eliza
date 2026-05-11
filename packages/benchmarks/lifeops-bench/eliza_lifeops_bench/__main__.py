@@ -112,8 +112,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=4,
-        help="Max concurrent scenario evaluations (default: 4)",
+        default=2,
+        help=(
+            "Max concurrent scenario evaluations (default: 2). The default was "
+            "lowered from 4 after W2-9 observed Cerebras 429s at concurrency=4 "
+            "on the hermes suite. Raise back to 4+ for non-Cerebras providers."
+        ),
     )
     parser.add_argument(
         "--seeds",
@@ -392,10 +396,10 @@ def _spawn_dflash_server_for_bundle(
 def _build_world_factory():
     """Snapshot-aware world factory.
 
-    Wave 2A scenarios reference the medium snapshot (seed=2026, ids like
-    `event_00040`); the tiny snapshot is seed=42. Both load from the on-disk
-    JSON snapshots so referenced entity ids resolve. Anything else falls back
-    to a fresh `WorldGenerator` populated at the small scale.
+    The medium snapshot (seed=2026) carries ids like `event_00040`; the tiny
+    snapshot is seed=42. Both load from the on-disk JSON snapshots so
+    referenced entity ids resolve. Anything else falls back to a fresh
+    `WorldGenerator` populated at the small scale.
     """
     from .lifeworld import LifeWorld
     from .lifeworld.generators import WorldGenerator
@@ -435,7 +439,7 @@ async def _run(args: argparse.Namespace) -> None:
         scenarios = list(ALL_SCENARIOS)
 
     tier_spec = resolve_tier()
-    # Wave 3-B: when ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
+    # When ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
     # so the harness boots the dflash local-llama-cpp server pointing at the
     # bundle's GGUF weights. The bundle manifest's pre-release flag is
     # propagated through MILADY_BENCH_PRE_RELEASE so the aggregator stamps

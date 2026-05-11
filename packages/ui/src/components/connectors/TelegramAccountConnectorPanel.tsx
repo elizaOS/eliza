@@ -8,7 +8,7 @@ type TelegramAccountStatus = Awaited<
 >;
 
 function accountLabel(status: TelegramAccountStatus | null): string | null {
-  const account = status?.account;
+  const account = status?.detail.account;
   if (!account) {
     return null;
   }
@@ -27,7 +27,7 @@ function currentPrompt(status: TelegramAccountStatus | null): {
   placeholder: string;
   field: "provisioningCode" | "telegramCode" | "password" | null;
 } {
-  switch (status?.status) {
+  switch (status?.detail.status) {
     case "waiting_for_provisioning_code":
       return {
         label: "Telegram app provisioning code",
@@ -37,10 +37,10 @@ function currentPrompt(status: TelegramAccountStatus | null): {
       };
     case "waiting_for_telegram_code":
       return {
-        label: status.isCodeViaApp
+        label: status.detail.isCodeViaApp
           ? "Telegram app login code"
           : "Telegram SMS login code",
-        placeholder: status.isCodeViaApp
+        placeholder: status.detail.isCodeViaApp
           ? "Code delivered inside Telegram"
           : "SMS code delivered to your phone",
         field: "telegramCode",
@@ -79,7 +79,7 @@ export function TelegramAccountConnectorPanel() {
     try {
       const nextStatus = await client.getTelegramAccountStatus();
       setStatus(nextStatus);
-      setPhone((current) => current || nextStatus.phone || "");
+      setPhone((current) => current || nextStatus.detail.phone || "");
     } catch (nextError) {
       setError(
         nextError instanceof Error ? nextError.message : String(nextError),
@@ -98,7 +98,7 @@ export function TelegramAccountConnectorPanel() {
 
   const startAuth = useCallback(async () => {
     const trimmedPhone = phone.trim();
-    if (!trimmedPhone && !(status?.phone ?? "").trim()) {
+    if (!trimmedPhone && !(status?.detail.phone ?? "").trim()) {
       setError("Telegram phone number is required.");
       return;
     }
@@ -107,7 +107,7 @@ export function TelegramAccountConnectorPanel() {
     try {
       const nextStatus = await client.startTelegramAccountAuth(trimmedPhone);
       setStatus(nextStatus);
-      setPhone(nextStatus.phone ?? trimmedPhone);
+      setPhone(nextStatus.detail.phone ?? trimmedPhone);
       setInputValue("");
     } catch (nextError) {
       setError(
@@ -116,7 +116,7 @@ export function TelegramAccountConnectorPanel() {
     } finally {
       setSubmitting(false);
     }
-  }, [phone, status?.phone]);
+  }, [phone, status?.detail.phone]);
 
   const submitAuthInput = useCallback(async () => {
     if (!prompt.field || !inputValue.trim()) {
@@ -177,7 +177,7 @@ export function TelegramAccountConnectorPanel() {
 
   return (
     <PagePanel.Notice
-      tone={error || status?.status === "error" ? "danger" : "default"}
+      tone={error || status?.detail.status === "error" ? "danger" : "default"}
       className="mt-4"
     >
       <div className="space-y-3 text-xs">
@@ -202,13 +202,14 @@ export function TelegramAccountConnectorPanel() {
 
         {connectedLabel ? (
           <div className="rounded-lg border border-border/40 bg-bg/60 px-3 py-2 text-xs-tight text-muted-strong">
-            {status?.serviceConnected
+            {status?.detail.serviceConnected
               ? `Connected as ${connectedLabel}.`
               : `Authenticated as ${connectedLabel}.`}
           </div>
         ) : null}
 
-        {status?.status === "idle" || status?.status === "error" ? (
+        {status?.detail.status === "idle" ||
+        status?.detail.status === "error" ? (
           <div className="space-y-2">
             <input
               type="tel"
@@ -276,7 +277,7 @@ export function TelegramAccountConnectorPanel() {
           </div>
         ) : null}
 
-        {status?.restartRequired ? (
+        {status?.detail.restartRequired ? (
           <div className="space-y-2 rounded-lg border border-border/40 bg-bg/60 px-3 py-2 text-xs-tight text-muted-strong">
             <div>
               {t("pluginsview.TelegramAccountRestartHint", {
@@ -300,7 +301,7 @@ export function TelegramAccountConnectorPanel() {
           </div>
         ) : null}
 
-        {status?.status !== "idle" ? (
+        {status?.detail.status !== "idle" ? (
           <Button
             variant="outline"
             size="sm"
@@ -318,7 +319,7 @@ export function TelegramAccountConnectorPanel() {
           </Button>
         ) : null}
 
-        {status?.status === "waiting_for_provisioning_code" ? (
+        {status?.detail.status === "waiting_for_provisioning_code" ? (
           <div className="text-muted">
             {t("pluginsview.TelegramAccountProvisioningExplain", {
               defaultValue:
@@ -327,23 +328,23 @@ export function TelegramAccountConnectorPanel() {
           </div>
         ) : null}
 
-        {status?.status === "waiting_for_telegram_code" ? (
+        {status?.detail.status === "waiting_for_telegram_code" ? (
           <div className="text-muted">
-            {status.isCodeViaApp
+            {status.detail.isCodeViaApp
               ? "Enter the login code that Telegram sent inside your Telegram app."
               : "Enter the login code that Telegram sent by SMS."}
           </div>
         ) : null}
 
-        {status?.status === "waiting_for_password" ? (
+        {status?.detail.status === "waiting_for_password" ? (
           <div className="text-muted">
             Enter your Telegram two-factor password to finish linking this
             account.
           </div>
         ) : null}
 
-        {error || status?.error ? (
-          <div className="text-danger">{error ?? status?.error}</div>
+        {error || status?.detail.error ? (
+          <div className="text-danger">{error ?? status?.detail.error}</div>
         ) : null}
       </div>
     </PagePanel.Notice>

@@ -73,4 +73,17 @@ describe("LifeOps canonical action structure", () => {
 
     expect(failures).toEqual([]);
   });
+
+  it("routes work-thread Stage-1 behavior through threadOps field evaluator only", () => {
+    expect(
+      (appLifeOpsPlugin.responseHandlerFieldEvaluators ?? []).map(
+        (evaluator) => evaluator.name,
+      ),
+    ).toContain("threadOps");
+    expect(
+      (appLifeOpsPlugin.responseHandlerEvaluators ?? []).map(
+        (evaluator) => evaluator.name,
+      ),
+    ).not.toContain("lifeops.work_thread_router");
+  });
 });

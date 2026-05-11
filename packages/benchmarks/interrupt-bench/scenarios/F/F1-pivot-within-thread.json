@@ -1,0 +1,42 @@
+{
+  "id": "F1-pivot-within-thread",
+  "category": "F",
+  "interruptionType": "revision",
+  "weight": 3,
+  "description": "User pivots within an active thread to an entirely different subject. The right move is to stop the old thread cleanly and create a new one (NOT steer — the subject changed).",
+  "setup": {
+    "agentId": "agent-test",
+    "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
+    "users": [{ "id": "alice", "role": "OWNER" }],
+    "openThreads": [
+      { "id": "thread-travel-001", "owner": "alice", "status": "active", "instruction": "plan a weekend trip to Big Sur in May", "roomId": "dm-alice" }
+    ],
+    "scheduledTasks": [],
+    "memory": []
+  },
+  "script": [
+    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "actually scrap the trip stuff. find me a good electrician in Oakland." }
+  ],
+  "quiesceAfterMs": 3000,
+  "expectedFinalState": {
+    "threads": [
+      { "id": "thread-travel-001", "status": "stopped" },
+      { "ownerEq": "alice", "statusEq": "active", "instructionContains": ["electrician", "Oakland"] }
+    ],
+    "scheduledTasks": [],
+    "repliesByChannel": {
+      "dm-alice": { "count": { "min": 0, "max": 1 } }
+    }
+  },
+  "expectedTrace": {
+    "stage1Calls": { "min": 1, "max": 1 },
+    "plannerCalls": { "min": 0, "max": 1 },
+    "boundaryViolations": 0,
+    "intent": "RESPOND",
+    "threadOpsContains": ["stop", "create"]
+  },
+  "responseRubric": {
+    "judgePrompt": "Did the agent close the prior trip-planning thread and start a NEW thread for the electrician search? Steering the old thread to electricians is wrong — the subject pivoted.",
+    "passRequiredForBonus": true
+  }
+}

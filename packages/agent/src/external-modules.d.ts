@@ -126,8 +126,18 @@ declare module "@elizaos/plugin-elizacloud" {
     baseUrl: string;
     bridgeUrl?: string;
   }
+  export interface CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
+  export class ClackObserver implements CloudOnboardingObserver {
+    constructor(clack: unknown);
+    [key: string]: unknown;
+  }
+  export class NullCloudOnboardingObserver implements CloudOnboardingObserver {
+    [key: string]: unknown;
+  }
   export function runCloudOnboarding(
-    clack: unknown,
+    observer: CloudOnboardingObserver,
     name: string,
     chosenTemplate?: unknown,
   ): Promise<CloudOnboardingResult | null>;
@@ -379,6 +389,7 @@ declare module "@elizaos/plugin-imessage" {
 }
 declare module "@elizaos/plugin-local-embedding";
 declare module "@elizaos/plugin-ollama";
+declare module "@elizaos/plugin-mlx";
 declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-x402" {

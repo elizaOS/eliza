@@ -56,7 +56,10 @@ ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     for tier in ELIZA_1_TIERS
 }
 
-VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-int8.onnx",)
+VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
+VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
+    "vad/silero-vad-int8.onnx",
+)
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -150,6 +153,7 @@ class TierGgufPlan:
     voice_quant: str
     contexts: tuple[str, ...]
     required_files: tuple[str, ...]
+    optional_files: tuple[str, ...]
     required_platform_evidence: tuple[PlatformTarget, ...]
 
 
@@ -225,6 +229,7 @@ def build_plan() -> dict[str, TierGgufPlan]:
             voice_quant=VOICE_QUANT_BY_TIER[tier],
             contexts=CONTEXTS_BY_TIER[tier],
             required_files=required_files_for_tier(tier),
+            optional_files=VAD_OPTIONAL_FALLBACK_ARTIFACTS,
             required_platform_evidence=targets,
         )
     return out
@@ -355,8 +360,11 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, TTS, ASR, and DFlash payloads are GGUF artifacts in the final plan.",
-        "- VAD is intentionally a sidecar ONNX artifact at "
-        "`vad/silero-vad-int8.onnx`, not a GGUF.",
+        "- VAD is a native GGML artifact at "
+        "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
+        "Legacy bundles may additionally carry the ONNX fallback "
+        "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
+        "readiness path.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Milady-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
@@ -366,8 +374,9 @@ def render_readiness(
         "the upstream base GGUFs by design) — but `final.{hashes,evals,licenses,"
         "kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` must all be "
         "`true`, and the runnable-on-base evals (text perplexity vs the upstream "
-        "GGUF, voice RTF, ASR WER, VAD latency, dflash acceptance, e2e loop, "
-        "30-turn) must pass — but NOT a fine-tuned-text-quality eval. Fine-tuning "
+        "GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint/false-barge-in, "
+        "dflash acceptance, e2e loop, 30-turn) must pass — but NOT a "
+        "fine-tuned-text-quality eval. Fine-tuning "
         "ships in v2 (`releaseState=finetuned-v2`).",
         "- Release evidence must use real final hashes, evals, "
         "licenses, platform reports, and Hugging Face upload records — and "
@@ -395,6 +404,10 @@ def render_readiness(
         )
         lines.extend(f"- `{rel}`" for rel in tier_plan.required_files)
         lines.append("")
+        if tier_plan.optional_files:
+            lines.append("Optional fallback files:")
+            lines.extend(f"- `{rel}`" for rel in tier_plan.optional_files)
+            lines.append("")
 
         tier_missing = list(missing.get(tier, ())) if missing else []
         if tier_missing:

@@ -50,6 +50,7 @@
     "@capacitor/haptics": "8.0.2",
     "@capacitor/ios": "8.3.1",
     "@capacitor/keyboard": "8.0.3",
+    "@capacitor/network": "^8.0.0",
     "@capacitor/preferences": "8.0.1",
     "@capacitor/push-notifications": "8.0.3",
     "@capacitor/status-bar": "8.0.2",

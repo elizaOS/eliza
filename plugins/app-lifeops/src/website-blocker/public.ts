@@ -3,7 +3,10 @@
  * `@elizaos/app-lifeops/selfcontrol` subpath imports.
  */
 
-export { websiteBlockAction } from "../actions/website-block.js";
+// Legacy alias — the BLOCK umbrella absorbed the legacy `WEBSITE_BLOCK` surface
+// as a simile, so external consumers (e.g. packages/agent fallback resolver) that
+// still look up `websiteBlockAction` by name get the umbrella (mirrors `src/index.ts`).
+export { blockAction as websiteBlockAction } from "../actions/block.js";
 
 export { websiteBlockerProvider } from "../providers/website-blocker.js";
 export { getSelfControlAccess, SELFCONTROL_ACCESS_ERROR } from "./access.js";

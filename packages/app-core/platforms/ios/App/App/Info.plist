@@ -94,12 +94,17 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>eliza-tasks</string>
+		<string>ai.eliza.tasks.refresh</string>
+		<string>ai.eliza.tasks.processing</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
 		<string>processing</string>
+		<string>remote-notification</string>
 	</array>
+	<key>ELIZA_APNS_ENABLED</key>
+	<string>0</string>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses your camera to capture photos and video when you ask it to.</string>
 	<key>NSCalendarsFullAccessUsageDescription</key>
