@@ -24,9 +24,12 @@ const ROOT_PRIVACY =
 const MAC_DEEP_LINKS: Record<PermissionId, string> = {
   accessibility: `${ROOT_PRIVACY}_Accessibility`,
   "screen-recording": `${ROOT_PRIVACY}_ScreenCapture`,
-  reminders: `${ROOT_PRIVACY}_Reminders`,
-  calendar: `${ROOT_PRIVACY}_Calendars`,
-  contacts: `${ROOT_PRIVACY}_Contacts`,
+  // These app-scoped permissions are currently AppleScript-backed, so the
+  // actual macOS toggle lives under Automation for this app → target app.
+  reminders: `${ROOT_PRIVACY}_Automation`,
+  calendar: `${ROOT_PRIVACY}_Automation`,
+  contacts: `${ROOT_PRIVACY}_Automation`,
+  notes: `${ROOT_PRIVACY}_Automation`,
   health: `${ROOT_PRIVACY}_Health`,
   microphone: `${ROOT_PRIVACY}_Microphone`,
   camera: `${ROOT_PRIVACY}_Camera`,
@@ -37,7 +40,6 @@ const MAC_DEEP_LINKS: Record<PermissionId, string> = {
   // Permissions without dedicated panes — fall back to root Privacy.
   shell: ROOT_PRIVACY,
   "website-blocking": ROOT_PRIVACY,
-  notes: ROOT_PRIVACY,
   screentime: "x-apple.systempreferences:com.apple.preference.screentime",
 };
 

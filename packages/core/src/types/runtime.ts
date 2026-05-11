@@ -1,5 +1,6 @@
 import type { Logger } from "../logger";
 import type { ContextRegistry } from "../runtime/context-registry";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
@@ -57,7 +58,6 @@ import type { Service, ServiceTypeName } from "./service";
 import type { State } from "./state";
 import type { Task, TaskWorker } from "./task";
 import type { ToolPolicyConfig, ToolProfileId } from "./tools";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 
 export {
 	type SearchCategoryEnumerationOptions,

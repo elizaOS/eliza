@@ -100,11 +100,11 @@ describe("live routing regressions", () => {
 		).toEqual(["CALENDAR"]);
 	});
 
-	it("routes invented atomic planner action names through registered parents", () => {
+	it("routes invented atomic planner action names through current registered parents", () => {
 		const runtime = {
 			actions: [
-				{ name: "OWNER_GOALS" },
 				{ name: "OWNER_TODOS" },
+				{ name: "OWNER_GOALS" },
 				{ name: "MESSAGE" },
 				{ name: "POST" },
 				{ name: "COMPUTER_USE" },

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-ui",
-  "version": "0.1.0",
+  "version": "2.0.0-beta.1",
   "description": "Shared React UI for Eliza Cloud. Browser bundles do not depend on @elizaos/core (use local types under src/types for protocol constants).",
   "main": "./dist/index.js",
   "dependencies": {
@@ -57,6 +57,7 @@
     "vitest": "^4.0.18"
   },
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && cp -R src/styles dist/styles && cp src/index.css dist/index.css",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "test": "vitest run",

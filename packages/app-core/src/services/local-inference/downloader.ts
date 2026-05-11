@@ -22,7 +22,11 @@ import path from "node:path";
 import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ensureDefaultAssignment } from "./assignments";
-import { buildHuggingFaceResolveUrl, findCatalogModel } from "./catalog";
+import {
+  buildHuggingFaceResolveUrl,
+  buildHuggingFaceResolveUrlForPath,
+  findCatalogModel,
+} from "./catalog";
 import {
   downloadsStagingDir,
   elizaModelsDir,
@@ -46,6 +50,34 @@ interface ActiveJob {
 }
 
 type DownloadListener = (event: DownloadEvent) => void;
+type BundleFileKind =
+  | "text"
+  | "voice"
+  | "asr"
+  | "vision"
+  | "dflash"
+  | "cache"
+  | "embedding"
+  | "vad"
+  | "wakeword";
+
+interface BundleFileEntry {
+  path: string;
+  sha256: string;
+  ctx?: number;
+}
+
+interface BundleManifest {
+  id: string;
+  version: string;
+  files: Record<BundleFileKind, BundleFileEntry[]>;
+}
+
+interface DownloadedFile {
+  path: string;
+  sizeBytes: number;
+  sha256: string;
+}
 
 const PROGRESS_THROTTLE_MS = 250;
 const TERMINAL_DOWNLOADS_FILENAME = "download-status.json";
@@ -81,6 +113,168 @@ function stagingFilename(modelId: string): string {
 function finalFilename(model: CatalogModel): string {
   const safe = model.id.replace(/[^a-zA-Z0-9._-]/g, "_");
   return `${safe}.gguf`;
+}
+
+function bundleDirname(modelId: string): string {
+  const safe = modelId.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return `${safe}.bundle`;
+}
+
+function bundleStagingFilename(modelId: string, filePath: string): string {
+  const safePath = filePath.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return stagingFilename(`${modelId}__${safePath}`);
+}
+
+function bundleTargetPath(root: string, filePath: string): string {
+  if (
+    !filePath ||
+    path.isAbsolute(filePath) ||
+    /^[a-zA-Z]:[\\/]/.test(filePath)
+  ) {
+    throw new Error(`Invalid bundle file path: ${filePath}`);
+  }
+  const resolvedRoot = path.resolve(root);
+  const target = path.resolve(resolvedRoot, filePath);
+  if (
+    target !== resolvedRoot &&
+    !target.startsWith(`${resolvedRoot}${path.sep}`)
+  ) {
+    throw new Error(`Bundle file escapes install root: ${filePath}`);
+  }
+  return target;
+}
+
+function parseBundleFileEntry(
+  value: unknown,
+  kind: BundleFileKind,
+): BundleFileEntry {
+  if (!value || typeof value !== "object") {
+    throw new Error(`Invalid Eliza-1 manifest file entry in files.${kind}`);
+  }
+  const entry = value as { path?: unknown; sha256?: unknown; ctx?: unknown };
+  if (typeof entry.path !== "string" || entry.path.length === 0) {
+    throw new Error(`Invalid Eliza-1 manifest file path in files.${kind}`);
+  }
+  if (
+    typeof entry.sha256 !== "string" ||
+    !/^[a-f0-9]{64}$/.test(entry.sha256)
+  ) {
+    throw new Error(`Invalid Eliza-1 manifest sha256 for ${entry.path}`);
+  }
+  const parsed: BundleFileEntry = {
+    path: entry.path,
+    sha256: entry.sha256,
+  };
+  if (typeof entry.ctx === "number") parsed.ctx = entry.ctx;
+  return parsed;
+}
+
+function parseBundleManifestOrThrow(
+  input: unknown,
+  catalogEntry: CatalogModel,
+): BundleManifest {
+  if (!input || typeof input !== "object") {
+    throw new Error("Invalid Eliza-1 manifest: expected object");
+  }
+  const raw = input as {
+    id?: unknown;
+    version?: unknown;
+    files?: unknown;
+    defaultEligible?: unknown;
+  };
+  if (raw.id !== catalogEntry.id) {
+    throw new Error(
+      `Invalid Eliza-1 manifest: id ${String(raw.id)} does not match ${catalogEntry.id}`,
+    );
+  }
+  if (typeof raw.version !== "string" || raw.version.length === 0) {
+    throw new Error("Invalid Eliza-1 manifest: missing version");
+  }
+  if (raw.defaultEligible !== true) {
+    throw new Error("Invalid Eliza-1 manifest: defaultEligible must be true");
+  }
+  if (!raw.files || typeof raw.files !== "object") {
+    throw new Error("Invalid Eliza-1 manifest: missing files");
+  }
+
+  const filesRaw = raw.files as Record<string, unknown>;
+  const files = {} as Record<BundleFileKind, BundleFileEntry[]>;
+  for (const kind of [
+    "text",
+    "voice",
+    "asr",
+    "vision",
+    "dflash",
+    "cache",
+    "embedding",
+    "vad",
+    "wakeword",
+  ] as const) {
+    const value = filesRaw[kind];
+    if (
+      value === undefined &&
+      (kind === "embedding" || kind === "vad" || kind === "wakeword")
+    ) {
+      files[kind] = [];
+      continue;
+    }
+    if (!Array.isArray(value)) {
+      throw new Error(
+        `Invalid Eliza-1 manifest: files.${kind} must be an array`,
+      );
+    }
+    files[kind] = value.map((entry) => parseBundleFileEntry(entry, kind));
+  }
+
+  for (const kind of ["text", "voice", "dflash", "cache"] as const) {
+    if (files[kind].length === 0) {
+      throw new Error(
+        `Invalid Eliza-1 manifest: files.${kind} must be non-empty`,
+      );
+    }
+  }
+  if (!files.text.some((entry) => entry.path === catalogEntry.ggufFile)) {
+    throw new Error(
+      `Invalid Eliza-1 manifest: primary text file ${catalogEntry.ggufFile} is missing`,
+    );
+  }
+
+  return {
+    id: catalogEntry.id,
+    version: raw.version,
+    files,
+  };
+}
+
+function collectBundleFiles(
+  manifest: BundleManifest,
+): Array<{ kind: BundleFileKind; entry: BundleFileEntry }> {
+  const seen = new Map<
+    string,
+    { kind: BundleFileKind; entry: BundleFileEntry }
+  >();
+  for (const kind of [
+    "text",
+    "voice",
+    "asr",
+    "vision",
+    "dflash",
+    "cache",
+    "embedding",
+    "vad",
+    "wakeword",
+  ] as const) {
+    for (const entry of manifest.files[kind]) {
+      const current = seen.get(entry.path);
+      if (current && current.entry.sha256 !== entry.sha256) {
+        throw new Error(
+          `Conflicting sha256 entries for bundle file ${entry.path}`,
+        );
+      }
+      seen.set(entry.path, { kind, entry });
+    }
+  }
+  return [...seen.values()];
 }
 
 async function ensureDirs(): Promise<void> {
@@ -303,6 +497,14 @@ export class Downloader {
   ): Promise<void> {
     try {
       this.updateState(record, "downloading");
+      if (
+        catalogEntry.bundleManifestFile &&
+        catalogEntry.runtimeRole !== "dflash-drafter"
+      ) {
+        await this.runBundleJob(catalogEntry, record);
+        return;
+      }
+
       const url = buildHuggingFaceResolveUrl(catalogEntry);
 
       const httpClient = await this.loadHttpClient();
@@ -447,6 +649,263 @@ export class Downloader {
     } finally {
       this.active.delete(record.job.modelId);
     }
+  }
+
+  private async runBundleJob(
+    catalogEntry: CatalogModel,
+    record: ActiveJob,
+  ): Promise<void> {
+    if (!catalogEntry.bundleManifestFile) {
+      throw new Error(
+        `[local-inference] ${catalogEntry.id} has no bundle manifest`,
+      );
+    }
+
+    const bundleRoot = path.join(
+      elizaModelsDir(),
+      bundleDirname(catalogEntry.id),
+    );
+    await fsp.mkdir(bundleRoot, { recursive: true });
+
+    const manifestPath = bundleTargetPath(
+      bundleRoot,
+      catalogEntry.bundleManifestFile,
+    );
+    const manifestDownloaded = await this.downloadRemotePath(
+      catalogEntry,
+      catalogEntry.bundleManifestFile,
+      path.join(
+        downloadsStagingDir(),
+        bundleStagingFilename(catalogEntry.id, catalogEntry.bundleManifestFile),
+      ),
+      manifestPath,
+      record,
+      0,
+    );
+
+    const manifest = parseBundleManifestOrThrow(
+      JSON.parse(await fsp.readFile(manifestPath, "utf8")),
+      catalogEntry,
+    );
+
+    let completedBytes = manifestDownloaded.sizeBytes;
+    const downloaded = new Map<string, DownloadedFile>();
+    for (const { entry } of collectBundleFiles(manifest)) {
+      const finalPath = bundleTargetPath(bundleRoot, entry.path);
+      const result = await this.downloadRemotePath(
+        catalogEntry,
+        entry.path,
+        path.join(
+          downloadsStagingDir(),
+          bundleStagingFilename(catalogEntry.id, entry.path),
+        ),
+        finalPath,
+        record,
+        completedBytes,
+        entry.sha256,
+      );
+      downloaded.set(entry.path, result);
+      completedBytes += result.sizeBytes;
+      record.job.received = completedBytes;
+      record.job.total = Math.max(record.job.total, completedBytes);
+      this.throttleEmit(record);
+    }
+
+    const textEntry = manifest.files.text.find(
+      (entry) => entry.path === catalogEntry.ggufFile,
+    );
+    if (!textEntry) {
+      throw new Error(
+        `[local-inference] Bundle missing primary text file ${catalogEntry.ggufFile}`,
+      );
+    }
+    const textFile = downloaded.get(textEntry.path);
+    if (!textFile) {
+      throw new Error(
+        `[local-inference] Bundle did not install text file ${textEntry.path}`,
+      );
+    }
+
+    const now = new Date().toISOString();
+    const bundleMeta = {
+      bundleRoot,
+      manifestPath,
+      manifestSha256: manifestDownloaded.sha256,
+      bundleVersion: manifest.version,
+      bundleSizeBytes: completedBytes,
+    };
+
+    const installed: InstalledModel = {
+      id: catalogEntry.id,
+      displayName: catalogEntry.displayName,
+      path: textFile.path,
+      sizeBytes: textFile.sizeBytes,
+      hfRepo: catalogEntry.hfRepo,
+      installedAt: now,
+      lastUsedAt: null,
+      source: "eliza-download",
+      sha256: textFile.sha256,
+      lastVerifiedAt: now,
+      ...bundleMeta,
+    };
+    await upsertElizaModel(installed);
+
+    const companionId =
+      catalogEntry.runtime?.dflash?.drafterModelId ??
+      catalogEntry.companionModelIds?.[0];
+    const companion = companionId ? findCatalogModel(companionId) : undefined;
+    if (companion) {
+      const drafterEntry = manifest.files.dflash.find(
+        (entry) => entry.path === companion.ggufFile,
+      );
+      if (!drafterEntry) {
+        throw new Error(
+          `[local-inference] Bundle missing DFlash companion ${companion.ggufFile}`,
+        );
+      }
+      const drafterFile = downloaded.get(drafterEntry.path);
+      if (!drafterFile) {
+        throw new Error(
+          `[local-inference] Bundle did not install DFlash companion ${drafterEntry.path}`,
+        );
+      }
+      await upsertElizaModel({
+        id: companion.id,
+        displayName: companion.displayName,
+        path: drafterFile.path,
+        sizeBytes: drafterFile.sizeBytes,
+        hfRepo: companion.hfRepo,
+        installedAt: now,
+        lastUsedAt: null,
+        source: "eliza-download",
+        sha256: drafterFile.sha256,
+        lastVerifiedAt: now,
+        runtimeRole: "dflash-drafter",
+        companionFor: catalogEntry.id,
+        ...bundleMeta,
+      });
+    }
+
+    await ensureDefaultAssignment(installed.id);
+
+    this.updateState(record, "completed");
+    record.job.received = completedBytes;
+    record.job.total = completedBytes;
+    this.rememberTerminalDownload(record.job);
+    this.emit({ type: "completed", job: { ...record.job } });
+  }
+
+  private async downloadRemotePath(
+    catalogEntry: CatalogModel,
+    remotePath: string,
+    stagingPath: string,
+    finalPath: string,
+    record: ActiveJob,
+    baseBytes: number,
+    expectedSha256?: string,
+  ): Promise<DownloadedFile> {
+    if (expectedSha256) {
+      try {
+        const stat = await fsp.stat(finalPath);
+        if (stat.isFile()) {
+          const currentSha256 = await hashFile(finalPath);
+          if (currentSha256 === expectedSha256) {
+            record.job.received = baseBytes + stat.size;
+            return {
+              path: finalPath,
+              sizeBytes: stat.size,
+              sha256: currentSha256,
+            };
+          }
+          await fsp.rm(finalPath, { force: true });
+        }
+      } catch {
+        // Missing files are downloaded below; unreadable stale files are
+        // treated as invalid and replaced by the fresh bundle artifact.
+      }
+    } else {
+      await fsp.rm(stagingPath, { force: true }).catch(() => undefined);
+    }
+
+    await fsp.mkdir(path.dirname(finalPath), { recursive: true });
+    await fsp.mkdir(path.dirname(stagingPath), { recursive: true });
+
+    let startByte = expectedSha256 ? await partialSize(stagingPath) : 0;
+    record.job.received = baseBytes + startByte;
+
+    const headers: Record<string, string> = {
+      "user-agent": "Eliza-LocalInference/1.0",
+    };
+    if (startByte > 0) {
+      headers.range = `bytes=${startByte}-`;
+    }
+
+    const httpClient = await this.loadHttpClient();
+    const url = buildHuggingFaceResolveUrlForPath(catalogEntry, remotePath);
+    const response = await httpClient.request(url, {
+      method: "GET",
+      headers,
+      signal: record.abortController.signal,
+    });
+
+    if (response.statusCode >= 400) {
+      throw new Error(
+        `HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}/${remotePath}`,
+      );
+    }
+    if (startByte > 0 && response.statusCode !== 206) {
+      startByte = 0;
+      record.job.received = baseBytes;
+    }
+
+    const contentLengthHeader = response.headers["content-length"];
+    const contentLength = Array.isArray(contentLengthHeader)
+      ? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
+      : Number.parseInt(contentLengthHeader ?? "0", 10);
+    if (Number.isFinite(contentLength) && contentLength > 0) {
+      record.job.total = Math.max(
+        record.job.total,
+        baseBytes + startByte + contentLength,
+      );
+    }
+
+    const writeStream: Writable = fs.createWriteStream(stagingPath, {
+      flags: startByte > 0 ? "a" : "w",
+    });
+
+    let lastSampleBytes = record.job.received;
+    let lastSampleAt = Date.now();
+    const bodyStream = Readable.from(response.body);
+    bodyStream.on("data", (chunk: Buffer) => {
+      record.job.received += chunk.length;
+
+      const now = Date.now();
+      const elapsed = now - lastSampleAt;
+      if (elapsed >= 1000) {
+        record.job.bytesPerSec =
+          ((record.job.received - lastSampleBytes) * 1000) / elapsed;
+        record.job.etaMs =
+          record.job.bytesPerSec > 0
+            ? ((record.job.total - record.job.received) * 1000) /
+              record.job.bytesPerSec
+            : null;
+        lastSampleAt = now;
+        lastSampleBytes = record.job.received;
+      }
+
+      this.throttleEmit(record);
+    });
+
+    await pipeline(bodyStream, writeStream);
+    await fsp.rename(stagingPath, finalPath);
+
+    const stat = await fsp.stat(finalPath);
+    const sha256 = await hashFile(finalPath);
+    if (expectedSha256 && sha256 !== expectedSha256) {
+      await fsp.rm(finalPath, { force: true });
+      throw new Error(`SHA256 mismatch for bundle file ${remotePath}`);
+    }
+    return { path: finalPath, sizeBytes: stat.size, sha256 };
   }
 
   private async loadHttpClient(): Promise<{

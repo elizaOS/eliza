@@ -71,10 +71,13 @@ import {
 	getStartupDiagnosticsSnapshot,
 } from "./agent";
 import {
+	createSecurityScopedBookmark,
 	isAppActive,
 	isKeyWindow,
 	makeKeyAndOrderFront,
 	orderOut,
+	startAccessingSecurityScopedBookmark,
+	stopAccessingSecurityScopedBookmarks,
 } from "./mac-window-effects";
 import {
 	linuxSysfsOnBattery,
@@ -2018,11 +2021,8 @@ X-GNOME-Autostart-enabled=true
 	 *
 	 * The `bookmark` field is the OS-specific persistence handle: on macOS, a
 	 * base64 NSURLBookmarkCreationOptions.WithSecurityScope blob the caller
-	 * stores and re-resolves on next launch. Bookmark creation requires a
-	 * native bridge that this build does not yet ship, so we currently return
-	 * `bookmark: null` and rely on the picker re-prompt at next launch when
-	 * the path no longer resolves under the sandbox. TODO: wire into the
-	 * `native/` module's NSURL bookmark API to make grants persistent.
+	 * stores and re-resolves on next launch. Non-macOS platforms return null
+	 * because portals / AppContainer do not use NSURL bookmarks.
 	 */
 	async pickWorkspaceFolder(options: {
 		defaultPath?: string;
@@ -2038,7 +2038,40 @@ X-GNOME-Autostart-enabled=true
 		if (canceled) {
 			return { canceled: true, path: "", bookmark: null };
 		}
-		return { canceled: false, path: filePaths[0], bookmark: null };
+		const selectedPath = filePaths[0] ?? "";
+		if (!selectedPath) {
+			return { canceled: true, path: "", bookmark: null };
+		}
+		const bookmark =
+			process.platform === "darwin"
+				? createSecurityScopedBookmark(selectedPath)
+				: null;
+		return { canceled: false, path: selectedPath, bookmark };
+	}
+
+	resolveWorkspaceFolderBookmark(options: { bookmark: string }): {
+		ok: boolean;
+		path: string;
+		stale?: boolean;
+		error?: string;
+	} {
+		if (process.platform !== "darwin") {
+			return { ok: true, path: "" };
+		}
+		const path = startAccessingSecurityScopedBookmark(options.bookmark);
+		if (!path) {
+			return {
+				ok: false,
+				path: "",
+				error: "Unable to resolve security-scoped bookmark.",
+			};
+		}
+		return { ok: true, path };
+	}
+
+	releaseWorkspaceFolderBookmarks(): { ok: true } {
+		stopAccessingSecurityScopedBookmarks();
+		return { ok: true };
 	}
 
 	// MARK: - Helpers

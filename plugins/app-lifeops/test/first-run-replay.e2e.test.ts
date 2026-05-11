@@ -66,13 +66,21 @@ describe("first-run replay e2e", () => {
     );
 
     // Replay with new facts.
-    let r = await service.runReplayPath({ preferredName: "Updated" });
+    let r = await service.runReplayPath({
+      preferredName: "Updated",
+      timezone: "America/Los_Angeles",
+      morningWindow: { startLocal: "07:00", endLocal: "12:00" },
+      eveningWindow: { startLocal: "19:00", endLocal: "23:00" },
+    });
     // Replay still has to walk Q2 (timezone+windows) etc. since the customize
     // questionnaire is the canonical replay flow.
     let guard = 0;
     while (r.status === "needs_more_input" && guard < 10) {
       guard += 1;
       switch (r.awaitingQuestion) {
+        case "preferredName":
+          r = await service.runReplayPath({ preferredName: "Updated" });
+          break;
         case "timezoneAndWindows":
           r = await service.runReplayPath({
             timezone: "America/Los_Angeles",
@@ -87,6 +95,9 @@ describe("first-run replay e2e", () => {
           break;
         case "channel":
           r = await service.runReplayPath({ channel: "in_app" });
+          break;
+        case "relationships":
+          r = await service.runReplayPath({ relationships: [] });
           break;
         default:
           r = await service.runReplayPath({});

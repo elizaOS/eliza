@@ -11,11 +11,11 @@ model, including native tool calls.
 > | what                              | repo                                      | script                          |
 > |-----------------------------------|-------------------------------------------|---------------------------------|
 > | Dataset (native trajectory SFT)   | runtime `eliza_native_v1` exports          | `scripts/trajectories_to_sft.py`|
-> | Trained models                    | `elizaos/eliza-1-{2b,9b,27b}` (model)     | `scripts/push_model_to_hf.py`   |
-> | Pipeline source (this directory)  | `elizaos/eliza-training-pipeline` (model) | `scripts/push_pipeline_to_hf.py`|
+> | Trained models                    | `elizalabs/eliza-1-{2b,9b,27b}` (model)     | `scripts/push_model_to_hf.py`   |
+> | Pipeline source (this directory)  | `elizalabs/eliza-1-pipeline` (model) | `scripts/push_pipeline_to_hf.py`|
 >
-> Quants land in sibling repos with suffixes (`elizaos/eliza-1-27b-gguf`,
-> `elizaos/eliza-1-27b-fp8`, …) — `push_model_to_hf.py --quant <name>`
+> Quants land in sibling repos with suffixes (`elizalabs/eliza-1-27b-gguf`,
+> `elizalabs/eliza-1-27b-fp8`, …) — `push_model_to_hf.py --quant <name>`
 > resolves the suffix automatically.
 
 The base models are catalogued in `scripts/training/model_registry.py`;
@@ -46,7 +46,7 @@ shape on the held-out trajectory split.
 ## Cloning the pipeline on a fresh machine
 
 ```bash
-hf download elizaos/eliza-training-pipeline --repo-type model --local-dir ./training
+hf download elizalabs/eliza-1-pipeline --repo-type model --local-dir ./training
 cd training
 uv sync --extra train
 ```
@@ -157,7 +157,7 @@ NEBIUS_PROJECT_ID=... HUGGING_FACE_HUB_TOKEN=... \
     REGISTRY_KEY=qwen3.6-27b \
     bash scripts/train_nebius.sh full
 
-# Push the trained checkpoint to elizaos/eliza-1-27b
+# Push the trained checkpoint to elizalabs/eliza-1-27b
 HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \
     --registry-key qwen3.6-27b \
     --checkpoint checkpoints/qwen3-6-27b-apollo/final

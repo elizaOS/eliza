@@ -5,8 +5,8 @@
   "description": "fp16 K-cache dot-product baseline; same N=131072 output blocks as turbo*; this is the unquantized throughput we would otherwise be shipping.",
   "iterations": 1000, "warmup": 100, "runs": 3,
   "bytes_per_dispatch": 34079232,
-  "gpu_us": { "median_of_medians": 303.0833, "p99": 2033.9983, "per_run_min": 297.7292, "per_run_max": 617.6458, "per_run_variance_pct": 107.4522 },
-  "cpu_us": { "median": 759.0000 },
-  "bandwidth_GBs": 112.4418,
-  "bandwidth_pct_of_peak": 20.5937
+  "gpu_us": { "median_of_medians": 232.7500, "p99": 541.7729, "per_run_min": 232.6667, "per_run_max": 238.2500, "per_run_variance_pct": 2.3997 },
+  "cpu_us": { "median": 348.0000 },
+  "bandwidth_GBs": 146.4199,
+  "bandwidth_pct_of_peak": 26.8168
 }

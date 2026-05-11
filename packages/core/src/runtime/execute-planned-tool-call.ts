@@ -17,7 +17,11 @@ import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
-import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
+import {
+	normalizeGateRole,
+	satisfiesContextGate,
+	satisfiesRoleGate,
+} from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
 
@@ -352,10 +356,79 @@ function actionResultToStreamingResult(
 	} as ToolCall["result"];
 }
 
+/**
+ * Operator-supplied override map from the `ACTION_ROLE_POLICY` env var.
+ *
+ * Shape: `{"<ACTION_NAME>": "<RoleGateRole>", ...}` — e.g.
+ * `{"BASH":"GUEST","WEB_FETCH":"MEMBER"}`.
+ *
+ * When an action name appears in this policy, its declared `contextGate` is
+ * bypassed and access is decided solely by whether the caller satisfies the
+ * policy's minimum role. Use it to whitelist actions whose upstream
+ * `contextGate` is narrower than a particular deployment needs.
+ */
+let cachedActionRolePolicy: Record<string, RoleGateRole> | undefined;
+const ACTION_ROLE_POLICY_ROLES = new Set<RoleGateRole>([
+	"NONE",
+	"GUEST",
+	"MEMBER",
+	"ADMIN",
+	"OWNER",
+]);
+
+function parseActionRolePolicyRole(value: unknown): RoleGateRole | undefined {
+	if (typeof value !== "string") {
+		return undefined;
+	}
+	const normalized = normalizeGateRole(value as RoleGateRole);
+	return ACTION_ROLE_POLICY_ROLES.has(normalized) ? normalized : undefined;
+}
+
+function readActionRolePolicy(): Record<string, RoleGateRole> {
+	if (cachedActionRolePolicy !== undefined) {
+		return cachedActionRolePolicy;
+	}
+	const raw = process.env.ACTION_ROLE_POLICY;
+	if (!raw) {
+		cachedActionRolePolicy = {};
+		return cachedActionRolePolicy;
+	}
+	try {
+		const parsed = JSON.parse(raw);
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			cachedActionRolePolicy = {};
+			return cachedActionRolePolicy;
+		}
+		cachedActionRolePolicy = Object.fromEntries(
+			Object.entries(parsed)
+				.map(([actionName, role]) => [
+					actionName,
+					parseActionRolePolicyRole(role),
+				])
+				.filter((entry): entry is [string, RoleGateRole] => Boolean(entry[1])),
+		);
+	} catch {
+		cachedActionRolePolicy = {};
+	}
+	return cachedActionRolePolicy;
+}
+
+/** Test seam — clears the cached `ACTION_ROLE_POLICY` parse. */
+export function _resetActionRolePolicyCacheForTests(): void {
+	cachedActionRolePolicy = undefined;
+}
+
 function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
+	const policyRole = readActionRolePolicy()[action.name];
+	if (policyRole) {
+		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
+			? undefined
+			: `Action ${action.name} is not allowed for the current role`;
+	}
+
 	const contextGate = action.contextGate ?? {
 		contexts: action.contexts,
 		roleGate: action.roleGate,

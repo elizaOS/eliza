@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -97,7 +97,7 @@
     "@elizaos/plugin-coding-tools": "2.0.0-beta.1",
     "@elizaos/plugin-commands": "2.0.0-beta.1",
     "@elizaos/plugin-computeruse": "2.0.0-beta.1",
-    "@elizaos/plugin-discord": "2.0.0-beta.1",
+    "@elizaos/plugin-discord": "2.0.0-beta.2",
     "@elizaos/plugin-discord-local": "2.0.0-beta.1",
     "@elizaos/plugin-elizacloud": "2.0.0-beta.1",
     "@elizaos/plugin-imessage": "2.0.0-beta.1",

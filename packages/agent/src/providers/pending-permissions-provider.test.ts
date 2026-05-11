@@ -129,7 +129,7 @@ describe("buildPendingPermissionsContext", () => {
 describe("pendingPermissionsProvider", () => {
   it("emits no text when registry is missing", async () => {
     const runtime = makeRuntime(null);
-    const result = await pendingPermissionsProvider.get!(
+    const result = await pendingPermissionsProvider.get?.(
       runtime,
       {} as never,
       {} as never,
@@ -139,7 +139,7 @@ describe("pendingPermissionsProvider", () => {
 
   it("emits no text when registry has nothing pending", async () => {
     const runtime = makeRuntime(makeRegistry([]));
-    const result = await pendingPermissionsProvider.get!(
+    const result = await pendingPermissionsProvider.get?.(
       runtime,
       {} as never,
       {} as never,
@@ -165,7 +165,7 @@ describe("pendingPermissionsProvider", () => {
         },
       ]),
     );
-    const result = await pendingPermissionsProvider.get!(
+    const result = await pendingPermissionsProvider.get?.(
       runtime,
       {} as never,
       {} as never,

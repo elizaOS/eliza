@@ -877,9 +877,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       extra: `ctx=${plan.contextSize};parallel=${parallel}`,
     });
     const slotDir = slotSavePath(modelHash);
-    const conversationKvDir = path.join(slotDir, "conversations");
+    // llama-server's slot API treats `filename` as a basename relative to
+    // --slot-save-path. Keep per-conversation KV files in that same root so
+    // save and restore agree on the exact path.
+    const conversationKvDir = slotDir;
     fs.mkdirSync(slotDir, { recursive: true });
-    fs.mkdirSync(conversationKvDir, { recursive: true });
     // Fire-and-forget eviction: stale slot files on disk shouldn't block
     // server startup, but we don't want them to grow without bound.
     void evictExpired(slotDir, DEFAULT_CACHE_TTLS).catch(() => {

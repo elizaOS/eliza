@@ -21,6 +21,7 @@ import { DownloadQueue } from "./DownloadQueue";
 import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { HuggingFaceSearch } from "./HuggingFaceSearch";
+import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
 import { SlotAssignments } from "./SlotAssignments";
 
@@ -150,7 +151,11 @@ export function LocalInferencePanel() {
     (spec: CatalogModel) => {
       void withBusy(async () => {
         await client.startLocalInferenceDownload(spec);
-        setActionNotice(`Downloading ${spec.displayName}`, "success", 2000);
+        setActionNotice(
+          `Downloading ${displayModelName(spec)}`,
+          "success",
+          2000,
+        );
       });
     },
     [setActionNotice, withBusy],
@@ -268,7 +273,9 @@ export function LocalInferencePanel() {
     return <p className="text-sm text-muted">Loading local models…</p>;
   }
 
-  const catalog = hub.catalog;
+  const catalog = hub.catalog.filter((model) =>
+    model.id.startsWith("eliza-1-"),
+  );
 
   return (
     <div className="flex flex-col gap-3">
@@ -290,8 +297,8 @@ export function LocalInferencePanel() {
       <nav className="inline-flex h-8 w-fit items-center rounded-lg border border-border/60 bg-bg/40 p-0.5">
         {(
           [
-            ["curated", "Curated"],
-            ["search", "Search"],
+            ["curated", "Eliza-1"],
+            ["search", "Custom HF"],
             ["downloads", "Downloads"],
           ] as const
         ).map(([id, label]) => {
@@ -413,7 +420,7 @@ function ExternalInstalledSummary({
             >
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium text-txt">
-                  {m.displayName}
+                  {displayModelName(m)}
                 </div>
                 <div className="truncate text-xs-tight text-muted">
                   {m.externalOrigin} · {formatSize(m.sizeBytes)}

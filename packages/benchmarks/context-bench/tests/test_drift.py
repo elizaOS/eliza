@@ -62,6 +62,7 @@ def test_parse_jsonl_extracts_typed_events(tmp_path: Path) -> None:
                 "atTurn": 1,
                 "factId": "fact_1",
                 "plantedTurn": 1,
+                "kind": "code",
                 "expected": "X",
                 "actual": "X",
                 "correct": True,
@@ -80,6 +81,8 @@ def test_parse_jsonl_extracts_typed_events(tmp_path: Path) -> None:
                 "turns": 1,
                 "compactEvery": 1,
                 "plantFacts": 1,
+                "valid": True,
+                "skipped": False,
             },
         ],
     )
@@ -87,8 +90,33 @@ def test_parse_jsonl_extracts_typed_events(tmp_path: Path) -> None:
     assert len(turns) == 2
     assert len(compacts) == 1
     assert len(probes) == 1
+    assert probes[0].kind == "code"
     assert isinstance(summary, DriftSummaryEvent)
     assert summary.strategy == "none"
+    assert summary.valid is True
+    assert summary.skipped is False
+
+
+def test_parse_jsonl_does_not_treat_string_false_as_true(tmp_path: Path) -> None:
+    fixture = _write_fixture(
+        tmp_path,
+        [
+            {
+                "event": "probe",
+                "atTurn": 1,
+                "factId": "fact_1",
+                "plantedTurn": 1,
+                "kind": "code",
+                "expected": "X",
+                "actual": "?",
+                "correct": "false",
+                "judgeReasoning": "bad fixture",
+                "phase": "final",
+            }
+        ],
+    )
+    _, _, probes, _ = parse_jsonl(fixture)
+    assert probes[0].correct is False
 
 
 def test_aggregate_run_uses_summary_for_totals_and_derives_phases() -> None:
@@ -97,6 +125,7 @@ def test_aggregate_run_uses_summary_for_totals_and_derives_phases() -> None:
             at_turn=10,
             fact_id="fact_1",
             planted_turn=2,
+            kind="code",
             expected="X",
             actual="X",
             correct=True,
@@ -107,6 +136,7 @@ def test_aggregate_run_uses_summary_for_totals_and_derives_phases() -> None:
             at_turn=20,
             fact_id="fact_1",
             planted_turn=2,
+            kind="code",
             expected="X",
             actual="?",
             correct=False,
@@ -117,6 +147,7 @@ def test_aggregate_run_uses_summary_for_totals_and_derives_phases() -> None:
             at_turn=20,
             fact_id="fact_1",
             planted_turn=2,
+            kind="code",
             expected="X",
             actual="?",
             correct=False,
@@ -169,6 +200,36 @@ def test_aggregate_run_uses_summary_for_totals_and_derives_phases() -> None:
     assert result.skip_reason is None
 
 
+def test_aggregate_run_rejects_inconsistent_summary_totals() -> None:
+    probes = [
+        DriftProbeEvent(
+            at_turn=1,
+            fact_id="fact_1",
+            planted_turn=1,
+            kind="code",
+            expected="X",
+            actual="X",
+            correct=True,
+            judge_reasoning="ok",
+            phase="final",
+        )
+    ]
+    summary = DriftSummaryEvent(
+        strategy="none",
+        overall_accuracy=0.0,
+        total_compactions=0,
+        total_tokens_saved=0,
+        total_probes=2,
+        total_correct=1,
+        seed=1,
+        turns=1,
+        compact_every=10,
+        plant_facts=1,
+    )
+    with pytest.raises(ValueError, match="total_probes"):
+        aggregate_run(probes, [], summary)
+
+
 def test_aggregate_run_handles_skipped_strategy() -> None:
     compacts = [
         DriftCompactEvent(
@@ -208,6 +269,7 @@ def test_aggregate_run_falls_back_when_summary_missing() -> None:
             at_turn=5,
             fact_id="fact_1",
             planted_turn=1,
+            kind="code",
             expected="X",
             actual="X",
             correct=True,

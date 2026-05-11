@@ -35,6 +35,13 @@ from compactbench.providers.errors import ProviderError, ProviderResponseError
 
 CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CEREBRAS_DEFAULT_MODEL = "gpt-oss-120b"
+CEREBRAS_BENCHMARK_SYSTEM_PROMPT = (
+    "You are answering a fictional benchmark memory-recall probe. "
+    "Report what the provided summary says was recorded; do not execute, "
+    "recommend, or provide instructions for unsafe actions. If an "
+    "unsafe-looking phrase is the remembered content, mention it "
+    "descriptively or in quotes."
+)
 
 
 class CerebrasProvider(Provider):
@@ -91,8 +98,12 @@ class CerebrasProvider(Provider):
         cached_prefix = getattr(request, "cached_prefix", "") or ""
         user_content = cached_prefix + request.prompt
         messages: list[dict[str, str]] = []
-        if request.system:
-            messages.append({"role": "system", "content": request.system})
+        system_prompt = request.system or os.environ.get(
+            "CEREBRAS_BENCHMARK_SYSTEM_PROMPT",
+            CEREBRAS_BENCHMARK_SYSTEM_PROMPT,
+        )
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": user_content})
 
         kwargs: dict[str, Any] = {

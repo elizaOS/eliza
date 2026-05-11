@@ -9,11 +9,10 @@
 //      self-contained TUs (only #include <metal_stdlib>; their own structs,
 //      constants, kernel symbols), so they compile as independent .air files.
 //
-//   2. Patches ggml/src/ggml-metal/CMakeLists.txt so the non-EMBED_LIBRARY
-//      branch (the one used by darwin host metal builds) builds each standalone
-//      shader into its own .air via `xcrun metal -c` and merges all
-//      .air files (the original ggml-metal.air plus the five milady .air files)
-//      into default.metallib via a single `xcrun metallib` invocation.
+//   2. Patches ggml/src/ggml-metal/CMakeLists.txt so both Metal packaging
+//      branches build each standalone shader into its own .air via
+//      `xcrun metal -c` and merge all .air files (the original ggml-metal.air
+//      plus the five milady .air files) into one default.metallib.
 //
 //   The original CMake snippet pipes `xcrun metal | xcrun metallib`. We
 //   replace that with explicit per-source compilation + a final merge step,
@@ -35,11 +34,10 @@
 //     not yet selected by the runtime — the symbol-presence audit (`nm`,
 //     `strings default.metallib`) passes, the dispatch audit does not.
 //
-//   * EMBED_LIBRARY path used by iOS targets. iOS builds compile a single
-//     concatenated .metal via `.incbin`, which would require stripping the
-//     duplicate decls (`block_qjl1_256`, `block_q4_polar`, `QK_QJL`,
-//     `QK_POLAR`, `QJL_RESIDUAL_BYTES` already in ggml-common.h). That is a
-//     separate patch and is documented as a deferred gap.
+//   * Convert the EMBED_LIBRARY path used by iOS targets to embed compiled
+//     metallib bytes rather than concatenated Metal source. This avoids
+//     duplicate declarations between ggml-metal.metal + standalones and lets
+//     iOS load the same multi-TU kernel set as desktop.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -70,6 +68,9 @@ export const METAL_KERNEL_FILES = [
 ];
 
 const SENTINEL = "# MILADY-KERNEL-PATCH-V1";
+const SENTINEL_EMBED = "# MILADY-KERNEL-EMBED-PATCH-V1";
+const SENTINEL_EMBED_LOADER = "// MILADY-EMBEDDED-METALLIB-LOADER-V1";
+const SENTINEL_QJL_ATTN = "// MILADY-QJL-ATTN-DISPATCH-V1";
 
 function inForkRelpath(name) {
   return path.posix.join("ggml", "src", "ggml-metal", "milady-shipped", name);
@@ -137,13 +138,10 @@ function copyStandalonesIntoFork(cacheDir, { dryRun }) {
   return copied;
 }
 
-// Patch ggml/src/ggml-metal/CMakeLists.txt: replace the single
-//   `xcrun metal -c X | xcrun metallib - -o Y`
-// pipe with a multi-source compile + merge that includes our shipped kernels.
-//
-// We anchor on the `add_custom_command(OUTPUT ${...}/default.metallib` line
-// in the non-EMBED_LIBRARY branch; that is the only metallib build the
-// darwin host metal target uses. Idempotent via SENTINEL.
+// Patch ggml/src/ggml-metal/CMakeLists.txt so desktop and iOS both compile
+// ggml-metal.metal + every standalone into separate .air files and merge them
+// into one default.metallib. iOS then embeds that binary metallib into the
+// static archive instead of embedding concatenated source.
 function patchMetalCMakeLists(cacheDir, { dryRun }) {
   const cmakePath = path.join(
     cacheDir,
@@ -158,14 +156,95 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
     );
   }
   const original = fs.readFileSync(cmakePath, "utf8");
-  if (original.includes(SENTINEL)) {
-    return { changed: false, path: cmakePath };
+  let patched = original;
+  let changed = false;
+
+  const miladyAirLinesForSdk = (sdkExpr) =>
+    METAL_KERNEL_FILES.map((name) => {
+      const stem = name.replace(/\.metal$/, "");
+      return `        COMMAND xcrun -sdk ${sdkExpr} metal \${XC_FLAGS} -c \${CMAKE_CURRENT_SOURCE_DIR}/milady-shipped/${name} -o \${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
+    }).join("\n");
+  const miladyAirInputs = METAL_KERNEL_FILES.map((name) => {
+    const stem = name.replace(/\.metal$/, "");
+    return `\${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
+  }).join(" ");
+  const miladyDepends = METAL_KERNEL_FILES.map(
+    (name) => `\${CMAKE_CURRENT_SOURCE_DIR}/milady-shipped/${name}`,
+  ).join(" ");
+
+  if (!patched.includes(SENTINEL_EMBED)) {
+    const embedStart = patched.indexOf(
+      "    # merge ggml-common.h and ggml-metal.metal into a single file",
+    );
+    const embedEnd =
+      embedStart === -1
+        ? -1
+        : patched.indexOf(
+            "\n\n    target_sources(ggml-metal PRIVATE \"${METALLIB_EMBED_ASM}\")",
+            embedStart,
+          );
+    if (embedStart === -1 || embedEnd === -1) {
+      throw new Error(
+        `[metal-kernels] embedded Metal CMake anchor not found at ${cmakePath}; ` +
+          `the fork's GGML_METAL_EMBED_LIBRARY branch changed shape and the patch must be revisited.`,
+      );
+    }
+    const embedAirLines = miladyAirLinesForSdk("${METAL_SDK}");
+    const embedReplacement = `    # ${SENTINEL_EMBED}
+    # Build a compiled default.metallib for embedded-library targets (iOS).
+    # The upstream path embedded concatenated Metal source and JIT-compiled it
+    # at runtime. That cannot include the milady standalones because the source
+    # TUs intentionally redeclare block_* structs/constants that already exist
+    # in ggml-common.h. Compile each TU separately, merge into one metallib,
+    # and embed the binary metallib bytes instead.
+    set(METALLIB_EMBED_ASM        "\${CMAKE_CURRENT_BINARY_DIR}/autogenerated/ggml-metal-embed.s")
+    set(METALLIB_SOURCE_EMBED     "\${CMAKE_CURRENT_BINARY_DIR}/autogenerated/ggml-metal-embed.metal")
+    set(METALLIB_SOURCE_EMBED_TMP "\${CMAKE_CURRENT_BINARY_DIR}/autogenerated/ggml-metal-embed.metal.tmp")
+    set(METALLIB_EMBED_BINARY    "\${CMAKE_CURRENT_BINARY_DIR}/autogenerated/default.metallib")
+    set(METALLIB_EMBED_AIR       "\${CMAKE_CURRENT_BINARY_DIR}/autogenerated/ggml-metal-embed.air")
+    set(METAL_SDK "\${CMAKE_OSX_SYSROOT}")
+    if (NOT METAL_SDK)
+        set(METAL_SDK macosx)
+    endif()
+    if (GGML_METAL_SHADER_DEBUG)
+        set(XC_FLAGS -fno-fast-math -fno-inline)
+    else()
+        set(XC_FLAGS -O3)
+    endif()
+    if (GGML_METAL_STD)
+        list(APPEND XC_FLAGS -std=\${GGML_METAL_STD})
+    endif()
+
+    add_custom_command(
+        OUTPUT "\${METALLIB_EMBED_ASM}"
+        COMMAND echo "Embedding Metal library (compiled metallib + milady-shipped kernels)"
+        COMMAND sed -e "/__embed_ggml-common.h__/r \${METALLIB_COMMON}"       -e "/__embed_ggml-common.h__/d"         < "\${METALLIB_SOURCE}"           > "\${METALLIB_SOURCE_EMBED_TMP}"
+        COMMAND sed -e "/\\#include \\"ggml-metal-impl.h\\"/r \${METALLIB_IMPL}" -e "/\\#include \\"ggml-metal-impl.h\\"/d" < "\${METALLIB_SOURCE_EMBED_TMP}" > "\${METALLIB_SOURCE_EMBED}"
+        COMMAND xcrun -sdk \${METAL_SDK} metal \${XC_FLAGS} -DGGML_METAL_EMBED_LIBRARY=1 -c "\${METALLIB_SOURCE_EMBED}" -o "\${METALLIB_EMBED_AIR}"
+${embedAirLines}
+        COMMAND xcrun -sdk \${METAL_SDK} metallib "\${METALLIB_EMBED_AIR}" ${miladyAirInputs} -o "\${METALLIB_EMBED_BINARY}"
+        COMMAND echo ".section __DATA,__ggml_metallib"          >  "\${METALLIB_EMBED_ASM}"
+        COMMAND echo ".globl _ggml_metallib_start"              >> "\${METALLIB_EMBED_ASM}"
+        COMMAND echo "_ggml_metallib_start:"                    >> "\${METALLIB_EMBED_ASM}"
+        COMMAND echo .incbin "\\"\${METALLIB_EMBED_BINARY}\\""    >> "\${METALLIB_EMBED_ASM}"
+        COMMAND echo ".globl _ggml_metallib_end"                >> "\${METALLIB_EMBED_ASM}"
+        COMMAND echo "_ggml_metallib_end:"                      >> "\${METALLIB_EMBED_ASM}"
+        DEPENDS ../ggml-common.h ggml-metal.metal ggml-metal-impl.h ${miladyDepends}
+        COMMENT "Generate assembly for embedded compiled Metal library"
+        VERBATIM
+    )`;
+    patched =
+      patched.slice(0, embedStart) +
+      embedReplacement +
+      patched.slice(embedEnd);
+    changed = true;
   }
 
   // The exact block we replace. This pipe pattern has been stable in the
   // milady-ai/llama.cpp fork for the entire v0.4.x line; if the upstream
   // ever rewrites it we want to fail loudly rather than silently no-op.
-  const anchor = `    add_custom_command(
+  if (!patched.includes(SENTINEL)) {
+    const anchor = `    add_custom_command(
         OUTPUT \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
         COMMAND xcrun -sdk macosx metal \${XC_FLAGS} -c \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-metal.metal -o - |
                 xcrun -sdk macosx metallib        - -o \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
@@ -174,29 +253,16 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
         DEPENDS ggml-metal.metal \${METALLIB_COMMON}
         COMMENT "Compiling Metal kernels"
         )`;
-  if (!original.includes(anchor)) {
-    throw new Error(
-      `[metal-kernels] CMakeLists.txt anchor not found at ${cmakePath}; ` +
-        `the fork's metallib build snippet has changed shape and the patch ` +
-        `must be revisited. Inspect the file's add_custom_command for default.metallib.`,
-    );
-  }
+    if (!patched.includes(anchor)) {
+      throw new Error(
+        `[metal-kernels] CMakeLists.txt anchor not found at ${cmakePath}; ` +
+          `the fork's metallib build snippet has changed shape and the patch ` +
+          `must be revisited. Inspect the file's add_custom_command for default.metallib.`,
+      );
+    }
 
-  // Replacement: compile ggml-metal.metal AND each shipped standalone into
-  // its own .air file, then merge them all into default.metallib.
-  const milady_air_lines = METAL_KERNEL_FILES.map((name) => {
-    const stem = name.replace(/\.metal$/, "");
-    return `        COMMAND xcrun -sdk macosx metal \${XC_FLAGS} -c \${CMAKE_CURRENT_SOURCE_DIR}/milady-shipped/${name} -o \${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
-  }).join("\n");
-  const milady_air_inputs = METAL_KERNEL_FILES.map((name) => {
-    const stem = name.replace(/\.metal$/, "");
-    return `\${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
-  }).join(" ");
-  const milady_depends = METAL_KERNEL_FILES.map(
-    (name) => `\${CMAKE_CURRENT_SOURCE_DIR}/milady-shipped/${name}`,
-  ).join(" ");
-
-  const replacement = `    # ${SENTINEL}
+    const miladyAirLines = miladyAirLinesForSdk("macosx");
+    const replacement = `    # ${SENTINEL}
     # Build ggml-metal.metal AND each milady standalone shader into its own
     # .air file, then merge all .air files into a single default.metallib.
     # The standalones are self-contained TUs (only #include <metal_stdlib>;
@@ -205,23 +271,23 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
     add_custom_command(
         OUTPUT \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
         COMMAND xcrun -sdk macosx metal \${XC_FLAGS} -c \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-metal.metal -o \${CMAKE_CURRENT_BINARY_DIR}/ggml-metal.air
-${milady_air_lines}
-        COMMAND xcrun -sdk macosx metallib \${CMAKE_CURRENT_BINARY_DIR}/ggml-metal.air ${milady_air_inputs} -o \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
+${miladyAirLines}
+        COMMAND xcrun -sdk macosx metallib \${CMAKE_CURRENT_BINARY_DIR}/ggml-metal.air ${miladyAirInputs} -o \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
         COMMAND rm -f \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-common.h
         COMMAND rm -f \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-metal.metal
-        DEPENDS ggml-metal.metal \${METALLIB_COMMON} ${milady_depends}
+        DEPENDS ggml-metal.metal \${METALLIB_COMMON} ${miladyDepends}
         COMMENT "Compiling Metal kernels (ggml-metal + milady-shipped: ${METAL_KERNEL_FILES.join(", ")})"
         )`;
+    patched = patched.replace(anchor, replacement);
+    changed = true;
+  }
 
-  const patched = original.replace(anchor, replacement);
   if (patched === original) {
-    throw new Error(
-      `[metal-kernels] anchor matched but replacement did not change ${cmakePath}; this is a bug`,
-    );
+    return { changed: false, path: cmakePath };
   }
   if (dryRun) {
     console.log(
-      `[metal-kernels] (dry-run) would patch ${cmakePath} (anchor matched, replacement size ${replacement.length} chars, includes ${METAL_KERNEL_FILES.length} shipped kernels)`,
+      `[metal-kernels] (dry-run) would patch ${cmakePath} (changed=${changed}, includes ${METAL_KERNEL_FILES.length} shipped kernels)`,
     );
     return { changed: false, path: cmakePath };
   }
@@ -229,142 +295,125 @@ ${milady_air_lines}
   return { changed: true, path: cmakePath };
 }
 
-// MILADY-DISPATCH-V1 — Wave-6 follow-up.
-//
-// The Wave-5 patch shipped the five standalone .metal sources into
-// default.metallib. The fork's existing dispatch pipeline (ggml-metal-ops.cpp
-// :: ggml_metal_op_mul_mat / ggml_metal_op_get_rows) routes through
-// ggml_metal_library_get_pipeline_{mul_mv,get_rows}() which (1) GGML_ABORT
-// for unknown ggml_type values, and (2) bind a 'nsg' function constant that
-// the standalones do not declare. So even though the symbols are present,
-// they cannot be reached via the standard mat-vec path.
-//
-// This patch adds a parallel dispatch path that knows how to set up the
-// custom arg structs each standalone declares. The standalone .metal files
-// stay frozen — they were source-level verified by metal_verify and any
-// edit invalidates that contract.
-//
-// Coverage realism (read carefully — the standalones do NOT all expose a
-// mul_mv-shaped kernel):
-//
-//   GGML_TYPE_QJL1_256 (46) — kernel_mul_mv_qjl1_256_f32, kernel_get_rows_qjl1_256
-//                             → MUL_MAT + GET_ROWS wired. Note: the kernel
-//                             expects a `q` activation that is the
-//                             pre-projected sketch (proj_dim=256), NOT a raw
-//                             head_dim activation. Callers must respect this.
-//   GGML_TYPE_Q4_POLAR (47) — kernel_mul_mv_q4_polar_f32, kernel_get_rows_q4_polar
-//                             → MUL_MAT + GET_ROWS wired. Activation is fp32
-//                             head_dim (128). use_qjl=0 by default; flip via
-//                             a tensor flag if a future caller needs the
-//                             residual path.
-//   GGML_TYPE_TBQ3_0 (43) / TBQ4_0 (44) / TBQ3_TCQ (48) — these standalones
-//                             expose ONLY `kernel_turbo3_dot` /
-//                             `kernel_turbo4_dot` / `kernel_turbo3_tcq_dot`,
-//                             which are attention-score (not mul_mv) kernels:
-//                             they take per-head q vectors and produce
-//                             per-(head, kv_idx) scores, the K-side cache
-//                             format. There is no mul_mv-shaped dispatch
-//                             contract that fits these without a separate
-//                             GGML op (e.g. an `ATTN_SCORE_TBQ3` variant of
-//                             the QJL attention bridge). Until that op
-//                             lands, MUL_MAT against these types in a graph
-//                             aborts with a structured "tbq* mul_mv not
-//                             yet wired — needs ATTN_SCORE op" message
-//                             rather than silently crashing in the standard
-//                             pipeline path.
-//
-// Patching strategy: anchor-based string-replace, idempotent via the
-// SENTINEL_DISPATCH marker, three files patched in
-// ~/.cache/eliza-dflash/milady-llama-cpp/ggml/src/ggml-metal/:
-//   - ggml-metal-device.h    : forward decls for milady pipeline helpers
-//   - ggml-metal-device.cpp  : pipeline lookup helpers (no function
-//                              constants — direct getNamed bypass) +
-//                              early-out in the standard mul_mv / get_rows
-//                              helpers so the GGML_ABORT default cases are
-//                              not hit.
-//   - ggml-metal-ops.cpp     : ggml_metal_op_mul_mat / ggml_metal_op_get_rows
-//                              early-out → milady_quant dispatchers.
+function patchEmbeddedMetallibLoader(cacheDir, { dryRun }) {
+  const deviceMPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.m",
+  );
+  if (!fs.existsSync(deviceMPath)) {
+    throw new Error(
+      `[metal-kernels] expected ${deviceMPath} to exist on the fork; cannot wire embedded metallib loader`,
+    );
+  }
+  const original = fs.readFileSync(deviceMPath, "utf8");
+  if (original.includes(SENTINEL_EMBED_LOADER)) {
+    return { changed: false, path: deviceMPath };
+  }
+  const anchor = `#if GGML_METAL_EMBED_LIBRARY
+        GGML_LOG_INFO("%s: using embedded metal library\\n", __func__);
+
+        extern const char ggml_metallib_start[];
+        extern const char ggml_metallib_end[];
+
+        src = [[NSString alloc] initWithBytes:ggml_metallib_start length:(ggml_metallib_end-ggml_metallib_start) encoding:NSUTF8StringEncoding];
+#else`;
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[metal-kernels] embedded Metal loader anchor not found at ${deviceMPath}; ` +
+        `the fork's GGML_METAL_EMBED_LIBRARY loader changed shape and the patch must be revisited.`,
+    );
+  }
+  const replacement = `#if GGML_METAL_EMBED_LIBRARY
+        GGML_LOG_INFO("%s: using embedded compiled metal library\\n", __func__);
+
+        extern const char ggml_metallib_start[];
+        extern const char ggml_metallib_end[];
+
+        // ${SENTINEL_EMBED_LOADER}
+        // The build patch embeds compiled default.metallib bytes here, not
+        // Metal source. Loading with newLibraryWithData keeps iOS on the same
+        // multi-TU kernel set as desktop and avoids duplicate declarations
+        // between ggml-metal.metal and the milady standalone shaders.
+        const NSUInteger metallib_len = (NSUInteger)(ggml_metallib_end - ggml_metallib_start);
+        dispatch_data_t metallib_data = dispatch_data_create(ggml_metallib_start, metallib_len, nil, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
+        library = [device newLibraryWithData:metallib_data error:&error];
+        if (error) {
+            GGML_LOG_ERROR("%s: error: %s\\n", __func__, [[error description] UTF8String]);
+            return nil;
+        }
+#else`;
+  const patched = original.replace(anchor, replacement);
+  if (patched === original) {
+    throw new Error("[metal-kernels] embedded loader replace produced no change");
+  }
+  if (!dryRun) fs.writeFileSync(deviceMPath, patched, "utf8");
+  return { changed: !dryRun, path: deviceMPath };
+}
 
 const SENTINEL_DISPATCH = "// MILADY-DISPATCH-V1";
 
-// All milady ggml_type values (must match ggml/include/ggml.h).
-// Used by both the type-detection helper and the milady pipeline lookup.
-// Note: TBQ3_0=43, TBQ4_0=44, QJL1_256=46, Q4_POLAR=47, TBQ3_TCQ=48.
-const MILADY_QUANT_TYPES = ["TBQ3_0", "TBQ4_0", "QJL1_256", "Q4_POLAR", "TBQ3_TCQ"];
-
-function patchMetalDispatchHeader(cacheDir, { dryRun }) {
+function patchMetalQjlAttnHeader(cacheDir, { dryRun }) {
   const headerPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h");
   const original = fs.readFileSync(headerPath, "utf8");
-  if (original.includes(SENTINEL_DISPATCH)) {
+  if (original.includes(SENTINEL_QJL_ATTN)) {
     return { changed: false, path: headerPath };
   }
-  const anchor = `struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_mul_mv            (ggml_metal_library_t lib, const struct ggml_tensor * op);`;
+  const anchor = `struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_flash_attn_ext(
+        ggml_metal_library_t lib,
+        const struct ggml_tensor * op,
+        bool    has_mask,
+        bool    has_sinks,
+        bool    has_bias,
+        bool    has_scap,
+        bool    has_kvpad,
+        int32_t nsg);`;
   if (!original.includes(anchor)) {
     throw new Error(
-      `[metal-dispatch] header anchor not found at ${headerPath}; the fork's get_pipeline_mul_mv decl has moved. Inspect ggml-metal-device.h.`,
+      `[metal-qjl-attn] device.h anchor not found at ${headerPath}; inspect flash-attn pipeline declarations.`,
     );
   }
   const insert = `${anchor}
-${SENTINEL_DISPATCH}
-struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_mul_mv  (ggml_metal_library_t lib, enum ggml_type tsrc0);
-struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_get_rows(ggml_metal_library_t lib, enum ggml_type tsrc0);`;
+
+${SENTINEL_QJL_ATTN}
+struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_qjl(
+        ggml_metal_library_t lib);`;
   const patched = original.replace(anchor, insert);
-  if (patched === original) {
-    throw new Error(`[metal-dispatch] header replace produced no change`);
-  }
   if (!dryRun) fs.writeFileSync(headerPath, patched, "utf8");
   return { changed: !dryRun, path: headerPath };
 }
 
-function patchMetalDispatchDeviceCpp(cacheDir, { dryRun }) {
+function patchMetalQjlAttnDeviceCpp(cacheDir, { dryRun }) {
   const cppPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.cpp");
   const original = fs.readFileSync(cppPath, "utf8");
-  if (original.includes(SENTINEL_DISPATCH)) {
-    return { changed: false, path: cppPath };
+  if (original.includes(SENTINEL_QJL_ATTN)) {
+    const upgraded = original.replace(
+      'const char * name = "kernel_attn_score_qjl1_256";',
+      'const char * name = "kernel_attn_score_qjl1_256_multi";',
+    );
+    if (upgraded !== original && !dryRun) fs.writeFileSync(cppPath, upgraded, "utf8");
+    return { changed: upgraded !== original && !dryRun, path: cppPath };
   }
-
-  // (1) Insert milady pipeline lookup helpers right after
-  //     ggml_metal_library_get_pipeline_get_rows. They build the explicit
-  //     standalone symbol names (kernel_mul_mv_qjl1_256_f32 etc.) and bypass
-  //     ggml_metal_library_compile_pipeline (which would re-enter the
-  //     metallib compiler and fail because the standalones don't declare
-  //     the `nsg` function constant). Pure name lookup against the already-
-  //     loaded library — fails fast with GGML_ABORT if the symbol is not
-  //     present in default.metallib (which would mean the kernel-shipment
-  //     patch above silently regressed).
-  const helpersAnchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_set_rows(ggml_metal_library_t lib, ggml_type tidx, ggml_type tdst) {`;
-  if (!original.includes(helpersAnchor)) {
-    throw new Error(`[metal-dispatch] device.cpp helpers anchor not found at ${cppPath}`);
+  const anchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_bin(ggml_metal_library_t lib, const ggml_tensor * op, int32_t n_fuse) {`;
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[metal-qjl-attn] device.cpp anchor not found at ${cppPath}; inspect pipeline helper layout.`,
+    );
   }
-  const helpers = `${SENTINEL_DISPATCH}
-// Milady-quant pipeline lookups. These kernels were built by the kernel
-// shipment patch into default.metallib but use CUSTOM arg structs
-// (qjl_score_args / qjl_mv_args / qjl_dequant_args / polar_mv_args /
-// polar_dequant_args) that do NOT match ggml_metal_kargs_mul_mv. The
-// standard get_pipeline_mul_mv helper sets a 'nsg' function constant
-// the standalones do not declare; calling it crashes the metallib
-// compiler. We keep this lookup constant-free.
-ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_mul_mv(ggml_metal_library_t lib, ggml_type tsrc0) {
-    char name[256];
-    switch (tsrc0) {
-        case GGML_TYPE_QJL1_256: snprintf(name, 256, "kernel_mul_mv_qjl1_256_f32"); break;
-        case GGML_TYPE_Q4_POLAR: snprintf(name, 256, "kernel_mul_mv_q4_polar_f32"); break;
-        default:
-            GGML_LOG_ERROR("milady_mul_mv: type %s (%d) has no mul_mv standalone (only attention-score)\\n",
-                ggml_type_name(tsrc0), (int) tsrc0);
-            GGML_ABORT("milady_mul_mv: unsupported milady-quant type for MUL_MAT");
-    }
+  const helper = `${SENTINEL_QJL_ATTN}
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_qjl(ggml_metal_library_t lib) {
+    const char * name = "kernel_attn_score_qjl1_256_multi";
     ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
     if (!res.pipeline) {
-        // Cache miss — compile the pipeline by direct symbol name without
-        // any function constants. The standard get_pipeline_mul_mv helper
-        // would set an 'nsg' function constant which the standalones do not
-        // declare; we explicitly pass nullptr to bypass that.
+        // Standalone shipped shader: it declares no Metal function constants,
+        // so compile by direct symbol name with a null constants table.
         res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
     }
     if (!res.pipeline) {
-        GGML_LOG_ERROR("milady_mul_mv: kernel '%s' could not be compiled from default.metallib\\n", name);
-        GGML_ABORT("milady_mul_mv: kernel pipeline compile failed");
+        GGML_LOG_ERROR("attn_score_qjl: kernel '%s' missing from default.metallib\\n", name);
+        GGML_ABORT("attn_score_qjl: pipeline compile failed");
     }
     res.nr0 = 1;
     res.nr1 = 1;
@@ -373,279 +422,252 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_mul_mv(gg
     return res;
 }
 
-ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_milady_get_rows(ggml_metal_library_t lib, ggml_type tsrc0) {
-    char name[256];
-    switch (tsrc0) {
-        case GGML_TYPE_QJL1_256: snprintf(name, 256, "kernel_get_rows_qjl1_256"); break;
-        case GGML_TYPE_Q4_POLAR: snprintf(name, 256, "kernel_get_rows_q4_polar"); break;
-        default:
-            GGML_LOG_ERROR("milady_get_rows: type %s (%d) has no get_rows standalone\\n",
-                ggml_type_name(tsrc0), (int) tsrc0);
-            GGML_ABORT("milady_get_rows: unsupported milady-quant type for GET_ROWS");
-    }
-    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
-    if (!res.pipeline) {
-        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
-    }
-    if (!res.pipeline) {
-        GGML_LOG_ERROR("milady_get_rows: kernel '%s' could not be compiled from default.metallib\\n", name);
-        GGML_ABORT("milady_get_rows: kernel pipeline compile failed");
-    }
-    res.nr0 = 1; res.nr1 = 1; res.nsg = 1; res.smem = 0;
-    return res;
-}
-
 `;
-  let patched = original.replace(helpersAnchor, helpers + helpersAnchor);
-
-  // (2) Add a guard at the top of ggml_metal_library_get_pipeline_mul_mv()
-  //     so any caller that didn't go through the milady early-out gets a
-  //     clean structured abort instead of crashing in the metallib compiler
-  //     when the `nsg` function constant has no matching declaration.
-  const mvSwitchAnchor = `    // use custom matrix x vector kernel
-    switch (tsrc0) {`;
-  if (!patched.includes(mvSwitchAnchor)) {
-    throw new Error(`[metal-dispatch] device.cpp mul_mv switch anchor not found`);
-  }
-  const mvGuard = `    // ${SENTINEL_DISPATCH}
-    // Defence-in-depth: milady-quant types should be diverted by the op-side
-    // early-out in ggml_metal_op_mul_mat. If we got here, the dispatch
-    // routing has regressed.
-    if (tsrc0 == GGML_TYPE_QJL1_256 || tsrc0 == GGML_TYPE_Q4_POLAR ||
-        tsrc0 == GGML_TYPE_TBQ3_0  || tsrc0 == GGML_TYPE_TBQ4_0  ||
-        tsrc0 == GGML_TYPE_TBQ3_TCQ) {
-        GGML_LOG_ERROR("get_pipeline_mul_mv: type %s reached standard helper (op-side dispatch regression)\\n",
-            ggml_type_name(tsrc0));
-        GGML_ABORT("get_pipeline_mul_mv: milady-quant type leaked into standard pipeline path");
-    }
-    // use custom matrix x vector kernel
-    switch (tsrc0) {`;
-  patched = patched.replace(mvSwitchAnchor, mvGuard);
-
-  // (3) Same defence at the top of ggml_metal_library_get_pipeline_get_rows.
-  //     This helper auto-builds `kernel_get_rows_<typename>`, which for the
-  //     milady types yields the right symbol — but it would still try to
-  //     compile a fresh pipeline if the lookup misses, and the compile path
-  //     hits ggml-common.h struct redefinition. Hard-fail instead.
-  const grAnchor = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_get_rows(ggml_metal_library_t lib, ggml_type tsrc) {
-    char base[256];`;
-  if (!patched.includes(grAnchor)) {
-    throw new Error(`[metal-dispatch] device.cpp get_rows anchor not found`);
-  }
-  const grReplace = `ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_get_rows(ggml_metal_library_t lib, ggml_type tsrc) {
-    // ${SENTINEL_DISPATCH}
-    if (tsrc == GGML_TYPE_QJL1_256 || tsrc == GGML_TYPE_Q4_POLAR ||
-        tsrc == GGML_TYPE_TBQ3_0  || tsrc == GGML_TYPE_TBQ4_0  ||
-        tsrc == GGML_TYPE_TBQ3_TCQ) {
-        GGML_LOG_ERROR("get_pipeline_get_rows: type %s reached standard helper (op-side dispatch regression)\\n",
-            ggml_type_name(tsrc));
-        GGML_ABORT("get_pipeline_get_rows: milady-quant type leaked into standard pipeline path");
-    }
-    char base[256];`;
-  patched = patched.replace(grAnchor, grReplace);
-
-  if (patched === original) {
-    throw new Error(`[metal-dispatch] device.cpp replace produced no change`);
-  }
+  const patched = original.replace(anchor, helper + anchor);
   if (!dryRun) fs.writeFileSync(cppPath, patched, "utf8");
   return { changed: !dryRun, path: cppPath };
 }
 
-function patchMetalDispatchOpsCpp(cacheDir, { dryRun }) {
+function patchMetalQjlAttnOpsHeader(cacheDir, { dryRun }) {
+  const headerPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.h");
+  const original = fs.readFileSync(headerPath, "utf8");
+  if (original.includes(SENTINEL_QJL_ATTN)) {
+    return { changed: false, path: headerPath };
+  }
+  const anchor = `int ggml_metal_op_flash_attn_ext    (ggml_metal_op_t ctx, int idx);`;
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[metal-qjl-attn] ops.h anchor not found at ${headerPath}; inspect op declarations.`,
+    );
+  }
+  const insert = `${anchor}
+${SENTINEL_QJL_ATTN}
+int ggml_metal_op_attn_score_qjl  (ggml_metal_op_t ctx, int idx);`;
+  const patched = original.replace(anchor, insert);
+  if (!dryRun) fs.writeFileSync(headerPath, patched, "utf8");
+  return { changed: !dryRun, path: headerPath };
+}
+
+function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
   const opsPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp");
   const original = fs.readFileSync(opsPath, "utf8");
-  if (original.includes(SENTINEL_DISPATCH)) {
-    return { changed: false, path: opsPath };
+  if (original.includes(SENTINEL_QJL_ATTN)) {
+    let upgraded = original.replace(
+      `struct milady_qjl_score_args {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+};`,
+      `struct milady_qjl_score_args {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+    uint32_t tokens_per_threadgroup;
+};`,
+    );
+    upgraded = upgraded.replace(
+      `        /* n_tokens   = */ n_tokens,
+        /* proj_dim   = */ 256u,
+    };`,
+      `        /* n_tokens   = */ n_tokens,
+        /* proj_dim   = */ 256u,
+        /* tokens_per_threadgroup = */ 32u,
+    };`,
+    );
+    upgraded = upgraded.replace(
+      `            ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, (int) n_tokens, 1, 32, 1, 1);`,
+      `            const int token_groups = (int) ((n_tokens + args.tokens_per_threadgroup - 1u) / args.tokens_per_threadgroup);
+            ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, token_groups, 1, 32, 1, 1);`,
+    );
+    if (upgraded !== original && !dryRun) fs.writeFileSync(opsPath, upgraded, "utf8");
+    return { changed: upgraded !== original && !dryRun, path: opsPath };
   }
 
-  // (1) Insert helper functions just before ggml_metal_op_mul_mat. These
-  //     own the milady-quant dispatch shape: they pull op tensor metadata,
-  //     build the standalone arg struct, set buffers, and dispatch with the
-  //     correct threadgroup shape (32 threads per row, one threadgroup per
-  //     row of src0). The functions hard-abort on unsupported types so a
-  //     mis-routed call surfaces immediately.
-  // Anchor on int ggml_metal_op_get_rows since it appears earlier in the file
-  // than ggml_metal_op_mul_mat — both functions reference the milady helpers
-  // through the early-out so the helpers must be visible to BOTH.
-  const muMatAnchor = `int ggml_metal_op_get_rows(ggml_metal_op_t ctx, int idx) {`;
-  if (!original.includes(muMatAnchor)) {
-    throw new Error(`[metal-dispatch] ops.cpp get_rows anchor not found at ${opsPath}`);
+  const funcAnchor = `static int ggml_metal_op_encode_impl(ggml_metal_op_t ctx, int idx) {`;
+  if (!original.includes(funcAnchor)) {
+    throw new Error(
+      `[metal-qjl-attn] ops.cpp function anchor not found at ${opsPath}; inspect encode layout.`,
+    );
   }
-  const helpers = `${SENTINEL_DISPATCH}
-// Milady-quant arg structs. Layout-matched bit-for-bit to the standalone
-// declarations in milady-shipped/{qjl,polar}.metal — keep these in sync.
-struct milady_qjl_mv_args     { uint32_t n_rows; uint32_t proj_dim; };
-struct milady_qjl_dequant_args { uint32_t head_dim; uint32_t proj_dim; };
-struct milady_polar_mv_args     { uint32_t n_rows; uint32_t head_dim; uint32_t use_qjl; };
-struct milady_polar_dequant_args { uint32_t head_dim; uint32_t use_qjl; };
+  const opFunc = `${SENTINEL_QJL_ATTN}
+struct milady_qjl_score_args {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t proj_dim;
+    uint32_t tokens_per_threadgroup;
+};
 
-static inline bool milady_is_quant_mul_mv_supported(ggml_type t) {
-    return t == GGML_TYPE_QJL1_256 || t == GGML_TYPE_Q4_POLAR;
-}
-static inline bool milady_is_quant_get_rows_supported(ggml_type t) {
-    return t == GGML_TYPE_QJL1_256 || t == GGML_TYPE_Q4_POLAR;
-}
-// TBQ3_0 / TBQ4_0 / TBQ3_TCQ — standalones expose only attention-score
-// kernels (kernel_turbo3_dot etc.). MUL_MAT against these types in a
-// generic graph is not yet supported; we surface a clear abort instead
-// of silently routing through a path that crashes in the metallib
-// compiler. See AGENTS.md "TBQ* attention bridge" follow-up.
-static inline bool milady_is_quant_tbq_attn_only(ggml_type t) {
-    return t == GGML_TYPE_TBQ3_0 || t == GGML_TYPE_TBQ4_0 || t == GGML_TYPE_TBQ3_TCQ;
+static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+    id.offs += extra;
+    return id;
 }
 
-static int ggml_metal_op_mul_mv_milady_quant(ggml_metal_op_t ctx, int idx) {
+int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
     ggml_tensor * op = ctx->node(idx);
+
     ggml_metal_library_t lib = ctx->lib;
     ggml_metal_encoder_t enc = ctx->enc;
 
-    GGML_TENSOR_LOCALS( int32_t, ne0, op->src[0], ne);
-    GGML_TENSOR_LOCALS( int32_t, ne1, op->src[1], ne);
+    const ggml_tensor * q  = op->src[0];
+    const ggml_tensor * pk = op->src[1];
 
-    const ggml_type tsrc0 = op->src[0]->type;
+    GGML_ASSERT(q  != nullptr);
+    GGML_ASSERT(pk != nullptr);
+    GGML_ASSERT(q->type  == GGML_TYPE_F32);
+    GGML_ASSERT(pk->type == GGML_TYPE_QJL1_256);
+    GGML_ASSERT(op->type == GGML_TYPE_F32);
+    GGML_ASSERT(q->ne[0]  == 256);
+    GGML_ASSERT(pk->ne[0] == 128);
 
-    if (milady_is_quant_tbq_attn_only(tsrc0)) {
-        GGML_LOG_ERROR("milady_quant mul_mv: type %s exposes only attention-score kernels in the standalones; MUL_MAT requires an ATTN_SCORE op (Wave-7 work)\\n",
-            ggml_type_name(tsrc0));
-        GGML_ABORT("milady_quant: tbq* MUL_MAT not yet wired");
-    }
-    if (!milady_is_quant_mul_mv_supported(tsrc0)) {
-        GGML_LOG_ERROR("milady_quant mul_mv: type %s not a milady-quant type\\n", ggml_type_name(tsrc0));
-        GGML_ABORT("milady_quant mul_mv: unsupported type");
-    }
-    GGML_ASSERT(op->src[1]->type == GGML_TYPE_F32 && "milady_quant mul_mv expects fp32 activation");
+    const uint32_t n_heads     = (uint32_t) q->ne[1];
+    const uint32_t n_kv_heads  = (uint32_t) ((const int32_t *) op->op_params)[0];
+    const uint32_t n_tokens    = (uint32_t) pk->ne[1];
+    const int64_t  n_batch     = q->ne[2];
+    const int64_t  ne3         = q->ne[3];
 
-    auto pipeline = ggml_metal_library_get_pipeline_milady_mul_mv(lib, tsrc0);
+    GGML_ASSERT(n_kv_heads > 0);
+    GGML_ASSERT((n_heads % n_kv_heads) == 0);
+    GGML_ASSERT(pk->ne[2] == (int64_t) n_kv_heads);
+    GGML_ASSERT(pk->ne[3] == ne3);
+    GGML_ASSERT(op->ne[0] == (int64_t) n_tokens);
+    GGML_ASSERT(op->ne[1] == (int64_t) n_heads);
+    GGML_ASSERT(op->ne[2] == n_batch);
+    GGML_ASSERT(op->ne[3] == ne3);
+    GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
+    GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    const int32_t n_rows = ne01;
+    milady_qjl_score_args args = {
+        /* n_heads    = */ n_heads,
+        /* n_kv_heads = */ n_kv_heads,
+        /* n_tokens   = */ n_tokens,
+        /* proj_dim   = */ 256u,
+        /* tokens_per_threadgroup = */ 32u,
+    };
 
-    ggml_metal_encoder_set_pipeline(enc, pipeline);
-    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[0]), 0);
-    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[1]), 1);
-    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op),         2);
+    auto pipeline = ggml_metal_library_get_pipeline_attn_score_qjl(lib);
 
-    if (tsrc0 == GGML_TYPE_QJL1_256) {
-        milady_qjl_mv_args args = {
-            /* n_rows  = */ (uint32_t) n_rows,
-            /* proj_dim = */ 256u,
-        };
-        ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
-    } else { // GGML_TYPE_Q4_POLAR
-        milady_polar_mv_args args = {
-            /* n_rows  = */ (uint32_t) n_rows,
-            /* head_dim = */ 128u,
-            /* use_qjl  = */ 0u,
-        };
-        ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
-    }
-
-    // 32 threads per row, one threadgroup per row. Matches the standalone
-    // dispatch shape verified by metal_verify (8/8 PASS).
-    ggml_metal_encoder_dispatch_threadgroups(enc, n_rows, 1, 1, 32, 1, 1);
-    return 1;
-}
-
-static int ggml_metal_op_get_rows_milady_quant(ggml_metal_op_t ctx, int idx) {
-    ggml_tensor * op = ctx->node(idx);
-    ggml_metal_library_t lib = ctx->lib;
-    ggml_metal_encoder_t enc = ctx->enc;
-
-    const ggml_type tsrc0 = op->src[0]->type;
-    if (!milady_is_quant_get_rows_supported(tsrc0)) {
-        GGML_LOG_ERROR("milady_quant get_rows: type %s not supported (tbq* lacks get_rows kernel)\\n",
-            ggml_type_name(tsrc0));
-        GGML_ABORT("milady_quant get_rows: unsupported type");
-    }
-
-    auto pipeline = ggml_metal_library_get_pipeline_milady_get_rows(lib, tsrc0);
+    const ggml_metal_buffer_id q_base  = ggml_metal_get_buffer_id(q);
+    const ggml_metal_buffer_id pk_base = ggml_metal_get_buffer_id(pk);
+    const ggml_metal_buffer_id dst_base = ggml_metal_get_buffer_id(op);
 
     ggml_metal_encoder_set_pipeline(enc, pipeline);
-    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[0]), 0);
-    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[1]), 1);
-    ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op),         2);
+    ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
 
-    if (tsrc0 == GGML_TYPE_QJL1_256) {
-        milady_qjl_dequant_args args = { /* head_dim = */ 128u, /* proj_dim = */ 256u };
-        ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
-    } else { // GGML_TYPE_Q4_POLAR
-        milady_polar_dequant_args args = { /* head_dim = */ 128u, /* use_qjl = */ 0u };
-        ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
+    for (int64_t i3 = 0; i3 < ne3; ++i3) {
+        const size_t q_i3  = (size_t) i3 * q->nb[3];
+        const size_t pk_i3 = (size_t) i3 * pk->nb[3];
+        const size_t dst_i3 = (size_t) i3 * op->nb[3];
+        for (int64_t ib = 0; ib < n_batch; ++ib) {
+            ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,  q_i3  + (size_t) ib * q->nb[2]),  0);
+            ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base, pk_i3),                          1);
+            ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
+            const int token_groups = (int) ((n_tokens + args.tokens_per_threadgroup - 1u) / args.tokens_per_threadgroup);
+            ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, token_groups, 1, 32, 1, 1);
+        }
     }
 
-    // Single threadgroup, 32 threads, processes one block.
-    ggml_metal_encoder_dispatch_threadgroups(enc, 1, 1, 1, 32, 1, 1);
     return 1;
 }
 
 `;
-  let patched = original.replace(muMatAnchor, helpers + muMatAnchor);
+  let patched = original.replace(funcAnchor, opFunc + funcAnchor);
 
-  // (2) Early-out at the top of ggml_metal_op_mul_mat() — divert milady
-  //     types BEFORE any of the kernel-selection logic that depends on
-  //     ggml_metal_library_get_pipeline_mul_mv.
-  const muMatBodyAnchor = `int ggml_metal_op_mul_mat(ggml_metal_op_t ctx, int idx) {
-    ggml_tensor * op = ctx->node(idx);
-
-    ggml_metal_library_t lib = ctx->lib;
-    ggml_metal_encoder_t enc = ctx->enc;`;
-  if (!patched.includes(muMatBodyAnchor)) {
-    throw new Error(`[metal-dispatch] ops.cpp mul_mat body anchor not found`);
+  const switchAnchor = `        case GGML_OP_FLASH_ATTN_EXT:
+            {
+                n_fuse = ggml_metal_op_flash_attn_ext(ctx, idx);
+            } break;`;
+  if (!patched.includes(switchAnchor)) {
+    throw new Error(
+      `[metal-qjl-attn] ops.cpp switch anchor not found at ${opsPath}; inspect encode switch.`,
+    );
   }
-  const muMatEarly = `${muMatBodyAnchor}
-
-    // ${SENTINEL_DISPATCH}
-    {
-        const ggml_type tsrc0 = op->src[0]->type;
-        if (tsrc0 == GGML_TYPE_QJL1_256 || tsrc0 == GGML_TYPE_Q4_POLAR ||
-            tsrc0 == GGML_TYPE_TBQ3_0  || tsrc0 == GGML_TYPE_TBQ4_0  ||
-            tsrc0 == GGML_TYPE_TBQ3_TCQ) {
-            return ggml_metal_op_mul_mv_milady_quant(ctx, idx);
-        }
-        (void) lib; (void) enc;
-    }`;
-  patched = patched.replace(muMatBodyAnchor, muMatEarly);
-
-  // (3) Early-out at the top of ggml_metal_op_get_rows().
-  const grBodyAnchor = `int ggml_metal_op_get_rows(ggml_metal_op_t ctx, int idx) {
-    ggml_tensor * op = ctx->node(idx);
-
-    ggml_metal_library_t lib = ctx->lib;
-    ggml_metal_encoder_t enc = ctx->enc;`;
-  if (!patched.includes(grBodyAnchor)) {
-    throw new Error(`[metal-dispatch] ops.cpp get_rows body anchor not found`);
-  }
-  const grEarly = `${grBodyAnchor}
-
-    // ${SENTINEL_DISPATCH}
-    {
-        const ggml_type tsrc0 = op->src[0]->type;
-        if (tsrc0 == GGML_TYPE_QJL1_256 || tsrc0 == GGML_TYPE_Q4_POLAR) {
-            return ggml_metal_op_get_rows_milady_quant(ctx, idx);
-        }
-        if (tsrc0 == GGML_TYPE_TBQ3_0 || tsrc0 == GGML_TYPE_TBQ4_0 || tsrc0 == GGML_TYPE_TBQ3_TCQ) {
-            GGML_LOG_ERROR("get_rows: type %s has no standalone get_rows kernel (tbq* attention-only)\\n",
-                ggml_type_name(tsrc0));
-            GGML_ABORT("get_rows: tbq* not wired");
-        }
-        (void) lib; (void) enc;
-    }`;
-  patched = patched.replace(grBodyAnchor, grEarly);
-
-  if (patched === original) {
-    throw new Error(`[metal-dispatch] ops.cpp replace produced no change`);
-  }
+  const switchInsert = `${switchAnchor}
+        case GGML_OP_ATTN_SCORE_QJL:
+            {
+                n_fuse = ggml_metal_op_attn_score_qjl(ctx, idx);
+            } break;`;
+  patched = patched.replace(switchAnchor, switchInsert);
   if (!dryRun) fs.writeFileSync(opsPath, patched, "utf8");
   return { changed: !dryRun, path: opsPath };
 }
 
+function patchMetalQjlAttnSupportsOp(cacheDir, { dryRun }) {
+  const deviceMPath = path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.m");
+  const original = fs.readFileSync(deviceMPath, "utf8");
+  if (original.includes(SENTINEL_QJL_ATTN)) {
+    return { changed: false, path: deviceMPath };
+  }
+  const anchor = `        case GGML_OP_FLASH_ATTN_EXT:
+            // for new head sizes, add checks here`;
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[metal-qjl-attn] supports_op anchor not found at ${deviceMPath}; inspect GGML_OP_FLASH_ATTN_EXT branch.`,
+    );
+  }
+  const insert = `        case GGML_OP_ATTN_SCORE_QJL:
+            // ${SENTINEL_QJL_ATTN}
+            return has_simdgroup_reduction &&
+                op->type == GGML_TYPE_F32 &&
+                op->src[0] != NULL &&
+                op->src[1] != NULL &&
+                op->src[0]->type == GGML_TYPE_F32 &&
+                op->src[1]->type == GGML_TYPE_QJL1_256 &&
+                op->src[0]->ne[0] == 256 &&
+                op->src[1]->ne[0] == 128;
+${anchor}`;
+  const patched = original.replace(anchor, insert);
+  if (!dryRun) fs.writeFileSync(deviceMPath, patched, "utf8");
+  return { changed: !dryRun, path: deviceMPath };
+}
+
+function patchMetalQjlAttnDispatch(cacheDir, { dryRun }) {
+  const header = patchMetalQjlAttnHeader(cacheDir, { dryRun });
+  const deviceCpp = patchMetalQjlAttnDeviceCpp(cacheDir, { dryRun });
+  const opsHeader = patchMetalQjlAttnOpsHeader(cacheDir, { dryRun });
+  const opsCpp = patchMetalQjlAttnOpsCpp(cacheDir, { dryRun });
+  const supportsOp = patchMetalQjlAttnSupportsOp(cacheDir, { dryRun });
+  return { header, deviceCpp, opsHeader, opsCpp, supportsOp };
+}
+
 export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
-  const h = patchMetalDispatchHeader(cacheDir, { dryRun });
-  const d = patchMetalDispatchDeviceCpp(cacheDir, { dryRun });
-  const o = patchMetalDispatchOpsCpp(cacheDir, { dryRun });
+  const patchedFiles = [
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h"),
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.cpp"),
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp"),
+  ].filter((file) => {
+    try {
+      return fs.readFileSync(file, "utf8").includes(SENTINEL_DISPATCH);
+    } catch {
+      return false;
+    }
+  });
+
+  const message =
+    "[metal-dispatch] NOT wiring generic Metal GGML dispatch for milady " +
+    "QJL/Polar/TBQ kernels. The standalone kernels use bespoke attention/" +
+    "projection contracts that do not match generic MUL_MAT/GET_ROWS. " +
+    "Build output is symbol-shipped only until dedicated ATTN_SCORE and " +
+    "bundle-aware graph ops land.";
+  if (patchedFiles.length > 0) {
+    const detail =
+      `${message} Found an older unsafe MILADY-DISPATCH-V1 patch in:\n` +
+      `  ${patchedFiles.join("\n  ")}\n` +
+      "Use a clean milady-llama-cpp checkout/cache before producing artifacts.";
+    if (!dryRun) {
+      throw new Error(detail);
+    }
+    console.warn(detail);
+  } else {
+    console.log(`${dryRun ? "(dry-run) " : ""}${message}`);
+  }
+  const qjlAttn = patchMetalQjlAttnDispatch(cacheDir, { dryRun });
   console.log(
-    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired milady-quant dispatch (qjl1_256, q4_polar): header=${h.changed ? "patched" : "skipped"}, device.cpp=${d.changed ? "patched" : "skipped"}, ops.cpp=${o.changed ? "patched" : "skipped"}. tbq3_0/tbq4_0/tbq3_tcq still attention-only.`,
+    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_QJL dispatch via kernel_attn_score_qjl1_256_multi`,
   );
-  return { header: h, device: d, ops: o };
+  return { status: "qjl-attn-only", unsafePatchPresent: patchedFiles, qjlAttn };
 }
 
 // Public entry point used by build-llama-cpp-dflash.mjs.
@@ -657,6 +679,7 @@ export function patchMetalKernels(cacheDir, { dryRun = false } = {}) {
   assertStandalonesPresent();
   const copied = copyStandalonesIntoFork(cacheDir, { dryRun });
   const cmake = patchMetalCMakeLists(cacheDir, { dryRun });
+  const embeddedLoader = patchEmbeddedMetallibLoader(cacheDir, { dryRun });
   const dispatch = patchMetalDispatch(cacheDir, { dryRun });
   console.log(
     `[metal-kernels] ${dryRun ? "(dry-run) " : ""}wired ${copied.length} shipped Metal kernels: ${METAL_KERNEL_FILES.join(", ")}`,
@@ -664,5 +687,8 @@ export function patchMetalKernels(cacheDir, { dryRun = false } = {}) {
   console.log(
     `[metal-kernels] ${dryRun ? "(dry-run) " : ""}CMakeLists.txt: ${cmake.changed ? "patched" : "already-patched"} (${cmake.path})`,
   );
-  return { copied, cmake, dispatch };
+  console.log(
+    `[metal-kernels] ${dryRun ? "(dry-run) " : ""}embedded loader: ${embeddedLoader.changed ? "patched" : "already-patched"} (${embeddedLoader.path})`,
+  );
+  return { copied, cmake, embeddedLoader, dispatch };
 }

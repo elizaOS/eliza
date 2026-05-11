@@ -36,27 +36,27 @@ import type {
 import { loadElizaInferenceFfi } from "./ffi-bindings";
 import {
   VoiceLifecycle,
+  VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./lifecycle";
-import {
-  PhraseCache,
-  type CachedPhraseAudio,
-} from "./phrase-cache";
+import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
+import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
   type MmapRegionHandle,
   SharedResourceRegistry,
 } from "./shared-resources";
 import { SpeakerPresetCache } from "./speaker-preset-cache";
-import { VoiceScheduler, type SchedulerEvents } from "./scheduler";
 import type {
   AudioChunk,
   AudioSink,
   OmniVoiceBackend,
+  OmniVoiceTranscriber,
   Phrase,
   RejectedTokenRange,
   SchedulerConfig,
   SpeakerPreset,
   TextToken,
+  TranscriptionAudio,
 } from "./types";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
@@ -79,10 +79,7 @@ export class VoiceStartupError extends Error {
     | "already-started"
     | "not-started";
 
-  constructor(
-    code: VoiceStartupError["code"],
-    message: string,
-  ) {
+  constructor(code: VoiceStartupError["code"], message: string) {
     super(message);
     this.name = "VoiceStartupError";
     this.code = code;
@@ -181,6 +178,14 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
       pcm: out.subarray(0, samples),
       sampleRate: this.sampleRate,
     };
+  }
+
+  async transcribe(args: TranscriptionAudio): Promise<string> {
+    return this.ffi.asrTranscribe({
+      ctx: this.ctx,
+      pcm: args.pcm,
+      sampleRateHz: args.sampleRate,
+    });
   }
 }
 
@@ -469,10 +474,139 @@ export class EngineVoiceBridge {
     await this.scheduler.waitIdle();
   }
 
+  async synthesizeTextToWav(text: string): Promise<Uint8Array> {
+    this.assertVoiceOn("synthesize speech");
+    const chunk = await this.scheduler.synthesizeText(text);
+    return encodeMonoPcm16Wav(chunk.pcm, chunk.sampleRate);
+  }
+
+  async transcribePcm(args: TranscriptionAudio): Promise<string> {
+    this.assertVoiceOn("transcribe audio");
+    if (!isTranscriber(this.backend)) {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        `[voice] Local transcription requires the fused omnivoice FFI backend; current backend does not expose ASR.`,
+      );
+    }
+    return this.backend.transcribe(args);
+  }
+
   /** Diagnostic accessor — bundle root the bridge is wired against. */
   bundlePath(): string {
     return this.bundleRoot;
   }
+
+  private assertVoiceOn(action: string): void {
+    const state = this.lifecycle.current();
+    if (state.kind === "voice-on") return;
+    if (state.kind === "voice-error") {
+      throw state.error;
+    }
+    throw new VoiceLifecycleError(
+      "illegal-transition",
+      `[voice] Cannot ${action} while lifecycle is ${state.kind}. Call armVoice() and wait for voice-on first.`,
+    );
+  }
+}
+
+function isTranscriber(
+  backend: OmniVoiceBackend,
+): backend is OmniVoiceBackend & OmniVoiceTranscriber {
+  return (
+    typeof (backend as Partial<OmniVoiceTranscriber>).transcribe === "function"
+  );
+}
+
+export function encodeMonoPcm16Wav(
+  pcm: Float32Array,
+  sampleRate: number,
+): Uint8Array {
+  const channels = 1;
+  const bytesPerSample = 2;
+  const dataBytes = pcm.length * bytesPerSample;
+  const out = new Uint8Array(44 + dataBytes);
+  const view = new DataView(out.buffer);
+  writeAscii(out, 0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeAscii(out, 8, "WAVE");
+  writeAscii(out, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+  view.setUint16(32, channels * bytesPerSample, true);
+  view.setUint16(34, bytesPerSample * 8, true);
+  writeAscii(out, 36, "data");
+  view.setUint32(40, dataBytes, true);
+
+  let offset = 44;
+  for (const sample of pcm) {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    const value = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff;
+    view.setInt16(offset, Math.round(value), true);
+    offset += bytesPerSample;
+  }
+  return out;
+}
+
+export function decodeMonoPcm16Wav(bytes: Uint8Array): TranscriptionAudio {
+  if (bytes.byteLength < 44) {
+    throw new Error("[voice] WAV input is too short to contain a header");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (
+    readAscii(bytes, 0, 4) !== "RIFF" ||
+    readAscii(bytes, 8, 4) !== "WAVE" ||
+    readAscii(bytes, 12, 4) !== "fmt "
+  ) {
+    throw new Error("[voice] Local transcription expects mono PCM16 WAV bytes");
+  }
+  const audioFormat = view.getUint16(20, true);
+  const channels = view.getUint16(22, true);
+  const sampleRate = view.getUint32(24, true);
+  const bitsPerSample = view.getUint16(34, true);
+  if (audioFormat !== 1 || channels !== 1 || bitsPerSample !== 16) {
+    throw new Error(
+      `[voice] Local transcription expects mono PCM16 WAV (format=1 channels=1 bits=16); got format=${audioFormat} channels=${channels} bits=${bitsPerSample}`,
+    );
+  }
+
+  let pos = 36;
+  while (pos + 8 <= bytes.byteLength) {
+    const chunkId = readAscii(bytes, pos, 4);
+    const chunkBytes = view.getUint32(pos + 4, true);
+    const dataStart = pos + 8;
+    if (chunkId === "data") {
+      if (dataStart + chunkBytes > bytes.byteLength) {
+        throw new Error("[voice] WAV data chunk exceeds input length");
+      }
+      if (chunkBytes % 2 !== 0) {
+        throw new Error("[voice] WAV PCM16 data chunk has odd byte length");
+      }
+      const pcm = new Float32Array(chunkBytes / 2);
+      for (let i = 0; i < pcm.length; i++) {
+        pcm[i] = view.getInt16(dataStart + i * 2, true) / 0x8000;
+      }
+      return { pcm, sampleRate };
+    }
+    pos = dataStart + chunkBytes + (chunkBytes % 2);
+  }
+  throw new Error("[voice] WAV input is missing a data chunk");
+}
+
+function writeAscii(out: Uint8Array, offset: number, text: string): void {
+  for (let i = 0; i < text.length; i++) {
+    out[offset + i] = text.charCodeAt(i);
+  }
+}
+
+function readAscii(bytes: Uint8Array, offset: number, length: number): string {
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += String.fromCharCode(bytes[offset + i]);
+  }
+  return out;
 }
 
 /**

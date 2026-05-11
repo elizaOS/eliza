@@ -128,10 +128,14 @@ export function parseArgs(argv: readonly string[]): CliArgs {
     if (i + 1 >= argv.length) {
       throw new Error(`flag ${flag} requires a value`);
     }
-    return argv[i + 1]!;
+    const value = argv[i + 1];
+    if (value === undefined) {
+      throw new Error(`flag ${flag} requires a value`);
+    }
+    return value;
   };
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]!;
+    const a = argv[i] ?? "";
     switch (a) {
       case "--help":
       case "-h":
@@ -327,14 +331,29 @@ export function planFacts(args: {
   const { totalTurns, count, seed } = args;
   if (count === 0) return [];
   const rand = rng(seed);
-  // Spread plant turns across the run. Always plant at least one early so
-  // there is a meaningful test of survival across compactions.
-  const turns = new Set<number>();
-  // Turn 0 is reserved for the system message; plants land at turn >= 1.
-  while (turns.size < count) {
-    const t = 1 + Math.floor(rand() * Math.max(1, totalTurns - 1));
-    turns.add(t);
+  if (count > totalTurns) {
+    throw new Error("cannot plant more facts than available turns");
   }
+
+  // Stratify plant turns across [1, totalTurns] so long runs exercise early,
+  // middle, and late retention. This also avoids the old rejection-sampling
+  // hang when count === totalTurns.
+  const availableTurns = Array.from({ length: totalTurns }, (_, i) => i + 1);
+  const turns = new Set<number>();
+  for (let i = 0; i < count; i++) {
+    const start = Math.floor((i * totalTurns) / count) + 1;
+    const end = Math.max(start, Math.floor(((i + 1) * totalTurns) / count));
+    const candidates = availableTurns.filter(
+      (turn) => turn >= start && turn <= end && !turns.has(turn),
+    );
+    const pool =
+      candidates.length > 0
+        ? candidates
+        : availableTurns.filter((turn) => !turns.has(turn));
+    const picked = pool[Math.floor(rand() * pool.length)];
+    if (picked !== undefined) turns.add(picked);
+  }
+
   const sorted = [...turns].sort((a, b) => a - b);
 
   // Balanced kind distribution: rotate through FACT_KINDS in seeded order
@@ -344,8 +363,9 @@ export function planFacts(args: {
 
   const out: PlantedFact[] = [];
   for (let i = 0; i < sorted.length; i++) {
-    const t = sorted[i]!;
-    const kind = kindOrder[i % kindOrder.length]!;
+    const t = sorted[i];
+    const kind = kindOrder[i % kindOrder.length];
+    if (t === undefined || kind === undefined) continue;
     const fact = makeFact(kind, rand);
     out.push({
       id: `fact_${i + 1}`,
@@ -365,8 +385,10 @@ function shuffleKinds(rand: () => number): FactKind[] {
   // Fisher–Yates with the supplied rand source — deterministic per seed.
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(rand() * (i + 1));
-    const tmp = arr[i]!;
-    arr[i] = arr[j]!;
+    const tmp = arr[i];
+    const swap = arr[j];
+    if (tmp === undefined || swap === undefined) continue;
+    arr[i] = swap;
     arr[j] = tmp;
   }
   return arr;
@@ -519,8 +541,9 @@ function makeFact(
         "my partner",
         "my best friend",
       ]);
+      const capitalizedWho = `${who.charAt(0).toUpperCase()}${who.slice(1)}`;
       return {
-        utterance: `${who[0]!.toUpperCase()}${who.slice(1)}'s birthday is ${date}. Don't let me forget.`,
+        utterance: `${capitalizedWho}'s birthday is ${date}. Don't let me forget.`,
         expected: date,
         question: `When is ${who}'s birthday?`,
         exactMatch: true,
@@ -563,12 +586,18 @@ function makeFact(
 function randHex(rand: () => number, len: number): string {
   const chars = "0123456789abcdef";
   let s = "";
-  for (let i = 0; i < len; i++) s += chars[Math.floor(rand() * 16)]!;
+  for (let i = 0; i < len; i++) {
+    s += chars[Math.floor(rand() * 16)] ?? "0";
+  }
   return s;
 }
 
 function pick<T>(rand: () => number, list: readonly T[]): T {
-  return list[Math.floor(rand() * list.length)]!;
+  const picked = list[Math.floor(rand() * list.length)];
+  if (picked === undefined) {
+    throw new Error("cannot pick from an empty list");
+  }
+  return picked;
 }
 
 // ---------------------------------------------------------------------------
@@ -596,7 +625,7 @@ export function buildUserTurn(args: {
       factId: fact.id,
     };
   }
-  const q = FILLER_QUESTIONS[Math.floor(rand() * FILLER_QUESTIONS.length)]!;
+  const q = pick(rand, FILLER_QUESTIONS);
   return { index, role: "user", content: q };
 }
 
@@ -613,8 +642,15 @@ export function approxTokens(text: string): number {
 // ---------------------------------------------------------------------------
 
 export type ChatMessage = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }>;
+  toolCallId?: string;
+  toolName?: string;
 };
 
 export type ModelClient = {
@@ -656,11 +692,10 @@ export function makeOpenAICompatibleClient(opts: {
   return {
     async chat({ model, messages, maxTokens, temperature, reasoningEffort }) {
       const url = `${opts.baseUrl.replace(/\/$/, "")}/chat/completions`;
-      const effort: ReasoningEffort =
-        envEffort ?? reasoningEffort ?? "medium";
+      const effort: ReasoningEffort = envEffort ?? reasoningEffort ?? "medium";
       const body = JSON.stringify({
         model,
-        messages,
+        messages: messages.map(toOpenAIMessage),
         max_tokens: maxTokens,
         temperature: temperature ?? 0.7,
         reasoning_effort: effort,
@@ -715,6 +750,32 @@ export function makeOpenAICompatibleClient(opts: {
         : new Error(String(lastErr ?? "unknown upstream failure"));
     },
   };
+}
+
+function toOpenAIMessage(message: ChatMessage): Record<string, unknown> {
+  if (message.role === "assistant" && message.toolCalls?.length) {
+    return {
+      role: "assistant",
+      content: message.content,
+      tool_calls: message.toolCalls.map((tc) => ({
+        id: tc.id,
+        type: "function",
+        function: {
+          name: tc.name,
+          arguments: JSON.stringify(tc.arguments),
+        },
+      })),
+    };
+  }
+  if (message.role === "tool") {
+    return {
+      role: "tool",
+      content: message.content,
+      tool_call_id: message.toolCallId,
+      name: message.toolName,
+    };
+  }
+  return { role: message.role, content: message.content };
 }
 
 async function safeReadText(resp: Response): Promise<string> {
@@ -789,7 +850,7 @@ export function makeFakeClient(): ModelClient {
       if (/tool return/i.test(text)) {
         return scanAndAnswer(
           messages,
-          /\[tool_result:[^\]]+\] ([^\n]+?)(?:\s*$|\n)/,
+          /(?:\[tool_result:[^\]]+\]|Tool result from [^:]+:) ([^\n]+?)(?:\s*$|\n)/,
         );
       }
       return { content: "Sure, here's a friendly reply.", latencyMs: 1 };
@@ -802,7 +863,8 @@ function scanAndAnswer(
   re: RegExp,
 ): { content: string; latencyMs: number } {
   for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]!;
+    const m = messages[i];
+    if (!m) continue;
     const hit = m.content.match(re);
     if (hit?.[1]) return { content: hit[1], latencyMs: 1 };
   }
@@ -942,7 +1004,15 @@ export async function applyCompaction(args: {
 
 function approxTokensMessages(messages: readonly ChatMessage[]): number {
   let total = 0;
-  for (const m of messages) total += approxTokens(m.content);
+  for (const m of messages) {
+    total += approxTokens(m.content);
+    if (m.toolCalls) {
+      for (const tc of m.toolCalls) {
+        total += approxTokens(tc.name);
+        total += approxTokens(JSON.stringify(tc.arguments));
+      }
+    }
+  }
   return total;
 }
 
@@ -988,13 +1058,25 @@ export function buildDefaultCompactorLoader(opts: {
             name: string;
             version: string;
             compact: (
-              t: { messages: { role: string; content: string }[] },
+              t: {
+                messages: Array<{
+                  role: string;
+                  content: string;
+                  toolCalls?: Array<{
+                    id: string;
+                    name: string;
+                    arguments: Record<string, unknown>;
+                  }>;
+                  toolCallId?: string;
+                  toolName?: string;
+                }>;
+              },
               o: {
                 targetTokens: number;
                 preserveTailMessages?: number;
                 callModel: (params: {
                   systemPrompt: string;
-                  messages: { role: string; content: string }[];
+                  messages: ChatMessage[];
                   maxOutputTokens?: number;
                 }) => Promise<string>;
                 summarizationModel?: string;
@@ -1005,6 +1087,13 @@ export function buildDefaultCompactorLoader(opts: {
           }
         | undefined;
       if (!compactor || typeof compactor.compact !== "function") return null;
+      const findSafeBoundary =
+        typeof mod.findSafeCompactionBoundary === "function"
+          ? (mod.findSafeCompactionBoundary as (
+              messages: ChatMessage[],
+              preserveTailMessages: number,
+            ) => number)
+          : null;
 
       // callModel adapts our ModelClient to the Compactor's expected shape.
       const callModel = async (params: {
@@ -1017,7 +1106,7 @@ export function buildDefaultCompactorLoader(opts: {
           messages: [
             { role: "system", content: params.systemPrompt },
             ...params.messages.map((m) => ({
-              role: m.role as ChatMessage["role"],
+              role: m.role,
               content: m.content,
             })),
           ],
@@ -1036,6 +1125,9 @@ export function buildDefaultCompactorLoader(opts: {
             messages: messages.map((m) => ({
               role: m.role,
               content: m.content,
+              ...(m.toolCalls ? { toolCalls: m.toolCalls } : {}),
+              ...(m.toolCallId ? { toolCallId: m.toolCallId } : {}),
+              ...(m.toolName ? { toolName: m.toolName } : {}),
             })),
           };
           const artifact = await compactor.compact(transcript, {
@@ -1044,10 +1136,18 @@ export function buildDefaultCompactorLoader(opts: {
             callModel,
             summarizationModel: opts.model,
           });
-          return artifact.replacementMessages.map((m) => ({
+          const systemOffset = messages[0]?.role === "system" ? 1 : 0;
+          const boundary = findSafeBoundary
+            ? findSafeBoundary(messages, 0)
+            : messages.length;
+          const systemPrefix =
+            systemOffset === 1 ? [messages[0] as ChatMessage] : [];
+          const preservedTail = messages.slice(boundary);
+          const replacement = artifact.replacementMessages.map((m) => ({
             role: m.role as ChatMessage["role"],
             content: m.content,
           }));
+          return [...systemPrefix, ...replacement, ...preservedTail];
         },
       };
     } catch {
@@ -1116,9 +1216,37 @@ export type ProbeOutcome = {
   turn: number;
   expected: string;
   actual: string;
+  rawActual?: string;
   correct: boolean;
   judgeReasoning: string;
 };
+
+export function extractBenchmarkAnswerText(raw: string): string {
+  const trimmed = raw.trim();
+  const fenced = /^```(?:json)?\s*([\s\S]*?)\s*```$/i.exec(trimmed);
+  const body = fenced ? fenced[1].trim() : trimmed;
+  if (!body.startsWith("{") || !body.endsWith("}")) return trimmed;
+
+  try {
+    const parsed = JSON.parse(body) as {
+      action?: unknown;
+      args?: { content?: unknown };
+      content?: unknown;
+    };
+    if (
+      typeof parsed.action === "string" &&
+      parsed.action.toUpperCase() === "REPLY" &&
+      parsed.args &&
+      typeof parsed.args.content === "string"
+    ) {
+      return parsed.args.content.trim();
+    }
+    if (typeof parsed.content === "string") return parsed.content.trim();
+  } catch {
+    // Non-JSON text that happens to start/end with braces remains raw.
+  }
+  return trimmed;
+}
 
 export async function probeFact(args: {
   client: ModelClient;
@@ -1152,30 +1280,20 @@ export async function probeFact(args: {
     temperature: 0,
     reasoningEffort: args.agentReasoningEffort ?? "medium",
   });
-  const actual = resp.content.trim();
+  const rawActual = resp.content.trim();
+  const actual = extractBenchmarkAnswerText(rawActual);
   if (fact.exactMatch) {
-    // Normalize whitespace before substring check. gpt-oss-120b sometimes
-    // inserts U+202F (narrow no-break space) inside person names (e.g.
-    // "Ramon Ramirez"), which breaks a naive substring match against
-    // an expected with a regular space. We collapse all Unicode whitespace
-    // and zero-width chars to a single ASCII space on both sides.
-    const norm = (s: string) =>
-      s
-        // Collapse any run of Unicode whitespace (incl. NBSP, narrow NBSP,
-        // figure space, ideographic space) to a single ASCII space.
-        .replace(/\s+/gu, " ")
-        // Strip zero-width chars that some models emit inside identifiers.
-        .replace(/[​-‍﻿]/g, "");
-    const correct = norm(actual).includes(norm(fact.expected));
+    const correct = isExactRecallAnswer(actual, fact.expected);
     return {
       factId: fact.id,
       turn: fact.turn,
       expected: fact.expected,
       actual,
+      ...(actual !== rawActual ? { rawActual } : {}),
       correct,
       judgeReasoning: correct
         ? "exact-match: expected substring present"
-        : "exact-match: expected substring missing",
+        : "exact-match: expected missing, hedged, or negated",
     };
   }
   // Prose / address: judge with model unless a judgeFn is supplied (tests).
@@ -1183,6 +1301,17 @@ export async function probeFact(args: {
   // agent's own outputs. For real measurement, set --judge-model to a
   // different model family (e.g. gpt-4o or claude-haiku) so the judge is
   // independent of the system under test.
+  if (isExactRecallAnswer(actual, fact.expected)) {
+    return {
+      factId: fact.id,
+      turn: fact.turn,
+      expected: fact.expected,
+      actual,
+      ...(actual !== rawActual ? { rawActual } : {}),
+      correct: true,
+      judgeReasoning: "deterministic: expected substring present",
+    };
+  }
   const judge = args.judgeFn
     ? await args.judgeFn({
         expected: fact.expected,
@@ -1202,9 +1331,50 @@ export async function probeFact(args: {
     turn: fact.turn,
     expected: fact.expected,
     actual,
+    ...(actual !== rawActual ? { rawActual } : {}),
     correct: judge.correct,
     judgeReasoning: judge.reasoning,
   };
+}
+
+export function normalizeRecallText(s: string): string {
+  return (
+    s
+      // Collapse any run of Unicode whitespace (incl. NBSP, narrow NBSP,
+      // figure space, ideographic space) to a single ASCII space.
+      .replace(/\s+/gu, " ")
+      // Strip zero-width chars that some models emit inside identifiers.
+      .replace(/[​-‍﻿]/g, "")
+      // Normalize Unicode dash variants so ISO dates and IDs are not marked
+      // wrong because the model used typographic punctuation.
+      .replace(/[\u2010-\u2015\u2212]/g, "-")
+      .trim()
+  );
+}
+
+function isExactRecallAnswer(actual: string, expected: string): boolean {
+  const normalizedActual = normalizeRecallText(actual);
+  const normalizedExpected = normalizeRecallText(expected);
+  if (!normalizedActual.includes(normalizedExpected)) return false;
+
+  const lower = normalizedActual.toLowerCase();
+  const hedgedOrRefused =
+    /\b(?:i do not know|i don't know|not sure|cannot confirm|can't confirm|unable to recall|do not have|don't have|maybe|possibly|might be)\b/.test(
+      lower,
+    );
+  if (hedgedOrRefused) return false;
+
+  const expectedIndex = lower.indexOf(normalizedExpected.toLowerCase());
+  const nearbyPrefix = lower.slice(
+    Math.max(0, expectedIndex - 32),
+    expectedIndex,
+  );
+  if (
+    /\b(?:not|isn't|is not|wasn't|was not|wrong|incorrect)\b/.test(nearbyPrefix)
+  ) {
+    return false;
+  }
+  return true;
 }
 
 async function modelJudge(args: {
@@ -1273,7 +1443,7 @@ export type JsonlEvent =
   | {
       event: "turn";
       turn: number;
-      role: "user" | "assistant";
+      role: "user" | "assistant" | "tool";
       contentLen: number;
       tokens: number;
       factId?: string;
@@ -1296,6 +1466,7 @@ export type JsonlEvent =
       kind: FactKind | "tool_call";
       expected: string;
       actual: string;
+      rawActual?: string;
       correct: boolean;
       judgeReasoning: string;
       phase: "post-compact" | "final";
@@ -1304,7 +1475,10 @@ export type JsonlEvent =
       event: "summary";
       strategy: StrategyName;
       overallAccuracy: number;
-      perKindAccuracy: Record<string, { correct: number; total: number; accuracy: number }>;
+      perKindAccuracy: Record<
+        string,
+        { correct: number; total: number; accuracy: number }
+      >;
       totalCompactions: number;
       totalTokensSaved: number;
       totalProbes: number;
@@ -1313,6 +1487,9 @@ export type JsonlEvent =
       turns: number;
       compactEvery: number;
       plantFacts: number;
+      valid: boolean;
+      skipped: boolean;
+      skipReason?: string;
     };
 
 export class JsonlSink {
@@ -1449,6 +1626,11 @@ export function buildRealisticSystemPrompt(): string {
       "comes after, not before.",
   );
   lines.push(
+    "- In this benchmark harness, answer recall probes directly in prose. Do " +
+      "not emit Action JSON such as REPLY or RECALL, because the harness " +
+      "measures context recall rather than action execution.",
+  );
+  lines.push(
     "- Avoid filler phrases like 'I'd be happy to help', 'Great question', " +
       "or apologetic preambles.",
   );
@@ -1524,7 +1706,7 @@ export function planToolCalls(args: {
     "query_calendar",
   ];
   for (let t = 5; t <= args.totalTurns; t += 5) {
-    const tool = tools[Math.floor(rand() * tools.length)]!;
+    const tool = pick(rand, tools);
     const value = `${randHex(rand, 6).toUpperCase()}-${Math.floor(rand() * 1000)}`;
     out.push({
       id: `tool_${t}`,
@@ -1563,6 +1745,8 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
   const history: ChatMessage[] = [];
   let totalCompactions = 0;
   let totalTokensSaved = 0;
+  let skipped = false;
+  let skipReason: string | undefined;
   let totalProbes = 0;
   let totalCorrect = 0;
   // Per-kind accuracy tally. Keys are FactKind strings plus "tool_call".
@@ -1607,15 +1791,31 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       tokens: approxTokens(resp.content),
     });
 
-    // After the assistant's reply, optionally inject a synthetic tool call
-    // and tool result. We model both as plain user/assistant messages with
-    // explicit tags so the compactor sees them as natural text.
+    // After the assistant's reply, optionally inject a synthetic typed
+    // tool_call/tool_result pair. This targets the compactor's actual
+    // tool-call boundary logic rather than a prose imitation of it.
     const toolCall = toolByTurn.get(i);
     if (toolCall) {
-      const callMsg = `[tool_call:${toolCall.toolName}] {"turn": ${i}}`;
+      const toolCallId = `${toolCall.id}_call`;
+      const callMsg = `Calling ${toolCall.toolName} for turn ${i}.`;
       const resultMsg = `[tool_result:${toolCall.toolName}] ${toolCall.toolValue}`;
-      history.push({ role: "assistant", content: callMsg });
-      history.push({ role: "user", content: resultMsg });
+      history.push({
+        role: "assistant",
+        content: callMsg,
+        toolCalls: [
+          {
+            id: toolCallId,
+            name: toolCall.toolName,
+            arguments: { turn: i },
+          },
+        ],
+      });
+      history.push({
+        role: "tool",
+        content: resultMsg,
+        toolCallId,
+        toolName: toolCall.toolName,
+      });
       sink.push({
         event: "turn",
         turn: i,
@@ -1626,7 +1826,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       sink.push({
         event: "turn",
         turn: i,
-        role: "user",
+        role: "tool",
         contentLen: resultMsg.length,
         tokens: approxTokens(resultMsg),
       });
@@ -1654,6 +1854,8 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
           : {}),
       });
       if (result.unavailable) {
+        skipped = true;
+        skipReason = result.unavailableReason ?? "unavailable";
         // Caller-level concern: we keep going so that --strategy <name>
         // reports its skipped state in the summary line. Probes still run
         // against the un-compacted history, which is fine — that becomes
@@ -1699,6 +1901,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
           kind: f.kind,
           expected: outcome.expected,
           actual: outcome.actual,
+          ...(outcome.rawActual ? { rawActual: outcome.rawActual } : {}),
           correct: outcome.correct,
           judgeReasoning: outcome.judgeReasoning,
           phase: "post-compact",
@@ -1728,6 +1931,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
           kind: "tool_call",
           expected: outcome.expected,
           actual: outcome.actual,
+          ...(outcome.rawActual ? { rawActual: outcome.rawActual } : {}),
           correct: outcome.correct,
           judgeReasoning: outcome.judgeReasoning,
           phase: "post-compact",
@@ -1763,6 +1967,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       kind: f.kind,
       expected: outcome.expected,
       actual: outcome.actual,
+      ...(outcome.rawActual ? { rawActual: outcome.rawActual } : {}),
       correct: outcome.correct,
       judgeReasoning: outcome.judgeReasoning,
       phase: "final",
@@ -1791,6 +1996,7 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
       kind: "tool_call",
       expected: outcome.expected,
       actual: outcome.actual,
+      ...(outcome.rawActual ? { rawActual: outcome.rawActual } : {}),
       correct: outcome.correct,
       judgeReasoning: outcome.judgeReasoning,
       phase: "final",
@@ -1822,6 +2028,9 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
     turns: args.turns,
     compactEvery: args.compactEvery,
     plantFacts: args.plantFacts,
+    valid: !skipped,
+    skipped,
+    ...(skipReason ? { skipReason } : {}),
   });
   return sink;
 }
@@ -1847,13 +2056,15 @@ async function probeToolCall(args: {
     temperature: 0,
     reasoningEffort: args.agentReasoningEffort ?? "medium",
   });
-  const actual = resp.content.trim();
-  const correct = actual.includes(args.toolCall.toolValue);
+  const rawActual = resp.content.trim();
+  const actual = extractBenchmarkAnswerText(rawActual);
+  const correct = isExactRecallAnswer(actual, args.toolCall.toolValue);
   return {
     factId: args.toolCall.id,
     turn: args.toolCall.turn,
     expected: args.toolCall.toolValue,
     actual,
+    ...(actual !== rawActual ? { rawActual } : {}),
     correct,
     judgeReasoning: correct
       ? "tool-call: expected substring present"

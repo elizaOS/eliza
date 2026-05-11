@@ -328,13 +328,13 @@ export const coreActionsSpec = {
 		{
 			name: "MESSAGE",
 			description:
-				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
 			similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
 			parameters: [
 				{
-					name: "operation",
+					name: "action",
 					description:
-						"Message subaction: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+						"Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
 					required: false,
 					schema: {
 						type: "string",
@@ -363,7 +363,7 @@ export const coreActionsSpec = {
 							"manage",
 						],
 					},
-					descriptionCompressed: "message operation",
+					descriptionCompressed: "message action",
 				},
 				{
 					name: "source",
@@ -388,7 +388,7 @@ export const coreActionsSpec = {
 				{
 					name: "sources",
 					description:
-						"Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+						"Optional inbox sources for action=triage, list_inbox, or search_inbox.",
 					required: false,
 					schema: {
 						type: "array",
@@ -430,7 +430,7 @@ export const coreActionsSpec = {
 				{
 					name: "message",
 					description:
-						"Message text for operation=send or replacement text for operation=edit.",
+						"Message text for action=send or replacement text for action=edit.",
 					required: false,
 					schema: {
 						type: "string",
@@ -439,8 +439,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "query",
-					description:
-						"Search term for operation=search or operation=search_inbox.",
+					description: "Search term for action=search or action=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -470,7 +469,7 @@ export const coreActionsSpec = {
 				{
 					name: "body",
 					description:
-						"Draft or response body for operation=draft_reply, draft_followup, or respond.",
+						"Draft or response body for action=draft_reply, draft_followup, or respond.",
 					required: false,
 					schema: {
 						type: "string",
@@ -479,7 +478,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "to",
-					description: "Recipient identifiers for operation=draft_followup.",
+					description: "Recipient identifiers for action=draft_followup.",
 					required: false,
 					schema: {
 						type: "array",
@@ -511,7 +510,7 @@ export const coreActionsSpec = {
 				{
 					name: "draftId",
 					description:
-						"Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+						"Draft identifier for action=send_draft or action=schedule_draft_send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -521,7 +520,7 @@ export const coreActionsSpec = {
 				{
 					name: "confirmed",
 					description:
-						"Whether the user explicitly confirmed sending for operation=send_draft.",
+						"Whether the user explicitly confirmed sending for action=send_draft.",
 					required: false,
 					schema: {
 						type: "boolean",
@@ -530,7 +529,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "sendAt",
-					description: "Scheduled send time for operation=schedule_draft_send.",
+					description: "Scheduled send time for action=schedule_draft_send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -539,7 +538,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "emoji",
-					description: "Reaction value for operation=react.",
+					description: "Reaction value for action=react.",
 					required: false,
 					schema: {
 						type: "string",
@@ -549,7 +548,7 @@ export const coreActionsSpec = {
 				{
 					name: "pin",
 					description:
-						"Pin state for operation=pin. Use false to unpin when supported.",
+						"Pin state for action=pin. Use false to unpin when supported.",
 					required: false,
 					schema: {
 						type: "boolean",
@@ -559,7 +558,7 @@ export const coreActionsSpec = {
 				{
 					name: "manageOperation",
 					description:
-						"Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+						"Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
 					required: false,
 					schema: {
 						type: "string",
@@ -569,7 +568,7 @@ export const coreActionsSpec = {
 				{
 					name: "label",
 					description:
-						"Label for operation=manage when adding or removing labels.",
+						"Label for action=manage when adding or removing labels.",
 					required: false,
 					schema: {
 						type: "string",
@@ -578,7 +577,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "tag",
-					description: "Tag for operation=manage when adding or removing tags.",
+					description: "Tag for action=manage when adding or removing tags.",
 					required: false,
 					schema: {
 						type: "string",
@@ -618,7 +617,7 @@ export const coreActionsSpec = {
 				{
 					name: "since",
 					description:
-						"Start timestamp or parseable date for operation=search_inbox.",
+						"Start timestamp or parseable date for action=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -628,7 +627,7 @@ export const coreActionsSpec = {
 				{
 					name: "until",
 					description:
-						"End timestamp or parseable date for operation=read_channel range=dates or operation=search_inbox.",
+						"End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -659,7 +658,7 @@ export const coreActionsSpec = {
 					actions: ["REPLY", "MESSAGE"],
 					params: {
 						MESSAGE: {
-							operation: "send",
+							action: "send",
 							source: "telegram",
 							target: "dev_guru",
 							message: "Hello!",
@@ -671,7 +670,7 @@ export const coreActionsSpec = {
 					actions: ["MESSAGE"],
 					params: {
 						MESSAGE: {
-							operation: "triage",
+							action: "triage",
 							sources: ["gmail"],
 						},
 					},
@@ -683,18 +682,18 @@ export const coreActionsSpec = {
 		{
 			name: "POST",
 			description:
-				"Primary action for public feed surfaces and timelines. Choose op=send to publish a post, op=read to fetch recent feed posts, or op=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+				"Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
 			similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
 			parameters: [
 				{
-					name: "op",
-					description: "Post subaction: send, read, or search.",
+					name: "action",
+					description: "Post action: send, read, or search.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["send", "read", "search"],
 					},
-					descriptionCompressed: "post op",
+					descriptionCompressed: "post action",
 				},
 				{
 					name: "source",
@@ -718,7 +717,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "text",
-					description: "Public post text for operation=send.",
+					description: "Public post text for action=send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -728,7 +727,7 @@ export const coreActionsSpec = {
 				{
 					name: "target",
 					description:
-						"Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
+						"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
 					required: false,
 					schema: {
 						type: "string",
@@ -738,7 +737,7 @@ export const coreActionsSpec = {
 				{
 					name: "feed",
 					description:
-						"Feed convention for operation=read, such as home, user, hashtag, channel, or connector-specific feed.",
+						"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
 					required: false,
 					schema: {
 						type: "string",
@@ -747,7 +746,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "query",
-					description: "Search term for operation=search.",
+					description: "Search term for action=search.",
 					required: false,
 					schema: {
 						type: "string",
@@ -756,7 +755,7 @@ export const coreActionsSpec = {
 				},
 				{
 					name: "replyTo",
-					description: "Post/comment/reply target for operation=send.",
+					description: "Post/comment/reply target for action=send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -785,7 +784,7 @@ export const coreActionsSpec = {
 				{
 					name: "cursor",
 					description:
-						"Opaque pagination cursor for operation=read or operation=search.",
+						"Opaque pagination cursor for action=read or action=search.",
 					required: false,
 					schema: {
 						type: "string",
@@ -827,7 +826,7 @@ export const coreActionsSpec = {
 						POST: {
 							source: "x",
 							text: "shipping today",
-							op: "send",
+							action: "send",
 						},
 					},
 				},
@@ -1726,13 +1725,13 @@ export const allActionsSpec = {
 		{
 			name: "MESSAGE",
 			description:
-				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose operation=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+				"Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
 			similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
 			parameters: [
 				{
-					name: "operation",
+					name: "action",
 					description:
-						"Message subaction: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+						"Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1761,7 +1760,7 @@ export const allActionsSpec = {
 							"manage",
 						],
 					},
-					descriptionCompressed: "message operation",
+					descriptionCompressed: "message action",
 				},
 				{
 					name: "source",
@@ -1786,7 +1785,7 @@ export const allActionsSpec = {
 				{
 					name: "sources",
 					description:
-						"Optional inbox sources for operation=triage, list_inbox, or search_inbox.",
+						"Optional inbox sources for action=triage, list_inbox, or search_inbox.",
 					required: false,
 					schema: {
 						type: "array",
@@ -1828,7 +1827,7 @@ export const allActionsSpec = {
 				{
 					name: "message",
 					description:
-						"Message text for operation=send or replacement text for operation=edit.",
+						"Message text for action=send or replacement text for action=edit.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1837,8 +1836,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "query",
-					description:
-						"Search term for operation=search or operation=search_inbox.",
+					description: "Search term for action=search or action=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1868,7 +1866,7 @@ export const allActionsSpec = {
 				{
 					name: "body",
 					description:
-						"Draft or response body for operation=draft_reply, draft_followup, or respond.",
+						"Draft or response body for action=draft_reply, draft_followup, or respond.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1877,7 +1875,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "to",
-					description: "Recipient identifiers for operation=draft_followup.",
+					description: "Recipient identifiers for action=draft_followup.",
 					required: false,
 					schema: {
 						type: "array",
@@ -1909,7 +1907,7 @@ export const allActionsSpec = {
 				{
 					name: "draftId",
 					description:
-						"Draft identifier for operation=send_draft or operation=schedule_draft_send.",
+						"Draft identifier for action=send_draft or action=schedule_draft_send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1919,7 +1917,7 @@ export const allActionsSpec = {
 				{
 					name: "confirmed",
 					description:
-						"Whether the user explicitly confirmed sending for operation=send_draft.",
+						"Whether the user explicitly confirmed sending for action=send_draft.",
 					required: false,
 					schema: {
 						type: "boolean",
@@ -1928,7 +1926,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "sendAt",
-					description: "Scheduled send time for operation=schedule_draft_send.",
+					description: "Scheduled send time for action=schedule_draft_send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1937,7 +1935,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "emoji",
-					description: "Reaction value for operation=react.",
+					description: "Reaction value for action=react.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1947,7 +1945,7 @@ export const allActionsSpec = {
 				{
 					name: "pin",
 					description:
-						"Pin state for operation=pin. Use false to unpin when supported.",
+						"Pin state for action=pin. Use false to unpin when supported.",
 					required: false,
 					schema: {
 						type: "boolean",
@@ -1957,7 +1955,7 @@ export const allActionsSpec = {
 				{
 					name: "manageOperation",
 					description:
-						"Management operation for operation=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+						"Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1967,7 +1965,7 @@ export const allActionsSpec = {
 				{
 					name: "label",
 					description:
-						"Label for operation=manage when adding or removing labels.",
+						"Label for action=manage when adding or removing labels.",
 					required: false,
 					schema: {
 						type: "string",
@@ -1976,7 +1974,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "tag",
-					description: "Tag for operation=manage when adding or removing tags.",
+					description: "Tag for action=manage when adding or removing tags.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2016,7 +2014,7 @@ export const allActionsSpec = {
 				{
 					name: "since",
 					description:
-						"Start timestamp or parseable date for operation=search_inbox.",
+						"Start timestamp or parseable date for action=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2026,7 +2024,7 @@ export const allActionsSpec = {
 				{
 					name: "until",
 					description:
-						"End timestamp or parseable date for operation=read_channel range=dates or operation=search_inbox.",
+						"End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2057,7 +2055,7 @@ export const allActionsSpec = {
 					actions: ["REPLY", "MESSAGE"],
 					params: {
 						MESSAGE: {
-							operation: "send",
+							action: "send",
 							source: "telegram",
 							target: "dev_guru",
 							message: "Hello!",
@@ -2069,7 +2067,7 @@ export const allActionsSpec = {
 					actions: ["MESSAGE"],
 					params: {
 						MESSAGE: {
-							operation: "triage",
+							action: "triage",
 							sources: ["gmail"],
 						},
 					},
@@ -2081,18 +2079,18 @@ export const allActionsSpec = {
 		{
 			name: "POST",
 			description:
-				"Primary action for public feed surfaces and timelines. Choose op=send to publish a post, op=read to fetch recent feed posts, or op=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+				"Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
 			similes: ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
 			parameters: [
 				{
-					name: "op",
-					description: "Post subaction: send, read, or search.",
+					name: "action",
+					description: "Post action: send, read, or search.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["send", "read", "search"],
 					},
-					descriptionCompressed: "post op",
+					descriptionCompressed: "post action",
 				},
 				{
 					name: "source",
@@ -2116,7 +2114,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "text",
-					description: "Public post text for operation=send.",
+					description: "Public post text for action=send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2126,7 +2124,7 @@ export const allActionsSpec = {
 				{
 					name: "target",
 					description:
-						"Loose feed target for operation=send/read, such as a user, channel, media id, or connector-specific reference.",
+						"Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2136,7 +2134,7 @@ export const allActionsSpec = {
 				{
 					name: "feed",
 					description:
-						"Feed convention for operation=read, such as home, user, hashtag, channel, or connector-specific feed.",
+						"Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2145,7 +2143,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "query",
-					description: "Search term for operation=search.",
+					description: "Search term for action=search.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2154,7 +2152,7 @@ export const allActionsSpec = {
 				},
 				{
 					name: "replyTo",
-					description: "Post/comment/reply target for operation=send.",
+					description: "Post/comment/reply target for action=send.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2183,7 +2181,7 @@ export const allActionsSpec = {
 				{
 					name: "cursor",
 					description:
-						"Opaque pagination cursor for operation=read or operation=search.",
+						"Opaque pagination cursor for action=read or action=search.",
 					required: false,
 					schema: {
 						type: "string",
@@ -2225,7 +2223,7 @@ export const allActionsSpec = {
 						POST: {
 							source: "x",
 							text: "shipping today",
-							op: "send",
+							action: "send",
 						},
 					},
 				},
@@ -4141,10 +4139,10 @@ export const allActionsSpec = {
 		{
 			name: "LIQUIDITY",
 			description:
-				"Single LP/liquidity management action. op=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
+				"Single LP/liquidity management action. action=onboard|list_pools|open|close|reposition|list_positions|get_position|set_preferences. dex=orca|raydium|meteora|uniswap|aerodrome|pancakeswap selects the protocol; chain=solana|evm is inferred from dex when omitted.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
 						"Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
 					required: true,
@@ -4163,6 +4161,15 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed:
 						"Liquidity operation: onboard, list_pools, open, close, reposition, list_positions, get_position, set_preferences.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "chain",
@@ -4261,7 +4268,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Manage LP positions by op, chain, dex, pool, position, amount, range, token filters.",
+				"Manage LP positions by action, chain, dex, pool, position, amount, range, token filters.",
 			similes: [
 				"lp_management",
 				"LP_MANAGEMENT",
@@ -4285,7 +4292,8 @@ export const allActionsSpec = {
 					actions: ["LIQUIDITY"],
 					params: {
 						LIQUIDITY: {
-							subaction: "onboard",
+							action: "onboard",
+							subaction: "example",
 							chain: "solana",
 							dex: "example",
 							pool: "example",
@@ -4627,10 +4635,10 @@ export const allActionsSpec = {
 		{
 			name: "MUSIC_GENERATION",
 			description:
-				"Generate music through Suno. Use subaction generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",
+				"Generate music through Suno. Use action generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description: "Suno operation: generate, custom, or extend.",
 					required: false,
 					schema: {
@@ -4638,6 +4646,15 @@ export const allActionsSpec = {
 						enum: ["generate", "custom", "extend"],
 					},
 					descriptionCompressed: "Suno operation: generate, custom, or extend.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "prompt",
@@ -4669,7 +4686,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Suno music generation router subaction: generate, custom, extend.",
+				"Suno music generation router action: generate, custom, extend.",
 			similes: [
 				"GENERATE_MUSIC",
 				"CREATE_MUSIC",
@@ -4684,7 +4701,8 @@ export const allActionsSpec = {
 					actions: ["MUSIC_GENERATION"],
 					params: {
 						MUSIC_GENERATION: {
-							subaction: "generate",
+							action: "generate",
+							subaction: "example",
 							prompt: "example",
 							audio_id: "example",
 							duration: 30,
@@ -4798,7 +4816,7 @@ export const allActionsSpec = {
 		{
 			name: "PERSONAL_ASSISTANT",
 			description:
-				"Owner personal-assistant workflows. Use action=book_travel for real travel booking and action=scheduling for scheduling negotiation.",
+				"Owner personal-assistant workflows. Use action=book_travel for real travel booking, action=scheduling for scheduling negotiation, and action=sign_document for document-signature flows that must be queued for owner approval.",
 			parameters: [
 				{
 					name: "action",
@@ -4811,12 +4829,14 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"personal assistant workflows: action=book_travel|scheduling",
+				"personal assistant workflows: action=book_travel|scheduling|sign_document",
 			similes: [
 				"ASSISTANT",
 				"BOOK_TRAVEL",
 				"SCHEDULING",
 				"SCHEDULING_NEGOTIATION",
+				"SIGN_DOCUMENT",
+				"DOCUSIGN",
 			],
 			exampleCalls: [
 				{
@@ -4874,7 +4894,7 @@ export const allActionsSpec = {
 		{
 			name: "READING",
 			description:
-				"Mystical reading router. Set type to tarot, astrology, or iching, and subaction to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+				"Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
 			parameters: [
 				{
 					name: "type",
@@ -4887,14 +4907,14 @@ export const allActionsSpec = {
 					descriptionCompressed: "Reading type: tarot, astrology, or iching.",
 				},
 				{
-					name: "subaction",
-					description: "Subaction: start, followup, or deepen.",
+					name: "action",
+					description: "Action: start, followup, or deepen.",
 					required: true,
 					schema: {
 						type: "string",
 						enum: ["start", "followup", "deepen"],
 					},
-					descriptionCompressed: "Subaction: start, followup, or deepen.",
+					descriptionCompressed: "Action: start, followup, or deepen.",
 				},
 				{
 					name: "question",
@@ -4918,7 +4938,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"Mystical readings: tarot, astrology, iching; subactions: start, followup, deepen.",
+				"Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
 			similes: [
 				"TAROT_READING",
 				"READ_TAROT",
@@ -4950,7 +4970,7 @@ export const allActionsSpec = {
 					params: {
 						READING: {
 							type: "tarot",
-							subaction: "start",
+							action: "start",
 							question: "example",
 							context: "example",
 						},
@@ -4961,16 +4981,25 @@ export const allActionsSpec = {
 		{
 			name: "RS_2004",
 			description:
-				"Drive the 2004scape game agent. Choose one op (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-op fields go in params.",
+				"Drive the 2004scape game agent. Choose one action (walk_to, chop, mine, fish, burn, cook, fletch, craft, smith, drop, pickup, equip, unequip, use, use_on_item, use_on_object, open, close, deposit, withdraw, buy, sell, attack, cast_spell, set_style, eat, talk, navigate_dialog, interact_object, open_door, pickpocket). For open/close, set target='bank' or target='shop' (or include npc to imply shop). Per-action fields go in params.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description: "Operation to run.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Op.",
+					descriptionCompressed: "Action.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy op alias.",
 				},
 				{
 					name: "params",
@@ -4980,17 +5009,18 @@ export const allActionsSpec = {
 					schema: {
 						type: "object",
 					},
-					descriptionCompressed: "Op fields.",
+					descriptionCompressed: "Action fields.",
 				},
 			],
 			descriptionCompressed:
-				"rs_2004 ops (walk_to, skills, inventory, bank, shop, combat, interact)",
+				"rs_2004 actions (walk_to, skills, inventory, bank, shop, combat, interact)",
 			exampleCalls: [
 				{
 					user: "Use RS_2004 with the provided parameters.",
 					actions: ["RS_2004"],
 					params: {
 						RS_2004: {
+							action: "example",
 							subaction: "example",
 							params: "example",
 						},
@@ -5001,30 +5031,39 @@ export const allActionsSpec = {
 		{
 			name: "SCAPE",
 			description:
-				"Drive the 'scape (xRSPS) game agent. Pick one op: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
+				"Drive the 'scape (xRSPS) game agent. Pick one action: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description: "Operation to run.",
 					required: true,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Op.",
+					descriptionCompressed: "Action.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy op alias.",
 				},
 				{
 					name: "params",
 					description:
-						"Optional JSON object containing the fields required by the chosen op.",
+						"Optional JSON object containing the fields required by the chosen action.",
 					required: false,
 					schema: {
 						type: "object",
 					},
-					descriptionCompressed: "Op fields.",
+					descriptionCompressed: "Action fields.",
 				},
 			],
 			descriptionCompressed:
-				"scape ops: walk_to|attack|chat_public|eat|drop|set_goal|complete_goal|remember",
+				"scape actions: walk_to|attack|chat_public|eat|drop|set_goal|complete_goal|remember",
 			similes: [
 				"SCAPE_WALK_TO",
 				"MOVE_TO",
@@ -5054,6 +5093,7 @@ export const allActionsSpec = {
 					actions: ["SCAPE"],
 					params: {
 						SCAPE: {
+							action: "example",
 							subaction: "example",
 							params: "example",
 						},
@@ -5131,10 +5171,10 @@ export const allActionsSpec = {
 		{
 			name: "SHOPIFY",
 			description:
-				"Manage a Shopify store. Operations: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Op is inferred from the message text when not explicitly provided.",
+				"Manage a Shopify store. Actions: search (read-only catalog browsing across products, orders, and customers), products (CRUD on products), inventory (stock adjustments), orders (list/update orders), customers (CRUD on customers). Action is inferred from the message text when not explicitly provided.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
 						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
 					required: false,
@@ -5145,25 +5185,34 @@ export const allActionsSpec = {
 						"Operation to perform. One of: search, products, inventory, orders, customers. Inferred from msg text when omitted.",
 				},
 				{
-					name: "query",
-					description: "Search term for op=search.",
+					name: "subaction",
+					description: "Legacy alias for action.",
 					required: false,
 					schema: {
 						type: "string",
 					},
-					descriptionCompressed: "Search term for op=search.",
+					descriptionCompressed: "Legacy alias for action.",
+				},
+				{
+					name: "query",
+					description: "Search term for action=search.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Search term for action=search.",
 				},
 				{
 					name: "scope",
 					description:
-						"Search scope for op=search: all, products, orders, or customers.",
+						"Search scope for action=search: all, products, orders, or customers.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["all", "products", "orders", "customers"],
 					},
 					descriptionCompressed:
-						"Search scope for op=search: all, products, orders, or customers.",
+						"Search scope for action=search: all, products, orders, or customers.",
 				},
 				{
 					name: "limit",
@@ -5204,6 +5253,7 @@ export const allActionsSpec = {
 					actions: ["SHOPIFY"],
 					params: {
 						SHOPIFY: {
+							action: "example",
 							subaction: "example",
 							query: "example",
 							scope: "all",
@@ -5219,7 +5269,7 @@ export const allActionsSpec = {
 				"Manage skill catalog. Operations: search (browse available skills), details (info about a specific skill), sync (refresh catalog from registry), toggle (enable/disable installed skill), install (install from registry), uninstall (remove non-bundled skill). For invoking an enabled skill, use USE_SKILL instead.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
 						"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
 					required: false,
@@ -5251,7 +5301,7 @@ export const allActionsSpec = {
 					actions: ["SKILL"],
 					params: {
 						SKILL: {
-							subaction: "example",
+							action: "example",
 						},
 					},
 				},
@@ -5260,18 +5310,27 @@ export const allActionsSpec = {
 		{
 			name: "TODO",
 			description:
-				"Manage the user's todo list. Subactions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+				"Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Operation: write, create, update, complete, cancel, delete, list, clear.",
+						"Action: write, create, update, complete, cancel, delete, list, clear.",
 					required: true,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Operation: write, create, update, complete, cancel, delete, list, clear.",
+						"Action: write, create, update, complete, cancel, delete, list, clear.",
+				},
+				{
+					name: "subaction",
+					description: "Legacy alias for action.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Legacy alias for action.",
 				},
 				{
 					name: "id",
@@ -5326,7 +5385,7 @@ export const allActionsSpec = {
 				{
 					name: "todos",
 					description:
-						"Array of {id?, content, status, activeForm?} for op=write. Replaces the user's list for this conversation.",
+						"Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
 					required: false,
 					schema: {
 						type: "array",
@@ -5349,26 +5408,27 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"Array of {id?, content, status, activeForm?} for op=write. Replaces user's list for this convo.",
+						"Array of {id?, content, status, activeForm?} for action=write. Replaces user's list for this convo.",
 				},
 				{
 					name: "includeCompleted",
-					description: "Include completed/cancelled todos in op=list output.",
+					description:
+						"Include completed/cancelled todos in action=list output.",
 					required: false,
 					schema: {
 						type: "boolean",
 					},
 					descriptionCompressed:
-						"Include completed/cancelled todos in op=list output.",
+						"Include completed/cancelled todos in action=list output.",
 				},
 				{
 					name: "limit",
-					description: "Max rows to return for op=list.",
+					description: "Max rows to return for action=list.",
 					required: false,
 					schema: {
 						type: "number",
 					},
-					descriptionCompressed: "Max rows to return for op=list.",
+					descriptionCompressed: "Max rows to return for action=list.",
 				},
 			],
 			descriptionCompressed:
@@ -5403,6 +5463,7 @@ export const allActionsSpec = {
 					actions: ["TODO"],
 					params: {
 						TODO: {
+							action: "example",
 							subaction: "example",
 							id: "example",
 							content: "example",

@@ -1,0 +1,339 @@
+{
+  "schemaVersion": 1,
+  "manifestKernelNames": [
+    "turboquant_q3",
+    "turboquant_q4",
+    "qjl",
+    "polarquant",
+    "dflash",
+    "turbo3_tcq"
+  ],
+  "requiredRuntimeCapabilityKeys": [
+    "dflash",
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl_full",
+    "polarquant"
+  ],
+  "latestReports": [
+    "reports/porting/2026-05-10/platform-verification-performance-grid.md",
+    "reports/porting/2026-05-11/remaining-work-ledger.md",
+    "verify/CUDA_VERIFICATION.md"
+  ],
+  "kernels": [
+    {
+      "id": "turbo3",
+      "family": "TurboQuant",
+      "manifestKernelNames": ["turboquant_q3"],
+      "runtimeCapabilityKeys": ["turbo3"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/turbo3.json",
+          "kernelField": "turbo3",
+          "requiredFields": ["head_dim", "n_kv", "blocks_per_kv", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/turbo3.metal",
+        "verifySymbol": "kernel_turbo3_dot",
+        "multiBlockSymbol": "kernel_turbo3_dot_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/turbo3.comp",
+        "spirv": "vulkan/turbo3.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "symbol-shipped",
+        "vulkan": "symbol-shipped",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "turbo4",
+      "family": "TurboQuant",
+      "manifestKernelNames": ["turboquant_q4"],
+      "runtimeCapabilityKeys": ["turbo4"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/turbo4.json",
+          "kernelField": "turbo4",
+          "requiredFields": ["head_dim", "n_kv", "blocks_per_kv", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/turbo4.metal",
+        "verifySymbol": "kernel_turbo4_dot",
+        "multiBlockSymbol": "kernel_turbo4_dot_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/turbo4.comp",
+        "spirv": "vulkan/turbo4.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "symbol-shipped",
+        "vulkan": "symbol-shipped",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "turbo3_tcq",
+      "family": "TurboQuant",
+      "manifestKernelNames": ["turbo3_tcq"],
+      "runtimeCapabilityKeys": ["turbo3_tcq"],
+      "requiredWhen": "ctx > 65536",
+      "fixtures": [
+        {
+          "path": "verify/fixtures/turbo3_tcq.json",
+          "kernelField": "turbo3_tcq",
+          "requiredFields": ["head_dim", "n_kv", "blocks_per_kv", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/turbo3_tcq.metal",
+        "verifySymbol": "kernel_turbo3_tcq_dot",
+        "multiBlockSymbol": "kernel_turbo3_tcq_dot_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/turbo3_tcq.comp",
+        "spirv": "vulkan/turbo3_tcq.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "symbol-shipped",
+        "vulkan": "symbol-shipped",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "qjl",
+      "family": "QJL",
+      "manifestKernelNames": ["qjl"],
+      "runtimeCapabilityKeys": ["qjl_full"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/qjl.json",
+          "kernelField": "qjl",
+          "requiredFields": ["proj_dim", "n_heads", "n_kv_heads", "n_tokens", "q_sketch", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/qjl.metal",
+        "verifySymbol": "kernel_attn_score_qjl1_256",
+        "multiBlockSymbol": "kernel_attn_score_qjl1_256_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/qjl.comp",
+        "spirv": "vulkan/qjl.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "symbol-shipped",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "polar",
+      "family": "PolarQuant",
+      "manifestKernelNames": ["polarquant"],
+      "runtimeCapabilityKeys": ["polarquant"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/polar.json",
+          "kernelField": "polar",
+          "requiredFields": ["head_dim", "n_rows", "use_qjl", "q", "k_blocks", "expected_scores"]
+        },
+        {
+          "path": "verify/fixtures/polar_qjl.json",
+          "kernelField": "polar",
+          "requiredFields": ["head_dim", "n_rows", "use_qjl", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/polar.metal",
+        "verifySymbol": "kernel_mul_mv_q4_polar_f32"
+      },
+      "vulkan": {
+        "source": "vulkan/polar.comp",
+        "spirv": "vulkan/polar.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "symbol-shipped",
+        "vulkan": "symbol-shipped",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "dflash",
+      "family": "DFlash",
+      "manifestKernelNames": ["dflash"],
+      "runtimeCapabilityKeys": ["dflash"],
+      "fixtures": [],
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "runtime-ready",
+        "cpu": "runtime-ready"
+      }
+    }
+  ],
+  "platformTargets": {
+    "linux-x64-cpu": {
+      "kernelVerification": "reference-only",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native CPU backend smoke for QJL/Polar SIMD paths and DFlash lifecycle."
+    },
+    "linux-x64-cuda": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run make -C packages/inference/verify cuda-verify on an NVIDIA host."
+    },
+    "linux-x64-rocm": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run HIP/ROCm parity after CUDA fixture verification is green."
+    },
+    "linux-x64-vulkan": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "blocked",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Add Vulkan graph dispatch and run native Intel/AMD/NVIDIA smoke, not only MoltenVK."
+    },
+    "linux-aarch64-cpu": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run on an arm64 Linux host and collect CPU backend parity."
+    },
+    "linux-aarch64-cuda": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Build and run cuda-verify on GH200/H100/H200-class aarch64 CUDA host."
+    },
+    "android-arm64-cpu": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run CPU/NEON parity on a physical Android device."
+    },
+    "android-arm64-vulkan": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Cross-compile vulkan_verify and run all fixtures on Adreno and Mali devices."
+    },
+    "darwin-arm64-metal": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "partial-qjl-only",
+      "deviceRun": "verified",
+      "nextGate": "Finish Metal TurboQuant and PolarQuant graph dispatch, then rerun dispatch-smoke."
+    },
+    "darwin-x64-metal": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run metal-verify and built-fork dispatch smoke on Intel/AMD Mac hardware."
+    },
+    "ios-arm64-metal": {
+      "kernelVerification": "symbol-shipped",
+      "runtimeDispatch": "blocked",
+      "deviceRun": "needs-hardware",
+      "nextGate": "After graph dispatch, run physical-device XCTest/Capacitor smoke."
+    },
+    "ios-arm64-simulator-metal": {
+      "kernelVerification": "symbol-shipped",
+      "runtimeDispatch": "blocked",
+      "deviceRun": "needs-hardware",
+      "nextGate": "After graph dispatch, run simulator smoke against the embedded metallib."
+    },
+    "windows-x64-cpu": {
+      "kernelVerification": "compile-only",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native Windows CPU binary and AVX2 QJL/Polar smoke."
+    },
+    "windows-x64-cuda": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native Windows CUDA build and cuda-verify on NVIDIA hardware."
+    },
+    "windows-x64-vulkan": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native Windows Vulkan graph smoke on Intel/AMD/NVIDIA drivers."
+    },
+    "windows-arm64-cpu": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run Snapdragon X native CPU smoke."
+    },
+    "windows-arm64-vulkan": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run Snapdragon X native Vulkan smoke."
+    },
+    "linux-x64-cpu-fused": {
+      "kernelVerification": "reference-only",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused libelizainference CPU smoke with voice off/on regions."
+    },
+    "linux-x64-cuda-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused CUDA smoke after cuda-verify passes."
+    },
+    "linux-x64-vulkan-fused": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "blocked",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused Vulkan smoke after graph dispatch lands."
+    },
+    "darwin-arm64-metal-fused": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "partial-qjl-only",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused Metal smoke after Turbo/Polar dispatch lands."
+    },
+    "darwin-x64-metal-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused Metal smoke on Intel/AMD Mac hardware."
+    },
+    "windows-x64-cuda-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused Windows CUDA smoke after native cuda-verify passes."
+    }
+  }
+}

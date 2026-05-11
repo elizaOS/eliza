@@ -13,11 +13,11 @@ Usage::
 
     # Dry-run (no auth required, prints planned uploads + total bytes).
     uv run python scripts/publish_dataset_to_hf.py \\
-        --dataset training --repo-id elizaos/eliza-1-training --dry-run
+        --dataset training --repo-id elizalabs/eliza-1-training --dry-run
 
     # Real upload (creates the repo private if missing).
     HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \\
-        --dataset training --repo-id elizaos/eliza-1-training
+        --dataset training --repo-id elizalabs/eliza-1-training
 
 The publisher refuses to upload any file outside the explicit per-dataset
 allowlist below — this is the safety rail that keeps the historical WIP
@@ -249,9 +249,9 @@ def _card_training() -> str:
         "# eliza-1 training corpus\n"
         "\n"
         "Active SFT corpus for the elizaOS **eliza-1** model series\n"
-        "([`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b),\n"
-        "[`elizaos/eliza-1-9b`](https://huggingface.co/elizaos/eliza-1-9b),\n"
-        "[`elizaos/eliza-1-27b`](https://huggingface.co/elizaos/eliza-1-27b)).\n"
+        "([`elizalabs/eliza-1-2b`](https://huggingface.co/elizalabs/eliza-1-2b),\n"
+        "[`elizalabs/eliza-1-9b`](https://huggingface.co/elizalabs/eliza-1-9b),\n"
+        "[`elizalabs/eliza-1-27b`](https://huggingface.co/elizalabs/eliza-1-27b)).\n"
         "\n"
         "## Files\n"
         "\n"
@@ -280,13 +280,13 @@ def _card_training() -> str:
         "trajectories, multi-turn reasoning, n8n workflows, MCP traces, and\n"
         "synthesized eliza-specific scenarios. Per-source counts are in\n"
         "`manifest.json`. The pipeline that built this corpus is published at\n"
-        "[`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline).\n"
+        "[`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline).\n"
         "\n"
         "## Loading\n"
         "\n"
         "```python\n"
         "from datasets import load_dataset\n"
-        'ds = load_dataset("elizaos/eliza-1-training", data_files={\n'
+        'ds = load_dataset("elizalabs/eliza-1-training", data_files={\n'
         '    "train": "train.jsonl",\n'
         '    "validation": "val.jsonl",\n'
         '    "test": "test.jsonl",\n'
@@ -408,7 +408,7 @@ def _card_abliteration() -> str:
         "\n"
         "**This repo intentionally does not host data.** The harmless-prompt\n"
         "calibration set used by\n"
-        "[`scripts/training/abliterate.py`](https://huggingface.co/elizaos/eliza-1-pipeline/blob/main/scripts/training/abliterate.py)\n"
+        "[`scripts/training/abliterate.py`](https://huggingface.co/elizalabs/eliza-1-pipeline/blob/main/scripts/training/abliterate.py)\n"
         "is the upstream\n"
         "[`mlabonne/harmless_alpaca`](https://huggingface.co/datasets/mlabonne/harmless_alpaca)\n"
         "dataset, paired with the harmful set\n"
@@ -453,7 +453,7 @@ def _card_combined() -> str:
         "scambench adversarial set, and the small Claude-teacher synthesis\n"
         "sets that previously lived in separate repos.\n"
         "\n"
-        "Companion repo: [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline)\n"
+        "Companion repo: [`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline)\n"
         "(scripts + Vast.ai automation that built this corpus).\n"
         "\n"
         "## Layout\n"
@@ -498,20 +498,20 @@ def _card_combined() -> str:
         "from datasets import load_dataset\n"
         "\n"
         "# Active SFT splits\n"
-        'sft = load_dataset("elizaos/eliza-1-training", data_files={\n'
+        'sft = load_dataset("elizalabs/eliza-1-training", data_files={\n'
         '    "train": "train.jsonl",\n'
         '    "validation": "val.jsonl",\n'
         '    "test": "test.jsonl",\n'
         "})\n"
         "\n"
         "# Scambench (adversarial)\n"
-        'sb = load_dataset("elizaos/eliza-1-training", data_files={\n'
+        'sb = load_dataset("elizalabs/eliza-1-training", data_files={\n'
         '    "normalized": "scambench/normalized.jsonl",\n'
         '    "synthesized": "scambench/scambench.jsonl",\n'
         "})\n"
         "\n"
         "# Synthesized small sets\n"
-        'syn = load_dataset("elizaos/eliza-1-training", data_files=\n'
+        'syn = load_dataset("elizalabs/eliza-1-training", data_files=\n'
         '    "synthesized/**/*.jsonl")\n'
         "```\n"
         "\n"
@@ -722,7 +722,7 @@ def main() -> int:
     ap.add_argument(
         "--repo-id",
         required=True,
-        help="Destination HF dataset repo id (e.g. elizaos/eliza-1-training).",
+        help="Destination HF dataset repo id (e.g. elizalabs/eliza-1-training).",
     )
     ap.add_argument(
         "--private",

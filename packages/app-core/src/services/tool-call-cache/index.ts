@@ -9,6 +9,14 @@
  * the agent package layout.
  */
 
+export type {
+  CacheableToolDescriptor,
+  PrivacyRedactor,
+  ToolArgs,
+  ToolCacheEntry,
+  ToolCallCacheOptions,
+  ToolOutput,
+} from "../../../../agent/src/runtime/tool-call-cache/index.ts";
 export {
   buildCacheKey,
   CACHEABLE_TOOL_REGISTRY,
@@ -17,12 +25,4 @@ export {
   isCacheable,
   resolveToolDescriptor,
   ToolCallCache,
-} from "../../../../agent/src/runtime/tool-call-cache/index.ts";
-export type {
-  CacheableToolDescriptor,
-  PrivacyRedactor,
-  ToolArgs,
-  ToolCacheEntry,
-  ToolCallCacheOptions,
-  ToolOutput,
 } from "../../../../agent/src/runtime/tool-call-cache/index.ts";

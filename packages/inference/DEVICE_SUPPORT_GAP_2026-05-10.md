@@ -1,5 +1,13 @@
 # Eliza-1 device support gap analysis — 2026-05-10
 
+> Superseded status note, 2026-05-11: keep this file as historical context.
+> The current blocker ledger is
+> `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md`.
+> Since this audit, Vulkan standalone QJL/Polar verification was added on
+> Apple M4 Max via MoltenVK, Metal `GGML_OP_ATTN_SCORE_QJL` graph dispatch
+> became runtime-ready, and the build gate was tightened so `turbo3_tcq` is
+> required alongside `turbo3`, `turbo4`, QJL, Polar, and DFlash.
+
 Scope: every (tier × backend × OS × arch) combination implied by
 [`AGENTS.md`](AGENTS.md) §2/§3 and the build matrix in
 [`packages/app-core/scripts/build-llama-cpp-dflash.mjs`](../app-core/scripts/build-llama-cpp-dflash.mjs)

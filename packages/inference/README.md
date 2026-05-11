@@ -22,8 +22,8 @@
 > existing, shipping `dequantize_turbo3_0_t4` and the fork's in-tree
 > `tbq4_0.metal` (`block_turbo4_0` = `half norm; uint8_t qs[64]`) — so the
 > byte layout and centroid lookup have been triple-checked at the source
-> level. None of that is a substitute for `metal_verify` reporting 8/8
-> PASS on a real Apple GPU.
+> level and `metal_verify` reports 8/8 PASS for all five Metal shaders on
+> Apple M4 Max.
 >
 > Patch-hook status (post 2026-05-10 audit):
 >
@@ -43,11 +43,11 @@
 >     `-DGGML_METAL_EMBED_LIBRARY=OFF`, so the patched `add_custom_command`
 >     (which lives in the non-EMBED branch of the fork's CMakeLists.txt)
 >     actually runs. iOS targets keep `EMBED_LIBRARY=ON` because the
->     static-archive build needs the metallib data baked in via `.incbin`,
->     but the EMBED path is NOT yet wired — the iOS metallib will not
->     contain the milady kernels until a separate dup-strip patcher lands
->     in `metal-kernels.mjs`. `requiredKernelsMissing()` will refuse the
->     iOS artifact accordingly.
+>     static-archive build needs the metallib data baked in via `.incbin`.
+>     The patcher now rewrites that EMBED path to embed compiled
+>     `default.metallib` bytes, so desktop and iOS package the same shipped
+>     standalone symbols. The build gate still refuses an iOS artifact until
+>     those symbols are runtime-dispatch-ready, not merely present.
 >
 >   * The Vulkan `patchVulkanKernels` hook (Wave-6, 2026-05-10) now stages
 >     the eight standalone `.comp` files from `packages/inference/vulkan/`
@@ -76,96 +76,24 @@
 >     `vk_mat_vec_push_constants` paths, so a follow-up patch must
 >     introduce a milady-native dispatch entrypoint and per-op routing.
 >     Until that lands, `llama-server --help` still won't show qjl/polar/
->     turbo as user-visible cache types and `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1`
->     remains the explicit acknowledgement of the routing gap.
+>     turbo as user-visible cache types and the build gate refuses the
+>     artifact as incomplete.
 >
->   * Dispatch wiring status (Wave-6 follow-up, 2026-05-10): the parallel
->     dispatch path (option (c) below) has now landed for `GGML_TYPE_QJL1_256`
->     and `GGML_TYPE_Q4_POLAR`. The patch ships in
->     `packages/app-core/scripts/kernel-patches/metal-kernels.mjs`
->     (`patchMetalDispatch`, sentinel `// MILADY-DISPATCH-V1`) and adds:
->
->       1. `ggml_metal_library_get_pipeline_milady_mul_mv()` and
->          `_milady_get_rows()` in `ggml-metal-device.cpp` — pipeline
->          lookups that bypass the `nsg` function constant by calling
->          `ggml_metal_library_compile_pipeline(lib, name, name, nullptr)`
->          (the standalones do not declare any function constants, so the
->          standard helper crashes at constantValue-binding).
->       2. `ggml_metal_op_mul_mv_milady_quant()` and
->          `_get_rows_milady_quant()` static helpers in `ggml-metal-ops.cpp`
->          that build the standalone arg structs (`qjl_mv_args`,
->          `polar_mv_args`, `qjl_dequant_args`, `polar_dequant_args`),
->          set buffers + custom args, and dispatch with the
->          `tg_size=32`, one-threadgroup-per-row shape that
->          `metal_verify` proved correct.
->      3. Early-out at the top of `ggml_metal_op_mul_mat()` and
->          `ggml_metal_op_get_rows()` that diverts the five milady ggml
->          types into the parallel dispatcher BEFORE any of the standard
->          kernel-selection logic that depends on
->          `get_pipeline_mul_mv` runs.
->
->     `nm -gU libggml-metal.dylib` shows the new public symbols
->     (`_ggml_metal_library_get_pipeline_milady_mul_mv`,
->     `_ggml_metal_library_get_pipeline_milady_get_rows`); the static op
->     helpers are TU-private and therefore stripped from the export
->     table, but `verify/dispatch_smoke` exercises them by submitting a
->     real `GGML_OP_MUL_MAT` graph node through `ggml_backend_metal_init`
->     + `ggml_backend_graph_compute` and reading back the result.
->
->     **What's now reachable:**
->
->       - `GGML_TYPE_Q4_POLAR` — full `MUL_MAT` + `GET_ROWS` dispatch via
->         `kernel_mul_mv_q4_polar_f32` / `kernel_get_rows_q4_polar`.
->         `dispatch_smoke` reports `q4_polar PASS dispatch=OK numerics OK
->         (max_err=3.81e-6 over 4 rows)` against the CPU dequant + fp32
->         dot reference.
->       - `GGML_TYPE_QJL1_256` — `MUL_MAT` + `GET_ROWS` dispatch via
->         `kernel_mul_mv_qjl1_256_f32` / `kernel_get_rows_qjl1_256`.
->         Dispatch path runs without crashing; `dispatch_smoke` reports
->         `qjl1_256 PASS dispatch=OK numerics=skipped`. Numeric
->         comparison vs CPU dequant is intentionally skipped — the
->         standalone kernel expects a pre-projected sketch (proj_dim=256)
->         as its `q` activation, not a raw head-dim vector. Wiring a
->         semantically-correct generic-graph QJL path requires either
->         host-side query pre-projection at the call site or a separate
->         `ATTN_SCORE_QJL` op with explicit sketch handling — Wave-7
->         work.
->
->     **What's still gated:**
->
->       - `GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ` —
->         the standalones expose ONLY attention-score kernels
->         (`kernel_turbo3_dot`, `kernel_turbo4_dot`,
->         `kernel_turbo3_tcq_dot`), not `mul_mv`-shaped kernels. There is
->         no kernel symbol available for `MUL_MAT` against these types.
->         The patch's parallel dispatcher detects this and emits a
->         structured `GGML_ABORT("milady_quant: tbq* MUL_MAT not yet
->         wired")` rather than crashing the metallib compiler. Closing
->         the gap requires a new GGML op (`ATTN_SCORE_TBQ3` /
->         `ATTN_SCORE_TBQ4` / `ATTN_SCORE_TBQ3_TCQ`) with its own
->         per-type dispatcher that calls the existing `kernel_turbo*_dot`
->         entrypoints — Wave-7 work, sister to the QJL attention bridge.
->
->     **Original Wave-6 audit alternatives, for the record:**
->
->       (a) editing the standalones to take `ggml_metal_kargs_*` and
->           `nsg` function constants — forbidden by the standalone
->           freeze contract.
->       (b) shipping bridge wrapper kernels in `ggml-metal.metal` that
->           accept the standard kargs ABI and trampoline into the
->           standalone entrypoints — not pursued; (c) is simpler.
->       (c) carving a parallel dispatch path
->           (`ggml_metal_op_mul_mv_milady_quant`) in `ggml-metal-ops.cpp`
->           that bypasses `get_pipeline_mul_mv` and binds the standalones'
->           custom argument structs directly — **chosen, landed**.
->
->     CUDA is still the only backend whose v0.4.0-milady binary covers
->     all five types (it has dispatch entries for `attn_score_qjl_cuda`,
->     `dequantize_row_q4_polar_cuda`, `dequantize_row_tbq3_tcq_cuda`,
->     plus the `tbq_decode_block_cuda` device helpers for tbq3/tbq4).
->     Metal now covers QJL + Polar `MUL_MAT`/`GET_ROWS`. The tbq* triplet
->     remains symbol-shipped + JIT-reachable but graph-executor-unreachable
->     until the ATTN_SCORE op lands.
+>   * Dispatch wiring status (Wave-7 audit, 2026-05-10): the build now
+>     distinguishes **shipped symbols** from **runtime-ready graph
+>     capabilities**. `patchMetalKernels()` ships all five standalones in
+>     desktop `default.metallib` and iOS embedded metallib. Metal now has a
+>     dedicated, numerically smoke-tested `GGML_OP_ATTN_SCORE_QJL` bridge to
+>     `kernel_attn_score_qjl1_256_multi`, so `CAPABILITIES.json` may report
+>     `kernels.qjl_full=true` when that symbol is present. The helper still
+>     deliberately refuses the old generic `MUL_MAT`/`GET_ROWS` patch route:
+>     routing the standalones through generic ggml ops is either semantically
+>     wrong (`QJL1_256` expects a pre-projected sketch) or incomplete (the
+>     `tbq*` kernels are attention-score only). `shippedKernels.symbols.*`
+>     records metallib symbol presence; the remaining Turbo/Polar
+>     `kernels.*` bits stay false until dedicated graph ops land and pass
+>     numeric dispatch tests. CUDA is still the only backend whose
+>     v0.4.0-milady binary covers the full runtime path for all five types.
 >
 >   * Wave-6 darwin shared-lib link fix: ggml-base on darwin defaults to
 >     `BUILD_SHARED_LIBS=ON` and links with `-undefined error`, so
@@ -362,6 +290,17 @@ Each shader file annotates the CUDA function it ports. Key correspondences:
 
 ## Hardware verification protocol
 
+Before running backend-specific hardware checks, run the executable contract
+gate. It verifies that the manifest kernel names
+(`turboquant_q3`/`turboquant_q4`/`qjl`/`polarquant`/`dflash`/`turbo3_tcq`),
+the build-script capability keys (`turbo3`/`turbo4`/`turbo3_tcq`/`qjl_full`),
+the fixture set, and every supported build target's platform gate are still
+in sync:
+
+```bash
+make -C packages/inference/verify kernel-contract
+```
+
 ### Mac (Apple Silicon)
 
 ```bash
@@ -385,12 +324,9 @@ make metal
 ./metal_verify ../metal/qjl.metal        kernel_attn_score_qjl1_256     fixtures/qjl.json
 ./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32     fixtures/polar.json
 
-# 5) Optional: end-to-end via the patched llama-server. All four metal
-#    kernel patch hooks are opt-in via env vars (default OFF). To opt in:
-ELIZA_DFLASH_PATCH_METAL_TURBO3=1 \
-ELIZA_DFLASH_PATCH_METAL_QJL=1 \
-ELIZA_DFLASH_PATCH_METAL_POLAR=1 \
-  bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend metal
+# 5) Optional: build the patched llama-server. Metal kernel patching is
+#    unconditional for Metal targets; there are no opt-in env vars.
+bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend metal
 
 # 6) Optional: build the iOS Capacitor static archive that the
 #    LlamaCpp.xcframework patch in
@@ -406,35 +342,29 @@ bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs \
 
 ```bash
 # Host-side: build SPIR-V from the .comp files using glslc from the Vulkan
-# SDK (https://vulkan.lunarg.com/sdk/home).
-glslc -fshader-stage=compute packages/inference/vulkan/turbo3.comp     -o turbo3.spv
-glslc -fshader-stage=compute packages/inference/vulkan/turbo4.comp     -o turbo4.spv
-glslc -fshader-stage=compute packages/inference/vulkan/turbo3_tcq.comp -o turbo3_tcq.spv
-
-# Or with glslangValidator if you don't have glslc:
-glslangValidator -V -S comp packages/inference/vulkan/turbo3.comp -o turbo3.spv
+# SDK (https://vulkan.lunarg.com/sdk/home) or the Android NDK shader tools.
+cd packages/inference/verify
+make reference-test
+make vulkan-spirv
 
 # 1) On a workstation with a Vulkan-capable GPU (NVIDIA / AMD / Intel),
 #    run the host harness:
-cd packages/inference/verify
 VULKAN_SDK=/opt/vulkan-sdk make vulkan
-./vulkan_verify ../vulkan/turbo3.spv     fixtures/turbo3.json
-./vulkan_verify ../vulkan/turbo4.spv     fixtures/turbo4.json
-./vulkan_verify ../vulkan/turbo3_tcq.spv fixtures/turbo3_tcq.json
+make vulkan-verify
 
 # 2) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
 #    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures.
-adb push turbo3.spv turbo4.spv turbo3_tcq.spv /data/local/tmp/eliza-kernels/
+adb push ../vulkan/*.spv /data/local/tmp/eliza-kernels/
 adb push fixtures/   /data/local/tmp/eliza-kernels/fixtures/
 adb push vulkan_verify /data/local/tmp/eliza-kernels/
 adb shell "cd /data/local/tmp/eliza-kernels && \
            ./vulkan_verify turbo3.spv fixtures/turbo3.json"
 
 # 3) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
-#    default-on after Wave-4 hardware verification. To silence the log:
-ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 \
-  bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
+#    default-on. The build still refuses publishable artifacts until graph
+#    dispatch capabilities are runtime-ready, not merely symbol-shipped.
+bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
 ```
 
 ## Verification matrix (verified locally vs needs hardware)
@@ -579,42 +509,55 @@ similarly `kernel_turbo4_dot`, `kernel_turbo3_tcq_dot`,
 `kernel_mul_mv_q4_polar_f32`) returns matches. The kernels are
 present as live symbols inside the metallib.
 
-### Metal (iOS) — deferred
+### Metal (iOS) — shipped symbols, dispatch-gated
 
 iOS keeps `EMBED_LIBRARY=ON` because the static-archive build needs the
-metallib data baked in via `.incbin`. The EMBED path concatenates
-`ggml-metal.metal` with `ggml-common.h` via `sed`, and the standalones'
-self-contained redefinitions of `block_qjl1_256` / `block_q4_polar` /
-`QK_POLAR` / `QK_QJL` / `QJL_RESIDUAL_BYTES` collide. A dup-strip patcher
-is filed as a follow-up in `kernel-patches/metal-kernels.mjs`'s module
-comment. Until then `requiredKernelsMissing()` refuses iOS metal builds.
+metallib data baked in via `.incbin`. `patchMetalKernels()` rewrites that
+branch to compile `ggml-metal.metal` plus the five standalones as separate
+`.air` files, merge them into `default.metallib`, and embed the compiled
+bytes. This avoids the old duplicate-declaration failure from concatenating
+standalone Metal source with `ggml-common.h`.
+
+The build still fails the publish gate until op-level dispatch is
+numerically verified. Shipped symbols are not enough to satisfy the
+runtime-ready kernel contract.
 
 ### Vulkan — staged but not yet wired
 
-The eight standalone `.comp` files are copied into the fork at
-`ggml/src/ggml-vulkan/milady-shipped/<name>.comp` so they are visible
-for the next agent to wire up, but `vulkan-shaders-gen` does not yet
-know about them and `ggml-vulkan.cpp` has no dispatch sites for the
-milady quant types. The patch helper hard-throws when a `*-vulkan`
-target is queued unless `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1` is
-set as an audit-loggable acknowledgement of the AGENTS.md §3 gap.
+The eight standalone `.comp` files are staged into the fork and compiled
+cleanly, but `ggml-vulkan.cpp` still has no numerically verified
+op-level dispatch sites for the milady quant types. The build helper
+hard-throws when a `*-vulkan` target is queued and the dispatch-ready
+kernel probe is incomplete. There is no incomplete-artifact bypass.
 
-### Dispatch wiring (deferred for both Metal and Vulkan)
+### Dispatch wiring (partially complete)
 
-`ggml-metal-ops.cpp` / `ggml-metal-device.m` (and the Vulkan
-equivalents) have no dispatch entries for `GGML_TYPE_TBQ3_0`,
-`GGML_TYPE_TBQ4_0`, `GGML_TYPE_TBQ3_TCQ`, `GGML_TYPE_QJL1_256`,
-`GGML_TYPE_Q4_POLAR`. CUDA does. This means the kernel symbols are now
-present in the Metal `default.metallib` but the runtime cannot select
-them via the type-traits table — they ship as dead code until the
-dispatch wiring lands. CUDA is the only backend whose v0.4.0-milady
-binary fully satisfies AGENTS.md §3 today.
+For the current blocker ledger and platform/device gap list, see
+`reports/porting/2026-05-11/remaining-work-ledger.md`.
+
+Metal has one verified graph route today: `GGML_OP_ATTN_SCORE_QJL`
+dispatches `GGML_TYPE_QJL1_256` packed K-cache blocks through the
+launch-tax-amortized `kernel_attn_score_qjl1_256_multi` path. `make -C packages/inference/verify
+dispatch-smoke` links against the built fork libraries, executes the
+actual Metal backend path, and compares 32 scores against a local
+packed-QJL reference with max diff `2.384e-07` on Apple M4 Max. This is
+why Metal `CAPABILITIES.json` can report `kernels.qjl_full=true`.
+
+Metal TurboQuant (`GGML_TYPE_TBQ3_0`, `GGML_TYPE_TBQ4_0`,
+`GGML_TYPE_TBQ3_TCQ`) and PolarQuant (`GGML_TYPE_Q4_POLAR`) still need
+dedicated graph dispatch entries and built-fork numeric smoke tests.
+Their standalone kernel symbols are present in `default.metallib`, but
+their runtime capability bits remain false and the build refuses
+publishable artifacts while they are missing.
+
+Vulkan is still symbol/staging-only for QJL, Polar, and TurboQuant graph
+execution. CUDA remains the only backend whose v0.4.0-milady binary fully
+satisfies AGENTS.md §3 across all five kernel families today.
 
 ## Build-time environment overrides
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN`   | Audit-loggable acknowledgement that the runtime may publish a `*-vulkan` artifact even if `requiredKernelsMissing()` flags missing dispatch. The Vulkan patch hook runs unconditionally and stages standalones + applies dispatch patches; this knob only suppresses the post-build kernel-presence gate. | OFF |
 | `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Override the fork remote (default `https://github.com/milady-ai/llama.cpp.git`). | unset |
 | `ELIZA_DFLASH_LLAMA_CPP_REF`             | Override the fork ref (default `v0.4.0-milady`).          | unset |
 | `ELIZA_DFLASH_VULKAN_HEADERS_DIR` / `ELIZA_DFLASH_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
@@ -627,10 +570,9 @@ no-op patch hooks. They have been removed; both the Metal and Vulkan
 patch helpers now run unconditionally on every matching target — Metal
 copies the standalone shaders + patches the metallib `add_custom_command`,
 Vulkan copies the standalones into `vulkan-shaders/` + applies the
-dispatch-wiring patches under `kernel-patches/vulkan-dispatch-patches/`.
+available staging patches.
 There is no opt-out, per AGENTS.md §3 ("Required for ALL tiers").
-`ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN` only relaxes the post-build
-audit gate; it does not skip the patch step.
+Symbol-only kernels do not satisfy the post-build audit gate.
 
 Wiring these into `dflash-server.ts` (so `--cache-type-k turbo3_tcq`
 actually runs through the new shader, and so QJL / Polar are reachable

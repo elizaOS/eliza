@@ -149,7 +149,7 @@ function defaultOutFile(entry: string): string {
   const normalized = entry.replace(/\\/g, "/").replace(/^\/+/, "");
   const stem = normalized
     .split("/")
-    .pop()!
-    .replace(/\.(tsx?|jsx?|mjs|cjs)$/i, "");
+    .pop()
+    ?.replace(/\.(tsx?|jsx?|mjs|cjs)$/i, "");
   return `dist/${stem}.js`;
 }

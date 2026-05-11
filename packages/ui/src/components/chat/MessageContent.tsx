@@ -11,9 +11,20 @@ import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PluginInfo } from "../../api/client-types-config";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
+import { isDesktopPlatform, isNative } from "../../platform";
+import {
+  createMobileSignalsPermissionsRegistry,
+  openMobilePermissionSettings,
+} from "../../platform/mobile-permissions-client";
 import { useApp } from "../../state/useApp";
 import type { ConfigUiHint } from "../../types";
 import { stripAssistantStageDirections } from "../../utils/assistant-text";
+import {
+  createClientPermissionsRegistry,
+  PermissionCard,
+  type PermissionCardPayload,
+  parsePermissionRequestFromText,
+} from "../composites/chat/permission-card";
 import { ConfigRenderer, defaultRegistry } from "../config-ui/config-renderer";
 import { UiRenderer } from "../config-ui/ui-renderer";
 import { paramsToSchema } from "../pages/plugin-list-utils";
@@ -68,6 +79,7 @@ type Segment =
       scope: string;
       options: ChoiceOption[];
     }
+  | { kind: "permission"; payload: PermissionCardPayload }
   | { kind: "analysis-xml"; tag: string; content: string };
 
 // ── Detection ───────────────────────────────────────────────────────
@@ -296,6 +308,18 @@ function parseSegments(text: string, analysisMode: boolean): Segment[] {
   // otherwise we use the normalized text which strips them.
   const targetText = analysisMode ? text : normalizeDisplayText(text);
   if (!targetText) return [{ kind: "text", text: "" }];
+
+  const permissionRequest = analysisMode
+    ? null
+    : parsePermissionRequestFromText(targetText);
+  if (permissionRequest) {
+    const segments: Segment[] = [];
+    if (permissionRequest.display.trim()) {
+      segments.push({ kind: "text", text: permissionRequest.display });
+    }
+    segments.push({ kind: "permission", payload: permissionRequest.payload });
+    return segments;
+  }
 
   // Build a list of match regions sorted by position
   const regions: Array<{ start: number; end: number; segment: Segment }> = [];
@@ -1039,6 +1063,32 @@ export function MessageContent({
     [sendActionMessage],
   );
 
+  const permissionRegistry = useMemo(
+    () =>
+      isNative && !isDesktopPlatform()
+        ? createMobileSignalsPermissionsRegistry(undefined, client)
+        : createClientPermissionsRegistry(client),
+    [],
+  );
+
+  const handlePermissionFallback = useCallback(
+    (feature: string, permission: string) => {
+      void sendActionMessage(
+        `__permission_card__:use_fallback feature=${feature} permission=${permission}`,
+      );
+    },
+    [sendActionMessage],
+  );
+
+  const handlePermissionGranted = useCallback(
+    (feature: string, permission: string) => {
+      void sendActionMessage(
+        `__permission_card__:granted feature=${feature} permission=${permission}`,
+      );
+    },
+    [sendActionMessage],
+  );
+
   const handleOpenSettings = useCallback(() => {
     app.setTab?.("settings");
   }, [app.setTab]);
@@ -1157,9 +1207,11 @@ export function MessageContent({
                 ? `config:${seg.pluginId}`
                 : seg.kind === "choice"
                   ? `choice:${seg.id}`
-                  : seg.kind === "analysis-xml"
-                    ? `analysis:${seg.tag}`
-                    : `ui:${seg.raw.slice(0, 80)}`;
+                  : seg.kind === "permission"
+                    ? `permission:${seg.payload.feature}`
+                    : seg.kind === "analysis-xml"
+                      ? `analysis:${seg.tag}`
+                      : `ui:${seg.raw.slice(0, 80)}`;
           const segmentKey = nextKey(baseKey);
 
           switch (seg.kind) {
@@ -1202,6 +1254,34 @@ export function MessageContent({
                   scope={seg.scope}
                   options={seg.options}
                   onChoose={handleChoice}
+                />
+              );
+            case "permission":
+              return (
+                <PermissionCard
+                  key={segmentKey}
+                  permission={seg.payload.permission}
+                  reason={seg.payload.reason}
+                  feature={seg.payload.feature}
+                  fallbackOffered={seg.payload.fallbackOffered}
+                  fallbackLabel={seg.payload.fallbackLabel}
+                  registry={permissionRegistry}
+                  onOpenSettings={async (permission) => {
+                    if (isNative && !isDesktopPlatform()) {
+                      await openMobilePermissionSettings(permission);
+                      return;
+                    }
+                    await client.openPermissionSettings(permission);
+                  }}
+                  onFallback={({ feature, permission }) =>
+                    handlePermissionFallback(feature, permission)
+                  }
+                  onGranted={() =>
+                    handlePermissionGranted(
+                      seg.payload.feature,
+                      seg.payload.permission,
+                    )
+                  }
                 />
               );
             default:
