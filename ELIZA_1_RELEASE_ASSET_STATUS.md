@@ -1,59 +1,49 @@
 # Eliza-1 Release Asset Status
 
-Last refreshed 2026-05-11 after the full 14-agent on-device-inference push and
-the close-out integration pass: native Vulkan graph dispatch verified on Intel
-ANV (7 graph routes incl. fused-attn), CPU AVX-VNNI + Polar-preHT in the shipped
-build, the fused omnivoice ABI v2 (`eliza_inference_asr_stream_*` /
-`tts_synthesize_stream` / verifier callback) landed and ABI-verified on the
-`linux-x64-cpu-fused` build, the overlapped ASR→{draft∥verify}→TTS voice
-pipeline + Silero VAD + openWakeWord wired, `verifyOnDevice` wired from the
-engine into the downloader, real `eliza-1-0_6b`/`1_7b` bundles staged from
-documented Qwen3 substitutes, and the eval suite re-run against those real
-bundles.
+Generated on 2026-05-11 after local iOS smoke, source acquisition,
+all-tier local bundle completion, native-Linux-Vulkan graph-dispatch PASS,
+the new platform-target / `27b-1m`-tier expansion, and the fused-attention
+fixture landing.
 
-This is a release-prep ledger, not a release approval. The staged bundles have
-the full release-shaped layout and **real (substitute-lineage) text weights**,
-but `evidence/release.json` in every tier is `releaseState=weights-staged`,
-`publishEligible=false`, `final.weights=true`, and
-`final.{evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}=false`.
-The publish orchestrator still rejects them at stage 2 (exit `16`) — verified.
+This is a release-prep ledger, not a release approval. The local bundles now
+have the full release-shaped layout, but `evidence/release.json` in every tier
+is intentionally `releaseState=local-standin`, `publishEligible=false`, and
+`final.weights=false`. The publish orchestrator must still reject them.
 
-Kernel/contract state: native Linux Vulkan graph dispatch is runtime-ready on
-Intel Arc/Xe (Mesa ANV) — `vulkan-dispatch-smoke` **7/7 PASS** (5 score kernels
-+ `GGML_OP_FUSED_ATTN_QJL_TBQ`), `kernel-contract.json` `runtimeStatus.vulkan` =
-`runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` — evidence
+Kernel/contract state moved forward since the last revision: native Linux
+Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe (Mesa ANV) —
+`vulkan-dispatch-smoke` 6/6 PASS, `kernel-contract.json` `runtimeStatus.vulkan`
+= `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` — evidence
 `packages/inference/verify/vulkan-runtime-dispatch-evidence.json` +
-`packages/inference/verify/hardware-results/linux-vulkan-smoke-*.log`. The
-Vulkan **fused** compute kernels (`vulkan/fused_attn_qjl_{tbq,polar}.comp`)
-pass `vulkan-verify-fused` 1920/1920 on Intel ARL Mesa ANV. The Metal
-(`metal/fused_attn_*.metal`, `metal/polar_preht.metal`) and CUDA
-(`cuda/fused-attn-qjl-tbq.cu`) fused kernels are authored, hardware-verify
-pending (no Apple/NVIDIA host). The contract tracks 23 build targets and a
-`27b-1m` (1M-context, CUDA-only) tier; the `fusedAttn` section is registered
-(capability key `fused_attn`, `runtime-ready` vulkan, `needs-runtime-smoke`
-metal, `needs-hardware` cuda).
+`packages/inference/verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`.
+The contract also tracks the added build targets `linux-aarch64-{cpu,cuda}`,
+`windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan` (all `needs-hardware`; Intel
+Macs / `darwin-x64-metal` are no longer a supported target), a `27b-1m`
+(1M-context, CUDA-only-backend) tier, and a
+new `fusedAttn` section (capability key `fused_attn`, `needs-runtime-smoke` for
+vulkan/metal, `needs-hardware` for cuda). The manifest schema gained optional
+`kernels.verifiedBackends.*.{device,caveat}` provenance and a
+`kernels.recipeManifest` block fed from the quantization recipes'
+`kernel_manifest` sidecar fragments (`codebookHash` / `perBlockTolerance` /
+`blockLayoutVersion`).
 
-## Bundle Roots
+## Local Bundle Roots
 
-Real (substitute-lineage) release-shaped bundles staged on this Linux host:
+All local bundles are under:
 
-- `~/.eliza/local-inference/models/eliza-1-0_6b.bundle` — text from
-  `Qwen/Qwen3-0.6B`, `releaseState=weights-staged`, `final.weights=true`
-- `~/.eliza/local-inference/models/eliza-1-1_7b.bundle` — text from
-  `Qwen/Qwen3-1.7B`, `releaseState=weights-staged`, `final.weights=true`
+`/Users/shawwalters/.eliza/local-inference/models/`
 
-`9b` was **not** built: `Qwen/Qwen3.5-9B` has no published checkpoint (Qwen3
-dense line is 4B → 8B → 14B → 32B), and on this box only ~8 GB RAM is free
-(30 GB total, 18 GB in use, 39 GB swap mostly consumed) — downloading +
-quantizing an 8B substitute would OOM/thrash. The `27b` / `27b-256k` / `27b-1m`
-tiers were never local-built (size + no GH200). Earlier prior macOS-host runs
-staged the full five-tier `*.bundle` layout under
-`/Users/shawwalters/.eliza/local-inference/models/` as non-publishable
-stand-ins; that machine is not this one.
+Staged bundle directories:
 
-`stage_eliza1_bundle_assets.py --link-mode hardlink` hardlinks Hub cache blobs
-into tier bundles, so repeated ASR/TTS assets do not consume disk once per
-tier; `stage_real_eliza1_bundle.py` produced the `0_6b`/`1_7b` bundles above.
+- `eliza-1-0_6b.bundle`
+- `eliza-1-1_7b.bundle`
+- `eliza-1-9b.bundle`
+- `eliza-1-27b.bundle`
+- `eliza-1-27b-256k.bundle`
+
+`stage_eliza1_bundle_assets.py --link-mode hardlink` now hardlinks Hub cache
+blobs into tier bundles, so repeated ASR/TTS assets do not consume disk once
+per tier.
 
 ## Acquired Non-Text Assets
 
@@ -86,37 +76,26 @@ Every tier now has:
 - `evidence/release.json`
 - `evidence/local-bundle-completion.json`
 
-Checksum manifests validate for the two staged real bundles
-(`eliza-1-0_6b.bundle`, `eliza-1-1_7b.bundle`).
+The checksum manifests have been validated for all five bundles:
 
-The release publisher rejects the staged bundles as intended. A dry-run
-publish preflight (via the orchestrator's `--dry-run`) against both
-`eliza-1-0_6b.bundle` and `eliza-1-1_7b.bundle` exits `16`
-(`EXIT_RELEASE_EVIDENCE_FAIL`) at stage 2: `releaseState` is
-`weights-staged` (not `upload-candidate`/`final`) and
-`final.{evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}`
-are all false. `publish_all_eliza1.sh --bundles-root … --dry-run` expects
-`<root>/<tier>/` directories (not `<root>/eliza-1-<tier>.bundle`), so for
-the staged layout invoke the orchestrator directly per tier with
-`--bundle-dir`.
+- `eliza-1-0_6b.bundle`: OK
+- `eliza-1-1_7b.bundle`: OK
+- `eliza-1-9b.bundle`: OK
+- `eliza-1-27b.bundle`: OK
+- `eliza-1-27b-256k.bundle`: OK
 
-### Eval re-run against the real bundles (2026-05-11)
+The release publisher rejects the local bundles as intended. A dry-run
+publish preflight against `eliza-1-1_7b.bundle` exits `16`
+(`EXIT_RELEASE_EVIDENCE_FAIL`) because `releaseState=local-standin` and the
+final evidence flags are false.
 
-`eliza1_eval_suite.py` re-run with the bundles' own text GGUFs (no
-`--text-eval-model` override):
+The per-tier completion reports are next to the bundles:
 
-| Tier | text_eval | threshold | verdict | voice/ASR/e2e/DFlash gates |
-| --- | --- | --- | --- | --- |
-| `0_6b` | 0.2779 | ≥ 0.55 | FAIL | not-run (harness/binary not staged; not the ABI — `OMNIVOICE_FUSE_VERIFY.json` ok) |
-| `1_7b` | 0.328 | ≥ 0.60 | FAIL | not-run (same) |
-
-text_eval failing is expected: these are off-the-shelf Qwen3 substitutes, not
-fine-tuned Eliza-1 weights. The dispatch eval (`make -C packages/inference/verify
-kernel-contract reference-test`) passes (`status: pass`, `runtimeReady: true`).
-The voice RTF / ASR WER / VAD / e2e-loop / 30-turn / DFlash-accept gates are
-honestly `not-run` — the fused ABI is verified, but the in-script HTTP-RTF /
-labelled-WER / mic-file-loop harnesses (and `llama-speculative-simple`) are not
-staged here. `evals/*.json` were regenerated with accurate `reason` text.
+- `/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle.local-completion.json`
+- `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle.local-completion.json`
+- `/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle.local-completion.json`
+- `/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle.local-completion.json`
+- `/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle.local-completion.json`
 
 ## Acquired Source Weights
 
@@ -169,53 +148,51 @@ route yet.
   Android Adreno/Mali graph dispatch, CUDA (no NVIDIA host run yet — dGPU on
   this box is in D3cold), ROCm, GH200/H200 (incl. the `27b-1m` tier), native
   Windows (x64 + arm64), Intel/AMD Mac, and weight-backed iOS all remain open.
-- Fused-attention (`GGML_OP_FUSED_ATTN_QJL_TBQ` + Polar-V variant): the Vulkan
-  fused compute kernels (`vulkan/fused_attn_qjl_{tbq,polar}.comp`) are
-  hardware-verified on Intel ARL (`vulkan-verify-fused` 1920/1920; built-fork
-  `GGML_OP_FUSED_ATTN_QJL_TBQ` dispatch verified via `vulkan-dispatch-smoke`).
-  Metal (`metal/fused_attn_*.metal`, `metal/polar_preht.metal`) and CUDA
-  (`cuda/fused-attn-qjl-tbq.cu` + the build-script `-DGGML_CUDA_FUSED_ATTN_QJL`
-  wiring) are authored, hardware-verify pending (no Apple/NVIDIA host). The
-  fused omnivoice TTS HTTP route (`/v1/audio/speech` mounted on the same
-  `llama-server` that serves text/DFlash) landed (`b52b64ef5f`), gated by
-  `MILADY_FUSE_OMNIVOICE`.
-- `elizaos` Hugging Face upload evidence is still absent. Upload is blocked by
-  non-final release evidence and, separately, requires `HF_TOKEN` with write
-  permission to `elizaos`. **No `HF_TOKEN` is present on this machine — that is
-  the operator's.** Once evidence is finalized and a token is available, upload
-  is one command: `bash packages/training/scripts/publish_all_eliza1.sh
-  --bundles-root <root> --filter-tier 0_6b` (per tier).
+- Fused-attention (`GGML_OP_FUSED_ATTN_QJL_TBQ` + Polar-V variant) has a
+  bit-exact C reference + JSON fixtures + contract docs, but no Metal/Vulkan
+  fused compute kernel and no `cases`-array harness yet, so the `fused_attn`
+  capability is `needs-runtime-smoke` for vulkan/metal and is not a required
+  manifest kernel. The fused HTTP route (one process serving text/DFlash +
+  `/v1/audio/speech`) is also still open.
+- `elizaos` Hugging Face upload evidence is still absent. Upload is blocked
+  by non-final release evidence and, separately, requires a token with write
+  permission to `elizaos`. Current Hub auth probe resolved user
+  `shawmakesmagic` with orgs `BabylonMarket` and `elizaos`, so the target
+  namespace is visible in this shell. A live Hub scan currently finds
+  `elizaos/eliza-1-assets`, but no publishable per-tier
+  `elizaos/eliza-1-*` release repos with final evidence.
 
-## Publish Pipeline / Downloader State (2026-05-11)
+## Publish Pipeline / Downloader State (2026-05-11, this checkout)
 
-- `packages/training/scripts/publish_all_eliza1.sh` prints the per-tier publish
-  summary and propagates the orchestrator's structured exit code on the first
-  failing tier (`16` = `EXIT_RELEASE_EVIDENCE_FAIL`, `10` = layout fail, …).
-  Abort-on-first-failure (§6) unchanged.
-- Dry-run executed against the real `eliza-1-0_6b.bundle` and
-  `eliza-1-1_7b.bundle` (via the orchestrator `--dry-run`): both reject at
-  stage 2 (`exit 16`) — `releaseState=weights-staged`,
-  `final.{evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}=false`.
-  **No tier would publish.** No `HF_TOKEN` is present; **no upload was
-  performed.** `defaultEligible` / `publishEligible` stay `false`.
-- §7 device-side downloader contract: the manifest is read first, then RAM
-  budget and verified-backend availability are checked against the device
-  **before any weight byte is fetched** (abort → `BundleIncompatibleError` →
-  `failed` event); schema version enforced by `parseManifestOrThrow`; per-file
-  sha256 + resume; the injectable `verifyOnDevice` hook (load → 1-token text →
-  1-phrase voice → barge-in cancel) gates readiness and default-slot fill,
-  recorded via `InstalledModel.bundleVerifiedAt`.
-  **The hook is now wired**: `LocalInferenceService` constructs
-  `new Downloader({ verifyOnDevice: verifyBundleOnDevice })`
-  (`services/local-inference/verify-on-device.ts` — engine-backed: text load +
-  1-token gen always, 1-phrase TTS + barge-in cancel when the bundle ships
-  voice). A bundle whose verify fails (e.g. fused voice ABI not loadable on the
-  device) stays registered but does not auto-fill the default slot.
-- The omnivoice-fuse adapter (`packages/app-core/scripts/omnivoice-fuse/`)
-  exports the ABI v2 surface (`eliza_inference_asr_stream_*`,
-  `tts_synthesize_stream`, `cancel_tts`, `set_verifier_callback`); the
-  `linux-x64-cpu-fused` build's `OMNIVOICE_FUSE_VERIFY.json` is `ok=true`
-  (`abi=18`, `omnivoice=10`, llama re-exported).
+- `packages/training/scripts/publish_all_eliza1.sh` now prints the per-tier
+  publish summary and propagates the orchestrator's structured exit code on
+  the first failing tier (so callers can tell `EXIT_RELEASE_EVIDENCE_FAIL`
+  = `16` from `EXIT_BUNDLE_LAYOUT_FAIL` = `10`, etc.). The
+  abort-on-first-failure behavior from §6 is unchanged.
+- Dry-run was executed against a hand-built `releaseState=upload-candidate`
+  stand-in bundle for the `0_6b` tier (`final.weights=false`): the
+  orchestrator rejects it at stage 2 (`exit 16`, `EXIT_RELEASE_EVIDENCE_FAIL`)
+  — exactly as the contract requires. **No tier would publish; all are
+  blocked by non-final release evidence.** This checkout's state dir contains
+  no staged Eliza-1 bundle; producing one requires the asset/source staging
+  scripts (`stage_eliza1_bundle_assets.py`, `stage_eliza1_source_weights.py`,
+  `stage_local_eliza1_bundle.py`) which need HF network access and real
+  text/DFlash weights.
+- No `HF_TOKEN` / `HUGGINGFACE_TOKEN` / `HUGGINGFACE_HUB_TOKEN` is present
+  in this environment and `huggingface-cli` is not installed. **No upload
+  was performed.** `defaultEligible` and `publishEligible` stay `false` for
+  every tier.
+- §7 device-side downloader contract hardened (see
+  `packages/app-core/src/services/local-inference/downloader.ts`): the
+  manifest is read first, then RAM budget and verified-backend availability
+  are checked against the device **before any weight byte is fetched**
+  (abort → structured `BundleIncompatibleError` → `failed` download event);
+  schema version is enforced by `parseManifestOrThrow`; per-file sha256 +
+  resume already existed; a new injectable `verifyOnDevice` hook (load →
+  1-token text → 1-phrase voice → barge-in cancel) gates readiness and
+  default-slot fill, recorded via `InstalledModel.bundleVerifiedAt`. Tests
+  added in `downloader.test.ts`. Wiring the hook from the engine in
+  `service.ts` is the remaining gap.
 
 ## Next Release Actions
 

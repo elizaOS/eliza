@@ -21,7 +21,7 @@
  *   linux-x64-cpu, linux-x64-cuda, linux-x64-rocm, linux-x64-vulkan
  *   linux-aarch64-cpu, linux-aarch64-cuda   (GH200 / Ampere Altra / Graviton; arm64 Linux host only)
  *   android-arm64-cpu, android-arm64-vulkan
- *   darwin-arm64-metal, darwin-x64-metal    (darwin-x64-metal: COMPILE-ONLY; Intel-Mac GPUs aren't Apple7+)
+ *   darwin-arm64-metal    (Apple Silicon only; Intel Macs are not a supported target)
  *   ios-arm64-metal, ios-arm64-simulator-metal  (macOS + Xcode host)
  *   windows-x64-cpu, windows-x64-cuda, windows-x64-vulkan
  *   windows-arm64-cpu, windows-arm64-vulkan  (Snapdragon X / Copilot+ PC; native MSVC arm64 or LLVM aarch64 mingw)
@@ -159,7 +159,6 @@ const SUPPORTED_TARGETS = [
   "android-arm64-cpu",
   "android-arm64-vulkan",
   "darwin-arm64-metal",
-  "darwin-x64-metal",
   // iOS targets (require macOS host with Xcode). Output is a static .a +
   // headers that the LlamaCpp.xcframework patch in
   // packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch consumes.
@@ -190,7 +189,6 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
-  "darwin-x64-metal-fused",
   "windows-x64-cuda-fused",
 ];
 
@@ -202,7 +200,6 @@ const FUSED_TARGETS = new Set([
   "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
-  "darwin-x64-metal-fused",
   "windows-x64-cuda-fused",
 ]);
 
@@ -963,27 +960,6 @@ function cmakeFlagsForTarget(target, ctx) {
     // `#if` blocks. Cross-builds keep it off — you can't sniff -march for a
     // different ABI, and AVX-VNNI is not the de-facto x86_64 baseline yet.
     flags.push("-DGGML_AVX_VNNI=ON");
-  } else if (platform === "darwin" && arch === "x64") {
-    // Intel-Mac build (`darwin-x64-metal`). Pin the slice explicitly so a
-    // build that runs on an Apple-Silicon host (via the x86_64 toolchain)
-    // still emits an x86_64 binary, and an Intel host stays x86_64.
-    //
-    // RISK — Intel-Mac GPUs (AMD Radeon Pro / Intel Iris) are NOT in the
-    // Apple7+ family the standalone kernels were verified against on Apple
-    // Silicon. The kernels assume threadgroup-of-32 == one SIMD-group and
-    // `simd_sum` over those 32 lanes; AMD/Intel Mac drivers report
-    // different SIMD-group widths and different `simd_sum` semantics, so a
-    // clean build here is COMPILE-ONLY — not a verified path. Do not flip
-    // `darwin-x64-metal` past TARGET-ONLY without an Intel-Mac
-    // `metal_verify` run that diffs the numbers against the M4 Max
-    // reference. See packages/inference/DEVICE_SUPPORT_GAP_2026-05-10.md row 3.
-    flags.push("-DCMAKE_OSX_ARCHITECTURES=x86_64");
-    console.log(
-      "[dflash-build] darwin-x64-metal: building the Intel-Mac slice. " +
-        "Intel/AMD Mac GPUs are not in the verified Apple7+ Metal family — " +
-        "treat the artifact as COMPILE-ONLY until metal_verify runs on real " +
-        "Intel-Mac hardware.",
-    );
   }
 
   if (platform === "android") {
