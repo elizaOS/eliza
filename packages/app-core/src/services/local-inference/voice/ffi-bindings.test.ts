@@ -151,6 +151,16 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
     expect(report.errorMessage).toMatch(/not implemented in stub/);
   });
 
+  it("mmapAcquire against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
+    const report = runBunHarness({
+      scenario: "mmap-acquire-not-implemented",
+    });
+    expect(report.ok).toBe(true);
+    expect(report.threwLifecycleError).toBe(true);
+    expect(report.errorCode).toBe("kernel-missing");
+    expect(report.errorMessage).toMatch(/not implemented in stub/);
+  });
+
   it("ABI mismatch detection: when binding asserts wrong version, load fails structurally", () => {
     // The harness exposes a dial that bumps the binding's expected ABI
     // version BEFORE calling the loader, simulating a future binding
@@ -190,6 +200,7 @@ interface HarnessOptions {
   scenario:
     | "create-destroy"
     | "tts-not-implemented"
+    | "mmap-acquire-not-implemented"
     | "mmap-evict-not-implemented"
     | "abi-mismatch";
 }
@@ -264,6 +275,28 @@ function asLifecycleErr(e) {
     let thrown;
     try {
       ffi.mmapEvict(ctx, "tts");
+    } catch (e) {
+      thrown = e;
+    }
+    ffi.destroy(ctx);
+    ffi.close();
+    const lc = asLifecycleErr(thrown);
+    emit({
+      ok: true,
+      scenario: SCENARIO,
+      threwLifecycleError: lc !== null,
+      errorCode: lc?.code,
+      errorMessage: lc?.message,
+    });
+    return;
+  }
+
+  if (SCENARIO === "mmap-acquire-not-implemented") {
+    const ffi = loadElizaInferenceFfi(DYLIB);
+    const ctx = ffi.create("/tmp/elizainference-test-bundle");
+    let thrown;
+    try {
+      ffi.mmapAcquire(ctx, "tts");
     } catch (e) {
       thrown = e;
     }

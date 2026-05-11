@@ -153,6 +153,32 @@ function lifecycleLoadersOk(): VoiceLifecycleLoaders {
   };
 }
 
+function fakeFfi(calls: string[]): ElizaInferenceFfi {
+  return {
+    libraryPath: "/tmp/libelizainference-test.dylib",
+    libraryAbiVersion: "1",
+    create: () => 1n,
+    destroy(ctx: ElizaInferenceContextHandle) {
+      calls.push(`destroy:${ctx.toString()}`);
+    },
+    mmapAcquire(_ctx, region: ElizaInferenceRegion) {
+      calls.push(`acquire:${region}`);
+    },
+    mmapEvict(_ctx, region: ElizaInferenceRegion) {
+      calls.push(`evict:${region}`);
+    },
+    ttsSynthesize() {
+      throw new Error("not used by this test");
+    },
+    asrTranscribe() {
+      throw new Error("not used by this test");
+    },
+    close() {
+      calls.push("close");
+    },
+  };
+}
+
 describe("LocalInferenceEngine voice surface", () => {
   let bundleRoot: string;
 
@@ -415,6 +441,46 @@ describe("LocalInferenceEngine voice surface", () => {
     // Disarm path called evictPages on both TTS + ASR mmap regions.
     expect(tts.evictCalls).toBe(1);
     expect(asr.evictCalls).toBe(1);
+    expect(bridge.lifecycle.current().kind).toBe("voice-off");
+  });
+
+  it("(e) default loaders keep voice assets unmapped until arm, then acquire/evict through FFI", async () => {
+    writePresetBundle(bundleRoot);
+    mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
+    mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+    writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
+    writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
+
+    const calls: string[] = [];
+    const engine = new LocalInferenceEngine();
+    const bridge = engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: defaultLifecycleLoaders(
+        bundleRoot,
+        fakeFfi(calls),
+        1n,
+      ),
+    });
+
+    // Voice-off mode must not map TTS/ASR pages or duplicate model
+    // parameters. Creating the bridge only loads the tiny preset +
+    // scheduler scaffolding.
+    expect(bridge.lifecycle.current().kind).toBe("voice-off");
+    expect(calls).toEqual([]);
+
+    await engine.armVoice();
+    expect(bridge.lifecycle.current().kind).toBe("voice-on");
+    expect(calls).toEqual(["acquire:tts", "acquire:asr"]);
+
+    await engine.stopVoice();
+    expect(calls).toEqual([
+      "acquire:tts",
+      "acquire:asr",
+      "evict:tts",
+      "evict:asr",
+    ]);
     expect(bridge.lifecycle.current().kind).toBe("voice-off");
   });
 

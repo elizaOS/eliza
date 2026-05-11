@@ -1433,10 +1433,121 @@ function metalRuntimeDispatchStatus(shippedKernels) {
   };
 }
 
+function readIfExists(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir) {
+  const shaderNames = {
+    turbo3: "turbo3",
+    turbo4: "turbo4",
+    turbo3_tcq: "turbo3_tcq",
+    qjl_full: "qjl",
+    polarquant: "polar",
+  };
+  const sourceDir = cacheDir
+    ? path.join(cacheDir, "ggml", "src", "ggml-vulkan", "vulkan-shaders")
+    : null;
+  const sourceFiles = {};
+  const symbols = {};
+  for (const [capability, shader] of Object.entries(shaderNames)) {
+    const sourcePath = sourceDir ? path.join(sourceDir, `${shader}.comp`) : null;
+    sourceFiles[capability] =
+      Boolean(sourcePath && fs.existsSync(sourcePath)) &&
+      readIfExists(sourcePath).includes("MILADY-VK-DISPATCH-PATCH-V1");
+    symbols[capability] = false;
+  }
+
+  const patchTargets = cacheDir
+    ? [
+        path.join(
+          cacheDir,
+          "ggml",
+          "src",
+          "ggml-vulkan",
+          "vulkan-shaders",
+          "vulkan-shaders-gen.cpp",
+        ),
+        path.join(cacheDir, "ggml", "src", "ggml-vulkan", "ggml-vulkan.cpp"),
+      ]
+    : [];
+  const patchSentinels = patchTargets.map((targetPath) => ({
+    target: targetPath,
+    present:
+      fs.existsSync(targetPath) &&
+      readIfExists(targetPath).includes("MILADY-VK-DISPATCH-PATCH-V1"),
+  }));
+
+  const artifactFiles = [
+    ...collectFilesUnder(buildDir, /\.(hpp|h|cpp|o|obj|spv|a|so|dylib|dll)$/),
+    ...collectFilesUnder(outDir, /\.(hpp|h|cpp|o|obj|spv|a|so|dylib|dll)$/),
+  ];
+  const artifactText = artifactFiles
+    .map((file) => {
+      try {
+        return fs.readFileSync(file).toString("latin1");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+
+  for (const [capability, shader] of Object.entries(shaderNames)) {
+    const generatedSymbol = `milady_${shader}`;
+    symbols[capability] =
+      sourceFiles[capability] ||
+      artifactText.includes(`${generatedSymbol}_data`) ||
+      artifactText.includes(`${generatedSymbol}_len`) ||
+      artifactText.includes(`pipeline_milady_${shader}`) ||
+      artifactFiles.some((file) => path.basename(file).includes(shader));
+  }
+
+  return {
+    sourceDir,
+    sourceFiles,
+    patchSentinels,
+    artifactFiles: artifactFiles.map((file) => path.relative(buildDir, file)),
+    symbols,
+  };
+}
+
+function vulkanRuntimeDispatchStatus(shippedKernels) {
+  const shipped = shippedKernels?.symbols ?? {};
+  const sourceFiles = shippedKernels?.sourceFiles ?? {};
+  const mk = (key, shader) => ({
+    status: shipped[key] ? "symbol-shipped" : "missing-symbol",
+    sourceStaged: Boolean(sourceFiles[key]),
+    runtimeReady: false,
+    requiredSmoke:
+      `vulkan-dispatch-smoke must route ${shader} through ggml-vulkan graph execution and match the fixture/reference`,
+  });
+  return {
+    sourceOfTruth:
+      "dispatch-ready requires a built-fork GGML Vulkan graph smoke, not SPIR-V files or pipeline slots",
+    smokeTargets: {
+      nativeLinux: "make -C packages/inference/verify vulkan-native-smoke",
+      androidDevice: "make -C packages/inference/verify android-vulkan-smoke",
+      builtForkGraph: "make -C packages/inference/verify vulkan-dispatch-smoke",
+    },
+    kernels: {
+      turbo3: mk("turbo3", "milady_turbo3"),
+      turbo4: mk("turbo4", "milady_turbo4"),
+      turbo3_tcq: mk("turbo3_tcq", "milady_turbo3_tcq"),
+      qjl_full: mk("qjl_full", "GGML_OP_ATTN_SCORE_QJL / milady_qjl"),
+      polarquant: mk("polarquant", "Q4_POLAR / milady_polar"),
+    },
+  };
+}
+
 function writeCapabilities({
   outDir,
   target,
   buildDir,
+  cacheDir,
   forkCommit,
   binaries,
   omnivoice = null,
@@ -1445,9 +1556,17 @@ function writeCapabilities({
   const kernels = probeKernels(target, buildDir, outDir);
   const missing = requiredKernelsMissing(target, kernels);
   const shippedKernels =
-    backend === "metal" ? probeMetalShippedKernelSymbols(buildDir, outDir) : null;
+    backend === "metal"
+      ? probeMetalShippedKernelSymbols(buildDir, outDir)
+      : backend === "vulkan"
+        ? probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir)
+        : null;
   const runtimeDispatch =
-    backend === "metal" ? metalRuntimeDispatchStatus(shippedKernels) : null;
+    backend === "metal"
+      ? metalRuntimeDispatchStatus(shippedKernels)
+      : backend === "vulkan"
+        ? vulkanRuntimeDispatchStatus(shippedKernels)
+        : null;
   const capabilities = {
     target,
     platform,
@@ -1737,6 +1856,7 @@ function buildTarget({ target, args, ctx }) {
     outDir,
     target,
     buildDir,
+    cacheDir: args.cacheDir,
     forkCommit: ctx.forkCommit,
     binaries: installedBaseNames,
     omnivoice:

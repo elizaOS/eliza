@@ -28,7 +28,7 @@ const (
 	defaultPort          = "8080"
 )
 
-var hostLabelPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
+var tunnelHostPattern = regexp.MustCompile(`^eliza-[a-z0-9]{1,12}-[a-f0-9]{12,32}$`)
 
 type config struct {
 	authKey       string
@@ -199,7 +199,7 @@ func targetHostForRequest(hostHeader string, publicHost string, tailnetDomain st
 	}
 
 	label := strings.TrimSuffix(host, suffix)
-	if !hostLabelPattern.MatchString(label) {
+	if !tunnelHostPattern.MatchString(label) {
 		return "", false
 	}
 	return label + "." + tailnetDomain, true
