@@ -195,6 +195,15 @@ describe("cache-bridge eviction by mtime + TTL", () => {
     expect(deleted).toBe(0);
   });
 
+  const exists = async (p: string): Promise<boolean> => {
+    try {
+      await fs.stat(p);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   it("honors the per-file TTL class encoded in the filename", async () => {
     const shortFile = path.join(dir, slotCacheFileName("conv-a", "short"));
     const longFile = path.join(dir, slotCacheFileName("conv-b", "long"));
@@ -213,9 +222,9 @@ describe("cache-bridge eviction by mtime + TTL", () => {
     // Only the short-TTL file is past its horizon; the long-TTL and
     // legacy (treated as long) files survive.
     expect(deleted).toBe(1);
-    await expect(fs.access(shortFile)).rejects.toThrow();
-    await expect(fs.access(longFile)).resolves.toBeUndefined();
-    await expect(fs.access(legacyFile)).resolves.toBeUndefined();
+    expect(await exists(shortFile)).toBe(false);
+    expect(await exists(longFile)).toBe(true);
+    expect(await exists(legacyFile)).toBe(true);
   });
 
   it("deletes long-TTL files once past the long horizon", async () => {
