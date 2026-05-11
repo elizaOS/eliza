@@ -312,8 +312,6 @@ export interface AppState {
   uiShellMode: UiShellMode;
   uiLanguage: UiLanguage;
   uiTheme: UiTheme;
-  /** Active visual theme ID (e.g. "bsc-gold", "neon-cyber") */
-  themeId: string;
   ownerName: string | null;
   /** VRM quality vs GPU use: always full quality, battery-aware (default), or always efficient. */
   companionVrmPowerMode: CompanionVrmPowerMode;
@@ -742,7 +740,6 @@ export interface AppActions {
   navigation: NavigationEventsApi;
   setUiLanguage: (language: UiLanguage) => void;
   setUiTheme: (theme: UiTheme) => void;
-  setThemeId: (themeId: string) => void;
   setCompanionVrmPowerMode: (mode: CompanionVrmPowerMode) => void;
   setCompanionAnimateWhenHidden: (enabled: boolean) => void;
   setCompanionHalfFramerateMode: (mode: CompanionHalfFramerateMode) => void;
