@@ -19,6 +19,11 @@ manifest kernel names, build capability keys, fixture coverage, Makefile
 targets, Metal runtime-dispatch evidence, and platform target list aligned
 with the status below.
 
+For the narrow "what hardware does someone need to plug in" view — every
+backend × device that is source-complete but unverified, with the exact runner
+command and remaining blocker — see
+[`needs-hardware-ledger.md`](./needs-hardware-ledger.md).
+
 ## Current Runtime Truth
 
 | Area | Status | Evidence |
@@ -28,13 +33,16 @@ with the status below.
 | Metal artifact gate | `darwin-arm64-metal`, `darwin-arm64-metal-fused`, `ios-arm64-metal`, and `ios-arm64-simulator-metal` pass the build-script capability gate. | `build-llama-cpp-dflash.mjs` reads `verify/metal-runtime-dispatch-evidence.json` and reports each Metal runtime capability true only when the matching shipped symbol and runtime-ready evidence are both present. Fresh builds wrote `CAPABILITIES.json` with `dflash`, `turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`, `polarquant`, `lookahead`, and `ngramDraft` true. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Pixel 6a Mali standalone validation is real-device ready; Adreno and graph-dispatch evidence remain open. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, refuses emulators/software Vulkan unless explicitly allowed, and no longer trips `pipefail` on `vulkaninfo` truncation. `make -C packages/inference/verify android-vulkan-smoke` passed all six fixtures on Pixel 6a / Mali-G78 (`turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar`, `polar_qjl`; max diff <= `7.629e-06`) with evidence `verify/hardware-results/android-vulkan-smoke-20260511T062056Z.log`. |
-| Vulkan built-fork graph dispatch | Source-patched, pending native hardware smoke. | `vulkan-kernels.mjs` now stages the SPIR-V blobs, repairs `polar_preht` shader registration/pipeline creation, creates milady Vulkan pipelines, patches `ggml-vulkan.cpp` with milady-native runtime dispatch for `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ`, and `GGML_OP_ATTN_SCORE_POLAR`, and patches `supports_op`. `vulkan_dispatch_smoke.cpp` now drives all QJL, Turbo3, Turbo4, Turbo3-TCQ, Polar, and Polar+QJL graph routes numerically. This is not runtime-ready until `make -C packages/inference/verify vulkan-dispatch-smoke` passes on a native Vulkan build and Android graph-dispatch evidence is attached. |
+| Vulkan built-fork graph dispatch | **Runtime-ready on native Linux Intel-ANV hardware.** A2 built `linux-x64-vulkan` from the fork and ran `vulkan-dispatch-smoke` → 6/6 graph routes PASS on real Intel Arc/Xe (Mesa ANV); `kernel-contract.json` `runtimeStatus.vulkan` is `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` (commit e662143015) and `make -C packages/inference/verify kernel-contract` is green. | Evidence: `verify/vulkan-runtime-dispatch-evidence.json` (`runtimeReady: true`, all 5 kernels, `maxDiff` 2.7e-7…1.9e-6) + `verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`. Caveat: single Intel-ANV device class — AMD-native, NVIDIA-native, and Android Adreno/Mali Vulkan graph dispatch still needed. `vulkan-kernels.mjs` stages SPIR-V blobs, patches `ggml-vulkan.cpp` for `GGML_OP_ATTN_SCORE_{QJL,TBQ,POLAR}` + `supports_op`; `vulkan_dispatch_smoke.cpp` drives all six numeric routes. |
+| Fused attention (QJL-K + TBQ-V / Polar-V) | Vulkan fused compute shaders landed and standalone-verified on hardware; Metal kernel still pending; CUDA fixture-parity needs an NVIDIA host. C reference `eliza_fused_attn_qjl_tbq3` / `eliza_fused_attn_qjl_polar` are bit-exact to the fork's `GGML_OP_FUSED_ATTN_QJL_TBQ` CPU op; round-tripped by `make -C packages/inference/verify reference-test`. `vulkan/fused_attn_qjl_tbq.comp` + `vulkan/fused_attn_qjl_polar.comp` (one-pass online softmax, never materializes the score vector, driver-portable 32-thread shared-memory reduction) pass `make -C packages/inference/verify vulkan-verify-fused` 1920/1920 outputs on Intel ARL Mesa ANV (4 cases: n_kv 64/512/256/128, GQA 1/2/4; max diff 6.3e-7) and built-fork graph dispatch `GGML_OP_FUSED_ATTN_QJL_TBQ` passes via `vulkan-dispatch-smoke` (see `linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json`). Metal: `make metal-verify-fused` fails by design — no `metal/fused_attn*.metal` kernel + `cases`-array path in `metal_verify` yet (`needs-runtime-smoke`; design in `metal-fused-attn-and-polar-preht-design.md`). CUDA: `cuda_verify` parses `fused_attn_qjl_tbq.json` but `needs-hardware`. Registered in `kernel-contract.json`'s `fusedAttn` section with capability key `fused_attn`; NOT yet a `requiredRuntimeCapabilityKey`/`manifestKernelName`. | `verify/fixtures/{fused_attn_qjl_tbq.json,fused_attn_qjl_polar.json,polar_preht.json}`; `reports/porting/2026-05-11/fused-attn-op-contract.md`; `reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md`. |
+| CPU SIMD paths | AVX-VNNI int8-QJL path (5.25× on this box), Polar pre-Hadamard SIMD, and ARM dotprod variants landed in `qjl-cpu`/`polarquant-cpu`. | `verify/bench_results/cpu_avxvnni_2026-05-11.json`; baseline `verify/hardware-results/linux-thismachine-cpu-baseline-2026-05-11.json`; `reports/porting/2026-05-11/this-machine-test-capability.md`. |
+| Platform target matrix | `kernel-contract.json` now tracks 23 build targets — added `linux-aarch64-{cpu,cuda}`, `windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` with cmake plumbing + CUDA arch pins (incl. Blackwell `sm_120`, GH200 `sm_90a`). All new targets `needs-hardware`. A `27b-1m` (1M-context, CUDA-only-backend) tier is now in the catalog/schema/Python manifest/platform-plan; `defaultEligible` blocked on real GH200 verify. | `make -C packages/inference/verify kernel-contract` (`targets=23`). |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
 | CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh --report <path>` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh --report <path>` additionally requires arm64 Linux + Hopper/compute-capability-9.x. Skip modes exit non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols package into a verified XCFramework for physical-device and simulator slices. Physical-device XCTest is now PASS; weight-backed Capacitor bundle smoke remains open. | `build-xcframework.mjs --verify` passes kernel-symbol, runtime-symbol, and structure audits. `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json` is `status: passed` on iPhone 15 Pro UDID `00008130-001955E91EF8001C`, with 3/3 XCTest cases passing and `--skip-voice-abi=false`. The old failure was a stale shim archive carrying an earlier TTS ABI shape; `build-xcframework.mjs` now refreshes the runtime shim before packaging. |
-| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. The merged HTTP route remains open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. |
+| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. **The merged HTTP route is now real:** the `*-fused` `llama-server` serves `POST /v1/audio/speech` (+ `/audio/speech`) in the same process as `/completion` + `/v1/chat/completions` + the DFlash spec loop, and `dflash-server.ts` prefers spawning that fused binary over the stock + `llama-omnivoice-server` two-process path. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. Merged-route: `linux-x64-cpu-fused` built on Intel x64, `OMNIVOICE_FUSE_VERIFY.json` `ok:true abi:18 omnivoice:10 llamaReexported:true`; the fused `llama-server` serves `/completion` (1-token) AND `/v1/audio/speech` from the same PID against the SmolLM stand-in (503 "not configured" — no `tts/` in the stand-in bundle); covered by `dflash-server-fused.integration.test.ts` + `dflash-server.test.ts` "fused-vs-two-process spawn selection". |
 | Text-to-voice streaming handoff | JS runtime now streams accepted text deltas from llama-server into the active voice scheduler, supports explicit phrase prewarm, opportunistically reuses repeated generated phrase audio, and exposes the verifier-event callback shape needed by native DFlash. Native accept/reject event streaming is still open. | `dflash-server.generateWithUsage` switches to OpenAI-compatible SSE when `onTextChunk` or `onVerifierEvent` is supplied and synthesizes accept events from deltas until the native server emits exact verifier ranges. `LocalInferenceEngine.generate()` and `generateInConversation()` forward verifier events/chunks into `EngineVoiceBridge` while generation is still in flight and settle the scheduler at turn end without duplicate text delivery. `PhraseCache` is now an LRU-bounded cache (`128` entries, `8s` PCM cap per entry by default), `VoiceScheduler.prewarmPhrases()` caches common phrase audio, and live successful phrase/direct-TTS synthesis is cached only after it survives cancellation/rollback. Default voice chunks are capped at 8 tokens and `ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES` bounds memory on small devices. The DFlash llama-server path also separates `kvOffload=cpu` from layer offload and exposes cache/batch tuning knobs for small-device profiles. Evidence: local-inference focused tests now pass 86/86 for backend/DFlash/voice streaming, and the iOS transport bridge test/typecheck pass after preserving `fetch.preconnect` through the local-agent fetch bridge. |
 | Eliza-1 bundles | Local release-shaped bundles are complete for all five tiers, but they are explicitly non-publishable stand-ins. No final release bundle is publishable yet. | `stage_eliza1_bundle_assets.py --link-mode hardlink` and `stage_eliza1_source_weights.py` staged non-text assets plus source text/DFlash/vision candidates under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`. `stage_local_eliza1_bundle.py --all-contexts --force` then hardlinked source/candidate bytes into local `text/`, `dflash/`, and `vision/` release-shaped paths, generated `quantization/{turboquant,fused_turboquant,qjl_config,polarquant_config}.json`, `eliza-1.manifest.json`, `checksums/SHA256SUMS`, and `evidence/release.json` for every tier. Full checksum validation is green for all five bundles. Every release evidence file remains `releaseState=local-standin`, `publishEligible=false`, and `final.weights=false`; final Eliza-1 trained weights, passing eval/platform evidence, release-reviewed licenses, and `elizaos` upload evidence remain required before publish. |
 
@@ -56,30 +64,29 @@ with the status below.
    - A full Eliza-1 bundle smoke loads real text + voice assets on iOS and
      records first token, first audio, peak RSS, and thermal state.
 
-2. **Vulkan native graph-dispatch evidence**
+2. **Vulkan native graph-dispatch evidence — partially DONE (Intel-ANV)**
 
-   The Vulkan shaders and fixtures are verified, and the fork runtime patcher
-   now installs milady-native descriptors/push constants for QJL, TurboQuant,
-   and PolarQuant graph routes. The remaining blocker is native hardware
-   evidence from the built fork; MoltenVK fixture success is useful but does
-   not prove Linux/Android runtime dispatch.
+   Native Linux Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe
+   (Mesa ANV): `vulkan-dispatch-smoke` 7/7 PASS (5 score kernels + fused-attn),
+   `kernel-contract.json` `runtimeStatus.vulkan` = `runtime-ready` for the 5
+   score kernels. Remaining: native AMD and NVIDIA desktop Vulkan + Android
+   Adreno/Mali. Vulkan fused-attention has a fused compute kernel + `cases`-array
+   harness (`vulkan-verify-fused` 1920/1920 on Intel ARL); the Metal fused kernel
+   + `cases`-array path in `metal_verify` is still pending.
 
    Acceptance:
    - Native `linux-x64-vulkan` build contains the SPIR-V blobs and graph
-     routing.
+     routing. **Done.**
    - Smoke tests run on at least Intel/AMD/NVIDIA desktop Vulkan and one
-     Android Vulkan device class.
+     Android Vulkan device class. **Intel done** (`verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`); AMD, NVIDIA, Android still open.
    - `make -C packages/inference/verify vulkan-native-smoke` passes on native
-     Linux hardware without `ELIZA_ALLOW_SOFTWARE_VULKAN=1`; the runner now
-     writes `hardware-results/linux-vulkan-smoke-*.log`, refuses stale prebuilts
-     unless explicitly allowed, dumps `CAPABILITIES.json`, and stops on
-     symbol-only build output.
+     Linux hardware without `ELIZA_ALLOW_SOFTWARE_VULKAN=1`. **Done on Intel-ANV.**
    - `make -C packages/inference/verify android-vulkan-smoke` passes on one
      Adreno and one Mali device with `ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE`
-     pointing at a built-fork/app graph-dispatch report. Standalone fixture
-     success alone exits non-zero and remains evidence only.
+     pointing at a built-fork/app graph-dispatch report. **Still open** —
+     standalone fixture success alone exits non-zero and remains evidence only.
 
-3. **Fused voice runtime**
+3. **Fused voice runtime — merged HTTP route DONE; native verifier events + weight-backed TTS smoke remain**
 
    The product goal is not two independent model processes. The next runtime
    milestone is one fused binary/shared library with one GGML pin and one
@@ -87,20 +94,62 @@ with the status below.
    bundle, but they must share the runtime lifecycle and memory budget.
 
    Acceptance:
-   - `libelizainference` exports ABI v1 symbols and passes FFI smoke tests
+   - `libelizainference` exports ABI v2 symbols and passes FFI smoke tests
      under Bun/Electrobun. ABI compatibility smoke, real macOS dylib ABI
      smoke, real GGUF-backed TTS synthesis, and real GGUF-backed ASR
      transcription are covered. **Done on macOS Metal for the local 1.7B
-     bundle.**
-   - Voice mode starts without IPC to a second model process.
+     bundle.** ABI v2 (streaming ASR + streaming TTS + native DFlash
+     verifier callback) symbols are present in `prepare.mjs`'s adapter
+     (batch TTS/ASR implemented; the streaming/verifier entries are honest
+     stubs reporting `*_supported() == 0` until W7's fused decoder lands).
+   - Voice mode starts without IPC to a second model process. **Done at the
+     spawn layer:** `dflash-server.ts` `resolveFusedDflashBinary()` /
+     `candidateBinaryPaths()` prefer the `*-fused` `llama-server` whenever a
+     fused build is installed for the active backend; `start()` passes
+     `--omnivoice-model` / `--omnivoice-codec` from the bundle's `tts/` dir;
+     no second `llama-omnivoice-server` process is launched. The legacy
+     `llama-omnivoice-server` CLI binary stays only for the symbol verifier
+     / scripted callers.
    - Voice-off mode does not mmap or page TTS/ASR/voice-preset regions.
-   - The fused HTTP server is not product-ready until the compatibility
-     `llama-omnivoice-server` route is replaced by one process serving both
-     text/DFlash and `/v1/audio/speech`.
+   - **DONE — the fused `llama-server` now serves `/v1/audio/speech` (+
+     `/audio/speech`) in-process**, alongside `/completion` +
+     `/v1/chat/completions` + the DFlash speculative loop. The route is
+     added to `tools/server/server.cpp` by
+     `packages/app-core/scripts/kernel-patches/server-omnivoice-route.mjs`
+     (guarded `#ifdef MILADY_FUSE_OMNIVOICE`, backed by `omnivoice-core`'s
+     `ov_init` / `ov_synthesize`, OpenAI Audio-Speech request shape, 24 kHz
+     WAV or raw f32-LE PCM response); `omnivoice-fuse/cmake-graft.mjs` links
+     `omnivoice-core` into `llama-server` for fused targets.
+     `DflashLlamaServer.audioSpeechRoute()` reports `fused: true` when the
+     running binary is the fused build, and `synthesizeSpeech()` POSTs to
+     the route (`response_format: "pcm"` → no JS-side WAV decode).
+     Evidence: `linux-x64-cpu-fused` built on Intel x64
+     (`OMNIVOICE_FUSE_VERIFY.json` `ok: true`, `abi: 18`, `omnivoice: 10`,
+     `llamaReexported: true` — ELF `DT_NEEDED libllama.so` accepted as the
+     macOS-`-reexport_library` equivalent); the build's exit-1 is solely the
+     pre-existing §3 CPU-backend kernel-completeness gate (turbo3_tcq /
+     qjl_full / polarquant aren't CPU-buildable — same as the non-fused
+     `linux-x64-cpu` target), and `CAPABILITIES.json` is written with
+     `publishable: false`. Spawning that `llama-server` against the local
+     SmolLM stand-in serves `POST /completion` (1-token gen) AND
+     `POST /v1/audio/speech` from the same PID (returns the structured 503
+     "not configured" body when no OmniVoice GGUF is wired — proving the
+     route is live in-process; a stock `llama-server` returns 404). Covered
+     by `dflash-server-fused.integration.test.ts` (spawns the fused binary,
+     hits both endpoints, asserts same PID, asserts cancel/barge-in cleanup)
+     and `dflash-server.test.ts`'s "fused-vs-two-process spawn selection"
+     unit tests. **Remaining:** a weight-backed `/v1/audio/speech` smoke
+     against a real Eliza-1 bundle's `tts/omnivoice-*.gguf` (the local
+     stand-in bundle has no `tts/`); fused `darwin-arm64-metal-fused` and
+     `linux-x64-vulkan-fused` builds + the same smoke on those backends;
+     iOS/macOS fused-server packaging; routing the engine/voice TTS path to
+     prefer `synthesizeSpeech()` over the FFI `ttsSynthesize` path when
+     `audioSpeechRoute()` is non-null.
    - JS runtime streaming from llama-server deltas into the voice scheduler is
      now covered. The native fused runtime still needs first-class DFlash
      accept/reject events so speculative branches can be cancelled before
-     phrase audio reaches the sink.
+     phrase audio reaches the sink (the ABI v2 `eliza_inference_set_verifier_callback`
+     symbol is present but stubbed — W7).
 
 4. **Real release artifacts**
 
@@ -173,12 +222,14 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | iPhone/iPad | XCFramework symbol/structure audit passes for physical-device and simulator slices, and physical XCTest now passes 3/3 on iPhone 15 Pro. Next required action is a real Eliza-1 bundle smoke from the Capacitor app shell that measures first token, first audio latency, peak RSS, and thermal state. The current iOS ABI bridge is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. Re-check at `2026-05-11T13:31:09Z`: local `adb` still lists only `emulator-5554`, `system_profiler SPUSBDataType` shows no Pixel/Android USB device, and `make -C packages/inference/verify android-vulkan-smoke` with explicit `ADB` correctly refused emulator evidence. |
 | Android Mali | Standalone Pixel 6a / Mali-G78 fixture validation passes for all six kernels. Remaining action is built-fork/app graph-dispatch evidence plus thermal/RSS. Re-check at `2026-05-11T13:31:09Z`: local `adb` still lists only `emulator-5554`, so no new physical-device run was possible from this Mac; runner evidence log is `packages/inference/verify/hardware-results/android-vulkan-smoke-20260511T133109Z.log`. |
-| Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |
-| Linux x64 Vulkan | Run `make -C packages/inference/verify vulkan-native-smoke` on Intel/AMD/NVIDIA, not only MoltenVK. |
-| Linux x64 ROCm | Build and run on MI300/MI250/RDNA; HIP parity is unproven. |
-| Linux aarch64 CUDA | Run on GH200-class host for the `27b-256k` tier. |
-| Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required. |
-| Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required. |
+| Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. `cuda_verify.cu` is now a self-contained fixture-parity harness (parses `fused_attn_qjl_tbq.json`); pending-evidence stub at `verify/hardware-results/cuda-linux-thismachine-2026-05-11.pending.json` (this box's dGPU is in D3cold, no kmod/nvcc). |
+| Linux x64 Vulkan | **DONE on Intel-ANV** — `vulkan-dispatch-smoke` 6/6 PASS, evidence `verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log` + `verify/vulkan-runtime-dispatch-evidence.json`. Still need native AMD and NVIDIA Vulkan, not only MoltenVK/Intel-ANV. |
+| Linux aarch64 CPU | Run CPU backend parity on an arm64 Linux host (`linux-aarch64-cpu` target, `needs-hardware`). |
+| Linux aarch64 CUDA | Run `gh200_runner.sh` on a GH200/H100/H200 aarch64 CUDA host for the `27b-256k` and `27b-1m` tiers. |
+| Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required (`windows-x64-{cpu,cuda,vulkan}` targets). |
+| Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required (`windows-arm64-{cpu,vulkan}` targets). |
+| Intel/AMD Mac (x64) | Build `darwin-x64-metal` and run metal-verify + built-fork dispatch smoke on Intel/AMD Mac hardware. |
+| Fused attention (Metal + CUDA) | Vulkan fused compute kernel + `cases`-array parser in `vulkan_verify` done and hardware-verified (`vulkan-verify-fused` 1920/1920 on Intel ARL Mesa ANV; built-fork `GGML_OP_FUSED_ATTN_QJL_TBQ` dispatch verified). Remaining: a Metal `fused_attn*.metal` kernel + `cases`-array path in `metal_verify` (design in `metal-fused-attn-and-polar-preht-design.md`), then `metal-verify-fused` on a Mac; and a CUDA host for the existing `cuda_verify` fused fixture parity. |
 
 ## Training And Publishing Remaining Work
 
@@ -200,6 +251,39 @@ The lowest-duplication design is lazy regional loading from one bundle:
   verification.
 - Upload only to `elizaos/eliza-1-*` repos. Any red gate forces
   `defaultEligible=false`.
+
+### Done in this pass (publish pipeline + downloader contract)
+
+- `publish_all_eliza1.sh` now prints the per-tier publish summary and
+  propagates the orchestrator's structured exit code on the first failure
+  (e.g. `16` for `EXIT_RELEASE_EVIDENCE_FAIL`) instead of dying before the
+  summary under `set -e`. The no-continue-on-error behaviour from §6 is
+  unchanged — the matrix walk still aborts at the first failing tier.
+- Dry-run verified against a hand-built `releaseState=upload-candidate`
+  stand-in bundle (`final.weights=false`): the orchestrator rejects it at
+  stage 2 with exit `16` — every tier is still publish-blocked by non-final
+  release evidence. No real or stand-in bundle exists in this checkout's
+  state dir (the staging step is `stage_local_eliza1_bundle.py` /
+  `stage_eliza1_bundle_assets.py`, which need HF network and real text/DFlash
+  weights — not produced here).
+- §7 device-side downloader contract hardened: `runBundleJob` now reads the
+  manifest first, then — **before any weight byte is fetched** — checks the
+  RAM budget (`ramBudgetMb.min` vs device RAM) and that at least one of the
+  tier's supported backends with a `pass` verify report is available on this
+  device, aborting with a structured `BundleIncompatibleError` (`failed`
+  download event → UI) if not. Schema-version is already enforced by
+  `parseManifestOrThrow` (Zod literal on `$schema`). After materialize +
+  per-file sha256 verify, an injectable `verifyOnDevice` hook (load → 1-token
+  text gen → 1-phrase voice gen → barge-in cancel) runs before the bundle is
+  treated as ready; a new `InstalledModel.bundleVerifiedAt` records it, and a
+  bundle that has not passed the verify pass does not auto-fill an empty
+  default slot when the hook is wired. Tests in
+  `packages/app-core/src/services/local-inference/downloader.test.ts`.
+- Still open: wire `verifyOnDevice` from the engine in `service.ts` (today
+  the downloader runs without the hook, preserving first-light slot fill);
+  surface `BundleIncompatibleError` distinctly in the UI; have the
+  recommendation engine consult `manifest.kernels.verifiedBackends` against
+  the device (`canSetAsDefault` exists but is not yet called).
 
 ## Known Non-Goals For This Wave
 

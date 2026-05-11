@@ -3,8 +3,10 @@
  *
  * Eliza-1 is the only default-eligible model line. The user-facing model
  * ids are size-first (`eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-9b`,
- * `eliza-1-27b`, `eliza-1-27b-256k`). The recommendation engine picks
- * one of these tiers based on hardware.
+ * `eliza-1-27b`, `eliza-1-27b-256k`, `eliza-1-27b-1m`). The recommendation
+ * engine picks one of these tiers based on hardware. The long-context 27B
+ * variants (`27b-256k`, `27b-1m`) only surface on hosts whose RAM/VRAM can
+ * hold the KV cache at that window — `27b-1m` is GH200-class.
  *
  * HF-search results from outside `elizaos/eliza-1-*` MUST never be
  * marked default-eligible (handled by `hf-search.ts`, which produces
@@ -45,6 +47,7 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
+  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
@@ -299,6 +302,42 @@ export const MODEL_CATALOG: CatalogModel[] = [
     params: "9B",
     sizeGb: 1.2,
     minRamGb: 96,
+    bucket: "large",
+  }),
+
+  // eliza-1-27b-1m (GH200-class — 1M context). The KV cache at a 1M window
+  // does not fit consumer hardware even at QJL+Polar compression; this tier
+  // is only recommended on hosts with very large unified/HBM memory. On
+  // every other device the recommender's RAM gate (`minRamGb`) excludes it,
+  // which is the intended "refuse on devices that can't fit it, surface it
+  // on the ones that can" behavior. The K-cache rides the trellis path
+  // (`turbo3_tcq`, declared via `requiresKernel` through `runtimeFor`).
+  {
+    id: "eliza-1-27b-1m",
+    displayName: "eliza-1-27b-1m",
+    hfRepo: "elizaos/eliza-1-27b-1m",
+    ggufFile: "text/eliza-1-27b-1m.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
+    params: "27B",
+    quant: "Eliza-1 optimized local runtime",
+    sizeGb: 16.8,
+    minRamGb: 200,
+    category: "chat",
+    bucket: "large",
+    contextLength: 1_048_576,
+    tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-27b-1m-drafter"],
+    runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),
+    blurb:
+      "eliza-1-27b-1m - GH200-class server tier with a 1M-token context window.",
+  },
+  drafterCompanion({
+    id: "eliza-1-27b-1m",
+    displayName: "eliza-1-27b-1m",
+    ggufFile: "dflash/drafter-27b-1m.gguf",
+    params: "9B",
+    sizeGb: 1.2,
+    minRamGb: 200,
     bucket: "large",
   }),
 ];

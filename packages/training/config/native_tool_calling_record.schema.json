@@ -2,6 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://elizaos.github.io/schemas/native-tool-calling-record.schema.json",
   "title": "Eliza native tool-calling training record",
+  "$comment": "NOT the canonical Eliza-1 corpus record. The canonical corpus record is eliza_native_v1 (one row per Vercel AI SDK model boundary) — see packages/training/docs/dataset/CANONICAL_RECORD.md. This schema describes the per-stage native tool-calling SFT record used by scripts/prepare_native_tool_calling_data.py; its plannerOutput.planner mirrors the live plannerSchema in packages/core/src/prompts/planner.ts, and messageHandlerOutput mirrors the messageHandlerTemplate in packages/prompts/src/index.ts.",
   "type": "object",
   "required": ["schema", "id", "stage", "source", "output", "quality"],
   "additionalProperties": false,
@@ -146,45 +147,56 @@
       }
     },
     "messageHandlerOutput": {
+      "$comment": "Mirrors the messageHandlerTemplate in packages/prompts/src/index.ts. `action` is the shouldRespond decision (RESPOND|IGNORE|STOP) and is omitted on the direct-message path where it is hardcoded to RESPOND. `reply` is a legacy alias of `replyText` (older traces emitted `reply`).",
       "type": "object",
       "required": ["messageHandler"],
       "additionalProperties": false,
       "properties": {
         "messageHandler": {
           "type": "object",
-          "required": ["action", "simple", "contexts", "thought"],
+          "required": ["contexts", "thought"],
           "additionalProperties": true,
           "properties": {
             "action": {"enum": ["RESPOND", "IGNORE", "STOP"]},
-            "simple": {"type": "boolean"},
+            "replyText": {"type": "string"},
+            "reply": {"type": "string", "$comment": "legacy alias of replyText"},
             "contexts": {
               "type": "array",
               "items": {"type": "string"}
             },
-            "thought": {"type": "string"},
-            "reply": {"type": "string"}
+            "requiresTool": {"type": "boolean"},
+            "simple": {"type": "boolean", "$comment": "legacy: superseded by contexts=[\"simple\"]"},
+            "thought": {"type": "string"}
           }
         }
       }
     },
     "plannerOutput": {
+      "$comment": "Mirrors plannerSchema in packages/core/src/prompts/planner.ts exactly: required thought + toolCalls; messageToUser optional; tool args are an arbitrary per-tool object.",
       "type": "object",
       "required": ["planner"],
       "additionalProperties": false,
       "properties": {
         "planner": {
           "type": "object",
-          "required": ["toolCalls"],
-          "additionalProperties": true,
+          "required": ["thought", "toolCalls"],
+          "additionalProperties": false,
           "properties": {
-            "text": {"type": "string"},
+            "thought": {"type": "string"},
             "toolCalls": {
               "type": "array",
-              "items": {"$ref": "#/$defs/plannedToolCall"}
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                  "id": {"type": "string"},
+                  "name": {"type": "string", "minLength": 1},
+                  "args": {"type": "object"}
+                }
+              }
             },
-            "finishReason": {
-              "enum": ["stop", "tool_calls", "length", "content_filter", "other"]
-            }
+            "messageToUser": {"type": "string"}
           }
         }
       }

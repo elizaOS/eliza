@@ -27,7 +27,7 @@
       "tbq4_0",
       "dflash"
     ],
-    "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
+    "requiresFork": "elizaOS/llama.cpp@v0.1.0-milady"
   },
   "pipeline": {
     "publishedAt": "2026-05-10T00:00:00Z",

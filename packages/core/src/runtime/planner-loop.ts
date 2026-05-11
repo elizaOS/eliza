@@ -11,6 +11,7 @@ import {
 	type GenerateTextResult,
 	ModelType,
 	type PromptSegment,
+	type ResponseSkeleton,
 	type TextGenerationModelType,
 	type ToolCall,
 	type ToolChoice,
@@ -56,6 +57,7 @@ import type {
 	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
+import { buildPlannerActionGrammar } from "./response-grammar";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -574,7 +576,14 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	return ["# Routing hints", ...lines].join("\n");
 }
 
-function renderAvailableActionsBlock(context: ContextObject): string | null {
+/**
+ * Collect the tool/action events exposed for the current planner scope. The
+ * filter mirrors `renderAvailableActionsBlock` (sub-planner scoping, the
+ * PLAN_ACTIONS wrapper, dedup by normalized name) — both the rendered prompt
+ * block and the per-turn `PLAN_ACTIONS` grammar derive their action universe
+ * from this single source.
+ */
+function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	const parentAction =
 		typeof context.metadata?.subPlannerParentAction === "string"
 			? context.metadata.subPlannerParentAction
@@ -608,6 +617,16 @@ function renderAvailableActionsBlock(context: ContextObject): string | null {
 		seen.add(key);
 		tools.push(tool);
 	}
+	return tools;
+}
+
+function renderAvailableActionsBlock(context: ContextObject): string | null {
+	const parentAction =
+		typeof context.metadata?.subPlannerParentAction === "string"
+			? context.metadata.subPlannerParentAction
+			: "";
+	const inSubPlanner = parentAction.length > 0;
+	const tools = collectExposedTools(context);
 
 	if (tools.length === 0) {
 		return null;
@@ -873,6 +892,8 @@ async function callPlanner(params: {
 		providerOptions: Record<string, unknown>;
 		tools?: ToolDefinition[];
 		toolChoice?: ToolChoice;
+		responseSkeleton?: ResponseSkeleton;
+		grammar?: string;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -891,6 +912,35 @@ async function callPlanner(params: {
 	if (hasTools) {
 		modelParams.tools = params.tools;
 		modelParams.toolChoice = params.toolChoice ?? "auto";
+		// Per-turn structure forcing for the PLAN_ACTIONS args: pin `action` to
+		// the exact enum of actions exposed this turn and carry each action's
+		// normalized parameter schema so the local engine (W4) can do the
+		// second constrained pass (`parameters` against the chosen action's
+		// schema). Cloud adapters ignore `responseSkeleton` / `grammar` /
+		// `providerOptions.eliza.plannerActionSchemas` — `tools` carries the
+		// equivalent unforced contract for them.
+		const exposedTools = collectExposedTools(params.context);
+		const plannerActionGrammar = buildPlannerActionGrammar(
+			exposedTools.map((tool) => ({
+				name: tool.name,
+				parameters: tool.action?.parameters ?? [],
+				allowAdditionalParameters:
+					tool.action?.allowAdditionalParameters === true,
+			})),
+		);
+		if (plannerActionGrammar) {
+			modelParams.responseSkeleton = plannerActionGrammar.responseSkeleton;
+			modelParams.grammar = plannerActionGrammar.grammar;
+			modelParams.providerOptions = {
+				...(modelParams.providerOptions as Record<string, unknown>),
+				eliza: {
+					...((
+						modelParams.providerOptions as { eliza?: Record<string, unknown> }
+					)?.eliza ?? {}),
+					plannerActionSchemas: plannerActionGrammar.actionSchemas,
+				},
+			};
+		}
 	} else {
 		modelParams.responseSchema = plannerSchema;
 	}
@@ -2080,6 +2130,29 @@ let cachedDiskOptimizedPlannerLoaded = false;
 function loadOptimizedPlannerFromDisk(): string | null {
 	const dir = join(resolveStateDir(), "optimized-prompts", "action_planner");
 	if (!existsSync(dir)) return null;
+
+	// Preferred path: read via the `current` symlink that
+	// `OptimizedPromptService.setPrompt` / `rollback` maintain. This is the
+	// authoritative live artifact.
+	const currentPath = join(dir, "current");
+	if (existsSync(currentPath)) {
+		try {
+			const raw = readFileSync(currentPath, "utf-8");
+			const parsed = JSON.parse(raw) as {
+				task?: string;
+				prompt?: string;
+			};
+			if (
+				parsed.task === "action_planner" &&
+				typeof parsed.prompt === "string"
+			) {
+				return parsed.prompt;
+			}
+		} catch {}
+	}
+
+	// Fallback: legacy / pre-symlink stores. Pick the newest artifact by
+	// mtime so we still find something when `current` is missing.
 	const entries = readdirSync(dir)
 		.filter((f) => f.endsWith(".json"))
 		.map((f) => ({

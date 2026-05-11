@@ -26,9 +26,11 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
+  renderMessageHandlerStablePrefix,
   type TextEmbeddingParams,
   type TextToSpeechParams,
   type TranscriptionParams,
+  type UUID,
 } from "@elizaos/core";
 import {
   type LocalInferenceLoader,
@@ -192,6 +194,51 @@ async function ensureAssignedModelLoaded(
   }
 }
 
+/**
+ * Project a `GenerateTextParams` onto the engine's `GenerateArgs`, threading
+ * the structure-forcing extensions (`prefill`, `responseSkeleton`, `grammar`,
+ * `streamStructured`) and wiring `onStreamChunk` to the engine's per-token
+ * `onTextChunk`. Cloud adapters ignore these fields; the local engine honours
+ * them (the forced-span / prefill / grammar path is local-model-only).
+ */
+function engineGenerateArgsFromParams(
+  params: GenerateTextParams,
+  cacheKey: string | undefined,
+): {
+  prompt: string;
+  stopSequences?: string[];
+  cacheKey?: string;
+  signal?: AbortSignal;
+  prefill?: string;
+  responseSkeleton?: GenerateTextParams["responseSkeleton"];
+  grammar?: string;
+  streamStructured?: boolean;
+  onTextChunk?: (chunk: string) => void | Promise<void>;
+} {
+  const streamStructured = params.streamStructured === true;
+  // Surface per-token chunks to the caller. The runtime passes the agent
+  // reply path's `onStreamChunk` here when it wants the LLM→TTS handoff —
+  // previously dropped at this layer. Only wire it when the caller asked
+  // for streaming (`stream` or `streamStructured`) so non-streaming callers
+  // don't pay the chunk-callback overhead.
+  const onTextChunk =
+    (params.stream === true || streamStructured) &&
+    typeof params.onStreamChunk === "function"
+      ? (chunk: string) => params.onStreamChunk?.(chunk)
+      : undefined;
+  return {
+    prompt: params.prompt ?? "",
+    stopSequences: params.stopSequences,
+    cacheKey,
+    signal: params.signal,
+    prefill: params.prefill,
+    responseSkeleton: params.responseSkeleton,
+    grammar: params.grammar,
+    streamStructured: streamStructured || undefined,
+    onTextChunk,
+  };
+}
+
 function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
   return async (runtime, params) => {
     const loader = getLoader(runtime);
@@ -212,16 +259,13 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
       resolveLocalCacheKey(providerOptions) ??
       extractPromptCacheKey(providerOptions) ??
       undefined;
+    const engineArgs = engineGenerateArgsFromParams(params, cacheKey);
 
     // Prefer a runtime-registered loader that implements `generate` — that's
     // the mobile / device-bridge path. On desktop we fall back to the
     // standalone engine.
     if (loader?.generate) {
-      return loader.generate({
-        prompt: params.prompt ?? "",
-        stopSequences: params.stopSequences,
-        cacheKey,
-      });
+      return loader.generate(engineArgs);
     }
     if (!(await localInferenceEngine.available())) {
       throw new Error(
@@ -247,10 +291,11 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
           conversationId,
           modelId,
         });
-      const result = await localInferenceEngine.generateInConversation(handle, {
-        prompt: params.prompt ?? "",
-        stopSequences: params.stopSequences,
-      });
+      const { cacheKey: _drop, ...convArgs } = engineArgs;
+      const result = await localInferenceEngine.generateInConversation(
+        handle,
+        convArgs,
+      );
       // Per-generation usage log. Match the Anthropic plugin's
       // observability surface so cloud and local share the same
       // mental model. Cache hit rate is reported when input_tokens > 0.
@@ -276,11 +321,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
     // No conversation context: fall through to the existing hash-based
     // slot allocation. Doesn't break any caller that wasn't aware of
     // conversation handles.
-    return localInferenceEngine.generate({
-      prompt: params.prompt ?? "",
-      stopSequences: params.stopSequences,
-      cacheKey,
-    });
+    return localInferenceEngine.generate(engineArgs);
   };
 }
 
@@ -493,6 +534,80 @@ async function tryRegisterCapacitorLoader(
   return false;
 }
 
+/**
+ * Synthetic conversation id used to keep the Stage-1 stable prefix
+ * (system prompt + tool/action schema block + stable provider blocks)
+ * resident on a deterministic slot before any real conversation lands.
+ * `deriveSlotId("conv:__system_prefix__", parallel)` is stable, so this
+ * always warms the same slot; per-room conversations get their own slot
+ * via `conv:<roomId>` and inherit the radix-shared prefix tokens.
+ */
+const SYSTEM_PREFIX_CONVERSATION_ID = "__system_prefix__";
+
+/**
+ * Render the Stage-1 stable prefix for `roomId` and KV-prefill the
+ * local-inference slot that conversation pins to. Wire this from the
+ * voice turn controller (W9) on `speech-start` / voice-session-open so
+ * the response-handler prompt is hot before STT finishes — items I1/C1.
+ *
+ * Best-effort end to end: returns false (no throw) when there's no
+ * loaded local model, the active backend can't pre-warm (node-llama-cpp
+ * pins by cache key already), or rendering/pre-warm fails. A miss just
+ * means the real request cold-prefills.
+ */
+export async function prewarmResponseHandler(
+  runtime: IAgentRuntime,
+  roomId: UUID,
+): Promise<boolean> {
+  if (!localInferenceEngine.hasLoadedModel()) return false;
+  if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+  try {
+    const prefix = await renderMessageHandlerStablePrefix(runtime, roomId);
+    if (!prefix) return false;
+    return await localInferenceEngine.prewarmConversation(
+      String(roomId),
+      prefix,
+    );
+  } catch (err) {
+    logger.debug(
+      "[local-inference] prewarmResponseHandler failed (best-effort):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
+}
+
+/**
+ * Warm the Stage-1 stable prefix onto the deterministic
+ * `conv:__system_prefix__` slot at model-load / boot time, before any
+ * user message — item I3 (warm-on-load). The room id is irrelevant for
+ * the stable prefix (it carries no per-room state), so a fixed synthetic
+ * id is fine. No-op when no local model is loaded or the backend can't
+ * pre-warm. Best-effort: failures are logged at debug and swallowed.
+ */
+export async function prewarmSystemPrefix(
+  runtime: IAgentRuntime,
+): Promise<boolean> {
+  if (!localInferenceEngine.hasLoadedModel()) return false;
+  if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+  try {
+    const fixedRoomId = (runtime.agentId ??
+      SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
+    const prefix = await renderMessageHandlerStablePrefix(runtime, fixedRoomId);
+    if (!prefix) return false;
+    return await localInferenceEngine.prewarmConversation(
+      SYSTEM_PREFIX_CONVERSATION_ID,
+      prefix,
+    );
+  } catch (err) {
+    logger.debug(
+      "[local-inference] prewarmSystemPrefix failed (best-effort):",
+      err instanceof Error ? err.message : String(err),
+    );
+    return false;
+  }
+}
+
 export async function ensureLocalInferenceHandler(
   runtime: AgentRuntime,
 ): Promise<void> {
@@ -649,18 +764,23 @@ export async function ensureLocalInferenceHandler(
       provider,
       LOCAL_INFERENCE_PRIORITY,
     );
-    const transcriptionEnabled =
-      process.env.ELIZA_LOCAL_TRANSCRIPTION?.trim() === "1";
-    if (transcriptionEnabled) {
-      runtimeWithRegistration.registerModel(
-        ModelType.TRANSCRIPTION,
-        makeTranscriptionHandler(),
-        provider,
-        LOCAL_INFERENCE_PRIORITY,
-      );
-    }
+    // TRANSCRIPTION is registered default-on at the local-inference floor
+    // priority (0). It is the last-resort handler: any cloud / other-plugin
+    // TRANSCRIPTION handler registers above 0 and wins. When the handler
+    // does run, it drives the streaming ASR adapter chain (fused
+    // Qwen3-ASR via libelizainference → whisper.cpp interim →
+    // AsrUnavailableError) via the engine's armed voice bridge — see
+    // makeTranscriptionHandler / EngineVoiceBridge.createStreamingTranscriber.
+    // (The old ELIZA_LOCAL_TRANSCRIPTION env gate is removed — voice is a
+    // first-class Eliza-1 surface, not opt-in.)
+    runtimeWithRegistration.registerModel(
+      ModelType.TRANSCRIPTION,
+      makeTranscriptionHandler(),
+      provider,
+      LOCAL_INFERENCE_PRIORITY,
+    );
     logger.info(
-      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH${transcriptionEnabled ? " / TRANSCRIPTION" : ""} at priority ${LOCAL_INFERENCE_PRIORITY}`,
+      `[local-inference] Registered ${provider} voice handlers for TEXT_TO_SPEECH / TRANSCRIPTION at priority ${LOCAL_INFERENCE_PRIORITY}`,
     );
   } catch (err) {
     logger.warn(
@@ -681,4 +801,12 @@ export async function ensureLocalInferenceHandler(
   logger.info(
     "[local-inference] Installed top-priority router for cross-provider routing",
   );
+
+  // Warm-on-load (item I3): if a local model is already resident, KV-prefill
+  // the Stage-1 stable prefix onto the deterministic system-prefix slot so
+  // the system prompt + tool schema is hot before the first user turn.
+  // Fire-and-forget — pre-warm is best-effort and must never block boot.
+  void prewarmSystemPrefix(runtime).catch(() => {
+    // Logged inside prewarmSystemPrefix at debug; nothing more to do here.
+  });
 }

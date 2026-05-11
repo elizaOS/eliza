@@ -15,7 +15,7 @@ license: apache-2.0
 
 This repo ships a **fused-kernel** GGUF that combines every trick the
 milady local-inference stack supports in a single file. It is not a
-stock llama.cpp build — loading it requires the milady-ai/llama.cpp
+stock llama.cpp build — loading it requires the elizaOS/llama.cpp
 fork (`v0.1.0-milady`) which provides the Q4_POLAR, QJL1_256, and TBQ
 kernels.
 

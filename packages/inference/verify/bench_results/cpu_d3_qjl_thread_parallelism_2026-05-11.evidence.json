@@ -1,0 +1,27 @@
+{
+  "what": "CPU thread-parallelism correctness gate for GGML_OP_ATTN_SCORE_QJL + GGML_OP_FUSED_ATTN_QJL_TBQ in the built dflash fork lib",
+  "date": "2026-05-11",
+  "host": "Intel Arrow Lake-HX, 24 cores, AVX2 + AVX-VNNI (no AVX-512), 30 GB RAM",
+  "fork": "elizaOS/llama.cpp@08032d57e15574f2a7ca19fc3f29510c8673d590 (v0.4.0-milady)",
+  "build": {
+    "cmd": "ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu",
+    "result": "all CMake targets built + linked OK (libggml-cpu.so, libggml-base.so, llama-cli, llama-server, llama-speculative-simple); process exited non-zero ONLY on the documented probeKernels runtime-dispatch evidence gate (turbo3_tcq / qjl_full / polarquant), which is the same expected blocker as the Vulkan/CPU paths — the libs were still emitted",
+    "patchersApplied": ["cpu-simd-kernels.mjs (QJL SIMD TUs mirror)", "cpu-polar-kernels.mjs (PolarQuant _preht TU wiring — NEW this commit)", "cpu-thread-parallelism.mjs (QJL attn ops ith/nth split — NEW this commit)", "server-structured-output.mjs SKIPPED via ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 (documented)"]
+  },
+  "shippedLib": {
+    "qjl_active_simd": "avxvnni",
+    "polarquant_active_simd": "avxvnni",
+    "symbolsPresent": ["ggml_compute_forward_attn_score_qjl", "ggml_compute_forward_fused_attn_qjl_tbq", "qjl_score_qk_i8_avxvnni", "ggml_vec_dot_q4_polar_preht_f32", "ggml_vec_dot_q4_polar_preht_f32_avx2", "ggml_vec_dot_q4_polar_preht_f32_ref", "polarquant_active_simd"],
+    "note": "ggml_vec_dot_q4_polar_preht_f32_neon correctly absent on x86 (compiled out by __ARM_NEON guard); _avx2 body present => POLARQUANT_HAVE_AVX2 wired"
+  },
+  "mtVsStGate": {
+    "driver": "packages/inference/verify/qjl_mt_check.c",
+    "method": "build a ggml graph using each op, run ggml_backend_graph_compute with n_threads=1 then n_threads=24 against the BUILT libggml-cpu.so, compare output bit-for-bit",
+    "ATTN_SCORE_QJL": { "n_out": 24576, "bit_mismatches": 0, "max_abs_diff": 0, "any_nan": false, "ref_all_zero": false },
+    "FUSED_ATTN_QJL_TBQ": { "n_out": 32768, "bit_mismatches": 0, "max_abs_diff": 0, "any_nan": false, "ref_all_zero": false },
+    "verdict": "PASS — bit-identical (the thread split is over disjoint output rows/heads, no reduction => no FP reassociation => exact equality)"
+  },
+  "referenceTest": "make -C packages/inference/verify reference-test => clean (all kernels finite, fused-attn + tbq V-cache parity OK)",
+  "kernelContract": "make -C packages/inference/verify kernel-contract => OK kernels=6 targets=23 manifestNames=6",
+  "cpuBench": "make -C packages/inference/verify cpu-bench && ./cpu_bench --runs 3 --warmup 1 => bench_results/cpu_d3_thread_parallelism_2026-05-11.json (single-thread C reference harness; not the built lib)"
+}

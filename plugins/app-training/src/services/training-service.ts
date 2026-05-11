@@ -1,28 +1,27 @@
-import crypto from "node:crypto";
 import type {
   Trajectory,
   TrajectoryListResult,
 } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
+import { createHashAnonymizer } from "../core/privacy-filter.js";
+import { buildTrajectoryExportBundle } from "../core/trajectory-export-bundle.js";
 import type { TrainingServiceWithRuntime } from "./training-service-like.js";
 
-interface DatasetRecord {
-  id: string;
-  createdAt: string;
-  limit?: number;
-  minLlmCallsPerTrajectory?: number;
+/**
+ * Thrown for endpoints whose real implementation lives on another surface
+ * (GPU fine-tunes on `/api/training/vast/jobs`, prompt optimization on
+ * `/api/training/auto/trigger`). The route layer maps this to a 501 with the
+ * message verbatim — we do not fabricate success responses for unwired flows.
+ */
+export class NotImplementedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NotImplementedError";
+  }
 }
 
-interface TrainingJobRecord {
-  id: string;
-  datasetId: string;
-  status: "queued" | "running" | "completed" | "failed" | "cancelled";
-  createdAt: string;
-}
-
-interface TrainingModelRecord {
-  id: string;
-  createdAt: string;
+export function isNotImplementedError(err: unknown): err is NotImplementedError {
+  return err instanceof NotImplementedError;
 }
 
 interface TrainingServiceOptions {
@@ -31,11 +30,24 @@ interface TrainingServiceOptions {
   setConfig: (nextConfig: unknown) => void;
 }
 
+interface TrajectoryServiceLike {
+  listTrajectories: (options: {
+    limit?: number;
+    offset?: number;
+    runId?: string;
+  }) => Promise<TrajectoryListResult>;
+  getTrajectoryDetail: (id: string) => Promise<Trajectory | null>;
+}
+
+/**
+ * Public training API service. Reads trajectories from the runtime
+ * `trajectories` DB service and builds privacy-filtered export bundles via
+ * `buildTrajectoryExportBundle`. GPU fine-tunes, Ollama import, model
+ * activation, and benchmarking are handled by other surfaces — this service
+ * does not stub them.
+ */
 export class TrainingService implements TrainingServiceWithRuntime {
   private readonly listeners = new Set<(event: unknown) => void>();
-  private readonly datasets: DatasetRecord[] = [];
-  private readonly jobs: TrainingJobRecord[] = [];
-  private readonly models: TrainingModelRecord[] = [];
 
   constructor(private readonly options: TrainingServiceOptions) {}
 
@@ -48,117 +60,143 @@ export class TrainingService implements TrainingServiceWithRuntime {
 
   private emit(event: unknown): void {
     for (const listener of this.listeners) {
-      try {
-        listener(event);
-      } catch {}
+      listener(event);
     }
+  }
+
+  private trajectoryService(): TrajectoryServiceLike {
+    const runtime = this.options.getRuntime();
+    const service = runtime?.getService("trajectories") as unknown as
+      | TrajectoryServiceLike
+      | null
+      | undefined;
+    if (
+      !service ||
+      typeof service.listTrajectories !== "function" ||
+      typeof service.getTrajectoryDetail !== "function"
+    ) {
+      throw new NotImplementedError(
+        "The trajectories service is not available on the current runtime.",
+      );
+    }
+    return service;
   }
 
   getStatus(): Record<string, unknown> {
     return {
-      runningJobs: this.jobs.filter((job) => job.status === "running").length,
-      datasetCount: this.datasets.length,
-      modelCount: this.models.length,
+      runtimeAvailable: this.options.getRuntime() !== null,
     };
   }
 
   async listTrajectories(options: {
     limit?: number;
     offset?: number;
+    runId?: string;
   }): Promise<TrajectoryListResult> {
-    return {
-      trajectories: [],
-      total: 0,
-      offset: options.offset ?? 0,
-      limit: options.limit ?? 100,
-    };
+    return await this.trajectoryService().listTrajectories(options);
   }
 
-  async getTrajectoryById(_trajectoryId: string): Promise<Trajectory | null> {
-    return null;
+  async getTrajectoryById(trajectoryId: string): Promise<Trajectory | null> {
+    return await this.trajectoryService().getTrajectoryDetail(trajectoryId);
   }
 
+  /** Datasets are produced as export bundles on disk; there is no persisted list. */
   listDatasets(): Record<string, unknown>[] {
-    return this.datasets.map((dataset) => ({ ...dataset }));
+    return [];
   }
 
   async buildDataset(options: {
     limit?: number;
     minLlmCallsPerTrajectory?: number;
   }): Promise<Record<string, unknown>> {
-    const dataset: DatasetRecord = {
-      id: `dataset-${crypto.randomUUID()}`,
-      createdAt: new Date().toISOString(),
-      limit: options.limit,
-      minLlmCallsPerTrajectory: options.minLlmCallsPerTrajectory,
+    const service = this.trajectoryService();
+    const listed = await service.listTrajectories({
+      limit: options.limit ?? 500,
+    });
+    const trajectories = (
+      await Promise.all(
+        listed.trajectories.map((item) =>
+          service.getTrajectoryDetail(item.id),
+        ),
+      )
+    ).filter((t): t is Trajectory => t !== null);
+    const minCalls = options.minLlmCallsPerTrajectory ?? 0;
+    const eligible =
+      minCalls > 0
+        ? trajectories.filter(
+            (t) =>
+              (t.steps ?? []).reduce(
+                (sum, step) => sum + (step.llmCalls?.length ?? 0),
+                0,
+              ) >= minCalls,
+          )
+        : trajectories;
+    const bundle = await buildTrajectoryExportBundle({
+      trajectories: eligible,
+      outputDir: `.tmp/training-dataset-${Date.now()}`,
+      privacy: {
+        apply: true,
+        options: { anonymizer: createHashAnonymizer() },
+      },
+      source: {
+        kind: "training-build-dataset",
+        metadata: {
+          requestedLimit: options.limit ?? 500,
+          minLlmCallsPerTrajectory: minCalls,
+          consideredTrajectories: trajectories.length,
+          eligibleTrajectories: eligible.length,
+        },
+      },
+    });
+    this.emit({ kind: "dataset_built", manifestPath: bundle.manifestPath });
+    return {
+      outputDir: bundle.outputDir,
+      manifestPath: bundle.manifestPath,
+      manifest: bundle.manifest,
     };
-    this.datasets.unshift(dataset);
-    this.emit({ kind: "dataset_built", dataset });
-    return { ...dataset };
   }
 
+  /** GPU fine-tune jobs live under `/api/training/vast/jobs`. */
   listJobs(): Record<string, unknown>[] {
-    return this.jobs.map((job) => ({ ...job }));
+    return [];
   }
 
-  async startTrainingJob(options: {
-    datasetId?: string;
-  }): Promise<Record<string, unknown>> {
-    if (!options.datasetId) {
-      throw new Error("datasetId is required");
-    }
-    if (!this.datasets.some((dataset) => dataset.id === options.datasetId)) {
-      throw new Error("Dataset not found");
-    }
-    const job: TrainingJobRecord = {
-      id: `job-${crypto.randomUUID()}`,
-      datasetId: options.datasetId,
-      status: "queued",
-      createdAt: new Date().toISOString(),
-    };
-    this.jobs.unshift(job);
-    this.emit({ kind: "job_started", job });
-    return { ...job };
+  async startTrainingJob(): Promise<Record<string, unknown>> {
+    throw new NotImplementedError(
+      "GPU fine-tune jobs are managed via /api/training/vast/jobs; prompt optimization runs via /api/training/auto/trigger.",
+    );
   }
 
-  getJob(jobId: string): Record<string, unknown> | null {
-    const job = this.jobs.find((entry) => entry.id === jobId);
-    return job ? { ...job } : null;
+  getJob(): Record<string, unknown> | null {
+    return null;
   }
 
-  async cancelJob(jobId: string): Promise<Record<string, unknown>> {
-    const job = this.jobs.find((entry) => entry.id === jobId);
-    if (!job) throw new Error("Training job not found");
-    job.status = "cancelled";
-    this.emit({ kind: "job_cancelled", job });
-    return { ...job };
+  async cancelJob(): Promise<Record<string, unknown>> {
+    throw new NotImplementedError(
+      "GPU fine-tune jobs are managed via /api/training/vast/jobs.",
+    );
   }
 
+  /** Trained models are tracked by the Vast registry under `/api/training/vast/models`. */
   listModels(): Record<string, unknown>[] {
-    return this.models.map((model) => ({ ...model }));
+    return [];
   }
 
-  async importModelToOllama(
-    modelId: string,
-    _body: { modelName?: string; baseModel?: string; ollamaUrl?: string },
-  ): Promise<Record<string, unknown>> {
-    const model = this.models.find((entry) => entry.id === modelId);
-    if (!model) throw new Error("Model not found");
-    return { ...model };
+  async importModelToOllama(): Promise<Record<string, unknown>> {
+    throw new NotImplementedError(
+      "Importing trained checkpoints into Ollama is not wired through this API. Use the GGUF → catalog flow.",
+    );
   }
 
-  async activateModel(
-    modelId: string,
-    _providerModel?: string,
-  ): Promise<Record<string, unknown>> {
-    const model = this.models.find((entry) => entry.id === modelId);
-    if (!model) throw new Error("Model not found");
-    return { ok: true, activeModelId: model.id };
+  async activateModel(): Promise<Record<string, unknown>> {
+    throw new NotImplementedError(
+      "Activating a trained model is not wired through this API. Configure the model provider directly.",
+    );
   }
 
-  async benchmarkModel(modelId: string): Promise<Record<string, unknown>> {
-    const model = this.models.find((entry) => entry.id === modelId);
-    if (!model) throw new Error("Model not found");
-    return { ok: true, modelId: model.id };
+  async benchmarkModel(): Promise<Record<string, unknown>> {
+    throw new NotImplementedError(
+      "Model benchmarking runs via /api/training/vast/jobs/:id/eval.",
+    );
   }
 }

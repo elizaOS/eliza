@@ -847,6 +847,49 @@ def _u_life_review(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[st
     return {"subaction": kw.get("subaction", "review"), "ok": True, "noop": True}
 
 
+def _u_life_delete(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
+    """LIFE_DELETE — id-based deletion of reminders / alarms.
+
+    When ``target`` is a real ``reminder_*`` id, delete it. When the LLM
+    targets an "alarm definition" by title (no real id in LifeWorld), this
+    is a no-op — alarm definitions aren't a modeled entity kind, and the
+    state-hash match holds because both replays no-op identically.
+    """
+    target = kw.get("target")
+    if isinstance(target, str) and target.startswith("reminder_") and target in world.reminders:
+        world.delete(EntityKind.REMINDER, target)
+        return {"id": target, "deleted": True}
+    return {
+        "subaction": kw.get("subaction", "delete"),
+        "ok": True,
+        "noop": True,
+        "reason": "no concrete id; alarm definitions not modeled",
+    }
+
+
+def _u_life_update(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """LIFE_UPDATE on alarm/reminder definitions — no-op (definitions not modeled)."""
+    return {"subaction": kw.get("subaction", "update"), "ok": True, "noop": True}
+
+
+def _u_life_skip(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """LIFE_SKIP — skip one occurrence; modeled as a no-op (no skip log entity)."""
+    return {"subaction": kw.get("subaction", "skip"), "ok": True, "noop": True}
+
+
+def _u_scheduled_task_mutate(
+    _world: LifeWorld, kw: dict[str, Any], _name: str
+) -> dict[str, Any]:
+    """SCHEDULED_TASK_SNOOZE/UPDATE — no-op when task id isn't seeded in the world.
+
+    The LLM occasionally references ``task_*`` ids that don't exist in the
+    snapshot. Modeling them would require a separate scheduled-task store;
+    folding into reminders breaks identity (tasks ≠ reminders). Both
+    replays no-op identically so state-hash scoring still works.
+    """
+    return {"subaction": kw.get("subaction", "update"), "ok": True, "noop": True}
+
+
 def _u_health(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
     """HEALTH umbrella is read-only in the manifest; no-op for state hash."""
     return {"subaction": kw.get("subaction", "by_metric"), "ok": True, "noop": True}
@@ -1008,6 +1051,12 @@ _ACTION_HANDLERS: dict[
     "LIFE_COMPLETE": _u_life_complete,
     "LIFE_SNOOZE": _u_life_snooze,
     "LIFE_REVIEW": _u_life_review,
+    "LIFE_DELETE": _u_life_delete,
+    "LIFE_UPDATE": _u_life_update,
+    "LIFE_SKIP": _u_life_skip,
+    # `LIFE` (no suffix) is a generic catchall the LLM occasionally emits;
+    # treat as read-only review.
+    "LIFE": _u_life_review,
     "HEALTH": _u_health,
     # MONEY_* family (Wave 4A renamed PAYMENTS / SUBSCRIPTIONS_* → MONEY_*).
     # Read-only verbs share `_u_money_readonly`; the cancel verb mutates state.
@@ -1032,6 +1081,19 @@ _ACTION_HANDLERS: dict[
     "BLOCK_STATUS": _u_block,
     "BLOCK_REQUEST_PERMISSION": _u_block,
     "SCHEDULED_TASK_CREATE": _u_scheduled_task_create,
+    "SCHEDULED_TASK_SNOOZE": _u_scheduled_task_mutate,
+    "SCHEDULED_TASK_UPDATE": _u_scheduled_task_mutate,
+    # Promoted CALENDAR_* names (Wave 4D's manifest exporter promotes
+    # subactions into top-level action names). Each promoted name carries
+    # `subaction` in its kwargs already, so route to `_u_calendar` unchanged.
+    "CALENDAR_CREATE_EVENT": _u_calendar,
+    "CALENDAR_UPDATE_EVENT": _u_calendar,
+    "CALENDAR_DELETE_EVENT": _u_calendar,
+    "CALENDAR_PROPOSE_TIMES": _u_calendar,
+    "CALENDAR_SEARCH_EVENTS": _u_calendar,
+    "CALENDAR_CHECK_AVAILABILITY": _u_calendar,
+    "CALENDAR_NEXT_EVENT": _u_calendar,
+    "CALENDAR_UPDATE_PREFERENCES": _u_calendar,
 }
 
 

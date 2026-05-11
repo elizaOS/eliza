@@ -93,6 +93,12 @@ class HermesClient:
 
     def health(self) -> dict[str, object]:
         """Confirm the venv can execute the one-shot OpenAI-compatible path."""
+        if self.mode == "in_process":
+            try:
+                import openai  # noqa: F401 — readiness probe
+            except ImportError as exc:
+                return {"status": "error", "error": f"openai not importable in parent: {exc}"}
+            return {"status": "ready", "stdout": "in_process"}
         if not self.venv_python.exists():
             return {"status": "error", "error": f"venv python not found at {self.venv_python}"}
         try:
@@ -122,7 +128,10 @@ class HermesClient:
         while time.monotonic() < deadline:
             probe = self.health()
             if probe.get("status") == "ready":
-                logger.info("hermes-agent venv is ready (%s)", self.venv_python)
+                if self.mode == "in_process":
+                    logger.info("hermes-agent in_process bridge ready (model=%s)", self.model)
+                else:
+                    logger.info("hermes-agent venv is ready (%s)", self.venv_python)
                 return
             last_err = probe.get("error") or probe
             time.sleep(poll)

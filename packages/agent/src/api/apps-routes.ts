@@ -597,11 +597,14 @@ function buildUnsupportedSteeringResult(
   subroute: "message" | "control",
   reason: "no-target" | "no-handler",
 ): AppRunSteeringResult {
+  // "messaging is" (mass noun) vs "controls are" (plural) — preserve the
+  // grammar of the original inline strings this helper replaced.
   const channel = subroute === "message" ? "messaging" : "controls";
+  const verb = subroute === "message" ? "is" : "are";
   const message =
     reason === "no-handler"
-      ? `Run-scoped ${channel} is unavailable for "${run.displayName}" because its route module does not expose a steering handler.`
-      : `Run-scoped ${channel} is unavailable for "${run.displayName}".`;
+      ? `Run-scoped ${channel} ${verb} unavailable for "${run.displayName}" because its route module does not expose a steering handler.`
+      : `Run-scoped ${channel} ${verb} unavailable for "${run.displayName}".`;
   return {
     success: false,
     message,

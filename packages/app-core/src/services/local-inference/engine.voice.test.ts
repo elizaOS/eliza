@@ -22,6 +22,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
 import {
+  AsrUnavailableError,
   defaultLifecycleLoaders,
   type MmapRegionHandle,
   type RefCountedResource,
@@ -156,7 +157,7 @@ function lifecycleLoadersOk(): VoiceLifecycleLoaders {
 function fakeFfi(calls: string[]): ElizaInferenceFfi {
   return {
     libraryPath: "/tmp/libelizainference-test.dylib",
-    libraryAbiVersion: "1",
+    libraryAbiVersion: "2",
     create: () => 1n,
     destroy(ctx: ElizaInferenceContextHandle) {
       calls.push(`destroy:${ctx.toString()}`);
@@ -172,6 +173,33 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
     },
     asrTranscribe() {
       throw new Error("not used by this test");
+    },
+    // Streaming TTS + verifier callback ABI v2 — unused by this test.
+    ttsStreamSupported: () => false,
+    ttsSynthesizeStream() {
+      throw new Error("not used by this test");
+    },
+    cancelTts() {
+      /* no-op */
+    },
+    setVerifierCallback: () => ({ close: () => {} }),
+    // Streaming ASR ABI v2 — this fake reports no working decoder, so the
+    // adapter chain falls through to the whisper.cpp interim path.
+    asrStreamSupported: () => false,
+    asrStreamOpen() {
+      throw new Error("not used by this test");
+    },
+    asrStreamFeed() {
+      throw new Error("not used by this test");
+    },
+    asrStreamPartial() {
+      throw new Error("not used by this test");
+    },
+    asrStreamFinish() {
+      throw new Error("not used by this test");
+    },
+    asrStreamClose() {
+      /* no-op */
     },
     close() {
       calls.push("close");
@@ -454,6 +482,7 @@ describe("LocalInferenceEngine voice surface", () => {
   it("direct TRANSCRIPTION requires voice and surfaces missing ASR backend clearly", async () => {
     const engine = new LocalInferenceEngine();
     const audio = { pcm: new Float32Array([0]), sampleRate: 24000 };
+    // No voice session yet → the bridge accessor fails.
     await expect(engine.transcribePcm(audio)).rejects.toMatchObject({
       code: "not-started",
     });
@@ -466,9 +495,13 @@ describe("LocalInferenceEngine voice surface", () => {
       lifecycleLoaders: lifecycleLoadersOk(),
     });
     await engine.armVoice();
-    await expect(engine.transcribePcm(audio)).rejects.toMatchObject({
-      code: "missing-fused-build",
-    });
+    // Voice is armed but there is no fused ASR (stub backend, no `asr/`
+    // dir, no whisper.cpp binary in this env) → the streaming-transcriber
+    // adapter chain hard-fails with AsrUnavailableError. No silent empty
+    // transcript (AGENTS.md §3 + §9).
+    await expect(engine.transcribePcm(audio)).rejects.toBeInstanceOf(
+      AsrUnavailableError,
+    );
     await engine.stopVoice();
   });
 
@@ -755,6 +788,139 @@ describe("LocalInferenceEngine voice surface", () => {
 
     // Release the deferred synthesis so settle() can resolve cleanly.
     backend.releaseAll();
+    await engine.stopVoice();
+  });
+
+  it("triggerBargeIn aborts an in-flight generation's AbortSignal", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+
+    let observedSignal: AbortSignal | undefined;
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: { signal?: AbortSignal }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        observedSignal = args.signal;
+        // Park until barge-in trips the signal.
+        await new Promise<void>((resolve) => {
+          if (args.signal?.aborted) return resolve();
+          args.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+        return "";
+      },
+    };
+
+    const gen = engine.generate({ prompt: "..." });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(observedSignal).toBeInstanceOf(AbortSignal);
+    expect(observedSignal?.aborted).toBe(false);
+    engine.triggerBargeIn();
+    await gen;
+    expect(observedSignal?.aborted).toBe(true);
+    await engine.stopVoice();
+  });
+});
+
+/** Minimal `SileroLike` so tests can build a `VadDetector` without ONNX. */
+class NoopSilero {
+  readonly windowSamples = 512;
+  readonly sampleRate = 16_000;
+  async process(): Promise<number> {
+    return 0;
+  }
+  reset(): void {}
+}
+
+describe("LocalInferenceEngine.startVoiceSession", () => {
+  let bundleRoot: string;
+
+  beforeEach(() => {
+    bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-voice-session-"));
+  });
+
+  afterEach(() => {
+    rmSync(bundleRoot, { recursive: true, force: true });
+  });
+
+  it("requires an armed voice bridge", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+      }),
+    ).rejects.toMatchObject({ code: "not-started" });
+
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+      }),
+    ).rejects.toMatchObject({ code: "not-started" });
+  });
+
+  it("refuses to run a live session on the StubOmniVoiceBackend (it emits silence)", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    // No backendOverride → the bridge uses StubOmniVoiceBackend.
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+        vad: undefined,
+      }),
+    ).rejects.toMatchObject({ code: "missing-fused-build" });
+    await engine.stopVoice();
+  });
+
+  it("fails loudly with the missing component when no ASR backend is available", async () => {
+    writePresetBundle(bundleRoot);
+    const { VadDetector } = await import("./voice/vad");
+    const { PushMicSource } = await import("./voice/mic-source");
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+    // Inject a VAD (no ONNX) + a push mic source so the only missing piece
+    // is the ASR backend (no fused decoder, no whisper.cpp in this env).
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+        vad: new VadDetector(new NoopSilero()),
+        micSource: new PushMicSource({ sampleRate: 16_000, frameSamples: 512 }),
+      }),
+    ).rejects.toBeInstanceOf(AsrUnavailableError);
     await engine.stopVoice();
   });
 });

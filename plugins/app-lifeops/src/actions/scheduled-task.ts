@@ -611,6 +611,14 @@ export const scheduledTaskAction: Action & {
     "LIST_OVERDUE_FOLLOWUPS",
     "MARK_FOLLOWUP_DONE",
     "SET_FOLLOWUP_THRESHOLD",
+    // PRD action-catalog aliases. The PRD's NotificationIntent and
+    // event-decision flows fold onto SCHEDULED_TASKS with escalation policy.
+    // See packages/docs/action-prd-map.md.
+    "EVENT_SET_DECISION_DEADLINE",
+    "EVENT_TRACK_ASSET_DEADLINES",
+    "NOTIFICATION_CREATE_INTENT",
+    "NOTIFICATION_ACKNOWLEDGE",
+    "NOTIFICATION_ESCALATE",
   ],
   tags: [
     "domain:reminders",

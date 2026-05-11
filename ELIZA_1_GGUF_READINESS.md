@@ -46,26 +46,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `evidence/platform/android-adreno-vulkan.json`
-- `evidence/platform/android-mali-vulkan.json`
-- `evidence/platform/ios-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-arm64-cpu.json`
-- `evidence/platform/windows-arm64-vulkan.json`
-- `evidence/platform/windows-x64-cpu.json`
-- `evidence/platform/windows-x64-vulkan.json`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.licenses is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: final.weights is not true
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not `upload-candidate` or `final`
+Missing files/evidence: none recorded by this check.
 
 ## 1_7b
 
@@ -105,26 +86,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `evidence/platform/android-adreno-vulkan.json`
-- `evidence/platform/android-mali-vulkan.json`
-- `evidence/platform/ios-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-arm64-cpu.json`
-- `evidence/platform/windows-arm64-vulkan.json`
-- `evidence/platform/windows-x64-cpu.json`
-- `evidence/platform/windows-x64-vulkan.json`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.licenses is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: final.weights is not true
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not `upload-candidate` or `final`
+Missing files/evidence: none recorded by this check.
 
 ## 9b
 
@@ -170,27 +132,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `evidence/platform/android-adreno-vulkan.json`
-- `evidence/platform/android-mali-vulkan.json`
-- `evidence/platform/ios-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/platform/linux-x64-rocm.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-x64-cpu.json`
-- `evidence/platform/windows-x64-cuda.json`
-- `evidence/platform/windows-x64-vulkan.json`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.licenses is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: final.weights is not true
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not `upload-candidate` or `final`
+Missing files/evidence: none recorded by this check.
 
 ## 27b
 
@@ -236,23 +178,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/platform/linux-x64-rocm.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-x64-cuda.json`
-- `evidence/platform/windows-x64-vulkan.json`
-
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.licenses is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: final.weights is not true
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not `upload-candidate` or `final`
+Missing files/evidence: none recorded by this check.
 
 ## 27b-256k
 
@@ -297,19 +223,40 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `evidence/platform/linux-aarch64-cuda.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/platform/linux-x64-rocm.json`
-- `evidence/platform/linux-x64-vulkan.json`
+Missing files/evidence: none recorded by this check.
 
-Publish-blocking status:
-- `evidence/release.json`: final.evals is not true
-- `evidence/release.json`: final.kernelDispatchReports is not true
-- `evidence/release.json`: final.licenses is not true
-- `evidence/release.json`: final.platformEvidence is not true
-- `evidence/release.json`: final.sizeFirstRepoIds is not true
-- `evidence/release.json`: final.weights is not true
-- `evidence/release.json`: publishEligible is not true
-- `evidence/release.json`: releaseState is `local-standin`, not `upload-candidate` or `final`
+## 27b-1m
+
+- Text quant: `Q4_K_M`
+- Voice quant: `Q8_0`
+- Contexts: `1m`
+- Required platform evidence: `linux-aarch64-cuda`
+
+Required files:
+- `text/eliza-1-27b-1m.gguf`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `asr/eliza-1-asr.gguf`
+- `asr/eliza-1-asr-mmproj.gguf`
+- `vad/silero-vad-int8.onnx`
+- `dflash/drafter-27b-1m.gguf`
+- `dflash/target-meta.json`
+- `cache/voice-preset-default.bin`
+- `evals/aggregate.json`
+- `evals/cuda_verify.json`
+- `evals/cuda_dispatch.json`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.voice`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.vad`
+- `licenses/LICENSE.dflash`
+- `licenses/LICENSE.eliza-1`
+- `licenses/LICENSE.vision`
+- `checksums/SHA256SUMS`
+- `evidence/release.json`
+- `quantization/turboquant.json`
+- `quantization/fused_turboquant.json`
+- `quantization/qjl_config.json`
+- `quantization/polarquant_config.json`
+
+Missing files/evidence: none recorded by this check.

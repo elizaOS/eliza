@@ -20,6 +20,24 @@ export type CloudRoute =
     };
 
 /**
+ * A route produced by per-feature resolution. Identical to
+ * {@link CloudRoute} but carries the `policy` and `feature` that
+ * produced it so callers can log/trace the decision without
+ * recomputing it.
+ */
+export type FeatureCloudRoute = CloudRoute & {
+  /** The feature id that was resolved. */
+  feature: string;
+  /**
+   * Effective policy applied to the resolution:
+   *   - `local`  — caller forced local; no cloud fallback considered.
+   *   - `cloud`  — caller forced cloud; no local override considered.
+   *   - `auto`   — default `resolveCloudRoute` precedence used.
+   */
+  policy: "local" | "cloud" | "auto";
+};
+
+/**
  * Required inputs to resolve a cloud route. All required — no optionals that hide intent.
  *
  * For `localKeyAuth.kind === "query"`, the helper still returns `source: "local-key"`

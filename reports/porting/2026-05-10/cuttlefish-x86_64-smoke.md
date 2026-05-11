@@ -36,7 +36,7 @@ llama.cpp fork's fused kernels.
 ```
 LLAMA_CPP_TAG    = "v0.4.0-milady"
 LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590"
-LLAMA_CPP_REMOTE = "https://github.com/milady-ai/llama.cpp.git"
+LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git"
 ```
 
 Cache after compile: `~/.cache/eliza-android-agent/llama-cpp-v0.4.0-milady`

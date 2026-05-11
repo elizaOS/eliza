@@ -870,6 +870,73 @@ def filter_json_value(
     return value
 
 
+# --- In-process inline filter ---------------------------------------------
+#
+# The CLI path above writes a ledger and stats sidecar. Inline callers
+# (`format_for_training.format_record`) need a privacy filter pass without
+# any disk I/O. `redact_value` walks a JSON-able structure with the same
+# default regex patterns and returns the redacted copy. It is a strict
+# subset of `filter_json_value` — no backend hook, no ledger, no per-record
+# location tracking — because trajectory records have already been emitted
+# from the runtime by the time `format_record` sees them, and the inline
+# pass is the LAST barrier before JSONL write.
+
+_INLINE_PATTERNS: list[PatternSpec] | None = None
+
+
+def _inline_patterns() -> list[PatternSpec]:
+    """Compile (and cache) the default regex patterns for inline use.
+
+    Imported by `format_for_training` at module import. Any failure here is
+    fatal — `format_record` must not silently fall back to an unfiltered
+    write path.
+    """
+
+    global _INLINE_PATTERNS
+    if _INLINE_PATTERNS is None:
+        compiled = default_patterns(redact_env_secrets=False)
+        if not compiled:
+            raise PrivacyFilterError("inline privacy filter: no patterns compiled")
+        _INLINE_PATTERNS = compiled
+    return _INLINE_PATTERNS
+
+
+def _redact_string_inline(text: str, patterns: list[PatternSpec]) -> str:
+    out = text
+    for spec in patterns:
+        out = spec.pattern.sub(spec.replacement, out)
+    return out
+
+
+def redact_value(value: Any, *, patterns: list[PatternSpec] | None = None) -> Any:
+    """Recursively redact PII/secrets from a JSON-able value.
+
+    Object keys are filtered the same way as values, with stable
+    de-duplication if two keys redact to the same string. Lists, dicts,
+    strings, and scalars are all handled. Non-string scalars pass through
+    unchanged.
+    """
+
+    pats = patterns if patterns is not None else _inline_patterns()
+    if isinstance(value, str):
+        return _redact_string_inline(value, pats)
+    if isinstance(value, list):
+        return [redact_value(item, patterns=pats) for item in value]
+    if isinstance(value, dict):
+        out: dict[str, Any] = {}
+        key_counts: Counter[str] = Counter()
+        for raw_key, raw_child in value.items():
+            key = str(raw_key)
+            filtered_key = _redact_string_inline(key, pats)
+            deduped_key = filtered_key
+            if deduped_key in out:
+                key_counts[filtered_key] += 1
+                deduped_key = f"{filtered_key}__{key_counts[filtered_key]}"
+            out[deduped_key] = redact_value(raw_child, patterns=pats)
+        return out
+    return value
+
+
 def scan_residual_high_risk(
     value: Any,
     *,

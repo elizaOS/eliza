@@ -1,21 +1,19 @@
 /**
- * Multi-backend training CLI for Eliza-native trajectory data.
+ * Training CLI for Eliza-native trajectory data.
  *
  * Usage:
- *   bun run train -- --backend {tinker|native} --dataset <path> \
+ *   bun run train -- --backend native --dataset <path> \
  *       [--task {should_respond|context_routing|action_planner|response|media_description}]
  *
- * Backends consume `eliza_native_v1` model-boundary JSONL rows. The CLI is
- * intentionally a thin dispatcher so each backend can evolve independently.
+ * Consumes `eliza_native_v1` model-boundary JSONL rows.
  */
 
 import { parseArgs } from "node:util";
 import { NATIVE_OPTIMIZERS, runNativeBackend } from "../backends/native.js";
-import { runTinkerBackend } from "../backends/tinker.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 import type { OptimizerName } from "../optimizers/index.js";
 
-const ALLOWED_BACKENDS = new Set(["tinker", "native"]);
+const ALLOWED_BACKENDS = new Set(["native"]);
 const ALLOWED_TASKS = new Set([
   "should_respond",
   "context_routing",
@@ -26,21 +24,21 @@ const ALLOWED_TASKS = new Set([
 const ALLOWED_OPTIMIZERS = new Set<string>(NATIVE_OPTIMIZERS);
 
 const HELP = `Usage:
-  bun run train -- --backend {tinker|native} --dataset <path> [options]
+  bun run train -- --backend native --dataset <path> [options]
 
 Options:
-  --backend NAME       tinker | native (required)
+  --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
   --task NAME          should_respond | context_routing | action_planner | response | media_description
-  --optimizer NAME     (native) instruction-search | prompt-evolution | bootstrap-fewshot
+  --optimizer NAME     instruction-search | prompt-evolution | bootstrap-fewshot
                        Defaults to instruction-search.
-  --baseline PATH      (native) Path to a baseline-prompt text file. Defaults to
+  --baseline PATH      Path to a baseline-prompt text file. Defaults to
                        the first system message in request.messages.
   --help               Show this help text
 `;
 
 interface ParsedTrainArgs {
-  backend: "tinker" | "native";
+  backend: "native";
   dataset: string;
   task?: TrajectoryTrainingTask;
   optimizer?: OptimizerName;
@@ -111,14 +109,6 @@ export async function runTrainCli(argv: string[]): Promise<number> {
   }
 
   switch (parsed.backend) {
-    case "tinker": {
-      const result = await runTinkerBackend({
-        datasetPath: parsed.dataset,
-        task: parsed.task,
-      });
-      for (const note of result.notes) console.log(`[train] ${note}`);
-      return result.invoked ? 0 : 1;
-    }
     case "native": {
       const optimizer = parsed.optimizer ?? "instruction-search";
       const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
@@ -135,8 +125,19 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const trainProvider =
         process.env.TRAIN_MODEL_PROVIDER?.trim() ??
         process.env.TRAINING_PROVIDER?.trim();
-      let adapter: { complete: (input: { system?: string; user: string; temperature?: number; maxTokens?: number; }) => Promise<string> };
-      let useModel: (input: { prompt: string; temperature?: number; maxTokens?: number; }) => Promise<string>;
+      let adapter: {
+        complete: (input: {
+          system?: string;
+          user: string;
+          temperature?: number;
+          maxTokens?: number;
+        }) => Promise<string>;
+      };
+      let useModel: (input: {
+        prompt: string;
+        temperature?: number;
+        maxTokens?: number;
+      }) => Promise<string>;
       if (trainProvider === "cerebras") {
         const helperPath =
           "../../../app-lifeops/test/helpers/lifeops-eval-model.ts";
@@ -156,7 +157,9 @@ export async function runTrainCli(argv: string[]): Promise<number> {
             });
           },
         };
-        console.log("[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)");
+        console.log(
+          "[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)",
+        );
       } else {
         adapter = {
           async complete(input) {
@@ -185,67 +188,36 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       );
 
       // Persist the optimized prompt + lineage so the operator can inspect
-      // and deploy it. Mirrors the live trigger path that lands artifacts in
-      // ~/.milady/optimized-prompts/<task>/.
+      // and deploy it. Routed through `OptimizedPromptService.setPrompt` so
+      // the on-disk versioning (`vN.json` + `current`/`previous` symlinks)
+      // matches what the runtime trigger service writes. Keeps `rollback`
+      // working regardless of which write path produced the artifact.
       const path = await import("node:path");
-      const fs = await import("node:fs/promises");
       const os = await import("node:os");
-      // Match the runtime OptimizedPromptService precedence
-      // (`ELIZA_STATE_DIR` → `~/.eliza`). Honour `MILADY_STATE_DIR` first
-      // for operators that point both at the same dir; else default to
-      // `~/.eliza` so the artifact is automatically picked up by the
-      // production runtime without an extra copy step.
+      const { OptimizedPromptService } = await import("@elizaos/core");
       const stateDir =
         process.env.MILADY_STATE_DIR?.trim() ||
         process.env.ELIZA_STATE_DIR?.trim() ||
         path.join(os.homedir(), ".eliza");
-      const artifactDir = path.join(stateDir, "optimized-prompts", task);
-      await fs.mkdir(artifactDir, { recursive: true });
-      // generatedAt must be a valid ISO timestamp (`Date.parse`-able). Don't
-      // hyphen-quote the colons — the OptimizedPromptService at
-      // `core/src/services/optimized-prompt.ts:345` uses `Date.parse` to
-      // pick the most recent artifact and silently drops files whose
-      // generatedAt doesn't parse. The filename uses a sanitized variant.
-      const stamp = new Date().toISOString();
-      const stampForFilename = stamp.replace(/[:.]/g, "-");
-      const artifactPath = path.join(
-        artifactDir,
-        `${optimizer}-${stampForFilename}.json`,
-      );
-      // Schema must match `OptimizedPromptArtifact` in
-      // `packages/core/src/services/optimized-prompt.ts:82`. Fields the
-      // service reads strictly: { task, optimizer, baseline, prompt,
-      // score, baselineScore, datasetId, datasetSize, generatedAt,
-      // lineage[] }. Don't rename them or the service drops the artifact
-      // with a "failed strict parse" warning.
-      await fs.writeFile(
-        artifactPath,
-        JSON.stringify(
-          {
-            task,
-            optimizer,
-            baseline: baselinePrompt,
-            prompt: result.result.optimizedPrompt,
-            baselineScore: result.baselineScore,
-            score: result.score,
-            datasetSize: result.datasetSize,
-            datasetId: parsed.dataset,
-            generatedAt: stamp,
-            lineage: result.result.lineage,
-            // Carry few-shot demonstrations through to the runtime so
-            // OptimizedPromptService.parseOptimizedPromptArtifact picks them
-            // up. bootstrap-fewshot returns these; instruction-search /
-            // prompt-evolution may carry them through if they consume a
-            // fewshot-bootstrapped seed. Always persist when present.
-            ...(result.result.fewShotExamples
-              ? { fewShotExamples: result.result.fewShotExamples }
-              : {}),
-          },
-          null,
-          2,
-        ) + "\n",
-        "utf-8",
-      );
+      const service = new OptimizedPromptService();
+      service.setStoreRoot(path.join(stateDir, "optimized-prompts"));
+      const artifactPath = await service.setPrompt(task, {
+        task,
+        optimizer,
+        baseline: baselinePrompt,
+        prompt: result.result.optimizedPrompt,
+        baselineScore: result.baselineScore,
+        score: result.score,
+        datasetSize: result.datasetSize,
+        datasetId: parsed.dataset,
+        generatedAt: new Date().toISOString(),
+        lineage: result.result.lineage,
+        // Carry few-shot demonstrations through to the runtime so
+        // OptimizedPromptService.parseOptimizedPromptArtifact picks them up.
+        ...(result.result.fewShotExamples
+          ? { fewShotExamples: result.result.fewShotExamples }
+          : {}),
+      });
       console.log(`[train] artifact: ${artifactPath}`);
       return 0;
     }

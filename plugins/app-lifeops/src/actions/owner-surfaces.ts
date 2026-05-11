@@ -554,6 +554,14 @@ export const personalAssistantAction: Action = {
     "SCHEDULING_NEGOTIATION",
     "SIGN_DOCUMENT",
     "DOCUSIGN",
+    // PRD action-catalog aliases. Travel workflows resolve to action=book_travel
+    // (via the BOOK_TRAVEL handler) on PERSONAL_ASSISTANT.
+    // See packages/docs/action-prd-map.md.
+    "TRAVEL_CAPTURE_PREFERENCES",
+    "TRAVEL_BOOK_FLIGHT",
+    "TRAVEL_BOOK_HOTEL",
+    "TRAVEL_SYNC_ITINERARY_TO_CALENDAR",
+    "TRAVEL_REBOOK_AFTER_CONFLICT",
   ],
   description:
     "Owner personal-assistant workflows. Use action=book_travel for real travel booking, action=scheduling for scheduling negotiation, and action=sign_document for document-signature flows that must be queued for owner approval.",

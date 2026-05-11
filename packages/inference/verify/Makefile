@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -126,6 +126,68 @@ vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	@echo "[kernels/verify] vulkan polar pre-Hadamard query + QJL residual..."
 	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
 
+# Multi-block-per-workgroup Vulkan variants. One SPV family per kernel; the
+# blocks/tokens-per-workgroup specialization constant (constant_id 0) is set
+# at pipeline-create time. Sweeps N ∈ {1,2,4,8}; each must match the same
+# fixture as its base kernel. Additive — not part of the publish gate
+# (vulkan-verify) so a future per-device tuning regression is visible
+# separately from the canonical kernel set.
+vulkan-verify-multiblock: vulkan_verify vulkan-spirv reference-test
+	@for n in 1 2 4 8; do \
+	  echo "[kernels/verify] vulkan turbo3 multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo3_multi.spv     fixtures/turbo3.json     --multi $$n && \
+	  echo "[kernels/verify] vulkan turbo4 multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo4_multi.spv     fixtures/turbo4.json     --multi $$n && \
+	  echo "[kernels/verify] vulkan turbo3_tcq multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo3_tcq_multi.spv fixtures/turbo3_tcq.json --multi $$n && \
+	  echo "[kernels/verify] vulkan qjl multi $$n..." && \
+	  ./vulkan_verify ../vulkan/qjl_multi.spv        fixtures/qjl.json        --multi $$n || exit 1; \
+	done
+
+# Staged Vulkan fallback entrypoints (decode-to-fp32 / non-attention matvec).
+# Expected outputs are computed in vulkan_verify.cpp from the bit-exact C
+# reference (eliza_qjl_mul_mv / eliza_qjl_dequantize_row / eliza_polar_dequantize_row),
+# so no new fixture file is required. Additive — kept out of the publish gate
+# (vulkan-verify) because these are not on the runtime hot path; the runtime
+# dispatches qjl.comp / polar.comp / polar_preht.comp.
+#
+#   * qjl_mul_mv: hard gate. It is the QJL-score parity check (n_heads ==
+#     n_kv_heads == 1, n_rows == n_tokens), reduction-based, and passes
+#     deterministically on every ICD tested (Intel ANV, lavapipe).
+#   * qjl_get_rows / polar_get_rows: informational. These write one fp32
+#     output per element from all 32 invocations (no reduction). They are
+#     bit-exact and deterministic on lavapipe, but on Mesa ANV (Arrow Lake /
+#     Xe-LPG, Mesa 25.2.8) a handful of output elements intermittently read
+#     back 0 — an ANV codegen issue with the all-threads strided SSBO store,
+#     not a logic bug (the reduction-based polar.comp/polar_preht.comp share
+#     the same decode and are clean). Run shown for visibility; `-` so a
+#     flaky ANV result does not fail this target.
+vulkan-verify-fallbacks: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan qjl_mul_mv (== qjl score parity, n_rows=8)..."
+	./vulkan_verify ../vulkan/qjl_mul_mv.spv  fixtures/qjl.json
+	@echo "[kernels/verify] vulkan qjl_get_rows (decode block 0 vs eliza_qjl_dequantize_row; informational on ANV)..."
+	-./vulkan_verify ../vulkan/qjl_get_rows.spv fixtures/qjl.json
+	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=0 (decode block 0 vs eliza_polar_dequantize_row; informational on ANV)..."
+	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=1 (informational on ANV)..."
+	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar_qjl.json
+
+# Fused-attention (QJL-K + TBQ-V / Polar-V) Vulkan gate. vulkan/fused_attn_qjl_tbq.comp
+# and vulkan/fused_attn_qjl_polar.comp port GGML_OP_FUSED_ATTN_QJL_TBQ + the Polar
+# V-mix variant: one-pass FlashAttention-style online softmax per head, the score
+# vector never materialized, a driver-portable 32-thread shared-memory reduction
+# (no subgroup assumptions). vulkan_verify's run_fused_attn() parses the
+# `cases`-array fixture schema (n_kv ∈ {64, 512, 256, 128} standing in for the
+# 4k/32k/128k/256k regimes, GQA fanouts 1/2/4) and diffs against the C reference
+# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar). 1e-3 absolute tolerance.
+# Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
+# Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
+vulkan-verify-fused: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + TBQ3-V..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_tbq.spv   fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar.json
+
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
 # graph-dispatch smoke below. It writes hardware-results evidence, rejects
@@ -185,6 +247,37 @@ metal-verify-multiblock: metal_verify reference-test
 	  ./metal_verify ../metal/turbo3_tcq.metal kernel_turbo3_tcq_dot_multi fixtures/turbo3_tcq.json --multi $$n && \
 	  echo "[kernels/verify] metal qjl multi $$n..." && \
 	  ./metal_verify ../metal/qjl.metal kernel_attn_score_qjl1_256_multi fixtures/qjl.json --multi $$n || exit 1; \
+	done
+
+# Fused-attention (QJL-K + TBQ-V / Polar-V) + Polar pre-Hadamard-query Metal
+# gate. metal/fused_attn_qjl_tbq.metal and metal/fused_attn_qjl_polar.metal port
+# GGML_OP_FUSED_ATTN_QJL_TBQ + the Polar V-mix variant (one-pass online softmax,
+# per-token QJL score via simd_sum, threadgroup-scratch TBQ Hadamard-32 / Polar
+# Hadamard-128, score vector never materialized). metal/polar_preht.metal adds
+# kernel_attn_score_q4_polar_preht_f32(_multi) — Polar dot vs a pre-Hadamarded
+# query. metal_verify's run_fused_attn() / run_polar_preht() parse the cases-array
+# and the polar_preht fixture; both diff bit-for-bit against the C references
+# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar / eliza_polar_mul_mv).
+# 1e-3 absolute tolerance.
+#
+# AUTHORED — hardware-verify pending: the kernels are byte-faithful mirrors of
+# the hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
+# Intel ARL Mesa ANV). They require an Apple-Silicon Mac to run this target; until
+# then the fused_attn Metal capability bit stays not-runtime-ready (fused_attn is
+# an optimization on top of the five required kernels — AGENTS.md §3 — not a
+# required kernel).
+# Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
+# Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
+metal-verify-fused: metal_verify reference-test
+	@echo "[kernels/verify] metal fused-attn QJL-K + TBQ3-V..."
+	./metal_verify ../metal/fused_attn_qjl_tbq.metal   kernel_fused_attn_qjl_tbq3_f32 fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] metal fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
+	./metal_verify ../metal/fused_attn_qjl_polar.metal kernel_fused_attn_qjl_polar_f32 fixtures/fused_attn_qjl_polar.json
+	@echo "[kernels/verify] metal Polar pre-Hadamard query score (use_qjl 0/1)..."
+	./metal_verify ../metal/polar_preht.metal kernel_attn_score_q4_polar_preht_f32 fixtures/polar_preht.json
+	@for n in 2 3 4 8; do \
+	  echo "[kernels/verify] metal Polar pre-Hadamard query score multi $$n..." && \
+	  ./metal_verify ../metal/polar_preht.metal kernel_attn_score_q4_polar_preht_f32_multi fixtures/polar_preht.json --multi $$n || exit 1; \
 	done
 
 # Metal performance harness (macOS only). Sibling of metal_verify; measures
@@ -263,7 +356,13 @@ VULKAN_SHADERS = \
     ../vulkan/qjl_mul_mv.spv \
     ../vulkan/polar.spv \
     ../vulkan/polar_preht.spv \
-    ../vulkan/polar_get_rows.spv
+    ../vulkan/polar_get_rows.spv \
+    ../vulkan/turbo3_multi.spv \
+    ../vulkan/turbo4_multi.spv \
+    ../vulkan/turbo3_tcq_multi.spv \
+    ../vulkan/qjl_multi.spv \
+    ../vulkan/fused_attn_qjl_tbq.spv \
+    ../vulkan/fused_attn_qjl_polar.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 
@@ -385,6 +484,25 @@ else
 	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
 		echo "[cuda-verify] fused QJL-K + TBQ-V attention ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
 	else echo "[cuda-verify] fused_attn_qjl_tbq.json not present — fused-attention-reference agent owns it; skipping" ; fi
+endif
+
+# Focused fused-attention CUDA gate. cuda_verify links a fixture-parity harness
+# with a fused_attn_qjl_tbq3_kernel (warp reductions, online softmax, TCQ
+# codebook in __constant__, page tiling) + the DP4A int8-QJL path; the
+# production shape lives in cuda/fused-attn-qjl-tbq.cu (AUTHORED — hardware-verify
+# pending; mirror it into the fork's ggml-cuda/ via the kernel-patches hook and
+# build with -DGGML_CUDA_FUSED_ATTN_QJL=ON). Run on an NVIDIA host via
+# `verify/cuda_runner.sh` — no NVIDIA hardware on the authoring machine.
+# fused_attn stays out of requiredRuntimeCapabilityKeys (AGENTS.md §3).
+cuda-verify-fused:
+ifeq ($(NVCC),)
+	@echo "CUDA toolchain not found — run verify/cuda_runner.sh on an NVIDIA host."
+	@false
+else
+	$(MAKE) cuda
+	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
+		echo "[cuda-verify-fused] fused QJL-K + TBQ-V attention (+ DP4A QJL cross-check) ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
+	else echo "[cuda-verify-fused] fused_attn_qjl_tbq.json missing — run reference-test first" ; false ; fi
 endif
 
 # Hardware runners. These intentionally fail without matching physical

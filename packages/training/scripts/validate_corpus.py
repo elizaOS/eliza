@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Per-task_type schema validator for eliza training corpora.
 
+Handles two row shapes: the canonical `eliza_native_v1` boundary record
+(routed to validate_native_v1) and the legacy flat ElizaRecord intermediate
+(routed per metadata.task_type, below). See docs/dataset/CANONICAL_RECORD.md.
+
 `scripts/lib/eliza_record.py:is_valid()` only enforces the FLOOR (top-level
 fields present, non-empty content). This script enforces the CEILING — what
 the eliza runtime actually parses for each `metadata.task_type`:
@@ -88,6 +92,55 @@ ROUTING_ACTIONS = {ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP}
 # so the validator and the adapters scrub the same set.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from scripts.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
+from scripts.lib.native_record import (  # noqa: E402
+    FORMAT as ELIZA_NATIVE_FORMAT,
+    validate_native_record,
+)
+
+# Stale action names that must not appear in fresh corpus rows (renamed/removed
+# in the runtime — see config/eliza1_action_aliases.json and action-docs.ts).
+_STALE_ACTION_NAMES = {
+    "RUN_SKILL_SCRIPT": "USE_SKILL", "GET_SKILL_GUIDANCE": "USE_SKILL",
+    "SPAWN_AGENT": "TASKS", "SEND_TO_AGENT": "TASKS", "STOP_AGENT": "TASKS",
+    "TASK_CONTROL": "TASKS", "TASK_HISTORY": "TASKS", "TASK_SHARE": "TASKS",
+    "TASK_CALL": "TASKS", "SHELL_COMMAND": "SHELL",
+}
+
+
+def _native_tool_name(call: dict) -> str | None:
+    if not isinstance(call, dict):
+        return None
+    fn = call.get("function") if isinstance(call.get("function"), dict) else {}
+    name = call.get("toolName") or call.get("name") or fn.get("name")
+    return name if isinstance(name, str) else None
+
+
+def validate_native_v1(rec: dict) -> list[tuple[str, str]]:
+    """Validator for canonical `eliza_native_v1` corpus rows (the runtime
+    generateText boundary shape; see docs/dataset/CANONICAL_RECORD.md)."""
+    errs: list[tuple[str, str]] = []
+    ok, why = validate_native_record(rec)
+    if not ok:
+        errs.append(("native_v1_invalid_shape", why))
+        return errs
+    resp = rec.get("response") if isinstance(rec.get("response"), dict) else {}
+    for call in resp.get("toolCalls") or []:
+        name = _native_tool_name(call)
+        if name and name in _STALE_ACTION_NAMES:
+            errs.append(("native_v1_stale_action",
+                         f"response tool call {name!r} is removed/renamed — "
+                         f"use {_STALE_ACTION_NAMES[name]!r} "
+                         "(config/eliza1_action_aliases.json)"))
+    # Confirm it renders to a training example.
+    try:
+        from scripts.format_for_training import format_record  # noqa: PLC0415
+        rendered = format_record(rec)
+        if not rendered or not rendered.get("messages"):
+            errs.append(("native_v1_unrenderable",
+                         "format_record() produced no messages"))
+    except Exception as e:  # noqa: BLE001
+        errs.append(("native_v1_render_error", repr(e)))
+    return errs
 
 # task_types treated as `should_respond_with_context` for validation purposes.
 ROUTING_TASK_TYPES = {"should_respond_with_context", "should_respond",
@@ -491,6 +544,11 @@ def schema_agnostic_checks(rec: dict, decoded: Any | None) -> list[tuple[str, st
 
 def validate_record(rec: dict) -> list[tuple[str, str]]:
     """Top-level dispatcher. Returns aggregated errors; empty list = valid."""
+    # Canonical `eliza_native_v1` rows (the runtime generateText boundary shape)
+    # have their own validator — they don't carry the flat-ElizaRecord fields
+    # (roomName/currentMessage/expectedResponse/availableActions).
+    if rec.get("format") == ELIZA_NATIVE_FORMAT:
+        return validate_native_v1(rec)
     md = rec.get("metadata") or {}
     task_type = md.get("task_type") or ""
     expected = rec.get("expectedResponse") or ""

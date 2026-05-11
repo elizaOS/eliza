@@ -250,7 +250,7 @@ async function resolveAdapter(
     process.env.TRAINING_PROVIDER?.trim();
   if (trainProvider === "cerebras") {
     const { getTrainingUseModelAdapter } = await import(
-      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+      "./cerebras-eval-model.js"
     );
     return createRuntimeAdapter(getTrainingUseModelAdapter());
   }

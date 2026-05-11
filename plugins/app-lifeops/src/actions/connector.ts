@@ -1440,6 +1440,10 @@ export const connectorAction: Action & {
     "DISCONNECT_SERVICE",
     "CHECK_CONNECTION",
     "SERVICE_STATUS",
+    // PRD action-catalog alias. NotificationIntent endpoint resolution maps
+    // to CONNECTOR.list + CONNECTOR.status (the registered endpoints).
+    // See packages/docs/action-prd-map.md.
+    "NOTIFICATION_RESOLVE_ENDPOINTS",
   ],
   tags: [
     "domain:meta",

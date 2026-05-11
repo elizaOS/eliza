@@ -26,6 +26,7 @@ import {
   type OptimizationExample,
   type OptimizerName,
   type OptimizerResult,
+  type PromptScorer,
   runBootstrapFewshot,
   runInstructionSearch,
   runPromptEvolution,
@@ -59,6 +60,19 @@ export interface NativeBackendResult {
   baselineScore: number;
   result: OptimizerResult;
   notes: string[];
+  /**
+   * Parsed examples from the JSONL dataset. Surfaced so callers (the
+   * orchestrator's promotion gate) can re-score on the same data without
+   * re-parsing the file.
+   */
+  dataset: OptimizationExample[];
+  /**
+   * Scorer instance used during optimization. Surfaced for the same reason as
+   * `dataset` — the promotion gate runs the candidate against the incumbent
+   * with the same scoring primitive (Jaccard or planner-action-match,
+   * depending on the task).
+   */
+  scorer: PromptScorer;
 }
 
 interface JsonlMessage {
@@ -119,7 +133,10 @@ function rowToExample(
   let system: string | undefined;
   let user: string | undefined;
   let expected: string | undefined;
-  if (typeof row.request?.system === "string" && row.request.system.length > 0) {
+  if (
+    typeof row.request?.system === "string" &&
+    row.request.system.length > 0
+  ) {
     system = row.request.system;
   }
   const messages = row.request?.messages ?? [];
@@ -177,6 +194,12 @@ export async function runNativeBackend(
   options: NativeBackendOptions,
 ): Promise<NativeBackendResult> {
   const dataset = parseJsonlDataset(options.datasetPath);
+  const adapter =
+    options.adapter ?? createRuntimeAdapter(options.runtime.useModel);
+  const scorer = createPromptScorer(adapter, {
+    compare: options.task === "action_planner" ? scorePlannerAction : undefined,
+  });
+
   if (dataset.length === 0) {
     return {
       invoked: false,
@@ -194,14 +217,11 @@ export async function runNativeBackend(
       notes: [
         `dataset at ${options.datasetPath} parsed to 0 usable rows; nothing to optimize`,
       ],
+      dataset,
+      scorer,
     };
   }
 
-  const adapter =
-    options.adapter ?? createRuntimeAdapter(options.runtime.useModel);
-  const scorer = createPromptScorer(adapter, {
-    compare: options.task === "action_planner" ? scorePlannerAction : undefined,
-  });
   const result = await dispatchOptimizer(options.optimizer, {
     baselinePrompt: options.baselinePrompt,
     dataset,
@@ -220,6 +240,8 @@ export async function runNativeBackend(
     notes: [
       `optimizer=${options.optimizer} dataset=${basename(options.datasetPath)} size=${dataset.length} baseline=${result.baseline.toFixed(3)} optimized=${result.score.toFixed(3)}`,
     ],
+    dataset,
+    scorer,
   };
 }
 

@@ -1,8 +1,17 @@
 export {
   BargeInController,
+  type BargeInControllerConfig,
   type BargeInListener,
   type CancelSignal,
 } from "./barge-in";
+export {
+  buildLocalEmbeddingRoute,
+  EMBEDDING_DIR_REL_PATH,
+  type LocalEmbeddingRoute,
+  type LocalEmbeddingSource,
+  POOLED_TEXT_EMBEDDING_TIERS,
+  resolveLocalEmbeddingSource,
+} from "./embedding";
 export {
   decodeMonoPcm16Wav,
   defaultLifecycleLoaders,
@@ -11,8 +20,8 @@ export {
   encodeMonoPcm16Wav,
   FfiOmniVoiceBackend,
   StubOmniVoiceBackend,
-  VoiceStartupError,
 } from "./engine-bridge";
+export { VoiceStartupError } from "./errors";
 export {
   type ArmedResources,
   type TextResources,
@@ -23,6 +32,12 @@ export {
   type VoiceLifecycleState,
 } from "./lifecycle";
 export {
+  DesktopMicSource,
+  type DesktopMicSourceOptions,
+  PushMicSource,
+  pipeMicToRingBuffer,
+} from "./mic-source";
+export {
   CharacterPhonemeStub,
   type Phoneme,
   type PhonemeTokenizer,
@@ -30,18 +45,30 @@ export {
 export {
   type CachedPhraseAudio,
   canonicalizePhraseText,
+  DEFAULT_PHRASE_CACHE_SEED,
+  FIRST_AUDIO_FILLERS,
   PhraseCache,
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
+  type AsrTokenStreamer,
   type DraftProposer,
-  type StreamingTranscriber,
   type TargetVerifier,
   VoicePipeline,
   type VoicePipelineConfig,
   type VoicePipelineDeps,
   type VoicePipelineEvents,
 } from "./pipeline";
+export {
+  type DflashTextRunner,
+  dflashTextRunner,
+  FfiAsrTokenStreamer,
+  LlamaServerDraftProposer,
+  LlamaServerTargetVerifier,
+  MissingAsrTranscriber,
+  StreamingTranscriberTokenStreamer,
+  splitTranscriptToTokens,
+} from "./pipeline-impls";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
@@ -50,6 +77,7 @@ export {
   VoiceScheduler,
 } from "./scheduler";
 export {
+  createDflashDrafterHandle,
   type DflashDrafterHandle,
   type KernelSet,
   type MmapRegionHandle,
@@ -59,11 +87,54 @@ export {
   type SharedTokenizer,
 } from "./shared-resources";
 export {
+  DEFAULT_VOICE_ID,
+  DEFAULT_VOICE_PRESET_REL_PATH,
   type LoadedPresetBundle,
   type PresetBundlePaths,
   SpeakerPresetCache,
+  type SpeakerPresetCacheOptions,
+  voicePresetPath,
 } from "./speaker-preset-cache";
+export {
+  ASR_SAMPLE_RATE,
+  AsrUnavailableError,
+  BaseStreamingTranscriber,
+  type CreateStreamingTranscriberOptions,
+  createStreamingTranscriber,
+  downloadWhisperModel,
+  FfiStreamingTranscriber,
+  ffiSupportsStreamingAsr,
+  makeWhisperCppDecoder,
+  parseWhisperStdout,
+  resampleLinear,
+  resolveWhisperBinary,
+  resolveWhisperModelPath,
+  type WhisperCppOptions,
+  WhisperCppStreamingTranscriber,
+  type WhisperDecoder,
+  whisperDir,
+} from "./transcriber";
+export {
+  type VoiceGenerateRequest,
+  VoiceTurnController,
+  type VoiceTurnControllerConfig,
+  type VoiceTurnControllerDeps,
+  type VoiceTurnControllerEvents,
+  type VoiceTurnOutcome,
+} from "./turn-controller";
 export * from "./types";
+export {
+  createSileroVadDetector,
+  RmsEnergyGate,
+  type RmsEnergyGateConfig,
+  resolveSileroVadPath,
+  rms,
+  SILERO_VAD_BUNDLE_REL_PATH,
+  SileroVad,
+  VadDetector,
+  type VadDetectorConfig,
+  VadUnavailableError,
+} from "./vad";
 export {
   readVoicePresetFile,
   VOICE_PRESET_HEADER_BYTES,
@@ -74,6 +145,21 @@ export {
   type VoicePresetSeedPhrase,
   writeVoicePresetFile,
 } from "./voice-preset-format";
+export {
+  loadBundledWakeWordModel,
+  OPENWAKEWORD_DEFAULT_HEAD,
+  OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
+  OPENWAKEWORD_DIR_REL_PATH,
+  OPENWAKEWORD_EMBEDDING_REL_PATH,
+  OPENWAKEWORD_MELSPEC_REL_PATH,
+  OpenWakeWordDetector,
+  OpenWakeWordModel,
+  resolveWakeWordModel,
+  type WakeWordConfig,
+  type WakeWordModel,
+  type WakeWordModelPaths,
+  WakeWordUnavailableError,
+} from "./wake-word";
 
 /**
  * Voice on/off invariants (binding for every consumer of this module):

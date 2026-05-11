@@ -1,0 +1,776 @@
+[
+  {
+    "id": "health.water_intake_today",
+    "name": "Today's water intake",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "how much water have I drunk today?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "water_intake_ml",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "ml",
+      "water"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Read the total water consumption for the current day."
+  },
+  {
+    "id": "health.blood_pressure_last_month",
+    "name": "Average blood pressure last month",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "show me my average systolic and diastolic blood pressure over the past 30 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "blood_pressure_systolic",
+          "days": 30
+        }
+      },
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "blood_pressure_diastolic",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "systolic",
+      "diastolic"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Aggregates systolic and diastolic readings over a 30\u2011day window."
+  },
+  {
+    "id": "health.calories_consumed_yesterday",
+    "name": "Calories consumed yesterday",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "what was my total calorie intake yesterday?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "calories",
+          "date": "2026-05-09"
+        }
+      }
+    ],
+    "required_outputs": [
+      "calorie"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Fetches the summed calories for the day prior to today."
+  },
+  {
+    "id": "health.weight_trend_30_days",
+    "name": "Weight trend last 30 days",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "how has my weight changed over the last month?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "weight_kg",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "kg",
+      "weight"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Displays a 30\u2011day weight trend to spot gains or losses."
+  },
+  {
+    "id": "health.body_fat_percentage_today",
+    "name": "Today's body fat percentage",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "what is my current body fat percentage?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "body_fat_percent",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "percent",
+      "fat"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Retrieves the latest body fat measurement."
+  },
+  {
+    "id": "health.resting_heart_rate_today",
+    "name": "Resting heart rate today",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "give me my resting heart rate for today.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "resting_heart_rate",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "bpm",
+      "heart"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Simple read of the resting heart\u2011rate metric for the current day."
+  },
+  {
+    "id": "health.sleep_quality_last_14_days",
+    "name": "Sleep quality trend last two weeks",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "show me how my sleep quality has been over the past two weeks.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "sleep_quality_score",
+          "days": 14
+        }
+      }
+    ],
+    "required_outputs": [
+      "quality",
+      "sleep"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Provides a 14\u2011day trend of sleep quality scores."
+  },
+  {
+    "id": "health.step_count_last_7_days",
+    "name": "Step count last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "how many steps did I take each day for the past week?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "steps",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": [
+      "steps"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Returns a daily step count series for the last 7 days."
+  },
+  {
+    "id": "health.oxygen_saturation_today",
+    "name": "Today's blood oxygen saturation",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "what was my blood oxygen level today?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "oxygen_saturation_percent",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "percent",
+      "oxygen"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Fetches the SpO\u2082 reading for the current day."
+  },
+  {
+    "id": "health.cholesterol_last_30_days",
+    "name": "Cholesterol trend last month",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "show me my LDL and HDL cholesterol levels over the past 30 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "cholesterol_ldl",
+          "days": 30
+        }
+      },
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "cholesterol_hdl",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "LDL",
+      "HDL"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Provides trends for both LDL and HDL cholesterol over a month."
+  },
+  {
+    "id": "health.glucose_last_7_days",
+    "name": "Blood glucose trend last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "what's my fasting blood glucose for each of the past 7 days?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "blood_glucose_mgdl",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": [
+      "mg/dL",
+      "glucose"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Shows a 7\u2011day series of fasting glucose measurements."
+  },
+  {
+    "id": "health.heart_rate_variability_today",
+    "name": "Today's HRV",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "give me my heart rate variability for today.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "hrv_rmssd_ms",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "ms",
+      "HRV"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Retrieves the RMSSD value for HRV on the current date."
+  },
+  {
+    "id": "health.body_temperature_today",
+    "name": "Current body temperature",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "what's my body temperature right now?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "body_temperature_c",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "\u00b0C",
+      "temperature"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Reads the latest body temperature measurement."
+  },
+  {
+    "id": "health.sleep_duration_last_night",
+    "name": "Sleep duration last night",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "how many hours did I sleep last night?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_hours",
+          "date": "2026-05-09"
+        }
+      }
+    ],
+    "required_outputs": [
+      "hours",
+      "sleep"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Fetches the total sleep duration for the previous night."
+  },
+  {
+    "id": "health.resting_heart_rate_trend_14_days",
+    "name": "Resting heart rate trend two weeks",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "show my resting heart rate trend for the past 14 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "resting_heart_rate",
+          "days": 14
+        }
+      }
+    ],
+    "required_outputs": [
+      "bpm",
+      "heart"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Provides a 14\u2011day series of resting heart\u2011rate values."
+  },
+  {
+    "id": "health.water_intake_last_7_days",
+    "name": "Water intake trend last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "how much water have I been drinking each day over the past week?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "water_intake_ml",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": [
+      "ml",
+      "water"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Shows daily water consumption for the last seven days."
+  },
+  {
+    "id": "health.weight_today",
+    "name": "Today's weight",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "what is my weight right now?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "weight_kg",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "kg",
+      "weight"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 3,
+    "description": "Simple read of the latest weight measurement."
+  },
+  {
+    "id": "health.calories_burned_last_3_days",
+    "name": "Calories burned last three days",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "how many calories have I burned in the last three days?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "calories_burned",
+          "days": 3
+        }
+      }
+    ],
+    "required_outputs": [
+      "calorie",
+      "burned"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Aggregates daily calories burned for the past three days."
+  },
+  {
+    "id": "health.body_fat_trend_60_days",
+    "name": "Body fat percentage trend over 60 days",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "show the trend of my body fat percentage for the last 60 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "body_fat_percent",
+          "days": 60
+        }
+      }
+    ],
+    "required_outputs": [
+      "percent",
+      "fat"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Provides a two\u2011month body\u2011fat trend."
+  },
+  {
+    "id": "health.sleep_efficiency_last_night",
+    "name": "Sleep efficiency last night",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "what was my sleep efficiency for last night?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_efficiency_percent",
+          "date": "2026-05-09"
+        }
+      }
+    ],
+    "required_outputs": [
+      "percent",
+      "efficiency"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Retrieves the sleep efficiency percentage for the previous night."
+  },
+  {
+    "id": "health.resting_heart_rate_average_7_days",
+    "name": "Average resting heart rate last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "what's my average resting heart rate for the past week?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "resting_heart_rate",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": [
+      "bpm",
+      "average"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Computes the mean resting heart\u2011rate over a 7\u2011day span."
+  },
+  {
+    "id": "health.oxygen_saturation_trend_14_days",
+    "name": "Oxygen saturation trend last two weeks",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "tara_night",
+    "instruction": "show my blood oxygen saturation trend for the past 14 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "oxygen_saturation_percent",
+          "days": 14
+        }
+      }
+    ],
+    "required_outputs": [
+      "percent",
+      "oxygen"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Displays a 14\u2011day series of SpO\u2082 percentages."
+  },
+  {
+    "id": "health.calories_intake_last_7_days",
+    "name": "Calorie intake trend last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "alex_eng",
+    "instruction": "how many calories did I consume each day for the last 7 days?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "calories",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": [
+      "calorie",
+      "intake"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Provides a daily breakdown of calorie consumption for a week."
+  },
+  {
+    "id": "health.sleep_quality_today",
+    "name": "Today's sleep quality score",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "owen_retiree",
+    "instruction": "what's my sleep quality score for today?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "sleep_quality_score",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "score",
+      "sleep"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Reads the sleep quality metric for the current day."
+  },
+  {
+    "id": "health.step_count_average_last_30_days",
+    "name": "Average daily steps last month",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "nora_consultant",
+    "instruction": "what is my average daily step count over the past 30 days?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "steps",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "steps",
+      "average"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Calculates the mean steps per day for the last month."
+  },
+  {
+    "id": "health.body_temperature_trend_7_days",
+    "name": "Body temperature trend last week",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "sam_founder",
+    "instruction": "show my body temperature readings for each of the past 7 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "body_temperature_c",
+          "days": 7
+        }
+      }
+    ],
+    "required_outputs": [
+      "\u00b0C",
+      "temperature"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 5,
+    "description": "Returns a 7\u2011day series of body temperature measurements."
+  },
+  {
+    "id": "health.glucose_trend_30_days",
+    "name": "Blood glucose trend last month",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "give me my fasting blood glucose trend for the past 30 days.",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "trend",
+          "metric": "blood_glucose_mgdl",
+          "days": 30
+        }
+      }
+    ],
+    "required_outputs": [
+      "mg/dL",
+      "glucose"
+    ],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 6,
+    "description": "Displays a month\u2011long fasting glucose trend."
+  },
+  {
+    "id": "health.resting_heart_rate_today_fallback",
+    "name": "Resting heart rate today with fallback",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "kai_student",
+    "instruction": "what's my resting heart rate?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "resting_heart_rate",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "bpm",
+      "heart"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "My resting heart rate is 62 bpm.",
+      "applies_when": "agent asks which day"
+    },
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Tests fallback when the user omits the date."
+  },
+  {
+    "id": "health.weight_today_fallback",
+    "name": "Weight today with fallback",
+    "domain": "health",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "what's my weight?",
+    "ground_truth_actions": [
+      {
+        "name": "HEALTH",
+        "kwargs": {
+          "subaction": "by_metric",
+          "metric": "weight_kg",
+          "date": "2026-05-10"
+        }
+      }
+    ],
+    "required_outputs": [
+      "kg",
+      "weight"
+    ],
+    "first_question_fallback": {
+      "canned_answer": "Your weight is 68 kg.",
+      "applies_when": "agent asks for the date"
+    },
+    "world_seed": 2026,
+    "max_turns": 4,
+    "description": "Ensures the assistant can answer without explicit date clarification."
+  }
+]

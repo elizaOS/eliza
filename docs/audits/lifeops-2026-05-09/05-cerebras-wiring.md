@@ -82,11 +82,10 @@ what the redirect to Cerebras fixes.
 The Atropos backend was deleted in W0-X2 (closes pipeline gap C2). Nothing
 to wire here.
 
-### G. Tinker backend
+### G. ~~Tinker backend~~ — removed
 
-| File | Notes |
-|---|---|
-| `eliza/plugins/app-training/src/backends/tinker.ts` | Job submitter only, no inline LLM calls. Out of scope. |
+The Tinker backend was deleted in W1-P4 (closes pipeline gap M21). Nothing
+to wire here.
 
 ### H. Production callsites (RUNTIME — explicitly NOT touched)
 
@@ -679,7 +678,6 @@ Failure modes the script catches:
 
 ## 5) Out-of-scope (deliberate)
 
-- `eliza/plugins/app-training/src/backends/tinker.ts` — job submitter.
 - All `eliza/plugins/app-lifeops/src/**` runtime callsites — they are
   the agent itself, must stay on Anthropic.
 - `eliza/plugins/app-lifeops/src/lifeops/goal-semantic-evaluator.ts`

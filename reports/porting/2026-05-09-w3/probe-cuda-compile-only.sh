@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # probe-cuda-compile-only.sh
-# Drive a per-.cu compile-only PTX emit pass against the milady-ai/llama.cpp
+# Drive a per-.cu compile-only PTX emit pass against the elizaOS/llama.cpp
 # CUDA backend, for every arch in CUDA_ARCHS. Run AFTER a successful
 # `cmake --build build-cuda --target ggml-cuda` so includes_CUDA.rsp exists.
 #

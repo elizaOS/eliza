@@ -31,6 +31,7 @@
  */
 
 import { findCatalogModel } from "./catalog";
+import type { StructuredGenerateParams } from "./structured-output";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
 
@@ -82,7 +83,7 @@ export interface BackendPlan {
   overrides?: BackendLoadOverrides;
 }
 
-export interface GenerateArgs {
+export interface GenerateArgs extends StructuredGenerateParams {
   prompt: string;
   stopSequences?: string[];
   /** Upper bound on output tokens; defaults to 2048. */

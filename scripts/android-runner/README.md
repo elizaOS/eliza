@@ -2,7 +2,7 @@
 
 Cold-runnable shell script that exercises the on-device Eliza agent on an
 arm64-v8a Android phone using the Eliza-1 local GGUF path backed by the
-`milady-ai/llama.cpp` fused kernels.
+`elizaOS/llama.cpp` fused kernels.
 
 ## Prerequisites
 
