@@ -1226,6 +1226,26 @@ def _published_at_now() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _kernel_manifest_fragments_from_layout(
+    layout: Mapping[str, Sequence[Path]],
+) -> list[dict[str, Any]]:
+    """Pull the ``kernel_manifest`` fragments out of the quantization sidecars.
+
+    The sidecars were already shape-validated by
+    ``_validate_quantization_sidecars`` (which is what populates
+    ``layout["quantization_sidecars"]``); here we just read each one's
+    ``kernel_manifest`` object so ``build_manifest`` can fold the recipe
+    layout pins into ``kernels.recipeManifest``.
+    """
+    fragments: list[dict[str, Any]] = []
+    for sidecar in layout.get("quantization_sidecars", []):
+        data = _read_sidecar(sidecar)
+        kernel_manifest = data.get("kernel_manifest")
+        if isinstance(kernel_manifest, dict):
+            fragments.append(kernel_manifest)
+    return fragments
+
+
 def assemble_manifest(
     ctx: PublishContext,
     *,
@@ -1344,6 +1364,7 @@ def assemble_manifest(
             voice_frozen=True,
             voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
             voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
+            kernel_manifest_fragments=_kernel_manifest_fragments_from_layout(layout),
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(

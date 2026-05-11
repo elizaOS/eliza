@@ -10,12 +10,20 @@
  *
  * All entry points are `extern "C"` (no name mangling) so any FFI
  * loader (bun:ffi, node-ffi, koffi, JNI, Swift, Rust, Python) sees the
- * same symbol set. The shape is intentionally small + synchronous in
+ * same symbol set. The shape was intentionally small + synchronous in
  * v1 to match Wave-4-C's lifecycle contract:
  *   - opaque context pointer, created from a bundle root
  *   - mmap acquire/evict for voice on/off
- *   - synchronous TTS / ASR forward passes (streaming graph upgrades
- *     are deferred to v2 — bump ELIZA_INFERENCE_ABI_VERSION when added).
+ *   - synchronous TTS / ASR forward passes.
+ *
+ * ABI v2 adds the streaming ASR session API
+ * (`eliza_inference_asr_stream_open/feed/partial/finish/close`) so a
+ * `StreamingTranscriber` (see voice/transcriber.ts) can feed PCM frames
+ * and read a running partial transcript without buffering the whole
+ * utterance JS-side. v2 additions are *additive symbols* — a v1 caller
+ * is unaffected — but the version bumps so loaders can require v2 for
+ * the streaming path. The batch `eliza_inference_asr_transcribe` stays
+ * for one-shot callers.
  *
  * Errors are propagated via heap-allocated `char *` strings written to
  * `out_error` arguments; callers MUST free them with
@@ -42,9 +50,9 @@ extern "C" {
 /* Bump on any breaking shape change. The Node loader checks the value
  * returned by `eliza_inference_abi_version()` against this constant on
  * load and refuses to bind if they disagree. */
-#define ELIZA_INFERENCE_ABI_VERSION 1
+#define ELIZA_INFERENCE_ABI_VERSION 2
 
-/* Returns a static, NUL-terminated string of the form "1" matching
+/* Returns a static, NUL-terminated string of the form "2" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -144,6 +152,79 @@ int eliza_inference_asr_transcribe(
     char * out_text,
     size_t max_text_bytes,
     char ** out_error);
+
+/* ---- Streaming ASR (ABI v2) --------------------------------------- *
+ *
+ * A streaming ASR session: feed PCM frames as they arrive (post-VAD-gate)
+ * and read a running partial transcript between feeds. The library owns
+ * the internal audio buffer + decoder state and runs windowed decode
+ * passes; the JS side never re-submits earlier audio.
+ *
+ *   open  → feed* → partial* → finish → close
+ *
+ * `finish` force-finalizes (drains buffered audio, last decode pass) and
+ * yields the final transcript; the session must still be `close`d after.
+ * All calls return >= 0 on success or a negative ELIZA_* code with
+ * `*out_error` populated. The token-id out-params (`out_tokens` /
+ * `io_n_tokens`) are OPTIONAL — pass NULL to skip; when supplied, the
+ * library writes up to `*io_n_tokens` text-model token ids for the
+ * current transcript (the fused build shares the text vocabulary, so
+ * these feed STT-finish token injection without re-tokenization) and
+ * updates `*io_n_tokens` to the count actually written.
+ */
+
+/* Capability probe: returns 1 when this build has a working streaming ASR
+ * decoder, 0 when it does not (stub / ASR-disabled build). Callers use
+ * this to choose the streaming path vs an interim adapter WITHOUT having
+ * to open a session and catch ELIZA_ERR_NOT_IMPLEMENTED. */
+int eliza_inference_asr_stream_supported(void);
+
+/* Opaque streaming-ASR session. One per active speech segment. */
+typedef struct EliAsrStream EliAsrStream;
+
+/* Open a streaming ASR session anchored to `ctx`. `sample_rate_hz` is the
+ * rate of the PCM the caller will feed (the library resamples as needed).
+ * Returns NULL on failure with `*out_error` populated. */
+EliAsrStream * eliza_inference_asr_stream_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error);
+
+/* Feed `n_samples` fp32 mono PCM samples at the session's sample rate.
+ * Returns the number of samples consumed (>= 0) on success, negative
+ * ELIZA_* on failure. */
+int eliza_inference_asr_stream_feed(
+    EliAsrStream * stream,
+    const float * pcm,
+    size_t n_samples,
+    char ** out_error);
+
+/* Read the current running partial transcript. Writes a UTF-8
+ * NUL-terminated string into `out_text` (up to `max_text_bytes - 1`
+ * bytes + terminator); optionally writes token ids into `out_tokens`
+ * (see header note). Returns the number of text bytes written (excluding
+ * the terminator) on success, negative ELIZA_* on failure. */
+int eliza_inference_asr_stream_partial(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error);
+
+/* Drain remaining buffered audio, run a final decode pass, and write the
+ * final transcript (same out args as `_partial`). The session is still
+ * valid until `_close`. Returns text bytes written or negative ELIZA_*. */
+int eliza_inference_asr_stream_finish(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error);
+
+/* Close + free a streaming ASR session. Idempotent on NULL. */
+void eliza_inference_asr_stream_close(EliAsrStream * stream);
 
 /* ---- Memory ownership helpers -------------------------------------- */
 

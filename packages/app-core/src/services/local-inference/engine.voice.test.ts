@@ -22,6 +22,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
 import {
+  AsrUnavailableError,
   defaultLifecycleLoaders,
   type MmapRegionHandle,
   type RefCountedResource,
@@ -156,7 +157,7 @@ function lifecycleLoadersOk(): VoiceLifecycleLoaders {
 function fakeFfi(calls: string[]): ElizaInferenceFfi {
   return {
     libraryPath: "/tmp/libelizainference-test.dylib",
-    libraryAbiVersion: "1",
+    libraryAbiVersion: "2",
     create: () => 1n,
     destroy(ctx: ElizaInferenceContextHandle) {
       calls.push(`destroy:${ctx.toString()}`);
@@ -172,6 +173,24 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
     },
     asrTranscribe() {
       throw new Error("not used by this test");
+    },
+    // Streaming ASR ABI v2 — this fake reports no working decoder, so the
+    // adapter chain falls through to the whisper.cpp interim path.
+    asrStreamSupported: () => false,
+    asrStreamOpen() {
+      throw new Error("not used by this test");
+    },
+    asrStreamFeed() {
+      throw new Error("not used by this test");
+    },
+    asrStreamPartial() {
+      throw new Error("not used by this test");
+    },
+    asrStreamFinish() {
+      throw new Error("not used by this test");
+    },
+    asrStreamClose() {
+      /* no-op */
     },
     close() {
       calls.push("close");
@@ -454,6 +473,7 @@ describe("LocalInferenceEngine voice surface", () => {
   it("direct TRANSCRIPTION requires voice and surfaces missing ASR backend clearly", async () => {
     const engine = new LocalInferenceEngine();
     const audio = { pcm: new Float32Array([0]), sampleRate: 24000 };
+    // No voice session yet → the bridge accessor fails.
     await expect(engine.transcribePcm(audio)).rejects.toMatchObject({
       code: "not-started",
     });
@@ -466,9 +486,13 @@ describe("LocalInferenceEngine voice surface", () => {
       lifecycleLoaders: lifecycleLoadersOk(),
     });
     await engine.armVoice();
-    await expect(engine.transcribePcm(audio)).rejects.toMatchObject({
-      code: "missing-fused-build",
-    });
+    // Voice is armed but there is no fused ASR (stub backend, no `asr/`
+    // dir, no whisper.cpp binary in this env) → the streaming-transcriber
+    // adapter chain hard-fails with AsrUnavailableError. No silent empty
+    // transcript (AGENTS.md §3 + §9).
+    await expect(engine.transcribePcm(audio)).rejects.toBeInstanceOf(
+      AsrUnavailableError,
+    );
     await engine.stopVoice();
   });
 

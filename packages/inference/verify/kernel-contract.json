@@ -92,6 +92,52 @@
       "description": "Cross-compiles vulkan_verify with the Android NDK, pushes verifier/SPIR-V/fixtures through adb, records physical-device evidence, and runs on Adreno/Mali hardware. Standalone fixture success exits non-zero unless ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE proves Android Vulkan graph dispatch for all six graph routes or all five runtime capability keys."
     }
   },
+  "fusedAttn": {
+    "capabilityKey": "fused_attn",
+    "description": "Fused attention forward (QJL-K score -> online softmax -> quantized-V mix, score vector never materialized). C reference: eliza_fused_attn_qjl_tbq3 (bit-exact to the fork's GGML_OP_FUSED_ATTN_QJL_TBQ CPU op) and eliza_fused_attn_qjl_polar in packages/inference/verify/qjl_polar_ref.{h,c}. This is an optimization on top of the existing five score/softmax/V-mix kernels (AGENTS.md §3) — a backend that cannot dispatch the fused op routes through the standalone path, it does not silently degrade. NOT in requiredRuntimeCapabilityKeys / manifestKernelNames yet: no backend has verified a fused dispatch, so the capability is not part of the build-script required-kernel gate. Promote it (and add a manifest kernel name) only once a backend reports a runtime-ready fused smoke.",
+    "contractDocs": [
+      "reports/porting/2026-05-11/fused-attn-op-contract.md",
+      "reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md"
+    ],
+    "fixtures": [
+      {
+        "path": "verify/fixtures/fused_attn_qjl_tbq.json",
+        "kernelField": "fused_attn_qjl_tbq",
+        "shape": "cases",
+        "requiredFields": ["head_dim", "proj_dim", "v_blocks_per_token", "sm_scale", "cases"],
+        "caseRequiredFields": ["n_heads", "n_kv_heads", "n_kv", "q_sketch", "k_blocks", "v_blocks", "expected_out"]
+      },
+      {
+        "path": "verify/fixtures/fused_attn_qjl_polar.json",
+        "kernelField": "fused_attn_qjl_polar",
+        "shape": "cases",
+        "requiredFields": ["head_dim", "proj_dim", "v_blocks_per_token", "use_qjl", "sm_scale", "cases"],
+        "caseRequiredFields": ["n_heads", "n_kv_heads", "n_kv", "q_sketch", "k_blocks", "v_blocks", "expected_out"]
+      },
+      {
+        "path": "verify/fixtures/polar_preht.json",
+        "kernelField": "polar_preht",
+        "shape": "scores",
+        "requiredFields": ["head_dim", "n_rows", "block_bytes", "hadamard_inv_scale", "q", "k_blocks", "expected_scores"]
+      }
+    ],
+    "selfTest": {
+      "makeTarget": "reference-test",
+      "note": "gen_fixture --self-test recomputes fused == score->softmax->V-decode->mix independently (tol 1e-3) and round-trips the TBQ V-cache blocks."
+    },
+    "verifyTargets": {
+      "metal": "metal-verify-fused",
+      "vulkan": "vulkan-verify-fused",
+      "cuda": "cuda-verify"
+    },
+    "runtimeStatus": {
+      "metal": "needs-runtime-smoke",
+      "vulkan": "needs-runtime-smoke",
+      "cuda": "needs-hardware",
+      "cpu": "reference-only"
+    },
+    "nextGate": "Port the fused op to a Metal/Vulkan compute kernel (none exists yet) plus a cases-array parser in metal_verify/vulkan_verify, then run metal-verify-fused / vulkan-verify-fused on hardware. cuda_verify already parses fused_attn_qjl_tbq.json but no NVIDIA host has run it (cuda-verify-fused gated behind cuda_runner.sh on real hardware)."
+  },
   "kernels": [
     {
       "id": "turbo3",

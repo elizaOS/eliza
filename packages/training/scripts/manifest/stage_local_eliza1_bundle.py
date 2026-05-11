@@ -808,6 +808,10 @@ def _manifest_for_local_bundle(
         voice_frozen=True,
         voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
         voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
+        kernel_manifest_fragments=[
+            kernel_manifest_fragment(method)
+            for method in ("turboquant", "fused-turboquant", "qjl", "polarquant")
+        ],
         require_publish_ready=False,
     )
 

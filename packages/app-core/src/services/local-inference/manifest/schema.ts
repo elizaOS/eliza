@@ -178,6 +178,25 @@ export const Eliza1VerifiedBackendStatusSchema = z.object({
   status: z.enum(["pass", "fail", "skipped"]),
   atCommit: z.string().min(1),
   report: z.string().min(1),
+  // Optional provenance for a "pass" recorded on a single device class — e.g.
+  // the runtime Vulkan dispatch smoke that ran on one Intel-ANV GPU. `caveat`
+  // names what device coverage is still missing so the recommendation engine
+  // and release docs do not over-claim.
+  device: z.string().min(1).optional(),
+  caveat: z.string().min(1).optional(),
+});
+
+// Recipe-level kernel layout pins, folded in from the quantization recipes'
+// `kernel_manifest` sidecar fragments
+// (packages/training/scripts/quantization/_kernel_manifest.py). Keyed by the
+// *recipe* kernel-target name (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl1_256` /
+// `polar_q4`) — NOT the manifest-level capability names in `ELIZA_1_KERNELS`.
+// The runtime/downloader can verify the encoded blocks match the kernels it
+// ships; the publish orchestrator already validates the sidecars exist.
+export const Eliza1RecipeKernelPinsSchema = z.object({
+  blockLayoutVersion: z.string().min(1),
+  codebookHash: z.string().min(1),
+  perBlockTolerance: z.number().positive(),
 });
 
 export const Eliza1KernelsSchema = z.object({
@@ -190,6 +209,7 @@ export const Eliza1KernelsSchema = z.object({
     rocm: Eliza1VerifiedBackendStatusSchema,
     cpu: Eliza1VerifiedBackendStatusSchema,
   }),
+  recipeManifest: z.record(z.string(), Eliza1RecipeKernelPinsSchema).optional(),
 });
 
 // Wave-6: voice surface declares which expressive features the bundled
