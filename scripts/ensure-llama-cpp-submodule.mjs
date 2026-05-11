@@ -53,7 +53,7 @@ if (res.status !== 0) {
     `[ensure-llama-cpp-submodule] warning: \`git submodule update --init ` +
       `--recursive ${submoduleRel}\` failed (offline?). The llama.cpp build ` +
       `scripts will fall back to a standalone clone under ` +
-      `~/.cache/eliza-dflash/milady-llama-cpp.`,
+      `~/.cache/eliza-dflash/eliza-llama-cpp.`,
   );
 }
 process.exit(0);
