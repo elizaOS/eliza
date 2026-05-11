@@ -44,6 +44,10 @@ import {
   SessionPool,
 } from "./session-pool";
 import {
+  compileSkeletonToGbnf,
+  resolveResponseSkeleton,
+} from "./structured-output";
+import {
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
   VoiceStartupError,
@@ -109,6 +113,36 @@ interface LlamaContext {
   dispose(): Promise<void>;
 }
 
+/**
+ * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
+ * Precedence: an explicit `grammar` on the args, then a compiled forced
+ * skeleton (single-value enums collapsed to literals). Returns null when
+ * neither is set — generation is unconstrained as before.
+ */
+function resolveBindingGrammarSource(args: GenerateArgs): string | null {
+  if (args.grammar && args.grammar.source.trim().length > 0) {
+    return args.grammar.source;
+  }
+  const skeleton = resolveResponseSkeleton(args);
+  if (skeleton) {
+    const compiled = compileSkeletonToGbnf(skeleton);
+    if (compiled) return compiled.source;
+  }
+  return null;
+}
+
+interface LlamaGrammar {
+  // Opaque to us — passed straight back to `session.prompt({ grammar })`.
+  readonly _grammarBrand?: never;
+}
+
+interface LlamaGrammarCtor {
+  new (
+    llama: Llama,
+    options: { grammar: string; rootRuleName?: string },
+  ): LlamaGrammar;
+}
+
 interface LlamaChatSession {
   prompt(
     text: string,
@@ -118,6 +152,8 @@ interface LlamaChatSession {
       topP?: number;
       stopOnAbortSignal?: AbortSignal;
       customStopTriggers?: string[];
+      grammar?: LlamaGrammar;
+      onTextChunk?: (chunk: string) => void;
     },
   ): Promise<string>;
   /**
@@ -179,6 +215,7 @@ interface Llama {
 interface LlamaBindingModule {
   getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
   LlamaChatSession: LlamaChatSessionCtor;
+  LlamaGrammar: LlamaGrammarCtor;
 }
 
 /**
@@ -404,6 +441,18 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       args.cacheKey && args.cacheKey.length > 0
         ? args.cacheKey
         : DEFAULT_SESSION_KEY;
+    // Resolve a grammar from `args.grammar` (explicit GBNF) or a forced
+    // skeleton. node-llama-cpp can do constrained decoding even though it
+    // can't stream — wire the schema/grammar path here. The no-streaming
+    // limitation means `streamStructured` degrades to one final chunk on
+    // this backend.
+    const grammarSource = resolveBindingGrammarSource(args);
+    const grammar =
+      grammarSource && this.bindingModule && this.llama
+        ? new this.bindingModule.LlamaGrammar(this.llama, {
+            grammar: grammarSource,
+          })
+        : undefined;
     const run = async (): Promise<string> => {
       const session = await pool.acquire(cacheKey);
       // Default slot mirrors the historical "stateless per call" semantics
@@ -419,6 +468,8 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         topP?: number;
         stopOnAbortSignal?: AbortSignal;
         customStopTriggers?: string[];
+        grammar?: LlamaGrammar;
+        onTextChunk?: (chunk: string) => void;
       } = {
         maxTokens: args.maxTokens ?? 2048,
         temperature: args.temperature ?? 0.7,
@@ -433,7 +484,36 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         // is the canonical way to make local inference cancellable.
         promptOpts.stopOnAbortSignal = args.signal;
       }
-      const text = await session.prompt(args.prompt, promptOpts);
+      if (grammar) promptOpts.grammar = grammar;
+      // Assistant-turn prefill: node-llama-cpp has no first-class "continue
+      // this assistant message" knob, so we seed the prompt text with the
+      // partial assistant turn and re-prepend it to the result so callers
+      // see the full assistant message.
+      const prefill = typeof args.prefill === "string" ? args.prefill : "";
+      const promptText =
+        prefill.length > 0 ? `${args.prompt}\n${prefill}` : args.prompt;
+      if (args.onTextChunk || args.onVerifierEvent) {
+        let idx = 0;
+        if (prefill.length > 0) {
+          await args.onVerifierEvent?.({
+            kind: "accept",
+            tokens: [{ index: idx++, text: prefill }],
+          });
+          await args.onTextChunk?.(prefill);
+        }
+        promptOpts.onTextChunk = (chunk: string) => {
+          if (chunk.length === 0) return;
+          void args.onVerifierEvent?.({
+            kind: "accept",
+            tokens: [{ index: idx++, text: chunk }],
+          });
+          void args.onTextChunk?.(chunk);
+        };
+        const tail = await session.prompt(promptText, promptOpts);
+        return prefill + tail;
+      }
+      const tail = await session.prompt(promptText, promptOpts);
+      const text = prefill + tail;
       if (text.length > 0) {
         await args.onVerifierEvent?.({
           kind: "accept",
@@ -482,6 +562,7 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         typeof mod === "object" &&
         "getLlama" in mod &&
         "LlamaChatSession" in mod &&
+        "LlamaGrammar" in mod &&
         typeof (mod as { getLlama: unknown }).getLlama === "function"
       ) {
         return mod as LlamaBindingModule;

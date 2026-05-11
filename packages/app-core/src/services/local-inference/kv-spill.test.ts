@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { RamBudget } from "./ram-budget";
 import {
   estimateQuantizedKvBytesPerToken,
   KV_PAGE_TOKENS,
@@ -12,6 +11,7 @@ import {
   residentKvBudgetFromRamBudget,
   restoreClassForHardware,
 } from "./kv-spill";
+import type { RamBudget } from "./ram-budget";
 
 const MIB = 1024 * 1024;
 

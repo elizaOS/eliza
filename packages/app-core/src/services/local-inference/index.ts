@@ -20,9 +20,9 @@ export {
   MODEL_CATALOG,
 } from "./catalog";
 export {
-  classifyLocalError,
   type CloudCandidate,
   type CloudFallbackOptions,
+  classifyLocalError,
   type FallbackReason,
   findCloudCandidate,
   type LocalGenerateOutcome,

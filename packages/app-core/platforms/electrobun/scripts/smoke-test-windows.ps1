@@ -45,7 +45,7 @@ New-Item -ItemType Directory -Force -Path $env:LOCALAPPDATA | Out-Null
 # Pre-create PGlite data directory with a short path to avoid MAX_PATH issues
 # during WASM init. PGlite creates deeply nested WAL files; a short root path
 # keeps the full path under the 260-char limit on Windows runners.
-$pgliteDataDir = Join-Path $tempRoot "pglite"
+$pgliteDataDir = Join-Path $tempRoot ("pglite-" + [Guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Force -Path $pgliteDataDir | Out-Null
 $env:PGLITE_DATA_DIR = $pgliteDataDir
 if ($env:GITHUB_ENV) {
