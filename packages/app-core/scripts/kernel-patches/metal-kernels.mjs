@@ -271,7 +271,7 @@ ${embedAirLines}
   }
 
   // The exact block we replace. This pipe pattern has been stable in the
-  // milady-ai/llama.cpp fork for the entire v0.4.x line; if the upstream
+  // elizaOS/llama.cpp fork for the entire v0.4.x line; if the upstream
   // ever rewrites it we want to fail loudly rather than silently no-op.
   if (!patched.includes(SENTINEL)) {
     const anchor = `    add_custom_command(

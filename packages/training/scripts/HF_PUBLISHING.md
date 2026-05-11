@@ -413,7 +413,7 @@ actually install:
 - **QJL1_256** 1-bit JL-transform K-cache (~7.5x KV-K reduction realized)
 - **TBQ V-cache** (`tbq3_0` / `tbq4_0`, ~3-4x KV-V reduction)
 - **DFlash** speculative decoding pairing with an Eliza-1 drafter
-- llama-server kernels from `milady-ai/llama.cpp` (fork of ggml-org/llama.cpp)
+- llama-server kernels from `elizaOS/llama.cpp` (fork of ggml-org/llama.cpp)
 
 These are the models the on-device Eliza runtime wants to load: a single
 GGUF that exercises every kernel the build-llama-cpp-dflash.mjs pipeline
@@ -511,7 +511,7 @@ file expects. Schema:
     "kvV": "TBQ4_0",
     "speculativeDecode": "DFlash",
     "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "dflash"],
-    "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
+    "requiresFork": "elizaOS/llama.cpp@v0.1.0-milady"
   },
   "drafter": {
     "repo": "elizaos/eliza-1-1_7b",

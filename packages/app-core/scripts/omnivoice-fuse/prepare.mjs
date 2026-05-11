@@ -9,7 +9,7 @@
  *   const { commit, ggmlSubmoduleCommit, sourceCount } =
  *     prepareOmnivoiceFusion({
  *       cacheRoot: "...", // ~/.cache/eliza-dflash
- *       llamaCppRoot: "...", // path to milady-ai/llama.cpp checkout
+ *       llamaCppRoot: "...", // path to elizaOS/llama.cpp checkout
  *       omnivoiceRef: "38f824023d…",
  *     });
  *

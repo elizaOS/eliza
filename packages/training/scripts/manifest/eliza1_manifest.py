@@ -39,6 +39,7 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
+    "27b-1m",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -89,6 +90,13 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
+    "27b-1m": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -97,6 +105,11 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    # 1M context is only practical on very large unified/HBM memory
+    # (GH200-class). CUDA is the only backend whose v0.4.0-milady binary
+    # covers the full runtime path at that window today; the others stay
+    # off the supported list for this variant until verified.
+    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -105,6 +118,7 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
+    "27b-1m": "Q8_0",
 }
 
 
@@ -129,16 +143,17 @@ _DATETIME_RE = re.compile(
 )
 
 
-# Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144.
-# Lives here (not in the publish module) because both the publish gate
-# and the manifest builder must agree byte-for-byte on what counts as a
-# long-context text file. Format: <integer><k>, where the ``k`` suffix is
-# required.
-_CTX_SUFFIX_RE = re.compile(r"^(\d+)k$")
+# Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144,
+# ``1m`` → 1048576. Lives here (not in the publish module) because both the
+# publish gate and the manifest builder must agree byte-for-byte on what
+# counts as a long-context text file. Format: <integer> followed by ``k``
+# (× 1024) or ``m`` (× 1024²).
+_CTX_SUFFIX_RE = re.compile(r"^(\d+)([km])$")
+_CTX_SUFFIX_SCALE: Final[Mapping[str, int]] = {"k": 1024, "m": 1024 * 1024}
 
 
 def parse_ctx_string(s: str) -> int:
-    """Return the integer context length encoded by a ``<num>k`` suffix.
+    """Return the integer context length encoded by a ``<num>k``/``<num>m`` suffix.
 
     Examples
     --------
@@ -146,19 +161,21 @@ def parse_ctx_string(s: str) -> int:
     65536
     >>> parse_ctx_string("256k")
     262144
+    >>> parse_ctx_string("1m")
+    1048576
 
-    Raises ``ValueError`` if the string is not exactly ``<digits>k`` —
-    bare integers, missing suffix, or any other shape are invalid. The
-    publish orchestrator and the manifest file builder both call this
-    so the long-context detection used at publish-blocking time matches
-    the bytes the manifest records.
+    Raises ``ValueError`` if the string is not exactly ``<digits>k`` or
+    ``<digits>m`` — bare integers, missing suffix, or any other shape are
+    invalid. The publish orchestrator and the manifest file builder both
+    call this so the long-context detection used at publish-blocking time
+    matches the bytes the manifest records.
     """
     m = _CTX_SUFFIX_RE.match(s)
     if not m:
         raise ValueError(
-            f"context suffix must match `<digits>k`, got {s!r}"
+            f"context suffix must match `<digits>k` or `<digits>m`, got {s!r}"
         )
-    return int(m.group(1)) * 1024
+    return int(m.group(1)) * _CTX_SUFFIX_SCALE[m.group(2)]
 
 
 def parse_text_ctx_from_filename(p: Path) -> int | None:

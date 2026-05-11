@@ -23,7 +23,7 @@
     "kernels": [
       "q4_polar"
     ],
-    "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
+    "requiresFork": "elizaOS/llama.cpp@v0.1.0-milady"
   },
   "target": {
     "repo": "milady-ai/qwen3.5-4b-milady-optimized",

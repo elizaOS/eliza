@@ -416,15 +416,22 @@ def _try_compile_qjl_polar_ref():
         return None, "no C compiler on PATH"
     if not _REF_C.exists():
         return None, f"missing kernel reference {_REF_C}"
+    # qjl_polar_ref.c now depends on the turbo reference's
+    # eliza_tbq3_decode_block_uncond (block_tbq3_0 decode) — compile
+    # turbo_kernels.c into the same .so so the symbol resolves.
+    if not _TURBO_C.exists():
+        return None, f"missing turbo reference {_TURBO_C}"
 
     tmp = Path(tempfile.gettempdir()) / "_eliza_qjl_polar_ref.so"
-    if tmp.exists() and tmp.stat().st_mtime > _REF_C.stat().st_mtime:
+    newest_src = max(_REF_C.stat().st_mtime, _TURBO_C.stat().st_mtime)
+    if tmp.exists() and tmp.stat().st_mtime > newest_src:
         return tmp, None
     cmd = [
         cc,
         "-O2", "-std=c11", "-fPIC", "-shared",
         "-I", str(_REF_C.parent),
-        str(_REF_C), "-lm",
+        "-I", str(_TURBO_C.parent),
+        str(_REF_C), str(_TURBO_C), "-lm",
         "-o", str(tmp),
     ]
     result = subprocess.run(cmd, capture_output=True, text=True)

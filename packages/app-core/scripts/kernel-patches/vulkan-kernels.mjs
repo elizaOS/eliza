@@ -78,6 +78,22 @@ export const VULKAN_KERNEL_FILES = [
   "polar_get_rows.comp",
 ];
 
+// Multi-block-per-workgroup standalone variants (turbo3_multi.comp etc.). One
+// SPV family per kernel; the blocks/tokens-per-workgroup count is a SPIR-V
+// specialization constant (constant_id 0) the consumer sets at pipeline-create
+// time, so the same blob tunes per device without recompilation. They are
+// verified by `make -C packages/inference/verify vulkan-verify-multiblock`.
+// Not staged into the fork yet: the runtime hot path uses the single-block
+// kernels, and wiring vulkan-shaders-gen + ggml-vulkan dispatch for the multi
+// variants is a follow-up once the runtime picks a per-device launch-tax
+// amortization factor.
+export const VULKAN_MULTIBLOCK_KERNEL_FILES = [
+  "turbo3_multi.comp",
+  "turbo4_multi.comp",
+  "turbo3_tcq_multi.comp",
+  "qjl_multi.comp",
+];
+
 const SHADER_SENTINEL = "// MILADY-VK-DISPATCH-PATCH-V1";
 const PATCH_SENTINEL = "MILADY-VK-DISPATCH-PATCH-V1";
 const RUNTIME_SENTINEL = "// MILADY-VK-RUNTIME-DISPATCH-V1";

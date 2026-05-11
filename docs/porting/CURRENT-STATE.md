@@ -48,7 +48,7 @@ Status legend matches `build-matrix.md`: `✓` verified, `⚠` partial,
 
 | Technique | Linux CPU | Linux CUDA | Linux Vulkan | Apple Metal | iOS Metal | Android arm64 NEON | Android Vulkan | Notes |
 |---|---|---|---|---|---|---|---|---|
-| **TBQ3_0 / TBQ4_0** (V-cache) | ✓ | ⚠ compile-only, 4 fattn-vec instances | ⚠ 3 SPVs compile, 0/8 runtime | □ | □ | ✓ NEON+QEMU parity | □ | source pin: `milady-ai/llama.cpp @ v0.3.0-milady` |
+| **TBQ3_0 / TBQ4_0** (V-cache) | ✓ | ⚠ compile-only, 4 fattn-vec instances | ⚠ 3 SPVs compile, 0/8 runtime | □ | □ | ✓ NEON+QEMU parity | □ | source pin: `elizaOS/llama.cpp @ v0.3.0-milady` |
 | **TBQ3_TCQ** (trellis-coded) | □ ref C only | ▲ Viterbi encoder needs warp-shuffle | ⚠ SPV compiles, 0/8 runtime | □ | □ | □ | □ | encoder still missing |
 | **QJL1_256** (K-cache) | ✓ AVX2 + ref | ✗ not in fork | ⚠ 3 SPVs compile, no harness | □ Metal source exists | □ | ✓ NEON+QEMU 100/100 | □ | W4-B kernel CUDA port pending |
 | **Q4_POLAR** (weight-side) | ✓ scalar + AVX2 | ✗ not in fork | ⚠ 2 SPVs compile, no harness | □ Metal source exists | □ | ✓ NEON parity (in budget) | □ | W4-B kernel CUDA port pending |
@@ -69,7 +69,7 @@ These items are blocked **only** on physical hardware. Software is ready.
    surface). Run W3-G's ready-to-run kit on an M-series Mac. Verify
    TBQ Metal kernels via `metal_verify`, then wire QJL/Polar Metal
    dispatchers (sources already staged under
-   `ggml/src/ggml-metal/milady-kernels/` on `milady-ai/llama.cpp`).
+   `ggml/src/ggml-metal/milady-kernels/` on `elizaOS/llama.cpp`).
    Owner: any agent with an M-series Mac. Effort: 2–3 sessions.
 
 2. **NVIDIA GPU runtime gate for CUDA** (compile is green; runtime
@@ -150,7 +150,7 @@ when that lands; for now this is the single ledger.
    to the upstream prebuild — so the desktop path silently falls
    back to the default cache type when a Milady enum int isn't in
    ggml's type table. Publishing per-platform prebuilds from the
-   milady-ai/llama.cpp tree is the seal. See
+   elizaOS/llama.cpp tree is the seal. See
    `unified-fork-strategy.md` §F "Remaining gap". ~1 week.
 
 8. **MXFP4 / NVFP4 rebase pickup.** `milady/main` should rebase to

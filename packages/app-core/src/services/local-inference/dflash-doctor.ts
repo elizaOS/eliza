@@ -26,7 +26,9 @@ interface DflashTargetMeta {
  * bundles without the metadata don't trip the doctor — the *publish*
  * gate is where a missing/mismatched hash is fatal.
  */
-function readTargetMeta(installed: InstalledModel | undefined): DflashTargetMeta | null {
+function readTargetMeta(
+  installed: InstalledModel | undefined,
+): DflashTargetMeta | null {
   const root = installed?.bundleRoot;
   if (!root) return null;
   const metaPath = path.join(root, "dflash", "target-meta.json");

@@ -28,7 +28,7 @@ import {
   readCacheStats,
   slotSavePath,
 } from "./cache-bridge";
-import { findCatalogModel } from "./catalog";
+import { ELIZA_1_PLACEHOLDER_IDS, findCatalogModel } from "./catalog";
 import { probeHardware } from "./hardware";
 import {
   estimateQuantizedKvBytesPerToken,
@@ -46,7 +46,11 @@ import {
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
 import { resolveRamBudget } from "./ram-budget";
-import type { CatalogModel, InstalledModel, LocalRuntimeOptimizations } from "./types";
+import type {
+  CatalogModel,
+  InstalledModel,
+  LocalRuntimeOptimizations,
+} from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
@@ -508,6 +512,84 @@ export function appendKvOffloadFlags(
   return args;
 }
 
+/** True when `id` is one of the Eliza-1 tier ids (bundles that ship voice). */
+function isEliza1TierCatalogId(id: string): boolean {
+  return ELIZA_1_PLACEHOLDER_IDS.has(id);
+}
+
+/**
+ * Resolve the KV-cache spill plan for a llama-server launch.
+ *
+ * Returns `null` when `contextSize <= 64k` (no spill by contract). For longer
+ * contexts it consults a hardware probe + the bundle's RAM budget via
+ * `planKvSpill`:
+ *   - whole cache fits resident → `{ mode: "resident" }` (caller ignores it),
+ *   - fits with paging inside the latency budget → `{ mode: "spill", ... }`,
+ *   - would miss the latency budget → `planKvSpill` throws
+ *     `KvSpillUnsupportedError`, which propagates so the engine returns a
+ *     structured 4xx instead of half-loading.
+ *
+ * Exported for `dflash-server.test.ts`.
+ */
+export async function resolveKvSpillPlan(args: {
+  contextSize: number;
+  catalog: CatalogModel | undefined;
+  installed: InstalledModel | undefined;
+  voiceEnabled: boolean;
+}): Promise<KvSpillPlan | null> {
+  if (!args.contextSize || args.contextSize <= KV_SPILL_MIN_CONTEXT) {
+    return null;
+  }
+  const hardware = await probeHardware();
+  const ram = args.catalog
+    ? resolveRamBudget(args.catalog, args.installed)
+    : null;
+  // Without a catalog row there is no RAM budget to size the resident slice
+  // against — fall back to a conservative 1 GiB resident-KV budget so the
+  // spill math is still defined and fails closed on small devices.
+  const residentKvBudgetBytes = ram
+    ? residentKvBudgetFromRamBudget(ram)
+    : 1024 * 1024 * 1024;
+  const bytesPerToken = estimateQuantizedKvBytesPerToken(
+    args.catalog?.params ?? "27B",
+  );
+  const hasDiscreteGpu = hardware.gpu !== null && !hardware.appleSilicon;
+  // CPU spill is available when the host has appreciable RAM headroom over
+  // the resident budget. Apple Silicon always has unified RAM; x86 needs the
+  // total to comfortably exceed the resident slice.
+  const cpuSpillAvailable =
+    hardware.appleSilicon ||
+    hardware.totalRamGb * 1024 * 1024 * 1024 > residentKvBudgetBytes * 2;
+  return planKvSpill({
+    requestedContext: args.contextSize,
+    geometry: { bytesPerToken, voiceEnabled: args.voiceEnabled },
+    residentKvBudgetBytes,
+    restoreClass: restoreClassForHardware({
+      appleSilicon: hardware.appleSilicon,
+      hasDiscreteGpu,
+    }),
+    cpuSpillAvailable,
+  });
+}
+
+/**
+ * Translate a resolved KV-spill plan into llama-server flags. `resident`
+ * (and `null`) are no-ops; `spill` forces the cold KV into host RAM with
+ * `--no-kv-offload` and hints the resident working set with `--cache-ram`.
+ */
+export function appendKvSpillFlags(
+  args: string[],
+  plan: KvSpillPlan | null | undefined,
+): string[] {
+  if (!plan || plan.mode !== "spill") return args;
+  if (!args.includes("--no-kv-offload")) {
+    args.push("--no-kv-offload");
+  }
+  const cacheRamMb = Math.max(1, Math.floor(plan.residentBytes / 1024 / 1024));
+  args.push("--cache-ram", String(cacheRamMb));
+  return args;
+}
+
 function findPython(): string | null {
   for (const candidate of ["python3", "python"]) {
     const result = spawnSync(candidate, ["--version"], {
@@ -684,6 +766,44 @@ export function extractStreamingChatDelta(json: unknown): string {
   return out;
 }
 
+/**
+ * Extract a DFlash verifier reject-range from a streaming SSE chunk, if the
+ * fork's `--spec-type dflash` server attached one. The contract (see
+ * docs/porting/dflash-drafter-strategy.md "DFlash↔TTS Rollback Coupling"):
+ * when the target rejects a contiguous span of previously-streamed
+ * drafted tokens, the chunk carries `{ "verifier": { "rejected": [a, b] } }`
+ * (inclusive token-index range, in target output order). Returns the
+ * `[a, b]` pair, or null when the chunk has no reject extension.
+ *
+ * Upstream llama-server does not emit this today — the field is the agreed
+ * extension point for the native verifier-event stream (remaining-work
+ * ledger "Native DFlash verifier event stream"). Until then this returns
+ * null for every real chunk and the synthesized accept-only stream is what
+ * runs in production. The shape is parsed (not faked) so the moment the
+ * fork emits it, rollback is exact with no further runtime changes.
+ */
+export function extractVerifierRejectRange(
+  json: unknown,
+): [number, number] | null {
+  if (!json || typeof json !== "object") return null;
+  const verifier = (json as Record<string, unknown>).verifier;
+  if (!verifier || typeof verifier !== "object") return null;
+  const rejected = (verifier as Record<string, unknown>).rejected;
+  if (
+    Array.isArray(rejected) &&
+    rejected.length === 2 &&
+    typeof rejected[0] === "number" &&
+    typeof rejected[1] === "number" &&
+    Number.isInteger(rejected[0]) &&
+    Number.isInteger(rejected[1]) &&
+    rejected[0] >= 0 &&
+    rejected[1] >= rejected[0]
+  ) {
+    return [rejected[0], rejected[1]];
+  }
+  return null;
+}
+
 async function fetchStreamingChatCompletion(
   url: string,
   init: RequestInit,
@@ -725,7 +845,26 @@ async function fetchStreamingChatCompletion(
       if (dataLines.length === 0) return;
       const data = dataLines.join("\n").trim();
       if (!data || data === "[DONE]") return;
-      const chunk = extractStreamingChatDelta(JSON.parse(data));
+      const parsed = JSON.parse(data);
+
+      // Native DFlash reject-range, if the fork attached one: retract the
+      // already-streamed drafted tokens in [a, b] and rewind the index
+      // cursor so re-decoded tokens get the correct indices. The phrase
+      // chunker drops the not-yet-spoken audio for the overlapping phrases.
+      const rejectRange = extractVerifierRejectRange(parsed);
+      if (rejectRange) {
+        const [from, to] = rejectRange;
+        if (callbacks.onVerifierEvent) {
+          const tokens = [];
+          for (let i = from; i <= to; i += 1)
+            tokens.push({ index: i, text: "" });
+          await callbacks.onVerifierEvent({ kind: "reject", tokens });
+        }
+        nextIndex = Math.min(nextIndex, from);
+        return;
+      }
+
+      const chunk = extractStreamingChatDelta(parsed);
       if (!chunk) return;
       text += chunk;
       if (callbacks.onVerifierEvent) {
@@ -1119,6 +1258,17 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
     const kvOffload = resolveDflashKvOffload(overrides);
 
+    // KV-cache spill for context > 64k (AGENTS.md §3 item 7). Every Eliza-1
+    // bundle ships the voice loop, so a tier-id match means the tighter voice
+    // latency gate applies. A `KvSpillUnsupportedError` thrown here propagates
+    // out of `load()` — the engine surfaces it to the UI verbatim.
+    const kvSpillPlan = await resolveKvSpillPlan({
+      contextSize,
+      catalog,
+      installed: target,
+      voiceEnabled: catalog ? isEliza1TierCatalogId(catalog.id) : false,
+    });
+
     await this.start(
       {
         targetModelPath: target.path,
@@ -1131,6 +1281,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         draftGpuLayers: dflash.draftGpuLayers,
         kvOffload: kvOffload ?? undefined,
         disableThinking: dflash.disableThinking,
+        kvSpillPlan,
       },
       optimizations,
     );
@@ -1253,6 +1404,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
     appendKvOffloadFlags(args, kvOffload);
     appendOptimizationFlags(args, optimizations ?? null);
+    // CPU-offloaded KV spill for context > 64k. Forces `--no-kv-offload`
+    // (cold pages live in host RAM) + a `--cache-ram` hint sized to the
+    // resident pages — appended after the optimization flags so the spill
+    // budget wins over any catalog `cacheRamMb`. `resident`/`null` plans
+    // are no-ops.
+    appendKvSpillFlags(args, plan.kvSpillPlan);
 
     const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
     if (extra && isMetalDflashRuntime()) {

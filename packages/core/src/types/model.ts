@@ -302,6 +302,92 @@ export interface ChatMessage {
 }
 
 /**
+ * Kind of a single span in a {@link ResponseSkeleton}.
+ *
+ * - `literal`    — fixed text injected verbatim into the output (a key name,
+ *   a `": "` separator, a closing brace, or an enum collapsed to its single
+ *   allowed value). The decode loop spends **zero** sampled tokens on a
+ *   `literal` span — the engine splices the bytes in and continues.
+ * - `enum`       — a key whose value must be one of {@link ResponseSkeletonSpan.enumValues}.
+ *   With two-or-more values the engine constrains sampling to those tokens
+ *   (and can shortcut as soon as a value is unambiguous); a single value is
+ *   normally lowered to a `literal` by the producer.
+ * - `free-string`— a key whose value is a free-form JSON string the model
+ *   samples normally (e.g. `replyText`, `thought`).
+ * - `free-json`  — a key whose value is a free-form JSON sub-document the model
+ *   samples normally (e.g. `extract`, an action `parameters` object).
+ */
+export type ResponseSkeletonSpanKind =
+	| "literal"
+	| "enum"
+	| "free-string"
+	| "free-json";
+
+/**
+ * One ordered span of a forced response skeleton.
+ *
+ * A {@link ResponseSkeleton} is a flat, ordered list of these. The engine
+ * (W4) walks the list: it emits every `literal` span's `value` directly, and
+ * for every non-literal span it samples the value under whatever constraint
+ * the kind implies, then emits the next `literal` (the `,\n` / next-key glue)
+ * and continues. `key` is informational for the producer/consumer; the actual
+ * text injected for the key itself is carried by the surrounding `literal`
+ * spans, so the engine never has to know JSON layout rules.
+ */
+export interface ResponseSkeletonSpan {
+	kind: ResponseSkeletonSpanKind;
+	/**
+	 * The envelope key this span produces a value for. Omitted for pure
+	 * structural `literal` spans (opening `{`, the `": "` glue, trailing `}`).
+	 */
+	key?: string;
+	/**
+	 * For `literal` spans: the exact text to inject. For `enum` spans lowered
+	 * to a literal by the producer this is the single chosen value.
+	 */
+	value?: string;
+	/** For `enum` spans: the allowed values, in the order they should be tried. */
+	enumValues?: string[];
+	/**
+	 * Optional GBNF non-terminal name the engine should pin this span's free
+	 * value to (lets W8 reuse a shared sub-grammar, e.g. an action's parameter
+	 * schema). When unset the engine uses the kind's default rule.
+	 */
+	rule?: string;
+}
+
+/**
+ * A structured description of the response JSON envelope to in-fill, produced
+ * by W8's `buildResponseGrammar(...)` and consumed by W4's local llama-server
+ * backend. It is the engine-neutral form of the per-turn structure-forcing
+ * contract: which keys appear, in what order, which positions are sampled vs
+ * literal, and the allowed values for enums. The engine may compile this to a
+ * lazy GBNF (preferred — the model only spends tokens on free positions and
+ * single-value enums collapse to literals) or drive it with a multi-call
+ * "generate up to the next span boundary, inject the literal, continue" loop.
+ *
+ * Cloud adapters ignore it entirely — `responseSchema` / `tools` carry the
+ * equivalent (unforced) contract for them.
+ *
+ * Producer: `@elizaos/core` `buildResponseGrammar` (W8).
+ * Consumer: local-inference `dflash-server.ts` (W4).
+ */
+export interface ResponseSkeleton {
+	/**
+	 * Ordered spans. The first span is normally the opening `{` literal and the
+	 * last the closing `}` literal; everything between alternates key-glue
+	 * literals and value spans.
+	 */
+	spans: ResponseSkeletonSpan[];
+	/**
+	 * Optional opaque identifier the engine can use as a cache key for a
+	 * compiled grammar (W8 sets it from the action/evaluator set + contexts so
+	 * grammars are reused across turns when the structure is unchanged).
+	 */
+	id?: string;
+}
+
+/**
  * Parameters for generating text using a language model.
  * This structure is typically passed to `AgentRuntime.useModel` when the `modelType` is one of
  * `ModelType.TEXT_SMALL`, `ModelType.TEXT_LARGE`, or `ModelType.TEXT_COMPLETION`.
@@ -311,6 +397,11 @@ export interface ChatMessage {
  * Some providers may not support both `temperature` and `topP` simultaneously, or may have other restrictions.
  * Plugin implementations should filter out unsupported parameters before calling their provider's API.
  * Check your provider's documentation to determine which parameters are supported.
+ *
+ * **Local structure-forcing fields** (`prefill`, `responseSkeleton`, `grammar`,
+ * `streamStructured`): honoured only by the local llama-server engine (W4).
+ * Cloud / HTTP adapters that can't act on them simply leave them unread — there
+ * is no fallback branch; the request still works, just without forcing.
  */
 export interface GenerateTextParams {
 	/**
@@ -383,6 +474,52 @@ export interface GenerateTextParams {
 	 * automatically.
 	 */
 	signal?: AbortSignal;
+	/**
+	 * Text to seed the assistant turn with — generation continues *from here*
+	 * rather than starting fresh. For chat-completion shapes this is appended as
+	 * a partial trailing assistant message; for native tool-call shapes it is a
+	 * partial tool-call arguments string the model continues. The local engine
+	 * (W4) uses this for the "shouldRespond shortcut" and "in-fill the next
+	 * param key on `,\n`" flows — once the structure up to `"replyText": "` is
+	 * known it splices that in and resumes generation. Cloud adapters ignore it.
+	 *
+	 * Producer: `@elizaos/core` message service / W8 grammar emitter.
+	 * Consumer: local-inference engine (W4).
+	 */
+	prefill?: string;
+	/**
+	 * Engine-neutral description of the response JSON envelope to in-fill (see
+	 * {@link ResponseSkeleton}). When set, the local engine should express the
+	 * whole skeleton as a lazy GBNF so only the free positions cost tokens and
+	 * single-value enums collapse to literals; the multi-call boundary loop is
+	 * the fallback. Cloud adapters ignore it.
+	 *
+	 * Producer: `@elizaos/core` `buildResponseGrammar` (W8).
+	 * Consumer: local-inference engine (W4).
+	 */
+	responseSkeleton?: ResponseSkeleton;
+	/**
+	 * A GBNF grammar string — an alternative or companion to
+	 * {@link responseSkeleton}. The engine may compile `responseSkeleton` to
+	 * GBNF itself, or a caller (W8) may supply a pre-built grammar directly. If
+	 * both are present the explicit `grammar` wins. Cloud adapters ignore it.
+	 *
+	 * Producer: W8 grammar emitter (or W4 by compiling `responseSkeleton`).
+	 * Consumer: local-inference engine (W4) → llama-server `grammar` / `grammar_lazy`.
+	 */
+	grammar?: string;
+	/**
+	 * When true the call streams its result and is parsed incrementally with
+	 * per-field start/done events ({@link import("./streaming").StructuredFieldEventCallbacks}).
+	 * The runtime wires the field events to TTS handoff (W9) and the
+	 * forced-skeleton emitter (W8). Adapters that can't stream ignore the flag
+	 * (the result is still returned whole). Distinct from `stream` (raw token
+	 * stream) — `streamStructured` is "stream + structured field tracking".
+	 *
+	 * Producer: `@elizaos/core` message service (Stage-1 call).
+	 * Consumer: local-inference engine (W4) + the runtime's field-event plumbing.
+	 */
+	streamStructured?: boolean;
 }
 
 /**

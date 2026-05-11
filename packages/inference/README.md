@@ -572,7 +572,7 @@ before it can satisfy AGENTS.md §3 in this workspace.
 
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
-| `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Override the fork remote (default `https://github.com/milady-ai/llama.cpp.git`). | unset |
+| `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Override the fork remote (default `https://github.com/elizaOS/llama.cpp.git`). | unset |
 | `ELIZA_DFLASH_LLAMA_CPP_REF`             | Override the fork ref (default `v0.4.0-milady`).          | unset |
 | `ELIZA_DFLASH_VULKAN_HEADERS_DIR` / `ELIZA_DFLASH_SPIRV_HEADERS_DIR` | Pre-staged Khronos header paths for cross-builds. | unset |
 | `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |

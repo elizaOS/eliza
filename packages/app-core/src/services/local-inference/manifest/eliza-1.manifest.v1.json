@@ -25,7 +25,7 @@
     "id": { "type": "string", "minLength": 1 },
     "tier": {
       "type": "string",
-      "enum": ["0_6b", "1_7b", "9b", "27b", "27b-256k"]
+      "enum": ["0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m"]
     },
     "version": {
       "type": "string",

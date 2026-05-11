@@ -58,7 +58,7 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  *                            enum slots 43/44/46/47). Whether the C++
  *                            kernel for those types actually runs depends
  *                            on the loaded `@node-llama-cpp/<platform>`
- *                            binary: the milady-ai/llama.cpp prebuild
+ *                            binary: the elizaOS/llama.cpp prebuild
  *                            implements them; the upstream prebuild
  *                            forwards an unknown enum int to ggml and
  *                            errors at the kernel layer.
@@ -114,7 +114,7 @@ export interface LocalInferenceLoadArgs {
  * (v3.18.1-milady.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
  * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
  * aliases below. Whether the C++ kernel actually runs depends on the
- * loaded `@node-llama-cpp/<platform>` binary — the milady-ai/llama.cpp
+ * loaded `@node-llama-cpp/<platform>` binary — the elizaOS/llama.cpp
  * prebuild ships the kernels; upstream's prebuild does not.
  *
  * `validateLocalInferenceLoadArgs({ allowFork: false })` (the route-layer
@@ -189,7 +189,7 @@ export function validateLocalInferenceLoadArgs(
     }
     if (!allowFork && isForkOnlyKvCacheType(value)) {
       throw new Error(
-        `${field}="${value}" requires the milady-ai/llama.cpp kernel from the milady fork. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the milady-ai/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
+        `${field}="${value}" requires the elizaOS/llama.cpp kernel from the milady fork. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the elizaOS/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
       );
     }
     if (!allowFork && !isStockKvCacheType(value)) {
