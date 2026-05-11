@@ -1,0 +1,26 @@
+{
+  "backend": "cpu_x86_64_avx_vnni",
+  "date": "2026-05-11",
+  "host": "Intel Core Ultra 9 275HX (Arrow Lake-HX, 24 cores; AVX2 + AVX-VNNI + F16C + SHA-NI, no AVX-512)",
+  "note": "Single-thread micro-benchmarks of the qjl-cpu / polarquant-cpu plugin dispatch paths after adding the runtime AVX-VNNI tier and the Polar pre-Hadamard SIMD variant. Best-of-20 inner-loop wall time. Compiled with -O3 -mavx2 -mfma (-mavxvnni for the VNNI TU).",
+  "qjl_int8_score": {
+    "workload": "n_heads=32, n_kv_heads=8, n_tokens=4096 -> 131072 scores; head_dim=128, proj_dim=256",
+    "qjl_score_qk_fp32_avx2_us": 3005.4,
+    "qjl_score_qk_i8_ref_scalar_us": 17022.8,
+    "qjl_score_qk_i8_avxvnni_us": 572.5,
+    "speedup_vs_fp32_avx2": 5.25,
+    "speedup_vs_i8_scalar": 29.74,
+    "active_simd": "avxvnni",
+    "parity": "bit-exact integer dot vs qjl_score_qk_i8_ref (max_abs 0.0 over 12*257 outputs in qjl_avxvnni_smoke); ~1.2e-3 abs vs the exact fp32 qjl_score_qk_ref baseline (int8 sketch quantization error, unchanged from the existing reference path)"
+  },
+  "polar_preht_dot": {
+    "workload": "32768 Polar K-rows x 128 dims dotted against one query (use_qjl=1)",
+    "ggml_vec_dot_q4_polar_q8_0_avx2_us": 6918.5,
+    "ggml_vec_dot_q4_polar_preht_f32_ref_scalar_us": 8794.3,
+    "ggml_vec_dot_q4_polar_preht_f32_avx2_us": 5239.1,
+    "speedup_vs_q8_0_avx2": 1.32,
+    "speedup_vs_preht_scalar": 1.68,
+    "active_simd": "avx2",
+    "parity": "rel_err < 1e-5 vs ggml_vec_dot_q4_polar_preht_f32_ref over 64 blocks (polar_preht_simd_parity_test), for both use_qjl=0 and use_qjl=1; identical algebra dot(H*x,q)==dot(x,H*q), avoids the per-K-row 7-stage Hadamard and the 128-float decode-to-scratch"
+  }
+}

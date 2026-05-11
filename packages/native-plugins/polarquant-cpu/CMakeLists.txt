@@ -20,18 +20,22 @@ set(POLARQUANT_SRCS
     src/polar_dispatch.c
 )
 
-# Detect target arch and add the matching SIMD TU.  Each TU compiles
+# Detect target arch and add the matching SIMD TUs.  Each TU compiles
 # only for its own arch; gcc/clang #if-out the body otherwise so a
 # stray include of arm_neon.h on x86 (or vice-versa) is harmless.
+# Within an arch the dispatcher picks AVX-VNNI vs AVX2 (resp. dotprod
+# vs plain NEON) at runtime from cpuid/hwcap (see src/polar_cpu_features.h).
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86_64|amd64|AMD64)")
     list(APPEND POLARQUANT_SRCS
         src/polar_dequantize_avx2.c
-        src/polar_dot_avx2.c)
+        src/polar_dot_avx2.c
+        src/polar_dot_preht_avx2.c)
     set(POLARQUANT_X86 ON)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
     list(APPEND POLARQUANT_SRCS
         src/polar_dequantize_neon.c
-        src/polar_dot_neon.c)
+        src/polar_dot_neon.c
+        src/polar_dot_preht_neon.c)
     set(POLARQUANT_ARM ON)
 endif()
 
@@ -50,7 +54,7 @@ target_compile_options(polarquant PRIVATE
 
 if(POLARQUANT_X86)
     set_source_files_properties(
-        src/polar_dequantize_avx2.c src/polar_dot_avx2.c
+        src/polar_dequantize_avx2.c src/polar_dot_avx2.c src/polar_dot_preht_avx2.c
         PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
     )
     target_compile_definitions(polarquant PUBLIC POLARQUANT_HAVE_AVX2=1)
@@ -84,3 +88,7 @@ add_test(NAME polar_preht_dot COMMAND polar_preht_dot_test)
 add_executable(polar_simd_parity_test test/polar_simd_parity_test.c)
 target_link_libraries(polar_simd_parity_test PRIVATE polarquant)
 add_test(NAME polar_simd_parity COMMAND polar_simd_parity_test)
+
+add_executable(polar_preht_simd_parity_test test/polar_preht_simd_parity_test.c)
+target_link_libraries(polar_preht_simd_parity_test PRIVATE polarquant)
+add_test(NAME polar_preht_simd_parity COMMAND polar_preht_simd_parity_test)
