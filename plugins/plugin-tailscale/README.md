@@ -77,8 +77,8 @@ Response:
   "authKey": "tskey-auth-...",
   "tailnet": "https://headscale.elizacloud.ai",
   "loginServer": "https://headscale.elizacloud.ai",
-  "hostname": "eliza-orgpart-randomhex-signature",
-  "magicDnsName": "eliza-orgpart-randomhex-signature.tunnel.elizacloud.ai",
+  "hostname": "eliza-orgpart-randomhex-expiry-signature",
+  "magicDnsName": "eliza-orgpart-randomhex-expiry-signature.tunnel.elizacloud.ai",
   "billing": {
     "model": "on_demand",
     "unit": "tunnel_auth_key",

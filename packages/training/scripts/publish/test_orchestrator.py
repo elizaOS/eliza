@@ -71,6 +71,7 @@ def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
             "text_eval": 0.71,
             "voice_rtf": 0.32,
             "asr_wer": 0.05,
+            "vad_latency_ms": 14.0,
             "first_token_latency_ms": 145,
             "first_audio_latency_ms": 280,
             "barge_in_cancel_ms": 55,
@@ -95,11 +96,12 @@ def _build_fixture_bundle(
 
     # Weight files — content irrelevant; sha256 is the contract.
     _write(bundle / "text" / f"eliza-1-{tier}-64k.gguf", b"\x00text-64k\x00")
-    _write(bundle / "tts" / "omnivoice-1.7b.gguf", b"\x00tts\x00")
+    _write(bundle / "tts" / "omnivoice-base-Q8_0.gguf", b"\x00tts\x00")
     _write(
-        bundle / "tts" / "omnivoice-tokenizer-1.7b.gguf", b"\x00tts-tok\x00"
+        bundle / "tts" / "omnivoice-tokenizer-Q8_0.gguf", b"\x00tts-tok\x00"
     )
     _write(bundle / "asr" / "asr.gguf", b"\x00asr\x00")
+    _write(bundle / "vad" / "eliza-1-vad.onnx", b"\x00vad\x00")
     _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
     _write(bundle / "dflash" / f"drafter-{tier}.gguf", b"\x00drafter\x00")
     _write(
@@ -280,6 +282,7 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
                     *rels("text"),
                     *rels("tts"),
                     *rels("asr"),
+                    *rels("vad"),
                     *rels("vision"),
                     *rels("dflash"),
                 ],
@@ -448,9 +451,17 @@ def test_missing_voice_cache_fails(tmp_path: Path) -> None:
     assert rc == EXIT_MISSING_FILE
 
 
+def test_missing_vad_model_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "vad" / "eliza-1-vad.onnx").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc != EXIT_OK
+
+
 def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "tts" / "omnivoice-tokenizer-1.7b.gguf").unlink()
+    (bundle / "tts" / "omnivoice-tokenizer-Q8_0.gguf").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE

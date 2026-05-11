@@ -50,6 +50,28 @@ The audit fails non-zero if trajectories are missing, aggregate counts do not
 match per-task files, token usage is missing, or tool call/result pairs are
 unbalanced.
 
+## Synthetic 1M-Token Long-Context Fixture
+
+Use this when changing compaction logic. It creates a LOCA-shaped trajectory
+with deterministic needles buried across a million-token history, compacts it
+into a summary plus recent tail, and fails if any exact needle is lost.
+
+```bash
+python -m eliza_loca.long_context \
+  --output-dir outputs/long_context_1m \
+  --target-tokens 1000000 \
+  --turns 400 \
+  --needle-count 32 \
+  --tail-messages 16
+```
+
+Artifacts:
+
+- `outputs/long_context_1m/tasks/LongContextNeedles/state0/trajectory.json`
+- `outputs/long_context_1m/long_context_audit.json`
+- standard LOCA `results.json`, `all_trajectories.json`, `eval.json`, and
+  `token_stats.json`
+
 ## Context Strategy Comparisons
 
 Run the same config with different LOCA strategies and context controls:
@@ -64,3 +86,20 @@ python -m eliza_loca.run_cerebras --context-summary --output-dir outputs/context
 
 Compare `avg_accuracy`, `avg_api_tokens`, context event counts, and max prompt
 tokens in each run's `eliza_loca_audit.json`.
+
+## Strategy Notes
+
+The debug Canvas task is sensitive to compaction quality:
+
+- Low reasoning effort tends to stop early or under-use Canvas tools.
+- Pure summary compaction can corrupt exact CSV field values, infer that
+  unqueried sources are absent, or preserve placeholder rows as if they were
+  final data.
+- Summary generation failures must be non-destructive. The runner records
+  `summary_generation_failed` in `summary_skip` and keeps the existing context.
+- Summary+tail is the current default lesson: summarize old context, preserve a
+  bounded recent raw tail, and never split tool-call/tool-result pairs. This
+  keeps exact source records available while still shrinking long histories.
+- Static tool schemas can dominate token use. When fixed tool/schema overhead is
+  the reason a request exceeds `reset_size`, summarization is deferred until the
+  hard context edge because summarizing conversation text cannot shrink schemas.

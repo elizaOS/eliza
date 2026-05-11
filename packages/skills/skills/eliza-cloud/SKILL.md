@@ -150,7 +150,8 @@ Cloud tunnels are multi-tenant by construction: callers must authenticate as an
 active Cloud user or API key with an organization, provisioning consumes org
 credits immediately, keys are short-lived/non-reusable/ephemeral, the server
 forces `tag:eliza-tunnel`, and the public proxy only forwards generated
-signed `eliza-<org>-<random>-<signature>` hostnames into the Headscale tailnet.
+signed `eliza-<org>-<random>-<expiry>-<signature>` hostnames into the Headscale
+tailnet. Signed public hostnames expire with the tunnel provisioning window.
 
 Always confirm before destructive actions (delete app, regenerate key) — show the user what's about to happen, ask for explicit yes.
 

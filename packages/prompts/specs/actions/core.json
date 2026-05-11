@@ -4,7 +4,11 @@
     {
       "name": "REPLY",
       "description": "Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. This is not an email reply, inbox workflow, or external-channel send — use the dedicated connector actions for those surfaces.",
-      "similes": ["GREET", "RESPOND", "RESPONSE"],
+      "similes": [
+        "GREET",
+        "RESPOND",
+        "RESPONSE"
+      ],
       "parameters": [],
       "examples": [
         [
@@ -18,7 +22,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Hi! How can I help you today?",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ],
@@ -33,7 +39,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "I really like deep shades of blue. They remind me of the ocean and the night sky.",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ],
@@ -48,7 +56,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Let me break that down for you in simple terms...",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ],
@@ -63,7 +73,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Of course! Let's work through it step by step.",
-              "actions": ["REPLY"]
+              "actions": [
+                "REPLY"
+              ]
             }
           }
         ]
@@ -73,7 +85,11 @@
     {
       "name": "IGNORE",
       "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
-      "similes": ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
+      "similes": [
+        "STOP_TALKING",
+        "STOP_CHATTING",
+        "STOP_CONVERSATION"
+      ],
       "parameters": [],
       "examples": [
         [
@@ -87,7 +103,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "",
-              "actions": ["IGNORE"]
+              "actions": [
+                "IGNORE"
+              ]
             }
           }
         ],
@@ -102,7 +120,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "",
-              "actions": ["IGNORE"]
+              "actions": [
+                "IGNORE"
+              ]
             }
           }
         ],
@@ -129,7 +149,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "",
-              "actions": ["IGNORE"]
+              "actions": [
+                "IGNORE"
+              ]
             }
           }
         ],
@@ -150,7 +172,9 @@
             "name": "{{name1}}",
             "content": {
               "text": "",
-              "actions": ["IGNORE"]
+              "actions": [
+                "IGNORE"
+              ]
             }
           }
         ],
@@ -165,7 +189,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "thats inappropriate",
-              "actions": ["IGNORE"]
+              "actions": [
+                "IGNORE"
+              ]
             }
           }
         ]
@@ -175,7 +201,13 @@
     {
       "name": "NONE",
       "description": "Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
-      "similes": ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NOOP", "PASS"],
+      "similes": [
+        "NO_ACTION",
+        "NO_RESPONSE",
+        "NO_REACTION",
+        "NOOP",
+        "PASS"
+      ],
       "parameters": [],
       "examples": [
         [
@@ -189,7 +221,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "oh hey",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           }
         ],
@@ -204,7 +238,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "yeah but its a pain to get into node.js",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           }
         ],
@@ -213,14 +249,18 @@
             "name": "{{name1}}",
             "content": {
               "text": "u think aliens are real",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "ya obviously",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           }
         ],
@@ -229,14 +269,18 @@
             "name": "{{name1}}",
             "content": {
               "text": "drop a joke on me",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           },
           {
             "name": "{{name2}}",
             "content": {
               "text": "why dont scientists trust atoms cuz they make up everything lmao",
-              "actions": ["NONE"]
+              "actions": [
+                "NONE"
+              ]
             }
           }
         ]
@@ -246,7 +290,13 @@
     {
       "name": "MESSAGE",
       "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
-      "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
+      "similes": [
+        "DM",
+        "DIRECT_MESSAGE",
+        "CHAT",
+        "CHANNEL",
+        "ROOM"
+      ],
       "parameters": [
         {
           "name": "action",
@@ -543,7 +593,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Message sent to dev_guru on telegram.",
-              "actions": ["MESSAGE"]
+              "actions": [
+                "MESSAGE"
+              ]
             }
           }
         ]
@@ -551,7 +603,10 @@
       "exampleCalls": [
         {
           "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
-          "actions": ["REPLY", "MESSAGE"],
+          "actions": [
+            "REPLY",
+            "MESSAGE"
+          ],
           "params": {
             "MESSAGE": {
               "action": "send",
@@ -563,11 +618,15 @@
         },
         {
           "user": "Triage my Gmail inbox",
-          "actions": ["MESSAGE"],
+          "actions": [
+            "MESSAGE"
+          ],
           "params": {
             "MESSAGE": {
               "action": "triage",
-              "sources": ["gmail"]
+              "sources": [
+                "gmail"
+              ]
             }
           }
         }
@@ -577,7 +636,13 @@
     {
       "name": "POST",
       "description": "Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
-      "similes": ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+      "similes": [
+        "TWEET",
+        "CAST",
+        "PUBLISH",
+        "FEED_POST",
+        "TIMELINE"
+      ],
       "parameters": [
         {
           "name": "action",
@@ -585,7 +650,11 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["send", "read", "search"]
+            "enum": [
+              "send",
+              "read",
+              "search"
+            ]
           },
           "descriptionCompressed": "post action"
         },
@@ -701,7 +770,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Posted to X.",
-              "actions": ["POST"]
+              "actions": [
+                "POST"
+              ]
             }
           }
         ]
@@ -709,7 +780,9 @@
       "exampleCalls": [
         {
           "user": "Post this on X: shipping today",
-          "actions": ["POST"],
+          "actions": [
+            "POST"
+          ],
           "params": {
             "POST": {
               "source": "x",
@@ -722,69 +795,147 @@
       "descriptionCompressed": "primary post action ops send read search public feed timeline posts"
     },
     {
-      "name": "SCHEDULE_FOLLOW_UP",
-      "description": "Schedule a follow-up reminder for a contact.",
+      "name": "ROOM",
+      "description": "Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
       "similes": [
-        "REMIND_ME",
-        "FOLLOW_UP",
-        "REMIND_FOLLOW_UP",
-        "SET_REMINDER",
-        "REMIND_ABOUT",
-        "FOLLOW_UP_WITH",
-        "follow up with",
-        "remind me to contact",
-        "schedule a check-in",
-        "set a reminder for"
+        "FOLLOW_ROOM",
+        "UNFOLLOW_ROOM",
+        "MUTE_ROOM",
+        "UNMUTE_ROOM",
+        "ROOM_FOLLOW",
+        "ROOM_MUTE"
       ],
       "parameters": [
         {
-          "name": "name",
-          "description": "Contact name to follow up with.",
+          "name": "action",
+          "description": "Room operation: follow, unfollow, mute, or unmute.",
           "required": true,
           "schema": {
-            "type": "string"
-          },
-          "examples": ["Sarah Chen"],
-          "descriptionCompressed": "Contact name."
+            "type": "string",
+            "enum": [
+              "follow",
+              "unfollow",
+              "mute",
+              "unmute"
+            ]
+          }
         },
         {
-          "name": "when",
-          "description": "When to follow up. Use an ISO-8601 datetime string.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["2026-02-01T09:00:00Z"],
-          "descriptionCompressed": "ISO-8601 datetime."
-        },
-        {
-          "name": "reason",
-          "description": "Optional reason/context for the follow-up.",
+          "name": "roomId",
+          "description": "Optional target room id. Defaults to the current room when omitted.",
           "required": false,
           "schema": {
             "type": "string"
-          },
-          "examples": ["Check in about the agent framework demo"],
-          "descriptionCompressed": "Optional reason/context."
+          }
         }
       ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Remind me to follow up with Sarah next week about the demo"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've scheduled a follow-up reminder with Sarah for next week about the demo."
-            }
-          }
-        ]
+      "descriptionCompressed": "Room action=follow|unfollow|mute|unmute; current room by default."
+    },
+    {
+      "name": "ROLE",
+      "description": "Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
+      "similes": [
+        "UPDATE_ROLE",
+        "SET_ROLE",
+        "CHANGE_ROLE",
+        "ASSIGN_ROLE",
+        "MAKE_ADMIN",
+        "GRANT_ROLE"
       ],
-      "descriptionCompressed": "Schedule follow-up reminder for contact."
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Role operation. Currently update.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "update"
+            ]
+          }
+        },
+        {
+          "name": "entityId",
+          "description": "Entity id whose role should be updated.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "role",
+          "description": "Role to assign.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Role action=update; assign trust role to entity."
+    },
+    {
+      "name": "SEARCH_EXPERIENCES",
+      "description": "Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
+      "similes": [
+        "SEARCH_MEMORY",
+        "SEARCH_EXPERIENCE",
+        "SEARCH_PRIOR_CONTEXT",
+        "FIND_EXPERIENCES"
+      ],
+      "parameters": [
+        {
+          "name": "query",
+          "description": "Search query.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of results to return.",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "descriptionCompressed": "Search prior experiences/memory by query."
+    },
+    {
+      "name": "CHARACTER",
+      "description": "Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
+      "similes": [
+        "CHARACTER_MODIFY",
+        "CHARACTER_PERSIST",
+        "CHARACTER_UPDATE_IDENTITY",
+        "UPDATE_CHARACTER",
+        "EDIT_CHARACTER"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Character operation: modify, persist, or update_identity.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "modify",
+              "persist",
+              "update_identity"
+            ]
+          }
+        },
+        {
+          "name": "updates",
+          "description": "Structured or textual character updates.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Character action=modify|persist|update_identity."
     },
     {
       "name": "CHOOSE_OPTION",
@@ -806,7 +957,9 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["c0a8012e"],
+          "examples": [
+            "c0a8012e"
+          ],
           "descriptionCompressed": "Pending task id."
         },
         {
@@ -816,7 +969,10 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["APPROVE", "ABORT"],
+          "examples": [
+            "APPROVE",
+            "ABORT"
+          ],
           "descriptionCompressed": "Option name exactly as listed."
         }
       ],
@@ -832,316 +988,14 @@
             "name": "{{name2}}",
             "content": {
               "text": "I've selected option 1 for the pending task.",
-              "actions": ["CHOOSE_OPTION"]
+              "actions": [
+                "CHOOSE_OPTION"
+              ]
             }
           }
         ]
       ],
       "descriptionCompressed": "Select option for pending multi-choice task."
-    },
-    {
-      "name": "FOLLOW_ROOM",
-      "description": "Start following this channel with great interest, chiming in without needing to be explicitly mentioned. Only do this if explicitly asked to.",
-      "similes": [
-        "FOLLOW_CHAT",
-        "FOLLOW_CHANNEL",
-        "FOLLOW_CONVERSATION",
-        "FOLLOW_THREAD",
-        "JOIN_ROOM",
-        "SUBSCRIBE_ROOM",
-        "WATCH_ROOM",
-        "ENTER_ROOM"
-      ],
-      "parameters": [
-        {
-          "name": "roomId",
-          "description": "The target room id to follow.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["00000000-0000-0000-0000-000000000000"],
-          "descriptionCompressed": "Room id to follow."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "hey {{name2}} follow this channel"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Sure, I will now follow this room and chime in",
-              "actions": ["FOLLOW_ROOM"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "{{name2}} stay in this chat pls"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "you got it, i'm here",
-              "actions": ["FOLLOW_ROOM"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Start following channel, chiming in without @mention. Only when explicitly asked."
-    },
-    {
-      "name": "UNFOLLOW_ROOM",
-      "description": "Stop following a room and cease receiving updates. Use this when you no longer want to monitor a room's activity.",
-      "similes": [
-        "UNFOLLOW_CHAT",
-        "UNFOLLOW_CONVERSATION",
-        "UNFOLLOW_ROOM",
-        "UNFOLLOW_THREAD",
-        "LEAVE_ROOM",
-        "UNSUBSCRIBE_ROOM",
-        "STOP_WATCHING_ROOM",
-        "EXIT_ROOM"
-      ],
-      "parameters": [
-        {
-          "name": "roomId",
-          "description": "The target room id to unfollow.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["00000000-0000-0000-0000-000000000000"],
-          "descriptionCompressed": "Room id to unfollow."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "{{name2}} stop following this channel"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Okay, I'll stop following this room",
-              "actions": ["UNFOLLOW_ROOM"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Stop following room, cease updates."
-    },
-    {
-      "name": "MUTE_ROOM",
-      "description": "Mutes a room, ignoring all messages unless explicitly mentioned. Only do this if explicitly asked to, or if you're annoying people.",
-      "similes": [
-        "MUTE_CHAT",
-        "MUTE_CONVERSATION",
-        "MUTE_THREAD",
-        "MUTE_CHANNEL",
-        "SILENCE_ROOM",
-        "QUIET_ROOM",
-        "DISABLE_NOTIFICATIONS",
-        "STOP_RESPONDING"
-      ],
-      "parameters": [
-        {
-          "name": "roomId",
-          "description": "The room id to mute.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["00000000-0000-0000-0000-000000000000"],
-          "descriptionCompressed": "Room id to mute."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "{{name2}}, please mute this channel. No need to respond here for now."
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "Got it",
-              "actions": ["MUTE_ROOM"]
-            }
-          }
-        ],
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "{{name2}} plz mute this room"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "np going silent",
-              "actions": ["MUTE_ROOM"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Mute room, ignore msgs unless @mentioned. Only when asked or annoying."
-    },
-    {
-      "name": "UNMUTE_ROOM",
-      "description": "Unmute a room to resume responding and receiving notifications. Use this when you want to start interacting with a muted room again.",
-      "similes": [
-        "UNMUTE_CHAT",
-        "UNMUTE_CONVERSATION",
-        "UNMUTE_ROOM",
-        "UNMUTE_THREAD",
-        "UNSILENCE_ROOM",
-        "ENABLE_NOTIFICATIONS",
-        "RESUME_RESPONDING",
-        "START_LISTENING"
-      ],
-      "parameters": [
-        {
-          "name": "roomId",
-          "description": "The room id to unmute.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["00000000-0000-0000-0000-000000000000"],
-          "descriptionCompressed": "Room id to unmute."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "{{name2}} unmute this room please"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've unmuted this room and will respond again",
-              "actions": ["UNMUTE_ROOM"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Unmute room, resume responding."
-    },
-    {
-      "name": "UPDATE_SETTINGS",
-      "description": "Update agent settings by applying explicit key/value updates.",
-      "similes": [
-        "SET_SETTINGS",
-        "CHANGE_SETTINGS",
-        "UPDATE_SETTING",
-        "SAVE_SETTING",
-        "SET_CONFIGURATION",
-        "CONFIGURE",
-        "MODIFY_SETTINGS",
-        "SET_PREFERENCE",
-        "UPDATE_CONFIG"
-      ],
-      "parameters": [
-        {
-          "name": "updates",
-          "description": "Key/value setting updates to apply.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["model: gpt-5"],
-          "descriptionCompressed": "Key/value setting updates."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Change my language setting to French"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've updated your language setting to French.",
-              "actions": ["UPDATE_SETTINGS"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Update agent settings via key/value pairs."
-    },
-    {
-      "name": "UPDATE_ROLE",
-      "description": "Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
-      "similes": [
-        "SET_ROLE",
-        "CHANGE_ROLE",
-        "SET_PERMISSIONS",
-        "ASSIGN_ROLE",
-        "MAKE_ADMIN",
-        "MODIFY_PERMISSIONS",
-        "GRANT_ROLE"
-      ],
-      "parameters": [
-        {
-          "name": "entityId",
-          "description": "The entity id to update.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["00000000-0000-0000-0000-000000000000"],
-          "descriptionCompressed": "Entity id."
-        },
-        {
-          "name": "role",
-          "description": "The new role to assign.",
-          "required": true,
-          "schema": {
-            "type": "string"
-          },
-          "examples": ["admin", "member"],
-          "descriptionCompressed": "Role to assign."
-        }
-      ],
-      "examples": [
-        [
-          {
-            "name": "{{name1}}",
-            "content": {
-              "text": "Make Sarah an admin"
-            }
-          },
-          {
-            "name": "{{name2}}",
-            "content": {
-              "text": "I've assigned the admin role to Sarah.",
-              "actions": ["UPDATE_ROLE"]
-            }
-          }
-        ]
-      ],
-      "descriptionCompressed": "Assign role (Admin/Owner/None) to user(s) in channel."
     },
     {
       "name": "ATTACHMENT",
@@ -1162,9 +1016,15 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["read", "save_as_document"]
+            "enum": [
+              "read",
+              "save_as_document"
+            ]
           },
-          "examples": ["read", "save_as_document"],
+          "examples": [
+            "read",
+            "save_as_document"
+          ],
           "descriptionCompressed": "Attachment operation."
         },
         {
@@ -1174,7 +1034,9 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["attachment-123"],
+          "examples": [
+            "attachment-123"
+          ],
           "descriptionCompressed": "Attachment id."
         },
         {
@@ -1185,7 +1047,10 @@
             "type": "boolean",
             "default": false
           },
-          "examples": [true, false],
+          "examples": [
+            true,
+            false
+          ],
           "descriptionCompressed": "Store read result in task clipboard."
         },
         {
@@ -1195,7 +1060,9 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["Meeting notes"],
+          "examples": [
+            "Meeting notes"
+          ],
           "descriptionCompressed": "Saved document title."
         }
       ],
@@ -1231,9 +1098,17 @@
           "required": true,
           "schema": {
             "type": "string",
-            "enum": ["image", "video", "audio"]
+            "enum": [
+              "image",
+              "video",
+              "audio"
+            ]
           },
-          "examples": ["image", "video", "audio"],
+          "examples": [
+            "image",
+            "video",
+            "audio"
+          ],
           "descriptionCompressed": "Media kind: image, video, audio."
         },
         {
@@ -1243,7 +1118,9 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
+          "examples": [
+            "A futuristic cityscape at sunset, cinematic lighting"
+          ],
           "descriptionCompressed": "Generation prompt."
         },
         {
@@ -1252,9 +1129,17 @@
           "required": false,
           "schema": {
             "type": "string",
-            "enum": ["music", "sfx", "tts"]
+            "enum": [
+              "music",
+              "sfx",
+              "tts"
+            ]
           },
-          "examples": ["music", "sfx", "tts"],
+          "examples": [
+            "music",
+            "sfx",
+            "tts"
+          ],
           "descriptionCompressed": "Audio subtype."
         },
         {
@@ -1264,7 +1149,10 @@
           "schema": {
             "type": "number"
           },
-          "examples": [5, 30],
+          "examples": [
+            5,
+            30
+          ],
           "descriptionCompressed": "Duration seconds."
         },
         {
@@ -1274,7 +1162,10 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["16:9", "9:16"],
+          "examples": [
+            "16:9",
+            "9:16"
+          ],
           "descriptionCompressed": "Video aspect ratio."
         },
         {
@@ -1284,7 +1175,10 @@
           "schema": {
             "type": "string"
           },
-          "examples": ["1024x1024", "landscape_4_3"],
+          "examples": [
+            "1024x1024",
+            "landscape_4_3"
+          ],
           "descriptionCompressed": "Image size."
         }
       ],
@@ -1300,7 +1194,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "Sure, I'll create a futuristic city image for you. One moment...",
-              "actions": ["GENERATE_MEDIA"]
+              "actions": [
+                "GENERATE_MEDIA"
+              ]
             }
           }
         ],
@@ -1315,7 +1211,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "I'll create that video clip.",
-              "actions": ["GENERATE_MEDIA"]
+              "actions": [
+                "GENERATE_MEDIA"
+              ]
             }
           }
         ],
@@ -1330,7 +1228,9 @@
             "name": "{{name2}}",
             "content": {
               "text": "I'll generate that audio track.",
-              "actions": ["GENERATE_MEDIA"]
+              "actions": [
+                "GENERATE_MEDIA"
+              ]
             }
           }
         ]

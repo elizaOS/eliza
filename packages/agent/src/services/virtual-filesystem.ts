@@ -49,6 +49,13 @@ export interface VirtualFilesystemDiffEntry {
   after?: VirtualFilesystemEntry;
 }
 
+export interface VirtualFilesystemQuota {
+  usedBytes: number;
+  fileCount: number;
+  quotaBytes: number;
+  maxFileBytes: number;
+}
+
 interface TreeStats {
   bytes: number;
   fileCount: number;
@@ -258,6 +265,16 @@ export class VirtualFilesystemService {
       rollback,
     );
     return rollback;
+  }
+
+  async quota(): Promise<VirtualFilesystemQuota> {
+    const stats = await this.measureFiles();
+    return {
+      usedBytes: stats.bytes,
+      fileCount: stats.fileCount,
+      quotaBytes: this.quotaBytes,
+      maxFileBytes: this.maxFileBytes,
+    };
   }
 
   resolveVirtualPath(virtualPath: string): string {

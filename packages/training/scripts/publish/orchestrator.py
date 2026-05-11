@@ -107,6 +107,8 @@ ELIZA_1_HF_ORG = "elizalabs"
 REQUIRED_SUBDIRS: tuple[str, ...] = (
     "text",
     "tts",
+    "asr",
+    "vad",
     "dflash",
     "cache",
     "evals",
@@ -212,12 +214,16 @@ TIER_TAGLINES: Mapping[str, str] = {
     "27b-256k": "server / workstation",
 }
 
-VOICE_BACKBONE_BY_TIER: Mapping[str, str] = {
-    "0_6b": "omnivoice-0.6b",
-    "1_7b": "omnivoice-0.6b",
-    "9b": "omnivoice-1.7b",
-    "27b": "omnivoice-1.7b",
-    "27b-256k": "omnivoice-1.7b",
+VOICE_QUANT_BY_TIER: Mapping[str, str] = {
+    # Phones get the smallest GGUF pair that omnivoice.cpp can load.
+    "0_6b": "Q4_K_M",
+    "1_7b": "Q4_K_M",
+    # Desktop/server tiers keep the voice path higher fidelity while still
+    # avoiding BF16/F32 residency costs. The voice stage is latency-sensitive
+    # and repeatedly paged on/off, so Q8 is the practical default.
+    "9b": "Q8_0",
+    "27b": "Q8_0",
+    "27b-256k": "Q8_0",
 }
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
 EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
@@ -225,6 +231,14 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
     "expressive_mos",
     "expressive_tag_leakage",
 )
+
+
+def required_voice_artifacts_for_tier(tier: str) -> tuple[str, str]:
+    quant = VOICE_QUANT_BY_TIER[tier]
+    return (
+        f"omnivoice-base-{quant}.gguf",
+        f"omnivoice-tokenizer-{quant}.gguf",
+    )
 
 # Default RAM budgets (MB). Tightened pre-publish from real measurements
 # on reference hardware; the bundle's sidecar can override.
@@ -391,11 +405,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             "bundle layout: tts/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
-    voice_size = VOICE_BACKBONE_BY_TIER[ctx.tier].removeprefix("omnivoice-")
-    required_tts = {
-        f"omnivoice-{voice_size}.gguf",
-        f"omnivoice-tokenizer-{voice_size}.gguf",
-    }
+    required_tts = set(required_voice_artifacts_for_tier(ctx.tier))
     tts_names = {p.name for p in out["tts"]}
     missing_tts = sorted(required_tts - tts_names)
     if missing_tts:
@@ -407,6 +417,16 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     if not out["dflash"]:
         raise OrchestratorError(
             "bundle layout: dflash/ must contain at least one .gguf",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    if not out["asr"]:
+        raise OrchestratorError(
+            "bundle layout: asr/ must contain at least one model file",
+            EXIT_BUNDLE_LAYOUT_FAIL,
+        )
+    if not out["vad"]:
+        raise OrchestratorError(
+            "bundle layout: vad/ must contain at least one VAD model file",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
     voice_cache = bundle / VOICE_PRESET_CACHE_PATH
@@ -427,7 +447,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
         )
 
     # Optional but if present must not be empty.
-    for opt in ("asr", "vision"):
+    for opt in ("vision", "embedding", "wakeword"):
         d = bundle / opt
         if d.is_dir():
             files = sorted(p for p in d.iterdir() if p.is_file())
@@ -494,7 +514,17 @@ def _expected_payload_paths(
     """
 
     expected: list[str] = []
-    for kind_src in ("text", "tts", "asr", "vision", "dflash", "cache"):
+    for kind_src in (
+        "text",
+        "tts",
+        "asr",
+        "vision",
+        "dflash",
+        "cache",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
         expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
 
     licenses_dir = ctx.bundle_dir / "licenses"
@@ -1116,6 +1146,9 @@ def _collect_files_for_manifest(
         "vision": [],
         "dflash": [],
         "cache": [],
+        "embedding": [],
+        "vad": [],
+        "wakeword": [],
     }
 
     for kind_src, kind_dst in (
@@ -1125,6 +1158,9 @@ def _collect_files_for_manifest(
         ("vision", "vision"),
         ("dflash", "dflash"),
         ("cache", "cache"),
+        ("embedding", "embedding"),
+        ("vad", "vad"),
+        ("wakeword", "wakeword"),
     ):
         for p in layout.get(kind_src, []):
             entry = FileEntry(
@@ -1150,7 +1186,8 @@ def _build_lineage(
     defaults: dict[str, LineageEntry] = {
         "text": LineageEntry(base="eliza-1-family", license="apache-2.0"),
         "voice": LineageEntry(
-            base=VOICE_BACKBONE_BY_TIER[tier], license="apache-2.0"
+            base=f"omnivoice-gguf-{VOICE_QUANT_BY_TIER[tier]}",
+            license="apache-2.0",
         ),
         "drafter": LineageEntry(
             base=f"dflash-{tier}-drafter", license="apache-2.0"
@@ -1259,6 +1296,8 @@ def assemble_manifest(
     voice_rtf = float(results["voice_rtf"])
     has_asr = bool(files_map.get("asr"))
     asr_wer = float(results["asr_wer"]) if has_asr else None
+    has_vad = bool(files_map.get("vad"))
+    vad_latency_ms = float(results["vad_latency_ms"]) if has_vad else None
     expressive_tag_faithfulness = float(results["expressive_tag_faithfulness"])
     expressive_mos = float(results["expressive_mos"])
     expressive_tag_leakage = float(results["expressive_tag_leakage"])
@@ -1295,6 +1334,8 @@ def assemble_manifest(
         and all_backends_pass
         and text_eval_passed
         and voice_rtf_passed
+        and (_gate_passed(gate_report, "asr_wer") if has_asr else False)
+        and (_gate_passed(gate_report, "vad_latency_ms") if has_vad else False)
         and expressive_passed
         and e2e_loop_ok
         and thirty_turn_ok
@@ -1321,6 +1362,10 @@ def assemble_manifest(
             default_eligible=default_eligible,
             asr_wer=asr_wer,
             asr_wer_passed=_gate_passed(gate_report, "asr_wer") if has_asr else None,
+            vad_latency_ms_median=vad_latency_ms,
+            vad_latency_ms_passed=(
+                _gate_passed(gate_report, "vad_latency_ms") if has_vad else None
+            ),
             expressive_tag_faithfulness=expressive_tag_faithfulness,
             expressive_mos=expressive_mos,
             expressive_tag_leakage=expressive_tag_leakage,
@@ -1510,7 +1555,17 @@ def _build_upload_list(
     """
     pairs: list[tuple[Path, str]] = []
 
-    for kind_src in ("text", "tts", "asr", "vision", "dflash", "cache"):
+    for kind_src in (
+        "text",
+        "tts",
+        "asr",
+        "vision",
+        "dflash",
+        "cache",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
         for p in layout.get(kind_src, []):
             pairs.append((p, str(p.relative_to(ctx.bundle_dir))))
 

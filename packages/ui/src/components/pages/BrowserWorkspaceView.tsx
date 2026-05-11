@@ -53,6 +53,10 @@ import {
 import {
   type BrowserWorkspaceWalletState,
   buildBrowserWorkspaceWalletState,
+  getUnsupportedBrowserWorkspaceEvmChainError,
+  isBrowserWorkspaceEvmChainSupported,
+  parseBrowserWorkspaceEvmChainId,
+  resolveBrowserWorkspaceSignMessage,
 } from "./browser-workspace-wallet";
 import { getBrowserPageScopeCopy } from "./page-scoped-conversations";
 import { useBrowserWorkspaceWalletBridge } from "./useBrowserWorkspaceWalletBridge";
@@ -346,17 +350,15 @@ function resolveBrowserWorkspaceSelection(
   return visibleTab?.id ?? tabs[0]?.id ?? null;
 }
 
-function parseEip155ChainId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = trimmed.startsWith("0x")
-    ? Number.parseInt(trimmed.slice(2), 16)
-    : Number(trimmed);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+function resolveSolanaCluster(
+  value: unknown,
+): "mainnet" | "devnet" | "testnet" | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.toLowerCase();
+  if (normalized.includes("devnet")) return "devnet";
+  if (normalized.includes("testnet")) return "testnet";
+  if (normalized.includes("mainnet")) return "mainnet";
+  return undefined;
 }
 
 export function BrowserWorkspaceView(): JSX.Element {
@@ -909,13 +911,16 @@ export function BrowserWorkspaceView(): JSX.Element {
                 arr[0] && typeof arr[0] === "object"
                   ? (arr[0] as { chainId?: unknown }).chainId
                   : null;
-              const chainHex = typeof next === "string" ? next : "";
-              const chainId = chainHex.startsWith("0x")
-                ? Number.parseInt(chainHex.slice(2), 16)
-                : Number(chainHex);
-              if (!Number.isFinite(chainId) || chainId <= 0) {
+              const chainId = parseBrowserWorkspaceEvmChainId(next);
+              if (!chainId) {
                 reply({
                   error: "wallet_switchEthereumChain requires a valid chainId.",
+                });
+                return;
+              }
+              if (!isBrowserWorkspaceEvmChainSupported(chainId)) {
+                reply({
+                  error: getUnsupportedBrowserWorkspaceEvmChainError(chainId),
                 });
                 return;
               }
@@ -935,13 +940,10 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
-              const arr = Array.isArray(req.params) ? req.params : [];
-              const message =
-                typeof arr[0] === "string"
-                  ? (arr[0] as string)
-                  : typeof arr[1] === "string"
-                    ? (arr[1] as string)
-                    : null;
+              const message = resolveBrowserWorkspaceSignMessage(
+                req.params,
+                evmAddress,
+              );
               if (!message) {
                 reply({
                   error: "Browser wallet signing requires a message payload.",
@@ -960,6 +962,15 @@ export function BrowserWorkspaceView(): JSX.Element {
               }
               const result = await client.signBrowserWalletMessage(message);
               reply({ result: result.signature });
+              return;
+            }
+            case "eth_signTypedData":
+            case "eth_signTypedData_v3":
+            case "eth_signTypedData_v4": {
+              reply({
+                error:
+                  "Typed-data signing is not supported by the Eliza browser wallet.",
+              });
               return;
             }
             case "eth_sendTransaction": {
@@ -982,9 +993,15 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
-              const txChainId = parseEip155ChainId(tx.chainId);
+              const txChainId = parseBrowserWorkspaceEvmChainId(tx.chainId);
               const chainId =
                 txChainId ?? tabChainIdRef.current.get(req.tabId) ?? 1;
+              if (!isBrowserWorkspaceEvmChainSupported(chainId)) {
+                reply({
+                  error: getUnsupportedBrowserWorkspaceEvmChainError(chainId),
+                });
+                return;
+              }
               tabChainIdRef.current.set(req.tabId, chainId);
               const value =
                 typeof tx.value === "string"
@@ -1115,9 +1132,37 @@ export function BrowserWorkspaceView(): JSX.Element {
                 return;
               }
               const willBroadcast = req.method === "signAndSendTransaction";
+              const chain =
+                req.params && typeof req.params === "object"
+                  ? (req.params as Record<string, unknown>).chain
+                  : undefined;
+              const cluster =
+                resolveSolanaCluster(
+                  req.params && typeof req.params === "object"
+                    ? (req.params as Record<string, unknown>).cluster
+                    : undefined,
+                ) ?? resolveSolanaCluster(chain);
+              const description =
+                req.params && typeof req.params === "object"
+                  ? (req.params as Record<string, unknown>).description
+                  : undefined;
+              const effectiveDescription =
+                typeof description === "string" && description.trim()
+                  ? description.trim()
+                  : typeof chain === "string" && chain.trim()
+                    ? `Solana transaction on ${chain.trim()}`
+                    : cluster
+                      ? `Solana transaction on ${cluster}`
+                      : undefined;
+              const solanaDetails = [
+                cluster ? `Cluster: ${cluster}` : null,
+                typeof chain === "string" && chain.trim()
+                  ? `Chain: ${chain.trim()}`
+                  : null,
+              ].filter(Boolean);
               const allowed = await walletActionConfirm({
                 title: `${domain} wants to ${willBroadcast ? "send" : "sign"} a Solana transaction`,
-                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
+                message: `From: ${formatAddressForDisplay(solanaAddress ?? "")}${solanaDetails.length ? `\n${solanaDetails.join("\n")}` : ""}\n${willBroadcast ? "Will broadcast on submit." : "Returns the signed bytes to the dApp; the dApp may broadcast."}\n\nAllow?`,
                 confirmLabel: willBroadcast ? "Send" : "Sign",
                 cancelLabel: "Reject",
               });
@@ -1128,6 +1173,10 @@ export function BrowserWorkspaceView(): JSX.Element {
               const result = await client.sendBrowserSolanaTransaction({
                 transactionBase64,
                 broadcast: willBroadcast,
+                ...(cluster ? { cluster } : {}),
+                ...(effectiveDescription
+                  ? { description: effectiveDescription }
+                  : {}),
               });
               reply({ result });
               return;

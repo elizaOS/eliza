@@ -22,6 +22,9 @@ Use this for Mac App Store, Microsoft Store, and Flathub builds.
 Store builds can still connect to Cloud or a remote agent. Cloud hosting is its
 own runtime target; it is not replaced by the local desktop sandbox.
 
+For the full mobile/desktop capability matrix and policy review, see
+[`docs/mobile-agentic-ide-platform-plan.md`](../mobile-agentic-ide-platform-plan.md).
+
 ## Direct Variant
 
 Use this for the downloadable DMG, Windows installer, AppImage, deb/rpm, and

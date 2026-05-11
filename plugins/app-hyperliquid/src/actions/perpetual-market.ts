@@ -90,7 +90,6 @@ const READ_KINDS = [
 type HyperliquidReadKind = (typeof READ_KINDS)[number];
 const HYPERLIQUID_OPS = ["read", "place_order"] as const;
 type HyperliquidOp = (typeof HYPERLIQUID_OPS)[number];
-const PERPETUAL_MARKET_SUBACTIONS = ["read", "place-order"] as const;
 const HYPERLIQUID_READ_COMPAT_SIMILES = [
   "HYPERLIQUID",
   "PERP_MARKET",
@@ -704,9 +703,9 @@ export const perpetualMarketAction: Action = {
     ...HYPERLIQUID_PLACE_ORDER_COMPAT_SIMILES,
   ],
   description:
-    "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place-order reports trading readiness; signed order placement is disabled in this app scaffold.",
+    "Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
   descriptionCompressed:
-    "Perpetual market router: target hyperliquid; action read or place-order.",
+    "Perpetual market router: target hyperliquid; action read or place_order.",
   parameters: [
     {
       name: "target",
@@ -720,15 +719,15 @@ export const perpetualMarketAction: Action = {
     },
     {
       name: "action",
-      description: "Perpetual market operation: read or place-order.",
+      description: "Perpetual market operation: read or place_order.",
       required: false,
-      schema: { type: "string", enum: [...PERPETUAL_MARKET_SUBACTIONS] },
+      schema: { type: "string", enum: [...HYPERLIQUID_OPS] },
     },
     {
       name: "subaction",
-      description: "Legacy alias for action.",
+      description: "Legacy alias for action. Accepts place-order as place_order.",
       required: false,
-      schema: { type: "string", enum: [...PERPETUAL_MARKET_SUBACTIONS] },
+      schema: { type: "string", enum: [...HYPERLIQUID_OPS, "place-order"] },
     },
     {
       name: "kind",
@@ -745,19 +744,19 @@ export const perpetualMarketAction: Action = {
     },
     {
       name: "side",
-      description: "place-order only: intended side, buy or sell.",
+      description: "place_order only: intended side, buy or sell.",
       required: false,
       schema: { type: "string", enum: ["buy", "sell"] },
     },
     {
       name: "asset",
-      description: "place-order only: Hyperliquid asset symbol.",
+      description: "place_order only: Hyperliquid asset symbol.",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "size",
-      description: "place-order only: intended order size.",
+      description: "place_order only: intended order size.",
       required: false,
       schema: { type: "number" },
     },
@@ -770,10 +769,10 @@ export const perpetualMarketAction: Action = {
     const op = readOp(options);
     if (!op) {
       const text =
-        "Provide action: read | place-order. For read, also provide kind: status | markets | market | positions | funding.";
+        "Provide action: read | place_order. For read, also provide kind: status | markets | market | positions | funding.";
       return emitFailure(callback, text, "missing_or_invalid_op", {
         actionName: PERPETUAL_MARKET_ACTION_NAME,
-        availableSubactions: [...PERPETUAL_MARKET_SUBACTIONS],
+        availableActions: [...HYPERLIQUID_OPS],
       });
     }
     const service = runtime.getService(

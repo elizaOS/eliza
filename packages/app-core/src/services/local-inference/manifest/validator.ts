@@ -165,6 +165,15 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
   // component needs auditable lineage, and lineage may not point at a
   // component absent from the bundle. Components that affect runtime quality
   // also require their own publish gate to pass.
+  if (m.defaultEligible) {
+    if ((m.files.asr ?? []).length === 0) {
+      errors.push("files.asr: required for defaultEligible local voice bundles");
+    }
+    if ((m.files.vad ?? []).length === 0) {
+      errors.push("files.vad: required for defaultEligible local voice bundles");
+    }
+  }
+
   for (const slot of [
     "asr",
     "embedding",

@@ -268,15 +268,22 @@ export const minecraftAction: Action = {
   roleGate: { minRole: "USER" },
   similes: MC_SIMILES,
   description:
-    "Drive a Minecraft bot. Choose one op: connect (host?,port?,username?,auth?,version?), disconnect, goto (x,y,z), stop, look (yaw,pitch), control (control,state,durationMs?), waypoint_goto (name), dig (x,y,z), place (x,y,z,face), chat (message), attack (entityId), waypoint_set (name), waypoint_delete (name).",
+    "Drive a Minecraft bot. Choose one action: connect (host?,port?,username?,auth?,version?), disconnect, goto (x,y,z), stop, look (yaw,pitch), control (control,state,durationMs?), waypoint_goto (name), dig (x,y,z), place (x,y,z,face), chat (message), attack (entityId), waypoint_set (name), waypoint_delete (name).",
   descriptionCompressed:
     "minecraft ops: connect|disconnect|goto|stop|look|control|waypoint_*|dig|place|chat|attack",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation to run.",
-      descriptionCompressed: "Op.",
+      descriptionCompressed: "Action.",
       required: true,
+      schema: { type: "string", enum: MC_OPS as string[] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      descriptionCompressed: "Legacy action alias.",
+      required: false,
       schema: { type: "string", enum: MC_OPS as string[] },
     },
     {
@@ -302,12 +309,18 @@ export const minecraftAction: Action = {
 
     const params = mergedInput(message, options);
     const text = message.content.text ?? "";
-    const op = normalizeOp(params.op ?? params.subaction ?? params.actionType ?? params.type);
+    const op = normalizeOp(
+      params.action ??
+        params.subaction ??
+        params.op ??
+        params.actionType ??
+        params.type,
+    );
     if (!op) {
       return emit(
         ACTION_NAME,
         callback,
-        `MC requires an op: one of ${MC_OPS.join("|")}.`,
+        `MC requires action: one of ${MC_OPS.join("|")}.`,
         message.content.source,
         { success: false }
       );

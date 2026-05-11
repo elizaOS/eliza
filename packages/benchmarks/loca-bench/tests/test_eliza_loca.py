@@ -8,6 +8,12 @@ import pytest
 
 from eliza_loca.run_cerebras import build_command, build_env
 from eliza_loca.trajectory_audit import audit_output_dir
+from eliza_loca.long_context import (
+    audit_long_context_trajectory,
+    build_long_context_trajectory,
+    compact_with_summary_tail,
+    write_loca_output,
+)
 
 
 def _args(**overrides):
@@ -261,3 +267,43 @@ def test_context_summary_trigger_has_hysteresis() -> None:
     )
     assert tail[0]["role"] == "assistant"
     assert tail[1]["tool_call_id"] == "call_1"
+
+
+def test_long_context_generator_builds_million_token_compacted_fixture(tmp_path) -> None:
+    trajectory = build_long_context_trajectory(
+        target_tokens=1_000_000,
+        turns=240,
+        needle_count=24,
+    )
+    compacted = compact_with_summary_tail(trajectory, tail_messages=12)
+    audit = audit_long_context_trajectory(compacted)
+
+    assert audit["estimated_full_history_tokens"] >= 950_000
+    assert audit["estimated_current_tokens"] < audit["estimated_full_history_tokens"]
+    assert audit["needle_count"] == 24
+    assert audit["missing_current_needles"] == []
+    assert audit["missing_full_history_needles"] == []
+    assert audit["summary_events"] == 1
+
+    write_loca_output(tmp_path, compacted)
+    output_audit = audit_output_dir(tmp_path)
+    assert output_audit["summary"]["issue_count"] == 0
+    assert output_audit["summary"]["trajectory_count"] == 1
+
+
+def test_long_context_audit_catches_missing_compacted_needle() -> None:
+    trajectory = build_long_context_trajectory(
+        target_tokens=20_000,
+        turns=40,
+        needle_count=4,
+    )
+    compacted = compact_with_summary_tail(trajectory, tail_messages=0)
+    needle = compacted["metadata"]["long_context"]["needles"][0]
+    compacted["conversation"]["messages"][0]["content"] = compacted["conversation"][
+        "messages"
+    ][0]["content"].replace(needle["value"], "[DROPPED]")
+
+    audit = audit_long_context_trajectory(compacted)
+
+    assert audit["missing_current_needles"] == [needle["key"]]
+    assert audit["missing_full_history_needles"] == []

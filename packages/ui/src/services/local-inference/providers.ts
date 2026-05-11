@@ -29,6 +29,10 @@ export type ProviderId =
   | "capacitor-llama"
   | "anthropic-subscription"
   | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding"
   | "anthropic"
   | "openai"
   | "deepseek"
@@ -262,6 +266,56 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
   configureHref: "#ai-model",
 };
 
+const GEMINI_CLI_PROVIDER: ProviderDefinition = {
+  id: "gemini-cli",
+  label: "Gemini CLI subscription",
+  kind: "cloud-subscription",
+  description: "Gemini CLI task-agent access through linked accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("gemini-cli");
+  },
+  configureHref: "#ai-model",
+};
+
+const ZAI_CODING_PROVIDER: ProviderDefinition = {
+  id: "zai-coding",
+  label: "z.ai Coding Plan",
+  kind: "cloud-subscription",
+  description:
+    "GLM coding-plan access through linked z.ai Coding Plan accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("zai-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const KIMI_CODING_PROVIDER: ProviderDefinition = {
+  id: "kimi-coding",
+  label: "Kimi Code",
+  kind: "cloud-subscription",
+  description: "Kimi coding-plan access through linked Kimi Code accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("kimi-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const DEEPSEEK_CODING_PROVIDER: ProviderDefinition = {
+  id: "deepseek-coding",
+  label: "DeepSeek Coding Plan",
+  kind: "cloud-subscription",
+  description:
+    "Unavailable until DeepSeek exposes a first-party coding subscription flow that can be integrated without API-key substitution.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("deepseek-coding");
+  },
+  configureHref: "#ai-model",
+};
+
 const GOOGLE_PROVIDER: ProviderDefinition = {
   id: "google",
   label: "Google (Gemini)",
@@ -341,6 +395,10 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   CAPACITOR_LLAMA_PROVIDER,
   ANTHROPIC_SUBSCRIPTION_PROVIDER,
   OPENAI_CODEX_PROVIDER,
+  GEMINI_CLI_PROVIDER,
+  ZAI_CODING_PROVIDER,
+  KIMI_CODING_PROVIDER,
+  DEEPSEEK_CODING_PROVIDER,
   ELIZACLOUD_PROVIDER,
   ANTHROPIC_PROVIDER,
   OPENAI_PROVIDER,
@@ -361,14 +419,28 @@ function apiKeyOrLinkedAccountState(
   return { enabled: false, reason: "No API key or linked account" };
 }
 
-function subscriptionEnableState(providerId: ProviderId): ProviderEnableState {
-  if (
-    providerId !== "anthropic-subscription" &&
-    providerId !== "openai-codex"
-  ) {
-    return { enabled: false, reason: "Unsupported subscription" };
+type SubscriptionProviderStatusId =
+  | "anthropic-subscription"
+  | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding";
+
+function subscriptionEnableState(
+  providerId: SubscriptionProviderStatusId,
+): ProviderEnableState {
+  if (providerId === "deepseek-coding") {
+    return {
+      enabled: false,
+      reason: "Unavailable: no first-party coding subscription integration",
+    };
   }
-  return { enabled: false, reason: "No linked account" };
+  const reason =
+    providerId === "gemini-cli"
+      ? "Configure in account settings or run gemini auth login"
+      : "Configure in account settings";
+  return { enabled: false, reason };
 }
 
 export interface ProviderStatus {

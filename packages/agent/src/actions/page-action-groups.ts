@@ -381,7 +381,7 @@ export const connectorActionsGroupAction = createPageActionGroupAction({
           text: "Disconnecting Slack.",
           actions: ["CONNECTOR_ACTIONS"],
           thought:
-            "Disconnect intent on the connectors page routes through CONNECTOR_ACTIONS to the CONNECTOR subaction=disconnect child.",
+            "Disconnect intent on the connectors page routes through CONNECTOR_ACTIONS to the CONNECTOR action=disconnect child.",
         },
       },
     ],
@@ -408,7 +408,7 @@ export const automationActionsGroupAction = createPageActionGroupAction({
           text: "Setting up the recurring reminder.",
           actions: ["AUTOMATION_ACTIONS"],
           thought:
-            "Cron-style schedule belongs to the automation page; AUTOMATION_ACTIONS forwards to the SCHEDULED_TASK subaction=create child.",
+            "Cron-style schedule belongs to the automation page; AUTOMATION_ACTIONS forwards to the SCHEDULED_TASKS action=create child.",
         },
       },
     ],
@@ -463,7 +463,7 @@ export const phoneActionsGroupAction = createPageActionGroupAction({
           text: "Searching your contacts.",
           actions: ["PHONE_ACTIONS"],
           thought:
-            "Contact lookup on the phone page routes through PHONE_ACTIONS to the CONTACT subaction=search child.",
+            "Contact lookup on the phone page routes through PHONE_ACTIONS to the CONTACT action=search child.",
         },
       },
     ],

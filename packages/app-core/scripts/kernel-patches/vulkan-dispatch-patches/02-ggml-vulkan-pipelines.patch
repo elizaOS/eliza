@@ -71,7 +71,7 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     //   qjl (score)        : 3 storage buffers (q_sketch, packed_k, scores)     + 4*u32 push
     //   qjl_get_rows       : 3 storage buffers (k_packed, prj, out)             + 2*u32 push
     //   qjl_mul_mv         : 3 storage buffers (k_blocks, q_sketch, y)          + 2*u32 push
-    //   polar              : 3 storage buffers (k_blocks, q, y)                 + 3*u32 push
+    //   polar              : 3 storage buffers (k_blocks, q, y)                 + 6*u32 push
     //   polar_get_rows     : 2 storage buffers (k_block, out)                   + 2*u32 push
     ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3,         "milady_turbo3",         milady_turbo3_len,         milady_turbo3_data,         "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_turbo4,         "milady_turbo4",         milady_turbo4_len,         milady_turbo4_data,         "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
@@ -79,7 +79,7 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     ggml_vk_create_pipeline(device, device->pipeline_milady_qjl,            "milady_qjl",            milady_qjl_len,            milady_qjl_data,            "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_get_rows,   "milady_qjl_get_rows",   milady_qjl_get_rows_len,   milady_qjl_get_rows_data,   "main", 3, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_mul_mv,     "milady_qjl_mul_mv",     milady_qjl_mul_mv_len,     milady_qjl_mul_mv_data,     "main", 3, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
-    ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 3 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar_get_rows, "milady_polar_get_rows", milady_polar_get_rows_len, milady_polar_get_rows_data, "main", 2, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     // MILADY-VK-DISPATCH-PATCH-V1 END
 

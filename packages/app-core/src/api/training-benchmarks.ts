@@ -177,11 +177,18 @@ export function openBenchmarkResultsReader(
   return {
     ready: true,
     getHistory({ modelId, benchmark, limit }): BenchmarkRunDTO[] {
-      const rows = historyStmt.all(modelId, benchmark, limit) as DbRunRow[];
+      const rows = historyStmt.all(
+        modelId,
+        benchmark,
+        limit,
+      ) as unknown as DbRunRow[];
       return rows.map(rowToDto);
     },
     getLatest({ modelId, benchmark }): BenchmarkRunDTO | null {
-      const rows = latestStmt.all(modelId, benchmark) as DbRunRow[];
+      const rows = latestStmt.all(
+        modelId,
+        benchmark,
+      ) as unknown as DbRunRow[];
       if (rows.length === 0) return null;
       return rowToDto(rows[0]);
     },

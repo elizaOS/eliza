@@ -60,8 +60,8 @@
     "vulkanBuiltForkGraph": {
       "makeTarget": "vulkan-dispatch-smoke",
       "source": "verify/vulkan_dispatch_smoke.cpp",
-      "status": "blocked",
-      "description": "Links against libggml-vulkan, requires ggml_backend_supports_op for GGML_OP_ATTN_SCORE_QJL with GGML_TYPE_QJL1_256, then runs real graph execution and numeric reference comparison. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
+      "status": "needs-hardware",
+      "description": "Links against libggml-vulkan, requires ggml_backend_supports_op for GGML_OP_ATTN_SCORE_QJL, GGML_OP_ATTN_SCORE_TBQ (turbo3, turbo4, turbo3_tcq), and GGML_OP_ATTN_SCORE_POLAR (use_qjl=0/1), then runs real graph execution and numeric reference comparison. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
     },
     "linuxNativeVulkan": {
       "makeTarget": "vulkan-native-smoke",
@@ -80,7 +80,7 @@
     "androidVulkan": {
       "makeTarget": "android-vulkan-smoke",
       "script": "verify/android_vulkan_smoke.sh",
-      "status": "blocked",
+      "status": "needs-hardware",
       "fixtures": [
         "verify/fixtures/turbo3.json",
         "verify/fixtures/turbo4.json",
@@ -119,7 +119,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "symbol-shipped",
+        "vulkan": "needs-runtime-smoke",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -150,7 +150,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "symbol-shipped",
+        "vulkan": "needs-runtime-smoke",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -182,7 +182,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "symbol-shipped",
+        "vulkan": "needs-runtime-smoke",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -213,7 +213,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "symbol-shipped",
+        "vulkan": "needs-runtime-smoke",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -248,7 +248,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "symbol-shipped",
+        "vulkan": "needs-runtime-smoke",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -288,9 +288,9 @@
     },
     "linux-x64-vulkan": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "blocked",
+      "runtimeDispatch": "needs-runtime-smoke",
       "deviceRun": "needs-hardware",
-      "nextGate": "Add Vulkan graph dispatch and run native Intel/AMD/NVIDIA smoke, not only MoltenVK."
+      "nextGate": "Run native Intel/AMD/NVIDIA built-fork graph smoke, not only standalone SPIR-V or MoltenVK."
     },
     "linux-aarch64-cpu": {
       "kernelVerification": "needs-hardware",
@@ -384,9 +384,9 @@
     },
     "linux-x64-vulkan-fused": {
       "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "blocked",
+      "runtimeDispatch": "needs-runtime-smoke",
       "deviceRun": "needs-hardware",
-      "nextGate": "Run fused Vulkan smoke after graph dispatch lands."
+      "nextGate": "Run fused Vulkan smoke after the non-fused Vulkan graph smoke passes on native hardware."
     },
     "darwin-arm64-metal-fused": {
       "kernelVerification": "standalone-verified",

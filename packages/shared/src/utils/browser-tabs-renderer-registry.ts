@@ -547,6 +547,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       "42161": "https://arb1.arbitrum.io/rpc",
       "137": "https://polygon-rpc.com",
     };
+    const SUPPORTED_EVM_CHAIN_IDS = Object.keys(DEFAULT_EVM_RPCS);
     let evmChainId = 1;
     const parseChainId = (value) => {
       if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -557,6 +558,9 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
     };
     const formatChainId = (value) => "0x" + value.toString(16);
+    const isSupportedEvmChainId = (value) => SUPPORTED_EVM_CHAIN_IDS.indexOf(String(value)) >= 0;
+    const unsupportedEvmChainError = (value) =>
+      "Unsupported EVM chain " + value + ". Supported chain IDs: " + SUPPORTED_EVM_CHAIN_IDS.join(", ") + ".";
     const rpc = (method, params) => {
       const rpcUrl = DEFAULT_EVM_RPCS[String(evmChainId)];
       if (!rpcUrl) {
@@ -603,7 +607,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         if (method === "wallet_addEthereumChain") {
           const arr = Array.isArray(params) ? params : [params];
           const next = arr[0] && typeof arr[0] === "object" ? parseChainId(arr[0].chainId) : null;
-          if (next) {
+          if (next && isSupportedEvmChainId(next)) {
             evmChainId = next;
             ethereum.chainId = formatChainId(evmChainId);
           }
@@ -612,13 +616,17 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         if (method === "wallet_switchEthereumChain") {
           const arr = Array.isArray(params) ? params : [params];
           const next = arr[0] && typeof arr[0] === "object" ? parseChainId(arr[0].chainId) : null;
+          if (!next) {
+            return Promise.reject(new Error("wallet_switchEthereumChain requires a valid chainId."));
+          }
+          if (!isSupportedEvmChainId(next)) {
+            return Promise.reject(new Error(unsupportedEvmChainError(next)));
+          }
           return callHost("evm", method, params).then((result) => {
-            if (next) {
-              evmChainId = next;
-              ethereum.chainId = formatChainId(evmChainId);
-              for (const listener of Array.from(eventListeners.chainChanged)) {
-                try { listener(ethereum.chainId); } catch (_e) {}
-              }
+            evmChainId = next;
+            ethereum.chainId = formatChainId(evmChainId);
+            for (const listener of Array.from(eventListeners.chainChanged)) {
+              try { listener(ethereum.chainId); } catch (_e) {}
             }
             return result;
           });
@@ -643,6 +651,7 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
           method === "eth_sign" ||
           method === "eth_sendTransaction" ||
           method === "eth_signTypedData" ||
+          method === "eth_signTypedData_v3" ||
           method === "eth_signTypedData_v4"
         ) {
           return callHost("evm", method, params);
@@ -730,6 +739,49 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
       for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
       return btoa(binary);
     };
+    const normalizeSolanaCluster = (value) => {
+      if (typeof value !== "string") return null;
+      const lower = value.toLowerCase();
+      if (lower.indexOf("devnet") >= 0) return "devnet";
+      if (lower.indexOf("testnet") >= 0) return "testnet";
+      if (lower.indexOf("mainnet") >= 0) return "mainnet";
+      return null;
+    };
+    const makeSolanaHostParams = (transactionBase64, context) => {
+      const chain =
+        context && typeof context.chain === "string" && context.chain.trim()
+          ? context.chain.trim()
+          : null;
+      const cluster =
+        normalizeSolanaCluster(context && context.cluster) ||
+        normalizeSolanaCluster(chain) ||
+        normalizeSolanaCluster(context && context.network) ||
+        normalizeSolanaCluster(context && context.rpcEndpoint);
+      const params = { transactionBase64: transactionBase64 };
+      if (cluster) params.cluster = cluster;
+      if (chain) params.chain = chain;
+      if (context && typeof context.description === "string" && context.description.trim()) {
+        params.description = context.description.trim();
+      } else if (chain) {
+        params.description = "Solana transaction on " + chain;
+      } else if (cluster) {
+        params.description = "Solana transaction on " + cluster;
+      }
+      return params;
+    };
+    const getSolanaTransactionContext = (transaction, options) => {
+      const context = {};
+      const candidates = [options, transaction];
+      for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== "object") continue;
+        if (typeof candidate.chain === "string") context.chain = candidate.chain;
+        if (typeof candidate.cluster === "string") context.cluster = candidate.cluster;
+        if (typeof candidate.network === "string") context.network = candidate.network;
+        if (typeof candidate.rpcEndpoint === "string") context.rpcEndpoint = candidate.rpcEndpoint;
+        if (typeof candidate.description === "string") context.description = candidate.description;
+      }
+      return context;
+    };
     const makePublicKey = (base58) => {
       if (!base58) return null;
       const bytes = base58Decode(base58);
@@ -775,17 +827,17 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
         }
         return { signature: base64ToBytes(result.signatureBase64), publicKey: this.publicKey };
       },
-      signTransaction: async function (transaction) {
+      signTransaction: async function (transaction, options) {
         const transactionBase64 = await serializeTransactionForHost(transaction);
-        const result = await callHost("solana", "signTransaction", { transactionBase64: transactionBase64 });
+        const result = await callHost("solana", "signTransaction", makeSolanaHostParams(transactionBase64, getSolanaTransactionContext(transaction, options)));
         if (!result || typeof result.signedTransactionBase64 !== "string") {
           throw new Error("Solana signTransaction returned no signed tx.");
         }
         return deserializeTransactionFromHost(result.signedTransactionBase64, transaction);
       },
-      signAndSendTransaction: async function (transaction) {
+      signAndSendTransaction: async function (transaction, options) {
         const transactionBase64 = await serializeTransactionForHost(transaction);
-        const result = await callHost("solana", "signAndSendTransaction", { transactionBase64: transactionBase64 });
+        const result = await callHost("solana", "signAndSendTransaction", makeSolanaHostParams(transactionBase64, getSolanaTransactionContext(transaction, options)));
         if (!result || typeof result.signature !== "string") {
           throw new Error("Solana signAndSendTransaction returned no signature.");
         }
@@ -943,6 +995,9 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
               return Promise.all(inputs.map(async (entry) => {
                 const result = await callHost("solana", "signTransaction", {
                   transactionBase64: bytesToBase64(entry.transaction),
+                  ...(entry.chain ? { chain: entry.chain } : {}),
+                  ...(normalizeSolanaCluster(entry.chain) ? { cluster: normalizeSolanaCluster(entry.chain) } : {}),
+                  ...(entry.chain ? { description: "Wallet Standard transaction on " + entry.chain } : {}),
                 });
                 return { signedTransaction: base64ToBytes(result.signedTransactionBase64) };
               }));
@@ -957,6 +1012,9 @@ export const BROWSER_TAB_PRELOAD_SCRIPT = `
               return Promise.all(inputs.map(async (entry) => {
                 const result = await callHost("solana", "signAndSendTransaction", {
                   transactionBase64: bytesToBase64(entry.transaction),
+                  ...(entry.chain ? { chain: entry.chain } : {}),
+                  ...(normalizeSolanaCluster(entry.chain) ? { cluster: normalizeSolanaCluster(entry.chain) } : {}),
+                  ...(entry.chain ? { description: "Wallet Standard transaction on " + entry.chain } : {}),
                 });
                 return { signature: base58Decode(result.signature) };
               }));

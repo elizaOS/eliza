@@ -20,6 +20,10 @@ const metalDispatchEvidencePath = path.join(
   here,
   "metal-runtime-dispatch-evidence.json",
 );
+const vulkanDispatchEvidencePath = path.join(
+  here,
+  "vulkan-runtime-dispatch-evidence.json",
+);
 
 const errors = [];
 
@@ -118,6 +122,7 @@ const makefile = readText(path.join(here, "Makefile"));
 const buildScript = readText(buildScriptPath);
 const manifestSchema = readJson(manifestSchemaPath);
 const metalDispatchEvidence = readJson(metalDispatchEvidencePath);
+const vulkanDispatchEvidence = readJson(vulkanDispatchEvidencePath);
 
 const allowedStatuses = new Set([
   "blocked",
@@ -136,9 +141,16 @@ const metalEvidenceKernels =
   metalDispatchEvidence && typeof metalDispatchEvidence === "object"
     ? metalDispatchEvidence.kernels || {}
     : {};
+const vulkanEvidenceKernels =
+  vulkanDispatchEvidence && typeof vulkanDispatchEvidence === "object"
+    ? vulkanDispatchEvidence.kernels || {}
+    : {};
 
 if (metalDispatchEvidence.backend !== "metal") {
   fail(`metal dispatch evidence backend must be "metal"`);
+}
+if (vulkanDispatchEvidence.backend !== "vulkan") {
+  fail(`vulkan dispatch evidence backend must be "vulkan"`);
 }
 
 // 1. Manifest kernel names are the app-core schema names, not shader names.
@@ -250,6 +262,34 @@ for (const kernel of contract.kernels) {
     if (!fs.existsSync(relFromInference(kernel.vulkan.source))) {
       fail(`${kernel.id}: missing Vulkan source ${kernel.vulkan.source}`);
     }
+    const evidence = vulkanEvidenceKernels[kernel.id];
+    if (!evidence) {
+      fail(`${kernel.id}: missing Vulkan runtime dispatch evidence entry`);
+    } else {
+      const runtimeKeys = kernel.runtimeCapabilityKeys || [];
+      if (!runtimeKeys.includes(evidence.runtimeCapabilityKey)) {
+        fail(
+          `${kernel.id}: Vulkan evidence runtimeCapabilityKey=${evidence.runtimeCapabilityKey} not in ${runtimeKeys.join(",")}`,
+        );
+      }
+      const vulkanStatus = kernel.runtimeStatus?.vulkan;
+      if (vulkanStatus === "runtime-ready" && evidence.runtimeReady !== true) {
+        fail(`${kernel.id}: contract says Vulkan runtime-ready but evidence.runtimeReady is not true`);
+      }
+      if (evidence.runtimeReady === true && vulkanStatus !== "runtime-ready") {
+        fail(`${kernel.id}: Vulkan evidence is runtime-ready but contract status is ${vulkanStatus}`);
+      }
+      if (evidence.runtimeReady === true) {
+        if (typeof evidence.smokeTarget !== "string" || evidence.smokeTarget.length === 0) {
+          fail(`${kernel.id}: runtime-ready Vulkan evidence requires smokeTarget`);
+        } else if (!targetBody(makefile, evidence.smokeTarget)) {
+          fail(`${kernel.id}: Vulkan evidence smokeTarget ${evidence.smokeTarget} missing from Makefile`);
+        }
+        if (typeof evidence.maxDiff !== "number" || !Number.isFinite(evidence.maxDiff)) {
+          fail(`${kernel.id}: runtime-ready Vulkan evidence requires numeric maxDiff`);
+        }
+      }
+    }
   }
 }
 
@@ -324,6 +364,49 @@ if (metalProbeIndex === -1) {
       }
       if (!hardForcedFalse) {
         fail(`${kernel.id}: build script must force or evidence-gate Metal kernels.${key}=false until runtime dispatch evidence is ready`);
+      }
+    }
+  }
+}
+
+const vulkanProbeMarker = 'if (backend === "vulkan")';
+const vulkanProbeIndex =
+  metalHonestyIndex === -1
+    ? -1
+    : buildScript.indexOf(vulkanProbeMarker, metalHonestyIndex);
+if (vulkanProbeIndex === -1) {
+  fail("build script missing Vulkan honesty gate in probeKernels()");
+} else {
+  const vulkanProbeBody = buildScript.slice(
+    vulkanProbeIndex,
+    buildScript.indexOf("return kernels;", vulkanProbeIndex),
+  );
+  if (!buildScript.includes("function readVulkanRuntimeDispatchEvidence")) {
+    fail("build script must load Vulkan runtime-dispatch evidence");
+  }
+  for (const kernel of contract.kernels) {
+    if (!kernel.vulkan) continue;
+    const evidence = vulkanEvidenceKernels[kernel.id];
+    const vulkanStatus = kernel.runtimeStatus?.vulkan;
+    for (const key of kernel.runtimeCapabilityKeys || []) {
+      const evidenceDriven = vulkanProbeBody.includes(
+        `kernels.${key} = vulkanCapabilityRuntimeReady(`,
+      );
+      const hardForcedFalse = vulkanProbeBody.includes(`kernels.${key} = false`);
+      if (evidence?.runtimeReady === true || vulkanStatus === "runtime-ready") {
+        if (!evidenceDriven) {
+          fail(`${kernel.id}: build script must derive Vulkan kernels.${key} from runtime dispatch evidence`);
+        }
+        if (hardForcedFalse) {
+          fail(`${kernel.id}: build script must not force runtime-ready Vulkan kernels.${key}=false`);
+        }
+        continue;
+      }
+      if (evidenceDriven) {
+        continue;
+      }
+      if (!hardForcedFalse) {
+        fail(`${kernel.id}: build script must force or evidence-gate Vulkan kernels.${key}=false until runtime dispatch evidence is ready`);
       }
     }
   }

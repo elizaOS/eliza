@@ -77,7 +77,8 @@ make reference-test kernel-contract vulkan-verify
 if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[linux-vulkan-smoke] building patched fork target=${TARGET}"
   set +e
-  node ../../app-core/scripts/build-llama-cpp-dflash.mjs --target "${TARGET}"
+  ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
+    node ../../app-core/scripts/build-llama-cpp-dflash.mjs --target "${TARGET}"
   build_status=$?
   set -e
   if [[ "$build_status" -ne 0 ]]; then
@@ -104,6 +105,74 @@ smoke_status=$?
 set -e
 if [[ "$smoke_status" -ne 0 ]]; then
   fail "$smoke_status" "vulkan-dispatch-smoke failed; symbol staging is not runtime-ready"
+fi
+
+EVIDENCE_PATH="$SCRIPT_DIR/vulkan-runtime-dispatch-evidence.json"
+node - "$REPORT_PATH" "$EVIDENCE_PATH" "$CAPABILITIES" <<'NODE'
+const fs = require("node:fs");
+const [reportPath, outPath, capPath] = process.argv.slice(2);
+const text = fs.readFileSync(reportPath, "utf8");
+const cap = fs.existsSync(capPath) ? JSON.parse(fs.readFileSync(capPath, "utf8")) : {};
+const routeMap = {
+  "GGML_OP_ATTN_SCORE_QJL": { key: "qjl", capability: "qjl_full", op: "GGML_OP_ATTN_SCORE_QJL" },
+  "GGML_OP_ATTN_SCORE_TBQ/turbo3": { key: "turbo3", capability: "turbo3", op: "GGML_OP_ATTN_SCORE_TBQ" },
+  "GGML_OP_ATTN_SCORE_TBQ/turbo4": { key: "turbo4", capability: "turbo4", op: "GGML_OP_ATTN_SCORE_TBQ" },
+  "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq": { key: "turbo3_tcq", capability: "turbo3_tcq", op: "GGML_OP_ATTN_SCORE_TBQ" },
+  "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0": { key: "polar", capability: "polarquant", op: "GGML_OP_ATTN_SCORE_POLAR" },
+  "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1": { key: "polar", capability: "polarquant", op: "GGML_OP_ATTN_SCORE_POLAR" },
+};
+const seen = new Map();
+for (const match of text.matchAll(/\[vulkan_dispatch_smoke\] PASS ([^:]+): (\d+) scores, max diff ([0-9.eE+-]+)/g)) {
+  const [, route, scores, maxDiff] = match;
+  const meta = routeMap[route];
+  if (!meta) continue;
+  const current = seen.get(meta.key) ?? {
+    runtimeCapabilityKey: meta.capability,
+    status: "runtime-ready",
+    runtimeReady: true,
+    graphOp: meta.op,
+    smokeTarget: "vulkan-dispatch-smoke",
+    smokeCommand: "make -C packages/inference/verify vulkan-dispatch-smoke",
+    smokeScores: 0,
+    maxDiff: 0,
+    graphRoutes: [],
+    evidenceDate: new Date().toISOString().slice(0, 10),
+  };
+  current.smokeScores += Number(scores);
+  current.maxDiff = Math.max(current.maxDiff, Number(maxDiff));
+  current.graphRoutes.push(route);
+  seen.set(meta.key, current);
+}
+const required = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"];
+const missing = required.filter((key) => !seen.has(key));
+if (missing.length) {
+  console.error(`[linux-vulkan-smoke] cannot write runtime evidence; missing graph route(s): ${missing.join(", ")}`);
+  process.exit(1);
+}
+const payload = {
+  schemaVersion: 1,
+  backend: "vulkan",
+  platform: "linux",
+  sourceOfTruth: "Runtime-ready means a built llama.cpp fork graph route selects the shipped Vulkan kernel and a numeric smoke test passes. SPIR-V compilation and pipeline symbols are not enough.",
+  status: "runtime-ready",
+  runtimeReady: true,
+  generatedFrom: reportPath,
+  target: cap.target ?? "linux-x64-vulkan",
+  device: (text.match(/\[vulkan_dispatch_smoke\] device=(.+)/) ?? [null, "unknown"])[1],
+  atCommit: cap.forkCommit ?? "unknown",
+  smokeTarget: "vulkan-dispatch-smoke",
+  smokeCommand: "make -C packages/inference/verify vulkan-dispatch-smoke",
+  evidenceDate: new Date().toISOString().slice(0, 10),
+  kernels: Object.fromEntries([...seen.entries()].sort(([a], [b]) => a.localeCompare(b))),
+};
+fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + "\n");
+console.log(`[linux-vulkan-smoke] wrote runtime dispatch evidence: ${outPath}`);
+NODE
+
+if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
+  echo "[linux-vulkan-smoke] rebuilding target=${TARGET} with Vulkan runtime evidence enforced"
+  node ../../app-core/scripts/build-llama-cpp-dflash.mjs --target "${TARGET}"
+  dump_capabilities "$CAPABILITIES"
 fi
 
 echo "[linux-vulkan-smoke] PASS native Linux Vulkan standalone fixtures and built-fork graph dispatch"

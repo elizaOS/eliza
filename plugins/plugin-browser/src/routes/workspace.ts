@@ -16,12 +16,15 @@ import {
   getBrowserWorkspaceSnapshot,
   getBrowserWorkspaceUnavailableMessage,
   hideBrowserWorkspaceTab,
+  isBrowserWorkspaceBridgeConfigured,
   listBrowserWorkspaceTabs,
   navigateBrowserWorkspaceTab,
   openBrowserWorkspaceTab,
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
 } from "../workspace/index.js";
+import { requestBrowserWorkspace } from "../workspace/browser-workspace-desktop.js";
+import type { BrowserWorkspaceEventLogSnapshot } from "../workspace/browser-workspace-types.js";
 import {
   assertBrowserWorkspaceCommandConnectorAccountGate,
   assertBrowserWorkspaceConnectorAccountGate,
@@ -103,6 +106,18 @@ function connectorReferenceFromSearchParams(
   };
 }
 
+function buildBrowserWorkspaceEventsBridgePath(url: URL | undefined): string {
+  const params = new URLSearchParams();
+  for (const key of ["after", "limit", "tabId", "type"]) {
+    const value = url?.searchParams.get(key)?.trim();
+    if (value) {
+      params.set(key, value);
+    }
+  }
+  const query = params.toString();
+  return query ? `/events?${query}` : "/events";
+}
+
 async function assertBrowserWorkspaceTabConnectorAccountGate(
   ctx: BrowserWorkspaceRouteContext,
   tabId: string,
@@ -128,6 +143,7 @@ export async function handleBrowserWorkspaceRoutes(
   if (
     pathname !== "/api/browser-workspace" &&
     pathname !== "/api/browser-workspace/command" &&
+    pathname !== "/api/browser-workspace/events" &&
     pathname !== "/api/browser-workspace/tabs" &&
     !pathname.startsWith("/api/browser-workspace/tabs/")
   ) {
@@ -137,6 +153,19 @@ export async function handleBrowserWorkspaceRoutes(
   try {
     if (pathname === "/api/browser-workspace" && method === "GET") {
       json(res, await getBrowserWorkspaceSnapshot());
+      return true;
+    }
+
+    if (pathname === "/api/browser-workspace/events" && method === "GET") {
+      if (!isBrowserWorkspaceBridgeConfigured()) {
+        throw new Error(getBrowserWorkspaceUnavailableMessage());
+      }
+      json(
+        res,
+        await requestBrowserWorkspace<BrowserWorkspaceEventLogSnapshot>(
+          buildBrowserWorkspaceEventsBridgePath(ctx.url),
+        ),
+      );
       return true;
     }
 
@@ -296,6 +325,7 @@ export const BROWSER_WORKSPACE_ROUTE_PATHS: Array<{
 }> = [
   { type: "GET", path: "/api/browser-workspace" },
   { type: "POST", path: "/api/browser-workspace/command" },
+  { type: "GET", path: "/api/browser-workspace/events" },
   { type: "GET", path: "/api/browser-workspace/tabs" },
   { type: "POST", path: "/api/browser-workspace/tabs" },
   { type: "DELETE", path: "/api/browser-workspace/tabs/:tabId" },

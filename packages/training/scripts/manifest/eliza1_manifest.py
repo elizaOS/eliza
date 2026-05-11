@@ -564,6 +564,13 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
     if not evals["thirtyTurnOk"]:
         errors.append("evals.thirtyTurnOk: false")
 
+    # ── §3/§6 contract: voice bundle components + gates ─────────────────
+    if manifest["defaultEligible"]:
+        if not files.get("asr"):
+            errors.append("files.asr: required for defaultEligible local voice bundles")
+        if not files.get("vad"):
+            errors.append("files.vad: required for defaultEligible local voice bundles")
+
     # ── §3/§6 contract: optional component consistency + gates ──────────
     optional_component_slots = ("asr", "embedding", "vision", "vad", "wakeword")
     for slot in optional_component_slots:

@@ -8,6 +8,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { accessSync, constants } from "node:fs";
 import * as importPath from "node:path";
 import process from "node:process";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -81,6 +82,54 @@ function toSandboxWorkdir(cwd: string): string | undefined {
 
 const STREAM_CAP_CHARS = 30_000;
 
+function resolveExecutableFromPath(name: string): string | undefined {
+  const entries = (process.env.PATH ?? "").split(importPath.delimiter);
+  for (const entry of entries) {
+    if (!entry) continue;
+    const candidate = importPath.join(entry, name);
+    try {
+      accessSync(candidate, constants.X_OK);
+      return candidate;
+    } catch {
+      // keep searching
+    }
+  }
+  return undefined;
+}
+
+function resolveHostShell(): { command: string; args: string[] } {
+  const explicit =
+    process.env.CODING_TOOLS_SHELL?.trim() || process.env.SHELL?.trim();
+  if (explicit) return { command: explicit, args: ["-c"] };
+
+  if (process.platform === "win32") {
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-NonInteractive", "-Command"],
+    };
+  }
+
+  const candidates =
+    process.env.ELIZA_PLATFORM?.toLowerCase() === "android"
+      ? ["/system/bin/sh", "/bin/sh", "sh"]
+      : ["/bin/bash", "bash", "/bin/sh", "sh"];
+
+  for (const candidate of candidates) {
+    if (candidate.includes("/")) {
+      try {
+        accessSync(candidate, constants.X_OK);
+        return { command: candidate, args: ["-c"] };
+      } catch {
+        continue;
+      }
+    }
+    const resolved = resolveExecutableFromPath(candidate);
+    if (resolved) return { command: resolved, args: ["-c"] };
+  }
+
+  return { command: "sh", args: ["-c"] };
+}
+
 function runOnHost(opts: {
   command: string;
   cwd: string;
@@ -89,7 +138,8 @@ function runOnHost(opts: {
 }): Promise<ShellResult> {
   const start = Date.now();
   return new Promise<ShellResult>((resolve) => {
-    const proc = spawn("/bin/bash", ["-c", opts.command], {
+    const shell = resolveHostShell();
+    const proc = spawn(shell.command, [...shell.args, opts.command], {
       cwd: opts.cwd,
       env: opts.env,
       stdio: ["ignore", "pipe", "pipe"],

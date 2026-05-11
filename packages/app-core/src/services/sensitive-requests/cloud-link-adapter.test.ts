@@ -1,4 +1,5 @@
 import type {
+  DispatchSensitiveRequest,
   SensitiveRequest,
   SensitiveRequestKind,
   SensitiveRequestTarget,
@@ -8,6 +9,7 @@ import { createCloudLinkSensitiveRequestAdapter } from "./cloud-link-adapter";
 
 const EXPIRES_AT = "2099-01-01T00:00:00.000Z";
 const CREATED_AT = "2024-01-01T00:00:00.000Z";
+type TestSensitiveRequest = SensitiveRequest & DispatchSensitiveRequest;
 
 function makeRequest(
   kind: SensitiveRequestKind,
@@ -16,7 +18,7 @@ function makeRequest(
     target?: SensitiveRequestTarget;
     callback?: SensitiveRequest["callback"];
   } = {},
-): SensitiveRequest {
+): TestSensitiveRequest {
   const target: SensitiveRequestTarget =
     overrides.target ??
     (kind === "secret"
@@ -68,7 +70,7 @@ function makeRequest(
     expiresAt: EXPIRES_AT,
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
-  };
+  } as TestSensitiveRequest;
 }
 
 describe("cloudLinkSensitiveRequestAdapter", () => {

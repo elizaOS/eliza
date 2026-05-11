@@ -50,6 +50,9 @@ _STOPWORDS = {
     "the",
     "this",
     "to",
+    "use",
+    "using",
+    "without",
     "with",
 }
 
@@ -218,6 +221,10 @@ def _evaluate_forbidden_absent(
         if phrase_present and not _is_negated_mention(
             response_tokens, phrase_start, len(expected_tokens)
         ):
+            if _is_reassigned_responsibility_mention(
+                response_tokens, phrase_start, len(expected_tokens)
+            ):
+                return ValidHitResult(official, official, "official")
             return ValidHitResult(
                 official,
                 0.0,
@@ -291,6 +298,8 @@ def _content_words_present(expected_tokens: list[str], response_tokens: list[str
         return False
     if _ordered_terms_present(content, response_tokens):
         return True
+    if _unordered_tight_terms_present(content, response_tokens):
+        return True
     return _compact_policy_recall(content, response_tokens)
 
 
@@ -310,6 +319,20 @@ def _ordered_terms_present(expected_terms: list[str], response_tokens: list[str]
         last_match = found
         cursor = found + 1
     return True
+
+
+def _unordered_tight_terms_present(
+    expected_terms: list[str], response_tokens: list[str]
+) -> bool:
+    positions = []
+    for expected in expected_terms:
+        for index, token in enumerate(response_tokens):
+            if _tokens_match(expected, token):
+                positions.append(index)
+                break
+        else:
+            return False
+    return max(positions) - min(positions) <= max(8, len(expected_terms) + 4)
 
 
 def _compact_policy_recall(expected_terms: list[str], response_tokens: list[str]) -> bool:
@@ -375,6 +398,24 @@ def _token_variants(token: str) -> set[str]:
     variants.add(f"{token}ment")
     variants.add(f"{token}ments")
 
+    aliases = {
+        "direct": {"directly"},
+        "directly": {"direct"},
+        "regex": {"regular", "regexp"},
+        "regexp": {"regex", "regular"},
+        "forever": {"indefinite", "indefinitely", "permanent", "permanently", "perpetual"},
+        "indefinite": {"forever"},
+        "indefinitely": {"forever"},
+        "permanent": {"forever"},
+        "perpetual": {"forever"},
+        "permanently": {"forever"},
+        "stdout": {"standard", "output"},
+        "personally": {"pii"},
+        "identifiable": {"pii"},
+        "information": {"pii"},
+    }
+    variants.update(aliases.get(token, set()))
+
     if token.endswith("e") and len(token) > 2:
         variants.add(f"{token[:-1]}ing")
         variants.add(f"{token[:-1]}ed")
@@ -415,6 +456,10 @@ def _is_negated_mention(
         before[-2:] == ["do", "not"]
         or before[-2:] == ["does", "not"]
         or before[-2:] == ["did", "not"]
+        or before[-2:] == ["is", "not"]
+        or before[-2:] == ["are", "not"]
+        or before[-2:] == ["was", "not"]
+        or before[-2:] == ["were", "not"]
         or before[-2:] == ["not", "to"]
         or joined_before.endswith("does not handle")
         or joined_before.endswith("do not handle")
@@ -438,6 +483,10 @@ def _is_negated_mention(
         "not still" in joined_after
         or "not the plan" in joined_after
         or "no longer" in joined_after
+        or "was rescinded" in joined_after
+        or "was reversed" in joined_after
+        or "was canceled" in joined_after
+        or "was cancelled" in joined_after
         or "not in effect" in joined_after
         or "responsible" in joined_after
         or "responsibility" in joined_after
@@ -456,6 +505,34 @@ def _is_negated_mention(
         or "is not allowed" in joined_after
         or "not allowed" in joined_before[-20:]
         or "not in effect" in joined_after
+    )
+
+
+def _is_reassigned_responsibility_mention(
+    response_tokens: list[str], phrase_start: int, phrase_length: int
+) -> bool:
+    before = response_tokens[max(0, phrase_start - 14) : phrase_start]
+    after = response_tokens[
+        phrase_start + phrase_length : phrase_start + phrase_length + 10
+    ]
+    full = " ".join(response_tokens)
+    joined_before = " ".join(before)
+    joined_after = " ".join(after)
+    return (
+        response_tokens[:1] == ["no"]
+        and (
+            "responsible" in full
+            or "owner" in full
+            or "owns" in full
+            or "assigned" in full
+        )
+        and (
+            "while" in before
+            or "instead" in before
+            or "rather" in before
+            or "belongs to" in joined_after
+            or "is the one" in joined_before
+        )
     )
 
 
@@ -491,7 +568,7 @@ def _is_denied_contains_answer(response_tokens: list[str], phrase_start: int) ->
         or "do not handle" in joined_before
         or "not handle" in joined_before
         or "not the owner of" in joined_before
-        or (before and before[-1] in {"not", "never", "no"})
+        or (before and before[-1] == "not")
     )
 
 

@@ -54,7 +54,6 @@ export const paymentOpAction: Action = {
     "CHECK_PAYMENT",
     "VERIFY_PAYMENT",
     "PAYMENT_STATUS",
-    "PAYMENT",
   ],
   description:
     "Payment router for the active mysticism reading session. Set action to 'check' to read payment status, or 'request' to ask the user to pay (set amount or include $X.XX in the message).",

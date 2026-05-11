@@ -1,7 +1,7 @@
 /**
  * DESKTOP parent action — single canonical action that dispatches to the
  * underlying desktop ops (file, window, terminal). Built on the same
- * `op`/`subaction` pattern as BROWSER. Future ops (`screenshot`, `ocr`,
+ * `action` discriminator pattern as BROWSER. Future ops (`screenshot`, `ocr`,
  * `detect_elements`) are reserved in the enum but not yet implemented here —
  * canonical screen capture / OCR / element detection live on the
  * COMPUTER_USE action and stay there until intentionally moved.
@@ -15,7 +15,6 @@ import {
   type HandlerOptions,
   type IAgentRuntime,
   type Memory,
-  readSubaction,
   type State,
 } from "@elizaos/core";
 import type { ComputerUseService } from "../services/computer-use-service.js";
@@ -37,8 +36,10 @@ import {
 import { resolveActionParams } from "./helpers.js";
 
 /**
- * Resolved DESKTOP payload. `action` semantics depend on the chosen `op` (file /
- * window / terminal); dispatch narrows before calling per-op handlers.
+ * Resolved DESKTOP payload. Canonical `action` chooses the desktop operation
+ * group; nested `operation` chooses the file/window/terminal verb. Legacy
+ * callers may still send `subaction`/`op` for the group and `action` for the
+ * nested verb.
  */
 type DesktopParameters = Omit<
   Partial<FileActionParams>,
@@ -46,13 +47,48 @@ type DesktopParameters = Omit<
 > &
   Omit<Partial<WindowActionParams>, "action"> &
   Omit<Partial<TerminalActionParams>, "action"> & {
+    action?: DesktopOp | FileActionType | WindowActionType | TerminalActionType;
     op?: DesktopOp;
     subaction?: DesktopOp;
-    action?:
-      | FileActionType
-      | WindowActionType
-      | TerminalActionType;
+    operation?: FileActionType | WindowActionType | TerminalActionType;
   };
+
+function normalizeDesktopToken(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function isDesktopOp(value: unknown): value is DesktopOp {
+  return (
+    typeof value === "string" &&
+    (DESKTOP_OPS as readonly string[]).includes(value)
+  );
+}
+
+function resolveDesktopOp(params: DesktopParameters): DesktopOp | undefined {
+  const action = normalizeDesktopToken(params.action);
+  if (isDesktopOp(action)) return action;
+  const subaction = normalizeDesktopToken(params.subaction);
+  if (isDesktopOp(subaction)) return subaction;
+  const op = normalizeDesktopToken(params.op);
+  if (isDesktopOp(op)) return op;
+  return undefined;
+}
+
+function resolveDesktopOperation(
+  params: DesktopParameters,
+): FileActionType | WindowActionType | TerminalActionType | undefined {
+  const operation = normalizeDesktopToken(params.operation);
+  if (operation) {
+    return operation as FileActionType | WindowActionType | TerminalActionType;
+  }
+  const legacyAction = normalizeDesktopToken(params.action);
+  if (legacyAction && !isDesktopOp(legacyAction)) {
+    return legacyAction as FileActionType | WindowActionType | TerminalActionType;
+  }
+  return undefined;
+}
 
 export const desktopAction: Action = {
   name: "DESKTOP",
@@ -88,15 +124,15 @@ export const desktopAction: Action = {
   ],
   description:
     "Single DESKTOP action — dispatches local desktop operations through the computer-use service. " +
-    "Supported ops: `file` (read/write/edit/append/delete/exists/list/delete_directory/upload/download/list_downloads), " +
+    "Supported actions: `file` (read/write/edit/append/delete/exists/list/delete_directory/upload/download/list_downloads), " +
     "`window` (list/focus/switch/arrange/move/minimize/maximize/restore/close), and " +
     "`terminal` (connect/execute/read/type/clear/close/execute_command). " +
-    "Future ops `screenshot`, `ocr`, and `detect_elements` are reserved on the enum but currently live on COMPUTER_USE.",
+    "Future actions `screenshot`, `ocr`, and `detect_elements` are reserved on the enum but currently live on COMPUTER_USE.",
   descriptionCompressed:
-    "Single DESKTOP action; op=file|window|terminal dispatches to the matching computer-use op (screenshot/ocr/detect_elements reserved).",
+    "Single DESKTOP action; action=file|window|terminal dispatches to matching desktop operation (screenshot/ocr/detect_elements reserved).",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
         "Desktop operation group. Reserved future values: screenshot, ocr, detect_elements (currently on COMPUTER_USE).",
       required: true,
@@ -106,89 +142,98 @@ export const desktopAction: Action = {
       },
     },
     {
-      name: "action",
+      name: "operation",
       description:
-        "Sub-op verb for the chosen op (e.g. read/write for file, list/focus for window, execute for terminal).",
+        "Operation verb for the chosen action group (e.g. read/write for file, list/focus for window, execute for terminal).",
       required: false,
       schema: { type: "string" },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: [...DESKTOP_OPS, "screenshot", "ocr", "detect_elements"],
+      },
     },
     // File params.
     {
       name: "path",
-      description: "Primary file or directory path (file op).",
+      description: "Primary file or directory path (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "filepath",
-      description: "Upstream alias for path (file op).",
+      description: "Upstream alias for path (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "dirpath",
-      description: "Upstream alias for directory path (file op).",
+      description: "Upstream alias for directory path (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "content",
-      description: "Content for write, append, or upload (file op).",
+      description: "Content for write, append, or upload (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "encoding",
-      description: "Encoding for read/download (file op).",
+      description: "Encoding for read/download (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "oldText",
-      description: "Replacement source text for edit (file op).",
+      description: "Replacement source text for edit (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "newText",
-      description: "Replacement destination text for edit (file op).",
+      description: "Replacement destination text for edit (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "old_text",
-      description: "Upstream edit source text (file op).",
+      description: "Upstream edit source text (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "new_text",
-      description: "Upstream edit destination text (file op).",
+      description: "Upstream edit destination text (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "find",
-      description: "Upstream alias for old_text (file op).",
+      description: "Upstream alias for old_text (file action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "replace",
-      description: "Upstream alias for new_text (file op).",
+      description: "Upstream alias for new_text (file action).",
       required: false,
       schema: { type: "string" },
     },
     // Window params.
     {
       name: "windowId",
-      description: "Window identifier (window op).",
+      description: "Window identifier (window action).",
       required: false,
       schema: { type: "string" },
     },
     {
       name: "windowTitle",
-      description: "Window title or app-name query (window op).",
+      description: "Window title or app-name query (window action).",
       required: false,
       schema: { type: "string" },
     },
@@ -214,7 +259,7 @@ export const desktopAction: Action = {
     // Terminal params.
     {
       name: "command",
-      description: "Shell command (terminal op execute / execute_command).",
+      description: "Shell command (terminal action execute / execute_command).",
       required: false,
       schema: { type: "string" },
     },
@@ -244,13 +289,13 @@ export const desktopAction: Action = {
     },
     {
       name: "timeout",
-      description: "Timeout in seconds (terminal op).",
+      description: "Timeout in seconds (terminal action).",
       required: false,
       schema: { type: "number", default: 30 },
     },
     {
       name: "timeoutSeconds",
-      description: "Alias for timeout (terminal op).",
+      description: "Alias for timeout (terminal action).",
       required: false,
       schema: { type: "number", default: 30 },
     },
@@ -286,22 +331,25 @@ export const desktopAction: Action = {
     }
 
     const params = resolveActionParams<DesktopParameters>(message, options);
-    const op = readSubaction<DesktopOp>(
-      params as Record<string, unknown>,
-      {
-        allowed: DESKTOP_OPS,
-        keys: ["op", "subaction"],
-      },
-    );
+    const op = resolveDesktopOp(params);
+    const handlerParams = {
+      ...params,
+      action: resolveDesktopOperation(params),
+    };
 
     return dispatchSubaction(
       op,
       {
-        file: () => handleFileOp(service, params as FileActionParams, callback),
+        file: () =>
+          handleFileOp(service, handlerParams as FileActionParams, callback),
         window: () =>
-          handleWindowOp(service, params as WindowActionParams, callback),
+          handleWindowOp(service, handlerParams as WindowActionParams, callback),
         terminal: () =>
-          handleTerminalOp(service, params as TerminalActionParams, callback),
+          handleTerminalOp(
+            service,
+            handlerParams as TerminalActionParams,
+            callback,
+          ),
       },
       undefined,
     );
@@ -319,7 +367,7 @@ export const desktopAction: Action = {
           text: "Reading the file.",
           actions: ["DESKTOP"],
           thought:
-            "Local filesystem read maps to DESKTOP subaction=file with action=read; the computer-use service handles the path.",
+            "Local filesystem read maps to DESKTOP action=file with operation=read; the computer-use service handles the path.",
         },
       },
     ],
@@ -337,7 +385,7 @@ export const desktopAction: Action = {
           text: "Listing windows.",
           actions: ["DESKTOP"],
           thought:
-            "Window inventory routes to DESKTOP subaction=window with action=list.",
+            "Window inventory routes to DESKTOP action=window with operation=list.",
         },
       },
     ],
@@ -355,7 +403,7 @@ export const desktopAction: Action = {
           text: "Running the command.",
           actions: ["DESKTOP"],
           thought:
-            "Shell execution belongs on DESKTOP subaction=terminal with action=execute and command='git status'.",
+            "Shell execution belongs on DESKTOP action=terminal with operation=execute and command='git status'.",
         },
       },
     ],

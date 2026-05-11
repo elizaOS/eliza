@@ -6,7 +6,6 @@
 import { isCloudConnected } from "@elizaos/cloud-routing";
 import type {
   Action,
-  ActionParameter,
   ActionResult,
   Content,
   HandlerCallback,
@@ -524,30 +523,6 @@ export function buildStreamOpAction(
 ): Action {
   const validate = params.validate ?? (async () => true);
 
-  const platformParam: ActionParameter = {
-    name: "platform",
-    description:
-      "Streaming destination platform: twitch, youtube, x, or pumpfun.",
-    descriptionCompressed: "Platform: twitch|youtube|x|pumpfun.",
-    required: true,
-    schema: {
-      type: "string",
-      enum: [...STREAMING_PLATFORMS],
-    },
-  };
-
-  const opParam: ActionParameter = {
-    name: "subaction",
-    description:
-      "Operation to perform: start (go live), stop (go offline), or status.",
-    descriptionCompressed: "Op: start|stop|status.",
-    required: true,
-    schema: {
-      type: "string",
-      enum: ["start", "stop", "status"],
-    },
-  };
-
   return {
     name: "STREAM",
     contexts: ["media", "automation", "connectors"],
@@ -566,7 +541,40 @@ export function buildStreamOpAction(
       "STREAM_STATUS",
       "IS_LIVE",
     ],
-    parameters: [platformParam, opParam],
+    parameters: [
+      {
+        name: "platform",
+        description:
+          "Streaming destination platform: twitch, youtube, x, or pumpfun.",
+        descriptionCompressed: "Platform: twitch|youtube|x|pumpfun.",
+        required: true,
+        schema: {
+          type: "string",
+          enum: [...STREAMING_PLATFORMS],
+        },
+      },
+      {
+        name: "action",
+        description:
+          "Operation to perform: start (go live), stop (go offline), or status.",
+        descriptionCompressed: "Op: start|stop|status.",
+        required: true,
+        schema: {
+          type: "string",
+          enum: ["start", "stop", "status"],
+        },
+      },
+      {
+        name: "subaction",
+        description: "Legacy alias for action.",
+        descriptionCompressed: "Legacy action alias.",
+        required: false,
+        schema: {
+          type: "string",
+          enum: ["start", "stop", "status"],
+        },
+      },
+    ],
     validate,
     handler: async (
       _runtime: IAgentRuntime,
@@ -579,14 +587,18 @@ export function buildStreamOpAction(
       callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       const platformRaw = readParam(options, "platform");
-      const opRaw = readParam(options, "op");
+      const opRaw =
+        readParam(options, "action") ??
+        readParam(options, "subaction") ??
+        readParam(options, "op") ??
+        readParam(options, "operation");
       if (!isStreamingPlatform(platformRaw)) {
         const text = `STREAM_OP requires platform in {${STREAMING_PLATFORMS.join(", ")}}, got ${String(platformRaw)}`;
         if (callback) await callback({ text, actions: [] } as Content);
         return { success: false, error: text };
       }
       if (!isStreamingOp(opRaw)) {
-        const text = `STREAM_OP requires op in {start, stop, status}, got ${String(opRaw)}`;
+        const text = `STREAM requires action in {start, stop, status}, got ${String(opRaw)}`;
         if (callback) await callback({ text, actions: [] } as Content);
         return { success: false, error: text };
       }

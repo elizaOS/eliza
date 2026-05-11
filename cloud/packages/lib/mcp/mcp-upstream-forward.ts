@@ -10,6 +10,7 @@ const HOP_BY_HOP = new Set([
   "transfer-encoding",
   "upgrade",
 ]);
+const MCP_UPSTREAM_TIMEOUT_MS = 8_000;
 
 function forwardOutgoingHeaders(source: Headers): Headers {
   const out = new Headers();
@@ -37,5 +38,18 @@ export async function forwardMcpUpstreamRequest(
   if (request.method !== "GET" && request.method !== "HEAD" && request.body != null) {
     init.body = request.body;
   }
-  return fetch(target.toString(), init);
+  try {
+    init.signal = AbortSignal.timeout(MCP_UPSTREAM_TIMEOUT_MS);
+    return await fetch(target.toString(), init);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return Response.json(
+      {
+        success: false,
+        error: "mcp_upstream_unavailable",
+        message,
+      },
+      { status: 503 },
+    );
+  }
 }

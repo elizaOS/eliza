@@ -342,6 +342,27 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _score_from_visualwebbench_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="visualwebbench:root")
+    overall = expect_float(
+        get_required(root, "overall_accuracy", ctx="visualwebbench:root"),
+        ctx="visualwebbench:overall_accuracy",
+    )
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_accuracy": overall,
+            "exact_accuracy": get_optional(root, "exact_accuracy") or 0,
+            "choice_accuracy": get_optional(root, "choice_accuracy") or 0,
+            "bbox_accuracy": get_optional(root, "bbox_accuracy") or 0,
+            "total_tasks": get_optional(root, "total_tasks") or 0,
+            "average_latency_ms": get_optional(root, "average_latency_ms") or 0,
+        },
+    )
+
+
 def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from RLM benchmark results.
     
@@ -1505,6 +1526,60 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _mind2web_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="mind2web-results*.json")
 
+    def _visualwebbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = [
+            python,
+            "-m",
+            "benchmarks.visualwebbench",
+            "--output",
+            str(output_dir),
+        ]
+        agent = extra.get("agent")
+        provider_name = (model.provider or "").strip().lower()
+        if agent == "eliza" or provider_name in {
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+            "eliza",
+        }:
+            args.extend(["--provider", "eliza"])
+            if model.model:
+                args.extend(["--model", model.model])
+        else:
+            args.append("--dry-run")
+
+        if model.temperature is not None:
+            args.extend(["--temperature", str(model.temperature)])
+        max_tasks = extra.get("max_tasks")
+        if isinstance(max_tasks, int) and max_tasks > 0:
+            args.extend(["--max-tasks", str(max_tasks)])
+        task_types = extra.get("task_types")
+        if isinstance(task_types, list) and all(isinstance(x, str) for x in task_types):
+            args.extend(["--task-types", ",".join(cast(list[str], task_types))])
+        elif isinstance(task_types, str) and task_types.strip():
+            args.extend(["--task-types", task_types.strip()])
+        fixture_path = extra.get("fixture_path")
+        if isinstance(fixture_path, str) and fixture_path.strip():
+            args.extend(["--fixture", "--fixture-path", fixture_path.strip()])
+        elif extra.get("hf") is True:
+            args.append("--hf")
+        else:
+            args.append("--fixture")
+        hf_repo = extra.get("hf_repo")
+        if isinstance(hf_repo, str) and hf_repo.strip():
+            args.extend(["--hf-repo", hf_repo.strip()])
+        split = extra.get("split")
+        if isinstance(split, str) and split.strip():
+            args.extend(["--split", split.strip()])
+        if extra.get("no_traces") is True:
+            args.append("--no-traces")
+        return args
+
+    def _visualwebbench_result(output_dir: Path) -> Path:
+        return output_dir / "visualwebbench-results.json"
+
     def _rlm_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for RLM benchmark.
         
@@ -2646,6 +2721,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_mind2web_cmd,
             locate_result=_mind2web_result,
             extract_score=_score_from_mind2web_json,
+        ),
+        BenchmarkDefinition(
+            id="visualwebbench",
+            display_name="VisualWebBench",
+            description="Multimodal webpage understanding and grounding benchmark",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes="Uses bundled JSONL fixture and dry-run mode by default. --hf streams from Hugging Face when datasets is installed.",
+            ),
+            build_command=_visualwebbench_cmd,
+            locate_result=_visualwebbench_result,
+            extract_score=_score_from_visualwebbench_json,
         ),
         BenchmarkDefinition(
             id="rlm_bench",

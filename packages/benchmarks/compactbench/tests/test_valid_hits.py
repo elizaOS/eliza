@@ -57,6 +57,38 @@ def test_contains_normalized_accepts_all_content_words_without_template_knowledg
     assert result.reason == "all_content_words_present"
 
 
+def test_contains_normalized_accepts_tight_word_order_variant() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "commit directly to the main branch"},
+        "The user said that a direct commit to the main branch must never happen.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
+def test_contains_normalized_accepts_no_direct_commits_policy_recall() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "commit directly to the main branch"},
+        "The user said that no commits may be made directly to the main branch.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+
+
+def test_contains_normalized_accepts_regex_spelled_out() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "use regex to parse HTML"},
+        "Farid is responsible for using regular expressions to parse HTML.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
 def test_contains_normalized_rejects_scattered_keyword_stuffing() -> None:
     result = evaluate_valid_hit(
         {"check": "contains_normalized", "value": "use regex to parse HTML"},
@@ -121,6 +153,16 @@ def test_forbidden_absent_credits_not_in_effect_rejection() -> None:
     assert result.reason == "negated_forbidden_mention"
 
 
+def test_forbidden_absent_credits_rescinded_rejection() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "No. The earlier instruction to trust user input without validation was rescinded.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
 def test_forbidden_absent_credits_does_not_handle_phrase() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "use regex to parse HTML"},
@@ -172,6 +214,17 @@ def test_forbidden_absent_keeps_reassigned_responsibility_answer_valid() -> None
             "No. Quinn is responsible for validation; returning raw exception "
             "messages to end users is Jamal's responsibility."
         ),
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_forbidden_absent_keeps_no_answer_with_other_owner_valid() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "use regex to parse HTML"},
+        "No. Bob is responsible for caching, while Farid is the one using regex to parse HTML.",
     )
 
     assert result.official_score == 1.0

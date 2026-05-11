@@ -376,9 +376,10 @@ export function collectPluginNames(
       track(name, "ELIZAOS_ANDROID_TERMINAL_PLUGINS");
     }
   }
-  // Agent orchestrator depends on PTY / coding-swarm subprocesses (none of
-  // which exist on Android / iOS), so always skip it on mobile regardless of
-  // the stored ELIZA_AGENT_ORCHESTRATOR / config preference.
+  // Agent orchestrator depends on PTY / coding-swarm subprocesses. Stock mobile
+  // never gets it; privileged AOSP adds it through
+  // ELIZAOS_ANDROID_TERMINAL_PLUGINS above so it can use the bundled Bun service
+  // and Android shell process model.
   if (!onMobile && orchestratorCompatPluginRequested(config)) {
     pluginsToLoad.add("agent-orchestrator");
     track(

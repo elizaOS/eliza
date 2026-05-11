@@ -392,16 +392,80 @@ function parseXctraceDevices(text) {
   return { connected, offline };
 }
 
+function parseDevicectlDevices(text) {
+  /** @type {{ section: string, name: string, version: string | null, id: string, hostname?: string, state?: string, model?: string, idSource?: string }[]} */
+  const connected = [];
+  /** @type {{ section: string, name: string, version: string | null, id: string, hostname?: string, state?: string, model?: string, idSource?: string }[]} */
+  const offline = [];
+
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || /^-+$/.test(line) || /^Name\s+Hostname\s+Identifier\s+State\s+Model/i.test(line)) {
+      continue;
+    }
+    const cols = line.split(/\s{2,}/).map((part) => part.trim());
+    if (cols.length < 5) continue;
+    const [name, hostname, id, state, model] = cols;
+    const isIosPhysical =
+      /\b(iPhone|iPad|iPod)\b/i.test(name) || /\b(iPhone|iPad|iPod)\b/i.test(model);
+    if (!isIosPhysical) continue;
+    const record = {
+      section: "CoreDevice",
+      name,
+      version: null,
+      id,
+      hostname,
+      state,
+      model,
+      idSource: "devicectl",
+    };
+    if (/available/i.test(state) && !/unavailable|offline/i.test(state)) {
+      connected.push(record);
+    } else {
+      offline.push(record);
+    }
+  }
+  return { connected, offline };
+}
+
+function mergeDeviceLists(primary, secondary) {
+  const byId = new Map();
+  for (const record of [...primary, ...secondary]) {
+    if (!byId.has(record.id)) {
+      byId.set(record.id, record);
+    }
+  }
+  return [...byId.values()];
+}
+
 function listPhysicalIosDevices() {
-  const result = runCapture("xcrun", ["xctrace", "list", "devices"], {
+  const xctrace = runCapture("xcrun", ["xctrace", "list", "devices"], {
     timeout: 90_000,
   });
-  if (result.status !== 0) {
+  if (xctrace.status !== 0) {
     throw new Error(
-      `[ios-smoke] xcrun xctrace list devices failed with ${result.status}\n${result.stderr}`,
+      `[ios-smoke] xcrun xctrace list devices failed with ${xctrace.status}\n${xctrace.stderr}`,
     );
   }
-  return { ...parseXctraceDevices(result.stdout), raw: result.stdout };
+  const xctraceDevices = parseXctraceDevices(xctrace.stdout);
+  const devicectl = runCapture("xcrun", ["devicectl", "list", "devices"], {
+    timeout: 90_000,
+  });
+  const coreDevices =
+    devicectl.status === 0 ? parseDevicectlDevices(devicectl.stdout) : { connected: [], offline: [] };
+  return {
+    connected: mergeDeviceLists(xctraceDevices.connected, coreDevices.connected),
+    offline: mergeDeviceLists(xctraceDevices.offline, coreDevices.offline),
+    raw: xctrace.stdout,
+    xctraceRaw: xctrace.stdout,
+    devicectlRaw: devicectl.stdout,
+    devicectlError:
+      devicectl.status === 0
+        ? null
+        : devicectl.error
+          ? String(devicectl.error)
+          : devicectl.stderr,
+  };
 }
 
 function resolveDevice(deviceId) {
@@ -625,6 +689,10 @@ function writeSmokeProject({
   fs.mkdirSync(hostDir, { recursive: true });
   fs.mkdirSync(testDir, { recursive: true });
   fs.symlinkSync(xcframework, path.join(vendorDir, "LlamaCpp.xcframework"), "dir");
+  fs.copyFileSync(
+    path.join(__dirname, "..", "omnivoice-fuse", "ffi.h"),
+    path.join(testDir, "ffi.h"),
+  );
 
   fs.writeFileSync(
     path.join(hostDir, "AppDelegate.swift"),
@@ -672,6 +740,155 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     "Metal",
   ];
   fs.writeFileSync(
+    path.join(testDir, "ElizaFfiAbiSmoke.h"),
+    `#pragma once
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+char * eliza_ios_ffi_abi_smoke_run(const char * bundle_dir);
+void eliza_ios_ffi_abi_smoke_free(char * message);
+
+#ifdef __cplusplus
+}
+#endif
+`,
+  );
+  fs.writeFileSync(
+    path.join(testDir, "ElizaFfiAbiSmoke.c"),
+    `#include "ElizaFfiAbiSmoke.h"
+#include "ffi.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static char * smoke_strdup(const char * s) {
+    const char * value = s ? s : "";
+    const size_t len = strlen(value);
+    char * out = (char *) malloc(len + 1);
+    if (!out) return NULL;
+    memcpy(out, value, len + 1);
+    return out;
+}
+
+static char * smoke_message(const char * prefix, const char * detail) {
+    const char * p = prefix ? prefix : "failure";
+    const char * d = detail ? detail : "";
+    const size_t len = strlen(p) + strlen(d) + 3;
+    char * out = (char *) malloc(len);
+    if (!out) return NULL;
+    snprintf(out, len, "%s: %s", p, d);
+    return out;
+}
+
+static void clear_error(char ** err) {
+    if (err && *err) {
+        eliza_inference_free_string(*err);
+        *err = NULL;
+    }
+}
+
+char * eliza_ios_ffi_abi_smoke_run(const char * bundle_dir) {
+    const char * version = eliza_inference_abi_version();
+    if (!version || strcmp(version, "1") != 0) {
+        return smoke_message("bad ABI version", version ? version : "(null)");
+    }
+
+    char * err = NULL;
+    EliInferenceContext * ctx = eliza_inference_create(bundle_dir, &err);
+    if (!ctx) {
+        char * out = smoke_message("create failed", err);
+        clear_error(&err);
+        return out;
+    }
+
+    int rc = eliza_inference_mmap_acquire(ctx, "text", &err);
+    if (rc != ELIZA_OK) {
+        char * out = smoke_message("mmap_acquire(text) failed", err);
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return out;
+    }
+    clear_error(&err);
+
+    rc = eliza_inference_mmap_acquire(ctx, "tts", &err);
+    if (rc >= 0) {
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return smoke_strdup("mmap_acquire(tts) unexpectedly succeeded for an empty test bundle");
+    }
+    if (!err || err[0] == '\\0') {
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return smoke_strdup("mmap_acquire(tts) failed without an out_error diagnostic");
+    }
+    clear_error(&err);
+
+    float pcm_out[64] = {0};
+    const char * text = "hello";
+    rc = eliza_inference_tts_synthesize(
+        ctx,
+        text,
+        strlen(text),
+        NULL,
+        pcm_out,
+        sizeof(pcm_out) / sizeof(pcm_out[0]),
+        &err);
+    if (rc >= 0) {
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return smoke_strdup("tts_synthesize unexpectedly succeeded for an empty test bundle");
+    }
+    if (!err || err[0] == '\\0') {
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return smoke_strdup("tts_synthesize failed without an out_error diagnostic");
+    }
+    clear_error(&err);
+
+    float pcm_in[8] = {0};
+    char transcript[64] = {0};
+    rc = eliza_inference_asr_transcribe(
+        ctx,
+        pcm_in,
+        sizeof(pcm_in) / sizeof(pcm_in[0]),
+        16000,
+        transcript,
+        sizeof(transcript),
+        &err);
+    if (rc >= 0) {
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return smoke_strdup("asr_transcribe unexpectedly succeeded for an empty test bundle");
+    }
+    if (!err || err[0] == '\\0') {
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return smoke_strdup("asr_transcribe failed without an out_error diagnostic");
+    }
+    clear_error(&err);
+
+    rc = eliza_inference_mmap_evict(ctx, "text", &err);
+    if (rc != ELIZA_OK) {
+        char * out = smoke_message("mmap_evict(text) failed", err);
+        clear_error(&err);
+        eliza_inference_destroy(ctx);
+        return out;
+    }
+    clear_error(&err);
+
+    eliza_inference_destroy(ctx);
+    return NULL;
+}
+
+void eliza_ios_ffi_abi_smoke_free(char * message) {
+    free(message);
+}
+`,
+  );
+  fs.writeFileSync(
     path.join(testDir, "ElizaIosRuntimeSmokeTests.swift"),
 `import XCTest
 import Metal
@@ -700,6 +917,21 @@ final class ElizaIosRuntimeSmokeTests: XCTestCase {
       missing.isEmpty,
       "Missing required Eliza-1 iOS runtime symbols: \\(missing.joined(separator: \", \")). This is a runtime failure, not a shader-fixture failure."
     )
+  }
+
+  func testLibElizaInferenceAbiV1CallsMatchHeader() throws {
+    let bundleDir = NSTemporaryDirectory().appending("/eliza-ios-ffi-empty-bundle-\\(UUID().uuidString)")
+    try FileManager.default.createDirectory(atPath: bundleDir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(atPath: bundleDir) }
+
+    let failure = bundleDir.withCString { cBundleDir in
+      eliza_ios_ffi_abi_smoke_run(cBundleDir)
+    }
+    if let failure {
+      let message = String(cString: failure)
+      eliza_ios_ffi_abi_smoke_free(failure)
+      XCTFail(message)
+    }
   }
 }
 `,
@@ -742,6 +974,9 @@ ${yamlList(hostOtherLdFlags)}
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ElizaIosRuntimeSmokeHost.app/ElizaIosRuntimeSmokeHost"
         BUNDLE_LOADER: "$(TEST_HOST)"
+        SWIFT_OBJC_BRIDGING_HEADER: Tests/ElizaIosRuntimeSmokeTests/ElizaFfiAbiSmoke.h
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/Tests/ElizaIosRuntimeSmokeTests"
         OTHER_LDFLAGS:
 ${yamlList(testOtherLdFlags)}
 schemes:

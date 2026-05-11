@@ -51,7 +51,8 @@ app.post("/", async (c) => {
     const headscaleUser = readEnv(c.env.HEADSCALE_USER) ?? "tunnel";
     const tunnelProxyHost = readEnv(c.env.TUNNEL_PROXY_HOST);
     const tailnetDomain = readEnv(c.env.TUNNEL_TAILNET_DOMAIN) ?? "tunnel.eliza.local";
-    const hostnameSigningSecret = readEnv(c.env.TUNNEL_HOSTNAME_SIGNING_SECRET);
+    const hostnameSigningSecret = readTrimmedEnv(c.env.TUNNEL_HOSTNAME_SIGNING_SECRET);
+    const allowUnsignedHostnames = readBoolean(c.env.TUNNEL_ALLOW_UNSIGNED_HOSTNAMES);
     const tunnelAuthKeyCostUsd = readUsdAmount(
       c.env.TUNNEL_AUTH_KEY_COST_USD,
       DEFAULT_TUNNEL_AUTH_KEY_COST_USD,
@@ -66,10 +67,25 @@ app.post("/", async (c) => {
         503,
       );
     }
+    if (tunnelProxyHost && !hostnameSigningSecret && !allowUnsignedHostnames) {
+      return c.json(
+        {
+          error:
+            "Tunnel hostname signing is not configured. Set TUNNEL_HOSTNAME_SIGNING_SECRET.",
+        },
+        503,
+      );
+    }
 
     const expirySeconds = parsed.data.expirySeconds ?? DEFAULT_EXPIRY_SECONDS;
-    const expiration = new Date(Date.now() + expirySeconds * 1000).toISOString();
-    const hostname = await makeTunnelHostname(user.organization_id, hostnameSigningSecret);
+    const expiresAtMs = Date.now() + expirySeconds * 1000;
+    const expiresAtUnixSeconds = Math.floor(expiresAtMs / 1000);
+    const expiration = new Date(expiresAtMs).toISOString();
+    const hostname = await makeTunnelHostname(
+      user.organization_id,
+      hostnameSigningSecret,
+      expiresAtUnixSeconds,
+    );
     const publicHost = tunnelProxyHost
       ? `${hostname}.${tunnelProxyHost}`
       : `${hostname}.${tailnetDomain}`;
@@ -152,19 +168,27 @@ function readEnv(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed.replace(/\/+$/, "") : null;
 }
 
+function readTrimmedEnv(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 async function makeTunnelHostname(
   organizationId: string,
   signingSecret: string | null,
+  expiresAtUnixSeconds: number,
 ): Promise<string> {
   const orgPart =
     organizationId
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "")
-      .slice(0, 12) || "org";
+      .slice(0, 10) || "org";
   const randomPart = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
   const unsignedHostname = `eliza-${orgPart}-${randomPart}`;
   if (!signingSecret) return unsignedHostname;
-  return `${unsignedHostname}-${await tunnelHostnameSignature(unsignedHostname, signingSecret)}`;
+  const signedPayload = `${unsignedHostname}-${expiresAtUnixSeconds.toString(36)}`;
+  return `${signedPayload}-${await tunnelHostnameSignature(signedPayload, signingSecret)}`;
 }
 
 function readUsdAmount(value: unknown, fallback: number): number {
@@ -180,6 +204,12 @@ function readUsdAmount(value: unknown, fallback: number): number {
     return fallback;
   }
   return Math.round(parsed * 1_000_000) / 1_000_000;
+}
+
+function readBoolean(value: unknown): boolean {
+  if (typeof value !== "string" && typeof value !== "boolean") return false;
+  const normalized = String(value).trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
 }
 
 function tunnelBilling(amountUsd: number, charged: boolean) {

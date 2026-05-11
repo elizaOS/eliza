@@ -42,6 +42,7 @@ def base_kwargs(tier: str = "9b") -> dict:
             "drafter": LineageEntry(base="eliza-1-drafter", license="apache-2.0"),
             "asr": LineageEntry(base="eliza-1-asr", license="apache-2.0"),
             "vision": LineageEntry(base="eliza-1-vision", license="apache-2.0"),
+            "vad": LineageEntry(base="eliza-1-vad", license="apache-2.0"),
         },
         files={
             "text": [
@@ -52,6 +53,7 @@ def base_kwargs(tier: str = "9b") -> dict:
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
             "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
             "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
+            "vad": [FileEntry(path="vad/eliza-1-vad.onnx", sha256=SHA)],
         },
         kernels_required=list(REQUIRED_KERNELS_BY_TIER[tier]),
         kernels_optional=[],
@@ -62,6 +64,8 @@ def base_kwargs(tier: str = "9b") -> dict:
         voice_rtf_passed=True,
         asr_wer=0.05,
         asr_wer_passed=True,
+        vad_latency_ms_median=16.0,
+        vad_latency_ms_passed=True,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
         ram_budget_min_mb=7000,
@@ -89,20 +93,16 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
     kwargs["lineage"] = {
         **kwargs["lineage"],
         "embedding": LineageEntry(base="eliza-1-embedding", license="apache-2.0"),
-        "vad": LineageEntry(base="eliza-1-vad", license="mit"),
         "wakeword": LineageEntry(base="eliza-1-wakeword", license="apache-2.0"),
     }
     kwargs["files"] = {
         **kwargs["files"],
         "embedding": [FileEntry(path="embedding/eliza-1-embed.gguf", sha256=SHA)],
-        "vad": [FileEntry(path="vad/eliza-1-vad.onnx", sha256=SHA)],
         "wakeword": [FileEntry(path="wakeword/eliza-1.onnx", sha256=SHA)],
     }
     kwargs.update(
         embed_mteb_score=0.62,
         embed_mteb_passed=True,
-        vad_latency_ms_median=16.0,
-        vad_latency_ms_passed=True,
         expressive_tag_faithfulness=0.9,
         expressive_mos=4.1,
         expressive_tag_leakage=0.01,
@@ -170,6 +170,23 @@ def test_component_files_require_matching_lineage_and_eval_gate():
         build_manifest(**kwargs)
     assert any("lineage.asr" in e for e in exc.value.errors)
     assert any("evals.asrWer" in e for e in exc.value.errors)
+
+
+def test_default_eligible_requires_asr_and_vad_components():
+    kwargs = base_kwargs("9b")
+    kwargs["lineage"] = {
+        k: v for k, v in kwargs["lineage"].items() if k not in {"asr", "vad"}
+    }
+    kwargs["files"]["asr"] = []
+    kwargs["files"]["vad"] = []
+    kwargs["asr_wer"] = None
+    kwargs["asr_wer_passed"] = None
+    kwargs["vad_latency_ms_median"] = None
+    kwargs["vad_latency_ms_passed"] = None
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("files.asr" in e for e in exc.value.errors)
+    assert any("files.vad" in e for e in exc.value.errors)
 
 
 def test_expressive_voice_capabilities_require_expressive_eval():
