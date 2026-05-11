@@ -125,6 +125,7 @@ export {
 export * from "./types";
 export {
   createSileroVadDetector,
+  NativeSileroVad,
   RmsEnergyGate,
   type RmsEnergyGateConfig,
   resolveSileroVadPath,

@@ -2,6 +2,8 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type {
 	Action,
@@ -48,12 +50,21 @@ interface CannedResponse {
 	body: unknown;
 }
 
+function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
+	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+		responseHandlerFieldRegistry.register(evaluator);
+	}
+	return responseHandlerFieldRegistry;
+}
+
 function makeRuntime(opts: {
 	actions: Action[];
 	responses: CannedResponse[];
 	contextRegistry?: ContextRegistry;
 }): IAgentRuntime {
 	const queue = [...opts.responses];
+	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 	const calls: Array<{
 		modelType: unknown;
 		params: unknown;
@@ -69,6 +80,10 @@ function makeRuntime(opts: {
 		actions: opts.actions,
 		providers: [],
 		contexts: opts.contextRegistry,
+		responseHandlerFieldRegistry,
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => undefined),
 		useModel: vi.fn(

@@ -87,7 +87,7 @@ export type ResponseHandlerSenderRole =
  * pipeline treat unknown fields safely.
  */
 export interface ResponseHandlerResult {
-	shouldRespond: "RESPOND" | "IGNORE";
+	shouldRespond: "RESPOND" | "IGNORE" | "STOP";
 	contexts: string[];
 	intents: string[];
 	candidateActionNames: string[];

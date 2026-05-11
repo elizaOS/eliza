@@ -42,6 +42,12 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     public override func load() {
         UIDevice.current.isBatteryMonitoringEnabled = true
+        // Re-arm HealthKit background delivery on every cold boot. Apple's
+        // background-delivery registration does NOT persist across uninstalls
+        // and re-installations of the app, but it does persist across simple
+        // launches — the redundant call is cheap and ensures the foreground
+        // requestAuthorization → arm flow isn't the only path that turns it on.
+        enableHealthBackgroundDelivery()
     }
 
     @objc func scheduleBackgroundRefresh(_ call: CAPPluginCall) {
@@ -120,11 +126,62 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                 let healthReason = !success
                     ? "HealthKit permission request failed: \(error?.localizedDescription ?? "unknown error")"
                     : nil
+                if success {
+                    self.enableHealthBackgroundDelivery()
+                }
                 self.resolvePermissionResult(
                     call,
                     reason: healthReason,
                     requestScreenTime: shouldRequestScreenTime
                 )
+            }
+        }
+    }
+
+    /// Turn on `HKHealthStore.enableBackgroundDelivery(for:frequency:)` for
+    /// the sleep + biometric sample types we already requested authorization
+    /// for. iOS will then wake the app — via the `com.apple.developer.healthkit.background-delivery`
+    /// entitlement that ships with `App.entitlements` — whenever HealthKit
+    /// has a new sample to deliver. The wake itself does not run our code:
+    /// it flips the WebView's app state to background-with-network-OK, which
+    /// is what the runtime's `HKObserverQuery` / next pull will pick up.
+    ///
+    /// `.immediate` is the only honest choice for sleep + heart-rate signals;
+    /// HealthKit clamps observation cadence to whatever the underlying sensor
+    /// chose, so anything coarser would just delay the wake.
+    ///
+    /// This method is intentionally fire-and-forget — a failure to enable
+    /// background delivery is not user-actionable; the foreground monitoring
+    /// path already works. We log and move on.
+    private func enableHealthBackgroundDelivery() {
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        var sampleTypes: [HKSampleType] = []
+        if let sleepType = HKObjectType.categoryType(forIdentifier: .sleepAnalysis) {
+            sampleTypes.append(sleepType)
+        }
+        for identifier in [
+            HKQuantityTypeIdentifier.heartRate,
+            HKQuantityTypeIdentifier.restingHeartRate,
+            HKQuantityTypeIdentifier.heartRateVariabilitySDNN,
+            HKQuantityTypeIdentifier.respiratoryRate,
+            HKQuantityTypeIdentifier.oxygenSaturation,
+        ] {
+            if let qt = HKObjectType.quantityType(forIdentifier: identifier) {
+                sampleTypes.append(qt)
+            }
+        }
+        for sampleType in sampleTypes {
+            healthStore.enableBackgroundDelivery(
+                for: sampleType,
+                frequency: .immediate
+            ) { success, error in
+                if !success {
+                    NSLog(
+                        "[MobileSignalsPlugin] enableBackgroundDelivery(%@) failed: %@",
+                        sampleType.identifier,
+                        error?.localizedDescription ?? "unknown"
+                    )
+                }
             }
         }
     }

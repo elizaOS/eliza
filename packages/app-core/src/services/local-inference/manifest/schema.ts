@@ -266,6 +266,9 @@ export const Eliza1EvalsSchema = z.object({
   vadLatencyMs: z
     .object({
       median: z.number().nonnegative(),
+      boundaryMs: z.number().nonnegative().optional(),
+      endpointMs: z.number().nonnegative().optional(),
+      falseBargeInRate: z.number().min(0).max(1).optional(),
       passed: z.boolean(),
     })
     .optional(),

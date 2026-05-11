@@ -27,6 +27,10 @@ const SYNCED_KEYS = new Set([
   "eliza:onboarding-complete",
   "eliza:onboarding:step",
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  // `useAppLifecycleEvents` writes this on APP_PAUSE so the next
+  // foreground can rehydrate the same conversation even after the
+  // WKWebView localStorage was purged under memory pressure.
+  "eliza:chat:activeConversationId",
   "eliza:ios-local-agent:conversations:v1",
   "eliza:ios-local-agent:active-model:v1",
   "eliza:ios-local-agent:assignments:v1",

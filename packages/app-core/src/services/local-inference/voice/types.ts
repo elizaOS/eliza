@@ -54,6 +54,91 @@ export interface TranscriptionAudio {
   sampleRate: number;
 }
 
+export type VoiceInputKind =
+  | "local_mic"
+  | "discord"
+  | "telegram"
+  | "signal"
+  | "whatsapp"
+  | "phone"
+  | "browser"
+  | "file"
+  | "unknown";
+
+/**
+ * Where speech audio entered the voice loop. Keep this structural so local
+ * mic, Discord, phone, and future connector captures can share the same
+ * turn-taking and attribution path without branching on prompt text.
+ */
+export interface VoiceInputSource {
+  kind: VoiceInputKind;
+  /** Connector account, device, guild/channel, call, or upload id. */
+  sourceId?: string;
+  roomId?: string;
+  conversationId?: string;
+  messageId?: string;
+  deviceId?: string;
+  connectorAccountId?: string;
+  channelId?: string;
+  guildId?: string;
+  callId?: string;
+  participantId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Speaker attribution for diarized speech. `imprintClusterId` is evidence,
+ * not identity: callers that want to attach this to a LifeOps person must
+ * submit a normal `EntityStore.observeIdentity` observation with this
+ * cluster/observation id in its evidence list. Do not use voice imprints as
+ * a parallel identity graph or as authorization for voice synthesis.
+ */
+export interface VoiceSpeaker {
+  id: string;
+  label?: string;
+  displayName?: string;
+  source?: VoiceInputSource;
+  imprintClusterId?: string;
+  imprintObservationId?: string;
+  entityId?: string;
+  confidence?: number;
+  isLocalUser?: boolean;
+  metadata?: Record<string, unknown>;
+}
+
+/** One diarized span within a transcript snapshot or finalized voice turn. */
+export interface VoiceSegment {
+  id?: string;
+  text: string;
+  startMs: number;
+  endMs: number;
+  speaker?: VoiceSpeaker;
+  speakerId?: string;
+  source?: VoiceInputSource;
+  confidence?: number;
+  tokens?: number[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceDiarizationMetadata {
+  provider: "local" | "connector" | "cloud" | "unknown";
+  model?: string;
+  version?: string;
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceTurnMetadata {
+  turnId?: string;
+  source?: VoiceInputSource;
+  primarySpeaker?: VoiceSpeaker;
+  segments?: VoiceSegment[];
+  startedAtMs?: number;
+  endedAtMs?: number;
+  diarization?: VoiceDiarizationMetadata;
+  metadata?: Record<string, unknown>;
+}
+
 /* -------------------------------------------------------------------- *
  * Streaming ASR — frame-fed transcription with incremental partials.
  *
@@ -79,6 +164,14 @@ export interface TranscriptUpdate {
   partial: string;
   /** True for the snapshot emitted by `flush()` / on `speech-end`. */
   isFinal: boolean;
+  /** Channel/device/call metadata for attribution and storage. */
+  source?: VoiceInputSource;
+  /** Best speaker attribution for single-speaker snapshots. */
+  speaker?: VoiceSpeaker;
+  /** Diarized spans for multi-speaker snapshots, when available. */
+  segments?: VoiceSegment[];
+  /** Turn-level metadata carried through to generation and storage. */
+  turn?: VoiceTurnMetadata;
   /**
    * Text-model token ids for `partial`, when the backend can supply them
    * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the

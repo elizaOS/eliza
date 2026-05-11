@@ -6,8 +6,8 @@ import type { JsonValue } from "../types/primitives.ts";
 // contract: per-stage retrieval entries + fused top-K + selected/correct
 // action lists.
 export type {
-	RecordedRetrievalStageEntry,
 	RecordedRetrievalPerStageScores,
+	RecordedRetrievalStageEntry,
 	RecordedToolSearchStage,
 } from "../runtime/trajectory-recorder.ts";
 

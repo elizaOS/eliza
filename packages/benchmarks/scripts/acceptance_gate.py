@@ -395,15 +395,28 @@ def _step_cerebras_smoke() -> GateStepResult:
     )
 
 
+_ELIZA_SERVER_MANAGER: Any | None = None
+
+
 def _make_adapter_client(agent: str):
     """Build the per-agent client. Imports are localized so the script
-    can still load in environments missing one adapter."""
+    can still load in environments missing one adapter.
+
+    For Eliza we lazily spawn a single ``ElizaServerManager`` per gate run
+    so the smoke (and downstream sanity step) hit a real bench server, not
+    a phantom localhost:3939. The manager is torn down in ``_teardown``.
+    """
     sys.path.insert(0, str(PACKAGE_ROOT / "eliza-adapter"))
     sys.path.insert(0, str(PACKAGE_ROOT / "openclaw-adapter"))
     sys.path.insert(0, str(PACKAGE_ROOT / "hermes-adapter"))
     if agent == "eliza":
         from eliza_adapter.client import ElizaClient
-        return ElizaClient()
+        from eliza_adapter.server_manager import ElizaServerManager
+        global _ELIZA_SERVER_MANAGER
+        if _ELIZA_SERVER_MANAGER is None:
+            _ELIZA_SERVER_MANAGER = ElizaServerManager()
+            _ELIZA_SERVER_MANAGER.start()
+        return _ELIZA_SERVER_MANAGER.client
     if agent == "openclaw":
         from openclaw_adapter.client import OpenClawClient
         return OpenClawClient()
@@ -411,6 +424,17 @@ def _make_adapter_client(agent: str):
         from hermes_adapter.client import HermesClient
         return HermesClient()
     raise ValueError(f"unknown agent {agent!r}")
+
+
+def _teardown() -> None:
+    """Release any resources owned by the gate (the Eliza server)."""
+    global _ELIZA_SERVER_MANAGER
+    if _ELIZA_SERVER_MANAGER is not None:
+        try:
+            _ELIZA_SERVER_MANAGER.stop()
+        except Exception:  # noqa: BLE001 - never raise from teardown
+            pass
+        _ELIZA_SERVER_MANAGER = None
 
 
 def _step_agent_smoke() -> GateStepResult:
@@ -877,6 +901,9 @@ def _finalize(
     config: dict[str, Any],
     output_dir: Path | None,
 ) -> GateReport:
+    # Always release resources owned by the gate (Eliza server, etc.)
+    # before producing the final report. Idempotent and exception-safe.
+    _teardown()
     overall_passed = all(step.passed for step in steps)
     finished_at = _iso_now()
     report = GateReport(

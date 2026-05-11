@@ -643,6 +643,25 @@ def validate_manifest(
                     errors.append(
                         "evals.vadLatencyMs.median: must be a non-negative number"
                     )
+                for field in ("boundaryMs", "endpointMs"):
+                    value = vad_latency.get(field)
+                    if value is not None and (
+                        not isinstance(value, (int, float))
+                        or isinstance(value, bool)
+                        or value < 0
+                    ):
+                        errors.append(
+                            f"evals.vadLatencyMs.{field}: must be a non-negative number when present"
+                        )
+                false_barge_in = vad_latency.get("falseBargeInRate")
+                if false_barge_in is not None and (
+                    not isinstance(false_barge_in, (int, float))
+                    or isinstance(false_barge_in, bool)
+                    or not 0 <= false_barge_in <= 1
+                ):
+                    errors.append(
+                        "evals.vadLatencyMs.falseBargeInRate: must be a number in [0, 1] when present"
+                    )
                 if not isinstance(vad_latency.get("passed"), bool):
                     errors.append("evals.vadLatencyMs.passed: must be a boolean")
 
@@ -993,6 +1012,9 @@ def build_manifest(
     embed_mteb_passed: bool | None = None,
     vad_latency_ms_median: float | None = None,
     vad_latency_ms_passed: bool | None = None,
+    vad_boundary_ms: float | None = None,
+    vad_endpoint_ms: float | None = None,
+    vad_false_barge_in_rate: float | None = None,
     expressive_tag_faithfulness: float | None = None,
     expressive_mos: float | None = None,
     expressive_tag_leakage: float | None = None,
@@ -1056,11 +1078,26 @@ def build_manifest(
             "score": embed_mteb_score if embed_mteb_score is not None else -1,
             "passed": bool(embed_mteb_passed),
         }
-    if vad_latency_ms_median is not None or vad_latency_ms_passed is not None:
+    if any(
+        value is not None
+        for value in (
+            vad_latency_ms_median,
+            vad_latency_ms_passed,
+            vad_boundary_ms,
+            vad_endpoint_ms,
+            vad_false_barge_in_rate,
+        )
+    ):
         evals["vadLatencyMs"] = {
             "median": vad_latency_ms_median if vad_latency_ms_median is not None else -1,
             "passed": bool(vad_latency_ms_passed),
         }
+        if vad_boundary_ms is not None:
+            evals["vadLatencyMs"]["boundaryMs"] = vad_boundary_ms
+        if vad_endpoint_ms is not None:
+            evals["vadLatencyMs"]["endpointMs"] = vad_endpoint_ms
+        if vad_false_barge_in_rate is not None:
+            evals["vadLatencyMs"]["falseBargeInRate"] = vad_false_barge_in_rate
     expressive_values = (
         expressive_tag_faithfulness,
         expressive_mos,

@@ -79,6 +79,12 @@ import {
 	type ResponseHandlerPatch,
 	runResponseHandlerEvaluators,
 } from "../runtime/response-handler-evaluators";
+import type {
+	ResponseHandlerFieldContext,
+	ResponseHandlerFieldRunResult,
+	ResponseHandlerResult,
+	ResponseHandlerSenderRole,
+} from "../runtime/response-handler-field-evaluator";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -88,6 +94,7 @@ import {
 } from "../runtime/trajectory-recorder";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
+	getStreamingContext,
 	getModelStreamChunkDeliveryDepth,
 	runWithStreamingContext,
 	type StreamingContext,
@@ -158,6 +165,7 @@ import {
 	parseJSONObjectFromText,
 	truncateToCompleteSentence,
 } from "../utils";
+import { parseJsonObject } from "../runtime/json-output";
 import {
 	collectActionResultSizeWarnings,
 	formatActionResultsForPrompt,
@@ -191,6 +199,30 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
+
+function mergeAbortSignals(
+	signals: Array<AbortSignal | undefined>,
+): AbortSignal | undefined {
+	const active = signals.filter(
+		(signal): signal is AbortSignal => signal !== undefined,
+	);
+	if (active.length === 0) return undefined;
+	if (active.length === 1) return active[0];
+	const controller = new AbortController();
+	const abort = (signal: AbortSignal) => {
+		if (!controller.signal.aborted) {
+			controller.abort(signal.reason);
+		}
+	};
+	for (const signal of active) {
+		if (signal.aborted) {
+			abort(signal);
+			break;
+		}
+		signal.addEventListener("abort", () => abort(signal), { once: true });
+	}
+	return controller.signal;
+}
 
 function canonicalPlannerControlActionName(actionName: string): string | null {
 	const normalized = normalizeActionIdentifier(actionName);
@@ -916,7 +948,9 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
-	const contentMetadata = content.metadata as Record<string, unknown> | undefined;
+	const contentMetadata = content.metadata as
+		| Record<string, unknown>
+		| undefined;
 	if (
 		contentMetadata &&
 		typeof contentMetadata.benchmark === "string" &&
@@ -2692,14 +2726,14 @@ function selectMessageHandlerTask(
 function renderMessageHandlerInstructions(
 	runtime: OptimizedPromptRuntimeLike,
 	availableContexts: readonly ContextDefinition[],
-	options?: { directMessage?: boolean },
+	options?: { directMessage?: boolean; responseHandlerFields?: string },
 ): string {
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
 		messageHandlerTemplate,
 	);
-	return composePrompt({
+	const rendered = composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
 			availableContexts: formatAvailableContextsForPrompt(availableContexts),
@@ -2707,13 +2741,23 @@ function renderMessageHandlerInstructions(
 		},
 		template: baseline,
 	}).trim();
+	if (!options?.responseHandlerFields?.trim()) {
+		return rendered;
+	}
+	return [
+		rendered,
+		"",
+		"## Response Handler Fields",
+		"Populate every registered response-handler field exactly according to the sections below. Use the field's empty value when it is not applicable.",
+		options.responseHandlerFields.trim(),
+	].join("\n");
 }
 
 function renderMessageHandlerModelInput(
 	runtime: OptimizedPromptRuntimeLike,
 	context: ContextObject,
 	availableContexts: readonly ContextDefinition[] = [],
-	options?: { directMessage?: boolean },
+	options?: { directMessage?: boolean; responseHandlerFields?: string },
 ): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -2841,6 +2885,13 @@ function parseToolArguments(value: unknown): Record<string, unknown> | null {
 function parseMessageHandlerNativeToolCall(
 	raw: GenerateTextResult,
 ): MessageHandlerResult | null {
+	const args = extractHandleResponseToolArguments(raw);
+	return args ? parseMessageHandlerOutput(JSON.stringify(args)) : null;
+}
+
+function extractHandleResponseToolArguments(
+	raw: GenerateTextResult,
+): Record<string, unknown> | null {
 	const toolCalls = Array.isArray(raw.toolCalls) ? raw.toolCalls : [];
 	for (const entry of toolCalls) {
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
@@ -2858,7 +2909,7 @@ function parseMessageHandlerNativeToolCall(
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
 		}
-		return parseMessageHandlerOutput(JSON.stringify(args));
+		return args;
 	}
 	return null;
 }
@@ -2880,6 +2931,158 @@ function looksLikeMessageHandlerToolArguments(
 		args.thought !== undefined ||
 		args.extract !== undefined
 	);
+}
+
+function extractMessageHandlerRawParsed(
+	raw: string | GenerateTextResult,
+): Record<string, unknown> | null {
+	if (typeof raw !== "string") {
+		return (
+			extractHandleResponseToolArguments(raw) ??
+			parseJsonObject<Record<string, unknown>>(getV5ModelText(raw))
+		);
+	}
+	return parseJsonObject<Record<string, unknown>>(raw);
+}
+
+function normalizeRawParsedForFieldRegistry(
+	raw: Record<string, unknown>,
+): Record<string, unknown> {
+	const normalized = { ...raw };
+	const plan =
+		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
+			? (raw.plan as Record<string, unknown>)
+			: undefined;
+	const fields = plan ?? raw;
+	if (normalized.shouldRespond === undefined) {
+		normalized.shouldRespond = raw.processMessage ?? raw.action ?? "RESPOND";
+	}
+	if (normalized.replyText === undefined) {
+		normalized.replyText =
+			raw.replyText ??
+			raw.reply ??
+			fields.replyText ??
+			fields.reply ??
+			"";
+	}
+	if (normalized.contexts === undefined) {
+		normalized.contexts = fields.contexts ?? [];
+	}
+	if (normalized.candidateActionNames === undefined) {
+		normalized.candidateActionNames =
+			raw.candidateActionNames ?? fields.candidateActions ?? [];
+	}
+	const extract =
+		raw.extract && typeof raw.extract === "object" && !Array.isArray(raw.extract)
+			? (raw.extract as Record<string, unknown>)
+			: undefined;
+	if (normalized.facts === undefined) {
+		normalized.facts = extract?.facts ?? raw.facts ?? [];
+	}
+	if (normalized.relationships === undefined) {
+		normalized.relationships = extract?.relationships ?? raw.relationships ?? [];
+	}
+	if (normalized.addressedTo === undefined) {
+		normalized.addressedTo = extract?.addressedTo ?? raw.addressedTo ?? [];
+	}
+	return normalized;
+}
+
+function messageHandlerFromFieldResult(
+	result: ResponseHandlerResult,
+	fieldRun?: ResponseHandlerFieldRunResult,
+): MessageHandlerResult {
+	const contexts = Array.isArray(result.contexts)
+		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
+		: [];
+	const candidateActions = Array.isArray(result.candidateActionNames)
+		? result.candidateActionNames
+				.map((action) => String(action).trim())
+				.filter(Boolean)
+		: [];
+	const facts = Array.isArray(result.facts)
+		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
+		: [];
+	const relationships = Array.isArray(result.relationships)
+		? result.relationships
+				.map((entry) => {
+					if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+						return null;
+					}
+					const rel = entry as Record<string, unknown>;
+					const subject =
+						typeof rel.subject === "string" ? rel.subject.trim() : "";
+					const predicate =
+						typeof rel.predicate === "string" ? rel.predicate.trim() : "";
+					const object =
+						typeof rel.object === "string" ? rel.object.trim() : "";
+					return subject && predicate && object
+						? { subject, predicate, object }
+						: null;
+				})
+				.filter(
+					(
+						entry,
+					): entry is { subject: string; predicate: string; object: string } =>
+						entry !== null,
+				)
+		: [];
+	const addressedTo = Array.isArray(result.addressedTo)
+		? result.addressedTo
+				.map((addressed) => String(addressed).trim())
+				.filter(Boolean)
+		: [];
+	const preempt = fieldRun?.preempt;
+	const processMessage =
+		preempt?.mode === "ignore"
+			? "IGNORE"
+			: result.shouldRespond === "STOP"
+				? "STOP"
+				: result.shouldRespond === "IGNORE"
+					? "IGNORE"
+					: "RESPOND";
+	const preemptDirect =
+		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
+	const replyText = typeof result.replyText === "string" ? result.replyText : "";
+	const routedContexts = preemptDirect
+		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
+		: contexts;
+	const initialPlanningContexts = routedContexts.filter(
+		(context) => context !== SIMPLE_CONTEXT_ID,
+	);
+	const shouldPlan =
+		!preemptDirect &&
+		(initialPlanningContexts.length > 0 || candidateActions.length > 0);
+	const finalContexts =
+		shouldPlan && initialPlanningContexts.length === 0
+			? Array.from(
+					new Set([
+						...routedContexts.filter(
+							(context) => context !== SIMPLE_CONTEXT_ID,
+						),
+						"general",
+					]),
+				)
+			: routedContexts;
+	const plan: MessageHandlerResult["plan"] = {
+		contexts: finalContexts,
+		reply: replyText,
+		simple: preemptDirect ? true : !shouldPlan,
+		requiresTool: shouldPlan,
+	};
+	if (candidateActions.length > 0) {
+		plan.candidateActions = candidateActions;
+	}
+	const extract =
+		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
+			? { facts, relationships, addressedTo }
+			: undefined;
+	return {
+		processMessage,
+		thought: fieldRun?.preempt?.reason ?? "",
+		plan,
+		...(extract ? { extract } : {}),
+	};
 }
 
 function parseMessageHandlerModelOutput(
@@ -4347,11 +4550,29 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
+		const stage1TurnSignal =
+			getStreamingContext()?.abortSignal ?? new AbortController().signal;
+		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
+			runtime: args.runtime,
+			message: args.message,
+			state: args.state,
+			senderRole: senderRole as ResponseHandlerSenderRole,
+			turnSignal: stage1TurnSignal,
+		};
+		const responseHandlerFieldPrompt =
+			await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
+				responseHandlerFieldContext,
+			);
+		const responseHandlerSchema =
+			args.runtime.responseHandlerFieldRegistry.composeSchema();
 		const messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
 			availableContexts,
-			{ directMessage: directMessageChannel },
+			{
+				directMessage: directMessageChannel,
+				responseHandlerFields: responseHandlerFieldPrompt.rendered,
+			},
 		);
 		const stage1PrefixHashes = computePrefixHashes(
 			messageHandlerInput.promptSegments,
@@ -4370,6 +4591,9 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerTools = [
 			createHandleResponseTool({
 				directMessage: directMessageChannel,
+				parameters: responseHandlerSchema,
+				description:
+					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
 			}),
 		];
 		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
@@ -4454,7 +4678,27 @@ export async function runV5MessageRuntimeStage1(args: {
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
-		let messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		const rawFieldParsed = extractMessageHandlerRawParsed(rawMessageHandler);
+		let fieldRunResult: ResponseHandlerFieldRunResult | null = null;
+		let messageHandler: MessageHandlerResult | null = null;
+		if (rawFieldParsed) {
+			fieldRunResult =
+				await args.runtime.responseHandlerFieldRegistry.dispatch({
+					rawParsed: normalizeRawParsedForFieldRegistry(rawFieldParsed),
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					senderRole: senderRole as ResponseHandlerSenderRole,
+					turnSignal: stage1TurnSignal,
+				});
+			messageHandler = messageHandlerFromFieldResult(
+				fieldRunResult.parsed,
+				fieldRunResult,
+			);
+		}
+		if (!messageHandler) {
+			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
+		}
 		if (!messageHandler) {
 			messageHandler =
 				buildFallbackStage1PlanForKnownToolRequest({
@@ -4555,14 +4799,20 @@ export async function runV5MessageRuntimeStage1(args: {
 			});
 		}
 
-		const responseHandlerEvaluation = await runResponseHandlerEvaluators({
-			runtime: args.runtime,
-			message: args.message,
-			state: args.state,
-			messageHandler,
-			availableContexts,
-			evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
-		});
+		const responseHandlerEvaluation = fieldRunResult?.preempt
+			? {
+					activeEvaluators: [],
+					appliedPatches: [],
+					errors: [],
+				}
+			: await runResponseHandlerEvaluators({
+					runtime: args.runtime,
+					message: args.message,
+					state: args.state,
+					messageHandler,
+					availableContexts,
+					evaluators: BUILTIN_RESPONSE_HANDLER_EVALUATORS,
+				});
 		messageHandler.plan.contexts = filterSelectedContextsForRole(
 			messageHandler.plan.contexts,
 			availableContexts,
@@ -8082,18 +8332,35 @@ export class DefaultMessageService implements IMessageService {
 					const firstSentenceSent = false;
 					const firstSentenceText = "";
 
-					const processingPromise = runWithStreamingContext(
-						streamingContext,
-						() =>
-							this.processMessage(
-								runtime,
-								message,
-								instrumentedCallback,
-								responseId,
-								runId,
-								startTime,
-								opts,
-							),
+					const processingPromise = runtime.turnControllers.runWith(
+						message.roomId,
+						(turnSignal) => {
+							const abortSignal = mergeAbortSignals([
+								opts.abortSignal,
+								turnSignal,
+							]);
+							const scopedStreamingContext: StreamingContext | undefined =
+								streamingContext
+									? { ...streamingContext, ...(abortSignal ? { abortSignal } : {}) }
+									: abortSignal
+										? {
+												onStreamChunk: async () => undefined,
+												messageId: responseId,
+												abortSignal,
+											}
+										: undefined;
+							return runWithStreamingContext(scopedStreamingContext, () =>
+								this.processMessage(
+									runtime,
+									message,
+									instrumentedCallback,
+									responseId,
+									runId,
+									startTime,
+									opts,
+								),
+							);
+						},
 					);
 
 					const result = await Promise.race([

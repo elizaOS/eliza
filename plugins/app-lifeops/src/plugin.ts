@@ -129,8 +129,8 @@ import {
   type SelfControlPluginConfig,
   setSelfControlPluginConfig,
 } from "./website-blocker/engine.js";
+import { ScheduledTaskRunnerService } from "./lifeops/scheduled-task/service.js";
 import { WebsiteBlockerService } from "./website-blocker/service.js";
-import { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 import { ownerProfileExtractionEvaluator } from "./lifeops/owner/profile-extraction-evaluator.js";
 import { InboxTriageRepository } from "./inbox/repository.js";
@@ -666,10 +666,10 @@ const rawAppLifeOpsPlugin: Plugin = {
     WebsiteBlockerService,
     ActivityTrackerService,
     PresenceSignalBridgeService,
+    ScheduledTaskRunnerService,
   ],
   responseHandlerEvaluators: [
     ownerProfileExtractionEvaluator,
-    workThreadResponseHandlerEvaluator,
   ],
   responseHandlerFieldEvaluators: [threadOpsFieldEvaluator],
   init: async (
@@ -1050,7 +1050,7 @@ export {
   type WorkThreadStatus,
   type WorkThreadStore,
 } from "./lifeops/work-threads/index.js";
-export { workThreadResponseHandlerEvaluator } from "./lifeops/work-threads/response-handler-evaluator.js";
+export { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
 // LifeOps runtime exports
 export {
   ensureLifeOpsSchedulerTask,
@@ -1119,6 +1119,11 @@ export {
 } from "./lifeops/scheduled-task/index.js";
 export type { CreateRuntimeRunnerOptions } from "./lifeops/scheduled-task/runtime-wiring.js";
 export { createRuntimeScheduledTaskRunner } from "./lifeops/scheduled-task/runtime-wiring.js";
+export {
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+} from "./lifeops/scheduled-task/service.js";
+export type { GetScheduledTaskRunnerOptions } from "./lifeops/scheduled-task/service.js";
 export { appBlockerProvider } from "./providers/app-blocker.js";
 export type { FirstRunAffordance } from "./providers/first-run.js";
 export { firstRunProvider } from "./providers/first-run.js";

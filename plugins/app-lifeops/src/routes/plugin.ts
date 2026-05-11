@@ -18,7 +18,7 @@ import {
   resolveEntityRole,
   stringToUuid,
 } from "@elizaos/core";
-import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 import { handleEntityRoutes } from "./entities.js";
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 import { handleLifeOpsRoutes } from "./lifeops-routes.js";
@@ -610,8 +610,7 @@ function scheduledTasksRouteHandler(): PluginRouteHandler {
         ctx.error(ctx.res, "Agent runtime is not available", 503);
         return null;
       }
-      return createRuntimeScheduledTaskRunner({
-        runtime,
+      return getScheduledTaskRunner(runtime, {
         agentId: runtime.agentId,
       });
     },

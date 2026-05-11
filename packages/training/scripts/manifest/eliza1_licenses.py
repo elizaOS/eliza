@@ -171,13 +171,18 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="VAD (Silero VAD)",
         spdx="MIT",
         text_file=_MIT,
-        upstream_repo="onnx-community/silero-vad (snakers4/silero-vad)",
-        upstream_url="https://huggingface.co/onnx-community/silero-vad",
+        upstream_repo=(
+            "ggml-org/whisper-vad (native GGML Silero VAD v5.1.2); "
+            "optional fallback: onnx-community/silero-vad (snakers4/silero-vad)"
+        ),
+        upstream_url="https://huggingface.co/ggml-org/whisper-vad",
         copyright_holder="Silero Team",
         note=(
-            "Voice-activity detection model, shipped as the int8 ONNX sidecar "
-            "vad/silero-vad-int8.onnx. Drives barge-in cancellation and gates ASR "
-            "past silent frames. Licensed MIT."
+            "Voice-activity detection model, shipped for native inference as "
+            "the GGML artifact vad/silero-vad-v5.1.2.ggml.bin. Legacy bundles "
+            "may also include the int8 ONNX fallback vad/silero-vad-int8.onnx. "
+            "Drives barge-in cancellation and gates ASR past silent frames. "
+            "Licensed MIT."
         ),
     ),
     LicenseAttestation(

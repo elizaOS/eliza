@@ -54,9 +54,7 @@ interface CerebrasChatRequest {
 			strict?: boolean;
 		};
 	}>;
-	tool_choice?:
-		| "auto"
-		| { type: "function"; function: { name: string } };
+	tool_choice?: "auto" | { type: "function"; function: { name: string } };
 	temperature?: number;
 	max_completion_tokens?: number;
 }
@@ -101,7 +99,8 @@ async function callCerebras(
 // Minimal IAgentRuntime fake — only the surfaces our handlers touch.
 function buildFakeRuntime(): IAgentRuntime {
 	return {
-		agentId: "test-agent" as `${string}-${string}-${string}-${string}-${string}`,
+		agentId:
+			"test-agent" as `${string}-${string}-${string}-${string}-${string}`,
 		logger: {
 			debug: () => {},
 			info: () => {},
@@ -156,7 +155,12 @@ const testAbortField: ResponseHandlerFieldEvaluator<
 	parse(value) {
 		if (!Array.isArray(value)) return [];
 		return value
-			.filter((v) => v && typeof v === "object" && (v as { type?: unknown }).type === "abort")
+			.filter(
+				(v) =>
+					v &&
+					typeof v === "object" &&
+					(v as { type?: unknown }).type === "abort",
+			)
 			.map((v) => {
 				const r = v as { reason?: unknown };
 				return {
@@ -165,12 +169,17 @@ const testAbortField: ResponseHandlerFieldEvaluator<
 				};
 			});
 	},
-	handle(ctx: ResponseHandlerFieldHandleContext<Array<{ type: string; reason?: string }>>):
-		| ResponseHandlerFieldEffect
-		| undefined {
+	handle(
+		ctx: ResponseHandlerFieldHandleContext<
+			Array<{ type: string; reason?: string }>
+		>,
+	): ResponseHandlerFieldEffect | undefined {
 		if (ctx.value.length === 0) return undefined;
 		return {
-			preempt: { mode: "ack-and-stop", reason: ctx.value[0]?.reason ?? "abort" },
+			preempt: {
+				mode: "ack-and-stop",
+				reason: ctx.value[0]?.reason ?? "abort",
+			},
 			debug: [`abort: ${ctx.value[0]?.reason ?? "unknown"}`],
 		};
 	},
@@ -218,7 +227,9 @@ liveDescribe("ResponseHandlerFieldRegistry — live Cerebras smoke", () => {
 
 		const ctx: ResponseHandlerFieldContext = {
 			runtime: buildFakeRuntime(),
-			message: buildMessage("hi, can you help me set a reminder for 5pm to call mom"),
+			message: buildMessage(
+				"hi, can you help me set a reminder for 5pm to call mom",
+			),
 			state: buildState(),
 			senderRole: "OWNER",
 			turnSignal: new AbortController().signal,
@@ -376,9 +387,11 @@ liveDescribe("ResponseHandlerFieldRegistry — live Cerebras smoke", () => {
 		});
 
 		// The model should emit at least one abort op given the retraction.
-		const threadOpsValue = dispatchResult.parsed.threadOps as Array<{
-			type: string;
-		}> | undefined;
+		const threadOpsValue = dispatchResult.parsed.threadOps as
+			| Array<{
+					type: string;
+			  }>
+			| undefined;
 		const abortOps = Array.isArray(threadOpsValue)
 			? threadOpsValue.filter((op) => op?.type === "abort")
 			: [];

@@ -27,15 +27,54 @@ export interface WorkflowDispatchResult {
   ok: boolean;
   error?: string;
   executionId?: string;
+  /**
+   * True when the call was short-circuited by an idempotency-key match.
+   * Callers (the trigger dispatcher, dashboards) can record a dedup
+   * instead of treating the call as a fresh execution.
+   */
+  dedup?: boolean;
+}
+
+/**
+ * Optional, structured dispatch options. The `idempotencyKey` field is
+ * the durable contract: same workflow + same key → at most one
+ * execution. Passed inline through the legacy `payload` shape (key
+ * `__idempotencyKey`) when the caller can't pass a second argument.
+ */
+export interface WorkflowDispatchOptions {
+  triggerData?: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 export interface WorkflowDispatchService {
-  execute(workflowId: string, payload?: Record<string, unknown>): Promise<WorkflowDispatchResult>;
+  execute(
+    workflowId: string,
+    payload?: Record<string, unknown>,
+    options?: WorkflowDispatchOptions
+  ): Promise<WorkflowDispatchResult>;
 }
 
 interface WorkflowDispatchServiceEntry extends WorkflowDispatchService {
   stop(): Promise<void>;
   capabilityDescription: string;
+}
+
+/**
+ * Pull `__idempotencyKey` out of the legacy `payload` shape so existing
+ * callers (the trigger dispatcher's `event` payload) can attach a key
+ * without growing the signature. The wrapper key is stripped before the
+ * payload is forwarded as `triggerData`.
+ */
+function partitionPayload(payload: Record<string, unknown> | undefined): {
+  triggerData: Record<string, unknown>;
+  idempotencyKey?: string;
+} {
+  if (!payload) return { triggerData: {} };
+  const { __idempotencyKey, ...rest } = payload;
+  return {
+    triggerData: rest,
+    idempotencyKey: typeof __idempotencyKey === 'string' ? __idempotencyKey : undefined,
+  };
 }
 
 interface RuntimeServiceRegistry {
@@ -71,12 +110,33 @@ function getRuntimeServiceRegistry(runtime: IAgentRuntime): RuntimeServiceRegist
 /**
  * Construct the dispatch service. Registered under `WORKFLOW_DISPATCH` on the
  * runtime by the plugin's `init` lifecycle hook.
+ *
+ * Idempotency contract: when a caller passes an `idempotencyKey` (either via
+ * the explicit `options.idempotencyKey` or via the legacy
+ * `payload.__idempotencyKey`), the dispatch service first looks up an
+ * existing execution row for `(workflowId, idempotencyKey)`. If one exists,
+ * the new run is suppressed and the prior execution id is returned with
+ * `{ ok: true, dedup: true }`. Scheduled workflow dispatches use a
+ * minute-bucketed key so two simultaneous schedule fires collapse to one
+ * execution.
+ *
+ * Concurrent dispatches that race past the lookup are still safely
+ * coalesced because the embedded service persists the idempotency key on
+ * the execution row, so the second-to-write completes but is detectable
+ * as a duplicate on future lookups.
  */
 export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowDispatchService {
+  // Track in-flight executions by `(workflowId, idempotencyKey)` so that
+  // two concurrent dispatches inside the same process collapse onto one
+  // run. The map entry resolves once the original run finishes, and the
+  // late caller returns the same execution id.
+  const inflight = new Map<string, Promise<WorkflowDispatchResult>>();
+
   return {
     async execute(
       workflowId: string,
-      payload: Record<string, unknown> = {}
+      payload: Record<string, unknown> = {},
+      options: WorkflowDispatchOptions = {}
     ): Promise<WorkflowDispatchResult> {
       const id = workflowId.trim();
       if (!id) {
@@ -86,25 +146,62 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
       if (!service) {
         return { ok: false, error: 'embedded workflow service not registered' };
       }
-      try {
-        // Forward the trigger payload (e.g. eventKind, eventPayload from the
-        // event bridge) as `triggerData`. The embedded engine seeds the trigger
-        // node's first item with this so workflows can read upstream event data.
-        const execution = await service.executeWorkflow(id, {
-          mode: 'trigger',
-          triggerData: payload,
+
+      const partitioned = partitionPayload(payload);
+      const triggerData =
+        options.triggerData && Object.keys(options.triggerData).length > 0
+          ? options.triggerData
+          : partitioned.triggerData;
+      const idempotencyKey = options.idempotencyKey ?? partitioned.idempotencyKey;
+
+      if (idempotencyKey) {
+        const existing = await service.findExecutionByIdempotencyKey(id, idempotencyKey);
+        if (existing) {
+          return existing.id
+            ? { ok: true, executionId: existing.id, dedup: true }
+            : { ok: true, dedup: true };
+        }
+
+        const inflightKey = `${id}::${idempotencyKey}`;
+        const pending = inflight.get(inflightKey);
+        if (pending) {
+          const result = await pending;
+          return result.ok ? { ...result, dedup: true } : result;
+        }
+
+        const promise = runDispatch(service, id, triggerData, idempotencyKey).finally(() => {
+          inflight.delete(inflightKey);
         });
-        return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        logger.warn(
-          { src: 'plugin:workflow:dispatch' },
-          `Workflow execution failed for ${id}: ${message}`
-        );
-        return { ok: false, error: message };
+        inflight.set(inflightKey, promise);
+        return promise;
       }
+
+      return runDispatch(service, id, triggerData, undefined);
     },
   };
+}
+
+async function runDispatch(
+  service: EmbeddedWorkflowService,
+  workflowId: string,
+  triggerData: Record<string, unknown>,
+  idempotencyKey: string | undefined
+): Promise<WorkflowDispatchResult> {
+  try {
+    const execution = await service.executeWorkflow(workflowId, {
+      mode: 'trigger',
+      triggerData,
+      idempotencyKey,
+    });
+    return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      { src: 'plugin:workflow:dispatch' },
+      `Workflow execution failed for ${workflowId}: ${message}`
+    );
+    return { ok: false, error: message };
+  }
 }
 
 /**
@@ -119,7 +216,7 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
 export function registerWorkflowDispatchService(runtime: IAgentRuntime): void {
   const dispatch = createWorkflowDispatchService(runtime);
   const serviceEntry: WorkflowDispatchServiceEntry = {
-    execute: dispatch.execute,
+    execute: dispatch.execute.bind(dispatch),
     stop: async () => {},
     capabilityDescription: 'Executes embedded workflows by id via the in-process workflow service.',
   };

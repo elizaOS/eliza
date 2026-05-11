@@ -73,6 +73,36 @@ export interface AppRunSteeringResult {
   session?: AppSessionState | null;
 }
 
+/**
+ * Wrapped response shape for `/api/setup/telegram-account/*` routes.
+ *
+ * Matches the canonical `SetupStatusResponse` in
+ * `eliza/packages/app-core/src/api/setup-contract.ts` plus the connector-
+ * specific detail block that drives the multi-step login wizard.
+ */
+export interface TelegramAccountSetupStatus {
+  connector: "telegram-account";
+  state: "idle" | "configuring" | "paired" | "error";
+  detail: {
+    status: string;
+    configured: boolean;
+    sessionExists: boolean;
+    serviceConnected: boolean;
+    restartRequired: boolean;
+    hasAppCredentials: boolean;
+    phone: string | null;
+    isCodeViaApp: boolean;
+    account: {
+      id: string;
+      username: string | null;
+      firstName: string | null;
+      lastName: string | null;
+      phone: string | null;
+    } | null;
+    error: string | null;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Declaration merging
 // ---------------------------------------------------------------------------
@@ -362,87 +392,16 @@ declare module "./client-base" {
       ok: boolean;
       accountId: string;
     }>;
-    getTelegramAccountStatus(): Promise<{
-      available: boolean;
-      status: string;
-      configured: boolean;
-      sessionExists: boolean;
-      serviceConnected: boolean;
-      restartRequired: boolean;
-      hasAppCredentials: boolean;
-      phone: string | null;
-      isCodeViaApp: boolean;
-      account: {
-        id: string;
-        username: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        phone: string | null;
-      } | null;
-      error: string | null;
-    }>;
-    startTelegramAccountAuth(phone?: string): Promise<{
-      available: boolean;
-      status: string;
-      configured: boolean;
-      sessionExists: boolean;
-      serviceConnected: boolean;
-      restartRequired: boolean;
-      hasAppCredentials: boolean;
-      phone: string | null;
-      isCodeViaApp: boolean;
-      account: {
-        id: string;
-        username: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        phone: string | null;
-      } | null;
-      error: string | null;
-    }>;
+    getTelegramAccountStatus(): Promise<TelegramAccountSetupStatus>;
+    startTelegramAccountAuth(
+      phone?: string,
+    ): Promise<TelegramAccountSetupStatus>;
     submitTelegramAccountAuth(input: {
       provisioningCode?: string;
       telegramCode?: string;
       password?: string;
-    }): Promise<{
-      available: boolean;
-      status: string;
-      configured: boolean;
-      sessionExists: boolean;
-      serviceConnected: boolean;
-      restartRequired: boolean;
-      hasAppCredentials: boolean;
-      phone: string | null;
-      isCodeViaApp: boolean;
-      account: {
-        id: string;
-        username: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        phone: string | null;
-      } | null;
-      error: string | null;
-    }>;
-    disconnectTelegramAccount(): Promise<{
-      ok: boolean;
-      available: boolean;
-      status: string;
-      configured: boolean;
-      sessionExists: boolean;
-      serviceConnected: boolean;
-      restartRequired: boolean;
-      hasAppCredentials: boolean;
-      phone: string | null;
-      isCodeViaApp: boolean;
-      account: {
-        id: string;
-        username: string | null;
-        firstName: string | null;
-        lastName: string | null;
-        phone: string | null;
-      } | null;
-      error: string | null;
-    }>;
+    }): Promise<TelegramAccountSetupStatus>;
+    disconnectTelegramAccount(): Promise<TelegramAccountSetupStatus>;
     getDiscordLocalStatus(): Promise<{
       available: boolean;
       connected: boolean;
@@ -1278,14 +1237,14 @@ ElizaClient.prototype.disconnectSignal = async function (
 ElizaClient.prototype.getTelegramAccountStatus = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/telegram-account/status");
+  return this.fetch("/api/setup/telegram-account/status");
 };
 
 ElizaClient.prototype.startTelegramAccountAuth = async function (
   this: ElizaClient,
   phone,
 ) {
-  return this.fetch("/api/telegram-account/auth/start", {
+  return this.fetch("/api/setup/telegram-account/start", {
     method: "POST",
     body: JSON.stringify(
       typeof phone === "string" && phone.trim().length > 0
@@ -1299,7 +1258,7 @@ ElizaClient.prototype.submitTelegramAccountAuth = async function (
   this: ElizaClient,
   input,
 ) {
-  return this.fetch("/api/telegram-account/auth/submit", {
+  return this.fetch("/api/setup/telegram-account/submit-code", {
     method: "POST",
     body: JSON.stringify(input),
   });
@@ -1308,7 +1267,7 @@ ElizaClient.prototype.submitTelegramAccountAuth = async function (
 ElizaClient.prototype.disconnectTelegramAccount = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/telegram-account/disconnect", {
+  return this.fetch("/api/setup/telegram-account/cancel", {
     method: "POST",
   });
 };

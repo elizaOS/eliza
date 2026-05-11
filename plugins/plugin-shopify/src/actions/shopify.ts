@@ -94,9 +94,12 @@ function selectRoute(
   options?: HandlerOptions | Record<string, unknown>,
 ): ShopifyRoute | null {
   const opts = readOptions(options);
-  const requested = normalizeOp(
-    opts.action ?? opts.op ?? opts.entity ?? opts.subaction,
-  );
+  // Canonical discriminator is `action`. The dispatcher accepts two legacy
+  // aliases — `op` (pre-canonicalization name) and `entity` (planner shorthand
+  // for "which Shopify entity am I working with") — but those do not appear in
+  // the schema. Other historical aliases (subaction, etc.) are no longer
+  // accepted.
+  const requested = normalizeOp(opts.action ?? opts.op ?? opts.entity);
   if (requested) {
     const route = ROUTES.find((candidate) => candidate.op === requested);
     if (route) return route;
@@ -145,12 +148,6 @@ export const shopifyAction: Action = {
         "Operation to perform. One of: search, products, inventory, orders, customers. Inferred from message text when omitted.",
       required: false,
       schema: { type: "string", enum: [...ALL_OPS] },
-    },
-    {
-      name: "subaction",
-      description: "Legacy alias for action.",
-      required: false,
-      schema: { type: "string" },
     },
     {
       name: "query",

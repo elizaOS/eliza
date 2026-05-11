@@ -143,15 +143,38 @@ export function getTriggerLimit(runtime?: IAgentRuntime): number {
   return DEFAULT_MAX_ACTIVE_TRIGGERS;
 }
 
+interface WorkflowDispatchOptionsLike {
+  triggerData?: Record<string, unknown>;
+  idempotencyKey?: string;
+}
+
 interface WorkflowDispatchServiceLike {
   execute(
     workflowId: string,
     payload?: Record<string, unknown>,
-  ): Promise<{ ok: boolean; error?: string; executionId?: string }>;
+    options?: WorkflowDispatchOptionsLike,
+  ): Promise<{
+    ok: boolean;
+    error?: string;
+    executionId?: string;
+    dedup?: boolean;
+  }>;
+}
+
+/**
+ * Read the idempotency key the task metadata carries for this trigger
+ * fire. armSchedules / rehydrateSchedules write a minute-bucketed key
+ * onto the metadata so dispatch can short-circuit duplicate fires.
+ */
+function readTaskIdempotencyKey(task: Task): string | undefined {
+  const meta = task.metadata as Record<string, unknown> | undefined;
+  const key = meta?.idempotencyKey;
+  return typeof key === "string" && key.length > 0 ? key : undefined;
 }
 
 async function dispatchWorkflow(
   runtime: IAgentRuntime,
+  task: Task,
   trigger: TriggerConfig,
   event?: TriggerExecutionOptions["event"],
 ): Promise<{ ok: true; executionId?: string } | { ok: false; error: string }> {
@@ -172,12 +195,16 @@ async function dispatchWorkflow(
     );
     return { ok: false, error: "WORKFLOW_DISPATCH service not registered" };
   }
-  const result = event
-    ? await svc.execute(trigger.workflowId, {
+  const idempotencyKey = readTaskIdempotencyKey(task);
+  const payload = event
+    ? {
         eventKind: event.kind,
         eventPayload: event.payload ?? {},
-      })
-    : await svc.execute(trigger.workflowId);
+      }
+    : {};
+  const result = await svc.execute(trigger.workflowId, payload, {
+    idempotencyKey,
+  });
   return result.ok
     ? { ok: true, executionId: result.executionId }
     : { ok: false, error: result.error ?? "workflow execution failed" };
@@ -259,7 +286,7 @@ export async function executeTriggerTask(
   let errorMessage = "";
   let workflowExecutionId: string | undefined;
 
-  const result = await dispatchWorkflow(runtime, trigger, options.event);
+  const result = await dispatchWorkflow(runtime, task, trigger, options.event);
   if (result.ok === true) {
     workflowExecutionId = result.executionId;
   } else {
@@ -347,6 +374,22 @@ export async function executeTriggerTask(
       ...nextMetadata,
       triggerRuns: appendRunRecord(existingMetadata.triggerRuns, runRecord),
     };
+  }
+
+  // Refresh the idempotency key for the next fire so a re-run within the
+  // same minute window collapses at dispatch. The schedule-arming layer
+  // (`armSchedules`) seeds the initial key with the same formula.
+  if (
+    metadataToPersist.trigger?.kind === "workflow" &&
+    metadataToPersist.trigger.workflowId &&
+    typeof metadataToPersist.trigger.nextRunAtMs === "number"
+  ) {
+    const minuteBucket = Math.floor(
+      metadataToPersist.trigger.nextRunAtMs / 60_000,
+    );
+    metadataToPersist.idempotencyKey = `${metadataToPersist.trigger.workflowId}:${minuteBucket}`;
+  } else {
+    delete metadataToPersist.idempotencyKey;
   }
 
   await runtime.updateTask(task.id, {

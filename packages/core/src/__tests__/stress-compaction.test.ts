@@ -10,6 +10,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HANDLE_RESPONSE_TOOL_NAME } from "../actions/to-tool";
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type {
 	Action,
@@ -33,6 +35,14 @@ const RESPONSE_ID = "10000000-0000-0000-0000-000000000005" as UUID;
 interface CannedResponse {
 	expectModelType?: string;
 	body: unknown;
+}
+
+function createResponseHandlerFieldRegistry(): ResponseHandlerFieldRegistry {
+	const responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	for (const evaluator of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS) {
+		responseHandlerFieldRegistry.register(evaluator);
+	}
+	return responseHandlerFieldRegistry;
 }
 
 function makeMessage(): Memory {
@@ -95,6 +105,7 @@ function makeRuntime(opts: {
 	contextRegistry?: ContextRegistry;
 }): IAgentRuntime {
 	const queue = [...opts.responses];
+	const responseHandlerFieldRegistry = createResponseHandlerFieldRegistry();
 	const calls: Array<{
 		modelType: unknown;
 		params: unknown;
@@ -106,6 +117,10 @@ function makeRuntime(opts: {
 		actions: opts.actions,
 		providers: [],
 		contexts: opts.contextRegistry,
+		responseHandlerFieldRegistry,
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		composeState: vi.fn(async () => opts.state),
 		emitEvent: vi.fn(async () => undefined),
 		runActionsByMode: vi.fn(async () => []),

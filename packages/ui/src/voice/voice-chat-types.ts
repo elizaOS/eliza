@@ -67,7 +67,52 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
 
 export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
 export type SpeechProviderKind = "elevenlabs" | "browser";
-export type VoiceCaptureMode = "idle" | "compose" | "push-to-talk";
+export type VoiceSessionMode =
+  | "idle"
+  | "compose"
+  | "push-to-talk"
+  | "hands-free"
+  | "passive";
+export type VoiceCaptureMode = VoiceSessionMode;
+
+export interface VoiceSpeakerMetadata {
+  /** Stable app/runtime entity id for the speaker when a connector can provide one. */
+  entityId?: string;
+  /** Connector-native speaker id, such as a Discord user id. */
+  sourceId?: string;
+  /** Connector/source label, such as "discord", "browser", or "talkmode". */
+  source?: string;
+  /** Human-friendly display name. */
+  name?: string;
+  /** Connector username or handle. */
+  userName?: string;
+  /** Room/channel where the turn was captured. */
+  channelId?: string;
+  roomId?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceTurn {
+  /** Stable id for this captured speech turn when available. */
+  id?: string;
+  text: string;
+  mode: VoiceSessionMode;
+  isFinal: boolean;
+  speaker?: VoiceSpeakerMetadata;
+  source?: string;
+  startedAtMs?: number;
+  endedAtMs?: number;
+  confidence?: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface VoiceTranscriptEvent {
+  text: string;
+  mode: Exclude<VoiceSessionMode, "idle">;
+  isFinal: boolean;
+  turn: VoiceTurn;
+  speaker?: VoiceSpeakerMetadata;
+}
 
 export interface VoicePlaybackStartEvent {
   text: string;
@@ -78,13 +123,16 @@ export interface VoicePlaybackStartEvent {
 }
 
 export interface VoiceTranscriptPreviewEvent {
-  mode: Exclude<VoiceCaptureMode, "idle">;
+  text: string;
+  mode: Exclude<VoiceSessionMode, "idle">;
   isFinal: boolean;
+  turn: VoiceTurn;
+  speaker?: VoiceSpeakerMetadata;
 }
 
 export interface VoiceChatOptions {
   /** Called when a final transcript is ready to send */
-  onTranscript: (text: string) => void;
+  onTranscript: (text: string, event: VoiceTranscriptEvent) => void;
   /** Called whenever the live transcript buffer changes */
   onTranscriptPreview?: (
     text: string,
@@ -119,8 +167,8 @@ export interface VoiceChatState {
   usingAudioAnalysis: boolean;
   /** Toggle voice listening on/off */
   toggleListening: () => void;
-  /** Begin voice capture in compose or push-to-talk mode */
-  startListening: (mode?: Exclude<VoiceCaptureMode, "idle">) => Promise<void>;
+  /** Begin voice capture in an active session mode */
+  startListening: (mode?: Exclude<VoiceSessionMode, "idle">) => Promise<void>;
   /** End voice capture and optionally submit the transcript */
   stopListening: (options?: { submit?: boolean }) => Promise<void>;
   /** Speak text aloud with mouth animation */

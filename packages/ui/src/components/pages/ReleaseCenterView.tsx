@@ -13,6 +13,10 @@ import {
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
 import { useBranding } from "../../config/branding";
+import {
+  type ApplicationUpdateSnapshot,
+  getApplicationUpdateSnapshot,
+} from "../../services/app-updates/update-policy";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 import { openDesktopSurfaceWindow } from "../../utils/desktop-workspace";
@@ -36,6 +40,8 @@ export function ReleaseCenterView() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [nativeUpdater, setNativeUpdater] =
     useState<DesktopUpdaterSnapshot | null>(null);
+  const [applicationUpdate, setApplicationUpdate] =
+    useState<ApplicationUpdateSnapshot | null>(null);
   const [releaseNotesUrl, setReleaseNotesUrl] = useState(
     defaultReleaseNotesUrl,
   );
@@ -60,6 +66,13 @@ export function ReleaseCenterView() {
   useEffect(() => {
     void loadUpdateStatus();
   }, [loadUpdateStatus]);
+
+  useEffect(() => {
+    void getApplicationUpdateSnapshot({
+      desktop: desktopRuntime,
+      version: desktopRuntime ? nativeUpdater?.currentVersion : undefined,
+    }).then(setApplicationUpdate);
+  }, [desktopRuntime, nativeUpdater?.currentVersion]);
 
   useEffect(() => {
     if (!desktopRuntime) return;
@@ -161,7 +174,8 @@ export function ReleaseCenterView() {
   };
 
   const appStatus = updateStatus as AppReleaseStatus | null | undefined;
-  const appVersion = appStatus?.currentVersion ?? "—";
+  const appVersion =
+    applicationUpdate?.version ?? appStatus?.currentVersion ?? "—";
   const desktopVersion = nativeUpdater?.currentVersion ?? "—";
   const channel = nativeUpdater?.channel ?? "—";
   const latestVersion =
@@ -183,12 +197,34 @@ export function ReleaseCenterView() {
   );
   const autoUpdateDisabled =
     nativeUpdater != null && !nativeUpdater.canAutoUpdate;
+  const canManualCheck =
+    applicationUpdate?.canManualCheck ?? Boolean(desktopRuntime);
+  const canAutoUpdate =
+    applicationUpdate?.canAutoUpdate ?? Boolean(nativeUpdater?.canAutoUpdate);
 
   const versionRows: Array<{ label: string; value: ReactNode }> = [
     {
       label: t("releasecenterview.App", { defaultValue: "App" }),
       value: appVersion,
     },
+    ...(applicationUpdate?.build
+      ? [
+          {
+            label: t("releasecenterview.Build", { defaultValue: "Build" }),
+            value: applicationUpdate.build,
+          },
+        ]
+      : []),
+    ...(applicationUpdate
+      ? [
+          {
+            label: t("releasecenterview.Distribution", {
+              defaultValue: "Distribution",
+            }),
+            value: applicationUpdate.statusLabel,
+          },
+        ]
+      : []),
     ...(desktopRuntime
       ? [
           {
@@ -228,6 +264,18 @@ export function ReleaseCenterView() {
         </span>
       ),
     },
+    ...(applicationUpdate
+      ? [
+          {
+            label: t("releasecenterview.AutoUpdates", {
+              defaultValue: "Auto updates",
+            }),
+            value: canAutoUpdate
+              ? t("common.enabled", { defaultValue: "Enabled" })
+              : t("common.disabled", { defaultValue: "Disabled" }),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -256,6 +304,14 @@ export function ReleaseCenterView() {
           {nativeUpdater.autoUpdateDisabledReason}
         </div>
       )}
+      {applicationUpdate && !desktopRuntime && (
+        <div
+          role="status"
+          className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
+        >
+          {applicationUpdate.detail}
+        </div>
+      )}
 
       <dl className="grid grid-cols-1 gap-x-6 gap-y-1.5 text-xs sm:grid-cols-2">
         {versionRows.map((row) => (
@@ -279,7 +335,8 @@ export function ReleaseCenterView() {
             disabled={
               busyAction === "check-updates" ||
               updateLoading ||
-              autoUpdateDisabled
+              autoUpdateDisabled ||
+              !canManualCheck
             }
             onClick={() =>
               void runAction(

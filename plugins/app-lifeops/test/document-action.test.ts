@@ -57,13 +57,15 @@ vi.mock("../src/lifeops/approval-queue.js", () => ({
   }),
 }));
 
-vi.mock("../src/lifeops/scheduled-task/runtime-wiring.js", () => ({
-  createRuntimeScheduledTaskRunner: () => ({
+vi.mock("../src/lifeops/scheduled-task/service.js", () => ({
+  getScheduledTaskRunner: () => ({
     schedule: mocks.schedule,
     apply: mocks.apply,
     list: vi.fn(),
     pipeline: vi.fn(),
     evaluateCompletion: vi.fn(),
+    fire: vi.fn(),
+    fireWithResult: vi.fn(),
   }),
 }));
 

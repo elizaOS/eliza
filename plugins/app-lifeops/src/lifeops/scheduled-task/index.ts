@@ -94,13 +94,24 @@ export {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   TestNoopScheduledTaskDispatcher,
+  type ScheduledTaskClaimResult,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
+  type ScheduledTaskFireResult,
   type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerExtras,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
+  type ScheduledTaskUpsertOptions,
 } from "./runner.js";
+
+export {
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+  type GetScheduledTaskRunnerOptions,
+} from "./service.js";
+
+export { computeNextFireAt } from "./next-fire-at.js";
 
 export {
   expectedReplyKindForTask,

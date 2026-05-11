@@ -61,14 +61,14 @@ vi.mock("@capacitor/app", () => ({
 }));
 
 import {
+  installOnboardingDeepLinkListener,
+  routeOnboardingDeepLink,
+} from "../deep-link-handler";
+import {
   RUNTIME_PICKER_QUERY_NAME,
   RUNTIME_PICKER_QUERY_VALUE,
   RUNTIME_PICKER_TARGET_QUERY_NAME,
 } from "../reload-into-runtime-picker";
-import {
-  installOnboardingDeepLinkListener,
-  routeOnboardingDeepLink,
-} from "../deep-link-handler";
 
 const URL_SCHEME = "milady";
 

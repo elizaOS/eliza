@@ -52,7 +52,7 @@ import type {
   ScheduledTaskSubjectKind,
   ScheduledTaskTrigger,
 } from "../lifeops/scheduled-task/index.js";
-import { createRuntimeScheduledTaskRunner } from "../lifeops/scheduled-task/runtime-wiring.js";
+import { getScheduledTaskRunner } from "../lifeops/scheduled-task/service.js";
 
 const SUBACTIONS = [
   "list",
@@ -254,7 +254,7 @@ interface RunnerScope {
 
 function makeRunnerScope(runtime: IAgentRuntime, message: Memory): RunnerScope {
   const agentId = runtime.agentId;
-  const runner = createRuntimeScheduledTaskRunner({ runtime, agentId });
+  const runner = getScheduledTaskRunner(runtime, { agentId });
   return {
     runtime,
     runner,
