@@ -4,6 +4,14 @@ export {
   type CancelSignal,
 } from "./barge-in";
 export {
+  buildLocalEmbeddingRoute,
+  EMBEDDING_DIR_REL_PATH,
+  type LocalEmbeddingRoute,
+  type LocalEmbeddingSource,
+  POOLED_TEXT_EMBEDDING_TIERS,
+  resolveLocalEmbeddingSource,
+} from "./embedding";
+export {
   decodeMonoPcm16Wav,
   defaultLifecycleLoaders,
   EngineVoiceBridge,
@@ -11,8 +19,8 @@ export {
   encodeMonoPcm16Wav,
   FfiOmniVoiceBackend,
   StubOmniVoiceBackend,
-  VoiceStartupError,
 } from "./engine-bridge";
+export { VoiceStartupError } from "./errors";
 export {
   type ArmedResources,
   type TextResources,
@@ -42,6 +50,30 @@ export {
   type VoicePipelineDeps,
   type VoicePipelineEvents,
 } from "./pipeline";
+export {
+  type DflashTextRunner,
+  dflashTextRunner,
+  FfiStreamingTranscriber,
+  LlamaServerDraftProposer,
+  LlamaServerTargetVerifier,
+  MissingAsrTranscriber,
+  splitTranscriptToTokens,
+} from "./pipeline-impls";
+export {
+  EnergyVadModel,
+  resolveSileroVadPath,
+  SILERO_VAD_REL_PATH,
+  SileroVadGate,
+  type VadConfig,
+  type VadModel,
+} from "./vad";
+export {
+  OPENWAKEWORD_REL_PATH,
+  OpenWakeWordDetector,
+  resolveWakeWordPath,
+  type WakeWordConfig,
+  type WakeWordModel,
+} from "./wake-word";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {

@@ -34,12 +34,26 @@ import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
 } from "./ffi-bindings";
+import { VoiceStartupError } from "./errors";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
 import {
   VoiceLifecycle,
   VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./lifecycle";
+import {
+  VoicePipeline,
+  type VoicePipelineConfig,
+  type VoicePipelineDeps,
+  type VoicePipelineEvents,
+} from "./pipeline";
+import {
+  type DflashTextRunner,
+  FfiStreamingTranscriber,
+  LlamaServerDraftProposer,
+  LlamaServerTargetVerifier,
+  MissingAsrTranscriber,
+} from "./pipeline-impls";
 import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
@@ -68,27 +82,8 @@ const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
 const PHRASE_MAX_TOKENS_DEFAULT = 8;
 const STUB_PCM_MS_PER_PHRASE = 100;
 
-/**
- * Structured startup failure. The engine MUST throw one of these when
- * voice mode is requested but cannot start (missing FFI, missing speaker
- * preset, missing fused build, manifest mismatch). The runtime then
- * refuses to activate the model — never silently degrades to text-only.
- */
-export class VoiceStartupError extends Error {
-  readonly code:
-    | "missing-ffi"
-    | "missing-speaker-preset"
-    | "missing-bundle-root"
-    | "missing-fused-build"
-    | "already-started"
-    | "not-started";
-
-  constructor(code: VoiceStartupError["code"], message: string) {
-    super(message);
-    this.name = "VoiceStartupError";
-    this.code = code;
-  }
-}
+/** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
+export { VoiceStartupError };
 
 /**
  * Stub TTS backend that returns deterministic synthetic PCM. Each phrase
@@ -282,6 +277,8 @@ export class EngineVoiceBridge {
   private readonly ffiContextRef: FfiContextRef | null;
   readonly asrAvailable: boolean;
   private readonly bundleRoot: string;
+  /** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
+  private activePipeline: VoicePipeline | null = null;
 
   private constructor(
     scheduler: VoiceScheduler,
@@ -519,6 +516,13 @@ export class EngineVoiceBridge {
    * within one kernel tick).
    */
   triggerBargeIn(): void {
+    // Cancel the text side first (stop ASR / drafter / verifier at the next
+    // kernel boundary), then the audio side (ring-buffer drain + chunker
+    // flush + in-flight TTS cancel). The pipeline also wires its own
+    // barge-in listener onto the scheduler, so `onMicActive()` alone would
+    // suffice — calling `cancel()` first just stops the next HTTP body
+    // sooner.
+    this.activePipeline?.cancel();
     this.scheduler.bargeIn.onMicActive();
   }
 
@@ -561,6 +565,85 @@ export class EngineVoiceBridge {
       );
     }
     return this.backend.transcribe(args);
+  }
+
+  /**
+   * Run one fused mic→speech turn through the overlapped `VoicePipeline`
+   * (AGENTS.md §4): ASR streams; the instant its last token lands the
+   * DFlash drafter and the target verifier kick off concurrently, accepted
+   * tokens flow into this bridge's phrase chunker → TTS → ring buffer on
+   * the same tick, rejected draft tails roll back not-yet-spoken audio, and
+   * a mic-VAD barge-in cancels everything at the next kernel boundary.
+   *
+   * The drafter + verifier are wired against the running DFlash llama-server
+   * (`textRunner`); the transcriber is the fused ABI's ASR when this bridge
+   * was started with the FFI backend and the bundle ships an `asr/` region.
+   * In voice mode a missing ASR region is a hard `VoiceStartupError` — no
+   * silent cloud fallback (AGENTS.md §3 + §7).
+   *
+   * Resolves with the turn's exit reason. Throws if no turn is wired or one
+   * is already in flight. The created pipeline is held until the turn ends
+   * so `bargeIn()` can cancel it.
+   */
+  async runVoiceTurn(
+    audio: TranscriptionAudio,
+    textRunner: DflashTextRunner,
+    config: VoicePipelineConfig,
+    events?: VoicePipelineEvents,
+  ): Promise<"done" | "token-cap" | "cancelled"> {
+    this.assertVoiceOn("run a voice turn");
+    const pipeline = this.buildPipeline(textRunner, config, events);
+    this.activePipeline = pipeline;
+    try {
+      return await pipeline.run(audio);
+    } finally {
+      if (this.activePipeline === pipeline) this.activePipeline = null;
+    }
+  }
+
+  /** Construct the `VoicePipeline` for this bridge (no-run). Exposed for tests. */
+  buildPipeline(
+    textRunner: DflashTextRunner,
+    config: VoicePipelineConfig,
+    events?: VoicePipelineEvents,
+  ): VoicePipeline {
+    const transcriber = this.resolveTranscriber();
+    const deps: VoicePipelineDeps = {
+      scheduler: this.scheduler,
+      transcriber,
+      drafter: new LlamaServerDraftProposer(textRunner),
+      verifier: new LlamaServerTargetVerifier(textRunner),
+    };
+    return new VoicePipeline(deps, config, events);
+  }
+
+  private resolveTranscriber():
+    | FfiStreamingTranscriber
+    | MissingAsrTranscriber {
+    if (!this.asrAvailable) {
+      return new MissingAsrTranscriber(
+        `[voice] Local transcription is unavailable for this bundle: no ASR model files were installed under ${path.join(this.bundleRoot, "asr")}. Voice mode requires a bundled ASR region (AGENTS.md §3) — there is no cloud fallback.`,
+      );
+    }
+    if (!this.ffi) {
+      return new MissingAsrTranscriber(
+        `[voice] Local transcription requires the fused libelizainference build; this bridge was started without it. Build the omnivoice-fuse target (packages/app-core/scripts/build-llama-cpp-dflash.mjs).`,
+      );
+    }
+    const ffi = this.ffi;
+    const ctxRef = this.ffiContextRef;
+    return new FfiStreamingTranscriber({
+      ffi,
+      getContext: () => {
+        if (!ctxRef) {
+          throw new VoiceStartupError(
+            "missing-ffi",
+            "[voice] FFI context requested without a context provider",
+          );
+        }
+        return ctxRef.ensure();
+      },
+    });
   }
 
   /** Diagnostic accessor — bundle root the bridge is wired against. */
