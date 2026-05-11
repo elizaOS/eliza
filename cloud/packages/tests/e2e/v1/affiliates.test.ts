@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { resolveE2EChatModel } from "../helpers/chat-model";
 import { readJson } from "../helpers/json-body";
 
 type AffiliateCodeResponse = {
@@ -8,7 +9,7 @@ type AffiliateCodeResponse = {
   };
 };
 
-const E2E_CHAT_MODEL = process.env.E2E_CHAT_MODEL?.trim() || "openai/gpt-5-mini";
+const E2E_CHAT_MODEL = resolveE2EChatModel("openai/gpt-5-mini");
 
 /**
  * Affiliates, Referrals, Analytics & Tracking API E2E Tests
