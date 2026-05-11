@@ -256,9 +256,16 @@ async function callAnthropic({ imageBase64, userText }) {
   return { ok: true, text: textBlock.text };
 }
 
-async function callOpenAi({ imageBase64, userText }) {
+async function callOpenAiCompatible({
+  endpoint,
+  apiKey,
+  model,
+  imageBase64,
+  userText,
+  providerName,
+}) {
   const body = {
-    model: OPENAI_MODEL,
+    model,
     max_tokens: MAX_TOKENS,
     response_format: { type: "json_object" },
     messages: [
@@ -275,11 +282,11 @@ async function callOpenAi({ imageBase64, userText }) {
       },
     ],
   };
-  const response = await fetch(OPENAI_API, {
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify(body),
   });
@@ -287,15 +294,37 @@ async function callOpenAi({ imageBase64, userText }) {
     const text = await response.text().catch(() => "");
     return {
       ok: false,
-      reason: `openai ${response.status}: ${text.slice(0, 300)}`,
+      reason: `${providerName} ${response.status}: ${text.slice(0, 300)}`,
     };
   }
   const json = await response.json();
   const choice = json.choices?.[0]?.message?.content;
   if (typeof choice !== "string") {
-    return { ok: false, reason: "openai: no content in response" };
+    return { ok: false, reason: `${providerName}: no content in response` };
   }
   return { ok: true, text: choice };
+}
+
+async function callOpenAi({ imageBase64, userText }) {
+  return callOpenAiCompatible({
+    endpoint: OPENAI_API,
+    apiKey: process.env.OPENAI_API_KEY,
+    model: OPENAI_MODEL,
+    imageBase64,
+    userText,
+    providerName: "openai",
+  });
+}
+
+async function callGroq({ imageBase64, userText }) {
+  return callOpenAiCompatible({
+    endpoint: GROQ_API,
+    apiKey: groqApiKey(),
+    model: GROQ_MODEL,
+    imageBase64,
+    userText,
+    providerName: "groq",
+  });
 }
 
 async function analyzeCapture({ runDir, capture, provider }) {
@@ -343,10 +372,16 @@ async function analyzeCapture({ runDir, capture, provider }) {
     "Review the screenshot and produce findings JSON.",
   ].join("\n");
 
-  const apiResult =
-    provider === "anthropic"
-      ? await callAnthropic({ imageBase64, userText })
-      : await callOpenAi({ imageBase64, userText });
+  let apiResult;
+  if (provider === "anthropic") {
+    apiResult = await callAnthropic({ imageBase64, userText });
+  } else if (provider === "openai") {
+    apiResult = await callOpenAi({ imageBase64, userText });
+  } else if (provider === "groq") {
+    apiResult = await callGroq({ imageBase64, userText });
+  } else {
+    apiResult = { ok: false, reason: `unknown provider: ${provider}` };
+  }
   if (!apiResult.ok) {
     return { ok: false, reason: apiResult.reason, finding: null };
   }
@@ -403,9 +438,15 @@ async function main() {
     );
     process.exit(2);
   }
-  console.error(
-    `[ai-qa] vision provider: ${provider} (model: ${provider === "anthropic" ? MODEL : OPENAI_MODEL})`,
-  );
+  const providerModel =
+    provider === "anthropic"
+      ? MODEL
+      : provider === "openai"
+        ? OPENAI_MODEL
+        : provider === "groq"
+          ? GROQ_MODEL
+          : "?";
+  console.error(`[ai-qa] vision provider: ${provider} (model: ${providerModel})`);
   const args = parseArgs(process.argv.slice(2));
   const runDir = args.runDir
     ? resolve(args.runDir)
