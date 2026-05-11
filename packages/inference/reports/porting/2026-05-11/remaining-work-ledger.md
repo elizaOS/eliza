@@ -32,7 +32,7 @@ with the status below.
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. |
 | iOS | Static archives and embedded metallib can be built; a physical-device XCTest smoke entrypoint now exists, but no on-device PASS has been recorded. | `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` fails clearly when no connected physical iPhone/iPad is present; graph capability bits still block publish. |
-| Voice fusion | JS lifecycle/FFI scaffold exists; production fused `libelizainference` is not complete. | `voice/ffi-bindings.ts` expects ABI v1; real omnivoice-backed library still needs build/runtime verification. |
+| Voice fusion | JS lifecycle/FFI scaffold has a verifiable ABI contract; production fused `libelizainference` is not complete. | `make -C packages/app-core/scripts/omnivoice-fuse verify` proves the stub exports all ABI v1 symbols. `bun test ... voice/ffi-bindings.test.ts` now dlopens the stub through Bun FFI and checks create/destroy, ABI mismatch, `mmap_acquire`, `mmap_evict`, and TTS failure surfaces. Real omnivoice-backed library still needs build/runtime verification. |
 | Eliza-1 bundles | Schema/catalog/publish gates and release-evidence gates exist; real release bundles do not. | `packages/training/scripts/publish/orchestrator.py` now requires `evidence/release.json`, `checksums/SHA256SUMS`, per-backend runtime dispatch reports, and platform evidence before any dry-run/upload path can pass. No checked-in weight-derived manifests or HF upload evidence exist yet. |
 
 ## P0 Blockers
@@ -90,7 +90,8 @@ with the status below.
 
    Acceptance:
    - `libelizainference` exports ABI v1 symbols and passes FFI smoke tests
-     under Bun/Electrobun.
+     under Bun/Electrobun. Stub ABI smoke is covered; real omnivoice-backed
+     smoke is still required before this item is runtime-ready.
    - Voice mode starts without IPC to a second model process.
    - Voice-off mode does not mmap or page TTS/ASR/voice-preset regions.
 

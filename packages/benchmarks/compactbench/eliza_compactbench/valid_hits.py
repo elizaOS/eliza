@@ -120,6 +120,9 @@ def evaluate_valid_hit(expected: dict[str, Any], response: str) -> ValidHitResul
     """
 
     official = float(run_check(expected, response))
+    if is_refusal(response):
+        return ValidHitResult(official, 0.0, "judge_refusal")
+
     check_type = str(expected.get("check", ""))
 
     if check_type == "contains_normalized":
@@ -186,8 +189,8 @@ def _evaluate_contains(
             valid_false_negative=True,
         )
 
-    if _content_words_present(
-        expected_tokens, response_tokens
+    if _content_words_present_in_response(
+        expected_tokens, response
     ) and not _is_denied_content_answer(expected_tokens, response_tokens):
         return ValidHitResult(
             official,
@@ -212,7 +215,9 @@ def _evaluate_forbidden_absent(
     phrase_present = phrase_start is not None
 
     if official >= 1.0:
-        if phrase_present and not _is_negated_mention(response_tokens, phrase_start):
+        if phrase_present and not _is_negated_mention(
+            response_tokens, phrase_start, len(expected_tokens)
+        ):
             return ValidHitResult(
                 official,
                 0.0,
@@ -223,7 +228,9 @@ def _evaluate_forbidden_absent(
 
     # Upstream failed because the literal forbidden phrase appeared. If the
     # answer clearly rejects the phrase, this is a valid hit.
-    if phrase_start is not None and _is_negated_mention(response_tokens, phrase_start):
+    if phrase_start is not None and _is_negated_mention(
+        response_tokens, phrase_start, len(expected_tokens)
+    ):
         return ValidHitResult(
             official,
             1.0,
@@ -249,8 +256,8 @@ def _evaluate_set_match(
     matched = 0
     for value in values:
         expected_tokens = tokens(value)
-        if _ordered_phrase_present(expected_tokens, response_tokens) or _content_words_present(
-            expected_tokens, response_tokens
+        if _ordered_phrase_present(expected_tokens, response_tokens) or _content_words_present_in_response(
+            expected_tokens, response
         ):
             matched += 1
 
@@ -265,11 +272,70 @@ def _evaluate_set_match(
     return ValidHitResult(official, official, "official_failure")
 
 
+def _content_words_present_in_response(expected_tokens: list[str], response: str) -> bool:
+    for segment in _segments(response):
+        if _content_words_present(expected_tokens, tokens(segment)):
+            return True
+    return False
+
+
+def _segments(text: str) -> list[str]:
+    return [segment for segment in re.split(r"[.!?;\n]+", text) if segment.strip()]
+
+
 def _content_words_present(expected_tokens: list[str], response_tokens: list[str]) -> bool:
     content = [token for token in expected_tokens if token not in _STOPWORDS]
     if len(content) < 2:
         return False
-    return all(_token_present(token, response_tokens) for token in content)
+    if not all(_token_present(token, response_tokens) for token in content):
+        return False
+    if _ordered_terms_present(content, response_tokens):
+        return True
+    return _compact_policy_recall(content, response_tokens)
+
+
+def _ordered_terms_present(expected_terms: list[str], response_tokens: list[str]) -> bool:
+    cursor = 0
+    last_match = -1
+    for expected in expected_terms:
+        found = None
+        for index in range(cursor, len(response_tokens)):
+            if _tokens_match(expected, response_tokens[index]):
+                found = index
+                break
+        if found is None:
+            return False
+        if last_match >= 0 and found - last_match > 8:
+            return False
+        last_match = found
+        cursor = found + 1
+    return True
+
+
+def _compact_policy_recall(expected_terms: list[str], response_tokens: list[str]) -> bool:
+    positions = []
+    for expected in expected_terms:
+        for index, token in enumerate(response_tokens):
+            if _tokens_match(expected, token):
+                positions.append(index)
+                break
+    if len(positions) != len(expected_terms):
+        return False
+    start, end = min(positions), max(positions)
+    if end - start > max(18, len(expected_terms) + 10):
+        return False
+    window = response_tokens[max(0, start - 4) : min(len(response_tokens), end + 8)]
+    joined = " ".join(window)
+    return (
+        "must never" in joined
+        or "must not" in joined
+        or "should never" in joined
+        or "should not" in joined
+        or any(
+            token in {"forbid", "forbidden", "prohibit", "prohibited", "prohibits", "banned"}
+            for token in window
+        )
+    )
 
 
 def _ordered_phrase_present(expected_tokens: list[str], response_tokens: list[str]) -> bool:
@@ -333,19 +399,53 @@ def _should_double_final_consonant(token: str) -> bool:
     return a not in _VOWELS and b in _VOWELS and c not in _VOWELS and c not in {"w", "x", "y"}
 
 
-def _is_negated_mention(response_tokens: list[str], phrase_start: int) -> bool:
-    before = response_tokens[max(0, phrase_start - 14) : phrase_start]
-    after = response_tokens[phrase_start : phrase_start + 12]
-    window = before + after
-    if any(token in _NEGATION_CUES for token in window):
-        return True
-    # Common CompactBench answer shape: "No, X is not still the plan."
-    joined_after = " ".join(after)
-    if response_tokens[:1] == ["no"] and (
-        "responsible" in joined_after or "responsibility" in joined_after
+def _is_negated_mention(
+    response_tokens: list[str], phrase_start: int, phrase_length: int
+) -> bool:
+    before = response_tokens[max(0, phrase_start - 6) : phrase_start]
+    after_phrase = response_tokens[
+        phrase_start + phrase_length : phrase_start + phrase_length + 10
+    ]
+    joined_after = " ".join(after_phrase)
+    joined_before = " ".join(before)
+
+    # Direct command forms: "do not <phrase>", "never <phrase>",
+    # "prohibit/reject <phrase>".
+    if (
+        before[-2:] == ["do", "not"]
+        or before[-2:] == ["does", "not"]
+        or before[-2:] == ["did", "not"]
+        or before[-1:] in (["never"], ["avoid"], ["reject"], ["forbid"], ["prohibit"])
+        or before[-1:] in (["rejected"], ["forbidden"], ["prohibited"], ["prohibits"])
     ):
         return True
-    return "not still" in joined_after or "not the plan" in joined_after
+
+    # Policy-reference forms: "policy prohibits <phrase>".
+    if any(
+        token in {"forbid", "forbidden", "prohibit", "prohibited", "prohibits", "banned"}
+        for token in before[-3:]
+    ):
+        return True
+
+    # Common CompactBench answer shape: "No, <phrase> is not still the plan."
+    if response_tokens[:1] == ["no"] and (
+        "not still" in joined_after
+        or "not the plan" in joined_after
+        or "no longer" in joined_after
+    ):
+        return True
+
+    return (
+        "must never" in joined_after
+        or "must not" in joined_after
+        or "should never" in joined_after
+        or "should not" in joined_after
+        or "is forbidden" in joined_after
+        or "is prohibited" in joined_after
+        or "is banned" in joined_after
+        or "is not allowed" in joined_after
+        or "not allowed" in joined_before[-20:]
+    )
 
 
 def _is_denied_content_answer(
