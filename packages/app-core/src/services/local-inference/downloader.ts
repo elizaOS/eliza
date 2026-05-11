@@ -124,7 +124,8 @@ function assertBundleInstallable(
   const tierBackends = new Set(SUPPORTED_BACKENDS_BY_TIER[manifest.tier]);
   const usable = device.availableBackends.filter(
     (b) =>
-      tierBackends.has(b) && manifest.kernels.verifiedBackends[b].status === "pass",
+      tierBackends.has(b) &&
+      manifest.kernels.verifiedBackends[b].status === "pass",
   );
   if (usable.length === 0) {
     const verified = Object.entries(manifest.kernels.verifiedBackends)
