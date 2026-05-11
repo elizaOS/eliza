@@ -39,17 +39,13 @@ function getViteEnvValue(name: string): string | undefined {
   return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
 }
 
-function getViteEnvFlag(name: string): string | undefined {
-  return getViteEnvValue(name);
-}
-
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
 function isPlaywrightTestAuthEnabled(): boolean {
   return (
-    getViteEnvFlag("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
+    getViteEnvValue("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
     (typeof process !== "undefined" && process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
   );
 }
@@ -72,8 +68,15 @@ export const LocalStewardAuthContext = createContext<ReturnType<typeof useStewar
   null,
 );
 
-function isLocalhostApiBase(value: string): boolean {
+export function isLocalhostApiBase(value: string): boolean {
   return /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(?::\d+)?(?:\/|$)/i.test(value.trim());
+}
+
+function isBrowserOnElizaHost(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase())
+  );
 }
 
 function configuredSessionEndpoint(): string {
@@ -86,20 +89,14 @@ function configuredSessionEndpoint(): string {
   // bundle would otherwise POST to http://localhost:3000 and the browser CSP
   // blocks it; fall through to the same-origin / direct api.elizacloud.ai path.
   if (apiBase && !isPlaceholderValue(apiBase)) {
-    const browserOnElizaHost =
-      typeof window !== "undefined" &&
-      ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase());
-    if (!(browserOnElizaHost && isLocalhostApiBase(apiBase))) {
+    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
       return `${trimTrailingSlash(apiBase)}${STEWARD_SESSION_ENDPOINT}`;
     }
   }
   // No apiBase (or it was localhost on a real host): prefer the direct
   // api.elizacloud.ai URL when on a known Eliza Cloud host so the call
   // does not depend on the Pages Functions `/api/*` proxy being live.
-  if (
-    typeof window !== "undefined" &&
-    ELIZA_CLOUD_COOKIE_HOSTS.has(window.location.hostname.toLowerCase())
-  ) {
+  if (isBrowserOnElizaHost()) {
     return ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT;
   }
   return STEWARD_SESSION_ENDPOINT;
@@ -108,8 +105,7 @@ function configuredSessionEndpoint(): string {
 function stewardSessionClearUrls(): string[] {
   if (typeof window === "undefined") return [configuredSessionEndpoint()];
   const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
-  const host = window.location.hostname.toLowerCase();
-  if (ELIZA_CLOUD_COOKIE_HOSTS.has(host)) {
+  if (isBrowserOnElizaHost()) {
     urls.add(ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT);
   }
   return [...urls];
