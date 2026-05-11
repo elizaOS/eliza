@@ -313,6 +313,26 @@ def extract_assistant_text(message: Dict[str, Any]) -> str:
     return ""
 
 
+def normalize_assistant_message_for_history(message: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove provider-private reasoning fields before reusing a message.
+
+    OpenAI-compatible APIs generally accept prior assistant reasoning only when
+    it is folded into regular assistant content. Resending provider-specific
+    fields such as ``reasoning`` or ``reasoning_content`` makes later turns
+    fail on Cerebras and several other providers.
+    """
+
+    normalized = dict(message)
+    text = extract_assistant_text(normalized)
+    if text.strip():
+        normalized["content"] = text
+    normalized.pop("reasoning", None)
+    normalized.pop("reasoning_content", None)
+    normalized.pop("reasoning_details", None)
+    normalized.pop("model_extra", None)
+    return normalized
+
+
 def make_aihubmix_api_request(
     messages: List[Dict],
     model_name: str,
@@ -739,6 +759,7 @@ def make_aihubmix_api_request(
 
                             if has_tool_calls:
                                 # Handle tool calls regardless of finish_reason
+                                message = normalize_assistant_message_for_history(message)
                                 result.extend(message.get('tool_calls', []))
                                 is_tool = True
                                 if verbose:
@@ -754,6 +775,7 @@ def make_aihubmix_api_request(
                                     should_retry = True
                                     break
                                 message["content"] = content
+                                message = normalize_assistant_message_for_history(message)
                                 result.append(content)
                     
                     # If we should retry, continue to the next iteration
@@ -777,7 +799,7 @@ def make_aihubmix_api_request(
                         return {
                             'type': 'tool',
                             'data': result,
-                            'call_messages': res['choices'][0]['message'],
+                            'call_messages': normalize_assistant_message_for_history(res['choices'][0]['message']),
                             'raw_response': res,
                             'trimmed_messages': trimmed_messages,  # Return trimmed messages if any
                             'trim_info': trim_info  # Return trim information if any
@@ -786,7 +808,7 @@ def make_aihubmix_api_request(
                         return {
                             'type': 'normal',
                             'data': result,
-                            'call_messages': res['choices'][0]['message'],
+                            'call_messages': normalize_assistant_message_for_history(res['choices'][0]['message']),
                             'raw_response': res,
                             'trimmed_messages': trimmed_messages,  # Return trimmed messages if any
                             'trim_info': trim_info  # Return trim information if any
@@ -1264,8 +1286,14 @@ def run_single_task(
             for config in mcp_configs.values()
         )
 
-        # Only fix schema for OpenAI models
-        fix_schema = "openai" in model.lower()
+        # Fix schemas for OpenAI-compatible providers, not just model names
+        # containing "openai". Cerebras gpt-oss uses the same tool schema
+        # strictness even though the model id is provider-specific.
+        fix_schema = (
+            "openai" in model.lower()
+            or "gpt-oss" in model.lower()
+            or "api.cerebras.ai" in base_url
+        )
 
         if has_programmatic:
             tool = ProgrammaticToolCallingTool(mcp_config, validate_on_init=False, execution_timeout=120.0, fix_schema_for_openai=fix_schema)
