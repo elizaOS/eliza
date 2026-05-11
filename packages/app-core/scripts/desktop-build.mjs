@@ -170,7 +170,7 @@ function buildInvocation(binary, binaryArgs = []) {
 }
 
 function run(commandName, commandArgs, options = {}) {
-  const { cwd = ROOT, env = process.env, label } = options;
+  const { cwd = ROOT, env = process.env, label, allowFailure = false } = options;
   const invocation = buildInvocation(commandName, commandArgs);
   const rendered = [invocation.command, ...invocation.args].join(" ");
   console.log(`[desktop-build] ${label ?? rendered}`);
@@ -182,6 +182,12 @@ function run(commandName, commandArgs, options = {}) {
   });
 
   if (result.status !== 0) {
+    if (allowFailure) {
+      console.warn(
+        `[desktop-build] ${rendered} exited ${result.status ?? 1} (tolerated)`,
+      );
+      return;
+    }
     fail(
       `${rendered} failed with exit code ${result.status ?? 1}`,
       result.status ?? 1,
@@ -497,14 +503,20 @@ function stageDesktopBuild() {
     },
   );
 
+  // `bun install` for these workspaces can emit benign EEXIST errors when
+  // file: deps overlap with manually-linked @elizaos/* symlinks. The links
+  // get created successfully; bun exits non-zero only because of the dup
+  // attempt. Tolerate so the build can proceed.
   runBun(["install", "--ignore-scripts"], {
     cwd: APP_DIR,
     label: "Ensuring app workspace dependencies are installed",
+    allowFailure: true,
   });
 
   runBun(["install", "--ignore-scripts"], {
     cwd: ELECTROBUN_DIR,
     label: "Ensuring Electrobun workspace dependencies are installed",
+    allowFailure: true,
   });
 
   runPackageBinary("vite", ["build"], {

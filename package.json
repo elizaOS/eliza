@@ -225,6 +225,10 @@
   },
   "overrides": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/agent": "workspace:*",
     "@biomejs/biome": "2.4.14",
     "@types/node": "25.6.2",
     "@nrwl/devkit": "19.8.4",
