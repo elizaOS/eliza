@@ -1,22 +1,15 @@
-import type { SubscriptionProviderStatus } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
-import {
-  Cloud,
-  Cpu,
-  KeyRound,
-  ShieldCheck,
-} from "lucide-react";
 import type {
-  ComponentType,
-  Dispatch,
-  ReactNode,
-  SetStateAction,
-} from "react";
-import type { OnboardingOptions, PluginParamDef } from "../../api";
-import {
-  type OnboardingProviderId,
+  LinkedAccountProviderId,
+  ModelOption,
+  SubscriptionProviderStatus,
+} from "@elizaos/shared";
+import { Button } from "@elizaos/ui";
+import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
+import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
+import type { PluginParamDef } from "../../api";
+import type {
   SUBSCRIPTION_PROVIDER_SELECTIONS,
-  type SubscriptionProviderSelectionId,
+  SubscriptionProviderSelectionId,
 } from "../../providers";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
@@ -113,7 +106,7 @@ export interface CloudPanelProps {
   routingModeSaving: boolean;
   onSelectCloud: () => void;
   elizaCloudConnected: boolean;
-  largeModelOptions: OnboardingOptions["models"]["large"];
+  largeModelOptions: ModelOption[];
   cloudModelSchema: CloudModelSchema | null;
   modelValues: { values: Record<string, unknown>; setKeys: Set<string> };
   currentLargeModel: string;
@@ -193,7 +186,7 @@ export interface SubscriptionPanelProps {
   onSelectSubscription: (
     providerId: SubscriptionProviderSelectionId,
     activate?: boolean,
-  ) => Promise<void> | void;
+  ) => Promise<void>;
   loadSubscriptionStatus: () => Promise<void>;
 }
 
@@ -262,7 +255,7 @@ export interface ApiKeyPanelProps {
   visibleProviderPanelId: string;
   resolvedSelectedId: string | null;
   cloudCallsDisabled: boolean;
-  selectedPanelAccountProvider: OnboardingProviderId | null;
+  selectedPanelAccountProvider: LinkedAccountProviderId | null;
   onSwitchProvider: (id: string) => void;
   pluginSaving: Set<string>;
   pluginSaveSuccess: Set<string>;

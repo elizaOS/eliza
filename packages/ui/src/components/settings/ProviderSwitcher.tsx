@@ -196,6 +196,10 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
     }
   }, []);
 
+  // Boot effect. Hooks own their internal state; calling their stable
+  // setters in this once-on-mount effect is intentional. Biome wants the
+  // setter identities in the dep list but we know they're stable.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: stable hook setters
   useEffect(() => {
     void loadSubscriptionStatus();
     void (async () => {
@@ -223,8 +227,6 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         console.warn("[eliza] Failed to load config", err);
       }
     })();
-    // boot-effect: hooks reset their owned state internally on first call.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadSubscriptionStatus]);
 
   useEffect(() => {
@@ -258,9 +260,7 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
         const option = getOnboardingProviderOption(
           normalizeAiProviderPluginId(provider.id),
         );
-        return option
-          ? { id: option.id, label: option.name, provider }
-          : null;
+        return option ? { id: option.id, label: option.name, provider } : null;
       })
       .filter(
         (choice): choice is NonNullable<typeof choice> => choice !== null,
@@ -438,7 +438,9 @@ export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
 
   const apiKeyPanelLabel =
     apiProviderChoices.find((choice) => choice.id === visibleProviderPanelId)
-      ?.label ?? selectedPanelProvider?.name ?? "";
+      ?.label ??
+    selectedPanelProvider?.name ??
+    "";
 
   const onSwitchProvider = useCallback(
     (id: string) => {

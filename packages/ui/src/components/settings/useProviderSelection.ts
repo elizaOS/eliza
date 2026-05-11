@@ -8,8 +8,8 @@
  */
 import {
   asRecord,
-  resolveServiceRoutingInConfig,
   normalizeSubscriptionProviderSelectionId,
+  resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api";
@@ -319,9 +319,8 @@ export function resolveProviderIdForSwitch(
   const target =
     aiProviders.find(
       (provider) =>
-        (getOnboardingProviderOption(
-          normalizeAiProviderPluginId(provider.id),
-        )?.id ?? normalizeAiProviderPluginId(provider.id)) === newId,
+        (getOnboardingProviderOption(normalizeAiProviderPluginId(provider.id))
+          ?.id ?? normalizeAiProviderPluginId(provider.id)) === newId,
     ) ?? null;
   return (
     getOnboardingProviderOption(

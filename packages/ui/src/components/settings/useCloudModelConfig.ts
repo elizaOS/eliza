@@ -9,6 +9,7 @@
 import {
   buildElizaCloudServiceRoute,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
+  type ModelOption,
   normalizeServiceRoutingConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
@@ -30,7 +31,7 @@ export interface CloudModelConfig {
     elizaCloudEnabledCfg: boolean,
   ) => void;
   cloudModelSchema: CloudModelSchema | null;
-  largeModelOptions: OnboardingOptions["models"]["large"];
+  largeModelOptions: ModelOption[];
   currentLargeModel: string;
   modelValues: { values: Record<string, unknown>; setKeys: Set<string> };
   modelSaving: boolean;
@@ -46,9 +47,7 @@ function readConfigString(
   return typeof value === "string" ? value : "";
 }
 
-function asRecord(
-  value: unknown,
-): Record<string, unknown> | undefined {
+function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : undefined;
