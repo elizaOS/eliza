@@ -4000,6 +4000,137 @@ export const allActionsSpec = {
 			],
 		},
 		{
+			name: "DEVICE_FILE_READ",
+			description:
+				"Read a file from the user's device. On iOS/Android this reads from Capacitor's Documents directory; on desktop/AOSP it reads from the agent's workspace under the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
+			parameters: [
+				{
+					name: "path",
+					description: "Relative path within the user's device-files root.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Relative path within user's device-files root.",
+				},
+				{
+					name: "encoding",
+					description:
+						"Text encoding to decode the bytes with. Defaults to utf8.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["utf8", "base64"],
+					},
+					descriptionCompressed:
+						"Text encoding to decode the bytes with. Defaults to utf8.",
+				},
+			],
+			descriptionCompressed:
+				"read file from device (relative path, utf8|base64 encoding)",
+			similes: ["READ_DEVICE_FILE", "DEVICE_READ_FILE"],
+			exampleCalls: [
+				{
+					user: "Use DEVICE_FILE_READ with the provided parameters.",
+					actions: ["DEVICE_FILE_READ"],
+					params: {
+						DEVICE_FILE_READ: {
+							path: "example",
+							encoding: "utf8",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "DEVICE_FILE_WRITE",
+			description:
+				"Write a file to the user's device. On iOS/Android this writes into Capacitor's Documents directory (visible in Files.app / shared storage); on desktop/AOSP it writes under the agent's workspace in the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
+			parameters: [
+				{
+					name: "path",
+					description: "Relative path within the user's device-files root.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Relative path within user's device-files root.",
+				},
+				{
+					name: "content",
+					description: "File content as a string. base64-encode when binary.",
+					required: true,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"File content as a string. base64-encode when binary.",
+				},
+				{
+					name: "encoding",
+					description:
+						"How the content string should be interpreted. Defaults to utf8.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["utf8", "base64"],
+					},
+					descriptionCompressed:
+						"How the content string should be interpreted. Defaults to utf8.",
+				},
+			],
+			descriptionCompressed:
+				"write file to device (relative path, utf8|base64 content)",
+			similes: ["WRITE_DEVICE_FILE", "DEVICE_WRITE_FILE"],
+			exampleCalls: [
+				{
+					user: "Use DEVICE_FILE_WRITE with the provided parameters.",
+					actions: ["DEVICE_FILE_WRITE"],
+					params: {
+						DEVICE_FILE_WRITE: {
+							path: "example",
+							content: "example",
+							encoding: "utf8",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "DEVICE_LIST_DIR",
+			description:
+				"List entries in a directory on the user's device. On iOS/Android this lists inside Capacitor's Documents directory; on desktop/AOSP it lists under the agent's workspace in the state directory. Paths are relative; `..` traversal and absolute paths are rejected.",
+			parameters: [
+				{
+					name: "path",
+					description:
+						"Relative directory path within the user's device-files root. Empty string or omitted means the root.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Relative directory path within user's device-files root. Empty string or omitted means the root.",
+				},
+			],
+			descriptionCompressed:
+				"list directory on device (relative path; rooted under Documents/workspace)",
+			similes: ["LIST_DEVICE_DIR", "DEVICE_LS"],
+			exampleCalls: [
+				{
+					user: "Use DEVICE_LIST_DIR with the provided parameters.",
+					actions: ["DEVICE_LIST_DIR"],
+					params: {
+						DEVICE_LIST_DIR: {
+							path: "example",
+						},
+					},
+				},
+			],
+		},
+		{
 			name: "DOC",
 			description:
 				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
