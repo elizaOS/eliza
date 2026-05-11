@@ -99,7 +99,11 @@ export function resolveLocalEmbeddingSource(args: {
       `[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 0_6b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
     );
   }
-  return { kind: "dedicated-region", embeddingModelPath: gguf, dimensions: 1024 };
+  return {
+    kind: "dedicated-region",
+    embeddingModelPath: gguf,
+    dimensions: 1024,
+  };
 }
 
 /**

@@ -59,8 +59,7 @@ export function resolveCloudApiBase(env: RuntimeEnv): string {
       "VITE_ELIZA_CLOUD_BASE",
       "VITE_MILADY_CLOUD_BASE",
       "VITE_CLOUD_BASE",
-    ]) ??
-    DEFAULT_ELIZA_CLOUD_BASE
+    ]) ?? DEFAULT_ELIZA_CLOUD_BASE
   ).replace(/\/+$/, "");
 }
 

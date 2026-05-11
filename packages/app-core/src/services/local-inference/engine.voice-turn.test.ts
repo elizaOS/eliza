@@ -18,9 +18,6 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { dflashLlamaServer } from "./dflash-server";
 import { LocalInferenceEngine } from "./engine";
-import { VoiceStartupError } from "./voice/errors";
-import { fakeFfi } from "./voice/__test-helpers__/fake-ffi";
-import type { DflashTextRunner } from "./voice/pipeline-impls";
 import type {
   AudioChunk,
   MmapRegionHandle,
@@ -30,6 +27,9 @@ import type {
   VerifierStreamEvent,
   VoiceLifecycleLoaders,
 } from "./voice";
+import { fakeFfi } from "./voice/__test-helpers__/fake-ffi";
+import { VoiceStartupError } from "./voice/errors";
+import type { DflashTextRunner } from "./voice/pipeline-impls";
 import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
 class StubBackend {
