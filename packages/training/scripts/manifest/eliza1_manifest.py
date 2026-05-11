@@ -233,12 +233,17 @@ class KernelVerification:
 
     ``status`` is "pass" / "fail" / "skipped" — same vocabulary as the TS
     side. ``at_commit`` and ``report`` are required so the manifest is
-    auditable.
+    auditable. ``device`` / ``caveat`` are optional provenance for a "pass"
+    recorded on a single device class (e.g. the runtime Vulkan dispatch
+    smoke that ran on one Intel-ANV GPU): ``caveat`` names what device
+    coverage is still missing so release docs do not over-claim.
     """
 
     status: str
     at_commit: str
     report: str
+    device: str | None = None
+    caveat: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -422,6 +427,12 @@ def validate_manifest(
                     errors.append(f"kernels.verifiedBackends.{b}.atCommit: required")
                 if not entry.get("report"):
                     errors.append(f"kernels.verifiedBackends.{b}.report: required")
+                for opt_field in ("device", "caveat"):
+                    val = entry.get(opt_field)
+                    if val is not None and (not isinstance(val, str) or not val):
+                        errors.append(
+                            f"kernels.verifiedBackends.{b}.{opt_field}: must be a non-empty string when present"
+                        )
             backends = vb
 
     # ── evals ────────────────────────────────────────────────────────────
@@ -694,6 +705,19 @@ def _file_dict(entry: FileEntry) -> dict[str, Any]:
     return out
 
 
+def _verified_backend_dict(v: KernelVerification) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "status": v.status,
+        "atCommit": v.at_commit,
+        "report": v.report,
+    }
+    if v.device is not None:
+        out["device"] = v.device
+    if v.caveat is not None:
+        out["caveat"] = v.caveat
+    return out
+
+
 def build_manifest(
     *,
     tier: str,
@@ -807,11 +831,7 @@ def build_manifest(
             "required": list(kernels_required),
             "optional": list(kernels_optional),
             "verifiedBackends": {
-                b: {
-                    "status": v.status,
-                    "atCommit": v.at_commit,
-                    "report": v.report,
-                }
+                b: _verified_backend_dict(v)
                 for b, v in verified_backends.items()
             },
         },
@@ -898,6 +918,8 @@ def load_kernel_verification_reports(
             status=data["status"],
             at_commit=data["atCommit"],
             report=data["report"],
+            device=data.get("device"),
+            caveat=data.get("caveat"),
         )
     return out
 

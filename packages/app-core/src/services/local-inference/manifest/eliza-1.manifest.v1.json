@@ -257,7 +257,9 @@
       "properties": {
         "status": { "type": "string", "enum": ["pass", "fail", "skipped"] },
         "atCommit": { "type": "string", "minLength": 1 },
-        "report": { "type": "string", "minLength": 1 }
+        "report": { "type": "string", "minLength": 1 },
+        "device": { "type": "string", "minLength": 1 },
+        "caveat": { "type": "string", "minLength": 1 }
       }
     }
   }

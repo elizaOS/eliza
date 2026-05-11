@@ -178,6 +178,12 @@ export const Eliza1VerifiedBackendStatusSchema = z.object({
   status: z.enum(["pass", "fail", "skipped"]),
   atCommit: z.string().min(1),
   report: z.string().min(1),
+  // Optional provenance for a "pass" recorded on a single device class — e.g.
+  // the runtime Vulkan dispatch smoke that ran on one Intel-ANV GPU. `caveat`
+  // names what device coverage is still missing so the recommendation engine
+  // and release docs do not over-claim.
+  device: z.string().min(1).optional(),
+  caveat: z.string().min(1).optional(),
 });
 
 export const Eliza1KernelsSchema = z.object({
