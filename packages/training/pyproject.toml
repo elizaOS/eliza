@@ -131,7 +131,7 @@ serve = [
 # alone is not enough. `pythonpath = ["."]` makes the repo importable from
 # every test invocation, including the pre-flight gate (scripts/preflight.sh).
 pythonpath = ["."]
-testpaths = ["scripts"]
+testpaths = ["scripts", "benchmarks"]
 addopts = "-q"
 
 [tool.uv]
