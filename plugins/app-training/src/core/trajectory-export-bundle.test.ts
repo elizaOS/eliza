@@ -189,7 +189,6 @@ describe("trajectory export bundle", () => {
       },
       cloudUpload: {
         uploadedToHuggingFace: false,
-        includedInFirstDataset: false,
       },
     });
     expect(bundle.manifest.paths.rawJsonlPath).toBeUndefined();
@@ -336,7 +335,6 @@ describe("trajectory export bundle", () => {
     expect(payload.bundle.privacy.applied).toBe(true);
     expect(payload.bundle.cloudUpload).toEqual({
       uploadedToHuggingFace: false,
-      includedInFirstDataset: false,
     });
 
     const raw = await readFile(payload.bundle.paths.rawJsonlPath!, "utf8");

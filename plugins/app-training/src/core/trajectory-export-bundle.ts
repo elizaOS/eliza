@@ -12,6 +12,11 @@ import {
   type TrajectoryTaskDatasetExport,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
+import {
+  type HfUploadConfig,
+  resolveHfUploadConfig,
+  uploadTrajectoryJsonlToHuggingFace,
+} from "./trajectory-hf-upload.js";
 
 export const TRAJECTORY_EXPORT_BUNDLE_SCHEMA =
   "eliza_trajectory_export_bundle";
@@ -39,6 +44,13 @@ export interface TrajectoryExportBundleTaskFile {
   exampleCount: number;
   sourceCallCount: number;
   sourceTrajectoryCount: number;
+}
+
+export interface TrajectoryExportBundleCloudUpload {
+  uploadedToHuggingFace: boolean;
+  huggingFaceRepo?: string;
+  huggingFacePath?: string;
+  huggingFaceError?: string;
 }
 
 export interface TrajectoryExportBundleManifest {
@@ -70,10 +82,7 @@ export interface TrajectoryExportBundleManifest {
   };
   tasks: Partial<Record<TrajectoryTrainingTask, TrajectoryExportBundleTaskFile>>;
   privacy: TrajectoryExportBundlePrivacyStats;
-  cloudUpload: {
-    uploadedToHuggingFace: false;
-    includedInFirstDataset: false;
-  };
+  cloudUpload: TrajectoryExportBundleCloudUpload;
 }
 
 export interface TrajectoryExportBundle {
@@ -96,6 +105,12 @@ export interface BuildTrajectoryExportBundleOptions {
     options?: PrivacyFilterOptions;
     stats?: TrajectoryExportBundlePrivacyStats;
   };
+  /**
+   * Upload the sanitized JSONL to a HuggingFace dataset repo. `true` resolves
+   * the config from the environment (`MILADY_TRAJECTORY_HF_REPO` + HF token);
+   * pass an explicit `HfUploadConfig` to override. Defaults to no upload.
+   */
+  uploadToHuggingFace?: boolean | HfUploadConfig;
   now?: () => Date;
 }
 
@@ -315,6 +330,40 @@ export async function buildTrajectoryExportBundle(
     await writeFile(sanitizedJsonlPath, sanitizedJsonlText);
   }
 
+  // Upload the sanitized JSONL to HuggingFace when requested. The privacy
+  // filter has already run above — this only ever touches the sanitized file.
+  let cloudUpload: TrajectoryExportBundleCloudUpload = {
+    uploadedToHuggingFace: false,
+  };
+  if (options.uploadToHuggingFace && sanitizedJsonlPath) {
+    const uploadConfig =
+      options.uploadToHuggingFace === true
+        ? resolveHfUploadConfig()
+        : options.uploadToHuggingFace;
+    if (uploadConfig) {
+      const pathInRepo = `trajectories/${(options.now?.() ?? new Date())
+        .toISOString()
+        .replace(/[:.]/g, "-")}.jsonl`;
+      const uploadResult = await uploadTrajectoryJsonlToHuggingFace(
+        sanitizedJsonlPath,
+        pathInRepo,
+        uploadConfig,
+      );
+      cloudUpload = {
+        uploadedToHuggingFace: uploadResult.uploaded,
+        huggingFaceRepo: uploadResult.repo ?? undefined,
+        huggingFacePath: uploadResult.pathInRepo ?? undefined,
+        huggingFaceError: uploadResult.error ?? undefined,
+      };
+    } else {
+      cloudUpload = {
+        uploadedToHuggingFace: false,
+        huggingFaceError:
+          "HuggingFace upload requested but not configured (set MILADY_TRAJECTORY_HF_REPO and an HF token)",
+      };
+    }
+  }
+
   let taskDataset: TrajectoryTaskDatasetExport | null = null;
   if (sanitizedJsonlText !== null || sanitizedTrajectories.length > 0) {
     const taskDatasetDir = join(options.outputDir, "tasks");
@@ -376,10 +425,7 @@ export async function buildTrajectoryExportBundle(
     },
     tasks: taskFiles,
     privacy,
-    cloudUpload: {
-      uploadedToHuggingFace: false,
-      includedInFirstDataset: false,
-    },
+    cloudUpload,
   };
 
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);

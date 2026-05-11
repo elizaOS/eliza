@@ -26,6 +26,7 @@ import type { Trajectory } from "@elizaos/agent";
 import {
   type AnonymizerLookup,
   applyPrivacyFilter,
+  createHashAnonymizer,
   type FilterableTrajectory,
 } from "./privacy-filter.js";
 import {
@@ -499,7 +500,7 @@ export async function triggerTraining(
   // disk, and those files must never contain raw user secrets or un-anonymized
   // handles. Filtering happens before any write path below runs.
   const filtered = applyPrivacyFilter(trajectories, {
-    anonymizer: options.anonymizer,
+    anonymizer: options.anonymizer ?? createHashAnonymizer(),
   });
 
   const outputDir = join(trainingStateRoot(), "runs", runId, "datasets");

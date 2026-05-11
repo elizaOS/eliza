@@ -17,11 +17,14 @@ import {
   loadRun,
   triggerTraining,
 } from "../core/training-orchestrator.js";
+import { createHashAnonymizer } from "../core/privacy-filter.js";
+import { resolveHfUploadConfig } from "../core/trajectory-hf-upload.js";
 import type {
   TrajectoryTaskDatasetExport,
   TrajectoryTrainingTask,
 } from "../core/trajectory-task-datasets.js";
 import { detectAvailableBackends } from "../services/training-backend-check.js";
+import { isNotImplementedError } from "../services/training-service.js";
 import type { TrainingServiceLike } from "../services/training-service-like.js";
 import {
   type RegisteredTrainingTriggerEntry,
@@ -38,6 +41,24 @@ export interface TrainingRouteContext extends RouteRequestContext {
 
 function resolveStringSetting(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+/**
+ * Map a thrown service error onto an HTTP status. `NotImplementedError` (the
+ * training service no longer fakes GPU fine-tunes / model ops) becomes a 501
+ * with the error's own message; anything else falls back to `status`.
+ */
+function sendServiceError<R>(
+  error: (res: R, message: string, status?: number) => void,
+  res: R,
+  err: unknown,
+  status = 400,
+): void {
+  if (isNotImplementedError(err)) {
+    error(res, err.message, 501);
+    return;
+  }
+  error(res, String(err), status);
 }
 
 function emptyTaskCounters(): Record<TrajectoryTrainingTask, number> {
@@ -374,11 +395,15 @@ export async function handleTrainingRoutes(
     }>(req, res);
     if (!body) return true;
 
-    const dataset = await trainingService.buildDataset({
-      limit: body.limit,
-      minLlmCallsPerTrajectory: body.minLlmCallsPerTrajectory,
-    });
-    json(res, { dataset }, 201);
+    try {
+      const dataset = await trainingService.buildDataset({
+        limit: body.limit,
+        minLlmCallsPerTrajectory: body.minLlmCallsPerTrajectory,
+      });
+      json(res, { dataset }, 201);
+    } catch (err) {
+      sendServiceError(error, res, err, 500);
+    }
     return true;
   }
 
@@ -433,8 +458,7 @@ export async function handleTrainingRoutes(
       });
       json(res, { job }, 201);
     } catch (err) {
-      const message = String(err);
-      error(res, message, 400);
+      sendServiceError(error, res, err, 400);
     }
     return true;
   }
@@ -458,8 +482,7 @@ export async function handleTrainingRoutes(
       const job = await trainingService.cancelJob(jobId);
       json(res, { job });
     } catch (err) {
-      const message = String(err);
-      error(res, message, 404);
+      sendServiceError(error, res, err, 404);
     }
     return true;
   }
@@ -500,8 +523,7 @@ export async function handleTrainingRoutes(
       const model = await trainingService.importModelToOllama(modelId, body);
       json(res, { model });
     } catch (err) {
-      const message = String(err);
-      error(res, message, 400);
+      sendServiceError(error, res, err, 400);
     }
     return true;
   }
@@ -520,8 +542,7 @@ export async function handleTrainingRoutes(
       );
       json(res, result);
     } catch (err) {
-      const message = String(err);
-      error(res, message, 400);
+      sendServiceError(error, res, err, 400);
     }
     return true;
   }
@@ -535,8 +556,7 @@ export async function handleTrainingRoutes(
       const result = await trainingService.benchmarkModel(modelId);
       json(res, result);
     } catch (err) {
-      const message = String(err);
-      error(res, message, 400);
+      sendServiceError(error, res, err, 400);
     }
     return true;
   }
@@ -972,6 +992,99 @@ export async function handleTrainingRoutes(
       );
     } catch (err) {
       error(res, `Trajectory export failed: ${String(err)}`, 500);
+    }
+    return true;
+  }
+
+  if (method === "POST" && pathname === "/api/training/trajectories/publish") {
+    const hfConfig = resolveHfUploadConfig();
+    if (!hfConfig) {
+      error(
+        res,
+        "HuggingFace publishing is not configured. Set MILADY_TRAJECTORY_HF_REPO and an HF token (HF_TOKEN / HUGGING_FACE_HUB_TOKEN).",
+        409,
+      );
+      return true;
+    }
+
+    const body = await readJsonBody<{
+      limit?: number;
+      trajectoryIds?: string[];
+      outputDir?: string;
+      tasks?: string[];
+    }>(req, res);
+    if (!body) return true;
+
+    try {
+      const explicitIds = Array.isArray(body.trajectoryIds)
+        ? body.trajectoryIds.filter((id) => typeof id === "string" && id.trim())
+        : [];
+      const listed =
+        explicitIds.length > 0
+          ? null
+          : await trainingService.listTrajectories({
+              limit: body.limit ?? 500,
+              offset: 0,
+            });
+      const trajectoryIds =
+        explicitIds.length > 0
+          ? explicitIds
+          : (listed?.trajectories ?? [])
+              .map((item) => item.id)
+              .filter((id) => id.length > 0);
+
+      const details = (
+        await Promise.all(
+          trajectoryIds.map((trajectoryId: string) =>
+            trainingService.getTrajectoryById(trajectoryId),
+          ),
+        )
+      ).filter((t): t is Trajectory => t !== null);
+
+      const { buildTrajectoryExportBundle } = await import(
+        "../core/trajectory-export-bundle.js"
+      );
+      const bundle = await buildTrajectoryExportBundle({
+        trajectories: details,
+        outputDir:
+          body.outputDir ?? `.tmp/training-trajectory-publish-${Date.now()}`,
+        tasks: narrowTrainingTasks(body.tasks),
+        // Privacy filter forced on with the default hash anonymizer.
+        privacy: { apply: true, options: { anonymizer: createHashAnonymizer() } },
+        uploadToHuggingFace: hfConfig,
+        source: {
+          kind: "training-trajectories-publish-route",
+          metadata: {
+            requestedLimit: body.limit ?? 500,
+            explicitTrajectoryIds: explicitIds.length,
+            selectedTrajectoryIds: trajectoryIds.length,
+            loadedTrajectories: details.length,
+          },
+        },
+      });
+
+      if (!bundle.manifest.cloudUpload.uploadedToHuggingFace) {
+        error(
+          res,
+          `HuggingFace upload failed: ${bundle.manifest.cloudUpload.huggingFaceError ?? "unknown error"}`,
+          502,
+        );
+        return true;
+      }
+
+      json(
+        res,
+        {
+          trajectoriesConsidered: trajectoryIds.length,
+          trajectoriesPublished: bundle.manifest.counts.sanitizedTrajectoryRows,
+          outputDir: bundle.outputDir,
+          manifestPath: bundle.manifestPath,
+          cloudUpload: bundle.manifest.cloudUpload,
+        },
+        201,
+      );
+    } catch (err) {
+      error(res, `Trajectory publish failed: ${String(err)}`, 500);
     }
     return true;
   }
