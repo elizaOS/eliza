@@ -1,4 +1,4 @@
-# Patch: add `test-cuda-compile-only` target to milady-ai/llama.cpp
+# Patch: add `test-cuda-compile-only` target to elizaOS/llama.cpp
 #
 # Apply to: ggml/src/ggml-cuda/CMakeLists.txt on milady/main
 # Purpose: gate every PR with a per-.cu-file standalone PTX compile that
@@ -12,7 +12,7 @@
 #   cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="80;86;89;90"
 #   cmake --build build-cuda --target test-cuda-compile-only -j$(nproc)
 #
-# Status: not yet pushed to milady-ai/llama.cpp; this is the documented
+# Status: not yet pushed to elizaOS/llama.cpp; this is the documented
 # patch the next agent should land along with the CI matrix in
 # .github/workflows/local-inference-bench.yml fork-build-cuda job. A
 # pull-request-grade equivalent of this gate already runs ad-hoc via
