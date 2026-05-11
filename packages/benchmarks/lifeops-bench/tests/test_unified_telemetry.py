@@ -279,7 +279,11 @@ def test_compute_cache_hit_pct_uses_full_billed_input() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 5. Adapter-level cache-attach helpers
+# 5. Adapter-level cache-attach helper
+#
+# ``attach_usage_cache_fields`` lives on ``eliza_lifeops_bench.types`` and is
+# shared by the hermes-adapter + openclaw-adapter wrappers. Previously each
+# adapter shipped its own private copy; the helper now has one canonical home.
 # ---------------------------------------------------------------------------
 
 
@@ -289,8 +293,8 @@ class _AttrTurn:
     enum/dataclass machinery."""
 
 
-def test_hermes_adapter_parses_cerebras_usage_onto_turn() -> None:
-    from hermes_adapter.lifeops_bench import _attach_usage_cache_fields
+def test_attach_usage_cerebras_shape() -> None:
+    from eliza_lifeops_bench.types import attach_usage_cache_fields
 
     usage = {
         "prompt_tokens": 256,
@@ -298,7 +302,7 @@ def test_hermes_adapter_parses_cerebras_usage_onto_turn() -> None:
         "prompt_tokens_details": {"cached_tokens": 192},
     }
     turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
+    attach_usage_cache_fields(turn, usage)
     assert getattr(turn, "input_tokens") == 256
     assert getattr(turn, "output_tokens") == 32
     assert getattr(turn, "cache_read_input_tokens") == 192
@@ -306,8 +310,8 @@ def test_hermes_adapter_parses_cerebras_usage_onto_turn() -> None:
     assert getattr(turn, "cache_supported") is True
 
 
-def test_hermes_adapter_parses_anthropic_usage_onto_turn() -> None:
-    from hermes_adapter.lifeops_bench import _attach_usage_cache_fields
+def test_attach_usage_anthropic_shape() -> None:
+    from eliza_lifeops_bench.types import attach_usage_cache_fields
 
     usage = {
         "input_tokens": 200,
@@ -316,7 +320,7 @@ def test_hermes_adapter_parses_anthropic_usage_onto_turn() -> None:
         "cache_creation_input_tokens": 128,
     }
     turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
+    attach_usage_cache_fields(turn, usage)
     assert getattr(turn, "input_tokens") == 200
     assert getattr(turn, "output_tokens") == 50
     assert getattr(turn, "cache_read_input_tokens") == 1024
@@ -324,39 +328,8 @@ def test_hermes_adapter_parses_anthropic_usage_onto_turn() -> None:
     assert getattr(turn, "cache_supported") is True
 
 
-def test_openclaw_adapter_parses_cerebras_usage_onto_turn() -> None:
-    from openclaw_adapter.lifeops_bench import _attach_usage_cache_fields
-
-    usage = {
-        "prompt_tokens": 64,
-        "completion_tokens": 8,
-        "prompt_tokens_details": {"cached_tokens": 32},
-    }
-    turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
-    assert getattr(turn, "cache_read_input_tokens") == 32
-    assert getattr(turn, "cache_creation_input_tokens") is None
-    assert getattr(turn, "cache_supported") is True
-
-
-def test_openclaw_adapter_anthropic_shape_round_trips() -> None:
-    from openclaw_adapter.lifeops_bench import _attach_usage_cache_fields
-
-    usage = {
-        "input_tokens": 10,
-        "output_tokens": 2,
-        "cache_read_input_tokens": 5,
-        "cache_creation_input_tokens": 3,
-    }
-    turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
-    assert getattr(turn, "cache_read_input_tokens") == 5
-    assert getattr(turn, "cache_creation_input_tokens") == 3
-    assert getattr(turn, "cache_supported") is True
-
-
-def test_openclaw_adapter_missing_cache_stays_none() -> None:
-    from openclaw_adapter.lifeops_bench import _attach_usage_cache_fields
+def test_attach_usage_missing_cache_stays_none() -> None:
+    from eliza_lifeops_bench.types import attach_usage_cache_fields
 
     usage = {
         "prompt_tokens": 1,
@@ -364,7 +337,7 @@ def test_openclaw_adapter_missing_cache_stays_none() -> None:
         # No cache info at all.
     }
     turn = _AttrTurn()
-    _attach_usage_cache_fields(turn, usage)
+    attach_usage_cache_fields(turn, usage)
     # No silent 0 fallback — AGENTS.md Cmd #8.
     assert getattr(turn, "cache_read_input_tokens") is None
     assert getattr(turn, "cache_creation_input_tokens") is None

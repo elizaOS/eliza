@@ -19,7 +19,7 @@
  *   through to `retrieveActions`.
  */
 
-import type { ModelTier } from "./model-tiers.ts";
+import { isModelTier, type ModelTier } from "./model-tiers.ts";
 
 /**
  * Canonical retrieval stage names — kept in sync with
@@ -116,10 +116,7 @@ export function resolveRetrievalDefaults(
   env: NodeJS.ProcessEnv = process.env,
 ): RetrievalTierDefaults {
   const raw = env.MODEL_TIER?.trim();
-  const tier: ModelTier =
-    raw === "small" || raw === "mid" || raw === "large" || raw === "frontier"
-      ? raw
-      : "large";
+  const tier: ModelTier = raw && isModelTier(raw) ? raw : "large";
   // Return a fresh copy so callers can mutate without poisoning the
   // module-level registry.
   const source = RETRIEVAL_DEFAULTS_BY_TIER[tier];
