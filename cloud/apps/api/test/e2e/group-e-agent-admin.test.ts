@@ -383,6 +383,30 @@ describe("Group E: advertising / campaigns", () => {
   });
 });
 
+describe("Group E: advertising / creatives", () => {
+  test("GET /api/v1/advertising/creatives/:id rejects unauthenticated", async () => {
+    if (!serverReachable) return;
+    const res = await api.get(`/api/v1/advertising/creatives/${FAKE_UUID}`);
+    expectAuthGate(res.status, "GET advertising/creatives/:id");
+  });
+
+  test("PATCH /api/v1/advertising/creatives/:id rejects invalid body with 400", async () => {
+    if (!shouldRun()) return;
+    const res = await api.patch(
+      `/api/v1/advertising/creatives/${FAKE_UUID}`,
+      { media: [{ url: "not-a-url" }] },
+      { headers: bearerHeaders() },
+    );
+    expect(res.status).toBe(400);
+  });
+
+  test("DELETE /api/v1/advertising/creatives/:id rejects unauthenticated", async () => {
+    if (!serverReachable) return;
+    const res = await api.delete(`/api/v1/advertising/creatives/${FAKE_UUID}`);
+    expectAuthGate(res.status, "DELETE advertising/creatives/:id");
+  });
+});
+
 describe("Group E: training / vertex tune (501 stub)", () => {
   test("POST /api/training/vertex/tune rejects unauthenticated", async () => {
     if (!serverReachable) return;

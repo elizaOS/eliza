@@ -906,6 +906,47 @@ export class LocalInferenceEngine {
     return bridge;
   }
 
+  private voiceStreamingArgs<T extends Omit<GenerateArgs, "cacheKey">>(
+    args: T,
+  ): {
+    args: T;
+    finish: (finalText: string) => Promise<void>;
+  } {
+    const bridge = this.voiceBridge;
+    const voiceOn = bridge?.lifecycle.current().kind === "voice-on";
+    if (!voiceOn || !bridge) {
+      return {
+        args,
+        finish: async () => {},
+      };
+    }
+
+    let nextIndex = 0;
+    let streamedAny = false;
+    const callerOnTextChunk = args.onTextChunk;
+    const wrapped = {
+      ...args,
+      onTextChunk: async (chunk: string) => {
+        if (chunk.length > 0) {
+          streamedAny = true;
+          const token: TextToken = { index: nextIndex++, text: chunk };
+          await bridge.pushAcceptedToken(token);
+        }
+        await callerOnTextChunk?.(chunk);
+      },
+    } as T;
+
+    return {
+      args: wrapped,
+      finish: async (finalText: string) => {
+        if (!streamedAny && finalText.length > 0) {
+          await bridge.pushAcceptedToken({ index: nextIndex++, text: finalText });
+        }
+        await bridge.settle();
+      },
+    };
+  }
+
   /**
    * Forward a verifier-stream event (DFlash drafter ↔ target verifier
    * output) into the voice scheduler. Accepted tokens flow into the
