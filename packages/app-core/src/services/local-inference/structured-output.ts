@@ -129,12 +129,12 @@ const GBNF_JSON_STRING = '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""';
  * is self-contained without a shared `json` import.
  */
 const GBNF_JSON_VALUE = [
-  "jsonvalue ::= jsonobject | jsonarray | jsonstring | jsonnumber | \"true\" | \"false\" | \"null\"",
+  'jsonvalue ::= jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
   'jsonobject ::= "{" ws ( jsonstring ws ":" ws jsonvalue ( ws "," ws jsonstring ws ":" ws jsonvalue )* )? ws "}"',
   'jsonarray ::= "[" ws ( jsonvalue ( ws "," ws jsonvalue )* )? ws "]"',
   `jsonstring ::= ${GBNF_JSON_STRING}`,
   'jsonnumber ::= "-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?',
-  'ws ::= [ \\t\\n\\r]*',
+  "ws ::= [ \\t\\n\\r]*",
 ].join("\n");
 
 /**
@@ -267,7 +267,10 @@ export function splitSkeletonAtFirstFree(skeleton: ResponseSkeleton): {
 } {
   let prefixLiteral = "";
   let idx = 0;
-  while (idx < skeleton.spans.length && skeleton.spans[idx].kind === "literal") {
+  while (
+    idx < skeleton.spans.length &&
+    skeleton.spans[idx].kind === "literal"
+  ) {
     prefixLiteral += skeleton.spans[idx].value ?? "";
     idx += 1;
   }
