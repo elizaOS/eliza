@@ -174,6 +174,15 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
     asrTranscribe() {
       throw new Error("not used by this test");
     },
+    // Streaming TTS + verifier callback ABI v2 — unused by this test.
+    ttsStreamSupported: () => false,
+    ttsSynthesizeStream() {
+      throw new Error("not used by this test");
+    },
+    cancelTts() {
+      /* no-op */
+    },
+    setVerifierCallback: () => ({ close: () => {} }),
     // Streaming ASR ABI v2 — this fake reports no working decoder, so the
     // adapter chain falls through to the whisper.cpp interim path.
     asrStreamSupported: () => false,

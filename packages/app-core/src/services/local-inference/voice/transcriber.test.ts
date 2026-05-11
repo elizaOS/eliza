@@ -402,6 +402,12 @@ function makeFakeFfi(opts: {
     asrTranscribe: () => {
       throw new Error("not used");
     },
+    ttsStreamSupported: () => false,
+    ttsSynthesizeStream: () => {
+      throw new Error("not used");
+    },
+    cancelTts: () => {},
+    setVerifierCallback: () => ({ close: () => {} }),
     asrStreamSupported: () => opts.streamSupported,
     asrStreamOpen: () => {
       streamHandle += 1n;
