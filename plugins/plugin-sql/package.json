@@ -46,6 +46,12 @@
       },
       "import": "./src/dist/schema/index.js",
       "default": "./src/dist/schema/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
     }
   },
   "files": [

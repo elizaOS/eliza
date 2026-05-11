@@ -32,6 +32,12 @@
         "types": "./dist/node/index.d.ts",
         "default": "./dist/node/index.node.js"
       }
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
     }
   },
   "sideEffects": false,

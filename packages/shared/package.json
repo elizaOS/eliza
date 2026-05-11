@@ -67,6 +67,12 @@
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js",
       "types": "./dist/runtime-env.d.ts"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
     }
   },
   "publishConfig": {
