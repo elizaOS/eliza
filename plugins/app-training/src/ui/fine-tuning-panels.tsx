@@ -112,15 +112,21 @@ export function TrajectoriesSection({
   trajectoryList,
   selectedTrajectory,
   trajectoryLoading,
+  publishingTrajectories,
+  publishConfigured,
   onRefresh,
   onSelectTrajectory,
+  onPublishTrajectories,
   t,
 }: {
   trajectoryList: TrainingTrajectoryList;
   selectedTrajectory: TrainingTrajectoryDetail | null;
   trajectoryLoading: boolean;
+  publishingTrajectories: boolean;
+  publishConfigured: boolean;
   onRefresh: () => void;
   onSelectTrajectory: (trajectoryId: string) => void;
+  onPublishTrajectories: () => void;
   t: TranslateFn;
 }) {
   return (
@@ -134,14 +140,27 @@ export function TrajectoriesSection({
             {t("finetuningview.Trajectories")}
           </div>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className={FINE_TUNING_ACTION_CLASS}
-          onClick={onRefresh}
-        >
-          {t("common.refresh")}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className={FINE_TUNING_ACTION_CLASS}
+            disabled={publishingTrajectories || !publishConfigured}
+            onClick={onPublishTrajectories}
+          >
+            {publishingTrajectories
+              ? t("finetuningview.Publishing")
+              : t("finetuningview.PublishToHuggingFace")}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className={FINE_TUNING_ACTION_CLASS}
+            onClick={onRefresh}
+          >
+            {t("common.refresh")}
+          </Button>
+        </div>
       </div>
       {!trajectoryList.available ? (
         <div
@@ -408,6 +427,9 @@ export function TrainingJobsSection({
           </div>
         </div>
       </div>
+      <div className="mb-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-muted">
+        {t("finetuningview.GpuFineTunesViaVast")}
+      </div>
       <div className="mb-3 grid grid-cols-1 gap-2 md:grid-cols-3">
         <Select
           value={selectedDatasetId}
@@ -607,6 +629,9 @@ export function TrainedModelsSection({
             {t("finetuningview.TrainedModels")}
           </div>
         </div>
+      </div>
+      <div className="mb-3 rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-xs text-muted">
+        {t("finetuningview.ModelOpsNotWiredHere")}
       </div>
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <div className={`${FINE_TUNING_PANEL_CLASS} max-h-72 overflow-auto`}>

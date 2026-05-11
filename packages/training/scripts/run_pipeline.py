@@ -1,28 +1,37 @@
-"""End-to-end training pipeline: train → quantize → benchmark for any model in the registry.
+"""End-to-end training pipeline: corpus → train → quantize → benchmark → (publish).
 
-Single command does:
-  1. Pre-train benchmark (base model)            → benchmarks/<run>/base/
-  2. Full-parameter SFT with APOLLO              → checkpoints/<run>/final/
-  3. Post-train benchmark (fine-tuned)           → benchmarks/<run>/finetuned/
-  4. PolarQuant + TurboQuant quantization        → checkpoints/<run>/{final-polarquant,final-turboquant}/
-  5. Quantized benchmark                          → benchmarks/<run>/{polarquant,turboquant}/
+Stages (skippable individually; see flags):
+
+  0. From-scratch corpus build (--from-scratch)   → data/final/{train,val,test}.jsonl
+  1. Pre-train benchmark (base model)             → benchmarks/<run>/base/
+  2. Full-parameter SFT with APOLLO               → checkpoints/<run>/final/
+  3. Post-train benchmark (fine-tuned)            → benchmarks/<run>/finetuned/
+  4. Aggregate evals + gate report                → checkpoints/<run>/evals/aggregate.json,
+                                                     checkpoints/<run>/gate_report.json
+  5. PolarQuant + TurboQuant + QJL quantization   → checkpoints/<run>/final-<q>/
+  6. Quantized benchmark                          → benchmarks/<run>/<q>/
+  7. Publish (--publish, requires --bundle-dir)   → python -m scripts.publish.orchestrator
 
 Usage:
-    # Smoke test on the smallest Eliza-1 size, trains on 16 GB.
+    # Validation smoke on the smallest Eliza-1 size, tiny 1k-per-source mix.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key eliza-1-2b \
-        --max-samples 1000 --epochs 1 --skip-base-bench
+        --registry-key qwen3-0.6b \
+        --from-scratch --sample-per-source 1000 \
+        --epochs 1 --eval-mode smoke
+
+    # Only build the validation dataset (skip everything else).
+    uv run python scripts/run_pipeline.py \
+        --registry-key qwen3-0.6b --from-scratch --sample-per-source 1000 \
+        --skip-base-bench --skip-finetune --skip-quantize --skip-bench
 
     # Production run on eliza-1-2b.
     uv run --extra train python scripts/run_pipeline.py \
-        --registry-key eliza-1-2b \
-        --epochs 3
+        --registry-key eliza-1-2b --epochs 3
 
     # Train from runtime trajectory export(s)
     uv run --extra train python scripts/run_pipeline.py \
         --registry-key eliza-1-2b \
-        --trajectory-export ../trajectories/export.jsonl \
-        --epochs 1
+        --trajectory-export ../trajectories/export.jsonl --epochs 1
 
     # Cloud-tier run on eliza-1-27b — needs 2× H200 SXM,
     # use scripts/train_nebius.sh which wraps run_pipeline.py with FSDP.
@@ -39,28 +48,69 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from training.model_registry import get as registry_get  # noqa: E402
+from benchmarks.eliza1_gates import apply_gates, normalize_tier  # noqa: E402
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("pipeline")
 
 
-def run(cmd: list[str], *, env: dict | None = None) -> int:
+def run(cmd: list[str], *, env: dict | None = None, cwd: Path | None = None) -> int:
     log.info("$ %s", " ".join(cmd))
     t0 = time.perf_counter()
-    rc = subprocess.run(cmd, env=env).returncode
+    rc = subprocess.run(cmd, env=env, cwd=str(cwd) if cwd else None).returncode
     log.info("  → exit=%d (%.1fs)", rc, time.perf_counter() - t0)
     return rc
+
+
+def _read_json(path: Path) -> dict | None:
+    try:
+        return json.loads(path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _format_ok_rate(summary: dict | None) -> float | None:
+    """Extract a 0..1 parsable-output rate from a benchmark summary.json.
+
+    Handles both benchmark scripts:
+      - native_tool_call_bench.py: buckets[*].{structure_ok,n}
+      - eliza_bench.py:            buckets[*].{format_ok,n}
+    Returns the micro-averaged rate over all buckets, or None when there
+    are no scored records.
+    """
+    if not summary:
+        return None
+    buckets = summary.get("buckets") or {}
+    num = 0
+    den = 0
+    for b in buckets.values():
+        if not isinstance(b, dict):
+            continue
+        n = int(b.get("n") or 0)
+        if n <= 0:
+            continue
+        ok = b.get("structure_ok")
+        if ok is None:
+            ok = b.get("format_ok")
+        if ok is None:
+            continue
+        num += int(ok)
+        den += n
+    if den == 0:
+        return None
+    return round(num / den, 4)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--registry-key", required=True,
-                    help="One of: eliza-1-2b, eliza-1-9b, eliza-1-27b. "
-                         "Internal upstream keys are accepted as aliases.")
+                    help="One of: qwen3-0.6b, eliza-1-2b, eliza-1-9b, "
+                         "eliza-1-27b. Internal upstream keys are aliases.")
     ap.add_argument("--run-name", default=None,
                     help="Default: <registry-key>-apollo-<unix-ts>.")
     ap.add_argument("--epochs", type=float, default=3.0)
@@ -94,6 +144,33 @@ def main() -> int:
         help="Optional comma-separated task_type allowlist for trajectory "
              "exports before train/val/test splitting.",
     )
+    ap.add_argument(
+        "--from-scratch", action="store_true",
+        help="Stage 0: rebuild data/final/{train,val,test}.jsonl from raw "
+             "sources. Re-downloads only if data/raw/ is empty; otherwise "
+             "re-normalizes + re-packs what is already on disk. Pass "
+             "--sample-per-source N for a tiny sampled mix.",
+    )
+    ap.add_argument(
+        "--sample-per-source", type=int, default=0,
+        help="When >0, limit each input source to ~N records during the "
+             "from-scratch corpus build (passthrough to normalize.py and "
+             "pack_dataset.py). Implies pack_dataset.py --smoke.",
+    )
+    ap.add_argument(
+        "--eval-mode", choices=("smoke", "full"), default="smoke",
+        help="Eval-gate mode written into evals/aggregate.json and used for "
+             "the gate report. smoke = structural gates only (default).",
+    )
+    pub = ap.add_mutually_exclusive_group()
+    pub.add_argument("--publish", dest="publish", action="store_true",
+                     help="Stage 7: run the publish orchestrator at the tail "
+                          "(requires --bundle-dir).")
+    pub.add_argument("--skip-publish", dest="publish", action="store_false",
+                     help="Do not publish (default).")
+    ap.set_defaults(publish=False)
+    ap.add_argument("--bundle-dir", default=None,
+                    help="Assembled bundle dir for --publish.")
     ap.add_argument("--bench-per-bucket", type=int, default=200)
     ap.add_argument("--skip-base-bench", action="store_true")
     ap.add_argument("--skip-finetune", action="store_true")
@@ -109,6 +186,9 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    if args.publish and not args.bundle_dir:
+        raise SystemExit("--publish requires --bundle-dir")
+
     entry = registry_get(args.registry_key)
     if not entry.can_train_locally and not args.skip_finetune:
         raise SystemExit(
@@ -116,6 +196,7 @@ def main() -> int:
             f"Use train_nebius.sh or pass --skip-finetune."
         )
 
+    tier_id = normalize_tier(entry.public_name)
     run_name = args.run_name or f"{entry.public_name}-apollo-{int(time.time())}"
     ckpt_dir = ROOT / "checkpoints" / run_name
     bench_dir = ROOT / "benchmarks" / run_name
@@ -124,7 +205,9 @@ def main() -> int:
     summary = {
         "registry_key": entry.public_name,
         "model": entry.hf_id,
+        "tier": tier_id,
         "run_name": run_name,
+        "eval_mode": args.eval_mode,
         "started": time.time(),
         "stages": {},
     }
@@ -132,6 +215,51 @@ def main() -> int:
     train_file = Path(args.train_file) if args.train_file else ROOT / "data" / "final" / "train.jsonl"
     val_file = Path(args.val_file) if args.val_file else ROOT / "data" / "final" / "val.jsonl"
     test_file = Path(args.test_file) if args.test_file else ROOT / "data" / "final" / "test.jsonl"
+
+    # ───────────── stage 0: from-scratch corpus build ─────────────────
+    if args.from_scratch:
+        raw_dir = ROOT / "data" / "raw"
+        populated = raw_dir.exists() and any(
+            (p / ".done").exists() for p in raw_dir.iterdir() if p.is_dir()
+        )
+        if not populated:
+            cmd = ["uv", "run", "python", "scripts/download_datasets.py"]
+            if args.sample_per_source:
+                cmd += ["--sample-per-source", str(args.sample_per_source)]
+            rc = run(cmd, cwd=ROOT)
+            summary["stages"]["download"] = {"exit": rc}
+            if rc != 0:
+                log.error("download_datasets failed; aborting")
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
+        else:
+            log.info("data/raw/ already populated — skipping download, "
+                     "re-normalize + re-pack only")
+            summary["stages"]["download"] = {"skipped": "raw already populated"}
+
+        cmd = ["uv", "run", "python", "scripts/normalize.py"]
+        if args.sample_per_source:
+            cmd += ["--sample-per-source", str(args.sample_per_source)]
+        rc = run(cmd, cwd=ROOT)
+        summary["stages"]["normalize"] = {"exit": rc}
+        if rc != 0:
+            log.error("normalize failed; aborting")
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
+
+        cmd = ["uv", "run", "python", "scripts/pack_dataset.py"]
+        if args.sample_per_source:
+            cmd += ["--sample-per-source", str(args.sample_per_source), "--smoke"]
+        rc = run(cmd, cwd=ROOT)
+        summary["stages"]["pack"] = {"exit": rc}
+        if rc != 0:
+            log.error("pack_dataset failed; aborting")
+            (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+            return 1
+        # Stage 0 regenerates the canonical final splits.
+        train_file = ROOT / "data" / "final" / "train.jsonl"
+        val_file = ROOT / "data" / "final" / "val.jsonl"
+        test_file = ROOT / "data" / "final" / "test.jsonl"
 
     if args.trajectory_export:
         trajectory_data_dir = ROOT / "data" / "trajectory-runs" / run_name
@@ -146,7 +274,7 @@ def main() -> int:
             cmd += ["--max-records", str(args.max_samples)]
         if args.trajectory_tasks:
             cmd += ["--tasks", args.trajectory_tasks]
-        rc = run(cmd)
+        rc = run(cmd, cwd=ROOT)
         summary["stages"]["trajectory_dataset"] = {
             "exit": rc,
             "output_dir": str(trajectory_data_dir),
@@ -163,21 +291,44 @@ def main() -> int:
     summary["val_file"] = str(val_file)
     summary["test_file"] = str(test_file)
 
-    # 1. Base benchmark
-    if not args.skip_base_bench and not args.skip_bench:
-        rc = run([
+    finetuned_model = ckpt_dir / "final"
+
+    def _bench(model: str, out_sub: str) -> dict[str, int]:
+        """Run both benchmark scripts against `model` into benchmarks/<run>/<out_sub>/."""
+        out_base = bench_dir / out_sub
+        rc_native = run([
             "uv", "run", "--extra", "train", "python",
             "scripts/benchmark/native_tool_call_bench.py",
-            "--model", entry.hf_id,
+            "--model", model,
             "--test-file", str(test_file),
-            "--out-dir", str(bench_dir / "base"),
+            "--out-dir", str(out_base / "native_tool_call"),
             "--max-per-bucket", str(args.bench_per_bucket),
-        ])
-        summary["stages"]["base_bench"] = {"exit": rc}
-        if rc != 0:
-            log.error("base benchmark failed")
+        ], cwd=ROOT)
+        rc_eliza = run([
+            "uv", "run", "--extra", "train", "python",
+            "scripts/benchmark/eliza_bench.py",
+            "--model", model,
+            "--test-file", str(test_file),
+            "--out-dir", str(out_base / "eliza_bench"),
+            "--max-per-bucket", str(args.bench_per_bucket),
+        ], cwd=ROOT)
+        return {"native_tool_call": rc_native, "eliza_bench": rc_eliza}
 
-    # 2. Fine-tune
+    def _bench_format_ok(out_sub: str) -> float | None:
+        out_base = bench_dir / out_sub
+        rate = _format_ok_rate(_read_json(out_base / "native_tool_call" / "summary.json"))
+        if rate is None:
+            rate = _format_ok_rate(_read_json(out_base / "eliza_bench" / "summary.json"))
+        return rate
+
+    # ───────────── stage 1: base benchmark ─────────────────────────────
+    if not args.skip_base_bench and not args.skip_bench:
+        rcs = _bench(entry.hf_id, "base")
+        summary["stages"]["base_bench"] = {"exit": rcs}
+        if any(rc != 0 for rc in rcs.values()):
+            log.error("base benchmark failed (exit=%s)", rcs)
+
+    # ───────────── stage 2: fine-tune ──────────────────────────────────
     if not args.skip_finetune:
         cmd = [
             "uv", "run", "--extra", "train", "python",
@@ -193,26 +344,76 @@ def main() -> int:
         ]
         if args.max_samples and not args.trajectory_export:
             cmd += ["--max-samples", str(args.max_samples)]
-        rc = run(cmd)
-        summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(ckpt_dir / "final")}
+        rc = run(cmd, cwd=ROOT)
+        summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(finetuned_model)}
         if rc != 0:
             log.error("finetune failed; aborting")
             (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
             return 1
 
-    # 3. Fine-tuned benchmark
+    # ───────────── stage 3: fine-tuned benchmark ──────────────────────
     if not args.skip_bench:
-        rc = run([
-            "uv", "run", "--extra", "train", "python",
-            "scripts/benchmark/native_tool_call_bench.py",
-            "--model", str(ckpt_dir / "final"),
-            "--test-file", str(test_file),
-            "--out-dir", str(bench_dir / "finetuned"),
-            "--max-per-bucket", str(args.bench_per_bucket),
-        ])
-        summary["stages"]["finetuned_bench"] = {"exit": rc}
+        rcs = _bench(str(finetuned_model), "finetuned")
+        summary["stages"]["finetuned_bench"] = {"exit": rcs}
 
-    # 4. Quantize
+    # ───────────── stage 4: aggregate evals + gate report ─────────────
+    base_rate = _bench_format_ok("base")
+    finetuned_rate = _bench_format_ok("finetuned")
+    evals_dir = ckpt_dir / "evals"
+    evals_dir.mkdir(parents=True, exist_ok=True)
+    results: dict[str, float] = {}
+    if finetuned_rate is not None:
+        results["format_ok"] = finetuned_rate
+    if base_rate is not None:
+        results["format_ok_base"] = base_rate
+        results["format_ok_finetuned"] = finetuned_rate if finetuned_rate is not None else base_rate
+    aggregate = {
+        "tier": tier_id,
+        "mode": args.eval_mode,
+        "results": results,
+        "benchmarks": {
+            "base": _read_json(bench_dir / "base" / "native_tool_call" / "summary.json")
+                    or _read_json(bench_dir / "base" / "eliza_bench" / "summary.json"),
+            "finetuned": _read_json(bench_dir / "finetuned" / "native_tool_call" / "summary.json")
+                         or _read_json(bench_dir / "finetuned" / "eliza_bench" / "summary.json"),
+        },
+        "run_name": run_name,
+        "model": entry.hf_id,
+    }
+    aggregate_path = evals_dir / "aggregate.json"
+    aggregate_path.write_text(json.dumps(aggregate, indent=2))
+    summary["stages"]["evals"] = {"aggregate": str(aggregate_path), "results": results}
+    log.info("wrote %s", aggregate_path)
+
+    # Non-blocking gate report — record it, never abort on it.
+    try:
+        report = apply_gates(aggregate, tier_id, mode=args.eval_mode)
+        gate_blob = {
+            "tier": report.tier,
+            "mode": report.mode,
+            "passed": report.passed,
+            "failures": report.failures,
+            "gates": [
+                {
+                    "name": g.name, "passed": g.passed, "reason": g.reason,
+                    "metric": g.metric, "observed": g.observed,
+                    "threshold": g.threshold, "op": g.op,
+                    "provisional": g.provisional, "skipped": g.skipped,
+                    "required": g.required,
+                }
+                for g in report.gates
+            ],
+        }
+    except Exception as e:  # noqa: BLE001 — record gate failures, never block
+        log.warning("apply_gates raised: %s", e)
+        gate_blob = {"tier": tier_id, "mode": args.eval_mode, "error": repr(e)}
+    gate_report_path = ckpt_dir / "gate_report.json"
+    gate_report_path.write_text(json.dumps(gate_blob, indent=2))
+    summary["stages"]["gate_report"] = {"path": str(gate_report_path),
+                                        "passed": gate_blob.get("passed")}
+    log.info("wrote %s (passed=%s)", gate_report_path, gate_blob.get("passed"))
+
+    # ───────────── stage 5: quantize ──────────────────────────────────
     quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
     if not args.skip_quantize:
         for q in quantizers:
@@ -226,28 +427,32 @@ def main() -> int:
             out_path = ckpt_dir / f"final-{q}"
             rc = run([
                 "uv", "run", "--extra", "train", "python", str(apply_script),
-                "--model", str(ckpt_dir / "final"),
+                "--model", str(finetuned_model),
                 "--output", str(out_path),
                 "--calibration", str(val_file),
                 "--calibration-samples", "128",
-            ])
+            ], cwd=ROOT)
             summary["stages"][f"quantize_{q}"] = {"exit": rc, "output": str(out_path)}
 
-    # 5. Quantized benchmarks (where the runner supports the format)
+    # ───────────── stage 6: quantized benchmarks ──────────────────────
     if not args.skip_bench:
         for q in quantizers:
             ck = ckpt_dir / f"final-{q}"
             if not ck.exists():
                 continue
-            rc = run([
-                "uv", "run", "--extra", "train", "python",
-                "scripts/benchmark/native_tool_call_bench.py",
-                "--model", str(ck),
-                "--test-file", str(test_file),
-                "--out-dir", str(bench_dir / q),
-                "--max-per-bucket", str(args.bench_per_bucket),
-            ])
-            summary["stages"][f"{q}_bench"] = {"exit": rc}
+            rcs = _bench(str(ck), q)
+            summary["stages"][f"{q}_bench"] = {"exit": rcs}
+
+    # ───────────── stage 7: publish ───────────────────────────────────
+    if args.publish:
+        rc = run([
+            "uv", "run", "python", "-m", "scripts.publish.orchestrator",
+            "--tier", tier_id,
+            "--bundle-dir", str(args.bundle_dir),
+        ], cwd=ROOT)
+        summary["stages"]["publish"] = {"exit": rc}
+        if rc != 0:
+            log.error("publish orchestrator failed (exit=%d)", rc)
 
     summary["finished"] = time.time()
     summary["elapsed_s"] = summary["finished"] - summary["started"]

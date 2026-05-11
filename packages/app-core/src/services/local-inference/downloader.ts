@@ -28,11 +28,14 @@ import {
   findCatalogModel,
   isDefaultEligibleId,
 } from "./catalog";
+import { deviceCapsFromProbe, probeHardware } from "./hardware";
 import {
+  type Eliza1DeviceCaps,
   type Eliza1FileEntry,
   type Eliza1Files,
   type Eliza1Manifest,
   parseManifestOrThrow,
+  SUPPORTED_BACKENDS_BY_TIER,
 } from "./manifest";
 import {
   downloadsStagingDir,
@@ -58,6 +61,81 @@ interface ActiveJob {
 
 type DownloadListener = (event: DownloadEvent) => void;
 type BundleFileKind = keyof Eliza1Files;
+
+/**
+ * Thrown before any weight byte is fetched when an Eliza-1 bundle's manifest
+ * is incompatible with this device — wrong schema version, no overlapping
+ * verified backend, or a RAM budget that exceeds the device's memory. Per
+ * `packages/inference/AGENTS.md` §7 there is no "download anyway" path.
+ */
+export class BundleIncompatibleError extends Error {
+  readonly code = "ELIZA1_BUNDLE_INCOMPATIBLE" as const;
+  constructor(message: string) {
+    super(message);
+    this.name = "BundleIncompatibleError";
+  }
+}
+
+/**
+ * One-time verify-on-device pass per `packages/inference/AGENTS.md` §7:
+ * load → 1-token text generation → 1-phrase voice generation → barge-in
+ * cancel. The downloader stays decoupled from the engine — the service
+ * layer injects this; when absent the bundle is materialized and registered
+ * but its `bundleVerifiedAt` stays unset and it does NOT auto-fill an empty
+ * default slot (an unverified bundle must not become the recommended
+ * default).
+ */
+export type VerifyBundleOnDevice = (args: {
+  modelId: string;
+  bundleRoot: string;
+  manifestPath: string;
+  textGgufPath: string;
+}) => Promise<void>;
+
+export interface DownloaderOptions {
+  /** Override the device-capability probe (tests / headless environments). */
+  probeDeviceCaps?: () => Promise<Eliza1DeviceCaps>;
+  /** Verify-on-device smoke run; see {@link VerifyBundleOnDevice}. */
+  verifyOnDevice?: VerifyBundleOnDevice;
+}
+
+async function defaultProbeDeviceCaps(): Promise<Eliza1DeviceCaps> {
+  return deviceCapsFromProbe(await probeHardware());
+}
+
+/**
+ * Reject bundles this device cannot run — runs against the manifest before
+ * any weight byte is fetched. Mirrors the publish-side `canSetAsDefault`
+ * device check, minus the `defaultEligible` flag (a user may explicitly
+ * install a non-default bundle, but only one the device can actually load).
+ */
+function assertBundleInstallable(
+  manifest: Eliza1Manifest,
+  device: Eliza1DeviceCaps,
+): void {
+  // Schema version is enforced upstream by `parseManifestOrThrow` — the Zod
+  // schema only accepts the current `$schema` URL, so a manifest with a
+  // future schema version is rejected before we get here.
+  if (manifest.ramBudgetMb.min > device.ramMb) {
+    throw new BundleIncompatibleError(
+      `Eliza-1 bundle ${manifest.id} needs at least ${manifest.ramBudgetMb.min} MB RAM; this device has ${device.ramMb} MB`,
+    );
+  }
+  const tierBackends = new Set(SUPPORTED_BACKENDS_BY_TIER[manifest.tier]);
+  const usable = device.availableBackends.filter(
+    (b) =>
+      tierBackends.has(b) && manifest.kernels.verifiedBackends[b].status === "pass",
+  );
+  if (usable.length === 0) {
+    const verified = Object.entries(manifest.kernels.verifiedBackends)
+      .filter(([, v]) => v.status === "pass")
+      .map(([b]) => b);
+    throw new BundleIncompatibleError(
+      `Eliza-1 bundle ${manifest.id}: no required-kernel backend is available on this device. ` +
+        `bundle verified [${verified.join(", ") || "none"}], device has [${device.availableBackends.join(", ")}], tier ${manifest.tier} supports [${[...tierBackends].join(", ")}]`,
+    );
+  }
+}
 
 interface DownloadedFile {
   path: string;
@@ -205,8 +283,12 @@ export class Downloader {
   private readonly terminal = new Map<string, DownloadJob>();
   private readonly listeners = new Set<DownloadListener>();
   private readonly lastEmit = new Map<string, number>();
+  private readonly probeDeviceCaps: () => Promise<Eliza1DeviceCaps>;
+  private readonly verifyOnDevice?: VerifyBundleOnDevice;
 
-  constructor() {
+  constructor(options: DownloaderOptions = {}) {
+    this.probeDeviceCaps = options.probeDeviceCaps ?? defaultProbeDeviceCaps;
+    this.verifyOnDevice = options.verifyOnDevice;
     this.loadTerminalDownloads();
   }
 
@@ -600,6 +682,11 @@ export class Downloader {
       catalogEntry,
     );
 
+    // §7: schema version, RAM budget, and kernel-backend availability are
+    // checked against this device BEFORE any weight byte is fetched. An
+    // incompatible bundle aborts here — there is no "download anyway" path.
+    assertBundleInstallable(manifest, await this.probeDeviceCaps());
+
     let completedBytes = manifestDownloaded.sizeBytes;
     const downloaded = new Map<string, DownloadedFile>();
     for (const { entry } of collectBundleFiles(manifest)) {
@@ -638,6 +725,22 @@ export class Downloader {
       );
     }
 
+    // §7: materialize the bundle, then run the one-time verify-on-device
+    // pass before the bundle is treated as ready. The hook is injected by
+    // the service layer so the downloader stays decoupled from the engine.
+    // When no hook is wired, `bundleVerifiedAt` stays unset and the bundle
+    // is registered but does NOT auto-fill an empty default slot.
+    let bundleVerifiedAt: string | undefined;
+    if (this.verifyOnDevice) {
+      await this.verifyOnDevice({
+        modelId: catalogEntry.id,
+        bundleRoot,
+        manifestPath,
+        textGgufPath: textFile.path,
+      });
+      bundleVerifiedAt = new Date().toISOString();
+    }
+
     const now = new Date().toISOString();
     const bundleMeta = {
       bundleRoot,
@@ -645,6 +748,7 @@ export class Downloader {
       manifestSha256: manifestDownloaded.sha256,
       bundleVersion: manifest.version,
       bundleSizeBytes: completedBytes,
+      ...(bundleVerifiedAt ? { bundleVerifiedAt } : {}),
     };
 
     const installed: InstalledModel = {
@@ -698,7 +802,14 @@ export class Downloader {
       });
     }
 
-    if (isDefaultEligibleId(installed.id)) {
+    // An empty default slot is filled when the bundle is default-eligible
+    // and either the on-device verify pass succeeded, or no verify hook is
+    // wired yet (first-light behavior — the engine will own this once §7's
+    // verify-on-device is integrated).
+    if (
+      isDefaultEligibleId(installed.id) &&
+      (bundleVerifiedAt !== undefined || !this.verifyOnDevice)
+    ) {
       await ensureDefaultAssignment(installed.id);
     }
 

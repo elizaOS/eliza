@@ -45,6 +45,8 @@ export {
 export {
   type CachedPhraseAudio,
   canonicalizePhraseText,
+  DEFAULT_PHRASE_CACHE_SEED,
+  FIRST_AUDIO_FILLERS,
   PhraseCache,
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
@@ -85,9 +87,13 @@ export {
   type SharedTokenizer,
 } from "./shared-resources";
 export {
+  DEFAULT_VOICE_ID,
+  DEFAULT_VOICE_PRESET_REL_PATH,
   type LoadedPresetBundle,
   type PresetBundlePaths,
   SpeakerPresetCache,
+  type SpeakerPresetCacheOptions,
+  voicePresetPath,
 } from "./speaker-preset-cache";
 export {
   ASR_SAMPLE_RATE,
@@ -132,11 +138,19 @@ export {
   writeVoicePresetFile,
 } from "./voice-preset-format";
 export {
-  OPENWAKEWORD_REL_PATH,
+  loadBundledWakeWordModel,
+  OPENWAKEWORD_DEFAULT_HEAD,
+  OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
+  OPENWAKEWORD_DIR_REL_PATH,
+  OPENWAKEWORD_EMBEDDING_REL_PATH,
+  OPENWAKEWORD_MELSPEC_REL_PATH,
   OpenWakeWordDetector,
-  resolveWakeWordPath,
+  OpenWakeWordModel,
+  resolveWakeWordModel,
   type WakeWordConfig,
   type WakeWordModel,
+  type WakeWordModelPaths,
+  WakeWordUnavailableError,
 } from "./wake-word";
 
 /**

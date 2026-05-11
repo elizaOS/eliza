@@ -61,6 +61,8 @@ export function FineTuningView({
   const [selectedTrajectory, setSelectedTrajectory] =
     useState<TrainingTrajectoryDetail | null>(null);
   const [trajectoryLoading, setTrajectoryLoading] = useState(false);
+  const [publishingTrajectories, setPublishingTrajectories] = useState(false);
+  const [publishConfigured, setPublishConfigured] = useState(true);
 
   const [datasets, setDatasets] = useState<TrainingDatasetRecord[]>([]);
   const [jobs, setJobs] = useState<TrainingJobRecord[]>([]);
@@ -197,6 +199,62 @@ export function FineTuningView({
     },
     [setActionNotice, t],
   );
+
+  const handlePublishTrajectories = useCallback(async () => {
+    setPublishingTrajectories(true);
+    try {
+      const response = await fetch("/api/training/trajectories/publish", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (response.status === 409) {
+        setPublishConfigured(false);
+        const detail = (await response.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setActionNotice(
+          detail?.error ??
+            t("finetuningview.HuggingFacePublishNotConfigured"),
+          "error",
+          5200,
+        );
+        return;
+      }
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        trajectoriesPublished?: number;
+        cloudUpload?: { huggingFaceRepo?: string; huggingFacePath?: string };
+      } | null;
+      if (!response.ok) {
+        setActionNotice(
+          payload?.error ?? t("finetuningview.FailedToPublishTrajectories"),
+          "error",
+          5200,
+        );
+        return;
+      }
+      setPublishConfigured(true);
+      setActionNotice(
+        t("finetuningview.PublishedTrajectoriesMessage", {
+          count: payload?.trajectoriesPublished ?? 0,
+          repo: payload?.cloudUpload?.huggingFaceRepo ?? "",
+        }),
+        "success",
+        4200,
+      );
+    } catch (err) {
+      setActionNotice(
+        err instanceof Error
+          ? err.message
+          : t("finetuningview.FailedToPublishTrajectories"),
+        "error",
+        5200,
+      );
+    } finally {
+      setPublishingTrajectories(false);
+    }
+  }, [setActionNotice, t]);
 
   const handleBuildDataset = useCallback(async () => {
     setDatasetBuilding(true);
@@ -599,11 +657,16 @@ export function FineTuningView({
           trajectoryList={trajectoryList}
           selectedTrajectory={selectedTrajectory}
           trajectoryLoading={trajectoryLoading}
+          publishingTrajectories={publishingTrajectories}
+          publishConfigured={publishConfigured}
           onRefresh={() => {
             void loadTrajectories();
           }}
           onSelectTrajectory={(trajectoryId) => {
             void loadTrajectoryDetail(trajectoryId);
+          }}
+          onPublishTrajectories={() => {
+            void handlePublishTrajectories();
           }}
           t={t}
         />

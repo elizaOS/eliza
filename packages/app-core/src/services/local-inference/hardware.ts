@@ -11,6 +11,7 @@
  */
 
 import os from "node:os";
+import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
 import type { HardwareProbe, ModelBucket } from "./types";
 
 const BYTES_PER_GB = 1024 ** 3;
@@ -142,6 +143,38 @@ export async function probeHardware(): Promise<HardwareProbe> {
     appleSilicon,
     recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
     source: "node-llama-cpp",
+  };
+}
+
+/**
+ * Map a hardware probe onto the Eliza-1 device-capability snapshot used by
+ * the manifest validator and the bundle downloader.
+ *
+ * Backends: `cpu` is always present (the floor). A detected GPU backend is
+ * added when `node-llama-cpp` reports one (`metal` on Apple Silicon, `cuda`
+ * on NVIDIA, `vulkan` on cross-vendor Linux/Android). We do not synthesize
+ * `rocm` from the probe — `node-llama-cpp` reports AMD as `vulkan` on the
+ * builds we ship, and a bundle that only verified ROCm but not Vulkan is
+ * legitimately not installable here.
+ *
+ * `ramMb` is total system RAM. On Apple Silicon that is also the GPU's
+ * working memory; on discrete-GPU boxes the recommendation engine layers
+ * its own VRAM-vs-RAM heuristics on top, but the bundle's `ramBudgetMb.min`
+ * is a system-RAM floor in every manifest.
+ */
+export function deviceCapsFromProbe(probe: HardwareProbe): Eliza1DeviceCaps {
+  const backends: Eliza1Backend[] = ["cpu"];
+  const gpuBackend = probe.gpu?.backend;
+  if (
+    gpuBackend === "metal" ||
+    gpuBackend === "cuda" ||
+    gpuBackend === "vulkan"
+  ) {
+    backends.unshift(gpuBackend);
+  }
+  return {
+    availableBackends: backends,
+    ramMb: Math.round(probe.totalRamGb * 1024),
   };
 }
 

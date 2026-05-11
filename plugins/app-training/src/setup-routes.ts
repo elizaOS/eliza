@@ -226,6 +226,7 @@ const TRAINING_ROUTES: Array<{ type: string; path: string }> = [
   { type: "GET", path: "/api/training/trajectories" },
   { type: "GET", path: "/api/training/trajectories/:trajectoryId" },
   { type: "POST", path: "/api/training/trajectories/export" },
+  { type: "POST", path: "/api/training/trajectories/publish" },
   { type: "GET", path: "/api/training/datasets" },
   { type: "POST", path: "/api/training/datasets/build" },
   { type: "GET", path: "/api/training/backends" },

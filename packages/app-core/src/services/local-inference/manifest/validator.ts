@@ -19,6 +19,7 @@ import {
   Eliza1ManifestSchema,
   REQUIRED_KERNELS_BY_TIER,
   SUPPORTED_BACKENDS_BY_TIER,
+  VOICE_PRESET_CACHE_PATH,
 } from "./schema";
 import type {
   Eliza1Backend,
@@ -155,6 +156,20 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
   }
 
+  // The precomputed default-voice speaker preset (`cache/voice-preset-default.bin`)
+  // is a mandatory bundle artifact — `EngineVoiceBridge.start()` hard-fails
+  // without it (AGENTS.md §4 / inference/AGENTS.md §2). It must be listed in
+  // `files.cache` so the downloader fetches it, and when the manifest declares
+  // a `voice` block its `cache.speakerPreset` must point at the same path.
+  if (!m.files.cache.some((f) => f.path === VOICE_PRESET_CACHE_PATH)) {
+    errors.push(`files.cache: missing required ${VOICE_PRESET_CACHE_PATH}`);
+  }
+  if (m.voice && m.voice.cache.speakerPreset !== VOICE_PRESET_CACHE_PATH) {
+    errors.push(
+      `voice.cache.speakerPreset: must be ${VOICE_PRESET_CACHE_PATH}, got ${m.voice.cache.speakerPreset}`,
+    );
+  }
+
   // Eval gates.
   if (!m.evals.textEval.passed) errors.push("evals.textEval.passed: false");
   if (!m.evals.voiceRtf.passed) errors.push("evals.voiceRtf.passed: false");
@@ -228,6 +243,24 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
       );
     } else if (!m.evals.expressive.passed) {
       errors.push("evals.expressive.passed: false");
+    }
+  }
+
+  // DFlash bench. The `dflash` eval is shape-checked by the Zod schema; here
+  // we only enforce internal consistency — if `passed: true` is claimed, the
+  // bench must have actually produced numbers (a null acceptanceRate/speedup
+  // with `passed: true` would be a lie). The gate threshold itself stays
+  // *provisional* in `eliza1_gates.yaml` until a trained drafter exists, so a
+  // `passed: false` dflash eval does NOT block `defaultEligible`.
+  if (m.evals.dflash) {
+    if (
+      m.evals.dflash.passed &&
+      (m.evals.dflash.acceptanceRate === null ||
+        m.evals.dflash.speedup === null)
+    ) {
+      errors.push(
+        "evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
+      );
     }
   }
 

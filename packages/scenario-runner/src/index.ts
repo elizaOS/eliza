@@ -8,6 +8,11 @@ export {
   loadScenarioFile,
   loadScenarioMetadataFile,
 } from "./loader.ts";
+export {
+  exportScenarioNativeJsonl,
+  recordedTrajectoryToNativeRows,
+} from "./native-export.ts";
+export type { NativeBoundaryRow } from "./native-export.ts";
 export { buildAggregate, printStdoutSummary, writeReport } from "./reporter.ts";
 export type {
   AggregateReport,

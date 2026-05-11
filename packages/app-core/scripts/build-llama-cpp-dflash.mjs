@@ -49,10 +49,12 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import { patchCpuPolarKernels as patchCpuPolarKernelsImpl } from "./kernel-patches/cpu-polar-kernels.mjs";
 import {
   patchCpuSimdKernels as patchCpuSimdKernelsImpl,
   QJL_GGML_BASE_LINK_FILES,
 } from "./kernel-patches/cpu-simd-kernels.mjs";
+import { patchCpuThreadParallelism as patchCpuThreadParallelismImpl } from "./kernel-patches/cpu-thread-parallelism.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
@@ -1283,6 +1285,19 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // mirror is the only way the new TUs reach the shipped lib, and every
   // target that compiles ggml-cpu (i.e. all of them) benefits. Idempotent.
   patchCpuSimdKernelsImpl(cacheDir, { dryRun });
+  // Wave D3 follow-up: mirror the standalone PolarQuant pre-Hadamard-
+  // transposed dot TUs (polar_dot_preht_{ref,avx2,neon}.c + the runtime
+  // cpu-feature dispatcher) over the fork's ggml-cpu/polarquant/ subdir
+  // and wire them into the ggml-cpu build (POLARQUANT_HAVE_* defines so
+  // the dispatcher knows which TUs were compiled). The fork already
+  // defines block_q4_polar / GGML_TYPE_Q4_POLAR / polar_qjl_signs /
+  // POLAR_Q4_CENTROIDS, so the _preht TUs add NEW symbols only — no
+  // link-time collision. Idempotent.
+  patchCpuPolarKernelsImpl(cacheDir, { dryRun });
+  // Wave D3 follow-up: parallelize GGML_OP_ATTN_SCORE_QJL +
+  // GGML_OP_FUSED_ATTN_QJL_TBQ over ith/nth (n_tasks bump + a real
+  // disjoint-output split + per-task scratch). Both halves together.
+  patchCpuThreadParallelismImpl(cacheDir, { dryRun });
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
   }
@@ -1297,8 +1312,27 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // for rollback-safe TTS. Idempotent via the
   // `// MILADY-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
   // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
+  //
+  // ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 is a documented,
+  // local-diagnostics-only escape hatch: the current `v0.4.0-milady` fork's
+  // `tools/server/server.cpp` predates the upstream lazy-GBNF / json_schema /
+  // continue_final_message features this patch hard-requires, so without the
+  // skip the build fails closed by design. It does NOT change the default
+  // build path and the resulting binary is not publishable (the merged-route
+  // fused server still serves text/DFlash + `/v1/audio/speech` from one
+  // process — the structured-output surface is the only thing missing).
   if (!target || !target.startsWith("ios-")) {
-    patchServerStructuredOutputImpl(cacheDir, { dryRun });
+    if (envFlag("ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT")) {
+      console.warn(
+        "[dflash-build] ⚠️  ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — " +
+          "skipping the llama-server structured-output / verifier-stream patch. " +
+          "This is a local-diagnostics-only hatch for the fork base that " +
+          "predates the required upstream features; the resulting binary is " +
+          "not publishable.",
+      );
+    } else {
+      patchServerStructuredOutputImpl(cacheDir, { dryRun });
+    }
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
   // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in
