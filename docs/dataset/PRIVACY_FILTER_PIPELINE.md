@@ -16,6 +16,8 @@ python3 packages/training/scripts/privacy_filter_trajectories.py \
   --output-jsonl data/private/redacted-trajectories.jsonl \
   --ledger-jsonl data/private/redaction-ledger.jsonl \
   --stats-json data/private/privacy-stats.json \
+  --attestation-json data/private/privacy-attestation.json \
+  --source-kind user_export \
   --strict
 ```
 
@@ -23,6 +25,11 @@ Inputs may be `.json`, `.jsonl`, or `.ndjson` files, or directories containing
 those files. Directories are scanned recursively. JSON arrays and common
 container keys (`rows`, `records`, `examples`, `data`) are expanded into output
 JSONL rows.
+
+`--source-kind` defaults to `user_export` so privacy attestations cannot be
+silently reused to downgrade real-user trajectory exports to synthetic/public
+data in the candidate publisher. Use `public` or `synthetic` only for sources
+that are already non-user data.
 
 ## What Is Redacted
 
@@ -35,7 +42,9 @@ Covered categories:
   personal access token shapes, AWS access key IDs, and optional process
   environment secret values with `--redact-env-secrets`.
 - `geo`: JSON latitude/longitude pairs, labeled coordinates, location labels,
-  and bare decimal coordinate pairs.
+  bare decimal coordinate pairs, structured `{latitude, longitude}` /
+  `{lat, lng}` objects, and coordinate arrays under keys such as `coords`,
+  `coordinates`, and `location`.
 - `contact`: email addresses, formatted phone numbers, `@handle` values, and
   the known PII-name lint list used by LifeOps default-pack checks.
 
@@ -44,20 +53,123 @@ known secrets and coordinates out of model-backed privacy filters.
 
 ## Outputs
 
-The CLI emits three artifacts:
+The CLI emits three required artifacts plus an optional machine-readable
+attestation for publisher gates:
 
 - Redacted JSONL: safe candidate input for downstream training transforms.
 - Redaction ledger JSONL: one row per redaction, containing category, label,
   structural JSON path, hashed source-file reference, record index, hashed
   record reference, replacement marker, value length, and a SHA-256 hash of the
   matched value. Object-key path segments are hash-addressed because keys can
-  also contain PII. The ledger does not store raw PII.
+  also contain PII. Replacement strings are marker-only; raw backend-provided
+  replacements are recorded by hash/length instead. The ledger does not store
+  raw PII.
 - Aggregate stats JSON: record counts, redaction counts by category/label/source,
   backend call counts, and residual high-risk counts.
+- Privacy attestation JSON (`--attestation-json`): gate-oriented summary with
+  artifact hashes and a single `passed` boolean suitable for candidate publisher
+  enforcement.
+
+The stats JSON has a stable gate-facing top-level schema:
+
+```json
+{
+  "schema": "eliza.privacy_filter_stats.v1",
+  "version": 1,
+  "sourceKind": "user_export",
+  "strict": true,
+  "input_count": 3,
+  "output_count": 3,
+  "redaction_count": 4,
+  "categories": {
+    "secret": 1,
+    "geo": 1,
+    "contact": 2,
+    "backend": 0
+  },
+  "backend_name": null,
+  "backend_model": null,
+  "residual_findings": {
+    "count": 0
+  }
+}
+```
+
+Legacy fields such as `records_read`, `records_written`, `redactions`, and
+`residual_high_risk` remain present for existing consumers.
+
+The attestation JSON has this gate-facing shape:
+
+```json
+{
+  "schema": "eliza.privacy_filter_attestation.v1",
+  "version": 1,
+  "passed": true,
+  "strict": true,
+  "sourceKind": "user_export",
+  "source": {
+    "kind": "user_export",
+    "realUserExport": true,
+    "inputPathRefs": ["sha256:..."]
+  },
+  "input_count": 3,
+  "output_count": 3,
+  "redaction_count": 4,
+  "categories": {
+    "secret": 1,
+    "geo": 1,
+    "contact": 2,
+    "backend": 0
+  },
+  "backend_name": null,
+  "backend_model": null,
+  "residual_findings": {
+    "count": 0
+  },
+  "artifacts": {
+    "redacted_jsonl": {
+      "path": "redacted-trajectories.jsonl",
+      "path_ref": "sha256:...",
+      "sha256": "<sha256>",
+      "rows": 3
+    },
+    "ledger_jsonl": {
+      "path": "redaction-ledger.jsonl",
+      "path_ref": "sha256:...",
+      "sha256": "<sha256>",
+      "entries": 4,
+      "raw_sensitive_values": false
+    },
+    "stats_json": {
+      "path": "privacy-stats.json",
+      "path_ref": "sha256:...",
+      "sha256": "<sha256>"
+    }
+  },
+  "gate": {
+    "passed": true,
+    "strict": true,
+    "sourceKind": "user_export",
+    "backend_skipped_too_long": 0,
+    "residual_findings": {
+      "count": 0
+    }
+  }
+}
+```
 
 Strict mode (`--strict`) scans the redacted output for residual high-risk
-patterns and exits non-zero if any remain. It still writes the stats file so CI
-or a human can inspect the residual labels and paths.
+patterns and exits non-zero if any remain. Records with residual high-risk
+matches are withheld from the output JSONL, so a failed strict run does not
+leave known-leaky rows in the candidate input file. It still writes the stats
+file so CI or a human can inspect the residual labels and paths. If
+`--attestation-json` is provided, strict residual failures also write an
+attestation with `passed: false`.
+
+When an external backend is enabled, strict mode also fails if any string is
+skipped because it exceeds `--backend-max-chars`; skipped strings are treated as
+unreviewed. Raise the max, split the source, or run a backend wrapper that can
+handle the string before using the attestation as a publisher gate.
 
 ## OpenAI Privacy Filter Boundary
 
@@ -70,6 +182,8 @@ python3 packages/training/scripts/privacy_filter_trajectories.py \
   --output-jsonl exports/redacted.jsonl \
   --ledger-jsonl exports/redaction-ledger.jsonl \
   --stats-json exports/privacy-stats.json \
+  --attestation-json exports/privacy-attestation.json \
+  --source-kind user_export \
   --strict \
   --openai-privacy-filter-command "python tools/openai_privacy_filter_wrapper.py" \
   --backend-name openai-privacy-filter \
@@ -119,10 +233,21 @@ wrapper is the bridge point for a future installed backend.
 Use the redacted JSONL as an input to later format/validation scripts only
 after reviewing:
 
-1. `privacy-stats.json` has `residual_high_risk.total == 0`.
-2. The ledger contains no raw values and its counts match the stats file.
-3. The dataset manifest records the source export path, filter command,
-   stats hash, ledger hash, and review approval.
+1. `privacy-stats.json` has `schema == "eliza.privacy_filter_stats.v1"`,
+   `version == 1`, `strict == true`, `input_count == output_count`, and
+   `residual_findings.count == 0`.
+2. `privacy-attestation.json` has
+   `schema == "eliza.privacy_filter_attestation.v1"`, `version == 1`,
+   `sourceKind == "user_export"` for real-user exports, `passed == true`,
+   `strict == true`, `gate.strict == true`,
+   `gate.backend_skipped_too_long == 0`, and `gate.residual_findings.count == 0`.
+3. The attestation artifact hashes match the redacted JSONL, ledger JSONL, and
+   stats JSON being handed to the publisher.
+4. The ledger contains no raw values and its entry count matches
+   `redaction_count`.
+5. The dataset manifest records a hashed source reference, filter command,
+   attestation hash, stats hash, ledger hash, and review approval. Do not carry
+   absolute local source paths into a candidate that may be pushed.
 
 Do not wire real user trajectory exports into automatic HF publishing by
 default.

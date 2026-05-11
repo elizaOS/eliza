@@ -1,0 +1,77 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132513Z_dd3c7c9c/gaia__gaia_orchestrated/run_gaia_orchestrated_20260511T132517Z_2_5d89420c/output"
+  ],
+  "benchmark_directory": "gaia",
+  "benchmark_id": "gaia_orchestrated",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "correct_answers": 1,
+    "overall_accuracy": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 1.2461707500042394,
+      "mean_latency_ms": 301.72014236450195,
+      "p95_latency_ms": 301.72014236450195,
+      "throughput_per_second": 2.4073747518065196
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "llm_call_count": 3,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "total_questions": 1,
+    "trajectory_summary": {
+      "files": 4,
+      "turns": 3,
+      "prompt_chars": 57,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 1.2461707500042394,
+    "mean_latency_ms": 301.72014236450195,
+    "p95_latency_ms": 301.72014236450195,
+    "throughput_per_second": 2.4073747518065196
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132513Z_dd3c7c9c/gaia__gaia_orchestrated/run_gaia_orchestrated_20260511T132517Z_2_5d89420c/output/sample/eliza_gpt-oss-120b/gaia-results-latest.json",
+  "run_group_id": "rg_20260511T132513Z_dd3c7c9c",
+  "run_id": "run_gaia_orchestrated_20260511T132517Z_2_5d89420c",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 3,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 4,
+    "turns": 3,
+    "prompt_chars": 57,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:01.050693+00:00"
+}

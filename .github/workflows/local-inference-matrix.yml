@@ -71,7 +71,7 @@ jobs:
           script: |
             const ev = context.eventName;
             const pr = context.payload.pull_request;
-            const inputs = github.event.inputs ?? {};
+            const inputs = context.payload.inputs ?? {};
 
             const hasGpuLabel =
               ev === "pull_request" &&

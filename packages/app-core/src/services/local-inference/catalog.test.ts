@@ -44,12 +44,11 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses elizalabs HuggingFace repos for every visible Eliza-1 tier", () => {
+  it("uses elizaos HuggingFace repos for every visible Eliza-1 tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-      expect(model.hfRepo).toBe(`elizalabs/${model.id}`);
-      expect(model.hfRepo).not.toMatch(/^elizaos\//);
+      expect(model.hfRepo).toBe(`elizaos/${model.id}`);
       expect(buildHuggingFaceResolveUrl(model)).toContain(
-        `/elizalabs/${model.id}/resolve/main/`,
+        `/elizaos/${model.id}/resolve/main/`,
       );
     }
   });

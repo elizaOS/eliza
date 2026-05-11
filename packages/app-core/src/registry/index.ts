@@ -2,8 +2,8 @@
 // exposes typed accessors. The single import path the rest of the codebase
 // uses to consume the registry.
 
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
 
@@ -44,7 +44,21 @@ function resolveEntriesDir(): string {
   } else {
     moduleDir = dirname(process.argv[1] ?? process.cwd());
   }
-  return join(moduleDir, "entries");
+  const distEntries = join(moduleDir, "entries");
+  // When running from a freshly-cloned workspace (dist/ not built yet) the
+  // module sits at `packages/app-core/dist/registry/index.js` but the entries
+  // haven't been copied across yet. Fall back to the colocated source tree at
+  // `packages/app-core/src/registry/entries/` so dev boots survive missing
+  // builds. Packaged builds (where moduleDir resolves under .../dist/...) and
+  // the on-device runtime (where there is no `src/` sibling) keep using
+  // `distEntries` as before.
+  if (!existsSync(distEntries)) {
+    const sourceFallback = resolve(moduleDir, "..", "..", "src", "registry", "entries");
+    if (existsSync(sourceFallback)) {
+      return sourceFallback;
+    }
+  }
+  return distEntries;
 }
 
 let cache: LoadedRegistry | null = null;

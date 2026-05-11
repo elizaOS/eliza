@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  ANDROID_AVF_MICRODROID_REQUEST_CONTRACT_VERSION,
   createAndroidAvfMicrodroidBoundaryFromNative,
   createAndroidAvfMicrodroidFeatureProbe,
 } from "./android-avf-microdroid-bridge";
@@ -10,7 +11,12 @@ describe("Android AVF/Microdroid native bridge", () => {
       platform: "android",
       androidAvfAvailable: false,
       androidMicrodroidAvailable: false,
-      env: { ELIZA_PLATFORM: "android" },
+      androidAvfPayloadAvailable: false,
+      androidAvfCapabilityState: "framework-unavailable",
+      env: {
+        ELIZA_PLATFORM: "android",
+        ELIZA_ANDROID_AVF_MICRODROID_STATE: "framework-unavailable",
+      },
       globals: { AndroidVirtualization: undefined },
     });
   });
@@ -20,8 +26,11 @@ describe("Android AVF/Microdroid native bridge", () => {
       ElizaNative: {
         getAndroidVirtualization: () =>
           JSON.stringify({
-            available: true,
+            state: "payload-missing",
+            available: false,
+            avfAvailable: true,
             microdroidAvailable: true,
+            payloadAvailable: false,
             apiLevel: 35,
             capabilities: ["protected-vm"],
           }),
@@ -30,15 +39,44 @@ describe("Android AVF/Microdroid native bridge", () => {
 
     expect(featureProbe.androidAvfAvailable).toBe(true);
     expect(featureProbe.androidMicrodroidAvailable).toBe(true);
+    expect(featureProbe.androidAvfPayloadAvailable).toBe(false);
+    expect(featureProbe.androidAvfCapabilityState).toBe("payload-missing");
     expect(featureProbe.env).toMatchObject({
       ELIZA_PLATFORM: "android",
       ELIZA_ANDROID_AVF_AVAILABLE: "1",
       ELIZA_ANDROID_MICRODROID_AVAILABLE: "1",
+      ELIZA_ANDROID_AVF_MICRODROID_STATE: "payload-missing",
     });
     expect(featureProbe.globals?.AndroidVirtualization).toMatchObject({
-      available: true,
+      state: "payload-missing",
+      available: false,
+      avfAvailable: true,
       microdroidAvailable: true,
       apiLevel: 35,
+    });
+  });
+
+  it("marks Android AVF/Microdroid ready only when a payload boundary is reported", () => {
+    const featureProbe = createAndroidAvfMicrodroidFeatureProbe({
+      ElizaNative: {
+        getAndroidVirtualization: () =>
+          JSON.stringify({
+            state: "ready",
+            available: true,
+            avfAvailable: true,
+            microdroidAvailable: true,
+            payloadAvailable: true,
+            requestContractVersion:
+              ANDROID_AVF_MICRODROID_REQUEST_CONTRACT_VERSION,
+          }),
+      },
+    });
+
+    expect(featureProbe.androidAvfCapabilityState).toBe("ready");
+    expect(featureProbe.androidAvfPayloadAvailable).toBe(true);
+    expect(featureProbe.env).toMatchObject({
+      ELIZA_ANDROID_MICRODROID_PAYLOAD_READY: "1",
+      ELIZA_ANDROID_AVF_MICRODROID_STATE: "ready",
     });
   });
 
@@ -53,7 +91,12 @@ describe("Android AVF/Microdroid native bridge", () => {
       platform: "android",
       androidAvfAvailable: false,
       androidMicrodroidAvailable: false,
-      env: { ELIZA_PLATFORM: "android" },
+      androidAvfPayloadAvailable: false,
+      androidAvfCapabilityState: "framework-unavailable",
+      env: {
+        ELIZA_PLATFORM: "android",
+        ELIZA_ANDROID_AVF_MICRODROID_STATE: "framework-unavailable",
+      },
       globals: { AndroidVirtualization: undefined },
     });
   });
@@ -61,8 +104,22 @@ describe("Android AVF/Microdroid native bridge", () => {
   it("creates a request boundary from the native bridge", async () => {
     const boundary = createAndroidAvfMicrodroidBoundaryFromNative({
       ElizaNative: {
+        getAndroidVirtualization: () =>
+          JSON.stringify({
+            state: "ready",
+            available: true,
+            avfAvailable: true,
+            microdroidAvailable: true,
+            payloadAvailable: true,
+          }),
         requestAndroidVirtualization: (requestJson) => {
-          const request = JSON.parse(requestJson) as { id: string };
+          const request = JSON.parse(requestJson) as {
+            id: string;
+            contractVersion: number;
+          };
+          expect(request.contractVersion).toBe(
+            ANDROID_AVF_MICRODROID_REQUEST_CONTRACT_VERSION,
+          );
           return JSON.stringify({
             id: request.id,
             ok: true,
@@ -86,9 +143,54 @@ describe("Android AVF/Microdroid native bridge", () => {
     });
   });
 
+  it("fails closed locally when the native probe reports no Microdroid payload", async () => {
+    let called = false;
+    const boundary = createAndroidAvfMicrodroidBoundaryFromNative({
+      ElizaNative: {
+        getAndroidVirtualization: () =>
+          JSON.stringify({
+            state: "payload-missing",
+            available: false,
+            avfAvailable: true,
+            microdroidAvailable: true,
+            payloadAvailable: false,
+          }),
+        requestAndroidVirtualization: () => {
+          called = true;
+          return null;
+        },
+      },
+    });
+
+    await expect(
+      boundary?.request({
+        id: "request-payload-missing",
+        capability: "app.run",
+        operation: "execute",
+        args: { code: "export default {}" },
+      }),
+    ).resolves.toMatchObject({
+      id: "request-payload-missing",
+      ok: false,
+      error: {
+        code: "ANDROID_AVF_MICRODROID_PAYLOAD_MISSING",
+        retryable: false,
+      },
+    });
+    expect(called).toBe(false);
+  });
+
   it("returns a structured error for malformed native request responses", async () => {
     const boundary = createAndroidAvfMicrodroidBoundaryFromNative({
       ElizaNative: {
+        getAndroidVirtualization: () =>
+          JSON.stringify({
+            state: "ready",
+            available: true,
+            avfAvailable: true,
+            microdroidAvailable: true,
+            payloadAvailable: true,
+          }),
         requestAndroidVirtualization: () => "{not-json",
       },
     });

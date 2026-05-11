@@ -111,7 +111,7 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1-1_7b". */
+  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;

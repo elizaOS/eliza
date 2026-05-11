@@ -106,8 +106,10 @@ describe("local inference downloader status", () => {
 
     const text = "GGUF text model";
     const voice = "GGUF voice model";
+    const asr = "GGUF asr model";
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
+    const vad = "VAD runtime data";
     const manifest = JSON.stringify({
       id: "eliza-1-0_6b",
       version: "1.0.0",
@@ -121,7 +123,7 @@ describe("local inference downloader status", () => {
           },
         ],
         voice: [{ path: "tts/voice.gguf", sha256: sha256(voice) }],
-        asr: [],
+        asr: [{ path: "asr/eliza-1-asr.gguf", sha256: sha256(asr) }],
         vision: [],
         dflash: [
           {
@@ -135,6 +137,7 @@ describe("local inference downloader status", () => {
             sha256: sha256(cache),
           },
         ],
+        vad: [{ path: "vad/eliza-1-vad.bin", sha256: sha256(vad) }],
       },
     });
     installFetchFixture(
@@ -142,8 +145,10 @@ describe("local inference downloader status", () => {
         ["eliza-1.manifest.json", manifest],
         ["text/eliza-1-0_6b-32k.gguf", text],
         ["tts/voice.gguf", voice],
+        ["asr/eliza-1-asr.gguf", asr],
         ["dflash/drafter-0_6b.gguf", drafter],
         ["cache/default-voice-preset.bin", cache],
+        ["vad/eliza-1-vad.bin", vad],
       ]),
     );
 
@@ -175,6 +180,12 @@ describe("local inference downloader status", () => {
     expect(main.bundleVersion).toBe("1.0.0");
     expect(main.bundleSizeBytes).toBeGreaterThan(main.sizeBytes);
     expect(fs.existsSync(path.join(bundleRoot, "tts/voice.gguf"))).toBe(true);
+    expect(fs.existsSync(path.join(bundleRoot, "asr/eliza-1-asr.gguf"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(bundleRoot, "vad/eliza-1-vad.bin"))).toBe(
+      true,
+    );
     expect(companion.runtimeRole).toBe("dflash-drafter");
     expect(companion.companionFor).toBe(model.id);
     expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);

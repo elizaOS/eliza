@@ -3,11 +3,10 @@
   "version": "0.0.1",
   "main": "index.json",
   "scripts": {
-    "generate-registry": "node scripts/generate-registry.js"
-  },
-  "dependencies": {
-    "@octokit/rest": "^20.0.2",
-    "dotenv": "^16.5.0",
-    "semver": "^7.5.4"
+    "generate-registry": "node scripts/generate-registry.js",
+    "check": "node scripts/generate-registry.js --check",
+    "validate": "node scripts/generate-registry.js --check",
+    "validate:metadata": "node scripts/validate-registry.js",
+    "prepare-site": "node scripts/prepare-site-public.js"
   }
 }

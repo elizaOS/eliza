@@ -20,7 +20,7 @@ tags:
 [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft).
 Trained with [APOLLO](https://arxiv.org/abs/2412.05270) (full fine-tune at
 SGD-like memory) using the
-[`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline)
+[`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline)
 repo. Upstream lineage is recorded in the model metadata and license block.
 
 ## Model description
@@ -31,7 +31,7 @@ repo. Upstream lineage is recorded in the model metadata and license block.
 | Parameters | {params_billion}B |
 | Architecture | Eliza-1 hybrid local-inference backbone |
 | Training data | [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft) |
-| Training pipeline | [`elizalabs/eliza-1-pipeline`](https://huggingface.co/elizalabs/eliza-1-pipeline) |
+| Training pipeline | [`elizaos/eliza-1-pipeline`](https://huggingface.co/elizaos/eliza-1-pipeline) |
 | Optimizer | {optimizer} (rank {optimizer_rank}) |
 | Train sequence length | {seq_len} |
 | Native context window | {infer_max_in_plus_out} tokens ({infer_max_in} in + {infer_max_out} out) |
@@ -54,7 +54,7 @@ model = AutoModelForCausalLM.from_pretrained(
 ### vLLM
 
 Use the in-repo serve script
-[`scripts/inference/serve_vllm.py`](https://huggingface.co/elizalabs/eliza-1-pipeline/blob/main/scripts/inference/serve_vllm.py)
+[`scripts/inference/serve_vllm.py`](https://huggingface.co/elizaos/eliza-1-pipeline/blob/main/scripts/inference/serve_vllm.py)
 or invoke vLLM directly:
 
 ```bash

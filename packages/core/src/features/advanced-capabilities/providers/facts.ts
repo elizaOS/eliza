@@ -9,7 +9,10 @@ import type {
 	ProviderResult,
 	State,
 } from "../../../types/index.ts";
-import { ModelType } from "../../../types/index.ts";
+import {
+	buildFactQueryText,
+	scoreFactKeywordRelevance,
+} from "../fact-keywords.ts";
 
 // Get text content from centralized specs
 const spec = requireProviderSpec("FACTS");
@@ -29,12 +32,12 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const DEFAULT_FACT_CONFIDENCE = 0.6;
 
 /**
- * How many candidates we pull per kind from `searchMemories`. The runtime
- * search API does not accept metadata filters, so we fetch a wider pool and
- * partition by `metadata.kind` in TypeScript before ranking. The final
- * cap per section is `TOP_PER_KIND`.
+ * How many recent fact candidates we pull per scope before local BM25 keyword
+ * scoring. SQL adapters currently do not consistently support metadata
+ * filtering here, so we fetch a bounded recent pool and partition by
+ * `metadata.kind` in TypeScript before ranking.
  */
-const CANDIDATE_POOL_PER_SEARCH = 20;
+const CANDIDATE_POOL_PER_SEARCH = 120;
 const TOP_PER_KIND = 6;
 
 function readFactMetadata(memory: Memory): FactMetadata {
@@ -97,21 +100,26 @@ function timeWeight(kind: FactKind, ageMs: number): number {
 	return Math.exp(-ageDays / CURRENT_DECAY_DAYS);
 }
 
-function scoreFact(memory: Memory, kind: FactKind, nowMs: number): number {
+function scoreFactPrior(memory: Memory, kind: FactKind, nowMs: number): number {
 	const ts = readEffectiveTimestampMs(memory);
 	const ageMs = ts === null ? 0 : Math.max(0, nowMs - ts);
 	return readFactConfidence(memory) * timeWeight(kind, ageMs);
 }
 
-function rankByScore(
+function rankByKeywordScore(
 	memories: Memory[],
 	kind: FactKind,
+	queryText: string,
 	nowMs: number,
 ): Memory[] {
-	return [...memories].sort(
-		(left, right) =>
-			scoreFact(right, kind, nowMs) - scoreFact(left, kind, nowMs),
-	);
+	return scoreFactKeywordRelevance(queryText, memories)
+		.map((entry) => ({
+			memory: entry.memory,
+			score: entry.relevance * scoreFactPrior(entry.memory, kind, nowMs),
+		}))
+		.filter((entry) => entry.score > 0)
+		.sort((left, right) => right.score - left.score)
+		.map((entry) => entry.memory);
 }
 
 function dedupeById(memories: Memory[]): Memory[] {
@@ -192,8 +200,9 @@ function formatLines(memories: Memory[], kind: FactKind): string {
 
 /**
  * Function to get key facts that the agent knows about the speaker.
- * Splits retrieval into two parallel similarity searches and ranks each
- * kind with its own time-weighting curve (see `fact-memory.md`).
+ * Splits retrieval into room/entity candidate pools, performs local BM25
+ * keyword scoring over fact text + extracted keywords, and ranks each kind
+ * with its own time-weighting curve (see `fact-memory.md`).
  */
 const factsProvider: Provider = {
 	name: spec.name,
@@ -218,7 +227,7 @@ const factsProvider: Provider = {
 				unique: false,
 			});
 
-			// Build the embedding seed from the most recent five message bodies.
+			// Build the lexical query from the current message and recent context.
 			const lastMessageLines: string[] = [];
 			for (
 				let i = recentMessages.length - 1;
@@ -229,42 +238,45 @@ const factsProvider: Provider = {
 			}
 			lastMessageLines.reverse();
 			const last5Messages = lastMessageLines.join("\n");
+			const queryText = buildFactQueryText(
+				message.content?.text ?? "",
+				last5Messages,
+			);
 
-			const embedding = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-				text: last5Messages,
-			});
+			if (!queryText) {
+				return {
+					values: { facts: "" },
+					data: {
+						facts: [],
+						durableFacts: [],
+						currentFacts: [],
+					},
+					text: "No facts available.",
+				};
+			}
 
-			// Two parallel searches, one room-scoped and one entity-scoped, both
-			// over the `facts` table. We over-fetch so that the in-memory kind
-			// partition still leaves enough candidates per kind after filtering.
-			// The runtime search API does not accept metadata filters today, so
-			// the partition happens in TS below.
-			//
-			// We deliberately omit `query` here. Passing a query triggers BM25
-			// lexical reranking inside `runtime.searchMemories`, which silently
-			// drops candidates with zero token overlap and short-circuits the
-			// embedding-similarity ranking we already rely on. The provider
-			// re-ranks by `confidence × timeWeight(kind, age)` immediately
-			// afterward, so adding a lexical filter on top would just hide
-			// otherwise-relevant facts.
+			// Two parallel candidate fetches, one room-scoped and one entity-scoped,
+			// both over the `facts` table. We intentionally use `getMemories`
+			// instead of vector search: relevance is computed locally from extracted
+			// fact keywords and the fact's own words.
 			const relatedEntityIds = await getRelatedEntityIds(
 				runtime,
 				message.entityId,
 			);
 			const [roomFacts, ...entityFactPools] = await Promise.all([
-				runtime.searchMemories({
+				runtime.getMemories({
 					tableName: "facts",
-					embedding,
 					roomId: message.roomId,
 					worldId: message.worldId,
-					limit: CANDIDATE_POOL_PER_SEARCH,
+					count: CANDIDATE_POOL_PER_SEARCH,
+					unique: false,
 				}),
 				...relatedEntityIds.map((entityId) =>
-					runtime.searchMemories({
-						embedding,
+					runtime.getMemories({
 						tableName: "facts",
 						entityId,
-						limit: CANDIDATE_POOL_PER_SEARCH,
+						count: CANDIDATE_POOL_PER_SEARCH,
+						unique: false,
 					}),
 				),
 			]);
@@ -275,14 +287,16 @@ const factsProvider: Provider = {
 				partitionByKind(dedupedPool);
 
 			const nowMs = Date.now();
-			const durableFacts = rankByScore(
+			const durableFacts = rankByKeywordScore(
 				durableCandidates,
 				"durable",
+				queryText,
 				nowMs,
 			).slice(0, TOP_PER_KIND);
-			const currentFacts = rankByScore(
+			const currentFacts = rankByKeywordScore(
 				currentCandidates,
 				"current",
+				queryText,
 				nowMs,
 			).slice(0, TOP_PER_KIND);
 			const allFacts = [...durableFacts, ...currentFacts];

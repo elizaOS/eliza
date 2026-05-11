@@ -20,7 +20,8 @@ export type MobileRuntimeMode =
   | "remote-mac"
   | "cloud"
   | "cloud-hybrid"
-  | "local";
+  | "local"
+  | "tunnel-to-mobile";
 
 export function normalizeMobileRuntimeMode(
   value: string | null | undefined,
@@ -31,6 +32,7 @@ export function normalizeMobileRuntimeMode(
     case "cloud":
     case "cloud-hybrid":
     case "local":
+    case "tunnel-to-mobile":
       return normalized;
     default:
       return null;

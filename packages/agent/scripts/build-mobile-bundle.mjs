@@ -193,6 +193,25 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
+  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that
+  // `packages/app-core/src/api/training-benchmarks.ts` imports at module
+  // top level. Bun 1.3.x on arm64-Android does not yet implement it, so
+  // the unstubbed import bombs on first agent boot:
+  //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
+  //   at /data/data/<pkg>/files/agent/agent-bundle.js:NNNNN
+  // The benchmarks endpoint has no mobile use case — it reads + writes
+  // training-run JSONL from the desktop training pipeline. Swap the
+  // import for `empty.cjs` so the bundle still loads; route handlers
+  // that touch the missing API will return undefined-method errors
+  // through the existing connector-route error path, which is correct
+  // behaviour for a no-op surface on mobile.
+  "node:sqlite": path.join(stubsDir, "empty.cjs"),
+  // `@node-rs/argon2` ships platform-specific native `.node` binaries. If left
+  // unstubbed on a macOS build host, Bun emits `argon2.darwin-arm64...node`
+  // into dist-mobile, which is both unusable on Android and unacceptable for a
+  // portable mobile payload. Mobile does not run desktop password-auth routes,
+  // so fail closed if anything reaches this surface.
+  "@node-rs/argon2": path.join(stubsDir, "argon2.cjs"),
   "@types/react": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
@@ -850,6 +869,20 @@ if (bundleSrc.startsWith("#!")) {
   prefixed = polyfillHeader + bundleSrc + polyfillFooter;
 }
 await Bun.write(bundlePath, prefixed);
+
+const nativeNodeOutputs = (await readdir(outDir)).filter((file) =>
+  file.endsWith(".node"),
+);
+if (nativeNodeOutputs.length > 0) {
+  console.error(
+    "[build-mobile] FATAL: native Node addon(s) leaked into the Android mobile payload:",
+    nativeNodeOutputs.join(", "),
+  );
+  console.error(
+    "[build-mobile] Add an explicit mobile stub for the package that emitted the native addon.",
+  );
+  process.exit(1);
+}
 
 const bundleSize = (await stat(bundlePath)).size;
 console.log(

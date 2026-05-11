@@ -50,8 +50,18 @@ function eliza1MobileManifest(): Record<string, unknown> {
           ctx: 32768,
         },
       ],
-      voice: [],
-      asr: [],
+      voice: [
+        {
+          path: "voice/eliza-voice.codec",
+          sha256: "0".repeat(64),
+        },
+      ],
+      asr: [
+        {
+          path: "asr/eliza-asr.codec",
+          sha256: "0".repeat(64),
+        },
+      ],
       vision: [],
       dflash: [
         {
@@ -60,7 +70,18 @@ function eliza1MobileManifest(): Record<string, unknown> {
           ctx: 32768,
         },
       ],
-      cache: [],
+      cache: [
+        {
+          path: "cache/eliza-1-1_7b.kvcache",
+          sha256: "0".repeat(64),
+        },
+      ],
+      vad: [
+        {
+          path: "vad/eliza-vad.bin",
+          sha256: "0".repeat(64),
+        },
+      ],
     },
   };
 }

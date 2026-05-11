@@ -3062,12 +3062,12 @@ export const allActionsSpec = {
 		{
 			name: "CALENDAR",
 			description:
-				"Manage Google Calendar plus availability and meeting preferences. Subactions: ",
+				"Manage live calendar events plus availability and meeting preferences. Subactions: ",
 			parameters: [
 				{
 					name: "action",
 					description:
-						"Which calendar operation to run. Google Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
+						"Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
 					required: false,
 					schema: {
 						type: "string",
@@ -3086,7 +3086,7 @@ export const allActionsSpec = {
 						],
 					},
 					descriptionCompressed:
-						"Which calendar operation to run. Google Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule...",
+						"Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule...",
 				},
 				{
 					name: "intent",
@@ -5295,6 +5295,9 @@ export const allActionsSpec = {
 							"play_audio",
 							"set_routing",
 							"set_zone",
+							"generate",
+							"extend",
+							"custom_generate",
 						],
 					},
 					descriptionCompressed:
@@ -5404,9 +5407,89 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Routing target ids.",
 				},
+				{
+					name: "prompt",
+					description:
+						"Suno generation prompt for action=generate/custom_generate.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Suno generation prompt for action=generate/custom_generate.",
+				},
+				{
+					name: "audio_id",
+					description: "Existing Suno audio id when action=extend.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Existing Suno audio id when action=extend.",
+				},
+				{
+					name: "duration",
+					description:
+						"Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 30,
+					},
+					descriptionCompressed:
+						"Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+				},
+				{
+					name: "style",
+					description: "Style hint for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Style hint for action=custom_generate (Suno).",
+				},
+				{
+					name: "reference_audio",
+					description: "Reference audio URL for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reference audio URL for action=custom_generate (Suno).",
+				},
+				{
+					name: "bpm",
+					description: "Target BPM for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Target BPM for action=custom_generate (Suno).",
+				},
+				{
+					name: "key",
+					description: "Musical key for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Musical key for action=custom_generate (Suno).",
+				},
 			],
 			descriptionCompressed:
-				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone.",
+				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+			similes: [
+				"GENERATE_MUSIC",
+				"CREATE_MUSIC",
+				"MAKE_MUSIC",
+				"COMPOSE_MUSIC",
+				"CUSTOM_GENERATE_MUSIC",
+				"EXTEND_AUDIO",
+			],
 			exampleCalls: [
 				{
 					user: "Use MUSIC with the provided parameters.",
@@ -5424,85 +5507,13 @@ export const allActionsSpec = {
 							mode: "example",
 							sourceId: "example",
 							targetIds: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MUSIC_GENERATION",
-			description:
-				"Generate music through Suno. Use action generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",
-			parameters: [
-				{
-					name: "action",
-					description: "Suno operation: generate, custom, or extend.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["generate", "custom", "extend"],
-					},
-					descriptionCompressed: "Suno operation: generate, custom, or extend.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
-					name: "prompt",
-					description: "Music prompt for generate/custom.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Music prompt for generate/custom.",
-				},
-				{
-					name: "audio_id",
-					description: "Existing Suno audio id for extend.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Existing Suno audio id for extend.",
-				},
-				{
-					name: "duration",
-					description: "Generation duration or extension seconds.",
-					required: false,
-					schema: {
-						type: "number",
-						default: 30,
-					},
-					descriptionCompressed: "Generation duration or extension seconds.",
-				},
-			],
-			descriptionCompressed:
-				"Suno music generation router action: generate, custom, extend.",
-			similes: [
-				"GENERATE_MUSIC",
-				"CREATE_MUSIC",
-				"MAKE_MUSIC",
-				"COMPOSE_MUSIC",
-				"CUSTOM_GENERATE_MUSIC",
-				"EXTEND_AUDIO",
-			],
-			exampleCalls: [
-				{
-					user: "Use MUSIC_GENERATION with the provided parameters.",
-					actions: ["MUSIC_GENERATION"],
-					params: {
-						MUSIC_GENERATION: {
-							action: "generate",
-							subaction: "example",
 							prompt: "example",
 							audio_id: "example",
 							duration: 30,
+							style: "example",
+							reference_audio: "example",
+							bpm: 1,
+							key: "example",
 						},
 					},
 				},
@@ -5757,6 +5768,118 @@ export const allActionsSpec = {
 					params: {
 						OWNER_SCREENTIME: {
 							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PERPETUAL_MARKET",
+			description:
+				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+			parameters: [
+				{
+					name: "target",
+					description: "Perpetual market provider.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["hyperliquid"],
+						default: "hyperliquid",
+					},
+					descriptionCompressed: "Perpetual market provider.",
+				},
+				{
+					name: "action",
+					description: "Perpetual market operation: read or place_order.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order"],
+					},
+					descriptionCompressed:
+						"Perpetual market operation: read or place_order.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Accepts place-order as place_order.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order", "place-order"],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Accepts place-order as place_order.",
+				},
+				{
+					name: "kind",
+					description:
+						"read only: status | markets | market | positions | funding.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["status", "markets", "market", "positions", "funding"],
+					},
+					descriptionCompressed:
+						"read only: status | markets | market | positions | funding.",
+				},
+				{
+					name: "coin",
+					description: "market only: Hyperliquid coin/asset symbol (e.g. BTC).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"market only: Hyperliquid coin/asset symbol (e. g. BTC).",
+				},
+				{
+					name: "side",
+					description: "place_order only: intended side, buy or sell.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["buy", "sell"],
+					},
+					descriptionCompressed:
+						"place_order only: intended side, buy or sell.",
+				},
+				{
+					name: "asset",
+					description: "place_order only: Hyperliquid asset symbol.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "place_order only: Hyperliquid asset symbol.",
+				},
+				{
+					name: "size",
+					description: "place_order only: intended order size.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "place_order only: intended order size.",
+				},
+			],
+			descriptionCompressed:
+				"Perpetual market router: target hyperliquid; action read or place_order.",
+			exampleCalls: [
+				{
+					user: "Use PERPETUAL_MARKET with the provided parameters.",
+					actions: ["PERPETUAL_MARKET"],
+					params: {
+						PERPETUAL_MARKET: {
+							target: "hyperliquid",
+							action: "read",
+							subaction: "read",
+							kind: "status",
+							coin: "example",
+							side: "buy",
+							asset: "example",
+							size: 1,
 						},
 					},
 				},
@@ -7023,8 +7146,504 @@ export const allActionsSpec = {
 		{
 			name: "TASKS",
 			description:
-				"Coding-agent surface (disabled in store builds — install the direct download to enable).",
-			parameters: [],
+				"Single planner-visible surface for the orchestrator's task-agent and workspace lifecycle. ",
+			parameters: [
+				{
+					name: "action",
+					description:
+						"Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues, archive, reopen.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"create",
+							"spawn_agent",
+							"send",
+							"stop_agent",
+							"list_agents",
+							"cancel",
+							"history",
+							"control",
+							"share",
+							"provision_workspace",
+							"submit_workspace",
+							"manage_issues",
+							"archive",
+							"reopen",
+						],
+					},
+					descriptionCompressed:
+						"Task operation: create, spawn_agent, send, stop_agent, list_agents, cancel, history, control, share, provision_workspace, submit_workspace, manage_issues...",
+				},
+				{
+					name: "task",
+					description:
+						"Task prompt for create / spawn_agent / send (as new task).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Task prompt for create/spawn_agent/send (as new task).",
+				},
+				{
+					name: "agentType",
+					description:
+						"Agent type (codex, claude, etc.) for create / spawn_agent / control.resume.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Agent type (codex, claude, etc.) for create/spawn_agent/control. resume.",
+				},
+				{
+					name: "agents",
+					description:
+						"Pipe-delimited multi-agent task list for action=create.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Pipe-delimited multi-agent task list for action=create.",
+				},
+				{
+					name: "repo",
+					description:
+						"Repository URL/slug for action=create / action=manage_issues / action=provision_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Repository URL/slug for action=create/action=manage_issues/action=provision_workspace.",
+				},
+				{
+					name: "workdir",
+					description:
+						"Working directory for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Working directory for action=create/action=spawn_agent.",
+				},
+				{
+					name: "memoryContent",
+					description:
+						"Additional memory/context for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Additional memory/context for action=create/action=spawn_agent.",
+				},
+				{
+					name: "label",
+					description:
+						"Task label for action=create / action=spawn_agent / action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Task label for action=create/action=spawn_agent/action=send.",
+				},
+				{
+					name: "approvalPreset",
+					description:
+						"Approval preset for action=create / action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["readonly", "standard", "permissive", "autonomous"],
+					},
+					descriptionCompressed:
+						"Approval preset for action=create/action=spawn_agent.",
+				},
+				{
+					name: "keepAliveAfterComplete",
+					description:
+						"Keep session alive after completion for action=spawn_agent.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Keep session alive after completion for action=spawn_agent.",
+				},
+				{
+					name: "input",
+					description:
+						"Text input to send to a running session for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Text input to send to a running session for action=send.",
+				},
+				{
+					name: "keys",
+					description: "Key sequence to send for action=send.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Key sequence to send for action=send.",
+				},
+				{
+					name: "sessionId",
+					description:
+						"Target session id for action=send / action=stop_agent / action=cancel / action=control / action=share.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target session id for action=send/action=stop_agent/action=cancel/action=control/action=share.",
+				},
+				{
+					name: "threadId",
+					description:
+						"Target task-thread id for action=cancel / action=control / action=share / action=archive / action=reopen.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Target task-thread id for action=cancel/action=control/action=share/action=archive/action=reopen.",
+				},
+				{
+					name: "taskId",
+					description:
+						"Alias for threadId; preferred for action=archive / action=reopen.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Alias for threadId. preferred for action=archive/action=reopen.",
+				},
+				{
+					name: "all",
+					description:
+						"Apply to all sessions for action=stop_agent / action=cancel.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Apply to all sessions for action=stop_agent/action=cancel.",
+				},
+				{
+					name: "search",
+					description:
+						"Free-text search for thread/task lookup in action=cancel / action=control / action=history / action=share.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-text search for thread/task lookup in action=cancel/action=control/action=history/action=share.",
+				},
+				{
+					name: "reason",
+					description: "Cancellation reason for action=cancel.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Cancellation reason for action=cancel.",
+				},
+				{
+					name: "metric",
+					description:
+						"History query mode for action=history: list (default), count, or detail.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["list", "count", "detail"],
+					},
+					descriptionCompressed:
+						"History query mode for action=history: list (default), count, or detail.",
+				},
+				{
+					name: "window",
+					description: "Relative window for action=history.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"active",
+							"today",
+							"yesterday",
+							"last_7_days",
+							"last_30_days",
+						],
+					},
+					descriptionCompressed: "Relative window for action=history.",
+				},
+				{
+					name: "statuses",
+					description: "Status filter list for action=history.",
+					required: false,
+					schema: {
+						type: "array",
+						items: {
+							type: "string",
+						},
+					},
+					descriptionCompressed: "Status filter list for action=history.",
+				},
+				{
+					name: "limit",
+					description: "Result limit for action=history.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "Result limit for action=history.",
+				},
+				{
+					name: "includeArchived",
+					description: "Include archived threads in action=history.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Include archived threads in action=history.",
+				},
+				{
+					name: "controlAction",
+					description:
+						"Child action for action=control: pause | resume | stop | continue | archive | reopen.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Child action for action=control: pause | resume | stop | continue | archive | reopen.",
+				},
+				{
+					name: "issueAction",
+					description:
+						"Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Child action for action=manage_issues: create | list | get | update | comment | close | reopen | add_labels.",
+				},
+				{
+					name: "note",
+					description:
+						"Optional note for action=control with controlAction=pause|stop.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional note for action=control with controlAction=pause|stop.",
+				},
+				{
+					name: "instruction",
+					description:
+						"Follow-up instruction for action=control with controlAction=resume|continue.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Follow-up instruction for action=control with controlAction=resume|continue.",
+				},
+				{
+					name: "baseBranch",
+					description:
+						"Base branch for action=provision_workspace / action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Base branch for action=provision_workspace/action=submit_workspace.",
+				},
+				{
+					name: "useWorktree",
+					description: "Use worktree mode for action=provision_workspace.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Use worktree mode for action=provision_workspace.",
+				},
+				{
+					name: "parentWorkspaceId",
+					description:
+						"Parent workspace id for action=provision_workspace worktree mode.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Parent workspace id for action=provision_workspace worktree mode.",
+				},
+				{
+					name: "workspaceId",
+					description: "Workspace id for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Workspace id for action=submit_workspace.",
+				},
+				{
+					name: "commitMessage",
+					description: "Commit message for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Commit msg for action=submit_workspace.",
+				},
+				{
+					name: "prTitle",
+					description: "PR title for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "PR title for action=submit_workspace.",
+				},
+				{
+					name: "prBody",
+					description: "PR body for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "PR body for action=submit_workspace.",
+				},
+				{
+					name: "draft",
+					description: "Create draft PR for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed: "Create draft PR for action=submit_workspace.",
+				},
+				{
+					name: "skipPR",
+					description: "Skip PR creation for action=submit_workspace.",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"Skip PR creation for action=submit_workspace.",
+				},
+				{
+					name: "title",
+					description:
+						"Issue title for action=manage_issues with issueAction=create|update.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue title for action=manage_issues with issueAction=create|update.",
+				},
+				{
+					name: "body",
+					description:
+						"Issue body for action=manage_issues with issueAction=create|update|comment.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Issue body for action=manage_issues with issueAction=create|update|comment.",
+				},
+				{
+					name: "issueNumber",
+					description:
+						"Issue number for action=manage_issues with issueAction=get|update|comment|close|reopen|add_labels.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Issue number for action=manage_issues with issueAction=get|update|comment|close|reopen|add_labels.",
+				},
+				{
+					name: "labels",
+					description:
+						"Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Labels (csv string or array) for action=manage_issues with issueAction=create|update|add_labels|list.",
+				},
+				{
+					name: "state",
+					description:
+						"State filter (open|closed|all) for action=manage_issues with issueAction=list.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"State filter (open|closed|all) for action=manage_issues with issueAction=list.",
+				},
+				{
+					name: "validator",
+					description: "Optional verifier for action=create.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "Optional verifier for action=create.",
+				},
+				{
+					name: "maxRetries",
+					description: "Verifier retry count for action=create.",
+					required: false,
+					schema: {
+						type: "integer",
+						minimum: 0,
+					},
+					descriptionCompressed: "Verifier retry count for action=create.",
+				},
+				{
+					name: "onVerificationFail",
+					description: "Verifier failure behavior for action=create.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["retry", "escalate"],
+					},
+					descriptionCompressed: "Verifier failure behavior for action=create.",
+				},
+				{
+					name: "metadata",
+					description: "Additional metadata for action=create.",
+					required: false,
+					schema: {
+						type: "object",
+					},
+					descriptionCompressed: "Additional metadata for action=create.",
+				},
+			],
+			descriptionCompressed:
+				"tasks: action=create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|provision_workspace|submit_workspace|manage_issues|archive|reopen",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",
@@ -7035,6 +7654,7 @@ export const allActionsSpec = {
 				"SPAWN_AND_PROVISION",
 				"CODE_THIS",
 				"LAUNCH_TASK",
+				"CREATE_SUBTASK",
 				"SPAWN_AGENT",
 				"SPAWN_CODING_AGENT",
 				"START_CODING_AGENT",
@@ -7048,25 +7668,132 @@ export const allActionsSpec = {
 				"SEND_TO_AGENT",
 				"SEND_TO_CODING_AGENT",
 				"MESSAGE_CODING_AGENT",
+				"INPUT_TO_AGENT",
+				"RESPOND_TO_AGENT",
+				"TELL_CODING_AGENT",
+				"MESSAGE_AGENT",
+				"TELL_TASK_AGENT",
 				"STOP_AGENT",
 				"STOP_CODING_AGENT",
 				"KILL_CODING_AGENT",
 				"TERMINATE_AGENT",
+				"END_CODING_SESSION",
+				"CANCEL_AGENT",
+				"CANCEL_TASK_AGENT",
+				"STOP_SUB_AGENT",
 				"LIST_AGENTS",
 				"LIST_CODING_AGENTS",
+				"SHOW_CODING_AGENTS",
+				"GET_ACTIVE_AGENTS",
+				"LIST_SESSIONS",
+				"SHOW_CODING_SESSIONS",
+				"SHOW_TASK_AGENTS",
+				"LIST_SUB_AGENTS",
+				"SHOW_TASK_STATUS",
 				"CANCEL_TASK",
 				"STOP_TASK",
+				"ABORT_TASK",
+				"KILL_TASK",
+				"STOP_SUBTASK",
 				"TASK_HISTORY",
+				"LIST_TASK_HISTORY",
+				"GET_TASK_HISTORY",
+				"SHOW_TASKS",
+				"COUNT_TASKS",
+				"TASK_STATUS_HISTORY",
 				"TASK_CONTROL",
+				"CONTROL_TASK",
+				"PAUSE_TASK",
+				"RESUME_TASK",
+				"CONTINUE_TASK",
+				"ARCHIVE_TASK",
+				"REOPEN_TASK",
 				"TASK_SHARE",
+				"SHARE_TASK_RESULT",
+				"SHOW_TASK_ARTIFACT",
+				"VIEW_TASK_OUTPUT",
+				"CAN_I_SEE_IT",
+				"PULL_IT_UP",
+				"CREATE_WORKSPACE",
 				"PROVISION_WORKSPACE",
+				"CLONE_REPO",
+				"SETUP_WORKSPACE",
+				"PREPARE_WORKSPACE",
+				"SUBMIT_WORKSPACE",
 				"FINALIZE_WORKSPACE",
+				"COMMIT_AND_PR",
+				"CREATE_PR",
+				"SUBMIT_CHANGES",
+				"FINISH_WORKSPACE",
 				"MANAGE_ISSUES",
+				"CREATE_ISSUE",
+				"LIST_ISSUES",
+				"CLOSE_ISSUE",
+				"COMMENT_ISSUE",
+				"UPDATE_ISSUE",
+				"GET_ISSUE",
 				"ARCHIVE_CODING_TASK",
+				"CLOSE_CODING_TASK",
+				"ARCHIVE_TASK_THREAD",
 				"REOPEN_CODING_TASK",
+				"UNARCHIVE_CODING_TASK",
+				"RESUME_CODING_TASK",
 			],
-			descriptionCompressed:
-				"Coding-agent surface (disabled in store builds - install the direct download to enable).",
+			exampleCalls: [
+				{
+					user: "Use TASKS with the provided parameters.",
+					actions: ["TASKS"],
+					params: {
+						TASKS: {
+							action: "create",
+							task: "example",
+							agentType: "example",
+							agents: "example",
+							repo: "example",
+							workdir: "example",
+							memoryContent: "example",
+							label: "example",
+							approvalPreset: "readonly",
+							keepAliveAfterComplete: false,
+							input: "example",
+							keys: "example",
+							sessionId: "example",
+							threadId: "example",
+							taskId: "example",
+							all: false,
+							search: "example",
+							reason: "example",
+							metric: "list",
+							window: "active",
+							statuses: "example",
+							limit: 1,
+							includeArchived: false,
+							controlAction: "example",
+							issueAction: "example",
+							note: "example",
+							instruction: "example",
+							baseBranch: "example",
+							useWorktree: false,
+							parentWorkspaceId: "example",
+							workspaceId: "example",
+							commitMessage: "example",
+							prTitle: "example",
+							prBody: "example",
+							draft: false,
+							skipPR: false,
+							title: "example",
+							body: "example",
+							issueNumber: 1,
+							labels: "example",
+							state: "example",
+							validator: "example",
+							maxRetries: "example",
+							onVerificationFail: "retry",
+							metadata: "example",
+						},
+					},
+				},
+			],
 		},
 		{
 			name: "TODO",

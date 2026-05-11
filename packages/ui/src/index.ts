@@ -1,5 +1,6 @@
-import "./styles/styles.css";
-import "./styles/brand-gold.css";
+// Stylesheets live in `./styles.ts` (`@elizaos/ui/styles`) so the barrel can be
+// imported by Node-side plugin loaders without forcing a CSS evaluation
+// (Node refuses ".css" extensions). Renderers must opt-in explicitly.
 
 export * from "./App";
 export * from "./api";

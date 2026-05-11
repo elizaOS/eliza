@@ -93,8 +93,11 @@
       "runtimeReady": false,
       "shippedSymbols": [
         "milady_polar_data",
+        "milady_polar_preht_data",
         "milady_polar_len",
-        "pipeline_milady_polar"
+        "milady_polar_preht_len",
+        "pipeline_milady_polar",
+        "pipeline_milady_polar_preht"
       ],
       "graphOp": "GGML_OP_ATTN_SCORE_POLAR",
       "graphRoutes": [
@@ -103,7 +106,7 @@
       ],
       "smokeTarget": "vulkan-dispatch-smoke",
       "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
-      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork."
+      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork. polar_preht is source-staged and standalone verified but requires an H*q graph pretransform before runtime routing can use it."
     }
   }
 }

@@ -181,6 +181,19 @@ struct PolarMvArgs {
     uint32_t use_qjl;
 };
 
+static void hadamard128_inplace(std::vector<float> & x) {
+    for (int h = 1; h < 128; h <<= 1) {
+        for (int i = 0; i < 128; i += (h << 1)) {
+            for (int j = i; j < i + h; ++j) {
+                float a = x[(size_t)j];
+                float b = x[(size_t)j + (size_t)h];
+                x[(size_t)j] = a + b;
+                x[(size_t)j + (size_t)h] = a - b;
+            }
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, const char * argv[]) {
@@ -191,6 +204,7 @@ int main(int argc, const char * argv[]) {
     const char * metal_path  = argv[1];
     const char * kernel_name = argv[2];
     const char * fx_path     = argv[3];
+    const bool kernel_uses_preht = std::strstr(kernel_name, "preht") != nullptr;
     float tol = 1e-3f;
     int multi_n = 0;        // 0 = single-block dispatch (legacy), >0 = multi-block
     for (int i = 4; i < argc; i++) {
@@ -340,8 +354,16 @@ int main(int argc, const char * argv[]) {
                 grid = MTLSizeMake((NSUInteger)fx.n_heads, (NSUInteger)fx.n_tokens, 1);
             }
         } else if (is_polar) {
-            id<MTLBuffer> q_buf = [device newBufferWithBytes:fx.q.data()
-                                                      length:fx.q.size() * sizeof(float)
+            std::vector<float> q_buf_data = fx.q;
+            if (kernel_uses_preht) {
+                if (q_buf_data.size() != 128) {
+                    std::fprintf(stderr, "[metal_verify] preht polar path requires q length 128\n");
+                    return 2;
+                }
+                hadamard128_inplace(q_buf_data);
+            }
+            id<MTLBuffer> q_buf = [device newBufferWithBytes:q_buf_data.data()
+                                                      length:q_buf_data.size() * sizeof(float)
                                                      options:MTLResourceStorageModeShared];
             PolarMvArgs args{};
             args.n_rows   = (uint32_t)fx.n_rows;

@@ -5,12 +5,16 @@ import {
 } from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 import type {
+  IPermissionsRegistry,
   LifeOpsDiscordConnectorStatus,
   LifeOpsGoogleConnectorStatus,
+  PermissionState,
   LifeOpsSignalConnectorStatus,
   LifeOpsTelegramConnectorStatus,
 } from "@elizaos/shared";
 import { LifeOpsService } from "./lifeops/service";
+
+const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
 async function resolveGoogleStatus(
   lifeOps: LifeOpsService,
@@ -76,6 +80,38 @@ async function resolveDiscordStatus(
   }
 }
 
+function isPermissionsRegistry(value: unknown): value is IPermissionsRegistry {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as { check?: unknown }).check === "function" &&
+    typeof (value as { get?: unknown }).get === "function"
+  );
+}
+
+async function resolveNativeCalendarPermission(
+  runtime: AutomationNodeContributorContext["runtime"],
+): Promise<PermissionState | null> {
+  const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
+  if (!isPermissionsRegistry(service)) {
+    return null;
+  }
+  try {
+    return await service.check("calendar");
+  } catch (error) {
+    logger.warn(
+      `[lifeops] Failed to resolve native Calendar permission: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+    try {
+      return service.get("calendar");
+    } catch {
+      return null;
+    }
+  }
+}
+
 function buildLifeOpsNode(
   id: string,
   label: string,
@@ -123,12 +159,19 @@ async function buildLifeOpsAutomationNodes({
   adminEntityId,
 }: AutomationNodeContributorContext): Promise<AutomationNodeDescriptor[]> {
   const lifeOps = new LifeOpsService(runtime, { ownerEntityId: adminEntityId });
-  const [googleStatus, telegramStatus, signalStatus, discordStatus] =
+  const [
+    googleStatus,
+    telegramStatus,
+    signalStatus,
+    discordStatus,
+    calendarPermission,
+  ] =
     await Promise.all([
       resolveGoogleStatus(lifeOps),
       resolveTelegramStatus(lifeOps),
       resolveSignalStatus(lifeOps),
       resolveDiscordStatus(lifeOps),
+      resolveNativeCalendarPermission(runtime),
     ]);
 
   const googleCapabilities = new Set(googleStatus?.grantedCapabilities ?? []);
@@ -138,8 +181,12 @@ async function buildLifeOpsAutomationNodes({
   const githubConnected =
     typeof githubToken === "string" && githubToken.trim().length > 0;
   const calendarConnected = Boolean(
-    googleStatus?.connected && hasGoogleCapability("calendar"),
+    (googleStatus?.connected && hasGoogleCapability("calendar")) ||
+      calendarPermission?.status === "granted",
   );
+  const calendarDisabledReason = googleStatus?.connected
+    ? "Reconnect Google with Calendar access or grant Apple Calendar access."
+    : "Connect Google Calendar or grant Apple Calendar access.";
 
   return [
     buildLifeOpsNode(
@@ -154,7 +201,7 @@ async function buildLifeOpsAutomationNodes({
       "Calendar",
       "Owner-scoped calendar reading and event creation.",
       calendarConnected,
-      "Connect the owner Google account with Calendar access.",
+      calendarDisabledReason,
     ),
     buildLifeOpsNode(
       "lifeops:telegram",
@@ -189,7 +236,7 @@ async function buildLifeOpsAutomationNodes({
       "Calendar event ended",
       "Fires a workflow after a synced calendar event's end time has passed.",
       calendarConnected,
-      "Connect the owner Google account with Calendar access.",
+      calendarDisabledReason,
     ),
   ];
 }

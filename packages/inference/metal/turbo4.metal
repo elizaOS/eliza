@@ -62,15 +62,23 @@ kernel void kernel_turbo4_dot(
     float norm = float(blk.norm);
     uint q_base = args.q_head * args.head_dim + elem0;
 
-    float acc = 0.0f;
-    for (uint local = 0; local < 4; ++local) {
-        uint within = within0 + local;
-        uint qb  = blk.qs[within & 15];
-        uint idx = within < 16 ? (qb & 0xFu) : (qb >> 4);
-        float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
-        float q_val = q[q_base + local];
-        acc = fma(q_val, k_val, acc);
-    }
+    device const float4 * q4 = (device const float4 *)(q + q_base);
+    float4 qv = q4[0];
+    uint qb0 = blk.qs[(within0 + 0u) & 15u];
+    uint qb1 = blk.qs[(within0 + 1u) & 15u];
+    uint qb2 = blk.qs[(within0 + 2u) & 15u];
+    uint qb3 = blk.qs[(within0 + 3u) & 15u];
+    bool hi = within0 >= 16u;
+    uint idx0 = hi ? (qb0 >> 4) : (qb0 & 0xFu);
+    uint idx1 = hi ? (qb1 >> 4) : (qb1 & 0xFu);
+    uint idx2 = hi ? (qb2 >> 4) : (qb2 & 0xFu);
+    uint idx3 = hi ? (qb3 >> 4) : (qb3 & 0xFu);
+    float4 kv = float4(
+        TURBO_CENTROIDS_4BIT[idx0],
+        TURBO_CENTROIDS_4BIT[idx1],
+        TURBO_CENTROIDS_4BIT[idx2],
+        TURBO_CENTROIDS_4BIT[idx3]) * norm;
+    float acc = dot(qv, kv);
 
     float sum = simd_sum(acc);
     if (tid == 0) {
@@ -113,15 +121,23 @@ kernel void kernel_turbo4_dot_multi(
         device const block_turbo4_0 & blk = grp[blk_idx];
         float norm = float(blk.norm);
 
-        float acc = 0.0f;
-        for (uint local = 0; local < 4; ++local) {
-            uint within = within0 + local;
-            uint qb  = blk.qs[within & 15];
-            uint idx = within < 16 ? (qb & 0xFu) : (qb >> 4);
-            float k_val = TURBO_CENTROIDS_4BIT[idx] * norm;
-            float q_val = q[q_base + local];
-            acc = fma(q_val, k_val, acc);
-        }
+        device const float4 * q4 = (device const float4 *)(q + q_base);
+        float4 qv = q4[0];
+        uint qb0 = blk.qs[(within0 + 0u) & 15u];
+        uint qb1 = blk.qs[(within0 + 1u) & 15u];
+        uint qb2 = blk.qs[(within0 + 2u) & 15u];
+        uint qb3 = blk.qs[(within0 + 3u) & 15u];
+        bool hi = within0 >= 16u;
+        uint idx0 = hi ? (qb0 >> 4) : (qb0 & 0xFu);
+        uint idx1 = hi ? (qb1 >> 4) : (qb1 & 0xFu);
+        uint idx2 = hi ? (qb2 >> 4) : (qb2 & 0xFu);
+        uint idx3 = hi ? (qb3 >> 4) : (qb3 & 0xFu);
+        float4 kv = float4(
+            TURBO_CENTROIDS_4BIT[idx0],
+            TURBO_CENTROIDS_4BIT[idx1],
+            TURBO_CENTROIDS_4BIT[idx2],
+            TURBO_CENTROIDS_4BIT[idx3]) * norm;
+        float acc = dot(qv, kv);
 
         float sum = simd_sum(acc);
         if (tid == 0) {

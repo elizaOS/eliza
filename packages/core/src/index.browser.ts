@@ -31,6 +31,7 @@ export {
 	fetchDocumentFromUrl,
 	isYouTubeUrl,
 } from "./features/documents/index";
+export { paymentsPlugin } from "./features/payments/index";
 export * from "./lifeops-passive-connectors";
 export * from "./logger";
 export * from "./memory";

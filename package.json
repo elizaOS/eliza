@@ -51,6 +51,7 @@
     "dev:desktop:watch": "bun run dev:prepare && ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs",
     "dev:harness": "bun scripts/dev-harness.mjs",
     "harness:browser-app": "bun scripts/eliza-browser-app-harness.mjs",
+    "harness:browser-app:strict": "bun scripts/eliza-browser-app-harness.mjs --require-browser-tab --require-browser-events --require-trajectory --require-browser-action",
     "local-inference:dflash:build": "node packages/app-core/scripts/build-llama-cpp-dflash.mjs",
     "local-inference:ablation": "node scripts/local-inference-ablation.mjs",
     "local-inference:ablation:quick": "node scripts/local-inference-ablation.mjs --quick",

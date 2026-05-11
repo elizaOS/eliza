@@ -42,6 +42,20 @@ const config: CapacitorConfig = {
       interval: 15,
       autoStart: true,
     },
+    Agent: {
+      runtimeMode:
+        process.env.VITE_MILADY_IOS_RUNTIME_MODE ??
+        process.env.VITE_ELIZA_IOS_RUNTIME_MODE ??
+        process.env.VITE_MILADY_MOBILE_RUNTIME_MODE ??
+        process.env.VITE_ELIZA_MOBILE_RUNTIME_MODE ??
+        "",
+      apiBase:
+        process.env.VITE_MILADY_IOS_API_BASE ??
+        process.env.VITE_ELIZA_IOS_API_BASE ??
+        process.env.VITE_MILADY_MOBILE_API_BASE ??
+        process.env.VITE_ELIZA_MOBILE_API_BASE ??
+        "",
+    },
   },
   ios: {
     contentInset: "automatic",

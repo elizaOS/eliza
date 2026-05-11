@@ -12,6 +12,7 @@ import { ActiveModelCoordinator } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
 import { MODEL_CATALOG } from "./catalog";
+import { getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf } from "./hf-search";
@@ -142,6 +143,7 @@ export class LocalInferenceService {
       slot,
       hardware ?? (await this.getHardware()),
       MODEL_CATALOG,
+      { binaryKernels: this.installedBinaryKernels() },
     );
   }
 
@@ -151,7 +153,18 @@ export class LocalInferenceService {
     return selectRecommendedModels(
       hardware ?? (await this.getHardware()),
       MODEL_CATALOG,
+      { binaryKernels: this.installedBinaryKernels() },
     );
+  }
+
+  /**
+   * Pull kernel capability bits from the local fork binary so background
+   * recommendations do not auto-download an Eliza-1 tier the runtime cannot
+   * actually execute.
+   */
+  private installedBinaryKernels(): Partial<Record<string, boolean>> | null {
+    const caps = getDflashRuntimeStatus().capabilities;
+    return caps?.kernels ?? null;
   }
 
   async startDownload(

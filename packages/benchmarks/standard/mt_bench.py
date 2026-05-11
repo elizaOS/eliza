@@ -37,6 +37,7 @@ from ._base import (
     BenchmarkResult,
     ChatMessage,
     GenerationConfig,
+    HTTPOpenAICompatibleClient,
     OpenAICompatibleClient,
     RunStats,
     make_client,
@@ -154,6 +155,10 @@ def _load_dataset_questions(limit: int | None) -> list[dict[str, object]]:
         }
         if limit is not None and len(seen) >= limit:
             break
+    if not seen:
+        log.warning("mt_bench dataset schema yielded zero questions — using fixture")
+        items = list(SMOKE_QUESTIONS)
+        return items if limit is None else items[:limit]
     return list(seen.values())
 
 
@@ -393,7 +398,7 @@ class _MTBenchFactory(RunnerFactory):
             )
             return runner, mock_responses
 
-        judge = make_client(endpoint=judge_endpoint, api_key=judge_api_key)
+        judge = HTTPOpenAICompatibleClient(endpoint=judge_endpoint, api_key=judge_api_key)
         runner = MTBenchRunner(
             judge=judge,
             judge_model=args.judge_model,

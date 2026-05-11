@@ -34,9 +34,9 @@ import {
   extractBundledMeetingCounterparties,
   formatProposedSlotsReply,
   proposeMeetingTimesAction,
-  schedulingAction,
+  runSchedulingNegotiationHandler,
   updateMeetingPreferencesAction,
-} from "../src/actions/scheduling.js";
+} from "../src/actions/lib/scheduling-handler.js";
 import { readLifeOpsMeetingPreferences } from "../src/lifeops/owner-profile.js";
 import { ensureLifeOpsSchedulerTask } from "../src/lifeops/runtime.js";
 import {
@@ -78,10 +78,8 @@ function makeMessage(runtime: AgentRuntime, text: string) {
 }
 
 describe("life-ops scheduling-with-others (pure slot logic)", () => {
-  it("keeps SCHEDULING scoped to negotiation workflows", () => {
-    expect(schedulingAction.suppressPostActionContinuation).toBe(true);
-    expect(schedulingAction.similes ?? []).not.toContain("SCHEDULE_MEETING");
-    expect(schedulingAction.similes ?? []).not.toContain("COORDINATE_SCHEDULE");
+  it("exposes a scheduling negotiation handler", () => {
+    expect(typeof runSchedulingNegotiationHandler).toBe("function");
   });
 
   it("computeProposedSlots returns 3 slots within preferred hours, avoiding busy intervals and blackouts", () => {

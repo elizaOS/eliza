@@ -18,6 +18,7 @@ import type {
   AdAccountCredentials,
   AdPlatform,
   AdProvider,
+  AdProviderMediaStatusResult,
   AdProviderMediaUploadResult,
   CampaignMetrics,
   ConnectAccountInput,
@@ -315,6 +316,37 @@ class AdvertisingService {
     const result = await provider.uploadMedia(credentials, account.external_account_id, input);
     if (!result.success) {
       throw new Error(result.error || "Failed to upload media to advertising platform");
+    }
+    return result;
+  }
+
+  async getMediaStatus(
+    organizationId: string,
+    adAccountId: string,
+    providerAssetResourceName: string,
+  ): Promise<AdProviderMediaStatusResult> {
+    const account = await adAccountsRepository.findById(adAccountId);
+    if (!account || account.organization_id !== organizationId) {
+      throw new Error("Ad account not found");
+    }
+
+    const provider = this.getProvider(account.platform);
+    if (!provider.getMediaStatus) {
+      return {
+        success: true,
+        providerAssetId: providerAssetResourceName,
+        providerAssetResourceName,
+        status: "AVAILABLE",
+        ready: true,
+      };
+    }
+
+    const credentials = await this.getCredentials(account);
+    const result = await provider.getMediaStatus(credentials, account.external_account_id, {
+      providerAssetResourceName,
+    });
+    if (!result.success) {
+      throw new Error(result.error || "Failed to get media status from advertising platform");
     }
     return result;
   }
@@ -787,6 +819,20 @@ class AdvertisingService {
     }
 
     return await adCreativesRepository.listByCampaign(campaignId);
+  }
+
+  async getCreative(creativeId: string, organizationId: string): Promise<AdCreative> {
+    const creative = await adCreativesRepository.findById(creativeId);
+    if (!creative) {
+      throw new Error("Creative not found");
+    }
+
+    const campaign = await adCampaignsRepository.findById(creative.campaign_id);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Creative not found");
+    }
+
+    return creative;
   }
 
   async createCreative(organizationId: string, input: CreateCreativeInput): Promise<AdCreative> {

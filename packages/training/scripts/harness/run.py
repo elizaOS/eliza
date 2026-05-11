@@ -1,10 +1,11 @@
-"""Phase 1 + Phase 2: drive scenarios through gpt-oss-120b and emit canonical records.
+"""Phase 1 + Phase 2: drive scenarios through a teacher model.
 
 Phase 1 (smoke): `--only FINALIZE_WORKSPACE`
 Phase 2 (sweep): no --only, walks every action with a populated scenario pool.
 
-Concurrency: 16 (Groq supports 250k TPM). Resume-safe via per-action JSONL
-scenario-id keys.
+The default endpoint is the development OpenAI-compatible Groq endpoint, but
+the teacher model and endpoint are CLI/env configuration. Resume-safe via
+per-action JSONL scenario-id keys.
 """
 from __future__ import annotations
 
@@ -41,8 +42,17 @@ CATALOG_PATH = ROOT / "data" / "prompts" / "actions-catalog.json"
 POOL_DIR = ROOT / "scripts" / "harness" / "scenario_pool"
 LOG_DIR = ROOT / "data" / "synthesized" / "harness" / "logs"
 
-API_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "openai/gpt-oss-120b"
+DEFAULT_API_URL = "https://api.groq.com/openai/v1/chat/completions"
+DEFAULT_API_KEY_ENV = "GROQ_API_KEY"
+DEFAULT_DEV_MODEL = "openai/gpt-oss-120b"
+
+
+def default_teacher_model() -> str:
+    return (
+        os.environ.get("MILADY_HARNESS_MODEL")
+        or os.environ.get("MILADY_COLLECTION_MODEL")
+        or DEFAULT_DEV_MODEL
+    )
 
 
 def stable_scenario_id(action: str, idx: int, user_message: str) -> str:
@@ -103,23 +113,27 @@ def determine_task_type(action: dict[str, Any]) -> str:
     return "message_handler"
 
 
-async def call_groq(
+async def call_openai_compatible(
     client: httpx.AsyncClient,
     api_key: str,
     messages: list[dict[str, str]],
     sem: asyncio.Semaphore,
     *,
+    api_url: str,
+    model: str,
+    reasoning_effort: str,
     temperature: float,
     max_tokens: int = 800,
 ) -> tuple[str, str]:
     """Returns (content, raw_reasoning) on success or empty strings."""
     payload = {
-        "model": MODEL,
+        "model": model,
         "messages": messages,
         "max_tokens": max_tokens,
         "temperature": temperature,
-        "reasoning_effort": "low",
     }
+    if reasoning_effort:
+        payload["reasoning_effort"] = reasoning_effort
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -131,7 +145,7 @@ async def call_groq(
     for attempt in range(8):
         async with sem:
             try:
-                r = await client.post(API_URL, json=payload, headers=headers, timeout=120.0)
+                r = await client.post(api_url, json=payload, headers=headers, timeout=120.0)
             except (httpx.HTTPError, asyncio.TimeoutError):
                 if attempt == 7:
                     return last_content, last_reasoning
@@ -182,6 +196,9 @@ async def process_scenario(
     action: dict[str, Any],
     catalog: list[dict[str, Any]],
     catalog_action_names: set[str],
+    api_url: str,
+    model: str,
+    reasoning_effort: str,
     scenario: dict[str, Any],
     scenario_idx: int,
     decoder: ToonDecoder,
@@ -208,7 +225,16 @@ async def process_scenario(
 
     expected_arg_keys = scenario.get("expected_arg_keys") or []
 
-    raw, reasoning = await call_groq(client, api_key, messages, sem, temperature=0.7)
+    raw, reasoning = await call_openai_compatible(
+        client,
+        api_key,
+        messages,
+        sem,
+        api_url=api_url,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        temperature=0.7,
+    )
 
     async def _validate(text: str) -> v.ValidationResult:
         async with decoder_lock:
@@ -225,8 +251,15 @@ async def process_scenario(
     result = await _validate(raw) if raw else v.ValidationResult(False, "no content")
     if not result.ok:
         # retry once at lower temp
-        retry_raw, retry_reasoning = await call_groq(
-            client, api_key, messages, sem, temperature=0.4
+        retry_raw, retry_reasoning = await call_openai_compatible(
+            client,
+            api_key,
+            messages,
+            sem,
+            api_url=api_url,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            temperature=0.4,
         )
         retry_result = await _validate(retry_raw) if retry_raw else v.ValidationResult(False, "no content")
         if retry_result.ok:
@@ -282,6 +315,9 @@ async def process_action(
     action: dict[str, Any],
     catalog: list[dict[str, Any]],
     catalog_action_names: set[str],
+    api_url: str,
+    model: str,
+    reasoning_effort: str,
     decoder: ToonDecoder,
     decoder_lock: asyncio.Lock,
     sem: asyncio.Semaphore,
@@ -310,6 +346,9 @@ async def process_action(
             action=action,
             catalog=catalog,
             catalog_action_names=catalog_action_names,
+            api_url=api_url,
+            model=model,
+            reasoning_effort=reasoning_effort,
             scenario=sc,
             scenario_idx=idx,
             decoder=decoder,
@@ -341,9 +380,9 @@ async def process_action(
 
 
 async def main_async(args: argparse.Namespace) -> None:
-    api_key = os.environ.get("GROQ_API_KEY")
+    api_key = os.environ.get(args.api_key_env)
     if not api_key:
-        print("error: GROQ_API_KEY not set", file=sys.stderr)
+        print(f"error: {args.api_key_env} not set", file=sys.stderr)
         sys.exit(2)
 
     catalog, by_name_map = load_catalog()
@@ -370,7 +409,11 @@ async def main_async(args: argparse.Namespace) -> None:
     manifest = emit.load_manifest()
 
     start = time.time()
-    print(f"[harness] processing {len(actions)} actions, concurrency={args.concurrency}", file=sys.stderr)
+    print(
+        f"[harness] processing {len(actions)} actions, concurrency={args.concurrency}, "
+        f"provider={args.provider_label}, model={args.model}",
+        file=sys.stderr,
+    )
 
     async with httpx.AsyncClient(http2=False, limits=httpx.Limits(
         max_connections=args.concurrency * 2,
@@ -397,6 +440,9 @@ async def main_async(args: argparse.Namespace) -> None:
                     action=action,
                     catalog=catalog,
                     catalog_action_names=catalog_action_names,
+                    api_url=args.api_url,
+                    model=args.model,
+                    reasoning_effort=args.reasoning_effort,
                     decoder=decoder,
                     decoder_lock=decoder_lock,
                     sem=sem,
@@ -426,6 +472,13 @@ async def main_async(args: argparse.Namespace) -> None:
     manifest["last_run_elapsed_sec"] = round(time.time() - start, 1)
     manifest["last_run_actions"] = len(actions)
     manifest["last_run_global"] = global_stats
+    manifest["last_run_teacher"] = {
+        "provider": args.provider_label,
+        "model": args.model,
+        "api_url": args.api_url,
+        "api_key_env": args.api_key_env,
+        "reasoning_effort": args.reasoning_effort or None,
+    }
     emit.save_manifest(manifest)
 
     elapsed = time.time() - start
@@ -448,6 +501,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", type=str, default="", help="comma-separated action names")
     ap.add_argument("--concurrency", type=int, default=16)
+    ap.add_argument("--model", default=default_teacher_model())
+    ap.add_argument("--api-url", default=os.environ.get("MILADY_HARNESS_API_URL", DEFAULT_API_URL))
+    ap.add_argument("--api-key-env", default=os.environ.get("MILADY_HARNESS_API_KEY_ENV", DEFAULT_API_KEY_ENV))
+    ap.add_argument("--provider-label", default=os.environ.get("MILADY_HARNESS_PROVIDER", "groq-dev"))
+    ap.add_argument("--reasoning-effort", default=os.environ.get("MILADY_HARNESS_REASONING_EFFORT", "low"))
     args = ap.parse_args()
     asyncio.run(main_async(args))
 

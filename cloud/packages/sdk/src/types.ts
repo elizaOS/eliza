@@ -586,6 +586,10 @@ export interface CreateContainerRequest {
   memory?: number;
   environment_vars?: Record<string, string>;
   health_check_path?: string;
+  /** Internal coding-container bootstrap mount. Defaults to /data. */
+  volume_mount_path?: string;
+  /** Internal coding-container source bundle, written into the mounted volume before start. */
+  bootstrap_source?: unknown;
   /** Full image reference (e.g. `ghcr.io/owner/repo:tag`). The Hetzner-Docker backend pulls it directly. */
   image: string;
 }

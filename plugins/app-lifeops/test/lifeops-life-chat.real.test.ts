@@ -19,7 +19,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect } from "vitest";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { selectLiveProvider } from "../../../test/helpers/live-provider";
-import { lifeAction } from "../src/actions/life.js";
+import { runLifeOperationHandler } from "../src/actions/life.js";
 import { LifeOpsService } from "../src/lifeops/service.js";
 import {
   createLifeOpsTestRuntime,
@@ -34,20 +34,20 @@ function callLifeAction(
   text: string,
   params: Record<string, unknown> = {},
 ) {
-  return lifeAction.handler?.(
+  return runLifeOperationHandler(
     runtime,
     {
       entityId: runtime.agentId,
       content: { text, source: "discord" },
     } as never,
-    {} as never,
+    undefined,
     {
       parameters: {
         intent: text,
         details: { confirmed: true },
         ...params,
       },
-    } as never,
+    },
   );
 }
 
@@ -125,7 +125,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       const goalsBefore = await service.listGoals();
       const goalIdsBefore = new Set(goalsBefore.map((entry) => entry.goal.id));
 
-      const result = await lifeAction.handler?.(
+      const result = await runLifeOperationHandler(
         runtime,
         {
           entityId: runtime.agentId,
@@ -167,7 +167,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       const groundedIntent =
         "I want to stabilize my sleep schedule by being asleep by 11:30 pm and up by 7:30 am on weekdays within 45 minutes for the next month.";
 
-      const result = await lifeAction.handler?.(
+      const result = await runLifeOperationHandler(
         runtime,
         {
           entityId: runtime.agentId,
@@ -243,7 +243,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
     async () => {
       const definitionsBefore = (await service.listDefinitions()).length;
 
-      const result = await lifeAction.handler?.(
+      const result = await runLifeOperationHandler(
         runtime,
         {
           entityId: runtime.agentId,
@@ -278,7 +278,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       const previewFlowTitle = "Evening mobility preview flow";
       const definitionsBefore = (await service.listDefinitions()).length;
 
-      const previewResult = await lifeAction.handler?.(
+      const previewResult = await runLifeOperationHandler(
         runtime,
         {
           entityId: runtime.agentId,
@@ -308,7 +308,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
         return;
       }
 
-      const confirmResult = await lifeAction.handler?.(
+      const confirmResult = await runLifeOperationHandler(
         runtime,
         {
           entityId: runtime.agentId,
@@ -349,7 +349,7 @@ describeWithLLM("life-ops natural language (real LLM extraction)", () => {
       const definitionsBefore = (await service.listDefinitions()).length;
       const goalsBefore = (await service.listGoals()).length;
 
-      const _result = await lifeAction.handler?.(
+      const _result = await runLifeOperationHandler(
         runtime,
         {
           entityId: runtime.agentId,

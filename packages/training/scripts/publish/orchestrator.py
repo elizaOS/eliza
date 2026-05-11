@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizalabs/eliza-1-<tier>``. This is the single entry point referenced
+``elizaos/eliza-1-<tier>``. This is the single entry point referenced
 by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizalabs/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
+   to ``elizaos/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -102,7 +102,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizalabs"
+ELIZA_1_HF_ORG = "elizaos"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -269,7 +269,13 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
 
 def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
     for name in names:
-        for base in (bundle, bundle / "text", bundle / "dflash", bundle / "evals"):
+        for base in (
+            bundle,
+            bundle / "text",
+            bundle / "dflash",
+            bundle / "evals",
+            bundle / "quantization",
+        ):
             candidate = base / name
             if candidate.is_file():
                 return candidate
@@ -1903,7 +1909,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         "--repo-id",
         default=None,
         help=(
-            "HF repo id. Must equal elizalabs/eliza-1-<tier>; accepted only "
+            "HF repo id. Must equal elizaos/eliza-1-<tier>; accepted only "
             "so wrappers can pass the resolved destination explicitly."
         ),
     )

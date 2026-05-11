@@ -10,7 +10,7 @@ import {
   approveRequestAction,
   rejectRequestAction,
 } from "../src/actions/approval.js";
-import { bookTravelAction } from "../src/actions/book-travel.js";
+import { runBookTravelHandler } from "../src/actions/book-travel.js";
 import { createApprovalQueue } from "../src/lifeops/approval-queue.js";
 import { createFeatureFlagService } from "../src/lifeops/feature-flags.js";
 import {
@@ -454,7 +454,7 @@ describe("BOOK_TRAVEL approval execution", () => {
     const fetchMock = installTravelAndCalendarFetchStub();
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 
-    const queued = await bookTravelAction.handler?.(
+    const queued = await runBookTravelHandler(
       runtime,
       ownerMessage("Book the JFK to LHR flight after I approve it."),
       {} as never,
@@ -558,7 +558,7 @@ describe("BOOK_TRAVEL approval execution", () => {
     const fetchMock = installTravelAndCalendarFetchStub();
     const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
 
-    const queued = await bookTravelAction.handler?.(
+    const queued = await runBookTravelHandler(
       runtime,
       ownerMessage("Queue the next travel booking for approval."),
       {} as never,

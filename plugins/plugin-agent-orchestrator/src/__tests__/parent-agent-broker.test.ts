@@ -102,8 +102,20 @@ describe("runParentAgentBroker", () => {
     expect(result.success).toBe(true);
     expect(result.text).toContain("media.music.generate");
     expect(result.text).toContain("/api/v1/generate-music");
+    expect(result.text).toContain("advertising.accounts.media.status");
     expect(result.text).toContain("advertising.accounts.media.upload");
     expect(result.text).toContain("/api/v1/advertising/accounts/{id}/media");
+
+    const creativeResult = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: { mode: "list-cloud-commands", query: "creative" },
+    });
+    expect(creativeResult.success).toBe(true);
+    expect(creativeResult.text).toContain("advertising.creatives.list");
+    expect(creativeResult.text).toContain("advertising.creatives.get");
+    expect(creativeResult.text).toContain("advertising.creatives.update");
+    expect(creativeResult.text).toContain("advertising.creatives.delete");
   });
 
   it("runs read-only Cloud commands through the configured Cloud API", async () => {
@@ -136,6 +148,45 @@ describe("runParentAgentBroker", () => {
     expect((init.headers as Record<string, string>).Authorization).toMatch(
       /^Bearer /,
     );
+  });
+
+  it("forwards Cloud command query parameters", async () => {
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+    vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    const fetchMock = vi.fn(async () => {
+      return new Response(
+        JSON.stringify({ ready: true, status: "AVAILABLE" }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: {
+        mode: "cloud-command",
+        command: "advertising.accounts.media.status",
+        params: {
+          id: "account-1",
+          query: {
+            providerAssetResourceName: "customers/123/youTubeVideoUploads/abc",
+          },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/advertising/accounts/account-1/media");
+    expect(url.searchParams.get("providerAssetResourceName")).toBe(
+      "customers/123/youTubeVideoUploads/abc",
+    );
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
   });
 
   it("requires explicit confirmation before paid Cloud commands", async () => {

@@ -151,17 +151,19 @@ class ElizaVisualWebBenchAppHarnessAgent:
         except Exception as exc:  # noqa: BLE001
             error = str(exc)
 
-        parsed = _parse_harness_artifacts(invocation.run_dir)
-        if not parsed:
-            stdout_json = _extract_json(stdout)
-            parsed = _parse_response(stdout_json, "") if stdout_json else {}
-
         summary = _read_json(invocation.run_dir / "summary.json")
         if error is None and returncode not in (0, None):
             error = f"App harness exited with code {returncode}"
         if error is None and isinstance(summary, dict) and summary.get("ok") is False:
             summary_error = summary.get("error")
             error = str(summary_error or "App harness reported failure")
+
+        parsed: dict[str, object] = {}
+        if error is None:
+            parsed = _parse_harness_artifacts(invocation.run_dir)
+            if not parsed:
+                stdout_json = _extract_json(stdout)
+                parsed = _parse_response(stdout_json, "") if stdout_json else {}
         if (
             error is None
             and not any(key in parsed for key in ("answer_text", "choice_index", "bbox"))
@@ -225,6 +227,10 @@ def _build_app_harness_invocation(
     else:
         command.append("--prompt-via-api")
     command.extend([
+        "--require-browser-tab",
+        "--require-browser-events",
+        "--require-trajectory",
+        "--require-browser-action",
         "--prompt",
         prompt,
         "--target-url",

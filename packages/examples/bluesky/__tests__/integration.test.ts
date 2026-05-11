@@ -9,8 +9,21 @@
  * Live tests (LIVE_TEST=true) also test actual Bluesky API calls.
  */
 
+import {
+  AgentRuntime,
+  ChannelType,
+  createMessageMemory,
+  stringToUuid,
+} from "@elizaos/core";
 import { config } from "dotenv";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { character } from "../character";
+import {
+  handleCreatePost,
+  handleMentionReceived,
+  handleShouldRespond,
+  registerBlueskyHandlers,
+} from "../handlers";
 
 type BlueSkyModule = typeof import("../../../../plugins/plugin-bluesky/client");
 
@@ -19,6 +32,9 @@ config({ path: "../../.env" });
 config();
 
 const isLiveTest = process.env.LIVE_TEST === "true";
+const hasBlueskyCredentials = Boolean(
+  process.env.BLUESKY_HANDLE && process.env.BLUESKY_PASSWORD,
+);
 const blueskyModuleId: string = "@elizaos/plugin-bluesky";
 
 const loadBlueSkyClient = async (): Promise<BlueSkyModule> => {
@@ -29,167 +45,139 @@ const loadBlueSkyClient = async (): Promise<BlueSkyModule> => {
 // Live Integration Tests (require credentials)
 // ============================================================================
 
-describe.skipIf(!isLiveTest)("Bluesky Agent Live Integration", () => {
-  beforeAll(() => {
-    if (!process.env.BLUESKY_HANDLE || !process.env.BLUESKY_PASSWORD) {
-      throw new Error(
-        "BLUESKY_HANDLE and BLUESKY_PASSWORD required for live tests",
+describe.skipIf(!isLiveTest || !hasBlueskyCredentials)(
+  "Bluesky Agent Live Integration",
+  () => {
+    it("should authenticate with Bluesky", async () => {
+      const { BlueSkyClient } = await loadBlueSkyClient();
+
+      const client = new BlueSkyClient({
+        service: process.env.BLUESKY_SERVICE || "https://bsky.social",
+        handle: process.env.BLUESKY_HANDLE as string,
+        password: process.env.BLUESKY_PASSWORD as string,
+        dryRun: true,
+      });
+
+      const session = await client.authenticate();
+
+      expect(session.did).toBeDefined();
+      expect(session.handle).toBe(process.env.BLUESKY_HANDLE);
+    });
+
+    it("should fetch timeline", async () => {
+      const { BlueSkyClient } = await loadBlueSkyClient();
+
+      const client = new BlueSkyClient({
+        service: process.env.BLUESKY_SERVICE || "https://bsky.social",
+        handle: process.env.BLUESKY_HANDLE as string,
+        password: process.env.BLUESKY_PASSWORD as string,
+        dryRun: true,
+      });
+
+      await client.authenticate();
+      const timeline = await client.getTimeline({ limit: 5 });
+
+      expect(timeline.feed).toBeDefined();
+      expect(Array.isArray(timeline.feed)).toBe(true);
+    });
+
+    it("should fetch notifications", async () => {
+      const { BlueSkyClient } = await loadBlueSkyClient();
+
+      const client = new BlueSkyClient({
+        service: process.env.BLUESKY_SERVICE || "https://bsky.social",
+        handle: process.env.BLUESKY_HANDLE as string,
+        password: process.env.BLUESKY_PASSWORD as string,
+        dryRun: true,
+      });
+
+      await client.authenticate();
+      const { notifications } = await client.getNotifications(10);
+
+      expect(notifications).toBeDefined();
+      expect(Array.isArray(notifications)).toBe(true);
+    });
+
+    it("should simulate post creation in dry run mode", async () => {
+      const { BlueSkyClient } = await loadBlueSkyClient();
+
+      const client = new BlueSkyClient({
+        service: process.env.BLUESKY_SERVICE || "https://bsky.social",
+        handle: process.env.BLUESKY_HANDLE as string,
+        password: process.env.BLUESKY_PASSWORD as string,
+        dryRun: true,
+      });
+
+      await client.authenticate();
+
+      const post = await client.sendPost({
+        content: { text: "Test post from integration test" },
+      });
+
+      expect(post.uri).toContain("mock://");
+      expect(post.cid).toContain("mock-cid");
+    });
+
+    it("should register all event handlers", async () => {
+      const runtime = new AgentRuntime({ character });
+      const registerSpy = vi.spyOn(runtime, "registerEvent");
+
+      registerBlueskyHandlers(runtime);
+
+      expect(registerSpy).toHaveBeenCalledTimes(3);
+      expect(registerSpy).toHaveBeenCalledWith(
+        "bluesky.mention_received",
+        expect.any(Function),
       );
-    }
-  });
-
-  it("should authenticate with Bluesky", async () => {
-    const { BlueSkyClient } = await loadBlueSkyClient();
-
-    const client = new BlueSkyClient({
-      service: process.env.BLUESKY_SERVICE || "https://bsky.social",
-      handle: process.env.BLUESKY_HANDLE as string,
-      password: process.env.BLUESKY_PASSWORD as string,
-      dryRun: true,
+      expect(registerSpy).toHaveBeenCalledWith(
+        "bluesky.should_respond",
+        expect.any(Function),
+      );
+      expect(registerSpy).toHaveBeenCalledWith(
+        "bluesky.create_post",
+        expect.any(Function),
+      );
     });
-
-    const session = await client.authenticate();
-
-    expect(session.did).toBeDefined();
-    expect(session.handle).toBe(process.env.BLUESKY_HANDLE);
-  });
-
-  it("should fetch timeline", async () => {
-    const { BlueSkyClient } = await loadBlueSkyClient();
-
-    const client = new BlueSkyClient({
-      service: process.env.BLUESKY_SERVICE || "https://bsky.social",
-      handle: process.env.BLUESKY_HANDLE as string,
-      password: process.env.BLUESKY_PASSWORD as string,
-      dryRun: true,
-    });
-
-    await client.authenticate();
-    const timeline = await client.getTimeline({ limit: 5 });
-
-    expect(timeline.feed).toBeDefined();
-    expect(Array.isArray(timeline.feed)).toBe(true);
-  });
-
-  it("should fetch notifications", async () => {
-    const { BlueSkyClient } = await loadBlueSkyClient();
-
-    const client = new BlueSkyClient({
-      service: process.env.BLUESKY_SERVICE || "https://bsky.social",
-      handle: process.env.BLUESKY_HANDLE as string,
-      password: process.env.BLUESKY_PASSWORD as string,
-      dryRun: true,
-    });
-
-    await client.authenticate();
-    const { notifications } = await client.getNotifications(10);
-
-    expect(notifications).toBeDefined();
-    expect(Array.isArray(notifications)).toBe(true);
-  });
-
-  it("should simulate post creation in dry run mode", async () => {
-    const { BlueSkyClient } = await loadBlueSkyClient();
-
-    const client = new BlueSkyClient({
-      service: process.env.BLUESKY_SERVICE || "https://bsky.social",
-      handle: process.env.BLUESKY_HANDLE as string,
-      password: process.env.BLUESKY_PASSWORD as string,
-      dryRun: true,
-    });
-
-    await client.authenticate();
-
-    const post = await client.sendPost({
-      content: { text: "Test post from integration test" },
-    });
-
-    expect(post.uri).toContain("mock://");
-    expect(post.cid).toContain("mock-cid");
-  });
-
-  it("should register all event handlers", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
-    const { character } = await import("../character");
-    const { registerBlueskyHandlers } = await import("../handlers");
-
-    const runtime = new AgentRuntime({ character });
-    const registerSpy = vi.spyOn(runtime, "registerEvent");
-
-    registerBlueskyHandlers(runtime);
-
-    expect(registerSpy).toHaveBeenCalledTimes(3);
-    expect(registerSpy).toHaveBeenCalledWith(
-      "bluesky.mention_received",
-      expect.any(Function),
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "bluesky.should_respond",
-      expect.any(Function),
-    );
-    expect(registerSpy).toHaveBeenCalledWith(
-      "bluesky.create_post",
-      expect.any(Function),
-    );
-  });
-});
+  },
+);
 
 // ============================================================================
 // Unit Tests (no external dependencies)
 // ============================================================================
 
 describe("Bluesky Agent Unit Tests", () => {
-  it("should have valid character configuration", async () => {
-    const { character } = await import("../character");
-
+  it("should have valid character configuration", () => {
     expect(character.name).toBe("BlueSkyBot");
     expect(character.bio).toBeDefined();
     expect(character.system).toBeDefined();
     expect(character.system).toContain("Bluesky");
   });
 
-  it("should have message examples in character", async () => {
-    const { character } = await import("../character");
-
+  it("should have message examples in character", () => {
     expect(character.messageExamples).toBeDefined();
     expect(character.messageExamples?.length).toBeGreaterThan(0);
   });
 
-  it("should have post examples in character", async () => {
-    const { character } = await import("../character");
-
+  it("should have post examples in character", () => {
     expect(character.postExamples).toBeDefined();
     expect(character.postExamples?.length).toBeGreaterThan(0);
   });
 
-  it("should export all handler functions", async () => {
-    const {
-      handleMentionReceived,
-      handleCreatePost,
-      handleShouldRespond,
-      registerBlueskyHandlers,
-    } = await import("../handlers");
-
+  it("should export all handler functions", () => {
     expect(typeof handleMentionReceived).toBe("function");
     expect(typeof handleCreatePost).toBe("function");
     expect(typeof handleShouldRespond).toBe("function");
     expect(typeof registerBlueskyHandlers).toBe("function");
   });
 
-  it("should create runtime with character", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
-    const { character } = await import("../character");
-
+  it("should create runtime with character", () => {
     const runtime = new AgentRuntime({ character });
 
     expect(runtime.character.name).toBe(character.name);
     expect(runtime.agentId).toBeDefined();
   });
 
-  it("should have messageService after initialization", async () => {
-    const { AgentRuntime } = await import("@elizaos/core");
-    const { character } = await import("../character");
-
+  it("should have messageService after initialization", () => {
     const runtime = new AgentRuntime({ character });
 
     // messageService is attached during initialization
@@ -207,15 +195,11 @@ describe("Bluesky Agent Unit Tests", () => {
 // ============================================================================
 
 describe("elizaOS Pipeline Integration", () => {
-  it("should have createMessageMemory helper available", async () => {
-    const { createMessageMemory } = await import("@elizaos/core");
-
+  it("should have createMessageMemory helper available", () => {
     expect(typeof createMessageMemory).toBe("function");
   });
 
-  it("should create properly formatted message memory", async () => {
-    const { createMessageMemory, stringToUuid } = await import("@elizaos/core");
-
+  it("should create properly formatted message memory", () => {
     const memory = createMessageMemory({
       id: stringToUuid("test-id"),
       entityId: stringToUuid("entity-id"),
@@ -234,9 +218,7 @@ describe("elizaOS Pipeline Integration", () => {
     expect(memory.metadata?.type).toBe("message");
   });
 
-  it("should have ChannelType enum available", async () => {
-    const { ChannelType } = await import("@elizaos/core");
-
+  it("should have ChannelType enum available", () => {
     expect(ChannelType.DM).toBeDefined();
     expect(ChannelType.GROUP).toBeDefined();
     expect(ChannelType.SELF).toBeDefined();

@@ -81,15 +81,32 @@ const sourceEnvFiles = [
   parseEnvFile(path.join(cloudRoot, ".env.local")),
 ];
 const env: Record<string, string> = {};
+const providerOverrideKeys = new Set([
+  "OPENROUTER_API_KEY",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "ANTHROPIC_API_KEY",
+  "GROQ_API_KEY",
+  "AI_GATEWAY_API_KEY",
+  "AIGATEWAY_API_KEY",
+  "AI_GATEWAY_BASE_URL",
+]);
+const preserveProviderEnv = process.env.PRESERVE_E2E_PROVIDER_ENV === "1";
 
 for (const sourceEnv of sourceEnvFiles) {
   mergeRealEnvValues(env, sourceEnv);
 }
 
-const knownEnvKeys = new Set([...Object.keys(exampleEnv), ...Object.keys(env)]);
+const knownEnvKeys = new Set([
+  ...Object.keys(exampleEnv),
+  ...Object.keys(env),
+  ...providerOverrideKeys,
+]);
 for (const key of knownEnvKeys) {
   const value = process.env[key];
   if (isRealValue(value)) {
+    env[key] = value;
+  } else if (preserveProviderEnv && providerOverrideKeys.has(key) && value !== undefined) {
     env[key] = value;
   }
 }
@@ -131,6 +148,7 @@ for (const key of [
   "INTERNAL_SECRET",
   "GATEWAY_INTERNAL_SECRET",
   "AGENT_SERVER_SHARED_SECRET",
+  "ELIZA_APP_JWT_SECRET",
   "ELIZA_API_TOKEN",
 ]) {
   ensureLocalSharedSecret(key);

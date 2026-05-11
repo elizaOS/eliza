@@ -64,7 +64,7 @@ export async function handleTextEmbedding(
   try {
     const client = createLMStudioClient(runtime);
     const { embedding, usage } = await embed({
-      model: client.embeddingModel(modelName) as EmbeddingModel,
+      model: client.textEmbeddingModel(modelName) as EmbeddingModel,
       value: embeddingText,
     });
 

@@ -23,6 +23,7 @@ import {
   Download,
   KeyRound,
   LayoutGrid,
+  Lock,
   type LucideIcon,
   Palette,
   RefreshCw,
@@ -33,6 +34,7 @@ import {
   Upload,
   User,
   Wallet,
+  Webhook,
 } from "lucide-react";
 import {
   type ComponentPropsWithoutRef,
@@ -43,18 +45,12 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  consumePendingFocusProvider,
-  SETTINGS_FOCUS_CONNECTOR_EVENT,
-  type SettingsFocusConnectorDetail,
-  setDeveloperMode,
-  useApp,
-  useIsDeveloperMode,
-} from "../../state";
+import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";
 import { AppearanceSettingsSection } from "../settings/AppearanceSettingsSection";
 import { AppPermissionsSection } from "../settings/AppPermissionsSection";
 import { AppsManagementSection } from "../settings/AppsManagementSection";
 import { CapabilitiesSection } from "../settings/CapabilitiesSection";
+import { ConnectorsSection } from "../settings/ConnectorsSection";
 import { IdentitySettingsSection } from "../settings/IdentitySettingsSection";
 import { PermissionsSection } from "../settings/PermissionsSection";
 import { ProviderSwitcher } from "../settings/ProviderSwitcher";
@@ -66,51 +62,16 @@ import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfigPageView } from "./ConfigPageView";
 import { ReleaseCenterView } from "./ReleaseCenterView";
 
-const SETTINGS_SIDEBAR_WIDTH_KEY = "eliza:settings:sidebar:width";
-const SETTINGS_SIDEBAR_COLLAPSED_KEY = "eliza:settings:sidebar:collapsed";
-const SETTINGS_SIDEBAR_DEFAULT_WIDTH = 240;
-const SETTINGS_SIDEBAR_MIN_WIDTH = 200;
-const SETTINGS_SIDEBAR_MAX_WIDTH = 520;
+type SettingsSectionTone = "ok" | "warn" | "muted" | "accent" | "neutral";
 
 interface SettingsSectionDef {
   id: string;
   label: string;
   defaultLabel: string;
   icon: LucideIcon;
-  description?: string;
-  defaultDescription?: string;
-}
-
-function clampSettingsSidebarWidth(value: number): number {
-  return Math.min(
-    Math.max(value, SETTINGS_SIDEBAR_MIN_WIDTH),
-    SETTINGS_SIDEBAR_MAX_WIDTH,
-  );
-}
-
-function readStoredSettingsSidebarWidth(): number {
-  if (typeof window === "undefined") return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
-  try {
-    const raw = window.localStorage.getItem(SETTINGS_SIDEBAR_WIDTH_KEY);
-    const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
-    if (Number.isFinite(parsed)) {
-      return clampSettingsSidebarWidth(parsed);
-    }
-  } catch {
-    /* ignore sandboxed storage */
-  }
-  return SETTINGS_SIDEBAR_DEFAULT_WIDTH;
-}
-
-function readStoredSettingsSidebarCollapsed(): boolean {
-  if (typeof window === "undefined") return false;
-  try {
-    return (
-      window.localStorage.getItem(SETTINGS_SIDEBAR_COLLAPSED_KEY) === "true"
-    );
-  } catch {
-    return false;
-  }
+  tone: SettingsSectionTone;
+  tooltipDescription?: string;
+  defaultTooltipDescription?: string;
 }
 
 const SETTINGS_CONTENT_CLASS =
@@ -118,114 +79,140 @@ const SETTINGS_CONTENT_CLASS =
 const SETTINGS_CONTENT_WIDTH_CLASS = "w-full min-h-0";
 const SETTINGS_SECTION_STACK_CLASS = "space-y-3 pb-10 sm:space-y-4";
 
+const SECTION_TONE_ICON_CLASS: Record<SettingsSectionTone, string> = {
+  ok: "text-ok",
+  warn: "text-warn",
+  muted: "text-muted",
+  accent: "text-accent",
+  neutral: "",
+};
+
 const SETTINGS_SECTIONS: SettingsSectionDef[] = [
   {
     id: "identity",
     label: "settings.sections.identity.label",
     defaultLabel: "Basics",
     icon: User,
-    description: "settings.sections.identity.desc",
-    defaultDescription: "Name, voice, and system prompt.",
+    tone: "neutral",
+    tooltipDescription: "settings.sections.identity.desc",
+    defaultTooltipDescription: "Name, voice, prompt.",
   },
   {
     id: "ai-model",
     label: "settings.sections.aimodel.label",
     defaultLabel: "Providers",
     icon: Brain,
-    description: "settings.sections.aimodel.desc",
-    defaultDescription: "Cloud, local, subscriptions, and direct providers.",
+    tone: "accent",
+    tooltipDescription: "settings.sections.aimodel.desc",
+    defaultTooltipDescription: "Cloud, local, subscriptions, keys.",
   },
   {
     id: "runtime",
     label: "settings.sections.runtime.label",
     defaultLabel: "Runtime",
     icon: Server,
-    description: "settings.sections.runtime.desc",
-    defaultDescription:
-      "Switch between the on-device agent, Eliza Cloud, and a Remote Mac.",
+    tone: "neutral",
+    tooltipDescription: "settings.sections.runtime.desc",
+    defaultTooltipDescription: "Local, cloud, or remote.",
   },
   {
     id: "appearance",
     label: "settings.sections.appearance.label",
     defaultLabel: "Appearance",
     icon: Palette,
-    description: "settings.sections.appearance.desc",
-    defaultDescription: "Language, theme, and content packs.",
+    tone: "neutral",
+    tooltipDescription: "settings.sections.appearance.desc",
+    defaultTooltipDescription: "Language, theme, packs.",
   },
   {
     id: "capabilities",
     label: "settings.sections.capabilities.label",
     defaultLabel: "Capabilities",
     icon: SlidersHorizontal,
-    description: "settings.sections.capabilities.desc",
-    defaultDescription: "Agent features and automation surfaces.",
+    tone: "accent",
+    tooltipDescription: "settings.sections.capabilities.desc",
+    defaultTooltipDescription: "Agent features and automations.",
   },
   {
     id: "apps",
     label: "settings.sections.apps.label",
     defaultLabel: "Apps",
     icon: LayoutGrid,
-    description: "settings.sections.apps.desc",
-    defaultDescription:
-      "Installed apps, launching, relaunching, editing, and creating new ones.",
+    tone: "accent",
+    tooltipDescription: "settings.sections.apps.desc",
+    defaultTooltipDescription: "Installed apps and creation.",
+  },
+  {
+    id: "connectors",
+    label: "settings.sections.connectors.label",
+    defaultLabel: "Connectors",
+    icon: Webhook,
+    tone: "accent",
+    tooltipDescription: "settings.sections.connectors.desc",
+    defaultTooltipDescription: "Telegram, Discord, iMessage.",
   },
   {
     id: "app-permissions",
     label: "settings.sections.apppermissions.label",
     defaultLabel: "App Permissions",
     icon: ShieldCheck,
-    description: "settings.sections.apppermissions.desc",
-    defaultDescription:
-      "Per-app filesystem and network namespace grants. Advisory until enforcement lands.",
+    tone: "warn",
+    tooltipDescription: "settings.sections.apppermissions.desc",
+    defaultTooltipDescription: "Per-app filesystem and network grants.",
   },
   {
     id: "wallet-rpc",
     label: "settings.sections.walletrpc.label",
     defaultLabel: "Wallet & RPC",
     icon: Wallet,
-    description: "settings.sections.walletrpc.desc",
-    defaultDescription: "Wallet network and RPC providers.",
+    tone: "neutral",
+    tooltipDescription: "settings.sections.walletrpc.desc",
+    defaultTooltipDescription: "Wallet network and RPC.",
   },
   {
     id: "permissions",
     label: "settings.sections.permissions.label",
     defaultLabel: "Permissions",
     icon: Shield,
-    description: "settings.sections.permissions.desc",
-    defaultDescription: "Browser and device access.",
+    tone: "warn",
+    tooltipDescription: "settings.sections.permissions.desc",
+    defaultTooltipDescription: "Browser and device access.",
   },
   {
     id: "secrets",
     label: "settings.sections.secrets.label",
     defaultLabel: "Vault",
     icon: KeyRound,
-    description: "settings.sections.secrets.desc",
-    defaultDescription:
-      "Backends, secrets, saved logins, and per-context routing.",
+    tone: "warn",
+    tooltipDescription: "settings.sections.secrets.desc",
+    defaultTooltipDescription: "Secrets, logins, routing.",
   },
   {
     id: "security",
     label: "settings.sections.security.label",
     defaultLabel: "Security",
-    icon: KeyRound,
-    description: "settings.sections.security.desc",
-    defaultDescription: "Local access, remote password, and sessions.",
+    icon: Lock,
+    tone: "warn",
+    tooltipDescription: "settings.sections.security.desc",
+    defaultTooltipDescription: "Local and remote access.",
   },
   {
     id: "updates",
     label: "settings.sections.updates.label",
     defaultLabel: "Updates",
     icon: RefreshCw,
-    description: "settings.sections.updates.desc",
-    defaultDescription: "Software updates.",
+    tone: "neutral",
+    tooltipDescription: "settings.sections.updates.desc",
+    defaultTooltipDescription: "Software updates.",
   },
   {
     id: "advanced",
     label: "settings.sections.backupReset.label",
     defaultLabel: "Backup & Reset",
     icon: Archive,
-    description: "settings.sections.backupReset.desc",
-    defaultDescription: "Export, import, and reset.",
+    tone: "neutral",
+    tooltipDescription: "settings.sections.backupReset.desc",
+    defaultTooltipDescription: "Export, import, reset.",
   },
 ];
 
@@ -234,6 +221,16 @@ function settingsSectionLabel(
   t: (key: string, vars?: Record<string, unknown>) => string,
 ): string {
   return t(section.label, { defaultValue: section.defaultLabel });
+}
+
+function settingsSectionTooltip(
+  section: SettingsSectionDef,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+): string | undefined {
+  if (!section.tooltipDescription) return section.defaultTooltipDescription;
+  return t(section.tooltipDescription, {
+    defaultValue: section.defaultTooltipDescription ?? "",
+  });
 }
 
 function readSettingsHashSection(): string | null {
@@ -253,36 +250,23 @@ function replaceSettingsHash(sectionId: string): void {
 
 interface SettingsSectionProps extends ComponentPropsWithoutRef<"section"> {
   title?: string;
-  description?: string;
-  showDescription?: boolean;
   bodyClassName?: string;
 }
 
 const SettingsSection = forwardRef<HTMLElement, SettingsSectionProps>(
   function SettingsSection(
-    {
-      title,
-      description,
-      showDescription = false,
-      bodyClassName,
-      className,
-      children,
-      ...props
-    },
+    { title, bodyClassName, className, children, ...props },
     ref,
   ) {
-    const panelDescription = showDescription ? description : undefined;
-    if (title || description) {
+    if (title) {
       return (
         <PagePanel.CollapsibleSection
           ref={ref}
           as="section"
           expanded
           variant="section"
-          heading={title ?? ""}
+          heading={title}
           headingClassName="text-base sm:text-lg font-semibold tracking-tight text-txt-strong"
-          description={panelDescription}
-          descriptionClassName="mt-0.5 text-xs leading-snug text-muted"
           bodyClassName={cn("px-4 pb-3 pt-0 sm:px-5 sm:pb-4", bodyClassName)}
           className={cn("rounded-2xl", className)}
           {...props}
@@ -667,34 +651,9 @@ export function SettingsView({
   const [activeSection, setActiveSection] = useState(
     () => initialSection ?? readSettingsHashSection() ?? "identity",
   );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(
-    readStoredSettingsSidebarCollapsed,
-  );
-  const [sidebarWidth, setSidebarWidth] = useState<number>(
-    readStoredSettingsSidebarWidth,
-  );
   const shellRef = useRef<HTMLDivElement>(null);
   const initialAlignmentPendingRef = useRef(true);
   const scrollSelectionSuppressionTimerRef = useRef<number | null>(null);
-
-  const handleSidebarCollapsedChange = useCallback((next: boolean) => {
-    setSidebarCollapsed(next);
-    try {
-      window.localStorage.setItem(SETTINGS_SIDEBAR_COLLAPSED_KEY, String(next));
-    } catch {
-      /* ignore sandboxed storage */
-    }
-  }, []);
-
-  const handleSidebarWidthChange = useCallback((next: number) => {
-    const clamped = clampSettingsSidebarWidth(next);
-    setSidebarWidth(clamped);
-    try {
-      window.localStorage.setItem(SETTINGS_SIDEBAR_WIDTH_KEY, String(clamped));
-    } catch {
-      /* ignore sandboxed storage */
-    }
-  }, []);
 
   const suppressScrollSelection = useCallback((durationMs = 700) => {
     if (typeof window === "undefined") return;
@@ -778,74 +737,6 @@ export function SettingsView({
   useEffect(() => {
     void loadPlugins();
   }, [loadPlugins]);
-
-  // Deep-link target: another component (e.g. AutomationsView's missing-creds
-  // banner, or apps/app/src/main.tsx parsing eliza://settings/connectors/<x>)
-  // dispatches SETTINGS_FOCUS_CONNECTOR_EVENT with the canonical provider id.
-  // We focus the Integrations section, then scroll the matching panel wrapper
-  // (`[data-connector="<provider>"]`) into view and briefly flash it.
-  // Providers without a wrapper (e.g. Slack today) gracefully fall through —
-  // the section header is still in view.
-  //
-  // Two delivery paths handled here so neither races React's render scheduler:
-  //   1) The dispatcher fires a window event — the listener below catches it
-  //      whenever SettingsView is already mounted at dispatch time.
-  //   2) The dispatcher also stashes the provider in a module-scoped ref. On
-  //      mount, this effect drains it via `consumePendingFocusProvider()` so
-  //      a click that mounted SettingsView (e.g. AutomationsView's "Connect
-  //      Gmail →" button switching to the settings tab) still focuses the
-  //      panel even though the event fired before the listener registered.
-  // Stale-flash guard: keep the latest setTimeout id in a ref and clear the
-  // previous one on each new focus so a double-click does not clip the
-  // second flash short.
-  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => {
-    function focusProvider(provider: string) {
-      if (!provider) return;
-      setActiveSection("integrations");
-      queueContentAlignment("integrations");
-      requestAnimationFrame(() => {
-        const node = document.querySelector<HTMLElement>(
-          `[data-connector="${CSS.escape(provider)}"]`,
-        );
-        if (!node) return;
-        node.scrollIntoView({ behavior: "smooth", block: "start" });
-        node.classList.add("connector-flash");
-        if (flashTimerRef.current !== null) {
-          clearTimeout(flashTimerRef.current);
-        }
-        flashTimerRef.current = setTimeout(() => {
-          node.classList.remove("connector-flash");
-          flashTimerRef.current = null;
-        }, 1800);
-      });
-    }
-
-    function handle(event: Event) {
-      const detail = (event as CustomEvent<SettingsFocusConnectorDetail>)
-        .detail;
-      if (!detail?.provider) return;
-      // Consume the stash here too — the dispatcher always writes it before
-      // firing the event, but if we're already mounted the event path wins
-      // and the stash would otherwise persist and re-fire on the next mount
-      // (e.g. tab navigation) as a spurious scroll/flash.
-      consumePendingFocusProvider();
-      focusProvider(detail.provider);
-    }
-
-    // Drain any pending provider stashed before this mount.
-    const pending = consumePendingFocusProvider();
-    if (pending) focusProvider(pending);
-
-    window.addEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
-    return () => {
-      window.removeEventListener(SETTINGS_FOCUS_CONNECTOR_EVENT, handle);
-      if (flashTimerRef.current !== null) {
-        clearTimeout(flashTimerRef.current);
-        flashTimerRef.current = null;
-      }
-    };
-  }, [queueContentAlignment]);
 
   const handleSectionChange = useCallback(
     (sectionId: string) => {
@@ -942,14 +833,7 @@ export function SettingsView({
     <AppPageSidebar
       testId="settings-sidebar"
       collapsible
-      collapsed={sidebarCollapsed}
-      onCollapsedChange={handleSidebarCollapsedChange}
       resizable
-      width={sidebarWidth}
-      onWidthChange={handleSidebarWidthChange}
-      minWidth={SETTINGS_SIDEBAR_MIN_WIDTH}
-      maxWidth={SETTINGS_SIDEBAR_MAX_WIDTH}
-      onCollapseRequest={() => handleSidebarCollapsedChange(true)}
       contentIdentity="settings"
       collapseButtonTestId="settings-sidebar-collapse-toggle"
       expandButtonTestId="settings-sidebar-expand-toggle"
@@ -966,6 +850,8 @@ export function SettingsView({
             {visibleSections.map((section) => {
               const isActive = activeSection === section.id;
               const Icon = section.icon;
+              const toneClass = SECTION_TONE_ICON_CLASS[section.tone];
+              const tooltip = settingsSectionTooltip(section, t);
               return (
                 <SidebarContent.Item
                   key={section.id}
@@ -978,10 +864,14 @@ export function SettingsView({
                     onClick={() => handleSectionChange(section.id)}
                     aria-current={isActive ? "page" : undefined}
                     className="items-center gap-2.5"
+                    title={tooltip}
                   >
                     <SidebarContent.ItemIcon
                       active={isActive}
-                      className="mt-0 h-8 w-8 rounded-lg p-1.5"
+                      className={cn(
+                        "mt-0 h-8 w-8 rounded-lg p-1.5",
+                        !isActive && toneClass,
+                      )}
                     >
                       <Icon className="h-4 w-4" aria-hidden />
                     </SidebarContent.ItemIcon>
@@ -1013,9 +903,6 @@ export function SettingsView({
           title={t("settings.sections.identity.label", {
             defaultValue: "Basics",
           })}
-          description={t("settings.sections.identity.desc", {
-            defaultValue: "Name, voice, and system prompt.",
-          })}
           ref={registerContentItem("identity")}
         >
           <IdentitySettingsSection />
@@ -1025,12 +912,7 @@ export function SettingsView({
       {visibleSectionIds.has("ai-model") && (
         <SettingsSection
           id="ai-model"
-          title={t("common.providers", {
-            defaultValue: "Providers",
-          })}
-          description={t("settings.sections.aimodel.desc", {
-            defaultValue: "Cloud, local, subscriptions, and direct providers.",
-          })}
+          title={t("common.providers", { defaultValue: "Providers" })}
           ref={registerContentItem("ai-model")}
         >
           <ProviderSwitcher />
@@ -1042,10 +924,6 @@ export function SettingsView({
           id="runtime"
           title={t("settings.sections.runtime.label", {
             defaultValue: "Runtime",
-          })}
-          description={t("settings.sections.runtime.desc", {
-            defaultValue:
-              "Switch between the on-device agent, Eliza Cloud, and a Remote Mac.",
           })}
           ref={registerContentItem("runtime")}
         >
@@ -1059,9 +937,6 @@ export function SettingsView({
           title={t("settings.sections.appearance.label", {
             defaultValue: "Appearance",
           })}
-          description={t("settings.sections.appearance.desc", {
-            defaultValue: "Language, theme, and content packs.",
-          })}
           ref={registerContentItem("appearance")}
         >
           <AppearanceSettingsSection />
@@ -1071,12 +946,7 @@ export function SettingsView({
       {visibleSectionIds.has("capabilities") && (
         <SettingsSection
           id="capabilities"
-          title={t("common.capabilities", {
-            defaultValue: "Capabilities",
-          })}
-          description={t("settings.sections.capabilities.desc", {
-            defaultValue: "Agent features and automation surfaces.",
-          })}
+          title={t("common.capabilities", { defaultValue: "Capabilities" })}
           ref={registerContentItem("capabilities")}
         >
           <CapabilitiesSection />
@@ -1086,16 +956,22 @@ export function SettingsView({
       {visibleSectionIds.has("apps") && (
         <SettingsSection
           id="apps"
-          title={t("settings.sections.apps.label", {
-            defaultValue: "Apps",
-          })}
-          description={t("settings.sections.apps.desc", {
-            defaultValue:
-              "Installed apps, launching, relaunching, editing, and creating new ones.",
-          })}
+          title={t("settings.sections.apps.label", { defaultValue: "Apps" })}
           ref={registerContentItem("apps")}
         >
           <AppsManagementSection />
+        </SettingsSection>
+      )}
+
+      {visibleSectionIds.has("connectors") && (
+        <SettingsSection
+          id="connectors"
+          title={t("settings.sections.connectors.label", {
+            defaultValue: "Connectors",
+          })}
+          ref={registerContentItem("connectors")}
+        >
+          <ConnectorsSection />
         </SettingsSection>
       )}
 
@@ -1104,10 +980,6 @@ export function SettingsView({
           id="app-permissions"
           title={t("settings.sections.apppermissions.label", {
             defaultValue: "App Permissions",
-          })}
-          description={t("settings.sections.apppermissions.desc", {
-            defaultValue:
-              "Per-app filesystem and network namespace grants. Advisory until enforcement lands.",
           })}
           ref={registerContentItem("app-permissions")}
         >
@@ -1120,9 +992,6 @@ export function SettingsView({
           id="wallet-rpc"
           title={t("settings.sections.walletrpc.label", {
             defaultValue: "Wallet & RPC",
-          })}
-          description={t("settings.sections.walletrpc.desc", {
-            defaultValue: "Wallet network and RPC providers.",
           })}
           bodyClassName="p-4 sm:p-5"
           ref={registerContentItem("wallet-rpc")}
@@ -1137,12 +1006,7 @@ export function SettingsView({
       {visibleSectionIds.has("permissions") && (
         <SettingsSection
           id="permissions"
-          title={t("common.permissions", {
-            defaultValue: "Permissions",
-          })}
-          description={t("settings.sections.permissions.desc", {
-            defaultValue: "Browser and device access.",
-          })}
+          title={t("common.permissions", { defaultValue: "Permissions" })}
           ref={registerContentItem("permissions")}
         >
           <PermissionsSection />
@@ -1154,10 +1018,6 @@ export function SettingsView({
           id="secrets"
           title={t("settings.sections.secrets.label", {
             defaultValue: "Vault",
-          })}
-          description={t("settings.sections.secrets.desc", {
-            defaultValue:
-              "Backends, secrets, saved logins, and per-context routing.",
           })}
           ref={registerContentItem("secrets")}
         >
@@ -1171,9 +1031,6 @@ export function SettingsView({
           title={t("settings.sections.security.label", {
             defaultValue: "Security",
           })}
-          description={t("settings.sections.security.desc", {
-            defaultValue: "Local access, remote password, and sessions.",
-          })}
           ref={registerContentItem("security")}
         >
           <SecuritySettingsSection />
@@ -1186,9 +1043,6 @@ export function SettingsView({
           title={t("settings.sections.updates.label", {
             defaultValue: "Updates",
           })}
-          description={t("settings.sections.updates.desc", {
-            defaultValue: "Software updates.",
-          })}
           ref={registerContentItem("updates")}
         >
           <UpdatesSection />
@@ -1200,9 +1054,6 @@ export function SettingsView({
           id="advanced"
           title={t("settings.sections.backupReset.label", {
             defaultValue: "Backup & Reset",
-          })}
-          description={t("settings.sections.backupReset.desc", {
-            defaultValue: "Export, import, and reset.",
           })}
           ref={registerContentItem("advanced")}
         >

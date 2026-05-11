@@ -22,7 +22,7 @@ const overridesPath = path.join(__dirname, "plugin-metadata-overrides.json");
 
 // Registry URL
 const GENERATED_REGISTRY_URL =
-  "https://raw.githubusercontent.com/elizaos-plugins/registry/next/generated-registry.json";
+  "https://plugins.elizacloud.ai/generated-registry.json";
 
 // ---------------------------------------------------------------------------
 // Category classification

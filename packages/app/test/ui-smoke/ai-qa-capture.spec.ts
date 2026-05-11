@@ -46,7 +46,8 @@ type CaptureRecord = {
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = resolve(HERE, "../../../../..");
+// HERE = packages/app/test/ui-smoke → up 4 levels = repo root
+const REPO_ROOT = resolve(HERE, "../../../..");
 const RUN_ID = process.env.AI_QA_RUN_ID ?? new Date().toISOString().replace(/[:.]/g, "-");
 const REPORT_DIR = resolve(REPO_ROOT, "reports", "ai-qa", RUN_ID);
 
@@ -271,7 +272,7 @@ async function capture(args: {
 }
 
 test.describe("ai-qa capture", () => {
-  test.describe.configure({ mode: "serial" });
+  test.describe.configure({ mode: "default" });
 
   test.beforeAll(async () => {
     await ensureDir(REPORT_DIR);
@@ -332,13 +333,10 @@ test.describe("ai-qa capture", () => {
               capturedAt: new Date().toISOString(),
             };
           }
+          const recordDir = join(REPORT_DIR, "captures", route.id);
+          await ensureDir(recordDir);
           await writeFile(
-            join(
-              REPORT_DIR,
-              "captures",
-              route.id,
-              `${route.id}__${viewport}__${theme}.json`,
-            ),
+            join(recordDir, `${route.id}__${viewport}__${theme}.json`),
             JSON.stringify(record, null, 2),
           );
           await context.close();

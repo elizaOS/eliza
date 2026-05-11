@@ -234,6 +234,60 @@ def missing_files(
     return missing
 
 
+def release_status_blockers(
+    bundle_root: Path, plan: Mapping[str, TierGgufPlan]
+) -> dict[str, list[str]]:
+    blockers: dict[str, list[str]] = {}
+    for tier in plan:
+        plain_root = bundle_root / f"eliza-1-{tier}"
+        bundle_root_candidate = bundle_root / f"eliza-1-{tier}.bundle"
+        root = bundle_root_candidate if bundle_root_candidate.exists() else plain_root
+        evidence_path = root / "evidence" / "release.json"
+        tier_blockers: list[str] = []
+        if evidence_path.is_file():
+            try:
+                evidence = json.loads(evidence_path.read_text())
+            except json.JSONDecodeError as exc:
+                tier_blockers.append(f"`evidence/release.json`: invalid JSON: {exc}")
+            else:
+                release_state = evidence.get("releaseState")
+                publish_eligible = evidence.get("publishEligible")
+                if release_state not in {"upload-candidate", "final"}:
+                    tier_blockers.append(
+                        "`evidence/release.json`: releaseState is "
+                        f"`{release_state}`, not `upload-candidate` or `final`"
+                    )
+                if publish_eligible is not True:
+                    tier_blockers.append(
+                        "`evidence/release.json`: publishEligible is not true"
+                    )
+                final = evidence.get("final")
+                if isinstance(final, dict):
+                    for key in (
+                        "weights",
+                        "hashes",
+                        "evals",
+                        "licenses",
+                        "kernelDispatchReports",
+                        "platformEvidence",
+                        "sizeFirstRepoIds",
+                    ):
+                        if final.get(key) is not True:
+                            tier_blockers.append(
+                                f"`evidence/release.json`: final.{key} is not true"
+                            )
+                else:
+                    tier_blockers.append("`evidence/release.json`: final object missing")
+                hf = evidence.get("hf")
+                upload = hf.get("uploadEvidence") if isinstance(hf, dict) else None
+                if release_state == "final" and not isinstance(upload, dict):
+                    tier_blockers.append(
+                        "`evidence/release.json`: final release missing hf.uploadEvidence"
+                    )
+        blockers[tier] = sorted(set(tier_blockers))
+    return blockers
+
+
 def plan_to_json(plan: Mapping[str, TierGgufPlan]) -> dict[str, object]:
     return {tier: asdict(tier_plan) for tier, tier_plan in plan.items()}
 
@@ -241,6 +295,7 @@ def plan_to_json(plan: Mapping[str, TierGgufPlan]) -> dict[str, object]:
 def render_readiness(
     plan: Mapping[str, TierGgufPlan],
     missing: Mapping[str, Sequence[str]] | None,
+    blockers: Mapping[str, Sequence[str]] | None = None,
 ) -> str:
     lines = [
         "# Eliza-1 GGUF Platform Readiness",
@@ -288,6 +343,12 @@ def render_readiness(
             lines.append("Missing files/evidence: none recorded by this check.")
             lines.append("")
 
+        tier_blockers = list(blockers.get(tier, ())) if blockers else []
+        if tier_blockers:
+            lines.append("Publish-blocking status:")
+            lines.extend(f"- {item}" for item in tier_blockers)
+            lines.append("")
+
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -300,6 +361,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     plan = build_plan()
     missing = missing_files(args.bundle_root, plan) if args.bundle_root else None
+    blockers = release_status_blockers(args.bundle_root, plan) if args.bundle_root else None
 
     if args.out:
         args.out.write_text(
@@ -309,7 +371,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(plan_to_json(plan), indent=2, sort_keys=True))
 
     if args.readiness_md:
-        args.readiness_md.write_text(render_readiness(plan, missing))
+        args.readiness_md.write_text(render_readiness(plan, missing, blockers))
 
     return 0
 

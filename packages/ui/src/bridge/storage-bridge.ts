@@ -27,6 +27,12 @@ const SYNCED_KEYS = new Set([
   "eliza:onboarding-complete",
   "eliza:onboarding:step",
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  "eliza:ios-local-agent:conversations:v1",
+  "eliza:ios-local-agent:active-model:v1",
+  "eliza:ios-local-agent:assignments:v1",
+  "eliza:ios-local-agent:browser-workspace:v1",
+  "eliza:ios-local-agent:wallet-market-overview:v1",
+  "eliza:ios-local-agent:eliza-1-bundles:v1",
 ]);
 
 // In-memory cache of values from Preferences (for native)

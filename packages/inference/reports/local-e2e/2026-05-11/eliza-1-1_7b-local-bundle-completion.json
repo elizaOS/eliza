@@ -151,7 +151,7 @@
     "passed": false,
     "tier": "1_7b"
   },
-  "generatedAt": "2026-05-11T10:23:42Z",
+  "generatedAt": "2026-05-11T13:23:32Z",
   "generatedBundleFiles": [
     "README.md",
     "asr/eliza-1-asr-mmproj.gguf",
@@ -185,7 +185,12 @@
     "licenses/LICENSE.vad",
     "licenses/LICENSE.voice",
     "lineage.json",
+    "quantization/fused_turboquant.json",
+    "quantization/polarquant_config.json",
+    "quantization/qjl_config.json",
+    "quantization/turboquant.json",
     "source/text/qwen3-1.7b-q8_0.gguf",
+    "text/eliza-1-1_7b-32k.gguf",
     "text/eliza-1-1_7b-64k.gguf",
     "tts/omnivoice-base-Q4_K_M.gguf",
     "tts/omnivoice-tokenizer-Q4_K_M.gguf",
@@ -220,13 +225,22 @@
   "schemaVersion": 1,
   "staged": [
     {
+      "destination": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf",
+      "method": "existing",
+      "provenance": "local-source-candidate",
+      "role": "text:32k",
+      "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+      "sizeBytes": 1834426016,
+      "source": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/source/text/qwen3-1.7b-q8_0.gguf"
+    },
+    {
       "destination": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
       "method": "existing",
-      "provenance": "local-standin",
-      "role": "text",
-      "sha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d",
-      "sizeBytes": 2871743520,
-      "source": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash/Qwen_Qwen3.5-4B-Q4_K_M.gguf"
+      "provenance": "local-source-candidate",
+      "role": "text:64k",
+      "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+      "sizeBytes": 1834426016,
+      "source": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/source/text/qwen3-1.7b-q8_0.gguf"
     },
     {
       "destination": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/dflash/drafter-1_7b.gguf",

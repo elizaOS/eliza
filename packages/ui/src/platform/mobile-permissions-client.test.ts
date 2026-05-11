@@ -1,9 +1,12 @@
 import type { PermissionState } from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import type {
+  AppleCalendarPermissionStatus,
   AppleCalendarPluginLike,
   MobileSignalsPermissionStatus,
   MobileSignalsPluginLike,
+  PushNotificationPermissionStatus,
+  PushNotificationsPluginLike,
 } from "../bridge/native-plugins";
 import {
   createMobileSignalsPermissionsRegistry,
@@ -91,12 +94,14 @@ function plugin(status = permissions()): MobileSignalsPluginLike {
   } as unknown as MobileSignalsPluginLike;
 }
 
+const DEFAULT_APPLE_CALENDAR_PERMISSION: AppleCalendarPermissionStatus = {
+  calendar: "prompt",
+  canRequest: true,
+  reason: null,
+};
+
 function appleCalendarPlugin(
-  status = {
-    calendar: "prompt" as const,
-    canRequest: true,
-    reason: null,
-  },
+  status: AppleCalendarPermissionStatus = DEFAULT_APPLE_CALENDAR_PERMISSION,
 ): AppleCalendarPluginLike {
   return {
     checkPermissions: vi.fn(async () => status),
@@ -104,6 +109,19 @@ function appleCalendarPlugin(
       calendar: "granted" as const,
       canRequest: false,
       reason: null,
+    })),
+  };
+}
+
+function pushNotificationsPlugin(
+  status: PushNotificationPermissionStatus = {
+    receive: "prompt" as const,
+  },
+): PushNotificationsPluginLike {
+  return {
+    checkPermissions: vi.fn(async () => status),
+    requestPermissions: vi.fn(async () => ({
+      receive: "granted" as const,
     })),
   };
 }
@@ -211,6 +229,57 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     });
 
     expect(calendar.requestPermissions).toHaveBeenCalled();
+    expect(native.requestPermissions).not.toHaveBeenCalled();
+  });
+
+  it("marks restricted native Apple Calendar as an OS policy state", async () => {
+    const native = plugin();
+    const calendar = appleCalendarPlugin({
+      calendar: "restricted",
+      canRequest: false,
+      reason: "Write-only calendar access is not enough for LifeOps.",
+    });
+    const registry = createMobileSignalsPermissionsRegistry(
+      native,
+      undefined,
+      calendar,
+    );
+
+    const state = await registry.check("calendar");
+
+    expect(state).toMatchObject({
+      id: "calendar",
+      status: "restricted",
+      canRequest: false,
+      restrictedReason: "os_policy",
+    });
+  });
+
+  it("checks and requests notifications through the push notification plugin first", async () => {
+    const native = plugin();
+    const calendar = appleCalendarPlugin();
+    const push = pushNotificationsPlugin();
+    const registry = createMobileSignalsPermissionsRegistry(
+      native,
+      undefined,
+      calendar,
+      push,
+    );
+
+    const state = await registry.check("notifications");
+    expect(state).toMatchObject({
+      id: "notifications",
+      status: "not-determined",
+      canRequest: true,
+    });
+
+    await registry.request("notifications", {
+      reason: "Send reminder prompts.",
+      feature: { app: "lifeops", action: "reminders.notify" },
+    });
+
+    expect(push.checkPermissions).toHaveBeenCalled();
+    expect(push.requestPermissions).toHaveBeenCalled();
     expect(native.requestPermissions).not.toHaveBeenCalled();
   });
 

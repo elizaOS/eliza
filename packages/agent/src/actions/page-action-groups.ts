@@ -204,6 +204,8 @@ export const pageDelegateAction: PageActionGroup = {
   description: `Owner-only main-chat parent action. Routes a request to a child action under one of the page contexts (${PAGE_KEYS.join(", ")}). Call shape: { page: "<PAGE>", action: "<CHILD_NAME>", ...child fields }. The child action's parameter names go at the top level alongside \`page\` and \`action\` — for example, to navigate the browser: \`{ "page": "browser", "action": "BROWSER", "subaction": "navigate", "url": "https://example.com" }\`. The legacy nested shape \`{ page, action, parameters: { ... } }\` is also accepted. Page-scoped chats expose the child actions directly without going through PAGE_DELEGATE.`,
   descriptionCompressed:
     "PAGE_DELEGATE: owner-only parent; { page: <browser|wallet|character|settings|connectors|automation|phone|owner>, action: <CHILD>, ...child fields }.",
+  routingHint:
+    'main-chat browser/wallet/settings/page operations -> PAGE_DELEGATE; browser navigation uses {page:"browser", action:"BROWSER_OPEN", url} or {page:"browser", action:"BROWSER", subaction:"open", url} through the browser page',
   validate: async () => true,
   handler: async (
     runtime: IAgentRuntime,

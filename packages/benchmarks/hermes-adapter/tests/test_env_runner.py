@@ -12,7 +12,9 @@ Every subprocess call is mocked. The tests assert that:
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -21,6 +23,7 @@ from hermes_adapter.env_runner import (
     HermesEnvResult,
     build_evaluate_command,
     parse_hermes_env_result,
+    run_hermes_env,
 )
 
 
@@ -169,3 +172,171 @@ def test_env_runner_raises_when_artifacts_missing(tmp_path: Path) -> None:
 
 def test_env_modules_table_has_all_four_envs() -> None:
     assert set(ENV_MODULES) == {"tblite", "terminalbench_2", "yc_bench", "hermes_swe_env"}
+
+
+def test_env_runner_max_tasks_flag_present_when_set(fake_repo: Path, tmp_path: Path) -> None:
+    """run_hermes_env(max_tasks=N) must forward --env.max_eval_samples=N to the env CLI."""
+    captured_cmd: list[str] = []
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_cmd.extend(cmd)
+        # Write a minimal eval-summary + samples so parse_hermes_env_result succeeds.
+        save_dir = tmp_path / "out" / "evals" / "tblite"
+        save_dir.mkdir(parents=True)
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.9}}))
+        (save_dir / "samples.jsonl").write_text("{}\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+        result = run_hermes_env(
+            "tblite",
+            output_dir=tmp_path / "out",
+            repo_path=fake_repo,
+            max_tasks=3,
+            model="m",
+            api_key="key",
+            base_url="https://x",
+        )
+
+    assert "--env.max_eval_samples=3" in captured_cmd
+    assert result.score == pytest.approx(0.9)
+
+
+def test_env_runner_task_filter_flag_present_when_set(fake_repo: Path, tmp_path: Path) -> None:
+    captured_cmd: list[str] = []
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_cmd.extend(cmd)
+        save_dir = tmp_path / "out" / "evals" / "tblite"
+        save_dir.mkdir(parents=True)
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.5}}))
+        (save_dir / "samples.jsonl").write_text("{}\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+        run_hermes_env(
+            "tblite",
+            output_dir=tmp_path / "out",
+            repo_path=fake_repo,
+            task_filter="broken-python,pandas-etl",
+            model="m",
+            api_key="key",
+        )
+    assert "--env.task_filter=broken-python,pandas-etl" in captured_cmd
+
+
+def test_env_runner_sets_terminal_env_local(fake_repo: Path, tmp_path: Path) -> None:
+    """TERMINAL_ENV must always be ``local`` to prevent silent Modal/Docker fan-out."""
+    captured_env: dict[str, str] = {}
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_env.update(kwargs.get("env") or {})
+        save_dir = tmp_path / "out" / "evals" / "tblite"
+        save_dir.mkdir(parents=True)
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.1}}))
+        (save_dir / "samples.jsonl").write_text("{}\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+        run_hermes_env(
+            "tblite",
+            output_dir=tmp_path / "out",
+            repo_path=fake_repo,
+            model="m",
+            api_key="key",
+            base_url="https://b",
+        )
+    assert captured_env.get("TERMINAL_ENV") == "local"
+    assert captured_env.get("OPENAI_API_KEY") == "key"
+    assert captured_env.get("OPENAI_BASE_URL") == "https://b"
+    assert captured_env.get("OPENAI_MODEL") == "m"
+
+
+def test_env_runner_sets_terminal_env_local_even_when_parent_overrides(
+    fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Even a parent shell with TERMINAL_ENV=modal must be overridden to local."""
+    monkeypatch.setenv("TERMINAL_ENV", "modal")
+    captured_env: dict[str, str] = {}
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_env.update(kwargs.get("env") or {})
+        save_dir = tmp_path / "out" / "evals" / "tblite"
+        save_dir.mkdir(parents=True)
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.0}}))
+        (save_dir / "samples.jsonl").write_text("{}\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+        run_hermes_env(
+            "tblite", output_dir=tmp_path / "out", repo_path=fake_repo, model="m"
+        )
+    assert captured_env.get("TERMINAL_ENV") == "local"
+
+
+def test_env_runner_invokes_correct_env_script_for_each_env(
+    fake_repo: Path, tmp_path: Path
+) -> None:
+    """Smoke: for each of the 4 supported env_ids, the spawned argv references the
+    canonical env script path."""
+    for env_id, expected_module in ENV_MODULES.items():
+        captured: list[str] = []
+        out = tmp_path / env_id
+        save_dir = out / "evals" / env_id
+        save_dir.mkdir(parents=True)
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.0}}))
+        (save_dir / "samples.jsonl").write_text("{}\n")
+
+        def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            captured.extend(cmd)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+            run_hermes_env(env_id, output_dir=out, repo_path=fake_repo, model="m", force=True)
+        assert str(fake_repo / expected_module) in captured, env_id
+        assert "evaluate" in captured, env_id
+
+
+def test_env_runner_idempotent_when_summary_exists(fake_repo: Path, tmp_path: Path) -> None:
+    """If output_dir already has eval-summary.json + samples.jsonl, run_hermes_env
+    must skip the subprocess and return the cached result."""
+    out = tmp_path / "out"
+    save_dir = out / "evals" / "tblite"
+    save_dir.mkdir(parents=True)
+    (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.71}}))
+    (save_dir / "samples.jsonl").write_text("{}\n")
+
+    with patch(
+        "hermes_adapter.env_runner.subprocess.run",
+        side_effect=AssertionError("must not spawn subprocess"),
+    ):
+        result = run_hermes_env(
+            "tblite",
+            output_dir=out,
+            repo_path=fake_repo,
+            model="m",
+        )
+    assert result.score == pytest.approx(0.71)
+
+
+def test_env_runner_force_reruns_even_when_cached(fake_repo: Path, tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    save_dir = out / "evals" / "tblite"
+    save_dir.mkdir(parents=True)
+    (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.1}}))
+    (save_dir / "samples.jsonl").write_text("{}\n")
+
+    spawn_count = {"n": 0}
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        spawn_count["n"] += 1
+        # Re-write with a different score to confirm the rerun result is what's returned.
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.99}}))
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+        result = run_hermes_env(
+            "tblite", output_dir=out, repo_path=fake_repo, model="m", force=True
+        )
+    assert spawn_count["n"] == 1
+    assert result.score == pytest.approx(0.99)

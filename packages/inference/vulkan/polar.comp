@@ -68,6 +68,27 @@ const float POLAR_Q4_CENTROIDS[16] = float[16](
      1.279739752,  1.643041510,  2.093562707,  2.754354807
 );
 
+// xorshift32(seed=42) sign vector used by the optional Polar QJL residual.
+// Literal table avoids a tid==0 recurrent fill in the residual hot path.
+const float POLAR_QJL_SIGNS[128] = float[128](
+    -1.0, -1.0,  1.0, -1.0, -1.0, -1.0, -1.0, -1.0,
+     1.0,  1.0, -1.0,  1.0, -1.0, -1.0,  1.0,  1.0,
+    -1.0, -1.0,  1.0, -1.0,  1.0,  1.0, -1.0, -1.0,
+    -1.0,  1.0, -1.0,  1.0,  1.0,  1.0, -1.0, -1.0,
+    -1.0, -1.0,  1.0, -1.0,  1.0, -1.0,  1.0, -1.0,
+    -1.0, -1.0, -1.0,  1.0, -1.0,  1.0,  1.0,  1.0,
+     1.0,  1.0, -1.0,  1.0, -1.0, -1.0,  1.0,  1.0,
+     1.0,  1.0, -1.0, -1.0, -1.0,  1.0, -1.0,  1.0,
+     1.0, -1.0,  1.0, -1.0,  1.0,  1.0,  1.0,  1.0,
+    -1.0, -1.0, -1.0, -1.0,  1.0, -1.0, -1.0, -1.0,
+     1.0, -1.0, -1.0,  1.0,  1.0,  1.0,  1.0, -1.0,
+    -1.0,  1.0, -1.0,  1.0,  1.0, -1.0,  1.0,  1.0,
+     1.0, -1.0, -1.0, -1.0,  1.0,  1.0, -1.0,  1.0,
+    -1.0,  1.0,  1.0, -1.0, -1.0,  1.0, -1.0, -1.0,
+     1.0, -1.0,  1.0, -1.0, -1.0,  1.0, -1.0, -1.0,
+     1.0,  1.0,  1.0, -1.0,  1.0, -1.0, -1.0,  1.0
+);
+
 uint read_byte(uint b) {
     uint w = k_packed[b >> 2];
     return (w >> ((b & 3u) * 8u)) & 0xFFu;
@@ -101,7 +122,6 @@ float fp16_to_fp32(uint h16) {
 }
 
 shared float buf[128];          // 1 block of decoded floats
-shared float qjl_signs_tg[128]; // QJL residual sign-vector scratch
 shared float reduce_scratch[32];
 
 float reduce_sum_32(float v, uint tid) {
@@ -161,27 +181,15 @@ void main() {
     }
     barrier();
 
-    // Step 3: optional QJL residual. Sign-vector generation is sequential
-    // (xorshift32 chain) so tid==0 fills shared scratch; the per-element
-    // add is then parallel across all 32 threads.
+    // Step 3: optional QJL residual. The xorshift32(seed=42) sign vector is a
+    // literal constant table, so all 32 threads can apply it directly.
     if (push.use_qjl != 0u) {
-        if (tid == 0u) {
-            uint  bit  = read_byte(blk_off + 2u + 64u) & 1u;
-            float sign_v = bit != 0u ? 1.0 : -1.0;
-            float mag    = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-            float scaled = sign_v * mag;
-            uint  state  = 42u;
-            for (uint i = 0u; i < QK_POLAR; ++i) {
-                state ^= state << 13;
-                state ^= state >> 17;
-                state ^= state << 5;
-                float s = (state & 1u) != 0u ? 1.0 : -1.0;
-                qjl_signs_tg[i] = scaled * s;
-            }
-        }
-        barrier();
+        uint  bit  = read_byte(blk_off + 2u + 64u) & 1u;
+        float sign_v = bit != 0u ? 1.0 : -1.0;
+        float mag    = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+        float scaled = sign_v * mag;
         for (uint i = tid; i < QK_POLAR; i += 32u) {
-            buf[i] += qjl_signs_tg[i];
+            buf[i] += scaled * POLAR_QJL_SIGNS[i];
         }
         barrier();
     }

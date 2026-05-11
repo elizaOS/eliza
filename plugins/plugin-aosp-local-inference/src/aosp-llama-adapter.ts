@@ -326,6 +326,29 @@ interface RuntimeWithRegisterService {
 }
 
 /**
+ * Build a DOMException-shaped abort error so callers can pattern-match
+ * via `error.name === "AbortError"` the same way they would with `fetch`,
+ * `AbortController`, and `node-llama-cpp`'s `stopOnAbortSignal`. We don't
+ * `require("domexception")` because bun + Node both expose `DOMException`
+ * globally; we fall back to a typed Error on the off chance a host doesn't.
+ */
+function makeAbortError(signal: AbortSignal): Error {
+  const reason = signal.reason;
+  if (reason instanceof Error) return reason;
+  if (typeof DOMException !== "undefined") {
+    return new DOMException(
+      typeof reason === "string" ? reason : "Operation aborted",
+      "AbortError",
+    );
+  }
+  const err = new Error(
+    typeof reason === "string" ? reason : "Operation aborted",
+  );
+  err.name = "AbortError";
+  return err;
+}
+
+/**
  * AOSP-only `LoadOptions` extension. The cross-platform `LocalInferenceLoader`
  * contract (`@elizaos/native-plugins/llama` and the Capacitor side) does NOT
  * surface KV-cache type — that's an AOSP-specific tunable that only the
@@ -364,6 +387,15 @@ interface AospLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    /**
+     * Optional per-request abort signal. The decode loop checks
+     * `signal.aborted` between every chunked prefill batch and between
+     * every emitted token, breaking out cooperatively when the caller
+     * fires the signal (e.g. APP_PAUSE on mobile). Honoured by the FFI
+     * loop only — there is no kernel-level llama.cpp abort hook on this
+     * fork; the loop is responsible for noticing the request died.
+     */
+    signal?: AbortSignal;
   }): Promise<string>;
   embed(args: { input: string }): Promise<{
     embedding: number[];
@@ -998,12 +1030,17 @@ class AospLlamaAdapter implements AospLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    signal?: AbortSignal;
   }): Promise<string> {
     if (this.ctx === null || this.model === null || this.vocab === null) {
       throw new Error("[aosp-llama] generate called before loadModel");
     }
     const ctx = this.ctx;
     const vocab = this.vocab;
+    // Early-exit: caller cancelled before we even tokenized.
+    if (args.signal?.aborted) {
+      throw makeAbortError(args.signal);
+    }
 
     // 0. Reset KV cache for this turn. The b8198 cuttlefish build
     // segfaults when llama_memory_clear runs on a freshly-initialized
@@ -1154,6 +1191,14 @@ class AospLlamaAdapter implements AospLoader {
       }
       const prefillStart = Date.now();
       for (let offset = 0; offset < promptLen; offset += nBatch) {
+        // Cooperative cancel — the FFI decode call below holds bun's
+        // event loop for the entire chunk duration, so this is the only
+        // chance to bail between chunks. A 2048-token chunk on Eliza-1
+        // mobile CPU runs ~30-60 s, which is well over the APP_PAUSE
+        // budget; we MUST honour the signal here or the OS will kill us.
+        if (args.signal?.aborted) {
+          throw makeAbortError(args.signal);
+        }
         const chunkLen = Math.min(nBatch, promptLen - offset);
         const chunk = promptTokens.subarray(offset, offset + chunkLen);
         const promptBatchPtr = this.shim.eliza_llama_batch_get_one(
@@ -1222,6 +1267,13 @@ class AospLlamaAdapter implements AospLoader {
       let lastTokRateLog = decodeStart;
 
       for (let i = 0; i < maxTokens; i++) {
+        // Cooperative cancel between every sampled token. On phone CPU
+        // we're at ~3-8 tok/s, so this check fires roughly every 125-330 ms
+        // — small enough that APP_PAUSE responds nearly immediately while
+        // not so often that it dominates sampling time.
+        if (args.signal?.aborted) {
+          throw makeAbortError(args.signal);
+        }
         const next = this.sym.llama_sampler_sample(chain, ctx, -1);
         if (this.sym.llama_vocab_is_eog(vocab, next)) break;
         this.sym.llama_sampler_accept(chain, next);

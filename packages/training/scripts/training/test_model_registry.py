@@ -41,8 +41,8 @@ def test_smoke_entries_have_no_publish_metadata() -> None:
 def test_eliza_repo_id_matches_size(short: str, size: str) -> None:
     e = get(short)
     assert e.eliza_short_name == f"eliza-1-{size}"
-    assert e.eliza_repo_id == f"elizalabs/eliza-1-{size}"
-    assert e.abliteration_repo_id == f"elizalabs/eliza-1-{size}-uncensored"
+    assert e.eliza_repo_id == f"elizaos/eliza-1-{size}"
+    assert e.abliteration_repo_id == f"elizaos/eliza-1-{size}-uncensored"
 
 
 def test_tier_assignments() -> None:

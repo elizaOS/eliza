@@ -14,6 +14,7 @@ works without modification.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -23,12 +24,64 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.format_for_training import render_handlebars, _load_prompt_registry  # noqa: E402
-
 from .personas import Persona  # noqa: E402
 
 
 CANONICAL_CONTROL_ACTIONS = ("REPLY", "IGNORE", "STOP", "RESPOND")
+PROMPT_REGISTRY_CANDIDATES = (
+    ROOT / "data" / "prompts" / "registry.json",
+    ROOT / "data" / "prompts" / "registry-v2.json",
+)
+
+
+def _load_prompt_registry() -> dict[str, dict[str, Any]]:
+    for path in PROMPT_REGISTRY_CANDIDATES:
+        if not path.exists():
+            continue
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(data, dict) and isinstance(data.get("entries"), list):
+            out: dict[str, dict[str, Any]] = {}
+            for entry in data["entries"]:
+                if not isinstance(entry, dict):
+                    continue
+                task_id = entry.get("task_id") or entry.get("id") or entry.get("name")
+                if isinstance(task_id, str):
+                    out[task_id] = entry
+            return out
+        if isinstance(data, dict):
+            return {
+                key: value
+                for key, value in data.items()
+                if isinstance(key, str) and isinstance(value, dict)
+            }
+    searched = ", ".join(str(path) for path in PROMPT_REGISTRY_CANDIDATES)
+    raise RuntimeError(
+        "prompt registry missing; run packages/training/scripts/build_prompts.py "
+        f"before the legacy harness. Searched: {searched}"
+    )
+
+
+def render_handlebars(template: str, ctx: dict[str, Any]) -> str:
+    """Minimal handlebars renderer for canonical prompt templates."""
+
+    def replace(match: re.Match[str]) -> str:
+        kind, name = match.group(1), match.group(2)
+        if kind in ("#", "/"):
+            return ""
+        value: Any = ctx
+        for part in name.split("."):
+            if isinstance(value, dict):
+                value = value.get(part)
+            else:
+                value = None
+                break
+        return "" if value is None else str(value)
+
+    return re.sub(
+        r"\{\{\s*([#/])?([A-Za-z_][A-Za-z0-9_.]*)\s*\}\}",
+        replace,
+        template,
+    )
 
 
 def system_prompt_for_action(

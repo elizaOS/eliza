@@ -1,0 +1,56 @@
+{
+  "$schema": "internal/eliza-1-cpu-baseline.v1",
+  "capturedAt": "2026-05-11",
+  "host": {
+    "os": "Linux 6.17.0-23-generic (Ubuntu 24.04 userspace)",
+    "cpu": "Intel(R) Core(TM) Ultra 9 275HX (Arrow Lake-HX, 24 logical cores)",
+    "cpuFlags": "AVX2, AVX-VNNI, F16C, SHA-NI, AES (NO AVX-512)",
+    "ramGb": 30,
+    "swapGb": 39,
+    "igpu": "Intel Arc/Xe (Mesa ANV 25.2.8, libvulkan_intel.so, Vulkan reports api 1.4.318)",
+    "dgpu": "NVIDIA Blackwell-class mobile (PCI 2c59) — nvidia kernel module NOT loaded; CUDA unavailable",
+    "toolchain": {
+      "gcc": "13.3.0",
+      "cmake": "3.28.3",
+      "make": "GNU Make 4.3",
+      "bun": "1.3.4",
+      "glslc": "Android NDK 29.0.13113456 shader-tools (linux-x86_64)",
+      "nvcc": "absent",
+      "vulkanLoader": "libvulkan.so.1.3.275 (system)",
+      "mingw": "absent (only cmake toolchain file cached, no x86_64-w64-mingw32-gcc binary)"
+    }
+  },
+  "bench": {
+    "backend": "cpu_single_thread_c_reference",
+    "buildNote": "cpu_bench.c needed _POSIX_C_SOURCE=199309L for clock_gettime under -std=c11 on glibc (fixed in this commit)",
+    "warmup": 1,
+    "runs": 3,
+    "workload": { "head_dim": 128, "seq": 4096, "kv_heads": 32, "qjl_kv_heads": 8, "polar_rows": 131072, "turbo_n_kv": 131072 },
+    "kernels": [
+      { "name": "turbo3",     "n_outputs": 131072, "median_ms": 19.41,  "min_ms": 19.33,  "max_ms": 19.42,  "blocks_per_sec": 6752835.3,  "bandwidth_GBs": 0.4052 },
+      { "name": "turbo4",     "n_outputs": 131072, "median_ms": 12.18,  "min_ms": 12.15,  "max_ms": 12.20,  "blocks_per_sec": 10764723.9, "bandwidth_GBs": 0.8182 },
+      { "name": "turbo3_tcq", "n_outputs": 131072, "median_ms": 17.66,  "min_ms": 17.64,  "max_ms": 17.66,  "blocks_per_sec": 7422704.4,  "bandwidth_GBs": 0.4157 },
+      { "name": "qjl",        "n_outputs": 131072, "median_ms": 110.77, "min_ms": 110.69, "max_ms": 110.80, "blocks_per_sec": 1183308.0,  "bandwidth_GBs": 0.0151 },
+      { "name": "polar",      "n_outputs": 131072, "median_ms": 31.25,  "min_ms": 31.17,  "max_ms": 31.26,  "blocks_per_sec": 4193960.7,  "bandwidth_GBs": 0.3607 }
+    ]
+  },
+  "referenceSelfTest": {
+    "command": "./gen_fixture --self-test",
+    "result": "turbo3=-2.501480 turbo4=-23.721790 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053 polar_qjl=-1.438744 (all finite)",
+    "note": "turbo4=-23.721790 is correct for the post-21627dd8f6 TBQ4 4x18-byte layout (Hadamard-32 preconditioning). README line 402 documented the pre-layout-change value -4.138101; that doc string is updated in this commit."
+  },
+  "vulkanVerify": {
+    "intelARL": {
+      "device": "Intel(R) Graphics (ARL), Mesa ANV, api 1.4.318",
+      "result": "8/8 PASS for turbo3, turbo4, turbo3_tcq, qjl, polar, polar+QJL-residual, polar_preht, polar_preht+QJL-residual",
+      "maxDiff": "<= 7.6e-6"
+    },
+    "lavapipe": {
+      "device": "llvmpipe (LLVM 20.1.2, 256 bits), api 1.4.318",
+      "note": "harness refuses software ICDs by default; ran with ELIZA_ALLOW_SOFTWARE_VULKAN=1 for diagnostics",
+      "result": "8/8 PASS for the same set",
+      "maxDiff": "<= 9.5e-6"
+    }
+  },
+  "kernelContract": { "command": "node check_kernel_contract.mjs", "result": "OK kernels=6 targets=23 manifestNames=6" }
+}

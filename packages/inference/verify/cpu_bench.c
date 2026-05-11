@@ -20,6 +20,10 @@
  *           per-kernel as metal_bench so the BENCHMARK doc can join them.
  */
 
+/* clock_gettime / CLOCK_MONOTONIC need POSIX.1-2001 visibility under
+ * strict -std=c11 on glibc; macOS/clang exposes them without this. */
+#define _POSIX_C_SOURCE 199309L
+
 #include "../reference/turbo_kernels.h"
 #include "qjl_polar_ref.h"
 

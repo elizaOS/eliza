@@ -2,11 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
-import {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
-} from "../services/optimized-prompt";
-import { resolveOptimizedPrompt } from "../services/optimized-prompt-resolver";
+import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { ActionResult, ProviderDataRecord } from "../types/components";
 import type { ContextEvent, ContextObjectTool } from "../types/context-object";
@@ -112,6 +108,7 @@ export async function runPlannerLoop(
 	};
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
+	let requiredToolMisses = 0;
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
@@ -134,7 +131,7 @@ export async function runPlannerLoop(
 				modelType: params.modelType,
 				provider: params.provider,
 				tools: params.tools,
-				toolChoice: params.toolChoice,
+				toolChoice: requireNonTerminalToolCall ? "required" : params.toolChoice,
 				recorder: params.recorder,
 				trajectoryId: params.trajectoryId,
 				parentStageId: params.parentStageId,
@@ -158,6 +155,12 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					requiredToolMisses++;
+					assertTrajectoryLimit({
+						kind: "required_tool_misses",
+						max: config.maxRequiredToolMisses,
+						observed: requiredToolMisses,
+					});
 					handleRequiredToolPlannerMiss({
 						trajectory,
 						iteration,
@@ -253,6 +256,12 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					requiredToolMisses++;
+					assertTrajectoryLimit({
+						kind: "required_tool_misses",
+						max: config.maxRequiredToolMisses,
+						observed: requiredToolMisses,
+					});
 					handleRequiredToolPlannerMiss({
 						trajectory,
 						iteration,
@@ -2098,21 +2107,16 @@ function loadOptimizedPlannerFromDisk(): string | null {
 
 function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {
 	// Production path: consult the registered service first. When it has
-	// an artifact for `action_planner`, return that.
-	const candidate = runtime as PlannerRuntime & {
-		getService?: <T>(name: string) => T | null | undefined;
-	};
-	const service =
-		candidate.getService?.<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE) ??
-		null;
-	if (service) {
-		const fromService = resolveOptimizedPrompt(
-			service,
-			"action_planner",
-			plannerTemplate,
-		);
-		if (fromService !== plannerTemplate) return fromService;
-	}
+	// an artifact for `action_planner`, return that. The shared helper
+	// gracefully no-ops when `getService` is missing on the runtime.
+	const fromService = resolveOptimizedPromptForRuntime(
+		runtime as PlannerRuntime & {
+			getService?: <T>(name: string) => T | null | undefined;
+		},
+		"action_planner",
+		plannerTemplate,
+	);
+	if (fromService !== plannerTemplate) return fromService;
 
 	// Fallback: read the on-disk store directly. Handles the test runtime
 	// path (where the service may not have started before the first

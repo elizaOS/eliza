@@ -1,7 +1,7 @@
 # MILADY-VK-DISPATCH-PATCH-V1
 #
 # Patch target : ggml/src/ggml-vulkan/vulkan-shaders/vulkan-shaders-gen.cpp
-# Goal         : register the 8 milady standalone .comp files in
+# Goal         : register the 9 milady standalone .comp files in
 #                process_shaders() so their SPIR-V blobs are emitted into
 #                ggml-vulkan-shaders.hpp as `<name>_data[]` + `<name>_len`.
 #
@@ -35,6 +35,7 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     string_to_spv("milady_qjl_get_rows",   "qjl_get_rows.comp",   {});
     string_to_spv("milady_qjl_mul_mv",     "qjl_mul_mv.comp",     {});
     string_to_spv("milady_polar",          "polar.comp",          {});
+    string_to_spv("milady_polar_preht",    "polar_preht.comp",    {});
     string_to_spv("milady_polar_get_rows", "polar_get_rows.comp", {});
     // MILADY-VK-DISPATCH-PATCH-V1 END
 

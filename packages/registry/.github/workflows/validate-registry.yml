@@ -1,0 +1,41 @@
+name: Validate Registry
+
+on:
+  pull_request:
+    branches:
+      - main
+      - next
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout registry
+        uses: actions/checkout@v4
+        with:
+          path: registry
+
+      - name: Checkout elizaOS
+        uses: actions/checkout@v4
+        with:
+          repository: elizaos/eliza
+          ref: main
+          path: eliza
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: registry/package-lock.json
+
+      - name: Install registry dependencies
+        run: npm ci
+        working-directory: registry
+
+      - name: Validate registry metadata
+        run: npm run validate:metadata
+        working-directory: registry
+        env:
+          ELIZA_REPO_ROOT: ${{ github.workspace }}/eliza

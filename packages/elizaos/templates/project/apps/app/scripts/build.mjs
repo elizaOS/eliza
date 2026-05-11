@@ -108,7 +108,7 @@ if (fullSetup) {
   await run(bunExecutable, ["install", "--ignore-scripts"], appDir);
 }
 
-await run(bunExecutable, ["run", "build:web"], appDir);
+await run(bunExecutable, ["--bun", "vite", "build"], appDir);
 if (resolveElizaAssetBaseUrls().appAssetBaseUrl) {
   await run(process.execPath, [pruneCdnAssetsScript], repoRoot);
 }

@@ -983,6 +983,54 @@ export async function ensureTrajectoriesTable(
       // ignore when column already exists
     }
 
+    // Dedicated trajectory_steps table — replaces the JSONB steps_json blob.
+    //
+    // Migration direction: forward only. Existing trajectories with steps
+    // in `trajectories.steps_json` are migrated into `trajectory_steps`
+    // rows by `forwardMigrateStepsJsonToRows` (called below when both
+    // tables are present). `trajectories.steps_json` is kept as a
+    // best-effort fallback for read paths that have not yet been
+    // migrated, but writes go through the new table.
+    //
+    // Script column has no length cap (legacy 4096-char cap applied only
+    // to JSON storage; the dedicated TEXT column has none).
+    await executeRawSql(
+      runtime,
+      `CREATE TABLE IF NOT EXISTS trajectory_steps (
+        id TEXT PRIMARY KEY,
+        trajectory_id TEXT NOT NULL,
+        ordinal INTEGER NOT NULL,
+        parent_step_id TEXT,
+        step_type TEXT NOT NULL DEFAULT 'llm',
+        name TEXT,
+        started_at BIGINT,
+        ended_at BIGINT,
+        payload TEXT NOT NULL DEFAULT '{}',
+        script TEXT
+      )`,
+    );
+    try {
+      await executeRawSql(
+        runtime,
+        `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_trajectory_id ON trajectory_steps(trajectory_id)`,
+      );
+    } catch {
+      // ignore if index creation fails
+    }
+    try {
+      await executeRawSql(
+        runtime,
+        `CREATE INDEX IF NOT EXISTS idx_trajectory_steps_ordinal ON trajectory_steps(trajectory_id, ordinal)`,
+      );
+    } catch {
+      // ignore if index creation fails
+    }
+
+    // One-shot forward migration from steps_json into trajectory_steps.
+    // Idempotent: only migrates trajectories whose steps are not yet in
+    // the dedicated table.
+    await forwardMigrateStepsJsonToRows(runtime);
+
     if (needsRecreate) {
       console.warn(
         "[trajectory-persistence] Recreated trajectories table with updated schema",
@@ -998,6 +1046,121 @@ export async function ensureTrajectoriesTable(
       err,
     );
     return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Forward migration: steps_json -> trajectory_steps
+//
+// Direction: ONE-WAY (legacy JSONB -> dedicated rows). Runs once per
+// runtime + schema version. After this migration runs, writes go to
+// both stores (rows are authoritative, `steps_json` is kept as a
+// best-effort fallback only). There is no reverse migration.
+// ---------------------------------------------------------------------------
+
+const stepsForwardMigrationRan = new WeakSet<object>();
+
+async function forwardMigrateStepsJsonToRows(
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const key = runtime as object;
+  if (stepsForwardMigrationRan.has(key)) return;
+  stepsForwardMigrationRan.add(key);
+
+  try {
+    // Find trajectories that have steps_json content but no rows yet.
+    const result = await executeRawSql(
+      runtime,
+      `SELECT t.id AS id, t.steps_json AS steps_json
+       FROM trajectories t
+       LEFT JOIN trajectory_steps s ON s.trajectory_id = t.id
+       WHERE s.id IS NULL
+         AND t.steps_json IS NOT NULL
+         AND t.steps_json <> ''
+         AND t.steps_json <> '[]'
+       GROUP BY t.id, t.steps_json`,
+    );
+    const rows = extractRows(result);
+    if (rows.length === 0) return;
+
+    let migrated = 0;
+    for (const row of rows) {
+      const record = asRecord(row);
+      if (!record) continue;
+      const trajectoryId = toText(record.id, "");
+      if (!trajectoryId) continue;
+      const stepsRaw = record.steps_json;
+      const parsed = parseJsonValue(stepsRaw);
+      if (!Array.isArray(parsed)) continue;
+
+      for (const stepValue of parsed) {
+        const step = asRecord(stepValue);
+        if (!step) continue;
+        const stepId = toText(step.stepId, "");
+        if (!stepId) continue;
+        const ordinal = toNumber(step.stepNumber, 0);
+        const startedAt = toOptionalNumber(step.timestamp);
+        const endedAt = startedAt;
+        const kindRaw = toText(step.kind, "");
+        const stepType =
+          kindRaw === "llm" || kindRaw === "action" ? kindRaw : "llm";
+        const script =
+          typeof step.script === "string" && step.script.length > 0
+            ? step.script
+            : null;
+        const { script: _script, ...payloadObj } = step as Record<
+          string,
+          unknown
+        >;
+        const payload = JSON.stringify(payloadObj);
+
+        try {
+          await executeRawSql(
+            runtime,
+            `INSERT INTO trajectory_steps (
+              id, trajectory_id, ordinal, parent_step_id, step_type,
+              name, started_at, ended_at, payload, script
+            ) VALUES (
+              ${sqlQuote(stepId)},
+              ${sqlQuote(trajectoryId)},
+              ${sqlNumber(ordinal)},
+              NULL,
+              ${sqlQuote(stepType)},
+              NULL,
+              ${sqlNumber(startedAt ?? null)},
+              ${sqlNumber(endedAt ?? null)},
+              ${sqlQuote(payload)},
+              ${script !== null ? sqlQuote(script) : "NULL"}
+            )
+            ON CONFLICT (id) DO NOTHING`,
+          );
+          migrated += 1;
+        } catch (err) {
+          // Continue migrating other steps on individual failures.
+          warnRuntime(
+            runtime,
+            `forwardMigrateStepsJsonToRows: failed to insert step ${stepId} for trajectory ${trajectoryId}`,
+            err,
+          );
+        }
+      }
+    }
+
+    if (migrated > 0) {
+      console.warn(
+        `[trajectory-persistence] Forward-migrated ${migrated} step rows from steps_json into trajectory_steps`,
+      );
+    }
+  } catch (err) {
+    // Migration is best-effort. Failures here do not prevent the
+    // dedicated table from being used for new writes; the
+    // legacy JSONB fallback remains for existing rows until
+    // migration succeeds on a subsequent boot.
+    warnRuntime(
+      runtime,
+      "forwardMigrateStepsJsonToRows: migration query failed; legacy steps_json still readable",
+      err,
+    );
   }
 }
 
@@ -1421,10 +1584,96 @@ export async function loadTrajectoryById(
     if (rows.length === 0) return null;
     const row = asRecord(rows[0]);
     if (!row) return null;
-    return parsePersistedTrajectoryRow(row, stepId);
+    const trajectory = parsePersistedTrajectoryRow(row, stepId);
+    // Prefer steps from the dedicated trajectory_steps table when present.
+    // Falls back to the legacy steps_json blob (already populated from
+    // parsePersistedTrajectoryRow) when the dedicated table has no rows.
+    const stepsFromTable = await loadAllStepsFromDedicatedTable(
+      runtime,
+      stepId,
+    );
+    if (stepsFromTable !== null) {
+      trajectory.steps = stepsFromTable;
+    }
+    return trajectory;
   } catch {
     return null;
   }
+}
+
+/**
+ * Internal helper — loads all step rows from the dedicated
+ * `trajectory_steps` table. Returns `null` when the table has no rows
+ * for the given trajectory (signal to fall back to the JSONB blob).
+ * Returns an empty array when the table exists but the trajectory
+ * legitimately has no steps yet.
+ */
+async function loadAllStepsFromDedicatedTable(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+): Promise<PersistedStep[] | null> {
+  const safeId = sqlQuote(trajectoryId);
+  try {
+    const result = await executeRawSql(
+      runtime,
+      `SELECT * FROM trajectory_steps
+       WHERE trajectory_id = ${safeId}
+       ORDER BY ordinal ASC`,
+    );
+    const rows = extractRows(result);
+    if (rows.length === 0) return null;
+    return rows
+      .map((row) => asRecord(row))
+      .filter((row): row is Record<string, unknown> => Boolean(row))
+      .map(stepRowToPersistedStep);
+  } catch {
+    return null;
+  }
+}
+
+function stepRowToPersistedStep(row: Record<string, unknown>): PersistedStep {
+  const payload = parseJsonValue(readRecordValue(row, ["payload"]));
+  const payloadRecord = asRecord(payload) ?? {};
+  const llmCalls = Array.isArray(payloadRecord.llmCalls)
+    ? (payloadRecord.llmCalls as PersistedStep["llmCalls"])
+    : [];
+  const providerAccesses = Array.isArray(payloadRecord.providerAccesses)
+    ? (payloadRecord.providerAccesses as PersistedStep["providerAccesses"])
+    : [];
+  const childSteps = Array.isArray(payloadRecord.childSteps)
+    ? (payloadRecord.childSteps as string[])
+    : undefined;
+  const usedSkills = Array.isArray(payloadRecord.usedSkills)
+    ? (payloadRecord.usedSkills as string[])
+    : undefined;
+
+  const stepNumber = toNumber(readRecordValue(row, ["ordinal"]), 0);
+  const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
+  const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
+  const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
+  const kind = kindRaw === "llm" || kindRaw === "action" ? kindRaw : undefined;
+  const scriptValue = readRecordValue(row, ["script"]);
+  const script =
+    typeof scriptValue === "string" && scriptValue.length > 0
+      ? scriptValue
+      : undefined;
+  const scriptHash =
+    typeof payloadRecord.scriptHash === "string"
+      ? (payloadRecord.scriptHash as string)
+      : undefined;
+
+  return {
+    stepId: toText(readRecordValue(row, ["id"]), ""),
+    stepNumber,
+    timestamp: startedAt ?? endedAt ?? Date.now(),
+    llmCalls,
+    providerAccesses,
+    ...(kind !== undefined ? { kind } : {}),
+    ...(childSteps !== undefined ? { childSteps } : {}),
+    ...(script !== undefined ? { script } : {}),
+    ...(scriptHash !== undefined ? { scriptHash } : {}),
+    ...(usedSkills !== undefined ? { usedSkills } : {}),
+  };
 }
 
 export async function loadTrajectoryByStepId(
@@ -1638,13 +1887,14 @@ export async function saveTrajectory(
       created_at = EXCLUDED.created_at,
       updated_at = EXCLUDED.updated_at`;
 
+  let saved = false;
   try {
     await executeRawSql(runtime, sql);
-    return true;
+    saved = true;
   } catch (err) {
     try {
       await executeRawSql(runtime, compatSql);
-      return true;
+      saved = true;
     } catch (compatErr) {
       console.error("[trajectory-persistence] saveTrajectory error:", {
         modern: err instanceof Error ? err.message : String(err),
@@ -1653,6 +1903,87 @@ export async function saveTrajectory(
       });
       return false;
     }
+  }
+
+  if (saved) {
+    // Mirror steps into the dedicated `trajectory_steps` table. Writes
+    // here are the new source of truth for step data; the JSONB blob in
+    // `trajectories.steps_json` is kept in lockstep for back-compat
+    // readers that have not yet been migrated.
+    try {
+      await replaceStepsForTrajectoryInternal(
+        runtime,
+        trajectory.id,
+        trajectory.steps,
+      );
+    } catch (err) {
+      warnRuntime(
+        runtime,
+        `saveTrajectory: failed to mirror steps into trajectory_steps for ${trajectory.id}`,
+        err,
+      );
+    }
+  }
+
+  return saved;
+}
+
+async function replaceStepsForTrajectoryInternal(
+  runtime: IAgentRuntime,
+  trajectoryId: string,
+  steps: PersistedStep[],
+): Promise<void> {
+  const safeId = sqlQuote(trajectoryId);
+  await executeRawSql(
+    runtime,
+    `DELETE FROM trajectory_steps WHERE trajectory_id = ${safeId}`,
+  );
+  for (const step of steps) {
+    const stepType =
+      step.kind === "llm" || step.kind === "action" ? step.kind : "llm";
+    const script =
+      typeof step.script === "string" && step.script.length > 0
+        ? step.script
+        : null;
+    const { script: _script, ...payloadObj } = step as unknown as Record<
+      string,
+      unknown
+    >;
+    const payload = JSON.stringify(payloadObj);
+    const startedAt = Number.isFinite(step.timestamp) ? step.timestamp : null;
+    const endedAt = startedAt;
+    const firstCallPurpose =
+      step.llmCalls[0]?.purpose ??
+      step.providerAccesses[0]?.providerName ??
+      null;
+    await executeRawSql(
+      runtime,
+      `INSERT INTO trajectory_steps (
+        id, trajectory_id, ordinal, parent_step_id, step_type,
+        name, started_at, ended_at, payload, script
+      ) VALUES (
+        ${sqlQuote(step.stepId)},
+        ${sqlQuote(trajectoryId)},
+        ${sqlNumber(step.stepNumber)},
+        NULL,
+        ${sqlQuote(stepType)},
+        ${firstCallPurpose ? sqlQuote(firstCallPurpose) : "NULL"},
+        ${sqlNumber(startedAt)},
+        ${sqlNumber(endedAt)},
+        ${sqlQuote(payload)},
+        ${script !== null ? sqlQuote(script) : "NULL"}
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        trajectory_id = EXCLUDED.trajectory_id,
+        ordinal = EXCLUDED.ordinal,
+        parent_step_id = EXCLUDED.parent_step_id,
+        step_type = EXCLUDED.step_type,
+        name = EXCLUDED.name,
+        started_at = EXCLUDED.started_at,
+        ended_at = EXCLUDED.ended_at,
+        payload = EXCLUDED.payload,
+        script = EXCLUDED.script`,
+    );
   }
 }
 

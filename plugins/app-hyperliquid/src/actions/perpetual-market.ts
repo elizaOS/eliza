@@ -694,7 +694,7 @@ export class PerpetualMarketService extends Service {
 }
 
 export const perpetualMarketAction: Action = {
-  name: PERPETUAL_MARKET_ACTION_NAME,
+  name: "PERPETUAL_MARKET",
   contexts: [...HYPERLIQUID_ACTION_CONTEXTS],
   contextGate: { anyOf: [...HYPERLIQUID_ACTION_CONTEXTS] },
   roleGate: { minRole: "USER" },
@@ -721,20 +721,26 @@ export const perpetualMarketAction: Action = {
       name: "action",
       description: "Perpetual market operation: read or place_order.",
       required: false,
-      schema: { type: "string", enum: [...HYPERLIQUID_OPS] },
+      schema: { type: "string", enum: ["read", "place_order"] },
     },
     {
       name: "subaction",
       description: "Legacy alias for action. Accepts place-order as place_order.",
       required: false,
-      schema: { type: "string", enum: [...HYPERLIQUID_OPS, "place-order"] },
+      schema: {
+        type: "string",
+        enum: ["read", "place_order", "place-order"],
+      },
     },
     {
       name: "kind",
       description:
         "read only: status | markets | market | positions | funding.",
       required: false,
-      schema: { type: "string", enum: [...READ_KINDS] },
+      schema: {
+        type: "string",
+        enum: ["status", "markets", "market", "positions", "funding"],
+      },
     },
     {
       name: "coin",

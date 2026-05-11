@@ -212,10 +212,7 @@ function parseBundleManifestOrThrow(
     "wakeword",
   ] as const) {
     const value = filesRaw[kind];
-    if (
-      value === undefined &&
-      (kind === "embedding" || kind === "vad" || kind === "wakeword")
-    ) {
+    if (value === undefined && (kind === "embedding" || kind === "wakeword")) {
       files[kind] = [];
       continue;
     }
@@ -227,7 +224,14 @@ function parseBundleManifestOrThrow(
     files[kind] = value.map((entry) => parseBundleFileEntry(entry, kind));
   }
 
-  for (const kind of ["text", "voice", "dflash", "cache"] as const) {
+  for (const kind of [
+    "text",
+    "voice",
+    "asr",
+    "dflash",
+    "cache",
+    "vad",
+  ] as const) {
     if (files[kind].length === 0) {
       throw new Error(
         `Invalid Eliza-1 manifest: files.${kind} must be non-empty`,
@@ -530,16 +534,22 @@ export class Downloader {
         );
       }
 
+      let effectiveStartByte = startByte;
+      if (effectiveStartByte > 0 && response.statusCode !== 206) {
+        effectiveStartByte = 0;
+        record.job.received = 0;
+      }
+
       const contentLengthHeader = response.headers["content-length"];
       const contentLength = Array.isArray(contentLengthHeader)
         ? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
         : Number.parseInt(contentLengthHeader ?? "0", 10);
       if (Number.isFinite(contentLength) && contentLength > 0) {
-        record.job.total = startByte + contentLength;
+        record.job.total = effectiveStartByte + contentLength;
       }
 
       const writeStream: Writable = fs.createWriteStream(record.stagingPath, {
-        flags: startByte > 0 ? "a" : "w",
+        flags: effectiveStartByte > 0 ? "a" : "w",
       });
 
       let lastSampleBytes = record.job.received;

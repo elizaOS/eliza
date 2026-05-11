@@ -1,0 +1,82 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131656Z_cbddb91d/rlm-bench__rlm_bench/run_rlm_bench_20260511T131656Z_1_e604898f/output"
+  ],
+  "benchmark_directory": "rlm-bench",
+  "benchmark_id": "rlm_bench",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "avg_iterations": 0,
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "oolong_accuracy": 0,
+    "oolong_pairs_accuracy": 0,
+    "overall_accuracy": 0.0,
+    "passed_tasks": 0,
+    "performance_metrics": {
+      "duration_seconds": 6.705195290996926,
+      "mean_latency_ms": 4.791532244001116,
+      "p95_latency_ms": 8.805990219116211,
+      "throughput_per_second": 1.043966610398195
+    },
+    "return_code": 0,
+    "s_niah_avg_accuracy": 0.0,
+    "token_metrics": {
+      "llm_call_count": 7,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "total_cost_usd": 0,
+    "total_tasks": 7,
+    "trajectory_summary": {
+      "files": 1,
+      "turns": 7,
+      "prompt_chars": 0,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 6.705195290996926,
+    "mean_latency_ms": 4.791532244001116,
+    "p95_latency_ms": 8.805990219116211,
+    "throughput_per_second": 1.043966610398195
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131656Z_cbddb91d/rlm-bench__rlm_bench/run_rlm_bench_20260511T131656Z_1_e604898f/output/rlm_bench_results_20260511_061703.json",
+  "run_group_id": "rg_20260511T131656Z_cbddb91d",
+  "run_id": "run_rlm_bench_20260511T131656Z_1_e604898f",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 7,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "turns": 7,
+    "prompt_chars": 0,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:02.430149+00:00"
+}

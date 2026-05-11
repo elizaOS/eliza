@@ -11,6 +11,18 @@
  */
 
 export {
+  buildHuggingFaceResolveUrl,
+  buildHuggingFaceResolveUrlForPath,
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  ELIZA_1_PLACEHOLDER_IDS,
+  ELIZA_1_TIER_IDS,
+  type Eliza1TierId,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  findCatalogModel,
+  isDefaultEligibleId,
+  MODEL_CATALOG,
+} from "./catalog.js";
+export {
   downloadsStagingDir,
   elizaModelsDir,
   isWithinElizaRoot,

@@ -25,6 +25,23 @@ class VisualWebBenchEvaluator:
         prediction: VisualWebBenchPrediction,
     ) -> VisualWebBenchResult:
         """Score one prediction."""
+        if prediction.error:
+            return VisualWebBenchResult(
+                task_id=task.id,
+                task_type=task.task_type,
+                website=task.website,
+                score_kind=task.score_kind,
+                score=0.0,
+                success=False,
+                expected=task.answer,
+                prediction=prediction,
+                exact_match=False,
+                choice_match=False,
+                bbox_iou=None,
+                latency_ms=prediction.latency_ms,
+                error=prediction.error,
+            )
+
         exact_match = False
         choice_match = False
         bbox_iou: float | None = None

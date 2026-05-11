@@ -1,0 +1,77 @@
+{
+  "agent": "hermes",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132543Z_4884edaf/tau-bench__tau_bench/run_tau_bench_20260511T132543Z_1_c6fb3215/output"
+  ],
+  "benchmark_directory": "tau-bench",
+  "benchmark_id": "tau_bench",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "overall_policy_compliance": 1.0,
+    "overall_success_rate": 0.0,
+    "overall_tool_accuracy": 0,
+    "performance_metrics": {
+      "duration_seconds": 14.429920333990594,
+      "mean_latency_ms": 7048.549652099609,
+      "p95_latency_ms": 7605.101108551025,
+      "throughput_per_second": 0.20790135569448082
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "llm_call_count": 3,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "trajectory_summary": {
+      "files": 2,
+      "turns": 3,
+      "prompt_chars": 21,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 14.429920333990594,
+    "mean_latency_ms": 7048.549652099609,
+    "p95_latency_ms": 7605.101108551025,
+    "throughput_per_second": 0.20790135569448082
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132543Z_4884edaf/tau-bench__tau_bench/run_tau_bench_20260511T132543Z_1_c6fb3215/output/tau-bench-results.json",
+  "run_group_id": "rg_20260511T132543Z_4884edaf",
+  "run_id": "run_tau_bench_20260511T132543Z_1_c6fb3215",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 3,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "turns": 3,
+    "prompt_chars": 21,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:02.924027+00:00"
+}

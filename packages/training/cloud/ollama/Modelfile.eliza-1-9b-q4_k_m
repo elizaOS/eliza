@@ -18,7 +18,7 @@
 # Availability: requires `scripts/publish_all_eliza1.sh --filter-size 9b
 # --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
 # checkpoint. The HF repo does not exist before that runs.
-FROM hf.co/elizalabs/eliza-1-9b-gguf-q4_k_m
+FROM hf.co/elizaos/eliza-1-9b-gguf-q4_k_m
 
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 
