@@ -30,7 +30,12 @@ const __dirname = path.dirname(__filename);
 
 // packages/app-core/scripts/kernel-patches/  ->  packages/inference/cuda/
 const STANDALONE_CUDA_DIR = path.resolve(
-  __dirname, "..", "..", "..", "inference", "cuda",
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "inference",
+  "cuda",
 );
 
 // standalone-filename -> in-fork relative path under cacheDir.
@@ -46,9 +51,13 @@ function assertStandalonesPresent() {
   const missing = [];
   for (const name of CUDA_KERNEL_FILES) {
     const src = path.join(STANDALONE_CUDA_DIR, name);
-    if (!fs.existsSync(src)) { missing.push(src); continue; }
+    if (!fs.existsSync(src)) {
+      missing.push(src);
+      continue;
+    }
     const st = fs.statSync(src);
-    if (!st.isFile() || st.size === 0) missing.push(`${src} (not a file or empty)`);
+    if (!st.isFile() || st.size === 0)
+      missing.push(`${src} (not a file or empty)`);
   }
   if (missing.length > 0) {
     throw new Error(
@@ -63,7 +72,9 @@ export function patchCudaKernels(cacheDir, { dryRun = false } = {}) {
   if (dryRun) {
     console.log(`[cuda-kernels] (dry-run) ensure dir ${targetDir}`);
   } else if (!fs.existsSync(targetDir)) {
-    throw new Error(`[cuda-kernels] expected ggml-cuda/ to exist in fork: ${targetDir}`);
+    throw new Error(
+      `[cuda-kernels] expected ggml-cuda/ to exist in fork: ${targetDir}`,
+    );
   }
   const copied = [];
   for (const name of CUDA_KERNEL_FILES) {
@@ -84,7 +95,7 @@ export function patchCudaKernels(cacheDir, { dryRun = false } = {}) {
   }
   console.log(
     `[cuda-kernels] ${dryRun ? "(dry-run) " : ""}staged ${copied.length} CUDA kernel(s): ${copied.join(", ")}` +
-    ` (needs ${CUDA_KERNEL_CMAKE_FLAGS.join(" ")} from build-llama-cpp-dflash.mjs)`,
+      ` (needs ${CUDA_KERNEL_CMAKE_FLAGS.join(" ")} from build-llama-cpp-dflash.mjs)`,
   );
   return { copied, cmakeFlags: CUDA_KERNEL_CMAKE_FLAGS };
 }

@@ -59,7 +59,10 @@ describe("verifyBundleOnDevice", () => {
     const { verifyBundleOnDevice } = await import("./verify-on-device");
     await verifyBundleOnDevice(ARGS);
     expect(engineMock.startVoice).toHaveBeenCalledWith(
-      expect.objectContaining({ bundleRoot: ARGS.bundleRoot, useFfiBackend: true }),
+      expect.objectContaining({
+        bundleRoot: ARGS.bundleRoot,
+        useFfiBackend: true,
+      }),
     );
     expect(engineMock.synthesizeSpeech).toHaveBeenCalled();
     expect(engineMock.triggerBargeIn).toHaveBeenCalled();
