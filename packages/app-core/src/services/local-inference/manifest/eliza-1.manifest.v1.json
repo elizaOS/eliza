@@ -195,6 +195,20 @@
             "tagLeakage": { "type": "number", "minimum": 0 },
             "passed": { "type": "boolean" }
           }
+        },
+        "dflash": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["acceptanceRate", "speedup", "passed"],
+          "properties": {
+            "acceptanceRate": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "speedup": { "type": ["number", "null"], "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
         }
       }
     },

@@ -277,6 +277,21 @@ export const Eliza1EvalsSchema = z.object({
       passed: z.boolean(),
     })
     .optional(),
+  // DFlash speculative-decoding bench. Optional — a bundle whose DFlash
+  // drafter is still a stand-in records this as `passed: false` with
+  // `acceptanceRate: null` / `speedup: null` ("needs hardware / needs a
+  // trained drafter" — recorded, not faked, per AGENTS.md §3 / §7). The
+  // gate thresholds live in the `dflash:` section of `eliza1_gates.yaml`;
+  // the bench numbers come from `dflash_drafter_runtime_smoke.mjs --bench`.
+  dflash: z
+    .object({
+      /** accepted/drafted; null when no hardware/drafter was available. */
+      acceptanceRate: z.number().min(0).max(1).nullable(),
+      /** drafter-on tok/s ÷ baseline tok/s; null when not measured. */
+      speedup: z.number().nonnegative().nullable(),
+      passed: z.boolean(),
+    })
+    .optional(),
 });
 
 export const Eliza1RamBudgetSchema = z
