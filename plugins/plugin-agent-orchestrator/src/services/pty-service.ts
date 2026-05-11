@@ -91,6 +91,7 @@ import {
 import {
   type MergeSessionLogResult,
   mergeSessionLogIntoTrajectory,
+  tagParentTrajectoryWithDegradedCapture,
 } from "./session-log-merger.js";
 import { readClaudeCodeSession } from "./session-log-reader.js";
 import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";
@@ -1318,19 +1319,44 @@ export class PTYService {
       return undefined;
     }
 
+    const mergerLogger = {
+      warn: (msg: string) => this.log(msg),
+      debug: (msg: string) => this.log(msg),
+      info: (msg: string) => this.log(msg),
+    };
+
     try {
       const capture = await readClaudeCodeSession({
         workspaceDir: workdir,
         parentStepId,
-        logger: {
-          warn: (msg) => this.log(msg),
-          debug: (msg) => this.log(msg),
-        },
+        logger: mergerLogger,
       });
       if (capture.reason === "missing") {
         this.log(
           `[session-log-capture] no Claude Code session log found for ${sessionId} under ${workdir}; falling back to stdout-only capture`,
         );
+        await tagParentTrajectoryWithDegradedCapture({
+          runtime: this.runtime,
+          parentStepId,
+          subAgentType: agentType,
+          reason: "session-log-missing",
+          detail: `workdir=${workdir}`,
+          logger: mergerLogger,
+        });
+        return undefined;
+      }
+      if (capture.reason === "empty") {
+        this.log(
+          `[session-log-capture] empty Claude Code session log at ${capture.sourcePath ?? "<unknown>"}; tagging parent ${parentStepId} as degraded`,
+        );
+        await tagParentTrajectoryWithDegradedCapture({
+          runtime: this.runtime,
+          parentStepId,
+          subAgentType: agentType,
+          reason: "session-log-empty",
+          detail: capture.sourcePath,
+          logger: mergerLogger,
+        });
         return undefined;
       }
       const result = await mergeSessionLogIntoTrajectory({
@@ -1340,21 +1366,39 @@ export class PTYService {
         ptySessionId: sessionId,
         agentType,
         workspaceDir: workdir,
-        logger: {
-          warn: (msg) => this.log(msg),
-          debug: (msg) => this.log(msg),
-          info: (msg) => this.log(msg),
-        },
+        logger: mergerLogger,
       });
       this.log(
-        `[session-log-capture] merged ${result.stepsWritten} Claude Code steps into parent ${parentStepId} (child trajectory ${result.childTrajectoryId ?? "<none>"})`,
+        `[session-log-capture] merged ${result.stepsWritten} Claude Code steps into parent ${parentStepId} (child trajectory ${result.childTrajectoryId ?? "<none>"}) capture_quality=${result.captureQuality}`,
       );
+      if (result.captureQuality === "degraded") {
+        await tagParentTrajectoryWithDegradedCapture({
+          runtime: this.runtime,
+          parentStepId,
+          subAgentType: agentType,
+          reason: "session-log-empty",
+          detail: `skippedReason=${result.skippedReason ?? "unknown"}`,
+          logger: mergerLogger,
+        });
+      }
       return result;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.log(
         `[session-log-capture] capture failed for ${sessionId}: ${message}`,
       );
+      try {
+        await tagParentTrajectoryWithDegradedCapture({
+          runtime: this.runtime,
+          parentStepId,
+          subAgentType: agentType,
+          reason: "session-log-error",
+          detail: message,
+          logger: mergerLogger,
+        });
+      } catch {
+        // Tagging is best-effort; never let it shadow the original error.
+      }
       return undefined;
     }
   }
