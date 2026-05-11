@@ -34,7 +34,6 @@ import {
   estimateQuantizedKvBytesPerToken,
   KV_SPILL_MIN_CONTEXT,
   type KvSpillPlan,
-  KvSpillUnsupportedError,
   planKvSpill,
   residentKvBudgetFromRamBudget,
   restoreClassForHardware,
@@ -45,7 +44,7 @@ import {
   type LocalUsageBlock,
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
-import { resolveRamBudget } from "./ram-budget";
+import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
   resolveGrammarForParams,
@@ -70,6 +69,13 @@ export interface DflashServerPlan {
   kvOffload?: DflashKvOffloadMode;
   disableThinking: boolean;
   /**
+   * Target model parameter count (`"1.7B"`, `"27B"`, …). Used only to size
+   * the RAM-derived `--parallel` default — each slot's KV footprint scales
+   * with `(params, contextSize)`. Optional: when absent, `resolveParallel`
+   * falls back to the static default rather than the RAM heuristic.
+   */
+  params?: string;
+  /**
    * KV-cache spill plan for context > 64k (packages/inference/AGENTS.md §3
    * item 7). Resolved in `load()` from the catalog + a hardware probe + the
    * bundle's RAM budget. `null`/absent when the context is short enough that
@@ -81,6 +87,22 @@ export interface DflashServerPlan {
    * silent-slow fallback.
    */
   kvSpillPlan?: KvSpillPlan | null;
+  /**
+   * Explicit `--parallel N` override, set by `resizeParallel()` when the
+   * conversation high-water mark outgrows the running slot count and there
+   * is RAM headroom. Wins over the env / catalog / RAM-derived defaults in
+   * `resolveParallel`.
+   */
+  parallelOverride?: number;
+  /**
+   * Restart without the DFlash drafter (`-md`) — set by `restartWithoutDrafter()`
+   * as the last-resort memory-pressure eviction for the drafter role (the
+   * drafter is co-resident in this process, so dropping it means a relaunch).
+   * When true, `start()` omits `-md`, `--spec-type dflash`, and the `--draft-*`
+   * / `--ctx-size-draft` / `--n-gpu-layers-draft` flags. `drafterModelPath`
+   * is still carried in the plan so a subsequent re-arm can put it back.
+   */
+  disableDrafter?: boolean;
 }
 
 export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
@@ -950,21 +972,63 @@ async function fetchStreamingChatCompletion(
 }
 
 /**
- * Default `--parallel` when caching is enabled. Higher values give more
- * distinct cache slots so concurrent prefixes don't evict each other,
- * at the cost of KV memory. 4 is a balance that works for a single-user
- * desktop while still saturating a single GPU under load.
+ * Default `--parallel` when caching is enabled and nothing else (env,
+ * catalog, RAM-derived sizing) applies. Higher values give more distinct
+ * cache slots so concurrent prefixes don't evict each other, at the cost
+ * of KV memory. 4 is a balance that works for a single-user desktop while
+ * still saturating a single GPU under load.
  */
 const DEFAULT_CACHE_PARALLEL = 4;
+/** Upper bound on the auto-derived / auto-resized slot count. */
+const MAX_AUTO_PARALLEL = 16;
+const BYTES_PER_MB_DFLASH = 1024 * 1024;
 
 /**
- * Resolve `--parallel`. Order: ELIZA_LOCAL_PARALLEL (generalised) →
- * ELIZA_DFLASH_PARALLEL (legacy) → catalog `optimizations.parallel` →
- * DEFAULT_CACHE_PARALLEL. The generalised env wins because it's the
- * operator's explicit override; the legacy DFlash-specific env stays
- * for back-compat.
+ * RAM-derived `--parallel` default: each slot holds one KV cache of size
+ * `bytesPerSlot ≈ estimateQuantizedKvBytesPerToken(params) * contextSize`.
+ * We let the slots' combined KV occupy at most ~25% of usable host RAM
+ * (the weights + activations + OS need the rest), clamped to
+ * `[2, MAX_AUTO_PARALLEL]`. With a 1.7B model at 32k that's many slots;
+ * with a 27B model at 128k it collapses toward 2 — exactly the "scale
+ * concurrency to the hardware" behaviour the brief asks for.
  */
-function resolveParallel(catalogParallel?: number): number {
+function derivePreferredParallel(args: {
+  contextSize: number;
+  params: string;
+  usableRamMb: number;
+}): number {
+  const bytesPerSlot =
+    estimateQuantizedKvBytesPerToken(args.params) * args.contextSize;
+  if (!Number.isFinite(bytesPerSlot) || bytesPerSlot <= 0) {
+    return DEFAULT_CACHE_PARALLEL;
+  }
+  const slotBudgetMb = Math.max(0, args.usableRamMb * 0.25);
+  const slotMb = bytesPerSlot / BYTES_PER_MB_DFLASH;
+  if (slotMb <= 0) return DEFAULT_CACHE_PARALLEL;
+  const fits = Math.floor(slotBudgetMb / slotMb);
+  return Math.min(MAX_AUTO_PARALLEL, Math.max(2, fits));
+}
+
+/**
+ * Resolve `--parallel`. Order: explicit `override` (from `resizeParallel`)
+ * → ELIZA_LOCAL_PARALLEL (generalised) → ELIZA_DFLASH_PARALLEL (legacy) →
+ * catalog `optimizations.parallel` → RAM-derived default (when a budget
+ * context is supplied) → DEFAULT_CACHE_PARALLEL. The operator's env wins
+ * over the catalog and the RAM heuristic; the explicit override wins over
+ * everything (it's a deliberate auto-resize decision).
+ */
+function resolveParallel(
+  catalogParallel?: number,
+  budget?: { contextSize: number; params: string; usableRamMb: number },
+  override?: number,
+): number {
+  if (
+    typeof override === "number" &&
+    Number.isFinite(override) &&
+    override >= 1
+  ) {
+    return Math.min(MAX_AUTO_PARALLEL, Math.floor(override));
+  }
   for (const raw of [
     process.env.ELIZA_LOCAL_PARALLEL,
     process.env.ELIZA_DFLASH_PARALLEL,
@@ -981,6 +1045,7 @@ function resolveParallel(catalogParallel?: number): number {
   ) {
     return catalogParallel;
   }
+  if (budget) return derivePreferredParallel(budget);
   return DEFAULT_CACHE_PARALLEL;
 }
 
@@ -1199,6 +1264,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   private cacheModelHash: string | null = null;
   private cacheParallel: number = DEFAULT_CACHE_PARALLEL;
   private cacheSlotDir: string | null = null;
+  /**
+   * `optimizations` passed to the last successful `start()`, so a
+   * `resizeParallel()` / `restartWithoutDrafter()` relaunch can re-apply
+   * the same llama-server flags.
+   */
+  private lastOptimizations: LocalRuntimeOptimizations | null = null;
   private evictionTimer: NodeJS.Timeout | null = null;
   /**
    * Per-conversation slot files persisted on shutdown for cross-restart
@@ -1266,7 +1337,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       (b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
     );
     if (!fused) return null;
-    return { baseUrl: this.baseUrl, speechPath: "/v1/audio/speech", fused: true };
+    return {
+      baseUrl: this.baseUrl,
+      speechPath: "/v1/audio/speech",
+      fused: true,
+    };
   }
 
   /**
@@ -1296,6 +1371,55 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    */
   parallelSlots(): number {
     return this.cacheParallel;
+  }
+
+  /** True when a server is running with the DFlash drafter (`-md`) wired. */
+  drafterEnabled(): boolean {
+    return this.hasLoadedModel() && !(this.loadedPlan?.disableDrafter ?? false);
+  }
+
+  /**
+   * Restart the running server with a different `--parallel`. Used by the
+   * engine's auto-tune (J4): when the conversation high-water mark outgrows
+   * the running slot count and there's RAM headroom, this relaunches with
+   * `targetParallel` slots so the new conversations get their own KV slots
+   * instead of thrashing. No-op (returns false) when no server is running,
+   * `targetParallel <= current`, or the target equals the current count.
+   * Per-conversation KV is persisted across the restart by the engine's
+   * `closeConversation` flow + the conversation-keyed slot dir.
+   */
+  async resizeParallel(targetParallel: number): Promise<boolean> {
+    if (!this.hasLoadedModel() || !this.loadedPlan) return false;
+    if (
+      !Number.isFinite(targetParallel) ||
+      targetParallel <= this.cacheParallel
+    ) {
+      return false;
+    }
+    const clamped = Math.min(MAX_AUTO_PARALLEL, Math.floor(targetParallel));
+    if (clamped === this.cacheParallel) return false;
+    await this.start(
+      { ...this.loadedPlan, parallelOverride: clamped },
+      this.lastOptimizations,
+    );
+    return true;
+  }
+
+  /**
+   * Last-resort memory-pressure eviction for the DFlash drafter role: relaunch
+   * the server without `-md`. The drafter is co-resident in this process, so
+   * dropping it is a restart, not a `madvise` — hence "last resort". Returns
+   * false when no server is running or the drafter is already disabled. A
+   * later re-arm puts the drafter back (the engine re-issues `load()`).
+   */
+  async restartWithoutDrafter(): Promise<boolean> {
+    if (!this.hasLoadedModel() || !this.loadedPlan) return false;
+    if (this.loadedPlan.disableDrafter) return false;
+    await this.start(
+      { ...this.loadedPlan, disableDrafter: true },
+      this.lastOptimizations,
+    );
+    return true;
   }
 
   /** Soft probe — does the binary resolve and is DFlash enabled. */
@@ -1381,6 +1505,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         kvOffload: kvOffload ?? undefined,
         disableThinking: dflash.disableThinking,
         kvSpillPlan,
+        params: catalog?.params,
       },
       optimizations,
     );
@@ -1398,7 +1523,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     if (
       this.child &&
       this.loadedPlan?.targetModelPath === plan.targetModelPath &&
-      this.loadedPlan.drafterModelPath === plan.drafterModelPath
+      this.loadedPlan.drafterModelPath === plan.drafterModelPath &&
+      (this.loadedPlan.disableDrafter ?? false) ===
+        (plan.disableDrafter ?? false) &&
+      this.loadedPlan.parallelOverride === plan.parallelOverride
     ) {
       return;
     }
@@ -1409,16 +1537,28 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       throw new Error(`[dflash] ${status.reason}`);
     }
 
-    const drafterModelPath = maybeRepairDflashDrafter(
-      status.binaryPath,
-      plan.targetModelPath,
-      plan.drafterModelPath,
-    );
+    const drafterEnabled = !plan.disableDrafter;
+    const drafterModelPath = drafterEnabled
+      ? maybeRepairDflashDrafter(
+          status.binaryPath,
+          plan.targetModelPath,
+          plan.drafterModelPath,
+        )
+      : plan.drafterModelPath;
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
-    const parallel = resolveParallel(optimizations?.parallel);
+    const usableRamMb =
+      Math.round(os.totalmem() / BYTES_PER_MB_DFLASH) - ramHeadroomReserveMb();
+    const parallel = resolveParallel(
+      optimizations?.parallel,
+      plan.params
+        ? { contextSize: plan.contextSize, params: plan.params, usableRamMb }
+        : undefined,
+      plan.parallelOverride,
+    );
+    this.lastOptimizations = optimizations ?? null;
     const kvOffload = plan.kvOffload ?? resolveDflashKvOffload(null);
     const modelHash = buildModelHash({
       targetModelPath: plan.targetModelPath,
@@ -1446,26 +1586,30 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const args = [
       "--model",
       plan.targetModelPath,
-      "-md",
-      drafterModelPath,
-      "--spec-type",
-      "dflash",
+      ...(drafterEnabled
+        ? [
+            "-md",
+            drafterModelPath,
+            "--spec-type",
+            "dflash",
+            "--n-gpu-layers-draft",
+            normalizeGpuLayers(plan.draftGpuLayers),
+            "--ctx-size-draft",
+            String(plan.draftContextSize),
+            "--draft-min",
+            String(plan.draftMin),
+            "--draft-max",
+            String(plan.draftMax),
+          ]
+        : []),
       "--host",
       host,
       "--port",
       String(port),
       "--n-gpu-layers",
       normalizeGpuLayers(plan.gpuLayers),
-      "--n-gpu-layers-draft",
-      normalizeGpuLayers(plan.draftGpuLayers),
       "--ctx-size",
       String(plan.contextSize),
-      "--ctx-size-draft",
-      String(plan.draftContextSize),
-      "--draft-min",
-      String(plan.draftMin),
-      "--draft-max",
-      String(plan.draftMax),
       "--parallel",
       String(parallel),
       // Persist per-slot KV state to disk so prefix reuse survives the
@@ -1598,6 +1742,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     this.cacheSlotDir = null;
     this.conversationKvDir = null;
     this.cacheParallel = DEFAULT_CACHE_PARALLEL;
+    this.lastOptimizations = null;
     if (!child) return;
     // Best-effort: tell llama-server to flush per-conversation KV state
     // to disk before we kill it. If the dispatcher restarts the server
