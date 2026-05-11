@@ -26,7 +26,10 @@ import z from "zod";
 // Develop had a stale short enum here that rejected every `page-*` scope
 // the UI emits (BrowserWorkspaceView, CharacterHubView, etc.), surfacing
 // as "Invalid option: expected one of …" toasts.
-const ConversationScopeSchema = z.enum([
+// Exported (alongside ConversationAutomationTypeSchema below) so the
+// schema-vs-type-drift contract test can assert membership equality
+// against the runtime VALID_SCOPES allowlist.
+export const ConversationScopeSchema = z.enum([
   "general",
   "automation-coordinator",
   "automation-workflow",
@@ -44,7 +47,7 @@ const ConversationScopeSchema = z.enum([
   "page-automations",
 ]);
 
-const ConversationAutomationTypeSchema = z.enum([
+export const ConversationAutomationTypeSchema = z.enum([
   "coordinator_text",
   "workflow",
 ]);

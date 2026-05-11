@@ -118,42 +118,33 @@ export const readOnboardingOptionsViaHttp: AgentJsonReader<
 };
 
 /**
- * Default snapshot returned when the agent hasn't answered yet. Marks
- * onboarding as incomplete so the renderer's startup gate keeps polling
- * rather than treating "no answer" as "onboarded".
+ * Composers throw `AgentNotReadyError` when port=null or the HTTP
+ * reader fails. They never fabricate a placeholder snapshot — that
+ * would risk authoritatively returning `{complete: false}` to the
+ * renderer mid-startup, kicking the user into an onboarding flow
+ * they already finished. The renderer-side wrappers catch and fall
+ * through to HTTP, which then surfaces a real transport error to
+ * the polling loop.
  */
-export const INITIAL_ONBOARDING_STATUS: OnboardingStatusSnapshot = {
-	complete: false,
-};
 
-/**
- * Default options snapshot returned when the agent hasn't answered yet.
- * Empty catalogs, no providers — the renderer renders a loading state.
- */
-export const INITIAL_ONBOARDING_OPTIONS: OnboardingOptionsSnapshot = {
-	names: [],
-	styles: [],
-	providers: [],
-	cloudProviders: [],
-	models: {},
-	inventoryProviders: [],
-	sharedStyleRules: "",
-};
+import { AgentNotReadyError } from "./config-and-auth-rpc";
 
 export async function composeOnboardingStatusSnapshot(
 	port: number | null,
 	read: AgentJsonReader<OnboardingStatusSnapshot>,
 ): Promise<OnboardingStatusSnapshot> {
-	if (port === null) return INITIAL_ONBOARDING_STATUS;
+	if (port === null) throw new AgentNotReadyError("getOnboardingStatus");
 	const value = await read(port);
-	return value ?? INITIAL_ONBOARDING_STATUS;
+	if (value === null) throw new AgentNotReadyError("getOnboardingStatus");
+	return value;
 }
 
 export async function composeOnboardingOptionsSnapshot(
 	port: number | null,
 	read: AgentJsonReader<OnboardingOptionsSnapshot>,
 ): Promise<OnboardingOptionsSnapshot> {
-	if (port === null) return INITIAL_ONBOARDING_OPTIONS;
+	if (port === null) throw new AgentNotReadyError("getOnboardingOptions");
 	const value = await read(port);
-	return value ?? INITIAL_ONBOARDING_OPTIONS;
+	if (value === null) throw new AgentNotReadyError("getOnboardingOptions");
+	return value;
 }

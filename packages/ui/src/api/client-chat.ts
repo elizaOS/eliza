@@ -4,6 +4,7 @@
  */
 
 import type { DatabaseProviderType } from "@elizaos/shared";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import { ElizaClient } from "./client-base";
 import type {
   ApiError,
@@ -667,6 +668,18 @@ ElizaClient.prototype.sendChatStream = async function (
 };
 
 ElizaClient.prototype.listConversations = async function (this: ElizaClient) {
+  // Prefer typed Electrobun RPC. The bun-side composer throws
+  // AgentNotReadyError if the agent has no port yet; we catch and
+  // fall through to HTTP so the sidebar's polling loop sees the same
+  // "transport not ready" semantic as before RPC was wired.
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{
+      conversations: Conversation[];
+    }>({ rpcMethod: "listConversations", ipcChannel: "agent" });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* AgentNotReadyError or any RPC failure → fall through to HTTP */
+  }
   return this.fetch("/api/conversations");
 };
 

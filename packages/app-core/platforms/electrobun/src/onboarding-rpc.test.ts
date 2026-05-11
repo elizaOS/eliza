@@ -2,27 +2,17 @@
  * Typed-RPC contract tests for `getOnboardingStatus` and
  * `getOnboardingOptions`.
  *
- * Same shape as boot-progress.test.ts — verifies:
- *   1. The composition functions return the documented typed shape
- *      (compile-time check via typed assignment).
- *   2. When the agent has no port yet, the snapshot collapses to the
- *      documented `INITIAL_*` defaults (incomplete onboarding, empty
- *      catalogs) so the renderer's startup gate keeps polling.
- *   3. When the reader returns `null` (timeout / 5xx), same default
- *      behavior — the typed surface is gentler than `client.fetch`
- *      which threw.
- *   4. Field-level coercion: server payloads that drift from the typed
- *      schema (wrong list types, missing keys) are normalized to the
- *      narrow snapshot shape rather than leaking `unknown` to callers.
+ * Composers throw `AgentNotReadyError` rather than fabricating
+ * `{complete: false}` / empty-catalog placeholders. See the file
+ * header comment in onboarding-rpc.ts for the rationale.
  */
 
 import { describe, expect, it } from "bun:test";
+import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	type AgentJsonReader,
 	composeOnboardingOptionsSnapshot,
 	composeOnboardingStatusSnapshot,
-	INITIAL_ONBOARDING_OPTIONS,
-	INITIAL_ONBOARDING_STATUS,
 	readOnboardingOptionsViaHttp,
 	readOnboardingStatusViaHttp,
 } from "./onboarding-rpc";
@@ -36,17 +26,16 @@ const noOptionsReader: AgentJsonReader<OnboardingOptionsSnapshot> = async () =>
 	null;
 
 describe("getOnboardingStatus typed RPC", () => {
-	it("returns INITIAL when the agent has no port", async () => {
-		const snap = await composeOnboardingStatusSnapshot(null, noReader);
-		const _typed: OnboardingStatusSnapshot = snap;
-		void _typed;
-		expect(snap).toEqual(INITIAL_ONBOARDING_STATUS);
-		expect(snap.complete).toBe(false);
+	it("throws AgentNotReadyError when port is null", async () => {
+		await expect(
+			composeOnboardingStatusSnapshot(null, noReader),
+		).rejects.toBeInstanceOf(AgentNotReadyError);
 	});
 
-	it("returns INITIAL when the reader times out / returns null", async () => {
-		const snap = await composeOnboardingStatusSnapshot(31337, noReader);
-		expect(snap.complete).toBe(false);
+	it("throws when reader returns null", async () => {
+		await expect(
+			composeOnboardingStatusSnapshot(31337, noReader),
+		).rejects.toBeInstanceOf(AgentNotReadyError);
 	});
 
 	it("forwards complete + cloudProvisioned when present", async () => {
@@ -55,11 +44,13 @@ describe("getOnboardingStatus typed RPC", () => {
 			cloudProvisioned: true,
 		});
 		const snap = await composeOnboardingStatusSnapshot(31337, reader);
+		const _typed: OnboardingStatusSnapshot = snap;
+		void _typed;
 		expect(snap.complete).toBe(true);
 		expect(snap.cloudProvisioned).toBe(true);
 	});
 
-	it("omits cloudProvisioned when false / missing", async () => {
+	it("omits cloudProvisioned when not present", async () => {
 		const reader: AgentJsonReader<OnboardingStatusSnapshot> = async () => ({
 			complete: true,
 		});
@@ -70,23 +61,16 @@ describe("getOnboardingStatus typed RPC", () => {
 });
 
 describe("getOnboardingOptions typed RPC", () => {
-	it("returns INITIAL_ONBOARDING_OPTIONS when port is null", async () => {
-		const snap = await composeOnboardingOptionsSnapshot(null, noOptionsReader);
-		const _typed: OnboardingOptionsSnapshot = snap;
-		void _typed;
-		expect(snap).toEqual(INITIAL_ONBOARDING_OPTIONS);
-		expect(snap.names).toEqual([]);
-		expect(snap.styles).toEqual([]);
-		expect(snap.providers).toEqual([]);
-		expect(snap.sharedStyleRules).toBe("");
+	it("throws AgentNotReadyError when port is null", async () => {
+		await expect(
+			composeOnboardingOptionsSnapshot(null, noOptionsReader),
+		).rejects.toBeInstanceOf(AgentNotReadyError);
 	});
 
-	it("returns INITIAL when reader returns null", async () => {
-		const snap = await composeOnboardingOptionsSnapshot(
-			31337,
-			noOptionsReader,
-		);
-		expect(snap).toEqual(INITIAL_ONBOARDING_OPTIONS);
+	it("throws when reader returns null", async () => {
+		await expect(
+			composeOnboardingOptionsSnapshot(31337, noOptionsReader),
+		).rejects.toBeInstanceOf(AgentNotReadyError);
 	});
 
 	it("forwards typed catalogs from the reader", async () => {
@@ -104,6 +88,8 @@ describe("getOnboardingOptions typed RPC", () => {
 			githubOAuthAvailable: true,
 		});
 		const snap = await composeOnboardingOptionsSnapshot(31337, reader);
+		const _typed: OnboardingOptionsSnapshot = snap;
+		void _typed;
 		expect(snap.names).toEqual(["Atlas", "Sage"]);
 		expect(snap.providers).toHaveLength(1);
 		expect(snap.models.large).toHaveLength(1);
@@ -144,9 +130,7 @@ describe("readOnboardingStatusViaHttp coerces server payloads", () => {
 	});
 
 	it("returns null on 5xx", async () => {
-		installFetch(
-			() => new Response("server error", { status: 500 }),
-		);
+		installFetch(() => new Response("server error", { status: 500 }));
 		try {
 			const result = await readOnboardingStatusViaHttp(31337);
 			expect(result).toBeNull();
@@ -196,13 +180,11 @@ describe("readOnboardingOptionsViaHttp coerces server payloads", () => {
 			if (!result) return;
 			expect(result.names).toEqual(["Atlas", "Sage"]);
 			expect(result.styles).toEqual([{ id: "concise" }]);
-			expect(result.providers).toEqual([]); // non-array → empty
+			expect(result.providers).toEqual([]);
 			expect(result.cloudProviders).toEqual([{ id: "elizacloud" }]);
 			expect(result.models.small).toEqual([{ id: "x" }]);
-			// `unknownTier` is not in the schema-narrowed tier list, so it must
-			// be dropped — the typed surface keeps the union closed.
 			expect("unknownTier" in result.models).toBe(false);
-			expect(result.sharedStyleRules).toBe(""); // wrong type → default
+			expect(result.sharedStyleRules).toBe("");
 		} finally {
 			restoreFetch();
 		}

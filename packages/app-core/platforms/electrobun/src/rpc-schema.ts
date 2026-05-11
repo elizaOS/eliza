@@ -570,6 +570,83 @@ export interface OnboardingOptionsSnapshot {
 }
 
 /**
+ * Typed response for `getConfig` — the agent's redacted in-memory
+ * config object. Same data as `GET /api/config`. Shape is permissive
+ * (`Record<string, unknown>`) because the config tree is dynamic and
+ * driven by user/plugin settings; consumers narrow per-field at use
+ * site as they always have.
+ */
+export type ConfigSnapshot = Record<string, unknown>;
+
+/**
+ * Typed response for `listConversations` — matches `GET /api/conversations`.
+ * Items pass through as `Record<string, unknown>`; consumers downcast
+ * to the existing `Conversation` type at use site. Keeps the typed
+ * RPC boundary independent of the chat-domain types in @elizaos/ui.
+ */
+export interface ConversationsListSnapshot {
+	conversations: ReadonlyArray<Record<string, unknown>>;
+}
+
+/**
+ * Typed response for `getCharacter` — matches `GET /api/character`.
+ * Dynamic record because the character config is plugin-extensible.
+ */
+export type CharacterSnapshot = Record<string, unknown>;
+
+/**
+ * Typed response for `getAuthStatus` — pairing/auth gate state for
+ * the polling-backend startup phase. Mirrors `GET /api/auth/status`
+ * on the agent. `required` decides whether to prompt for pairing;
+ * `pairingEnabled` + `expiresAt` drive the pairing code UI.
+ */
+export interface AuthStatusSnapshot {
+	required: boolean;
+	pairingEnabled: boolean;
+	expiresAt: number | null;
+	/** Optional fields the server sometimes adds; preserved verbatim. */
+	authenticated?: boolean;
+	loginRequired?: boolean;
+	bootstrapRequired?: boolean;
+	localAccess?: boolean;
+	passwordConfigured?: boolean;
+}
+
+/**
+ * Typed response for `getAuthMe` — current session identity + access
+ * mode. On 401 the server returns a structured reason instead of the
+ * full identity payload; the snapshot keeps both shapes addressable
+ * by the optional `unauthorized` discriminator.
+ */
+export interface AuthMeSnapshot {
+	/** When the request is authenticated. */
+	identity?: {
+		id: string;
+		displayName: string;
+		kind: string;
+	};
+	session?: {
+		id: string;
+		kind: string;
+		expiresAt: number | null;
+	};
+	access?: {
+		mode: string;
+		passwordConfigured: boolean;
+		ownerConfigured: boolean;
+	};
+	/** Present iff the upstream returned 401. */
+	unauthorized?: {
+		reason: string;
+		access: {
+			mode: string;
+			passwordConfigured: boolean;
+			ownerConfigured: boolean;
+		};
+	};
+}
+
+/**
  * Aggregated boot/startup snapshot returned by `bootProgress`.
  *
  * This is the typed counterpart to the renderer's current HTTP polling
@@ -648,6 +725,37 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: OnboardingOptionsSnapshot;
 			};
+			/**
+			 * Typed counterpart to `client.getConfig()` — the agent's
+			 * redacted in-memory config. Same data as `GET /api/config`.
+			 */
+			getConfig: { params: undefined; response: ConfigSnapshot };
+			/**
+			 * Typed counterpart to `client.getAuthStatus()` — pairing/auth
+			 * gate state. Same data as `GET /api/auth/status`. The
+			 * polling-backend startup phase calls this to decide between
+			 * "no auth needed" and "show pairing/login view".
+			 */
+			getAuthStatus: { params: undefined; response: AuthStatusSnapshot };
+			/**
+			 * Typed counterpart to `client.getAuthMe()` — current session
+			 * identity + access mode. Same data as `GET /api/auth/me`.
+			 */
+			getAuthMe: { params: undefined; response: AuthMeSnapshot };
+			/**
+			 * Typed counterpart to `client.listConversations()` — drives
+			 * the conversations sidebar. Same data as `GET /api/conversations`.
+			 * Polled by ConversationsSidebar via useIntervalWhenDocumentVisible.
+			 */
+			listConversations: {
+				params: undefined;
+				response: ConversationsListSnapshot;
+			};
+			/**
+			 * Typed counterpart to `client.getCharacter()` — the agent's
+			 * current character config. Same data as `GET /api/character`.
+			 */
+			getCharacter: { params: undefined; response: CharacterSnapshot };
 			agentInspectExistingInstall: {
 				params: undefined;
 				response: ExistingElizaInstallInfo;
