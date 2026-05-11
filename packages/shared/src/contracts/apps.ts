@@ -7,6 +7,7 @@ import {
   type IAgentRuntime,
   registerCuratedApp as registerCoreCuratedApp,
 } from "@elizaos/core";
+import z from "zod";
 
 export type AppSessionMode = "viewer" | "spectate-and-steer" | "external";
 
@@ -310,6 +311,322 @@ export interface AppStopResult {
   stopScope: "plugin-uninstalled" | "viewer-session" | "no-op";
   message: string;
 }
+
+// ─── Zod response-tree schemas ───────────────────────────────────────────────
+//
+// Mirror the TS interfaces above so handlers in `packages/agent/src/api/` can
+// validate / type their wire output. Schemas are co-located with the
+// interfaces they mirror; bidirectional `extends` checks at the bottom of
+// this section assert structural equivalence at compile time so drift in
+// either direction breaks the build.
+//
+// Recursive `AppSessionJsonValueSchema` uses `z.lazy()`. Where the original
+// interface declared `?: T` for an optional field, the schema uses
+// `.optional()` (TypeScript treats `?: T` and `T | undefined` as equivalent
+// for structural typing). Where the interface declared `T | null`, the
+// schema uses `z.union([..., z.null()])` rather than `.nullable()` (zod 4
+// inference quirk noted in the project memory).
+
+const AppSessionModeEnum = z.enum(["viewer", "spectate-and-steer", "external"]);
+const AppSessionControlActionEnum = z.enum(["pause", "resume"]);
+const AppRunViewerAttachmentEnum = z.enum([
+  "attached",
+  "detached",
+  "unavailable",
+]);
+const AppRunHealthStateEnum = z.union([
+  z.literal("healthy"),
+  z.literal("degraded"),
+  z.literal("offline"),
+]);
+const AppRunCapabilityAvailabilityEnum = z.enum([
+  "available",
+  "unavailable",
+  "unknown",
+]);
+const AppRunEventKindEnum = z.enum([
+  "launch",
+  "refresh",
+  "attach",
+  "detach",
+  "stop",
+  "status",
+  "summary",
+  "health",
+]);
+const AppRunEventSeverityEnum = z.enum(["info", "warning", "error"]);
+const AppLaunchDiagnosticSeverityEnum = z.enum(["info", "warning", "error"]);
+const AppSessionActivitySeverityEnum = z.enum(["info", "warning", "error"]);
+const AppRunHealthFacetStateEnum = z.enum([
+  "healthy",
+  "degraded",
+  "offline",
+  "unknown",
+]);
+
+export const AppSessionJsonValueSchema: z.ZodType<AppSessionJsonValue> = z.lazy(
+  () =>
+    z.union([
+      z.string(),
+      z.number(),
+      z.boolean(),
+      z.null(),
+      z.array(AppSessionJsonValueSchema),
+      z.record(z.string(), AppSessionJsonValueSchema),
+    ]),
+);
+
+export const AppViewerAuthMessageSchema = z.object({
+  type: z.string(),
+  authToken: z.string().optional(),
+  characterId: z.string().optional(),
+  sessionToken: z.string().optional(),
+  agentId: z.string().optional(),
+  followEntity: z.string().optional(),
+});
+
+export const AppViewerConfigSchema = z.object({
+  url: z.string(),
+  embedParams: z.record(z.string(), z.string()).optional(),
+  postMessageAuth: z.boolean().optional(),
+  sandbox: z.string().optional(),
+  authMessage: AppViewerAuthMessageSchema.optional(),
+});
+
+export const AppSessionRecommendationSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  type: z.string().optional(),
+  reason: z.union([z.string(), z.null()]).optional(),
+  priority: z.union([z.number(), z.null()]).optional(),
+  command: z.union([z.string(), z.null()]).optional(),
+});
+
+export const AppSessionActivityItemSchema = z.object({
+  id: z.string(),
+  type: z.string(),
+  message: z.string(),
+  timestamp: z.union([z.number(), z.null()]).optional(),
+  severity: AppSessionActivitySeverityEnum.optional(),
+});
+
+export const AppSessionStateSchema = z.object({
+  sessionId: z.string(),
+  appName: z.string(),
+  mode: AppSessionModeEnum,
+  status: z.string(),
+  displayName: z.string().optional(),
+  agentId: z.string().optional(),
+  characterId: z.string().optional(),
+  followEntity: z.string().optional(),
+  canSendCommands: z.boolean().optional(),
+  controls: z.array(AppSessionControlActionEnum).optional(),
+  summary: z.union([z.string(), z.null()]).optional(),
+  goalLabel: z.union([z.string(), z.null()]).optional(),
+  suggestedPrompts: z.array(z.string()).optional(),
+  recommendations: z.array(AppSessionRecommendationSchema).optional(),
+  activity: z.array(AppSessionActivityItemSchema).optional(),
+  telemetry: z
+    .union([z.record(z.string(), AppSessionJsonValueSchema), z.null()])
+    .optional(),
+});
+
+export const AppRunHealthSchema = z.object({
+  state: AppRunHealthStateEnum,
+  message: z.union([z.string(), z.null()]),
+});
+
+export const AppRunHealthFacetSchema = z.object({
+  state: AppRunHealthFacetStateEnum,
+  message: z.union([z.string(), z.null()]),
+});
+
+export const AppRunHealthDetailsSchema = z.object({
+  checkedAt: z.union([z.string(), z.null()]),
+  auth: AppRunHealthFacetSchema,
+  runtime: AppRunHealthFacetSchema,
+  viewer: AppRunHealthFacetSchema,
+  chat: AppRunHealthFacetSchema,
+  control: AppRunHealthFacetSchema,
+  message: z.union([z.string(), z.null()]),
+});
+
+export const AppRunEventSchema = z.object({
+  eventId: z.string(),
+  kind: AppRunEventKindEnum,
+  severity: AppRunEventSeverityEnum,
+  message: z.string(),
+  createdAt: z.string(),
+  status: z.union([z.string(), z.null()]).optional(),
+  details: z
+    .union([z.record(z.string(), AppSessionJsonValueSchema), z.null()])
+    .optional(),
+});
+
+export const AppRunAwaySummarySchema = z.object({
+  generatedAt: z.string(),
+  message: z.string(),
+  eventCount: z.number(),
+  since: z.union([z.string(), z.null()]),
+  until: z.union([z.string(), z.null()]),
+});
+
+export const AppRunSummarySchema = z.object({
+  runId: z.string(),
+  appName: z.string(),
+  displayName: z.string(),
+  pluginName: z.string(),
+  launchType: z.string(),
+  launchUrl: z.union([z.string(), z.null()]),
+  viewer: z.union([AppViewerConfigSchema, z.null()]),
+  session: z.union([AppSessionStateSchema, z.null()]),
+  characterId: z.union([z.string(), z.null()]),
+  agentId: z.union([z.string(), z.null()]),
+  status: z.string(),
+  summary: z.union([z.string(), z.null()]),
+  startedAt: z.string(),
+  updatedAt: z.string(),
+  lastHeartbeatAt: z.union([z.string(), z.null()]),
+  supportsBackground: z.boolean(),
+  supportsViewerDetach: z.boolean(),
+  chatAvailability: AppRunCapabilityAvailabilityEnum,
+  controlAvailability: AppRunCapabilityAvailabilityEnum,
+  viewerAttachment: AppRunViewerAttachmentEnum,
+  recentEvents: z.array(AppRunEventSchema),
+  awaySummary: z.union([AppRunAwaySummarySchema, z.null()]),
+  health: AppRunHealthSchema,
+  healthDetails: AppRunHealthDetailsSchema,
+});
+
+export const AppLaunchDiagnosticSchema = z.object({
+  code: z.string(),
+  severity: AppLaunchDiagnosticSeverityEnum,
+  message: z.string(),
+});
+
+export const AppLaunchResultSchema = z.object({
+  pluginInstalled: z.boolean(),
+  needsRestart: z.boolean(),
+  displayName: z.string(),
+  launchType: z.string(),
+  launchUrl: z.union([z.string(), z.null()]),
+  viewer: z.union([AppViewerConfigSchema, z.null()]),
+  session: z.union([AppSessionStateSchema, z.null()]),
+  run: z.union([AppRunSummarySchema, z.null()]),
+  diagnostics: z.array(AppLaunchDiagnosticSchema).optional(),
+});
+
+export const AppStopResultSchema = z.object({
+  success: z.boolean(),
+  appName: z.string(),
+  runId: z.union([z.string(), z.null()]),
+  stoppedAt: z.string(),
+  pluginUninstalled: z.boolean(),
+  needsRestart: z.boolean(),
+  stopScope: z.union([
+    z.literal("plugin-uninstalled"),
+    z.literal("viewer-session"),
+    z.literal("no-op"),
+  ]),
+  message: z.string(),
+});
+
+/**
+ * /relaunch returns `{ launch, verify }` — `launch` is an AppLaunchResult,
+ * `verify` is the verdict from `AppVerificationService.verifyApp` (or null
+ * if the caller did not request post-launch verification).
+ */
+export const AppVerifyResultSchema = z.object({
+  verdict: z.string(),
+  retryablePromptForChild: z.string().optional(),
+});
+
+export const PostRelaunchAppResponseSchema = z.object({
+  launch: AppLaunchResultSchema,
+  verify: z.union([AppVerifyResultSchema, z.null()]),
+});
+
+// ─── Compile-time alignment checks ───────────────────────────────────────────
+//
+// These constants typecheck iff every valid value of the hand-written
+// interface is also a valid value of the zod schema. They never run; they
+// exist purely to fail the build if the interface is widened (e.g. an
+// interface field added that the schema doesn't model).
+//
+// They intentionally do NOT enforce the reverse direction (schema ⊆
+// interface). zod's inferred types are sometimes structurally wider than
+// the equivalent hand-written interface (e.g. union ordering, literal-vs-
+// string narrowing in `z.enum`). For response validation that's fine —
+// the schema is the wire contract; any handler returning a valid interface
+// value will satisfy it.
+
+type _AssertInterfaceFitsSchema<Interface, Inferred> = [Interface] extends [
+  Inferred,
+]
+  ? true
+  : false;
+
+const _alignAppViewerAuthMessage: _AssertInterfaceFitsSchema<
+  AppViewerAuthMessage,
+  z.infer<typeof AppViewerAuthMessageSchema>
+> = true;
+const _alignAppViewerConfig: _AssertInterfaceFitsSchema<
+  AppViewerConfig,
+  z.infer<typeof AppViewerConfigSchema>
+> = true;
+const _alignAppSessionRecommendation: _AssertInterfaceFitsSchema<
+  AppSessionRecommendation,
+  z.infer<typeof AppSessionRecommendationSchema>
+> = true;
+const _alignAppSessionActivityItem: _AssertInterfaceFitsSchema<
+  AppSessionActivityItem,
+  z.infer<typeof AppSessionActivityItemSchema>
+> = true;
+const _alignAppSessionState: _AssertInterfaceFitsSchema<
+  AppSessionState,
+  z.infer<typeof AppSessionStateSchema>
+> = true;
+const _alignAppRunHealth: _AssertInterfaceFitsSchema<
+  AppRunHealth,
+  z.infer<typeof AppRunHealthSchema>
+> = true;
+const _alignAppRunHealthFacet: _AssertInterfaceFitsSchema<
+  AppRunHealthFacet,
+  z.infer<typeof AppRunHealthFacetSchema>
+> = true;
+const _alignAppRunHealthDetails: _AssertInterfaceFitsSchema<
+  AppRunHealthDetails,
+  z.infer<typeof AppRunHealthDetailsSchema>
+> = true;
+const _alignAppRunEvent: _AssertInterfaceFitsSchema<
+  AppRunEvent,
+  z.infer<typeof AppRunEventSchema>
+> = true;
+const _alignAppRunAwaySummary: _AssertInterfaceFitsSchema<
+  AppRunAwaySummary,
+  z.infer<typeof AppRunAwaySummarySchema>
+> = true;
+const _alignAppRunSummary: _AssertInterfaceFitsSchema<
+  AppRunSummary,
+  z.infer<typeof AppRunSummarySchema>
+> = true;
+const _alignAppLaunchDiagnostic: _AssertInterfaceFitsSchema<
+  AppLaunchDiagnostic,
+  z.infer<typeof AppLaunchDiagnosticSchema>
+> = true;
+const _alignAppLaunchResult: _AssertInterfaceFitsSchema<
+  AppLaunchResult,
+  z.infer<typeof AppLaunchResultSchema>
+> = true;
+const _alignAppStopResult: _AssertInterfaceFitsSchema<
+  AppStopResult,
+  z.infer<typeof AppStopResultSchema>
+> = true;
+
+export type PostRelaunchAppResponse = z.infer<
+  typeof PostRelaunchAppResponseSchema
+>;
+export type AppVerifyResult = z.infer<typeof AppVerifyResultSchema>;
 
 function packageNameToBasename(packageName: string): string {
   return packageName

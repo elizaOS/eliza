@@ -6,9 +6,12 @@ import path from "node:path";
 import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
+  type AppLaunchResult,
   type AppRunActionResult,
   type AppRunSummary,
   type AppSessionActionResult,
+  type AppStopResult,
+  type AppVerifyResult,
   createGeneratedAppHeroSvg,
   type FavoritesResponse,
   hasAppInterface,
@@ -23,6 +26,7 @@ import {
   type PostOverlayPresenceResponse,
   type PostRefreshAppsResponse,
   PostRelaunchAppRequestSchema,
+  type PostRelaunchAppResponse,
   PostReplaceFavoritesRequestSchema,
   PostRunControlRequestSchema,
   PostRunMessageRequestSchema,
@@ -346,13 +350,13 @@ export interface AppManagerLike {
     name: string,
     onProgress?: (progress: InstallProgressLike) => void,
     runtime?: unknown | null,
-  ) => Promise<unknown>;
+  ) => Promise<AppLaunchResult>;
   stop: (
     pluginManager: PluginManagerLike,
     name: string,
     runId?: string,
     runtime?: IAgentRuntime | null,
-  ) => Promise<unknown>;
+  ) => Promise<AppStopResult>;
   recordHeartbeat: (runId: string) => unknown;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
@@ -1028,7 +1032,7 @@ export async function handleAppsRoutes(
         return true;
       }
       const pluginManager = getPluginManager();
-      const result = await appManager.launch(
+      const result: AppLaunchResult = await appManager.launch(
         pluginManager,
         parsed.data.name,
         (_progress: InstallProgressLike) => {},
@@ -1125,7 +1129,11 @@ export async function handleAppsRoutes(
     const appName = parsed.data.name ?? "";
     const runId = parsed.data.runId;
     const pluginManager = getPluginManager();
-    const result = await appManager.stop(pluginManager, appName, runId);
+    const result: AppStopResult = await appManager.stop(
+      pluginManager,
+      appName,
+      runId,
+    );
     json(res, result);
     return true;
   }
@@ -1244,15 +1252,14 @@ export async function handleAppsRoutes(
         await appManager.stop(pluginManager, name, undefined, null);
       }
 
-      const launch = await appManager.launch(
+      const launch: AppLaunchResult = await appManager.launch(
         pluginManager,
         name,
         (_progress: InstallProgressLike) => {},
         runtime,
       );
 
-      let verify: { verdict: string; retryablePromptForChild?: string } | null =
-        null;
+      let verify: AppVerifyResult | null = null;
       if (verifyRequested === true) {
         const runtimeWithServices = runtime as {
           getService?: (type: string) => {
@@ -1281,7 +1288,8 @@ export async function handleAppsRoutes(
         }
       }
 
-      json(res, { launch, verify });
+      const response: PostRelaunchAppResponse = { launch, verify };
+      json(res, response);
     } catch (err) {
       error(
         res,
