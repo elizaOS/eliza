@@ -123,8 +123,10 @@ in cloud mode instead of minting VPN credentials directly. The plugin calls
 `tailscale serve` locally. The route requires a Cloud user/API key with an
 active organization, charges org credits once using `TUNNEL_AUTH_KEY_COST_USD`,
 refunds on Headscale mint failure, forces `tag:eliza-tunnel`, and returns a
-generated `eliza-<org>-<random>.tunnel.elizacloud.ai` hostname. This is
-pay-as-needed infrastructure usage, not subscription SaaS.
+generated `eliza-<org>-<random>-<signature>.tunnel.elizacloud.ai` hostname.
+This is pay-as-needed infrastructure usage, not subscription SaaS. In
+production the hostname includes an HMAC suffix, so the Railway proxy only
+forwards hostnames minted by the Cloud Worker.
 
 ## Source Of Truth When Docs Drift
 
