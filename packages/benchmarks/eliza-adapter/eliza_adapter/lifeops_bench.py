@@ -147,6 +147,30 @@ def build_lifeops_bench_agent_fn(
                 value = usage.get(key)
                 if isinstance(value, (int, float)):
                     setattr(turn, attr, int(value))
+            # Cache telemetry comes from the TS bench server's MODEL_USED
+            # buffer rollup. `cacheReadInputTokens` is omitted when no LLM
+            # call in the turn reported cache info — we propagate that as
+            # ``None`` so the runner records "unknown" rather than a silent
+            # 0. Per AGENTS.md Cmd #8.
+            cache_read_raw = usage.get("cacheReadInputTokens")
+            cache_creation_raw = usage.get("cacheCreationInputTokens")
+            setattr(
+                turn,
+                "cache_read_input_tokens",
+                int(cache_read_raw)
+                if isinstance(cache_read_raw, (int, float))
+                else None,
+            )
+            setattr(
+                turn,
+                "cache_creation_input_tokens",
+                int(cache_creation_raw)
+                if isinstance(cache_creation_raw, (int, float))
+                else None,
+            )
+            # Eliza routes through plugin-openai (OpenAI / Cerebras) or
+            # plugin-anthropic — both support prompt caching.
+            setattr(turn, "cache_supported", True)
         # Stash model identity so result records can attribute spend.
         if model_name:
             setattr(turn, "model_name", model_name)

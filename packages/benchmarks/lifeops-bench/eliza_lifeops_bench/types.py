@@ -129,9 +129,52 @@ class Scenario:
     disruptions: list[Disruption] = field(default_factory=list)
 
 
+def compute_cache_hit_pct(
+    input_tokens: int | None,
+    cache_read_input_tokens: int | None,
+    cache_creation_input_tokens: int | None,
+) -> float | None:
+    """Compute cache hit percentage as a fraction in [0, 1].
+
+    Returns ``None`` when any of the three inputs is ``None`` (i.e. provider
+    didn't report cache data); never returns 0.0 as a silent fallback for
+    missing data. Per AGENTS.md Cmd #8: nullable cache fields stay nullable.
+
+    Formula: ``cache_read / (input + cache_creation + cache_read)``. The
+    denominator is the *full* input billed for the turn (non-cached input +
+    cache write + cache read) so the percentage matches Anthropic semantics
+    and round-trips with the TS pricing helper at
+    ``packages/core/src/features/trajectories/pricing.ts``.
+    """
+    if (
+        input_tokens is None
+        or cache_read_input_tokens is None
+        or cache_creation_input_tokens is None
+    ):
+        return None
+    denominator = (
+        int(input_tokens) + int(cache_creation_input_tokens) + int(cache_read_input_tokens)
+    )
+    if denominator <= 0:
+        return 0.0
+    return float(cache_read_input_tokens) / float(denominator)
+
+
 @dataclass
 class TurnResult:
-    """Per-turn telemetry captured during a scenario run."""
+    """Per-turn telemetry captured during a scenario run.
+
+    Cache fields are deliberately nullable (``Optional[int]``): ``None`` means
+    "provider did not report this number" and is distinct from ``0`` ("provider
+    reports zero tokens cached"). Per AGENTS.md Cmd #8: nullable cache fields
+    stay nullable, no silent ``0`` fallbacks.
+
+    ``cache_supported`` is a hard boolean — set explicitly per provider, never
+    inferred from missing data. Anthropic, OpenAI (with prompt cache key),
+    and Cerebras ``gpt-oss-120b`` (default-on, 128-token blocks) all report
+    ``True``. Local-tier providers (Ollama, LM Studio, llama.cpp) report
+    ``False`` even when a particular call returned zero cached tokens.
+    """
 
     turn_number: int
     agent_message: str
@@ -141,6 +184,13 @@ class TurnResult:
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    cache_read_input_tokens: int | None = None
+    cache_creation_input_tokens: int | None = None
+    cache_hit_pct: float | None = None
+    cache_supported: bool = True
+    model_tier: str | None = None
+    prompt_cache_key: str | None = None
+    model_name: str | None = None
 
 
 @dataclass

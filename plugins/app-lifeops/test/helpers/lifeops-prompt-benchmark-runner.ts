@@ -1,5 +1,14 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import type { AgentRuntime } from "@elizaos/core";
+import {
+  type ModelTier,
+  resolveTier,
+} from "../../../../packages/benchmarks/lib/src/model-tiers.ts";
+import {
+  probeDflashFork,
+  resolveLocalBaseUrl,
+} from "../../../../packages/benchmarks/lib/src/local-llama-cpp.ts";
+import { computeCallCostUsd } from "../../../../packages/core/src/features/trajectories/pricing.ts";
 import { flushTrajectoryWrites } from "../../../../packages/agent/src/runtime/trajectory-storage.ts";
 import type {
   Trajectory,
@@ -44,6 +53,13 @@ export type PromptBenchmarkResult = {
   cacheCreationInputTokens?: number;
   totalInputTokens?: number;
   cacheHitPct?: number;
+  // USD cost across every llmCall on this case, computed via
+  // `computeCallCostUsd` against the canonical price table at
+  // `packages/core/src/features/trajectories/pricing.ts`. Mirrors the Python
+  // side's `TurnResult.cost_usd`. Cache-read tokens bill at the cache-read
+  // rate, cache-creation tokens bill at the cache-write rate, the remainder
+  // bills at the input rate — matching `computeCallCostUsd`'s formula.
+  costUsd?: number;
 };
 
 export type PromptBenchmarkSliceStats = {
@@ -119,6 +135,7 @@ type RunOptions = {
   cases: PromptBenchmarkCase[];
   isolate?: "shared" | "per-case";
   preferredProvider?: LiveProviderName;
+  modelTier?: ModelTier;
   runtime?: AgentRuntime;
   timeoutMsPerCase?: number;
 };
@@ -229,6 +246,7 @@ async function captureTrajectoryForCase(args: {
   cacheCreationInputTokens?: number;
   totalInputTokens?: number;
   cacheHitPct?: number;
+  costUsd?: number;
 }> {
   const service = resolveTrajectoryService(args.runtime);
   if (!service) {
@@ -274,18 +292,45 @@ async function captureTrajectoryForCase(args: {
   // Sum token + cache fields across every llmCall on this trajectory.
   // Cache hit % uses (input + cache_creation + cache_read) as denominator
   // so it agrees with the corrected core formula.
+  // costUsd is computed per-call against the canonical price table so the
+  // TS report matches the Python TurnResult.cost_usd values for the same
+  // model / token / cache breakdown.
   let promptTokens = 0;
   let completionTokens = 0;
   let cacheRead = 0;
   let cacheCreate = 0;
+  let costUsd = 0;
   for (const c of llmCalls) {
     const cAny = c as Record<string, unknown>;
-    promptTokens += Number(cAny.promptTokens ?? cAny.inputTokens ?? 0) || 0;
-    completionTokens +=
+    const callPromptTokens =
+      Number(cAny.promptTokens ?? cAny.inputTokens ?? 0) || 0;
+    const callCompletionTokens =
       Number(cAny.completionTokens ?? cAny.outputTokens ?? 0) || 0;
-    cacheRead +=
+    const callCacheRead =
       Number(cAny.cacheReadInputTokens ?? cAny.cachedInputTokens ?? 0) || 0;
-    cacheCreate += Number(cAny.cacheCreationInputTokens ?? 0) || 0;
+    const callCacheCreate = Number(cAny.cacheCreationInputTokens ?? 0) || 0;
+    promptTokens += callPromptTokens;
+    completionTokens += callCompletionTokens;
+    cacheRead += callCacheRead;
+    cacheCreate += callCacheCreate;
+    const modelName =
+      typeof cAny.modelName === "string"
+        ? cAny.modelName
+        : typeof cAny.model === "string"
+          ? cAny.model
+          : undefined;
+    const provider =
+      typeof cAny.provider === "string" ? cAny.provider : undefined;
+    costUsd += computeCallCostUsd(
+      modelName,
+      {
+        promptTokens: callPromptTokens,
+        completionTokens: callCompletionTokens,
+        cacheReadInputTokens: callCacheRead,
+        cacheCreationInputTokens: callCacheCreate,
+      },
+      { provider },
+    );
   }
   const totalInput = promptTokens + cacheRead + cacheCreate;
   const cacheHitPct = totalInput > 0 ? +((cacheRead / totalInput) * 100).toFixed(2) : 0;
@@ -307,6 +352,7 @@ async function captureTrajectoryForCase(args: {
     cacheCreationInputTokens: cacheCreate,
     totalInputTokens: totalInput,
     cacheHitPct,
+    costUsd,
   };
 }
 
@@ -442,6 +488,7 @@ async function runSinglePromptBenchmarkCase(args: {
       cacheCreationInputTokens: trajectory.cacheCreationInputTokens,
       totalInputTokens: trajectory.totalInputTokens,
       cacheHitPct: trajectory.cacheHitPct,
+      costUsd: trajectory.costUsd,
     } satisfies Omit<PromptBenchmarkResult, "pass"> & { pass: boolean };
 
     return {
@@ -673,9 +720,56 @@ export function formatPromptBenchmarkReportMarkdown(
 
 export async function createLifeOpsPromptBenchmarkRuntime(args?: {
   preferredProvider?: LiveProviderName;
+  modelTier?: ModelTier;
 }): Promise<RealTestRuntimeResult> {
-  const provider = args?.preferredProvider
-    ? selectLiveProvider(args.preferredProvider)
+  // If a MODEL_TIER is explicitly requested, set the canonical model env
+  // vars (`ELIZA_LIVE_TEST_SMALL_MODEL`, `LARGE_MODEL`) so the live-provider
+  // selector picks up the tier's model. Provider preference still wins —
+  // tiers map to provider families (frontier→anthropic, large→cerebras, etc.)
+  // but the operator's explicit preferredProvider override is honored.
+  const tier = args?.modelTier
+    ? resolveTier({ ...process.env, MODEL_TIER: args.modelTier })
+    : resolveTier();
+  if (args?.modelTier) {
+    process.env.ELIZA_LIVE_TEST_SMALL_MODEL = tier.modelName;
+    process.env.ELIZA_LIVE_TEST_LARGE_MODEL = tier.modelName;
+    process.env.SMALL_MODEL = tier.modelName;
+    process.env.LARGE_MODEL = tier.modelName;
+    process.env.MODEL_TIER = tier.tier;
+  }
+
+  // Tier → provider preference. Operator's preferredProvider always wins.
+  let tierProviderPreference: LiveProviderName | undefined;
+  if (tier.provider === "anthropic") tierProviderPreference = "anthropic";
+  else if (tier.provider === "cerebras") tierProviderPreference = "cerebras";
+  else if (tier.provider === "openai") tierProviderPreference = "openai";
+  else if (tier.provider === "local-llama-cpp" || tier.provider === "ollama") {
+    tierProviderPreference = "local-llama-cpp";
+    // Configure the OpenAI plugin to point at the local server. Prefer the
+    // dflash fork (when built); otherwise fall back to Ollama via
+    // PARALLAX_OPENCODE_BASE_URL.
+    const dflashBinary = probeDflashFork();
+    if (!dflashBinary) {
+      const fallback = resolveLocalBaseUrl();
+      if (fallback.source === "ollama-default" && !process.env.PARALLAX_OPENCODE_BASE_URL) {
+        throw new Error(
+          "MODEL_TIER=small|mid requires the dflash llama-cpp fork at " +
+            "~/.cache/eliza-dflash/milady-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +
+            "pointing at a local OpenAI-compatible endpoint. Neither was found.",
+        );
+      }
+      process.env.OPENAI_BASE_URL = fallback.baseUrl;
+    }
+    // Sentinel key — local servers don't authenticate, but selectLiveProvider
+    // requires a non-empty key to consider a provider.
+    if (!process.env.LOCAL_LLAMA_CPP_API_KEY) {
+      process.env.LOCAL_LLAMA_CPP_API_KEY = "local";
+    }
+  }
+
+  const preferred = args?.preferredProvider ?? tierProviderPreference;
+  const provider = preferred
+    ? selectLiveProvider(preferred)
     : selectLiveProvider();
   if (!provider) {
     throw new Error("No live provider is configured for prompt benchmarking.");
@@ -720,6 +814,7 @@ export async function runLifeOpsPromptBenchmark(
   if (isolate === "shared") {
     const runtimeResult = await createLifeOpsPromptBenchmarkRuntime({
       preferredProvider: options.preferredProvider,
+      modelTier: options.modelTier,
     });
     try {
       for (const testCase of options.cases) {
@@ -743,6 +838,7 @@ export async function runLifeOpsPromptBenchmark(
   for (const testCase of options.cases) {
     const runtimeResult = await createLifeOpsPromptBenchmarkRuntime({
       preferredProvider: options.preferredProvider,
+      modelTier: options.modelTier,
     });
     try {
       results.push(

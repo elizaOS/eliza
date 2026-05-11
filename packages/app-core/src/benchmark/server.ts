@@ -1036,6 +1036,24 @@ export async function startBenchmarkServer() {
         };
       });
 
+      // Sum the per-call cache-read tokens across every LLM call that fired
+      // during this turn. A call with `cachedTokens === undefined` means the
+      // provider didn't report it — those calls do NOT contribute to the sum
+      // and do NOT collapse the value to 0. If no call in the turn reported
+      // cache info, we pass `undefined` through so the wire shape preserves
+      // "we don't know" (AGENTS.md Cmd #8). Cerebras gpt-oss-120b reports
+      // `prompt_tokens_details.cached_tokens` default-on; Anthropic reports
+      // `cache_read_input_tokens` natively.
+      const anyCacheReported = turnUsageBuffer.some(
+        (c) => typeof c.cachedTokens === "number",
+      );
+      const cacheReadInputTokens = anyCacheReported
+        ? turnUsageBuffer.reduce(
+            (s, c) =>
+              s + (typeof c.cachedTokens === "number" ? c.cachedTokens : 0),
+            0,
+          )
+        : undefined;
       const usage = {
         promptTokens: turnUsageBuffer.reduce((s, c) => s + c.promptTokens, 0),
         completionTokens: turnUsageBuffer.reduce(
@@ -1043,6 +1061,9 @@ export async function startBenchmarkServer() {
           0,
         ),
         totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
+        ...(cacheReadInputTokens !== undefined
+          ? { cacheReadInputTokens }
+          : {}),
       };
 
       // Touch the backend so unused-import linters do not strip the

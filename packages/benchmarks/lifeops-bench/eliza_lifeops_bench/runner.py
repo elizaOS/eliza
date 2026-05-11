@@ -69,6 +69,7 @@ from .types import (
     ScenarioMode,
     ScenarioResult,
     TurnResult,
+    compute_cache_hit_pct,
 )
 
 logger = logging.getLogger(__name__)
@@ -1377,15 +1378,47 @@ class LifeOpsBenchRunner:
             agent_cost = float(getattr(agent_turn, "cost_usd", 0.0) or 0.0)
             await self._charge(agent_cost, scenario.id, seed, bucket="agent")
 
+            # Cache telemetry: adapters set these as attributes on the
+            # MessageTurn when the provider reported them. `None` means the
+            # provider did not report — we keep it as None so downstream
+            # aggregators can distinguish "no data" from "zero hits".
+            input_tokens_val = int(getattr(agent_turn, "input_tokens", 0) or 0)
+            cache_read_attr = getattr(agent_turn, "cache_read_input_tokens", None)
+            cache_creation_attr = getattr(
+                agent_turn, "cache_creation_input_tokens", None
+            )
+            cache_read = (
+                int(cache_read_attr) if isinstance(cache_read_attr, (int, float)) else None
+            )
+            cache_creation = (
+                int(cache_creation_attr)
+                if isinstance(cache_creation_attr, (int, float))
+                else None
+            )
+            # cache_supported defaults to True (every provider in scope —
+            # Cerebras gpt-oss-120b, OpenAI, Anthropic — supports prompt
+            # caching). Adapters explicitly override to False when on a
+            # local-tier provider that does not.
+            cache_supported_attr = getattr(agent_turn, "cache_supported", True)
+            cache_supported = bool(cache_supported_attr)
             turn_result = TurnResult(
                 turn_number=turn_number,
                 agent_message=agent_turn.content,
                 agent_actions=agent_actions,
                 user_response="",
                 latency_ms=int(getattr(agent_turn, "latency_ms", 0) or 0),
-                input_tokens=int(getattr(agent_turn, "input_tokens", 0) or 0),
+                input_tokens=input_tokens_val,
                 output_tokens=int(getattr(agent_turn, "output_tokens", 0) or 0),
                 cost_usd=agent_cost,
+                cache_read_input_tokens=cache_read,
+                cache_creation_input_tokens=cache_creation,
+                cache_hit_pct=compute_cache_hit_pct(
+                    input_tokens_val, cache_read, cache_creation
+                ),
+                cache_supported=cache_supported,
+                model_tier=getattr(agent_turn, "model_tier", None),
+                prompt_cache_key=getattr(agent_turn, "prompt_cache_key", None),
+                model_name=getattr(agent_turn, "model_name", None),
             )
 
             # Terminal detection: assistant turn with no tool_calls signals

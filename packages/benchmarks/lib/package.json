@@ -8,7 +8,9 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./metrics-schema": "./src/metrics-schema.ts"
+    "./metrics-schema": "./src/metrics-schema.ts",
+    "./model-tiers": "./src/model-tiers.ts",
+    "./local-llama-cpp": "./src/local-llama-cpp.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
