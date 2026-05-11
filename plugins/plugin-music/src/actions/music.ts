@@ -8,6 +8,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { sunoGenerateMusicHandler } from "@elizaos/plugin-suno";
 import { isPlaybackTransportControlOnlyMessage } from "../utils/playbackTransportIntent";
 import { mergedOptions } from "./confirmation";
 import { manageRouting } from "./manageRouting";
@@ -59,6 +60,10 @@ const MUSIC_SUBACTIONS = [
   // routing / zones
   "set_routing",
   "set_zone",
+  // generation (absorbed from retired MUSIC_GENERATION action)
+  "generate",
+  "extend",
+  "custom_generate",
 ] as const;
 
 type MusicSubaction = (typeof MUSIC_SUBACTIONS)[number];
@@ -71,7 +76,11 @@ type DispatchKind =
   | { kind: "play_audio" }
   | { kind: "library"; libraryOp: LibraryOp; playlistOp?: PlaylistOp }
   | { kind: "routing" }
-  | { kind: "zones" };
+  | { kind: "zones" }
+  | {
+      kind: "generation";
+      generationOp: "generate" | "extend" | "custom_generate";
+    };
 
 type LibraryOp = "playlist" | "play_query" | "search_youtube" | "download";
 type PlaylistOp = "save" | "load";
@@ -117,6 +126,15 @@ const SUBACTION_ALIASES: Record<string, MusicSubaction> = {
   // play_audio aliases
   stream: "play_audio",
   play_music_audio: "play_audio",
+  // generation aliases (absorbed from retired MUSIC_GENERATION action)
+  generate_music: "generate",
+  create_music: "generate",
+  make_music: "generate",
+  compose_music: "generate",
+  custom: "custom_generate",
+  custom_music: "custom_generate",
+  extend_audio: "extend",
+  lengthen: "extend",
 };
 
 /** Discriminator keys accepted on input (canonical first, legacy after). */
@@ -249,6 +267,10 @@ function dispatchKindFor(
       return { kind: "routing" };
     case "set_zone":
       return { kind: "zones" };
+    case "generate":
+    case "extend":
+    case "custom_generate":
+      return { kind: "generation", generationOp: subaction };
     default: {
       const playlistOp = resolvePlaylistOpFromOptions(merged, subaction);
       if (playlistOp) {
@@ -326,6 +348,30 @@ async function inferSubactionFromText(
     )
   ) {
     return "set_zone";
+  }
+
+  if (runtime.getSetting("SUNO_API_KEY")) {
+    const lower = text.toLowerCase();
+    if (merged.audio_id || /\b(extend|lengthen|longer)\b/.test(lower)) {
+      return "extend";
+    }
+    if (
+      merged.reference_audio ||
+      merged.style ||
+      merged.bpm ||
+      merged.key ||
+      merged.mode ||
+      /\b(custom\s+(generate|music|song)|style|reference\s+audio)\b/.test(lower)
+    ) {
+      return "custom_generate";
+    }
+    if (
+      /\b(generate|create|make|compose)\s+(music|song|track|audio|melody|tune)\b/.test(
+        lower,
+      )
+    ) {
+      return "generate";
+    }
   }
 
   return null;
@@ -412,15 +458,22 @@ export const musicAction: Action = {
     ...(playAudio.similes ?? []),
     ...(manageRouting.similes ?? []),
     ...(manageZones.similes ?? []),
+    "GENERATE_MUSIC",
+    "CREATE_MUSIC",
+    "MAKE_MUSIC",
+    "COMPOSE_MUSIC",
+    "CUSTOM_GENERATE_MUSIC",
+    "EXTEND_AUDIO",
   ],
   description:
     "Unified music action. Use verb-shaped action for everything: " +
     "playback (play, pause, resume, skip, stop), queue (queue_view, queue_add, queue_clear), " +
     "library (playlist_play, playlist_save, search, play_query, download, play_audio), " +
-    "routing/zones (set_routing, set_zone). " +
+    "routing/zones (set_routing, set_zone), " +
+    "generation (generate, extend, custom_generate — Suno-backed, requires SUNO_API_KEY). " +
     "skip, stop, queue_add, queue_clear, playlist_save, and download require confirmed:true.",
   descriptionCompressed:
-    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone.",
+    "Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
   parameters: [
     {
       name: "action",
@@ -428,7 +481,9 @@ export const musicAction: Action = {
         "Verb-shaped subaction. Playback: play, pause, resume, skip, stop. " +
         "Queue: queue_view, queue_add, queue_clear. " +
         "Library: playlist_play, playlist_save, search, play_query, download, play_audio. " +
-        "Routing/zones: set_routing, set_zone. Legacy aliases (e.g. queue, playlist, search_youtube, routing, zones) are still accepted.",
+        "Routing/zones: set_routing, set_zone. " +
+        "Generation (Suno): generate, extend, custom_generate. " +
+        "Legacy aliases (e.g. queue, playlist, search_youtube, routing, zones, custom) are still accepted.",
       required: false,
       schema: {
         type: "string",
@@ -496,6 +551,49 @@ export const musicAction: Action = {
       description: "Routing target ids.",
       required: false,
       schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "prompt",
+      description: "Suno generation prompt for action=generate/custom_generate.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "audio_id",
+      description: "Existing Suno audio id when action=extend.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "duration",
+      description:
+        "Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+      required: false,
+      schema: { type: "number", default: 30 },
+    },
+    {
+      name: "style",
+      description: "Style hint for action=custom_generate (Suno).",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "reference_audio",
+      description: "Reference audio URL for action=custom_generate (Suno).",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "bpm",
+      description: "Target BPM for action=custom_generate (Suno).",
+      required: false,
+      schema: { type: "number" },
+    },
+    {
+      name: "key",
+      description: "Musical key for action=custom_generate (Suno).",
+      required: false,
+      schema: { type: "string" },
     },
   ],
   validate: async (
@@ -624,6 +722,16 @@ export const musicAction: Action = {
           jsonHandlerOptions(merged),
           callback,
         );
+      case "generation": {
+        const dispatchMerged = { ...merged, action: dispatch.generationOp };
+        return sunoGenerateMusicHandler(
+          runtime,
+          message,
+          state ?? ({} as State),
+          jsonHandlerOptions(dispatchMerged),
+          callback,
+        );
+      }
       default:
         return { success: false, error: "Unreachable", text: "" };
     }

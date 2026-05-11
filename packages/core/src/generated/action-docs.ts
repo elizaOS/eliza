@@ -5295,6 +5295,9 @@ export const allActionsSpec = {
 							"play_audio",
 							"set_routing",
 							"set_zone",
+							"generate",
+							"extend",
+							"custom_generate",
 						],
 					},
 					descriptionCompressed:
@@ -5404,9 +5407,89 @@ export const allActionsSpec = {
 					},
 					descriptionCompressed: "Routing target ids.",
 				},
+				{
+					name: "prompt",
+					description:
+						"Suno generation prompt for action=generate/custom_generate.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Suno generation prompt for action=generate/custom_generate.",
+				},
+				{
+					name: "audio_id",
+					description: "Existing Suno audio id when action=extend.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Existing Suno audio id when action=extend.",
+				},
+				{
+					name: "duration",
+					description:
+						"Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+					required: false,
+					schema: {
+						type: "number",
+						default: 30,
+					},
+					descriptionCompressed:
+						"Generation length in seconds for action=generate/custom_generate, or extension seconds for action=extend.",
+				},
+				{
+					name: "style",
+					description: "Style hint for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Style hint for action=custom_generate (Suno).",
+				},
+				{
+					name: "reference_audio",
+					description: "Reference audio URL for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Reference audio URL for action=custom_generate (Suno).",
+				},
+				{
+					name: "bpm",
+					description: "Target BPM for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed:
+						"Target BPM for action=custom_generate (Suno).",
+				},
+				{
+					name: "key",
+					description: "Musical key for action=custom_generate (Suno).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Musical key for action=custom_generate (Suno).",
+				},
 			],
 			descriptionCompressed:
-				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone.",
+				"Verb-shaped: play/pause/resume/skip/stop, queue_view/queue_add/queue_clear, playlist_play/playlist_save, search/play_query/download/play_audio, set_routing/set_zone, generate/extend/custom_generate.",
+			similes: [
+				"GENERATE_MUSIC",
+				"CREATE_MUSIC",
+				"MAKE_MUSIC",
+				"COMPOSE_MUSIC",
+				"CUSTOM_GENERATE_MUSIC",
+				"EXTEND_AUDIO",
+			],
 			exampleCalls: [
 				{
 					user: "Use MUSIC with the provided parameters.",
@@ -5424,85 +5507,13 @@ export const allActionsSpec = {
 							mode: "example",
 							sourceId: "example",
 							targetIds: "example",
-						},
-					},
-				},
-			],
-		},
-		{
-			name: "MUSIC_GENERATION",
-			description:
-				"Generate music through Suno. Use action generate for a simple prompt, custom for style/BPM/key/reference parameters, or extend for an existing audio_id and duration.",
-			parameters: [
-				{
-					name: "action",
-					description: "Suno operation: generate, custom, or extend.",
-					required: false,
-					schema: {
-						type: "string",
-						enum: ["generate", "custom", "extend"],
-					},
-					descriptionCompressed: "Suno operation: generate, custom, or extend.",
-				},
-				{
-					name: "subaction",
-					description: "Legacy alias for action.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Legacy alias for action.",
-				},
-				{
-					name: "prompt",
-					description: "Music prompt for generate/custom.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Music prompt for generate/custom.",
-				},
-				{
-					name: "audio_id",
-					description: "Existing Suno audio id for extend.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Existing Suno audio id for extend.",
-				},
-				{
-					name: "duration",
-					description: "Generation duration or extension seconds.",
-					required: false,
-					schema: {
-						type: "number",
-						default: 30,
-					},
-					descriptionCompressed: "Generation duration or extension seconds.",
-				},
-			],
-			descriptionCompressed:
-				"Suno music generation router action: generate, custom, extend.",
-			similes: [
-				"GENERATE_MUSIC",
-				"CREATE_MUSIC",
-				"MAKE_MUSIC",
-				"COMPOSE_MUSIC",
-				"CUSTOM_GENERATE_MUSIC",
-				"EXTEND_AUDIO",
-			],
-			exampleCalls: [
-				{
-					user: "Use MUSIC_GENERATION with the provided parameters.",
-					actions: ["MUSIC_GENERATION"],
-					params: {
-						MUSIC_GENERATION: {
-							action: "generate",
-							subaction: "example",
 							prompt: "example",
 							audio_id: "example",
 							duration: 30,
+							style: "example",
+							reference_audio: "example",
+							bpm: 1,
+							key: "example",
 						},
 					},
 				},
@@ -5757,6 +5768,118 @@ export const allActionsSpec = {
 					params: {
 						OWNER_SCREENTIME: {
 							action: "example",
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "PERPETUAL_MARKET",
+			description:
+				"Use registered perpetual market providers. target selects the provider; Hyperliquid is registered today. action=read reads public state with kind: status, markets, market, positions, or funding. action=place_order reports trading readiness; signed order placement is disabled in this app scaffold.",
+			parameters: [
+				{
+					name: "target",
+					description: "Perpetual market provider.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["hyperliquid"],
+						default: "hyperliquid",
+					},
+					descriptionCompressed: "Perpetual market provider.",
+				},
+				{
+					name: "action",
+					description: "Perpetual market operation: read or place_order.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order"],
+					},
+					descriptionCompressed:
+						"Perpetual market operation: read or place_order.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Accepts place-order as place_order.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["read", "place_order", "place-order"],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Accepts place-order as place_order.",
+				},
+				{
+					name: "kind",
+					description:
+						"read only: status | markets | market | positions | funding.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["status", "markets", "market", "positions", "funding"],
+					},
+					descriptionCompressed:
+						"read only: status | markets | market | positions | funding.",
+				},
+				{
+					name: "coin",
+					description: "market only: Hyperliquid coin/asset symbol (e.g. BTC).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"market only: Hyperliquid coin/asset symbol (e. g. BTC).",
+				},
+				{
+					name: "side",
+					description: "place_order only: intended side, buy or sell.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["buy", "sell"],
+					},
+					descriptionCompressed:
+						"place_order only: intended side, buy or sell.",
+				},
+				{
+					name: "asset",
+					description: "place_order only: Hyperliquid asset symbol.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "place_order only: Hyperliquid asset symbol.",
+				},
+				{
+					name: "size",
+					description: "place_order only: intended order size.",
+					required: false,
+					schema: {
+						type: "number",
+					},
+					descriptionCompressed: "place_order only: intended order size.",
+				},
+			],
+			descriptionCompressed:
+				"Perpetual market router: target hyperliquid; action read or place_order.",
+			exampleCalls: [
+				{
+					user: "Use PERPETUAL_MARKET with the provided parameters.",
+					actions: ["PERPETUAL_MARKET"],
+					params: {
+						PERPETUAL_MARKET: {
+							target: "hyperliquid",
+							action: "read",
+							subaction: "read",
+							kind: "status",
+							coin: "example",
+							side: "buy",
+							asset: "example",
+							size: 1,
 						},
 					},
 				},
