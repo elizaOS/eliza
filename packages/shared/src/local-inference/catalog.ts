@@ -13,6 +13,24 @@
  * When upstream naming conventions drift, update `ggufFile` here — we
  * rely on the exact filename for resolved-URL construction in the
  * downloader.
+ *
+ * Shared-vocabulary note: every text-bearing entry below (the `chat` tier
+ * entries AND their `dflash-drafter` companions) carries
+ * `tokenizerFamily: "eliza1"` — they are all Qwen-lineage and share the same
+ * Qwen2 BPE vocabulary + merges table. The drafter GGUFs ship *without* their
+ * own `tokenizer.ggml.merges`; the runtime injects it from the tier's text
+ * GGUF at load time (`resolveDflashDrafter` in
+ * `packages/app-core/src/services/local-inference/dflash-server.ts`). The same
+ * vocab also covers the bundled Qwen3-ASR text decoder and the bundled
+ * Qwen3-Embedding model (1.7B+ tiers) — that is what gives zero re-tokenization
+ * between ASR output and text input. The shared *vocabulary* does NOT mean a
+ * shared *token-embedding tensor* (each GGUF has its own `token_embd.weight`),
+ * and "shared mmap region for weights" in inference/AGENTS.md §4 is per-file
+ * dedup — only text+vision share one GGUF/region today; the OmniVoice text
+ * decoder, ASR, embedding, and drafter are separate files. Deduplicating the
+ * vocab tensor itself would need a fused-architecture container, which is out
+ * of scope per inference/AGENTS.md §2. Full analysis:
+ * `packages/inference/reports/porting/2026-05-11/qwen-backbone-unification.md`.
  */
 
 import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
