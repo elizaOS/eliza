@@ -89,8 +89,8 @@ import {
   toPiCommand,
 } from "./pty-types.js";
 import {
-  mergeSessionLogIntoTrajectory,
   type MergeSessionLogResult,
+  mergeSessionLogIntoTrajectory,
 } from "./session-log-merger.js";
 import { readClaudeCodeSession } from "./session-log-reader.js";
 import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";

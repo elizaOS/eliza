@@ -57,7 +57,7 @@ describe("advertising provider contracts", () => {
         status: 200,
         headers: { "content-type": "application/json" },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const { googleAdsProvider } = await import(
       `../../lib/services/advertising/providers/google.ts?case=${Date.now()}`
@@ -112,7 +112,7 @@ describe("advertising provider contracts", () => {
         status: 200,
         headers: { "content-type": "application/json" },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const { metaAdsProvider } = await import(
       `../../lib/services/advertising/providers/meta.ts?case=${Date.now()}`
@@ -144,7 +144,7 @@ describe("advertising provider contracts", () => {
         status: 200,
         headers: { "content-type": "application/json" },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const { tiktokAdsProvider } = await import(
       `../../lib/services/advertising/providers/tiktok.ts?case=${Date.now()}`

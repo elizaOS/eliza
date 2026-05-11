@@ -36,6 +36,8 @@ function paymentFixture(overrides: Partial<Record<string, unknown>> = {}) {
   };
 }
 
+type TestPayment = ReturnType<typeof paymentFixture>;
+
 async function loadService() {
   const mod = await import(
     new URL(
@@ -44,8 +46,8 @@ async function loadService() {
     ).href
   );
   return mod.x402PaymentRequestsService as {
-    toView: (payment: ReturnType<typeof paymentFixture>) => Record<string, unknown>;
-    toPublicView: (payment: ReturnType<typeof paymentFixture>) => Record<string, unknown>;
+    toView: (paymentRequest: TestPayment) => Record<string, unknown>;
+    toPublicView: (paymentRequest: TestPayment) => Record<string, unknown>;
     settle: (
       id: string,
       paymentPayloadInput: unknown,
