@@ -11,8 +11,9 @@ funnel` for public Internet exposure). The user must already be authenticated
   `POST /v1/apis/tunnels/tailscale/auth-key` on Eliza Cloud to mint a scoped
   ephemeral auth key for the configured `tag:eliza-tunnel` ACL, then runs
   `tailscale up --auth-key=...` followed by `tailscale serve`/`funnel` against
-  the local port. The cloud holds the OAuth client credentials and Tailnet
-  identity.
+  the local port. The cloud holds the Headscale API credential, charges the
+  user's organization a small on-demand credit debit for each provisioning, and
+  returns a generated public hostname.
 
 Both backends register under `serviceType = "tunnel"` and implement the same
 `ITunnelService` shape, so consumers always go through
@@ -47,6 +48,11 @@ The plugin reads `TAILSCALE_BACKEND` from runtime settings:
 | `ELIZAOS_CLOUD_BASE_URL`            | `https://www.elizacloud.ai/api/v1` | Cloud base URL override.                                                                                                |
 | `ELIZAOS_CLOUD_ENABLED`             | `false`                            | Required (truthy) for `auto` mode to pick the cloud backend.                                                            |
 
+The cloud backend is not a subscription product. Each successful auth-key
+provisioning debits org credits once, using the Cloud Worker
+`TUNNEL_AUTH_KEY_COST_USD` setting, and Headscale failures are refunded by the
+Worker.
+
 ## Actions
 
 - `START_TAILSCALE` (similes: `START_TUNNEL`, `OPEN_TUNNEL`, `CREATE_TUNNEL`, `TAILSCALE_UP`)
@@ -72,7 +78,14 @@ Response:
   "tailnet": "https://headscale.elizacloud.ai",
   "loginServer": "https://headscale.elizacloud.ai",
   "hostname": "eliza-org-session",
-  "magicDnsName": "eliza-agent-1234.tunnel.elizacloud.ai"
+  "magicDnsName": "eliza-agent-1234.tunnel.elizacloud.ai",
+  "billing": {
+    "model": "on_demand",
+    "unit": "tunnel_auth_key",
+    "charged": true,
+    "amountUsd": 0.01,
+    "subscription": false
+  }
 }
 ```
 

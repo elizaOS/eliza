@@ -21,7 +21,7 @@
 # tts/, asr/, vision/, dflash/, cache/, evals/, licenses/).
 #
 # Metal verification is hardware-only. To publish a tier that includes
-# the Metal backend (0_6b, 1_7b, 9b, 27b, 27b-256k) you
+# the Metal backend (0_6b, 1_7b, 9b, 27b) you
 # must record a metal_verify.json on a verified host (run
 # packages/inference/verify/metal_verify there) and pass it via
 # --metal-verification-<tier> PATH OR by placing it at

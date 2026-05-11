@@ -7,23 +7,35 @@
  *
  * UNUserNotificationCenter requires the running binary to be a properly
  * signed app bundle with `NSUserNotificationAlertStyle` in Info.plist. In
- * unsigned dev, the API silently returns notDetermined forever.
- *
- * No FFI binding yet — we shell out to `osascript -e 'display
- * notification ...'` as a no-op probe for `request`, and report
- * not-determined for `check` because we have no read-only path.
- *
- * INTEGRATION TODO: FFI to UNUserNotificationCenter, gated on whether the
- * runtime is launched from a signed app bundle.
+ * unsigned dev, the API may keep returning notDetermined. That is still
+ * preferable to prompting during check().
  *
  * On win32/linux, concrete notification state is supplied by the renderer
  * fallback through Notification.permission.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
-import { buildState, IS_DARWIN, runOsascript } from "./_bridge.js";
+import {
+  buildState,
+  getNativeDylib,
+  IS_DARWIN,
+  mapUNAuthStatus,
+  runOsascript,
+} from "./_bridge.js";
 
 const ID = "notifications" as const;
+
+function stateFromNativeStatus(
+  status: number | undefined,
+  lastRequested?: number,
+): PermissionState {
+  const mapped = mapUNAuthStatus(status ?? 0);
+  return buildState(ID, mapped, {
+    canRequest: mapped === "not-determined",
+    lastRequested,
+    restrictedReason: mapped === "restricted" ? "os_policy" : undefined,
+  });
+}
 
 export const notificationsProber: Prober = {
   id: ID,
@@ -33,21 +45,24 @@ export const notificationsProber: Prober = {
       // Renderer fallback handles Notification.permission.
       return buildState(ID, "not-determined", { canRequest: true });
     }
-    // No read-only path without UNUserNotificationCenter. Defer.
-    return buildState(ID, "not-determined", { canRequest: true });
+    const lib = await getNativeDylib();
+    if (!lib) return buildState(ID, "not-determined", { canRequest: true });
+    return stateFromNativeStatus(lib.checkNotificationPermission());
   },
 
   async request({ reason: _reason }): Promise<PermissionState> {
     if (!IS_DARWIN) {
       return buildState(ID, "not-determined", { canRequest: true });
     }
-    // Issue a benign notification to surface the consent dialog.
-    // Whether macOS actually prompts depends on the bundle being
-    // signed; in dev this is a silent no-op.
+    const lastRequested = Date.now();
+    const lib = await getNativeDylib();
+    if (lib) {
+      return stateFromNativeStatus(
+        lib.requestNotificationPermission(),
+        lastRequested,
+      );
+    }
     await runOsascript('display notification "" with title ""');
-    return buildState(ID, "not-determined", {
-      canRequest: true,
-      lastRequested: Date.now(),
-    });
+    return buildState(ID, "not-determined", { canRequest: true, lastRequested });
   },
 };

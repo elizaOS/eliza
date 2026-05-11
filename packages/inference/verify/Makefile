@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork dispatch-smoke clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -376,6 +376,21 @@ else
 	@echo "[cuda-verify] polar ..."      ; ./cuda_verify fixtures/polar.json
 	@echo "[cuda-verify] polar + QJL residual ..." ; ./cuda_verify fixtures/polar_qjl.json
 endif
+
+# Hardware runners. These intentionally fail without matching physical
+# hardware and a model-backed graph smoke (ELIZA_DFLASH_SMOKE_MODEL).
+cuda-hardware:
+	./cuda_runner.sh
+
+rocm-hardware:
+	./rocm_runner.sh
+
+gh200-hardware:
+	./gh200_runner.sh
+
+windows-hardware:
+	@echo "Run on a native Windows host:"
+	@echo "  pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\\\models\\\\eliza-1-smoke.gguf"
 
 # Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
 # and the fork's in-tree shaders. Both ship the same kernel symbols and decode
