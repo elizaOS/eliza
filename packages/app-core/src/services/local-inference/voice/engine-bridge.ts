@@ -86,7 +86,7 @@ import type {
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
-const PHRASE_MAX_TOKENS_DEFAULT = 8;
+const PHRASE_MAX_TOKENS_DEFAULT = 30;
 const STUB_PCM_MS_PER_PHRASE = 100;
 
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
@@ -255,7 +255,7 @@ export interface EngineVoiceBridgeOptions {
   sampleRate?: number;
   /** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
   ringBufferCapacity?: number;
-  /** Phrase chunker `maxTokensPerPhrase`. Defaults to env or 8. */
+  /** Phrase chunker `maxTokensPerPhrase`. Defaults to env or 30. */
   maxTokensPerPhrase?: number;
   /** Max concurrent TTS phrase dispatches. Defaults to env or scheduler default. */
   maxInFlightPhrases?: number;

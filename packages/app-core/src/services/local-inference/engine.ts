@@ -833,9 +833,7 @@ export class LocalInferenceEngine {
     let cacheKey: string;
     if (typeof conversationOrId === "string") {
       const modelId =
-        opts.modelId ??
-        this.currentModelPath() ??
-        "default-local-model";
+        opts.modelId ?? this.currentModelPath() ?? "default-local-model";
       const handle =
         this.conversation(conversationOrId, modelId) ??
         this.openConversation({ conversationId: conversationOrId, modelId });
@@ -975,6 +973,129 @@ export class LocalInferenceEngine {
   }
 
   /**
+   * Assemble + run the full live voice loop on top of `startVoice()` /
+   * `armVoice()`: mic → (`pipeMicToRingBuffer` + `VadDetector.pushFrame`)
+   * per frame → `StreamingTranscriber.feed` (VAD-gated) → `VoiceTurnController`
+   * (speculative-on-pause, abort-on-resume, finalize/promote, barge-in) →
+   * `VoiceScheduler` → TTS → audio sink.
+   *
+   * Gated behind a complete real backend chain (AGENTS.md §3 — no silent
+   * stub-mode "voice"):
+   *   - a `MicSource` (caller-supplied, or `DesktopMicSource` under Electrobun),
+   *   - a Silero ONNX VAD (caller-supplied detector, or `createSileroVadDetector()`),
+   *   - a working ASR (the bridge's `createStreamingTranscriber` throws
+   *     `AsrUnavailableError` when neither the fused decoder nor whisper.cpp
+   *     is available),
+   *   - a real OmniVoice TTS backend on the bridge (the `StubOmniVoiceBackend`
+   *     is rejected — it emits zeros).
+   * Any missing piece fails loudly with the specific component named.
+   *
+   * `prewarm` defaults to `this.prewarmConversation(roomId, "")` (best-effort
+   * KV-prefill); a caller with the response-handler stable prefix (W6) should
+   * pass its own. `generate` is required — it builds the message and runs the
+   * runtime turn (streaming `replyText` into TTS via this engine's
+   * `generate({ onTextChunk })`, which routes through the voice scheduler).
+   */
+  async startVoiceSession(opts: {
+    roomId: string;
+    /** Mic source. Defaults to a `DesktopMicSource` (Electrobun). */
+    micSource?: import("./voice/types").MicSource;
+    /** VAD detector. Defaults to `createSileroVadDetector()`. */
+    vad?: import("./voice/vad").VadDetector;
+    /** Run one turn: build the message + stream `replyText` into TTS. Required. */
+    generate: (
+      request: import("./voice/turn-controller").VoiceGenerateRequest,
+    ) => Promise<import("./voice/turn-controller").VoiceTurnOutcome>;
+    /** KV-prefill / response-handler-prefix prewarm. Defaults to `prewarmConversation`. */
+    prewarm?: (roomId: string) => void | Promise<void>;
+    speculatePauseMs?: number;
+    events?: import("./voice/turn-controller").VoiceTurnControllerEvents;
+  }): Promise<import("./voice/turn-controller").VoiceTurnController> {
+    const bridge = this.requireVoiceBridge("start a voice session");
+    if (bridge.lifecycle.current().kind !== "voice-on") {
+      throw new VoiceStartupError(
+        "not-started",
+        "[voice] Cannot start a voice session: voice lifecycle is not armed. Call armVoice() first.",
+      );
+    }
+    const backendId = (bridge.backend as { id?: string }).id;
+    if (backendId === "stub") {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        "[voice] Cannot start a live voice session on the StubOmniVoiceBackend (it emits silence). Start the bridge with useFfiBackend:true or a real backendOverride.",
+      );
+    }
+
+    const [
+      { DesktopMicSource, pipeMicToRingBuffer },
+      vadMod,
+      { VoiceTurnController },
+      { InMemoryAudioSink },
+    ] = await Promise.all([
+      import("./voice/mic-source"),
+      import("./voice/vad"),
+      import("./voice/turn-controller"),
+      import("./voice/ring-buffer"),
+    ]);
+
+    const micSource = opts.micSource ?? new DesktopMicSource();
+    const vad = opts.vad ?? (await vadMod.createSileroVadDetector());
+
+    // ASR — throws `AsrUnavailableError` when neither the fused decoder nor
+    // whisper.cpp is present. Gated on the VAD so silent frames aren't
+    // decoded.
+    const transcriber = bridge.createStreamingTranscriber({ vad });
+
+    const controller = new VoiceTurnController(
+      {
+        vad,
+        transcriber,
+        scheduler: bridge.scheduler,
+        prewarm:
+          opts.prewarm ??
+          ((roomId: string) => {
+            void this.prewarmConversation(roomId, "");
+          }),
+        generate: opts.generate,
+      },
+      {
+        roomId: opts.roomId,
+        ...(opts.speculatePauseMs !== undefined
+          ? { speculatePauseMs: opts.speculatePauseMs }
+          : {}),
+      },
+      opts.events ?? {},
+    );
+
+    // Mic → ring buffer (the buffer the ASR / instrumentation can read from)
+    // + per-frame fan-out to the VAD and the streaming transcriber.
+    const { unsubscribe: stopMicRing } = pipeMicToRingBuffer(
+      micSource,
+      new InMemoryAudioSink(),
+    );
+    const unsubFrame = micSource.onFrame((frame) => {
+      // The VAD forward pass is serialized internally; fire-and-forget so a
+      // slow frame doesn't backpressure the mic (the VAD records overruns).
+      void vad.pushFrame(frame);
+      transcriber.feed(frame);
+    });
+
+    controller.start();
+    await micSource.start();
+
+    // Single teardown knob: stopping the controller stops the mic chain too.
+    const origStop = controller.stop.bind(controller);
+    controller.stop = () => {
+      origStop();
+      unsubFrame();
+      stopMicRing();
+      void micSource.stop();
+      transcriber.dispose();
+    };
+    return controller;
+  }
+
+  /**
    * Disarm the voice lifecycle — drains the ring buffer, settles the
    * scheduler, and drops TTS/ASR weights from RAM via `evictPages()`
    * (madvise / VirtualUnlock equivalent — see voice/engine-bridge.ts).
@@ -1071,8 +1192,7 @@ export class LocalInferenceEngine {
     tierId: Eliza1TierId;
     textModelPath?: string;
   }): LocalEmbeddingRoute {
-    const textModelPath =
-      args.textModelPath ?? this.currentModelPath() ?? "";
+    const textModelPath = args.textModelPath ?? this.currentModelPath() ?? "";
     return buildLocalEmbeddingRoute({
       bundleRoot: args.bundleRoot,
       tierId: args.tierId,
@@ -1122,6 +1242,31 @@ export class LocalInferenceEngine {
       };
     }
 
+    // Barge-in → LLM/drafter abort. A `hard-stop` from the scheduler's
+    // barge-in controller (ASR-confirmed words, or `triggerBargeIn()`)
+    // aborts this controller; we hand its signal to `dispatcher.generate`
+    // so generation stops at the next kernel boundary — not just TTS
+    // (AGENTS.md §4 / brief item 2). Composed with the caller's signal so
+    // an external cancel still works.
+    const bargeAbort = new AbortController();
+    const detachBarge = bridge.scheduler.bargeIn.onSignal((signal) => {
+      if (signal.type === "hard-stop" && !bargeAbort.signal.aborted) {
+        bargeAbort.abort();
+      }
+    });
+    const callerSignal = args.signal;
+    if (callerSignal) {
+      if (callerSignal.aborted) bargeAbort.abort();
+      else
+        callerSignal.addEventListener(
+          "abort",
+          () => {
+            if (!bargeAbort.signal.aborted) bargeAbort.abort();
+          },
+          { once: true },
+        );
+    }
+
     let nextIndex = 0;
     let streamedAny = false;
     let verifierHandled = false;
@@ -1129,6 +1274,7 @@ export class LocalInferenceEngine {
     const callerOnVerifierEvent = args.onVerifierEvent;
     const wrapped = {
       ...args,
+      signal: bargeAbort.signal,
       onVerifierEvent: async (event: VerifierStreamEvent) => {
         verifierHandled = true;
         if (event.kind === "accept" && event.tokens.length > 0) {
@@ -1152,13 +1298,21 @@ export class LocalInferenceEngine {
     return {
       args: wrapped,
       finish: async (finalText: string) => {
-        if (!streamedAny && finalText.length > 0) {
-          await bridge.pushAcceptedToken({
-            index: nextIndex++,
-            text: finalText,
-          });
+        try {
+          if (
+            !streamedAny &&
+            finalText.length > 0 &&
+            !bargeAbort.signal.aborted
+          ) {
+            await bridge.pushAcceptedToken({
+              index: nextIndex++,
+              text: finalText,
+            });
+          }
+          await bridge.settle();
+        } finally {
+          detachBarge();
         }
-        await bridge.settle();
       },
     };
   }

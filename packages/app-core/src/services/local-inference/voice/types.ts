@@ -131,12 +131,20 @@ export interface StreamingTranscriber {
 }
 
 export interface PhraseChunkerConfig {
-  maxTokensPerPhrase: number;
+  /**
+   * Hard word cap before a phrase is force-flushed even without a
+   * `, . ! ?` boundary. Defaults to 30 (the brief's A6 "first 30 words").
+   */
+  maxTokensPerPhrase?: number;
+  /**
+   * Characters that close a phrase. Default `, . ! ?` — a comma is a
+   * boundary so the first clause reaches TTS without waiting for a
+   * sentence-final mark.
+   */
   sentenceTerminators?: ReadonlySet<string>;
   /**
    * Where the chunker emits a phrase boundary.
-   *   'punctuation'    — default. Wait for sentence-final punctuation or
-   *                      the max-token cap.
+   *   'punctuation'    — default. Wait for `, . ! ?` or the max-token cap.
    *   'phoneme-stream' — additionally emit a sub-phrase chunk every
    *                      `phonemesPerChunk` phonemes. Cuts first-audio
    *                      latency by handing partial phrases to TTS at

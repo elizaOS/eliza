@@ -781,4 +781,137 @@ describe("LocalInferenceEngine voice surface", () => {
     backend.releaseAll();
     await engine.stopVoice();
   });
+
+  it("triggerBargeIn aborts an in-flight generation's AbortSignal", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+
+    let observedSignal: AbortSignal | undefined;
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: { signal?: AbortSignal }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        observedSignal = args.signal;
+        // Park until barge-in trips the signal.
+        await new Promise<void>((resolve) => {
+          if (args.signal?.aborted) return resolve();
+          args.signal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+        return "";
+      },
+    };
+
+    const gen = engine.generate({ prompt: "..." });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(observedSignal).toBeInstanceOf(AbortSignal);
+    expect(observedSignal?.aborted).toBe(false);
+    engine.triggerBargeIn();
+    await gen;
+    expect(observedSignal?.aborted).toBe(true);
+    await engine.stopVoice();
+  });
+});
+
+/** Minimal `SileroLike` so tests can build a `VadDetector` without ONNX. */
+class NoopSilero {
+  readonly windowSamples = 512;
+  readonly sampleRate = 16_000;
+  async process(): Promise<number> {
+    return 0;
+  }
+  reset(): void {}
+}
+
+describe("LocalInferenceEngine.startVoiceSession", () => {
+  let bundleRoot: string;
+
+  beforeEach(() => {
+    bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-voice-session-"));
+  });
+
+  afterEach(() => {
+    rmSync(bundleRoot, { recursive: true, force: true });
+  });
+
+  it("requires an armed voice bridge", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+      }),
+    ).rejects.toMatchObject({ code: "not-started" });
+
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+      }),
+    ).rejects.toMatchObject({ code: "not-started" });
+  });
+
+  it("refuses to run a live session on the StubOmniVoiceBackend (it emits silence)", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    // No backendOverride → the bridge uses StubOmniVoiceBackend.
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+        vad: undefined,
+      }),
+    ).rejects.toMatchObject({ code: "missing-fused-build" });
+    await engine.stopVoice();
+  });
+
+  it("fails loudly with the missing component when no ASR backend is available", async () => {
+    writePresetBundle(bundleRoot);
+    const { VadDetector } = await import("./voice/vad");
+    const { PushMicSource } = await import("./voice/mic-source");
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+    // Inject a VAD (no ONNX) + a push mic source so the only missing piece
+    // is the ASR backend (no fused decoder, no whisper.cpp in this env).
+    await expect(
+      engine.startVoiceSession({
+        roomId: "r",
+        generate: async () => ({ transcript: "", replyText: "" }),
+        vad: new VadDetector(new NoopSilero()),
+        micSource: new PushMicSource({ sampleRate: 16_000, frameSamples: 512 }),
+      }),
+    ).rejects.toBeInstanceOf(AsrUnavailableError);
+    await engine.stopVoice();
+  });
 });

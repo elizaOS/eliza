@@ -6,8 +6,18 @@ import type {
   TextToken,
 } from "./types";
 
-const DEFAULT_TERMINATORS: ReadonlySet<string> = new Set([".", "!", "?"]);
+/**
+ * Default phrase boundaries: end-of-clause comma plus the three
+ * sentence-final marks. Per `packages/inference/AGENTS.md` §4 / the
+ * voice-swarm brief item A6 — "the first segment delimited by `, . ! ?`
+ * OR the first 30 words, whichever comes first". Cutting a phrase at the
+ * first comma hands TTS something to say without waiting for a
+ * sentence-final mark.
+ */
+const DEFAULT_TERMINATORS: ReadonlySet<string> = new Set([",", ".", "!", "?"]);
 const DEFAULT_PHONEMES_PER_CHUNK = 8;
+/** Default hard word cap when a caller doesn't supply `maxTokensPerPhrase` (the brief's "first 30 words"). */
+const DEFAULT_MAX_TOKENS_PER_PHRASE = 30;
 
 export class PhraseChunker {
   private buffer: AcceptedToken[] = [];
@@ -15,11 +25,12 @@ export class PhraseChunker {
   private readonly terminators: ReadonlySet<string>;
   private readonly chunkOn: "punctuation" | "phoneme-stream";
   private readonly phonemesPerChunk: number;
+  private readonly maxTokensPerPhrase: number;
   private readonly tokenizer: PhonemeTokenizer | null;
   private phonemeCount = 0;
 
   constructor(
-    private readonly config: PhraseChunkerConfig,
+    config: PhraseChunkerConfig,
     tokenizer: PhonemeTokenizer | null = null,
   ) {
     this.terminators = config.sentenceTerminators ?? DEFAULT_TERMINATORS;
@@ -27,6 +38,10 @@ export class PhraseChunker {
     this.phonemesPerChunk = Math.max(
       1,
       config.phonemesPerChunk ?? DEFAULT_PHONEMES_PER_CHUNK,
+    );
+    this.maxTokensPerPhrase = Math.max(
+      1,
+      config.maxTokensPerPhrase ?? DEFAULT_MAX_TOKENS_PER_PHRASE,
     );
     this.tokenizer = tokenizer;
     if (this.chunkOn === "phoneme-stream" && this.tokenizer === null) {
@@ -39,8 +54,8 @@ export class PhraseChunker {
   push(token: AcceptedToken): Phrase | null {
     this.buffer.push(token);
 
-    // Punctuation always wins — a sentence-final marker forces a flush
-    // even in phoneme-stream mode.
+    // Punctuation always wins — a `, . ! ?` boundary forces a flush even
+    // in phoneme-stream mode.
     if (this.endsWithTerminator(token.text)) {
       return this.flushAs("punctuation");
     }
@@ -53,7 +68,7 @@ export class PhraseChunker {
       }
     }
 
-    if (this.buffer.length >= this.config.maxTokensPerPhrase) {
+    if (this.buffer.length >= this.maxTokensPerPhrase) {
       return this.flushAs("max-cap");
     }
     return null;
