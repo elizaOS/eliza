@@ -7,11 +7,5 @@
     "rootDir": "src"
   },
   "include": ["src/index.ts"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.stories.ts",
-    "**/*.stories.tsx",
-    "src/test"
-  ]
+  "exclude": ["node_modules", "dist", "**/*.stories.ts", "**/*.stories.tsx", "src/test"]
 }
