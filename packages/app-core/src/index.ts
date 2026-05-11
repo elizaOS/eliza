@@ -15,7 +15,11 @@ export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
 export * from "./diagnostics/integration-observability";
 export * from "./permissions/types";
-export * from "./platform/empty-node-module";
+// `./platform/empty-node-module` is intentionally NOT re-exported here.
+// It exists as a tsconfig-paths target for browser builds — re-exporting it
+// would shadow the real api/server, runtime/eliza, etc. exports above with
+// noop stubs. Browser bundlers alias it in via the path map; Node imports
+// the originals directly through this barrel.
 export * from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";

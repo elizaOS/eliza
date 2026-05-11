@@ -38,6 +38,7 @@
       "devDependencies": {
         "@biomejs/biome": "2.4.14",
         "@capacitor/core": "8.3.1",
+        "@elizaos-benchmarks/lib": "workspace:*",
         "@elizaos/agent": "workspace:*",
         "@elizaos/app-lifeops": "workspace:*",
         "@elizaos/core": "workspace:*",
@@ -368,6 +369,17 @@
         "rcedit": "4.0.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
+      },
+    },
+    "packages/benchmarks/lib": {
+      "name": "@elizaos-benchmarks/lib",
+      "version": "0.1.0",
+      "dependencies": {
+        "zod": "^4.4.3",
+      },
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
       },
     },
     "packages/browser-bridge": {
@@ -4017,6 +4029,8 @@
     "@electron/get": ["@electron/get@5.0.0", "", { "dependencies": { "debug": "^4.1.1", "env-paths": "^3.0.0", "graceful-fs": "^4.2.11", "progress": "^2.0.3", "semver": "^7.6.3", "sumchecker": "^3.0.1" }, "optionalDependencies": { "undici": "^7.24.4" } }, "sha512-pjoBpru1KdEtcExBnuHAP1cAc/5faoedw0hzJkL3o4/IJp7HNF1+fbrdxT3gMYRX2oJfvnA/WXeCTVQpYYxyJA=="],
 
     "@elevenlabs/elevenlabs-js": ["@elevenlabs/elevenlabs-js@2.46.0", "", { "dependencies": { "command-exists": "^1.2.9", "node-fetch": "^2.7.0", "ws": "^8.18.3" } }, "sha512-Qpdr3ETVkKN6XvGyYzH96E0Tc/A3xOES/bhYEUanhkeMBklBzf60TrwlUZkuF/GlDW7OV6dVgYOD2t2iQ8IjTw=="],
+
+    "@elizaos-benchmarks/lib": ["@elizaos-benchmarks/lib@workspace:packages/benchmarks/lib"],
 
     "@elizaos-examples/html-eliza": ["@elizaos-examples/html-eliza@workspace:packages/examples/html"],
 

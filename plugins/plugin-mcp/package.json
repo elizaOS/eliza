@@ -24,6 +24,12 @@
       "import": "./dist/node/index.js",
       "require": "./dist/cjs/index.cjs",
       "default": "./dist/node/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
     }
   },
   "files": [

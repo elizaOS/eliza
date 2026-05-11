@@ -68,6 +68,16 @@ export interface PlannerInvocationResult {
     promptTokens?: number;
     completionTokens?: number;
     totalTokens?: number;
+    /**
+     * Provider-reported prompt-cache reads (Anthropic
+     * ``cache_read_input_tokens`` / OpenAI + Cerebras
+     * ``prompt_tokens_details.cached_tokens``). Optional because not every
+     * provider supports prompt caching; nullable upstream stays nullable
+     * here — no silent 0 fallback, per AGENTS.md Cmd #8.
+     */
+    cacheReadInputTokens?: number;
+    /** Anthropic-only ``cache_creation_input_tokens``. */
+    cacheCreationInputTokens?: number;
   };
 }
 

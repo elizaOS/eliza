@@ -80,7 +80,8 @@ export type LiveProviderName =
   | "openai"
   | "anthropic"
   | "google"
-  | "openrouter";
+  | "openrouter"
+  | "local-llama-cpp";
 
 export type LiveProviderConfig = {
   name: LiveProviderName;
@@ -193,6 +194,24 @@ const PROVIDERS: Array<{
     largeModelEnvVar: "OPENROUTER_LARGE_MODEL",
     defaultSmallModel: "google/gemini-2.0-flash-001",
     defaultLargeModel: "google/gemini-2.0-flash-001",
+  },
+  {
+    // Local OpenAI-compatible server (dflash llama-server fork or Ollama).
+    // The dflash fork at ~/.cache/eliza-dflash/milady-llama-cpp is preferred
+    // when present; otherwise PARALLAX_OPENCODE_BASE_URL points at Ollama
+    // (default http://localhost:11434/v1). No real API key is required, but
+    // the selector requires a non-empty key string, so callers must set
+    // LOCAL_LLAMA_CPP_API_KEY=local (or rely on the explicit
+    // selectLiveProvider("local-llama-cpp") path which seeds the sentinel).
+    name: "local-llama-cpp",
+    plugin: "@elizaos/plugin-openai",
+    keyEnvVars: ["LOCAL_LLAMA_CPP_API_KEY"],
+    baseUrlEnvVar: "OPENAI_BASE_URL",
+    defaultBaseUrl: "http://localhost:11434/v1",
+    smallModelEnvVar: "OPENAI_SMALL_MODEL",
+    largeModelEnvVar: "OPENAI_LARGE_MODEL",
+    defaultSmallModel: "qwen3-0.6b-q8_0",
+    defaultLargeModel: "qwen3-1.7b-q4_k_m",
   },
 ];
 

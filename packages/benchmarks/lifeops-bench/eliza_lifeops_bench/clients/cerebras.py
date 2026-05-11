@@ -235,12 +235,24 @@ class CerebrasClient(BaseClient):
         prompt_tokens = int(usage_raw.get("prompt_tokens") or 0)
         completion_tokens = int(usage_raw.get("completion_tokens") or 0)
         total_tokens = int(usage_raw.get("total_tokens") or (prompt_tokens + completion_tokens))
-        cached_tokens_raw = (usage_raw.get("prompt_tokens_details") or {}).get("cached_tokens") or 0
+        # Cerebras prompt caching (gpt-oss-120b): default-on, 128-token blocks.
+        # Hit count surfaces at ``usage.prompt_tokens_details.cached_tokens``
+        # using the same shape as OpenAI's documented response.
+        prompt_details = usage_raw.get("prompt_tokens_details") or {}
+        cached_tokens_raw = prompt_details.get("cached_tokens")
+        cache_read_value: int | None = (
+            int(cached_tokens_raw) if isinstance(cached_tokens_raw, (int, float)) else None
+        )
         usage = Usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
-            cached_tokens=int(cached_tokens_raw),
+            cached_tokens=cache_read_value if cache_read_value is not None else 0,
+            cache_read_input_tokens=cache_read_value,
+            # Cerebras does not bill a separate cache-creation tier — pass
+            # through whatever the provider reports, else leave as None so
+            # downstream consumers do not silently default to zero.
+            cache_creation_input_tokens=None,
         )
         cost_usd = _compute_cost_usd(self.model_name, prompt_tokens, completion_tokens)
 

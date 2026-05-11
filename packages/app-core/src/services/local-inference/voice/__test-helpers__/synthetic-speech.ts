@@ -48,7 +48,10 @@ class FormantBank {
   private readonly a2: number[];
   private readonly z1: number[];
   private readonly z2: number[];
-  constructor(sampleRate: number, formants: ReadonlyArray<readonly [number, number]>) {
+  constructor(
+    sampleRate: number,
+    formants: ReadonlyArray<readonly [number, number]>,
+  ) {
     this.r = [];
     this.a1 = [];
     this.a2 = [];
@@ -101,7 +104,8 @@ export function makeSpeechWithSilenceFixture(
   let phase = 0;
   for (let i = speechStartSample; i < speechEndSample; i++) {
     const tInSpeech = (i - speechStartSample) / sampleRate;
-    const f0 = 110 + 30 * Math.sin(2 * Math.PI * 5 * tInSpeech) + (rng() - 0.5) * 4;
+    const f0 =
+      110 + 30 * Math.sin(2 * Math.PI * 5 * tInSpeech) + (rng() - 0.5) * 4;
     phase += f0 / sampleRate;
     let excitation = 0;
     if (phase >= 1) {
@@ -109,7 +113,10 @@ export function makeSpeechWithSilenceFixture(
       excitation = 1;
     }
     // Syllable-rate amplitude envelope (~4 Hz).
-    const amp = Math.max(0, 0.6 * (1 + Math.sin(2 * Math.PI * 4 * tInSpeech - Math.PI / 2)));
+    const amp = Math.max(
+      0,
+      0.6 * (1 + Math.sin(2 * Math.PI * 4 * tInSpeech - Math.PI / 2)),
+    );
     excitation *= amp;
     pcm[i] = bank.step(excitation) * 0.15;
   }

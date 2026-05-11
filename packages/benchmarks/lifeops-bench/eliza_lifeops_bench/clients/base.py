@@ -17,12 +17,30 @@ ReasoningEffort = Literal["low", "medium", "high"]
 
 @dataclass(frozen=True)
 class Usage:
-    """Token-level accounting for a single completion call."""
+    """Token-level accounting for a single completion call.
+
+    ``cached_tokens`` is kept for legacy callers; new code reads
+    ``cache_read_input_tokens`` and ``cache_creation_input_tokens`` directly.
+    The two cache fields are ``None`` when the provider did not report them
+    (e.g. providers that do not support prompt caching at all). Per AGENTS.md
+    Cmd #8: nullable cache fields stay nullable — no silent ``0`` fallback for
+    missing data.
+
+    Cache wire shapes per provider:
+
+    * OpenAI / Cerebras OpenAI-compatible: ``usage.prompt_tokens_details
+      .cached_tokens`` (Cerebras serves gpt-oss-120b with prompt caching
+      default-on, 128-token blocks).
+    * Anthropic: ``usage.cache_read_input_tokens`` and
+      ``usage.cache_creation_input_tokens``.
+    """
 
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
     cached_tokens: int = 0
+    cache_read_input_tokens: int | None = None
+    cache_creation_input_tokens: int | None = None
 
 
 @dataclass(frozen=True)
