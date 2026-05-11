@@ -156,3 +156,62 @@ describe("ConversationRegistry.highWater", () => {
     expect(registry.highWater()).toBe(3);
   });
 });
+
+describe("ConversationRegistry.recommendedParallel (--parallel auto-resize decision)", () => {
+  it("returns the running count when the high-water mark hasn't outgrown it", () => {
+    const registry = new ConversationRegistry();
+    // 2 concurrent, headroom max(2, ceil(2*0.25)=1) = 2 → desired 4.
+    registry.open({ conversationId: "a", modelId: "m", parallel: 4 });
+    registry.open({ conversationId: "b", modelId: "m", parallel: 4 });
+    expect(registry.highWater()).toBe(2);
+    expect(registry.recommendedParallel(4)).toBe(4); // 4 already covers it
+    expect(registry.recommendedParallel(8)).toBe(8); // larger running wins
+  });
+
+  it("recommends high-water + 25%-headroom when it exceeds the running count", () => {
+    const registry = new ConversationRegistry();
+    for (let i = 0; i < 20; i += 1) {
+      registry.open({ conversationId: `c-${i}`, modelId: "m", parallel: 4 });
+    }
+    expect(registry.highWater()).toBe(20);
+    // 20 + max(2, ceil(20*0.25)=5) = 25.
+    expect(registry.recommendedParallel(4)).toBe(25);
+  });
+
+  it("headroom floors at 2 (small high-water marks still get a buffer)", () => {
+    const registry = new ConversationRegistry();
+    for (let i = 0; i < 5; i += 1) {
+      registry.open({ conversationId: `c-${i}`, modelId: "m", parallel: 2 });
+    }
+    expect(registry.highWater()).toBe(5);
+    // ceil(5*0.25) = 2 → headroom 2 → desired 7.
+    expect(registry.recommendedParallel(2)).toBe(7);
+  });
+
+  it("is monotonic: closing conversations does not shrink the recommendation", () => {
+    const registry = new ConversationRegistry();
+    const handles = Array.from({ length: 10 }, (_, i) =>
+      registry.open({ conversationId: `c-${i}`, modelId: "m", parallel: 4 }),
+    );
+    expect(registry.recommendedParallel(4)).toBe(13); // 10 + ceil(10*.25)=3
+    for (const h of handles) registry.close(h.conversationId, h.modelId);
+    expect(registry.size()).toBe(0);
+    expect(registry.recommendedParallel(4)).toBe(13); // unchanged
+  });
+});
+
+describe("ConversationRegistry.reset", () => {
+  it("drops every handle and zeroes the high-water mark", () => {
+    const registry = new ConversationRegistry();
+    const a = registry.open({ conversationId: "a", modelId: "m", parallel: 4 });
+    registry.open({ conversationId: "b", modelId: "m", parallel: 4 });
+    expect(registry.size()).toBe(2);
+    expect(registry.highWater()).toBe(2);
+    registry.reset();
+    expect(registry.size()).toBe(0);
+    expect(registry.highWater()).toBe(0);
+    expect(registry.recommendedParallel(4)).toBe(4);
+    // The dropped handle is marked closed (further use is rejected by the engine).
+    expect(a.closed).toBe(true);
+  });
+});

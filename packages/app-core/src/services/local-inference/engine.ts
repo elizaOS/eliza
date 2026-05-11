@@ -85,7 +85,7 @@ const DEFAULT_IDLE_UNLOAD_MS = 15 * 60 * 1000;
 /** How often the idle-unload timer checks the activity clock. */
 const IDLE_UNLOAD_CHECK_INTERVAL_MS = 60 * 1000;
 
-function resolveIdleUnloadMs(): number {
+export function resolveIdleUnloadMs(): number {
   const raw = process.env.ELIZA_LOCAL_IDLE_UNLOAD_MS?.trim();
   if (raw === undefined) return DEFAULT_IDLE_UNLOAD_MS;
   const parsed = Number.parseInt(raw, 10);
@@ -100,7 +100,7 @@ function resolveIdleUnloadMs(): number {
  * them (the other half stays available for confirmed turns + tool calls).
  * Floors at 1. Override via `ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES`.
  */
-function resolveMaxConcurrentSpeculativeResponses(
+export function resolveMaxConcurrentSpeculativeResponses(
   parallelSlots: number,
 ): number {
   const raw = process.env.ELIZA_LOCAL_MAX_SPECULATIVE_RESPONSES?.trim();
@@ -1147,27 +1147,31 @@ export class LocalInferenceEngine {
   }
 
   /**
-   * When the conversation high-water mark has outgrown the running
-   * `--parallel`: kick off an auto-resize (J4) if there's RAM headroom, and
-   * — regardless — return true and emit a warning so a caller / dev console
-   * sees the pressure. No-op (returns false) on the node-llama-cpp backend.
-   * The resize is fire-and-forget so the caller (a hot `useModel` path)
-   * isn't blocked on a server restart.
+   * Emit a one-line warning when the running `--parallel` slot count is
+   * below the recommended value (high-water mark + headroom). Returns true
+   * when a warning was emitted. No-op for the node-llama-cpp backend (its
+   * session pool sizes itself). The actual resize is `maybeAutoResizeParallel()`
+   * — kept separate from this hot-path check so a `useModel` call never
+   * blocks on (or is interrupted by) a server restart; the auto-resize is
+   * opted into via `ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1`, in which case this
+   * also kicks one off fire-and-forget.
    */
   warnIfParallelTooLow(logger?: { warn: (msg: string) => void }): boolean {
     if (this.activeBackendId() !== "llama-server") return false;
     const actual = dflashLlamaServer.parallelSlots();
     const recommended = conversationRegistry.recommendedParallel(actual);
     if (recommended <= actual) return false;
-    const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}; recommended ${recommended}. Attempting an auto-resize (needs RAM headroom); otherwise restart llama-server with ELIZA_LOCAL_PARALLEL=${recommended}+ to avoid slot thrashing.`;
+    const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama-server with ELIZA_LOCAL_PARALLEL=${recommended} or higher (or set ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1) to avoid slot thrashing.`;
     if (logger?.warn) {
       logger.warn(message);
     } else {
       console.warn(message);
     }
-    void this.maybeAutoResizeParallel().catch(() => {
-      // Best-effort; the warning above already told the operator what to do.
-    });
+    if (process.env.ELIZA_LOCAL_AUTO_RESIZE_PARALLEL === "1") {
+      void this.maybeAutoResizeParallel().catch(() => {
+        // Best-effort; the warning above already told the operator what to do.
+      });
+    }
     return true;
   }
 
