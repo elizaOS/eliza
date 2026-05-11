@@ -177,7 +177,7 @@ export const PostCreateAppResponseSchema = z
     success: z.boolean(),
     text: z.string(),
     messages: z.array(z.string()),
-    data: z.unknown(),
+    data: z.nullable(z.unknown()),
   })
   .strict();
 
