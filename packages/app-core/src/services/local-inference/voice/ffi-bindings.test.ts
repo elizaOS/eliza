@@ -40,13 +40,64 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { fakeFfi } from "./__test-helpers__/fake-ffi";
+import type { ElizaInferenceFfi, TtsStreamChunk } from "./ffi-bindings";
 import {
+  ELIZA_ERR_CANCELLED,
   ELIZA_ERR_NOT_IMPLEMENTED,
   ELIZA_INFERENCE_ABI_VERSION,
   ELIZA_OK,
   loadElizaInferenceFfi,
 } from "./ffi-bindings";
 import { VoiceLifecycleError } from "./lifecycle";
+
+/**
+ * The complete ABI v2 C symbol set declared in
+ * `scripts/omnivoice-fuse/ffi.h` — kept here as the JS-side source of
+ * truth for both the fake-FFI surface check and the stub `nm` audit.
+ * Mirrors `REQUIRED_ELIZA_INFERENCE_SYMBOLS` in `verify-symbols.mjs`.
+ */
+const ABI_V2_SYMBOLS = [
+  "eliza_inference_abi_version",
+  "eliza_inference_create",
+  "eliza_inference_destroy",
+  "eliza_inference_mmap_acquire",
+  "eliza_inference_mmap_evict",
+  "eliza_inference_tts_synthesize",
+  "eliza_inference_asr_transcribe",
+  "eliza_inference_asr_stream_supported",
+  "eliza_inference_asr_stream_open",
+  "eliza_inference_asr_stream_feed",
+  "eliza_inference_asr_stream_partial",
+  "eliza_inference_asr_stream_finish",
+  "eliza_inference_asr_stream_close",
+  "eliza_inference_tts_stream_supported",
+  "eliza_inference_tts_synthesize_stream",
+  "eliza_inference_cancel_tts",
+  "eliza_inference_set_verifier_callback",
+  "eliza_inference_free_string",
+] as const;
+
+/** The TS-surface methods the binding must expose for the full ABI v2. */
+const ELIZA_FFI_METHODS = [
+  "create",
+  "destroy",
+  "mmapAcquire",
+  "mmapEvict",
+  "ttsSynthesize",
+  "asrTranscribe",
+  "ttsStreamSupported",
+  "ttsSynthesizeStream",
+  "cancelTts",
+  "setVerifierCallback",
+  "asrStreamSupported",
+  "asrStreamOpen",
+  "asrStreamFeed",
+  "asrStreamPartial",
+  "asrStreamFinish",
+  "asrStreamClose",
+  "close",
+] as const satisfies ReadonlyArray<keyof ElizaInferenceFfi>;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,6 +178,96 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
     expect(thrown).toBeInstanceOf(VoiceLifecycleError);
     if (thrown instanceof VoiceLifecycleError) {
       expect(thrown.code).toBe("kernel-missing");
+    }
+  });
+
+  it("ELIZA_ERR_CANCELLED constant matches ffi.h (-7)", () => {
+    expect(ELIZA_ERR_CANCELLED).toBe(-7);
+  });
+});
+
+describe("ffi-bindings — ABI v2 surface (fake FFI)", () => {
+  it("the test-helper fakeFfi exposes every ABI v2 method", () => {
+    const ffi = fakeFfi("hello");
+    for (const method of ELIZA_FFI_METHODS) {
+      expect(typeof ffi[method]).toBe("function");
+    }
+    expect(ffi.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+  });
+
+  it("ttsSynthesizeStream delivers a body chunk then a final tail", () => {
+    const ffi = fakeFfi("hello", { ttsSamples: 12 });
+    const chunks: TtsStreamChunk[] = [];
+    const res = ffi.ttsSynthesizeStream({
+      ctx: 1n,
+      text: "hi there",
+      speakerPresetId: null,
+      onChunk: (c) => {
+        // Copy out — mirrors the production contract that `pcm` is a view.
+        chunks.push({ pcm: new Float32Array(c.pcm), isFinal: c.isFinal });
+      },
+    });
+    expect(res.cancelled).toBe(false);
+    expect(chunks.length).toBe(2);
+    expect(chunks[0]?.isFinal).toBe(false);
+    expect(chunks[0]?.pcm.length).toBe(12);
+    expect(chunks[1]?.isFinal).toBe(true);
+    expect(chunks[1]?.pcm.length).toBe(0);
+  });
+
+  it("ttsSynthesizeStream reports cancelled when onChunk returns true", () => {
+    const ffi = fakeFfi("hello");
+    const res = ffi.ttsSynthesizeStream({
+      ctx: 1n,
+      text: "hi",
+      speakerPresetId: null,
+      onChunk: () => true,
+    });
+    expect(res.cancelled).toBe(true);
+  });
+
+  it("ttsStreamSupported can be toggled off (non-streaming build)", () => {
+    expect(
+      fakeFfi("x", { ttsStreamSupported: true }).ttsStreamSupported(),
+    ).toBe(true);
+    expect(
+      fakeFfi("x", { ttsStreamSupported: false }).ttsStreamSupported(),
+    ).toBe(false);
+  });
+
+  it("setVerifierCallback returns a closeable handle; cancelTts is a no-op on the fake", () => {
+    const ffi = fakeFfi("x");
+    const handle = ffi.setVerifierCallback(1n, () => {});
+    expect(typeof handle.close).toBe("function");
+    handle.close();
+    // Clearing with null is also valid.
+    const cleared = ffi.setVerifierCallback(1n, null);
+    cleared.close();
+    expect(() => ffi.cancelTts(1n)).not.toThrow();
+  });
+});
+
+describe("omnivoice-fuse stub library — ABI v2 symbol audit", () => {
+  // The committed macOS .dylib / built-on-Linux .so must export the full
+  // ABI v2 symbol set declared in ffi.h — same set verify-symbols.mjs
+  // requires of the real fused libelizainference. Skipped when the
+  // platform artifact isn't present (run `make -C scripts/omnivoice-fuse`).
+  const haveDylib = existsSync(STUB_DYLIB);
+  if (!haveDylib) {
+    it.skip(`stub library missing at ${STUB_DYLIB} — run 'make -C scripts/omnivoice-fuse' first`, () => {});
+    return;
+  }
+  it("exports every eliza_inference_* ABI v2 symbol", () => {
+    const isDarwin = STUB_DYLIB.endsWith(".dylib");
+    const nm = spawnSync(
+      "nm",
+      isDarwin ? ["-gU", STUB_DYLIB] : ["-D", "--defined-only", STUB_DYLIB],
+      { encoding: "utf8" },
+    );
+    expect(nm.status).toBe(0);
+    const symbols = nm.stdout ?? "";
+    for (const name of ABI_V2_SYMBOLS) {
+      expect(new RegExp(`\\b_?${name}\\b`).test(symbols)).toBe(true);
     }
   });
 });
