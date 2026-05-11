@@ -23,15 +23,26 @@ import type {
 } from "../../types.ts";
 import {
 	checkHaiku,
+	checkLimerick,
 	checkNoEmojis,
 	checkNoHedging,
 	checkPirate,
+	checkSecondPersonOnly,
+	checkShakespearean,
 	checkTerse,
 } from "../checks/phrase.ts";
 import { judgeWithLlm } from "../checks/llm-judge.ts";
 import { combineVerdict } from "../verdict.ts";
 
-type Style = "terse" | "haiku" | "pirate" | "no-hedging" | "no-emojis";
+type Style =
+	| "terse"
+	| "haiku"
+	| "pirate"
+	| "no-hedging"
+	| "no-emojis"
+	| "limerick"
+	| "shakespearean"
+	| "second_person_only";
 
 type Language = "en" | "es" | "fr" | "de" | "zh";
 
@@ -107,7 +118,10 @@ function detectLanguage(directive: string): Language | null {
 
 function readOptions(scenario: PersonalityScenario): StyleOptions {
 	const opts = (scenario.personalityExpect.options ?? {}) as Record<string, unknown>;
-	const style = String(opts.style ?? "") as Style;
+	// Tolerate either `style` (judge native) or `styleKey` (W3-2's scenario
+	// format via judgeKwargs).
+	const styleRaw = opts.style ?? opts.styleKey ?? opts.style_key ?? "";
+	const style = String(styleRaw) as Style;
 	const maxTokens = typeof opts.maxTokens === "number" ? opts.maxTokens : undefined;
 	const isMultilangFlag =
 		opts.isMultilang === true || opts.is_multilang === true;
@@ -178,6 +192,12 @@ function phraseLayerFor(style: Style, response: string, maxTokens: number | unde
 			return checkNoHedging(response);
 		case "no-emojis":
 			return checkNoEmojis(response);
+		case "limerick":
+			return checkLimerick(response);
+		case "shakespearean":
+			return checkShakespearean(response);
+		case "second_person_only":
+			return checkSecondPersonOnly(response);
 		default:
 			return {
 				layer: "phrase",
