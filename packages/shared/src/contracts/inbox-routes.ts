@@ -19,15 +19,20 @@
 
 import z from "zod";
 
-// `\S` requires at least one non-whitespace character — rejects both
-// empty strings and whitespace-only inputs (`"   "`) at the wire, so
-// the post-trim values inside the transform are always non-empty.
+// Required fields use `\S` (at least one non-whitespace character) so
+// whitespace-only inputs are rejected at the wire — the post-trim
+// values inside `transform` are always non-empty.
+//
+// `replyToMessageId` is optional, so a whitespace-only value is the
+// same as absent (no reply). The transform absorbs that case rather
+// than rejecting at the wire — matches greptile's note on PR #7566:
+// "a confusing 400 for a field that is legitimately optional".
 export const PostInboxMessageRequestSchema = z
   .object({
     roomId: z.string().regex(/\S/, "roomId is required"),
     source: z.string().regex(/\S/, "source is required"),
     text: z.string().regex(/\S/, "text is required"),
-    replyToMessageId: z.string().regex(/\S/).optional(),
+    replyToMessageId: z.string().optional(),
   })
   .strict()
   .transform((value) => ({
