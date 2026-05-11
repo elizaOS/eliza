@@ -33,6 +33,15 @@ export {
   PhraseCache,
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
+export {
+  type DraftProposer,
+  type StreamingTranscriber,
+  type TargetVerifier,
+  VoicePipeline,
+  type VoicePipelineConfig,
+  type VoicePipelineDeps,
+  type VoicePipelineEvents,
+} from "./pipeline";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
