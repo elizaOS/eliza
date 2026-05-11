@@ -129,19 +129,49 @@ def _engine_bin_root() -> Path:
     return Path(state).expanduser() / "local-inference" / "bin" / "dflash"
 
 
+def _eliza_lib_name() -> str:
+    sysname = platform.system().lower()
+    if sysname == "darwin":
+        return "libelizainference.dylib"
+    if sysname == "windows":
+        return "libelizainference.dll"
+    return "libelizainference.so"
+
+
 @dataclass
 class Engine:
-    """A discovered fused llama.cpp build directory + its binaries."""
+    """A discovered fused llama.cpp build directory + its binaries.
+
+    ``llama_server`` is the fused ``llama-server`` (omnivoice-grafted: serves
+    ``/v1/audio/speech`` + ``/completion`` + the in-process DFlash loop). It is
+    the canonical voice runtime per AGENTS.md §4. ``eliza_lib`` is the fused
+    ``libelizainference.{so,dylib}`` used for the ASR FFI. ``speculative`` may
+    resolve from a *sibling* non-fused build dir when the fused build does not
+    ship ``llama-speculative-simple`` (the fused omnivoice graft drops it).
+    """
 
     backend: str  # "cpu" / "vulkan" / "cpu-fused" / ...
     bin_dir: Path
     llama_cli: Path | None
     speculative: Path | None
     omnivoice_server: Path | None
+    llama_server: Path | None = None
+    eliza_lib: Path | None = None
+    is_fused: bool = False
 
     @property
     def available(self) -> bool:
         return self.bin_dir.is_dir()
+
+
+def _read_caps(bin_dir: Path) -> dict | None:
+    p = bin_dir / "CAPABILITIES.json"
+    if not p.is_file():
+        return None
+    try:
+        return json.loads(p.read_text())
+    except (OSError, json.JSONDecodeError):
+        return None
 
 
 def discover_engine(prefer_backend: str | None = None) -> Engine | None:
@@ -149,7 +179,7 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
     if not root.is_dir():
         return None
     plat = _platform_tag()
-    # Prefer a fused build (has the omnivoice server) on this platform, then a
+    # Prefer a fused build (serves /v1/audio/speech) on this platform, then a
     # plain build. Within each, honour ``prefer_backend`` if given.
     candidates: list[Path] = []
     for d in sorted(root.iterdir()):
@@ -159,7 +189,7 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
     if not candidates:
         return None
 
-    def rank(d: Path) -> tuple[int, int]:
+    def rank(d: Path) -> tuple[int, int, int]:
         fused = 1 if "fused" in d.name else 0
         backend_match = 1 if (prefer_backend and prefer_backend in d.name) else 0
         # cpu over vulkan when nothing requested (cpu is the safest verify path).
@@ -169,16 +199,33 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
     best = max(candidates, key=rank)
     backend = best.name[len(plat) + 1 :] if len(best.name) > len(plat) + 1 else "cpu"
 
-    def _bin(name: str) -> Path | None:
-        p = best / name
+    def _bin(directory: Path, name: str) -> Path | None:
+        p = directory / name
         return p if p.is_file() and os.access(p, os.X_OK) else None
+
+    # llama-speculative-simple: prefer the picked dir, then any sibling build
+    # on this platform (the fused omnivoice graft drops it from its bin/).
+    spec = _bin(best, "llama-speculative-simple")
+    if spec is None:
+        for d in candidates:
+            cand = _bin(d, "llama-speculative-simple")
+            if cand is not None:
+                spec = cand
+                break
+
+    caps = _read_caps(best)
+    is_fused = bool(caps and (caps.get("fused") is True or caps.get("omnivoice"))) or "fused" in best.name
+    lib = best / _eliza_lib_name()
 
     return Engine(
         backend=backend,
         bin_dir=best,
-        llama_cli=_bin("llama-cli"),
-        speculative=_bin("llama-speculative-simple"),
-        omnivoice_server=_bin("llama-omnivoice-server"),
+        llama_cli=_bin(best, "llama-cli"),
+        speculative=spec,
+        omnivoice_server=_bin(best, "llama-omnivoice-server"),
+        llama_server=_bin(best, "llama-server"),
+        eliza_lib=lib if lib.is_file() else None,
+        is_fused=is_fused,
     )
 
 

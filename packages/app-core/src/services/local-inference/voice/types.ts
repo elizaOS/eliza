@@ -1,6 +1,17 @@
 export interface TextToken {
   index: number;
   text: string;
+  /**
+   * Text-model vocabulary token id, when the producer knows it. ASR
+   * (fused Qwen3-ASR) and the text backbone share the Qwen2 BPE 151 936
+   * vocab + merges (AGENTS.md §1), so an ASR-emitted token id is the same
+   * id the text model would assign — a downstream in-process handoff can
+   * inject `id` directly into the text KV cache without detokenize →
+   * retokenize. Absent for producers that only have surface text (the
+   * whisper.cpp interim adapter — a different tokenizer; the word-chunk
+   * approximation in `splitTranscriptToTokens`).
+   */
+  id?: number;
 }
 
 export interface AcceptedToken extends TextToken {

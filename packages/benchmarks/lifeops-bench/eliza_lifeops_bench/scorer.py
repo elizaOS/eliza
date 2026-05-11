@@ -4,7 +4,7 @@ Composes state-hash equality, ground-truth action overlap, and required-output
 substring presence into a per-scenario score. `pass_at_k` is the standard
 HumanEval/Chen-2021 unbiased estimator.
 
-Score formula (per Wave 2G spec):
+Score formula:
     STATIC mode: 0.5 * state_hash_match + 0.4 * action_score
                  + 0.1 * mean(output_substring_matches)
     LIVE  mode: 0.7 * state_hash_match
@@ -42,7 +42,7 @@ DATE_TOLERANCE_SECONDS = 60
 def state_hash(world: "LifeWorld") -> str:
     """Compute a canonical hash of the world's mutable state.
 
-    Delegates to `LifeWorld.state_hash()` (Wave 1C).
+    Delegates to `LifeWorld.state_hash()`.
     """
     return world.state_hash()
 

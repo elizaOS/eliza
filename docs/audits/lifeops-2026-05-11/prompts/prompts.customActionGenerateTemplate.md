@@ -1,0 +1,51 @@
+# `prompts.customActionGenerateTemplate`
+
+- **Kind**: template
+- **Owner**: packages/prompts
+- **File**: `packages/prompts/src/index.ts:167`
+- **Token count**: 255
+- **Last optimized**: never
+
+## Current text
+```
+You generate custom action definitions from natural language descriptions.
+Given the user's description, return a JSON object with these fields:
+
+- name: string (UPPER_SNAKE_CASE action name)
+- description: string (clear description of what the action does)
+- similes: optional string[] of alternative action names and phrases
+- handlerType: "http" | "shell" | "code"
+- handler: object with type-specific fields:
+  http  -> { type: "http", method: "GET"|"POST"|etc, url: string, headers?: object, bodyTemplate?: string }
+  shell -> { type: "shell", command: string }
+  code  -> { type: "code", code: string }
+- parameters: array of { name: string, description: string, required: boolean }
+
+Use double-brace placeholders such as \\{{paramName}} in URLs, body templates, and shell commands.
+For code handlers, parameters are available via params.paramName and fetch() is available.
+
+User request: {{request}}
+
+Respond with the JSON object only.
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
+
+```
+
+## Compressed variant
+```
+none
+```
+
+## Usage stats (latest trajectories)
+- Invocations: 0 (this prompt was not matched in any recent trajectory)
+
+## Sample failure transcripts
+None.
+
+## Suggested edits (heuristic)
+None.
+
+## Actions
+- Accept a candidate rewrite: `bun run lifeops:prompt-accept -- --id <id> --from <candidate-file>`
+- Freeze (skip future optimization): `bun run lifeops:prompt-freeze -- --id <id>`

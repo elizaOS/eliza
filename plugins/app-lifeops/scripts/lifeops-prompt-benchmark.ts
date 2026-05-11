@@ -21,6 +21,7 @@ type LiveProviderName = RunLifeOpsPromptBenchmarkOptions["preferredProvider"];
 
 type CliOptions = {
   axPath?: string;
+  compress: boolean;
   isolate: "shared" | "per-case";
   listOnly: boolean;
   markdownPath?: string;
@@ -32,6 +33,7 @@ type CliOptions = {
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
+    compress: process.env.MILADY_PROMPT_COMPRESS === "1",
     isolate: "shared",
     listOnly: false,
     suite: "all",
@@ -42,6 +44,14 @@ function parseArgs(argv: string[]): CliOptions {
     const arg = argv[index];
     if (arg === "--list") {
       options.listOnly = true;
+      continue;
+    }
+    if (arg === "--compress") {
+      // Wave 2-D: Cerebras compress mode. Drops few-shot examples from the
+      // resolved optimized prompt, skips routing-hint rendering, and caps
+      // retrieval top-K at 8. One-flag escape hatch for token-budget-pressed
+      // runs against the Cerebras large tier.
+      options.compress = true;
       continue;
     }
     if (arg === "--suite") {
@@ -172,6 +182,10 @@ async function main(): Promise<void> {
       console.log(`[lifeops-prompt-benchmark] variant ${variantId}: ${count}`);
     }
     return;
+  }
+
+  if (options.compress) {
+    process.env.MILADY_PROMPT_COMPRESS = "1";
   }
 
   const report = await runLifeOpsPromptBenchmark({

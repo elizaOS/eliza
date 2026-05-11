@@ -54,7 +54,7 @@ function makeTrajectory({ trajectoryId, scenarioId, finalDecision, cacheRead }) 
     endedAt: 1_700_000_000_500,
     status: "finished",
     stages: [
-      // messageHandler — intentionally excluded from Wave 0 StageKind enum.
+      // messageHandler — intentionally excluded from the StageKind enum.
       {
         stageId: "stage-mh-1",
         kind: "messageHandler",

@@ -7,11 +7,19 @@ export {
 export {
   buildLocalEmbeddingRoute,
   EMBEDDING_DIR_REL_PATH,
+  EMBEDDING_FULL_DIM,
+  EMBEDDING_MATRYOSHKA_DIMS,
+  isValidEmbeddingDim,
   type LocalEmbeddingRoute,
   type LocalEmbeddingSource,
   POOLED_TEXT_EMBEDDING_TIERS,
   resolveLocalEmbeddingSource,
+  truncateMatryoshka,
 } from "./embedding";
+export {
+  EmbeddingServer,
+  embeddingServerForRoute,
+} from "./embedding-server";
 export {
   decodeMonoPcm16Wav,
   defaultLifecycleLoaders,

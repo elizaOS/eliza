@@ -23,6 +23,7 @@ import { searchExperiencesAction } from "./experience/actions/search-experiences
 import { experiencePatternEvaluator } from "./experience/evaluators/experience-items.ts";
 import { experienceProvider } from "./experience/providers/experienceProvider.ts";
 import { characterAction } from "./personality/actions/character.ts";
+import { personalityAction } from "./personality/actions/personality.ts";
 import { userPersonalityProvider } from "./personality/providers/user-personality.ts";
 import { todosProvider } from "./todos/providers/todos.ts";
 
@@ -92,8 +93,10 @@ export const advancedActions = [
 	withCanonicalActionDocs(searchExperiencesAction),
 	...promoteSubactionsToActions(messageAction),
 	...promoteSubactionsToActions(postAction),
-	// Personality actions
+	// Personality actions — keep CHARACTER (legacy) alongside the new
+	// PERSONALITY surface so existing callers continue to resolve.
 	...promoteSubactionsToActions(characterAction),
+	...promoteSubactionsToActions(withCanonicalActionDocs(personalityAction)),
 ];
 
 export const advancedEvaluators = [
@@ -120,6 +123,15 @@ export const advancedServices: ServiceClass[] = [
 				"./personality/services/character-file-manager.ts"
 			);
 			return CharacterFileManager.start(runtime);
+		})
+		.build(),
+	createService("PERSONALITY_STORE")
+		.withDescription("Structured personality slot store + named profiles")
+		.withStart(async (runtime: IAgentRuntime) => {
+			const { PersonalityStore } = await import(
+				"./personality/services/personality-store.ts"
+			);
+			return PersonalityStore.start(runtime);
 		})
 		.build(),
 ];

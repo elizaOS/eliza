@@ -558,52 +558,51 @@
     </section>
 
     <section>
-      <h2>Open Issues and Risks</h2>
+      <h2>Resolved and Remaining Risks</h2>
       <table>
-        <thead><tr><th>Issue</th><th>Evidence</th><th>Risk</th></tr></thead>
+        <thead><tr><th>Item</th><th>Current evidence</th><th>Status</th></tr></thead>
         <tbody>
           <tr>
-            <td>Field registry dispatch is unused.</td>
-            <td><code>dispatch()</code> is only found in registry tests and live tests, not in <code>message.ts</code>.</td>
-            <td>Plugin field handlers such as LifeOps <code>threadOps</code> do not perform their documented effects.</td>
+            <td>Field registry dispatch</td>
+            <td><code>message.ts</code> now calls <code>responseHandlerFieldRegistry.dispatch()</code> after parsing <code>HANDLE_RESPONSE</code>.</td>
+            <td><span class="tag good">Resolved</span></td>
           </tr>
           <tr>
-            <td>Field registry schema is not the tool schema.</td>
-            <td><code>createHandleResponseTool()</code> returns static <code>HANDLE_RESPONSE_SCHEMA</code> or direct schema from <code>actions/to-tool.ts</code>.</td>
-            <td>Cloud providers constrained by strict tool schema cannot emit plugin fields such as <code>threadOps</code>.</td>
+            <td>Field registry schema as tool schema</td>
+            <td><code>createHandleResponseTool()</code> accepts the composed registry schema from <code>message.ts</code>.</td>
+            <td><span class="tag good">Resolved</span></td>
           </tr>
           <tr>
-            <td>Field registry prompt slices are not used.</td>
-            <td>No production call to <code>composePromptSlices()</code>.</td>
-            <td>The model is not consistently instructed about plugin fields through the intended abstraction.</td>
+            <td>Field registry prompt slices</td>
+            <td><code>message.ts</code> renders the active field prompt slices into the Stage-1 prompt.</td>
+            <td><span class="tag good">Resolved</span></td>
           </tr>
           <tr>
-            <td>Duplicated concepts around facts/relationships/addressedTo.</td>
-            <td>Legacy schema uses nested <code>extract</code>; built-in field evaluators define top-level <code>facts</code>, <code>relationships</code>, <code>addressedTo</code>.</td>
-            <td>Migration ambiguity: two shapes describe the same extraction responsibilities.</td>
+            <td>Duplicated extraction concepts</td>
+            <td>Normal schema now uses top-level <code>facts</code>, <code>relationships</code>, and <code>addressedTo</code>. Legacy nested <code>extract</code> is accepted only by compatibility normalization.</td>
+            <td><span class="tag good">Resolved for production</span></td>
           </tr>
           <tr>
-            <td>Post-parse repairs remain regex-heavy.</td>
-            <td><code>core.known_tool_request_repair</code> and LifeOps work-thread router use text patterns and deterministic DB checks.</td>
-            <td>Useful as safety nets, but they are not the structural field-evaluator architecture described in comments.</td>
+            <td>Post-parse response-handler evaluators</td>
+            <td>Core deterministic repair hooks still exist. LifeOps work-thread routing moved out of this system and into <code>threadOps</code>.</td>
+            <td><span class="tag warn">Keep as repair hooks only</span></td>
           </tr>
           <tr>
             <td>Some post-turn evaluator side effects happen in <code>prepare()</code>.</td>
             <td>Image analysis and link extraction persist memories before the unified evaluator model call.</td>
-            <td>If the later model call fails, side effects have already occurred. This may be acceptable, but it means the evaluator model result is not the only source of mutation.</td>
+            <td><span class="tag warn">Unchanged</span> acceptable if intentional, but evaluator model result is not the only mutation source.</td>
           </tr>
         </tbody>
       </table>
     </section>
 
     <section>
-      <h2>Suggested Next Steps</h2>
+      <h2>Validation Status</h2>
       <ol>
-        <li>Decide whether the field-registry migration is active scope or dead code. If active, wire Stage 1 to <code>composeSchema()</code>, <code>composePromptSlices()</code>, and <code>dispatch()</code>.</li>
-        <li>Make <code>threadOps</code> either fully production-reachable through registry dispatch, or remove/disable its registration and keep LifeOps on <code>lifeops.work_thread_router</code> until migration lands.</li>
-        <li>Unify the Stage-1 field names. Either keep legacy <code>extract</code> and delete top-level extraction field evaluators, or migrate parse/routing to top-level <code>facts</code>, <code>relationships</code>, and <code>addressedTo</code>.</li>
-        <li>Keep post-parse response-handler evaluators as deterministic repair hooks, but document them separately from field evaluators. They solve different problems.</li>
-        <li>Add a production-path test that loads app-lifeops, sends an abort-like message during an active room turn, and asserts whether <code>turnControllers.abortTurn()</code> actually fires. That test will pin the intended <code>threadOps</code> behavior.</li>
+        <li>Core Stage-1, grammar, registry, abort, planner, context-catalog, tiered-action, and stress-compaction tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
+        <li>LifeOps <code>threadOps</code>, action-structure audit, and work-thread integration tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
+        <li>The interrupt benchmark scenario suite passes. The work-thread benchmark script now measures <code>threadOps</code> field-evaluator routing instead of the deleted post-parse router.</li>
+        <li>The remaining known compile risk is broader LifeOps TypeScript debt outside this response-handler migration, not the registry/threadOps path itself.</li>
       </ol>
     </section>
   </main>

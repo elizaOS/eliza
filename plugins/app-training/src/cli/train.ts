@@ -31,7 +31,11 @@ Options:
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
   --task NAME          should_respond | context_routing | action_planner | response | media_description
   --optimizer NAME     instruction-search | prompt-evolution | bootstrap-fewshot
+                       | dspy-bootstrap-fewshot | dspy-copro | dspy-mipro
                        Defaults to instruction-search.
+                       The dspy-* variants use the native DSPy primitives
+                       (Signature + Predict + privacy-filtered Example loader)
+                       and emit eliza_native_v1-compatible artifacts.
   --baseline PATH      Path to a baseline-prompt text file. Defaults to
                        the first system message in request.messages.
   --help               Show this help text

@@ -1,0 +1,101 @@
+{
+  "schemaVersion": "lifeops-action-collisions-v1",
+  "generatedAt": "2026-05-11T17:25:09.045Z",
+  "threshold": 0.75,
+  "nearMissFloor": 0.5,
+  "population": 134,
+  "pairs": [],
+  "nearMisses": [
+    {
+      "similarity": 0.6675,
+      "a": {
+        "actionName": "LINEAR_ISSUE",
+        "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+      },
+      "b": {
+        "actionName": "LINEAR_COMMENT",
+        "id": "action.LINEAR_COMMENT@plugins/plugin-linear/src/actions/routers.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+      }
+    },
+    {
+      "similarity": 0.6069,
+      "a": {
+        "actionName": "OWNER_REMINDERS",
+        "id": "action.OWNER_REMINDERS@plugins/app-lifeops/src/actions/owner-surfaces.ts.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      },
+      "b": {
+        "actionName": "OWNER_ALARMS",
+        "id": "action.OWNER_ALARMS@plugins/app-lifeops/src/actions/owner-surfaces.ts.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      }
+    },
+    {
+      "similarity": 0.6021,
+      "a": {
+        "actionName": "PLAY_AUDIO",
+        "id": "action.PLAY_AUDIO@plugins/plugin-music/src/actions/playAudio.ts.description",
+        "filePath": "plugins/plugin-music/src/actions/playAudio.ts"
+      },
+      "b": {
+        "actionName": "PLAYBACK",
+        "id": "action.PLAYBACK@plugins/plugin-music/src/actions/playbackOp.ts.description",
+        "filePath": "plugins/plugin-music/src/actions/playbackOp.ts"
+      }
+    },
+    {
+      "similarity": 0.5181,
+      "a": {
+        "actionName": "LINEAR",
+        "id": "action.LINEAR@plugins/plugin-linear/src/actions/linear.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/linear.ts"
+      },
+      "b": {
+        "actionName": "LINEAR_ISSUE",
+        "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+      }
+    },
+    {
+      "similarity": 0.5108,
+      "a": {
+        "actionName": "LINEAR",
+        "id": "action.LINEAR@plugins/plugin-linear/src/actions/linear.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/linear.ts"
+      },
+      "b": {
+        "actionName": "LIST_LINEAR_COMMENTS",
+        "id": "action.LIST_LINEAR_COMMENTS@plugins/plugin-linear/src/actions/listComments.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/listComments.ts"
+      }
+    },
+    {
+      "similarity": 0.5062,
+      "a": {
+        "actionName": "CREATE_LINEAR_COMMENT",
+        "id": "action.CREATE_LINEAR_COMMENT@plugins/plugin-linear/src/actions/createComment.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/createComment.ts"
+      },
+      "b": {
+        "actionName": "DELETE_LINEAR_COMMENT",
+        "id": "action.DELETE_LINEAR_COMMENT@plugins/plugin-linear/src/actions/deleteComment.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/deleteComment.ts"
+      }
+    },
+    {
+      "similarity": 0.5023,
+      "a": {
+        "actionName": "LINEAR_ISSUE",
+        "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+      },
+      "b": {
+        "actionName": "LINEAR_WORKFLOW",
+        "id": "action.LINEAR_WORKFLOW@plugins/plugin-linear/src/actions/routers.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+      }
+    }
+  ]
+}

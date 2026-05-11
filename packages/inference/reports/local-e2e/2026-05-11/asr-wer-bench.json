@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "metric": "asr_wer",
+  "op": "<=",
+  "status": "not-run",
+  "wer": null,
+  "passed": false,
+  "gateThreshold": 0.1,
+  "backend": "cpu",
+  "labelledSetSource": "tts",
+  "utterances": 8,
+  "reason": "labelled set was TTS-synthesized from the bundle's own (stand-in) TTS GGUF — WER would measure TTS quality, not ASR accuracy; needs a real recorded-speech corpus (--wav-dir WAV+.txt pairs). RTF measurement in the bench artifact is valid.",
+  "rtf": 0.7635103928721363,
+  "benchArtifact": "inference/verify/bench_results/asr_2026-05-11.json"
+}

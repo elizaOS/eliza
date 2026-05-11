@@ -1106,9 +1106,7 @@ export async function startBenchmarkServer() {
           0,
         ),
         totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
-        ...(cacheReadInputTokens !== undefined
-          ? { cacheReadInputTokens }
-          : {}),
+        ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
       };
 
       // Touch the backend so unused-import linters do not strip the

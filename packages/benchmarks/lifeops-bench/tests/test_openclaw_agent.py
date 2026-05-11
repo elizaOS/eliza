@@ -1,4 +1,4 @@
-"""Tests for the OpenClaw adapter (Wave 2D).
+"""Tests for the OpenClaw adapter.
 
 The OpenClaw protocol is text-embedded — the model emits
 ``<tool_call>{"tool": "...", "args": {...}}</tool_call>`` blocks in its

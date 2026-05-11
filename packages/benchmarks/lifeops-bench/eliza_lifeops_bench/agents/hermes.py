@@ -1,6 +1,6 @@
 """Hermes adapter for LifeOpsBench.
 
-Wraps :class:`HermesClient` (Wave 1E) into an :class:`OpenAICompatAgent`
+Wraps :class:`HermesClient` into an :class:`OpenAICompatAgent`
 that the runner can drive. The client itself owns the Hermes XML
 ``<tool_call>`` / ``<tool_response>`` translation and the system-prompt
 template — this adapter just funnels the runner's ``MessageTurn`` history

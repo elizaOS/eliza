@@ -174,7 +174,7 @@ llama-server \
 ```
 
 The `--cache-type-k qjl1_256` and `--cache-type-v tbq3_0` flags only
-exist in the milady-ai fork; the manifest pins
+exist in the `elizaOS/llama.cpp` fork; the manifest pins
 `min_llama_cpp_tag: v1.0.0-eliza` so a runtime that doesn't carry the
 fork can refuse the model up front instead of failing at first
 inference call.
@@ -252,7 +252,7 @@ TurboQuant calibration produces a real `skip_layers` profile.
 - Catalog purge (W5-Catalog) — emit_milady_catalog.py only emits the
   append diff; it does not delete other catalog entries.
 - HF org provisioning (W5-HF-Org) — this script assumes the
-  `milady-ai` org exists and the operator's `HF_TOKEN` has write
+  `elizaos` org exists and the operator's `HF_TOKEN` has write
   access.
 - Android testing (W5-Android) — the manifest documents the runtime
   invocation; verifying it on a real Pixel is a separate wave.

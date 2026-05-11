@@ -227,7 +227,11 @@ describe("fused-vs-two-process spawn selection", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fused-test-"));
     process.env.ELIZA_STATE_DIR = root;
     clearEnv();
-    makeFusedBinary(root, { fused: false, omnivoice: null, binaries: ["llama-server"] });
+    makeFusedBinary(root, {
+      fused: false,
+      omnivoice: null,
+      binaries: ["llama-server"],
+    });
     expect(resolveFusedDflashBinary()).toBe(null);
   });
 
@@ -262,12 +266,17 @@ describe("fused-vs-two-process spawn selection", () => {
     fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
     fs.writeFileSync(path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"), "x");
     fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.6b.gguf"), "x");
-    fs.writeFileSync(path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"), "x");
+    fs.writeFileSync(
+      path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
+      "x",
+    );
     const assets = findBundleOmnivoiceAssets(
       path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"),
     );
     expect(assets).not.toBeNull();
-    expect(assets?.modelPath).toBe(path.join(bundle, "tts", "omnivoice-0.6b.gguf"));
+    expect(assets?.modelPath).toBe(
+      path.join(bundle, "tts", "omnivoice-0.6b.gguf"),
+    );
     expect(assets?.codecPath).toBe(
       path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
     );

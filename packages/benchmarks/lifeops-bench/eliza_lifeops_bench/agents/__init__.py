@@ -1,8 +1,8 @@
 """Reference + adapter agents for LifeOpsBench.
 
-PerfectAgent / WrongAgent are the conformance oracles (Wave 2F).
-``build_eliza_agent`` is the production-path adapter (Wave 2C); it
-delegates to :func:`eliza_adapter.lifeops_bench.build_lifeops_bench_agent_fn`.
+PerfectAgent / WrongAgent are the conformance oracles.
+``build_eliza_agent`` is the production-path adapter; it delegates to
+:func:`eliza_adapter.lifeops_bench.build_lifeops_bench_agent_fn`.
 """
 
 from __future__ import annotations

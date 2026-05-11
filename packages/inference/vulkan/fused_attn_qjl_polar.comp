@@ -5,7 +5,8 @@
 // V; §3: op_params[2] = v_use_qjl) and the C reference eliza_fused_attn_qjl_polar()
 // in packages/inference/verify/qjl_polar_ref.c.
 //
-// Same K side and same online-softmax structure as fused_attn_qjl_tbq.comp; the
+// Same K side and same single-pass online-softmax structure as
+// fused_attn_qjl_tbq.comp; the
 // only difference is the V decode — one block_q4_polar (82 B) per token instead
 // of four block_tbq3_0:
 //     fp16  d                          per-block L2 norm
@@ -209,31 +210,31 @@ void main() {
         return;
     }
 
-    // --- Pass 1: global (m, l). ---
+    // --- Single online-softmax pass (FlashAttention recurrence): one QJL-score
+    //     per token (computed once, not twice), acc_o rescaled by corr when the
+    //     running max climbs, V-mix FMAed in with weight exp(raw - m_new). ---
     float m = -1.0e30;
     float l = 0.0;
-    for (uint t = 0u; t < push.n_tokens; t++) {
-        float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
-        float new_m = max(m, raw);
-        l = l * exp(m - new_m) + exp(raw - new_m);
-        m = new_m;
-    }
-    float inv_l = (l > 0.0) ? (1.0 / l) : 0.0;
-    if (!(m == m) || m <= -1.0e29 || !(l > 0.0)) {
-        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
-        return;
-    }
-
-    // --- Pass 2: V-mix. ---
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0;
     barrier();
     for (uint t = 0u; t < push.n_tokens; t++) {
         float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
-        float w = exp(raw - m) * inv_l;
+        float new_m = max(m, raw);
+        float corr  = exp(m - new_m);
+        float w     = exp(raw - new_m);
+        l = l * corr + w;
+        m = new_m;
         barrier();
         uint v_blk_byte_off = (h_k * push.n_tokens + t) * POLAR_BLOCK_BYTES;
-        polar_decode_token_into_acc(v_blk_byte_off, w, 1.0, tid);
+        polar_decode_token_into_acc(v_blk_byte_off, w, corr, tid);
     }
+    if (!(m == m) || m <= -1.0e29 || !(l > 0.0)) {
+        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
+        return;
+    }
+    float inv_l = 1.0 / l;
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] *= inv_l;
+    barrier();
 
     // --- Write out. Thread 0 writes all 128 elements serially. Mesa ANV
     // (Arrow Lake / Xe-LPG) intermittently reads back 0 from the all-threads

@@ -145,10 +145,9 @@ void dequantize_row_q4_polar_avx2(
     }
     const int64_t nb = k / QK_POLAR;
 
-    float qjl_signs[QK_POLAR];
-    if (use_qjl) {
-        polar_qjl_signs(qjl_signs);
-    }
+    /* Memoized — dequantize is called per K-row from the q8_0 dot path;
+     * don't regenerate the 128-element xorshift stream each time. */
+    const float * const qjl_signs = use_qjl ? polar_qjl_signs_cached() : NULL;
 
     const float inv_d = 1.0f / (float)QK_POLAR;
 
