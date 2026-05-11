@@ -120,6 +120,8 @@ Deliverables:
 
 Exit criteria: harness runs end-to-end against the dev stack on this Mac and produces a report with at least one finding per page (even if "no issues detected" is the finding).
 
+**Status 2026-05-11:** Harness, route catalog, capture spec, analyze.mjs, and build-report.mjs are committed. Route catalog loads via `bun -e` (23 routes + 12 settings sections). Spec typechecks clean. Live capture is currently blocked by the pre-existing secrets refactor in `packages/core/src/features/index.ts` — `bun run build:web` (triggered by `ensureUiDistReady()` in `playwright-ui-live-stack.ts`) fails before the stub stack boots. Re-run `bash scripts/ai-qa/run.sh` once that refactor lands clean.
+
 ### Workstream 1 — Page review (every page, every button)
 
 Owner: parallel agent A (general-purpose)
