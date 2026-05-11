@@ -1075,6 +1075,35 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
             EXIT_EVAL_GATE_FAIL,
         )
 
+    # ``e2e_loop_ok`` and ``thirty_turn_ok`` are independent contract booleans
+    # (manifest ``evals.e2eLoopOk`` / ``evals.thirtyTurnOk``) and both are
+    # ``required: true`` gates. When the eval blob is missing ``e2e_loop_ok``
+    # the operator can opt in to a lower-fidelity publish that aliases it onto
+    # ``thirty_turn_ok`` (ELIZA_PUBLISH_ALLOW_GATE_ALIAS=1) — manifest
+    # assembly already does this via ``_read_independent_bool``; do the same
+    # for the gate report so the report and the manifest stay consistent.
+    results = eval_blob.get("results")
+    if (
+        isinstance(results, dict)
+        and "e2e_loop_ok" not in results
+        and "thirty_turn_ok" in results
+        and os.environ.get(PUBLISH_ALLOW_GATE_ALIAS_ENV) == "1"
+        and isinstance(results["thirty_turn_ok"], bool)
+    ):
+        log.warning(
+            "[evals] aliasing results.%s ← results.%s "
+            "(opt-in via %s=1). Two independent manifest contract gates are "
+            "being sourced from one measurement; this is a lower-fidelity "
+            "publish.",
+            "e2e_loop_ok",
+            "thirty_turn_ok",
+            PUBLISH_ALLOW_GATE_ALIAS_ENV,
+        )
+        results = dict(results)
+        results["e2e_loop_ok"] = results["thirty_turn_ok"]
+        eval_blob = dict(eval_blob)
+        eval_blob["results"] = results
+
     gates_doc = load_gates(ctx.gates_path) if ctx.gates_path else None
     report = apply_gates(eval_blob, gates_doc)
 
