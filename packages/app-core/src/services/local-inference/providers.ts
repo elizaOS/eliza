@@ -17,60 +17,25 @@
  */
 
 import fs from "node:fs/promises";
+import type {
+  AgentModelSlot,
+  ProviderDefinition,
+  ProviderEnableState,
+  ProviderId,
+  ProviderStatus,
+} from "@elizaos/shared";
 import { getDefaultAccountPool } from "../account-pool";
 import { deviceBridge } from "./device-bridge";
 import { getDflashRuntimeStatus } from "./dflash-server";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
-import type { AgentModelSlot } from "./types";
 
-export type ProviderId =
-  | "eliza-local-inference"
-  | "eliza-device-bridge"
-  | "capacitor-llama"
-  | "anthropic-subscription"
-  | "openai-codex"
-  | "gemini-cli"
-  | "zai-coding"
-  | "kimi-coding"
-  | "deepseek-coding"
-  | "anthropic"
-  | "openai"
-  | "deepseek"
-  | "zai"
-  | "moonshot"
-  | "grok"
-  | "elizacloud"
-  | "google"
-  | "mistral";
-
-export interface ProviderEnableState {
-  enabled: boolean;
-  /** Short reason, e.g. "API key set", "Device connected", "No API key". */
-  reason: string;
-}
-
-export interface ProviderDefinition {
-  id: ProviderId;
-  label: string;
-  kind: "cloud-api" | "cloud-subscription" | "local" | "device-bridge";
-  /** Short blurb shown in the UI. */
-  description: string;
-  /** Agent slots this provider can plausibly serve. */
-  supportedSlots: AgentModelSlot[];
-  /**
-   * Read the current enable state. For cloud providers we inspect env
-   * vars or config fragments; for local we check file presence; for
-   * device-bridge we check connected-device count.
-   */
-  getEnableState(): Promise<ProviderEnableState>;
-  /**
-   * Link to the settings UI where enable/configure actually happens.
-   * UI sends the user here via anchor-scroll when they click "Configure".
-   * `null` means the provider has no separate config surface.
-   */
-  configureHref: string | null;
-}
+export type {
+  ProviderDefinition,
+  ProviderEnableState,
+  ProviderId,
+  ProviderStatus,
+};
 
 /** Resolve which slots have at least one registered handler from this provider. */
 export function getRegisteredSlotsForProvider(providerId: string): string[] {
@@ -472,18 +437,6 @@ function subscriptionEnableState(
     enabled: true,
     reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
   };
-}
-
-export interface ProviderStatus {
-  id: ProviderId;
-  label: string;
-  kind: ProviderDefinition["kind"];
-  description: string;
-  supportedSlots: AgentModelSlot[];
-  configureHref: string | null;
-  enableState: ProviderEnableState;
-  /** Registered model types this provider has handlers for, right now. */
-  registeredSlots: string[];
 }
 
 export async function snapshotProviders(): Promise<ProviderStatus[]> {

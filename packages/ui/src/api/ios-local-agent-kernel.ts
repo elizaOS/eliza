@@ -1,10 +1,9 @@
-import { asRecord } from "@elizaos/shared";
+import { asRecord, type ProviderStatus } from "@elizaos/shared";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   findCatalogModel,
   MODEL_CATALOG,
 } from "../services/local-inference/catalog";
-import type { ProviderStatus } from "../services/local-inference/providers";
 import {
   assessCatalogModelFit,
   catalogDownloadSizeGb,
