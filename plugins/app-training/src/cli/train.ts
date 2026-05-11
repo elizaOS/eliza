@@ -1,21 +1,19 @@
 /**
- * Multi-backend training CLI for Eliza-native trajectory data.
+ * Training CLI for Eliza-native trajectory data.
  *
  * Usage:
- *   bun run train -- --backend {tinker|native} --dataset <path> \
+ *   bun run train -- --backend native --dataset <path> \
  *       [--task {should_respond|context_routing|action_planner|response|media_description}]
  *
- * Backends consume `eliza_native_v1` model-boundary JSONL rows. The CLI is
- * intentionally a thin dispatcher so each backend can evolve independently.
+ * Consumes `eliza_native_v1` model-boundary JSONL rows.
  */
 
 import { parseArgs } from "node:util";
 import { NATIVE_OPTIMIZERS, runNativeBackend } from "../backends/native.js";
-import { runTinkerBackend } from "../backends/tinker.js";
 import type { TrajectoryTrainingTask } from "../core/trajectory-task-datasets.js";
 import type { OptimizerName } from "../optimizers/index.js";
 
-const ALLOWED_BACKENDS = new Set(["tinker", "native"]);
+const ALLOWED_BACKENDS = new Set(["native"]);
 const ALLOWED_TASKS = new Set([
   "should_respond",
   "context_routing",
@@ -26,21 +24,21 @@ const ALLOWED_TASKS = new Set([
 const ALLOWED_OPTIMIZERS = new Set<string>(NATIVE_OPTIMIZERS);
 
 const HELP = `Usage:
-  bun run train -- --backend {tinker|native} --dataset <path> [options]
+  bun run train -- --backend native --dataset <path> [options]
 
 Options:
-  --backend NAME       tinker | native (required)
+  --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
   --task NAME          should_respond | context_routing | action_planner | response | media_description
-  --optimizer NAME     (native) instruction-search | prompt-evolution | bootstrap-fewshot
+  --optimizer NAME     instruction-search | prompt-evolution | bootstrap-fewshot
                        Defaults to instruction-search.
-  --baseline PATH      (native) Path to a baseline-prompt text file. Defaults to
+  --baseline PATH      Path to a baseline-prompt text file. Defaults to
                        the first system message in request.messages.
   --help               Show this help text
 `;
 
 interface ParsedTrainArgs {
-  backend: "tinker" | "native";
+  backend: "native";
   dataset: string;
   task?: TrajectoryTrainingTask;
   optimizer?: OptimizerName;
@@ -111,14 +109,6 @@ export async function runTrainCli(argv: string[]): Promise<number> {
   }
 
   switch (parsed.backend) {
-    case "tinker": {
-      const result = await runTinkerBackend({
-        datasetPath: parsed.dataset,
-        task: parsed.task,
-      });
-      for (const note of result.notes) console.log(`[train] ${note}`);
-      return result.invoked ? 0 : 1;
-    }
     case "native": {
       const optimizer = parsed.optimizer ?? "instruction-search";
       const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
