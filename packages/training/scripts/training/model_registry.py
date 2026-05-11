@@ -87,7 +87,7 @@ class ModelEntry:
     abliteration_repo_id: str = ""
     """HuggingFace repo id for the post-abliteration ("uncensored") release,
     e.g. ``elizaos/eliza-1-2b-uncensored``. Empty means: do not publish an
-    abliterated variant for this entry. Lives under the same ``elizalabs`` org
+    abliterated variant for this entry. Lives under the same ``elizaos`` org
     as the safety-tuned line, distinguished by the ``-uncensored`` suffix —
     see ``scripts/training/abliterate.py``."""
 

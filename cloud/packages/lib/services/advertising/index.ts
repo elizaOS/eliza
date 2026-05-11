@@ -789,6 +789,20 @@ class AdvertisingService {
     return await adCreativesRepository.listByCampaign(campaignId);
   }
 
+  async getCreative(creativeId: string, organizationId: string): Promise<AdCreative> {
+    const creative = await adCreativesRepository.findById(creativeId);
+    if (!creative) {
+      throw new Error("Creative not found");
+    }
+
+    const campaign = await adCampaignsRepository.findById(creative.campaign_id);
+    if (!campaign || campaign.organization_id !== organizationId) {
+      throw new Error("Creative not found");
+    }
+
+    return creative;
+  }
+
   async createCreative(organizationId: string, input: CreateCreativeInput): Promise<AdCreative> {
     const campaign = await adCampaignsRepository.findById(input.campaignId);
     if (!campaign || campaign.organization_id !== organizationId) {

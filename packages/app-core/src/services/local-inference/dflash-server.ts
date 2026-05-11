@@ -68,6 +68,10 @@ export interface DflashGenerateArgs {
    * disables slot pinning ("any free slot").
    */
   slotId?: number;
+  /** Per-request abort signal forwarded to llama-server's HTTP request. */
+  signal?: AbortSignal;
+  /** Incremental accepted text chunks from streaming chat completions. */
+  onTextChunk?: (chunk: string) => void | Promise<void>;
 }
 
 /**
@@ -1354,7 +1358,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       temperature: args.temperature ?? 0.7,
       top_p: args.topP ?? 0.9,
       stop: args.stopSequences,
-      stream: false,
+      stream: Boolean(args.onTextChunk),
       // `cache_prompt: true` is always safe — the worst case is the
       // server matches no prefix tokens and the request behaves like a
       // cold call. Pinning by `slot_id` only happens when the runtime
@@ -1363,14 +1367,35 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       slot_id: slotId,
     };
     const before = await fetchMetricsSnapshot(baseUrl);
-    const json = (await fetchJson(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })) as Record<string, unknown>;
+    let json: Record<string, unknown> | null = null;
+    let text: string;
+    if (args.onTextChunk) {
+      text = await fetchStreamingChatCompletion(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        60_000,
+        args.onTextChunk,
+        args.signal,
+      );
+    } else {
+      json = (await fetchJson(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        60_000,
+        args.signal,
+      )) as Record<string, unknown>;
+      text = extractCompletionText(json);
+    }
     const after = await fetchMetricsSnapshot(baseUrl);
-    const text = extractCompletionText(json);
-    const responseUsage = extractResponseUsage(json);
+    const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
     return { text, usage, slotId };
   }

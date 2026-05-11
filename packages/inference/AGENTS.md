@@ -89,7 +89,7 @@ modes where it does not belong.
 
 Eliza-1 ships as **one logical bundle per tier**. The user sees one
 download. Internally a bundle is a manifest plus several files, all
-hosted under the `elizalabs` HuggingFace org under `eliza-1-<tier>`.
+hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 ### Tier matrix (binding)
 

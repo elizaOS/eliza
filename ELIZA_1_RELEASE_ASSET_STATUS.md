@@ -126,11 +126,11 @@ route yet.
   trained bytes.
 - Final platform evidence is incomplete across native Linux Vulkan, Android
   graph dispatch, CUDA, ROCm, GH200/H200, native Windows, and weight-backed iOS.
-- `elizalabs` Hugging Face upload evidence is still absent. Upload is blocked
+- `elizaos` Hugging Face upload evidence is still absent. Upload is blocked
   by non-final release evidence and, separately, requires a token with write
-  permission to `elizalabs`. Current Hub auth probe resolved user
-  `shawmakesmagic` with orgs `BabylonMarket` and `elizaos`; no `elizalabs`
-  write namespace is available in this shell.
+  permission to `elizaos`. Current Hub auth probe resolved user
+  `shawmakesmagic` with orgs `BabylonMarket` and `elizaos`, so the target
+  namespace is visible in this shell.
 
 ## Next Release Actions
 

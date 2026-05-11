@@ -57,7 +57,7 @@ log = logging.getLogger("publish_milady_model")
 # ---------------------------------------------------------------------------
 # Required GGUF metadata markers. Both must appear somewhere in the GGUF
 # tensor type / metadata header for the file to be considered "fused-kernel
-# optimized" and pushable to elizalabs.
+# optimized" and pushable to elizaos.
 #
 # We grep the binary header directly rather than parse with gguf-py because
 # (a) gguf-py is not a hard dependency of this repo, and (b) the header
@@ -110,7 +110,7 @@ def _find_gguf(model_dir: Path) -> Path:
     """Return the single GGUF inside the model dir.
 
     We deliberately reject directories with zero or multiple GGUFs:
-    every elizalabs repo ships one target file. Drafter repos ship one
+    every elizaos repo ships one target file. Drafter repos ship one
     drafter file. Multi-file bundles use separate repos.
     """
     candidates = sorted(model_dir.glob("*.gguf"))
@@ -122,7 +122,7 @@ def _find_gguf(model_dir: Path) -> Path:
     if len(candidates) > 1:
         names = [p.name for p in candidates]
         raise SystemExit(
-            f"multiple GGUFs in {model_dir}: {names}. Each elizalabs repo "
+            f"multiple GGUFs in {model_dir}: {names}. Each elizaos repo "
             "ships exactly one target/drafter GGUF — split the bundles "
             "across separate repos."
         )

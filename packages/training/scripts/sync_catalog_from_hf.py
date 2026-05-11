@@ -18,7 +18,7 @@ schema is intentionally tiny:
     {
       "version": 1,
       "generatedAt": "<UTC ISO>",
-      "org": "elizalabs",
+      "org": "elizaos",
       "entries": [
         {
           "id": "eliza-1-1_7b",
@@ -36,12 +36,12 @@ Usage::
 
     # No HF_TOKEN required for public repos.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org elizalabs \\
+        --org elizaos \\
         --out reports/porting/2026-05-10/catalog-diff.json
 
     # Limit to a specific naming convention.
     uv run python scripts/sync_catalog_from_hf.py \\
-        --org elizalabs \\
+        --org elizaos \\
         --filter-prefix eliza-1- \\
         --out diff.json
 """
@@ -218,8 +218,8 @@ def write_diff(entries: list[CatalogEntry], out_path: Path, *, org: str) -> None
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--org", default="elizalabs",
-                    help="HF org to scan (default: elizalabs).")
+    ap.add_argument("--org", default="elizaos",
+                    help="HF org to scan (default: elizaos).")
     ap.add_argument(
         "--filter-prefix", default="eliza-1-",
         help="If set, include only repos whose bare name starts with this prefix "

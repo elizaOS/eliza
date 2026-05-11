@@ -296,7 +296,7 @@ def test_dataset_card_includes_license(publish_dataset):
 
 
 # ---------------------------------------------------------------------------
-# elizalabs publisher (publish_milady_model.py)
+# elizaos publisher (publish_milady_model.py)
 # ---------------------------------------------------------------------------
 
 
@@ -409,7 +409,7 @@ def test_milady_refuses_non_milady_org(publish_milady, tmp_path):
             "--repo-id", "elizaos/qwen3.5-4b",
             "--dry-run",
         ])
-    assert "elizalabs" in str(excinfo.value)
+    assert "elizaos" in str(excinfo.value)
 
 
 def test_milady_refuses_zero_byte_gguf(publish_milady, tmp_path):
@@ -501,7 +501,7 @@ def test_milady_publish_skips_when_remote_sha_matches(publish_milady, tmp_path, 
 
 
 # ---------------------------------------------------------------------------
-# elizalabs catalog sync (sync_catalog_from_hf.py)
+# elizaos catalog sync (sync_catalog_from_hf.py)
 # ---------------------------------------------------------------------------
 
 
@@ -523,11 +523,11 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
             manifest={"version": 1, "kind": "milady-optimized"},
         ),
     ]
-    sync_catalog.write_diff(entries, out, org="elizalabs")
+    sync_catalog.write_diff(entries, out, org="elizaos")
     import json as _json
     payload = _json.loads(out.read_text())
     assert payload["version"] == 1
-    assert payload["org"] == "elizalabs"
+    assert payload["org"] == "elizaos"
     assert len(payload["entries"]) == 1
     e = payload["entries"][0]
     assert e["id"] == "qwen3.5-4b-milady-optimized"
