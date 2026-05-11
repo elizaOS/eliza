@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lifeops-prompt-review — Wave 2-A.
+ * lifeops-prompt-review.
  *
  * Reads the manifest produced by `scripts/lifeops-prompt-inventory.mjs` and
  * the latest trajectories under `~/.milady/trajectories/` and emits one

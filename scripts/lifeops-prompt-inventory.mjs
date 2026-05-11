@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * lifeops-prompt-inventory — Wave 2-A.
+ * lifeops-prompt-inventory.
  *
  * Walks the repo and emits a single JSON manifest covering every "prompt"
  * surface the planner / runtime can exercise:
