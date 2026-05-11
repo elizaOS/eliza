@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -488,7 +488,14 @@ dispatch-smoke: dispatch_smoke
 	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./dispatch_smoke
 
-dispatch_smoke: dispatch_smoke.mm
+dispatch-smoke-implemented: dispatch_smoke
+	@echo "[dispatch-smoke] running implemented routes against $(ELIZA_DFLASH_METAL_BIN_DIR) (Turbo4 layout blocker allowed)"
+	ELIZA_DISPATCH_SMOKE_ALLOW_TURBO4_LAYOUT_BLOCK=1 \
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./dispatch_smoke
+
+dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
 	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
 	    echo "[dispatch-smoke] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
@@ -498,7 +505,9 @@ dispatch_smoke: dispatch_smoke.mm
 	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc \
 	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
 	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I../reference -I. \
 	    dispatch_smoke.mm \
+	    $(REF_OBJ) $(QJL_POLAR_OBJ) \
 	    -L$(ELIZA_DFLASH_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
 	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \

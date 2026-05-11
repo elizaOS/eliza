@@ -22,22 +22,18 @@
 //      CMakeLists.txt, fs failures. Per AGENTS.md §3, the build must exit
 //      non-zero rather than silently produce a kernel-missing artifact.
 //
-// What this module deliberately does NOT do (out of scope for v0.4.0-milady):
+// Runtime dispatch status:
 //
-//   * Wire dispatch sites in ggml-metal-ops.cpp / ggml-metal-device.m. The
-//     fork has zero existing dispatch entries for the milady quant types in
-//     the Metal backend (CUDA has them; Metal does not). Adding dispatch
-//     requires substantial fork-internals changes spanning case-statements
-//     per `GGML_TYPE_*`. Once kernels are in the metallib, follow-up work
-//     can add the dispatch wiring and the kernels become reachable. Until
-//     then the kernels ship as live symbols inside default.metallib but are
-//     not yet selected by the runtime — the symbol-presence audit (`nm`,
-//     `strings default.metallib`) passes, the dispatch audit does not.
+//   * QJL, Turbo3, Turbo3_TCQ, and PolarQuant are wired through dedicated
+//     attention-score graph ops. The dispatch smoke links against the built
+//     fork and numerically verifies graph execution selects the shipped Metal
+//     kernels.
 //
-//   * Convert the EMBED_LIBRARY path used by iOS targets to embed compiled
-//     metallib bytes rather than concatenated Metal source. This avoids
-//     duplicate declarations between ggml-metal.metal + standalones and lets
-//     iOS load the same multi-TU kernel set as desktop.
+//   * Turbo4 remains fail-closed: the fork's GGML_TYPE_TBQ4_0 layout is four
+//     32-wide blocks per 128-row (72 bytes), while the shipped Metal shader
+//     consumes one 128-wide 66-byte block. Do not flip the Turbo4 runtime bit
+//     until the fork grows a matching shader or a matching runtime packing
+//     type.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -75,10 +71,10 @@ export const METAL_RUNTIME_DISPATCH_GATES = {
     smokeTarget: "dispatch-smoke",
   },
   turbo4: {
-    status: "runtime-ready",
-    runtimeReady: true,
-    graphOp: "GGML_OP_ATTN_SCORE_TBQ",
-    smokeTarget: "dispatch-smoke",
+    status: "blocked-layout-mismatch",
+    runtimeReady: false,
+    blocker:
+      "fork GGML_TYPE_TBQ4_0 is four 32-wide blocks per 128-row (72 bytes), while shipped kernel_turbo4_dot(_multi) consumes one 128-wide 66-byte block",
   },
   turbo3_tcq: {
     status: "runtime-ready",
@@ -788,6 +784,20 @@ function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
     "attn_score_polar(q, packed_k)",
     "fused_attn_qjl_tbq(q, packed_k, packed_v)",`,
     );
+    c = c.replace(
+      `    [GGML_TYPE_QJL1_256] = {`,
+      `    [GGML_TYPE_TBQ3_TCQ] = {
+        .type_name                = "tbq3_tcq",
+        .blck_size                = QK_TBQ3_TCQ,
+        .type_size                = sizeof(block_tbq3_tcq),
+        .is_quantized             = true,
+    },
+    [GGML_TYPE_QJL1_256] = {`,
+    );
+    c = c.replaceAll(
+      `static_assert(GGML_OP_COUNT == 97, "GGML_OP_COUNT != 97");`,
+      `static_assert(GGML_OP_COUNT == 99, "GGML_OP_COUNT != 99");`,
+    );
     const implAnchor = `// ggml_fused_attn_qjl_tbq
 //`;
     if (!c.includes(implAnchor)) {
@@ -898,7 +908,7 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_scor
 ${SENTINEL_TBQ_POLAR_ATTN}
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_tbq(
         ggml_metal_library_t lib,
-        ggml_type             type);
+        enum ggml_type        type);
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar(
         ggml_metal_library_t lib);`,
@@ -1085,7 +1095,7 @@ int ggml_metal_op_attn_score_tbq(ggml_metal_op_t ctx, int idx) {
 
     ggml_metal_encoder_set_pipeline(enc, pipeline);
     if (ktype == GGML_TYPE_TBQ3_TCQ) {
-        ggml_metal_encoder_set_bytes(enc, k_milady_tbq3_tcq_codebook, sizeof(k_milady_tbq3_tcq_codebook), 3);
+        ggml_metal_encoder_set_bytes(enc, (void *) k_milady_tbq3_tcq_codebook, sizeof(k_milady_tbq3_tcq_codebook), 3);
         ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 4);
     } else {
         ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
@@ -1227,7 +1237,6 @@ function patchMetalTbqPolarSupportsOp(cacheDir, { dryRun }) {
                 op->src[1] != NULL &&
                 op->src[0]->type == GGML_TYPE_F32 &&
                 (op->src[1]->type == GGML_TYPE_TBQ3_0 ||
-                 op->src[1]->type == GGML_TYPE_TBQ4_0 ||
                  op->src[1]->type == GGML_TYPE_TBQ3_TCQ) &&
                 op->src[0]->ne[0] == 128 &&
                 op->src[1]->ne[0] == 128 &&
@@ -1279,8 +1288,7 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     "[metal-dispatch] NOT wiring generic Metal GGML dispatch for milady " +
     "QJL/Polar/TBQ kernels. The standalone kernels use bespoke attention/" +
     "projection contracts that do not match generic MUL_MAT/GET_ROWS. " +
-    "Build output is symbol-shipped only until dedicated ATTN_SCORE and " +
-    "bundle-aware graph ops land.";
+    "Dedicated ATTN_SCORE graph ops are required for runtime-ready bits.";
   if (patchedFiles.length > 0) {
     const detail =
       `${message} Found an older unsafe MILADY-DISPATCH-V1 patch in:\n` +

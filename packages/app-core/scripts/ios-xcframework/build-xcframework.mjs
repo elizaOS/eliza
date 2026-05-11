@@ -88,6 +88,36 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
   },
 ];
 
+const REQUIRED_IOS_RUNTIME_SYMBOLS = [
+  "llama_init_context",
+  "llama_release_context",
+  "llama_completion",
+  "llama_stop_completion",
+  "llama_get_formatted_chat",
+  "llama_toggle_native_log",
+  "llama_embedding",
+  "llama_embedding_register_context",
+  "llama_embedding_unregister_context",
+  "llama_get_model_info",
+  "llama_get_context_ptr",
+  "llama_get_last_error",
+  "llama_free_string",
+  "eliza_inference_abi_version",
+  "eliza_inference_create",
+  "eliza_inference_destroy",
+  "eliza_inference_mmap_acquire",
+  "eliza_inference_mmap_evict",
+  "eliza_inference_tts_synthesize",
+  "eliza_inference_asr_transcribe",
+  "eliza_inference_free_string",
+].map((symbol) => ({
+  symbol,
+  symbolPattern: new RegExp(`(?:^|\\s)_?${symbol}\\b`, "m"),
+  where: symbol.startsWith("eliza_inference_")
+    ? "libelizainference real OmniVoice ABI archive"
+    : "llama-cpp-capacitor bridge archive",
+}));
+
 /** @typedef {{ name: string, archives: string[], headerDir: string, capabilities: string }} SliceInputs */
 
 function parseArgs(argv) {
@@ -375,6 +405,50 @@ function verifyKernelSymbols(slices) {
 }
 
 /**
+ * @param {SliceInputs[]} slices
+ */
+function verifyRuntimeSymbols(slices) {
+  const sliceSymbols = slices.map((slice) => ({
+    slice,
+    text: dumpSliceSymbols(slice),
+  }));
+  const missing = [];
+  for (const { symbol, symbolPattern, where } of REQUIRED_IOS_RUNTIME_SYMBOLS) {
+    const sliceMisses = sliceSymbols.filter(
+      ({ text }) => !symbolPattern.test(text),
+    );
+    if (sliceMisses.length > 0) {
+      missing.push({
+        symbol,
+        slices: sliceMisses.map(({ slice }) => slice.name),
+        where,
+      });
+    }
+  }
+  if (missing.length > 0) {
+    const lines = missing.map(
+      (m) =>
+        `  - ${m.symbol}: missing in ${m.slices.join(" + ")} ` +
+        `(expected in ${m.where})`,
+    );
+    throw new Error(
+      `[ios-xcframework] AGENTS.md §3 runtime-symbol audit FAILED:\n${lines.join(
+        "\n",
+      )}\n\n` +
+        `The iOS xcframework must carry the Capacitor bridge symbols and the\n` +
+        `real libelizainference voice ABI symbols. Kernel-only archives are not\n` +
+        `a releaseable Eliza-1 mobile runtime. Wire the bridge and real\n` +
+        `OmniVoice-backed ABI into the iOS slice, then re-run.`,
+    );
+  }
+  console.log(
+    `[ios-xcframework] runtime-symbol audit PASS for slices: ${slices
+      .map((s) => s.name)
+      .join(", ")}`,
+  );
+}
+
+/**
  * @param {string} xcframeworkDir
  */
 function verifyXcframework(xcframeworkDir) {
@@ -441,6 +515,7 @@ async function main() {
 
   if (args.verify) {
     verifyKernelSymbols([deviceSlice, simSlice]);
+    verifyRuntimeSymbols([deviceSlice, simSlice]);
   }
 
   const tmpDir = fs.mkdtempSync(

@@ -32,6 +32,38 @@ function normalizeKvCacheTypeForBinding(name: string): string {
   return name.trim().toUpperCase();
 }
 
+type ResolvedGpuLayers = number | "max" | "auto";
+
+export function gpuLayersForKvOffload(
+  mode: NonNullable<LocalInferenceLoadArgs["kvOffload"]>,
+): ResolvedGpuLayers {
+  if (mode === "cpu") return 0;
+  if (mode === "gpu") return "max";
+  if (mode === "split") return "auto";
+  return mode.gpuLayers;
+}
+
+export function resolveGpuLayersForLoad(
+  resolved?: LocalInferenceLoadArgs,
+): ResolvedGpuLayers {
+  if (resolved?.gpuLayers !== undefined) return resolved.gpuLayers;
+  if (resolved?.kvOffload !== undefined) {
+    return gpuLayersForKvOffload(resolved.kvOffload);
+  }
+  if (resolved?.useGpu === false) return 0;
+  return "auto";
+}
+
+function resolveDflashGpuLayersForLoad(
+  resolved: LocalInferenceLoadArgs | undefined,
+  fallback: number | "auto",
+): number | "auto" {
+  const mapped = resolveGpuLayersForLoad(resolved);
+  if (mapped === "max") return "auto";
+  if (mapped !== "auto") return mapped;
+  return fallback;
+}
+
 export interface GenerateArgs {
   prompt: string;
   stopSequences?: string[];
@@ -163,7 +195,7 @@ export class LocalInferenceEngine {
     if (this.loadedPath === modelPath && this.loadedModel) return;
     if (dflashLlamaServer.currentModelPath() === modelPath) return;
 
-    const dflashPlan = await this.resolveDflashPlan(modelPath);
+    const dflashPlan = await this.resolveDflashPlan(modelPath, resolved);
     if (dflashPlan) {
       try {
         await this.unload();
@@ -194,7 +226,7 @@ export class LocalInferenceEngine {
 
     const model = await this.llama.loadModel({
       modelPath,
-      gpuLayers: resolved?.gpuLayers ?? "auto",
+      gpuLayers: resolveGpuLayersForLoad(resolved),
       useMmap: resolved?.mmap,
       useMlock: resolved?.mlock,
       defaultContextFlashAttention: resolved?.flashAttention,
@@ -276,6 +308,7 @@ export class LocalInferenceEngine {
 
   private async resolveDflashPlan(
     modelPath: string,
+    resolved?: LocalInferenceLoadArgs,
   ): Promise<DflashServerPlan | null> {
     const installed = await listInstalledModels();
     const target = installed.find((m) => m.path === modelPath);
@@ -305,7 +338,7 @@ export class LocalInferenceEngine {
       draftContextSize: dflash.draftContextSize,
       draftMin: dflash.draftMin,
       draftMax: dflash.draftMax,
-      gpuLayers: dflash.gpuLayers,
+      gpuLayers: resolveDflashGpuLayersForLoad(resolved, dflash.gpuLayers),
       draftGpuLayers: dflash.draftGpuLayers,
       disableThinking: dflash.disableThinking,
     };

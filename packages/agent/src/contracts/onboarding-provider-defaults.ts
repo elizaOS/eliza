@@ -172,7 +172,7 @@ export const DEFAULT_ONBOARDING_PROVIDER_OPTIONS = [
     envKey: "ZAI_API_KEY",
     pluginName: "@elizaos/plugin-zai",
     keyPrefix: null,
-    description: "GLM models via z.ai Coding Plan.",
+    description: "GLM models via z.ai direct API billing.",
     family: "zai",
     authMode: "api-key",
     group: "local",

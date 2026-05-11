@@ -46,15 +46,27 @@ describe("z.ai config", () => {
   it("uses z.ai endpoint and model defaults", () => {
     const runtime = runtimeWith({});
 
-    expect(getBaseURL(runtime)).toBe("https://api.z.ai/api/anthropic/v1");
-    expect(getSmallModel(runtime)).toBe("claude-sonnet-4-20250514");
-    expect(getLargeModel(runtime)).toBe("claude-sonnet-4-20250514");
+    expect(getBaseURL(runtime)).toBe("https://api.z.ai/api/paas/v4");
+    expect(getSmallModel(runtime)).toBe("glm-4.5-air");
+    expect(getLargeModel(runtime)).toBe("glm-5.1");
   });
 
-  it("normalizes a base URL missing /v1", () => {
-    const runtime = runtimeWith({ ZAI_BASE_URL: "https://api.z.ai/api/anthropic/" });
+  it("normalizes trailing slashes without appending /v1", () => {
+    const runtime = runtimeWith({ ZAI_BASE_URL: "https://api.z.ai/api/paas/v4/" });
 
-    expect(getBaseURL(runtime)).toBe("https://api.z.ai/api/anthropic/v1");
+    expect(getBaseURL(runtime)).toBe("https://api.z.ai/api/paas/v4");
+  });
+
+  it("rejects coding-plan base URLs in the direct API plugin", () => {
+    const runtime = runtimeWith({ ZAI_BASE_URL: "https://api.z.ai/api/coding/paas/v4" });
+
+    expect(() => getBaseURL(runtime)).toThrow("Coding Plan");
+  });
+
+  it("rejects Anthropic-compatible coding-tool URLs in the direct API plugin", () => {
+    const runtime = runtimeWith({ ZAI_BASE_URL: "https://api.z.ai/api/anthropic" });
+
+    expect(() => getBaseURL(runtime)).toThrow("Anthropic-compatible");
   });
 
   it("uses specific chain-of-thought budgets before the shared budget", () => {

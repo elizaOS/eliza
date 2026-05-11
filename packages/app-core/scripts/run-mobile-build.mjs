@@ -583,6 +583,18 @@ async function buildWeb(platform) {
   });
 }
 
+async function buildMobileAgentBundle() {
+  const bun = resolveBunExecutable();
+  if (!bun) {
+    throw new Error(
+      "bun executable not found; run bun install before Android local builds.",
+    );
+  }
+  await run(bun, ["run", "build:mobile"], {
+    cwd: path.join(packagesRoot, "agent"),
+  });
+}
+
 // ── Phase 3: Capacitor sync ────────────────────────────────────────────
 
 async function ensurePlatform(platform) {
@@ -2633,7 +2645,9 @@ async function ensureDflashIosTarget(target) {
   return outDir;
 }
 
-async function ensureIosLlamaCppVendoredFramework({ buildTarget: _buildTarget }) {
+async function ensureIosLlamaCppVendoredFramework({
+  buildTarget: _buildTarget,
+}) {
   // When llama is excluded from the build (cloud-only / App Store thin
   // client), the pod is not generated and the vendored framework is not
   // referenced. Skipping here avoids spinning up xcodebuild for an
@@ -2994,6 +3008,7 @@ async function buildAndroid() {
   );
 
   await buildWeb("android");
+  await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
 
@@ -3168,6 +3183,7 @@ async function buildAndroidSystem() {
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
   await buildWeb("android-system");
+  await buildMobileAgentBundle();
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
 

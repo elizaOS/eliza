@@ -23,8 +23,8 @@ with the status below.
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Metal standalone shaders | `turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar` all pass 8/8 on Apple M4 Max. | `make -C packages/inference/verify metal-verify metal-verify-multiblock` |
-| Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL` is runtime-ready; TurboQuant and PolarQuant are not. | `make -C packages/inference/verify dispatch-smoke` passes 32 QJL scores, max diff `2.384e-07`. |
-| Metal artifact gate | Desktop/iOS artifacts still fail the publish gate. | `darwin-arm64-metal-fused`, `ios-arm64-metal`, and `ios-arm64-simulator-metal` all write `CAPABILITIES.json` with `dflash=true`, `qjl_full=true`, `turbo3=false`, `turbo4=false`, `turbo3_tcq=false`, `polarquant=false`; `runtimeDispatch.kernels` records QJL as runtime-ready and Turbo/Polar as symbol-shipped only. |
+| Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` for `turbo3` + `turbo3_tcq`, and `GGML_OP_ATTN_SCORE_POLAR` are runtime-ready. `turbo4` is fail-closed on a fork layout mismatch. | `make -C packages/inference/verify dispatch-smoke-implemented` passes QJL, turbo3, turbo3_tcq, and PolarQuant `use_qjl=0/1`; max diffs are `2.384e-07`, `4.768e-07`, `4.768e-07`, and `1.907e-06`. `make -C packages/inference/verify dispatch-smoke` remains the full gate and fails on Turbo4 with `ggml_row_size=72` vs shader layout `66`. |
+| Metal artifact gate | Desktop/iOS artifacts still fail the publish gate. | `darwin-arm64-metal` now compiles the graph-dispatch fork patch and produces `default.metallib`, but `build-llama-cpp-dflash.mjs` still hardcodes Metal `turbo3=false`, `turbo4=false`, `turbo3_tcq=false`, and `polarquant=false` in its honesty gate. The remaining runtime blocker is Turbo4; after it is resolved, the build-script capability gate must be updated to read the expanded evidence file. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Tooling is installed and the runner is fail-closed for real-device validation. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` now resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, and refuses emulators/software Vulkan unless `ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1` / `ELIZA_ALLOW_SOFTWARE_VULKAN=1` are set. Diagnostic emulator run passed all six fixtures on `llvmpipe`; this does **not** count as Adreno/Mali validation. |
 | Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged and CAPABILITIES records `shippedKernels` diagnostics, but `ggml-vulkan.cpp` has no milady-native op dispatch. `vulkan_dispatch_smoke.cpp` now fails before compute unless ggml-vulkan advertises `GGML_OP_ATTN_SCORE_QJL` support, then numerically checks the packed-QJL output. |
@@ -40,28 +40,38 @@ with the status below.
 
 1. **Metal TurboQuant graph dispatch**
 
-   Required for `turbo3`, `turbo4`, and `turbo3_tcq` runtime capability bits.
-   The standalone kernels are attention-score kernels, not generic
-   `MUL_MAT`/`GET_ROWS` kernels. The correct path is a dedicated graph op, or
-   a fused attention op that consumes the pre-rotated query and packed K/V
-   layout directly. Do not revive the old generic `MILADY-DISPATCH-V1` route.
+   `turbo3` and `turbo3_tcq` now have a dedicated graph op
+   (`GGML_OP_ATTN_SCORE_TBQ`) that consumes pre-rotated query rows and packed
+   K-cache rows directly. `turbo4` is still blocked because the fork's
+   `GGML_TYPE_TBQ4_0` row layout is four 32-wide blocks per 128-row
+   (`ggml_row_size=72`), while `kernel_turbo4_dot(_multi)` consumes one
+   128-wide 66-byte block. Do not revive the old generic
+   `MILADY-DISPATCH-V1` route.
 
    Acceptance:
    - Built fork exposes dispatch functions for all three TurboQuant variants.
-   - Smoke test drives actual Metal backend graph execution.
-   - `CAPABILITIES.json.kernels.{turbo3,turbo4,turbo3_tcq}=true`.
+     Covered for turbo3/turbo3_tcq; Turbo4 needs either a Metal shader for the
+     fork's 4x32 `block_tbq4_0` layout or a new runtime packing/type hook that
+     exactly matches the shipped 66-byte shader layout.
+   - Smoke test drives actual Metal backend graph execution. Covered by
+     `dispatch-smoke-implemented`; the full `dispatch-smoke` target remains
+     intentionally failing until Turbo4 is fixed.
+   - `CAPABILITIES.json.kernels.{turbo3,turbo4,turbo3_tcq}=true`. Still
+     blocked by Turbo4 and by the build-script honesty gate that currently
+     forces Metal Turbo/Polar capability bits false.
 
 2. **Metal PolarQuant graph dispatch**
 
-   The standalone `kernel_mul_mv_q4_polar_f32` and
-   `kernel_get_rows_q4_polar` are shader-verified, including the QJL residual
-   fixture. They are not yet reachable from a real graph route. This needs
-   either a dedicated Polar dot/get-rows op with exact shape constraints, or
-   a fused attention route that avoids materializing decoded rows.
+   `GGML_OP_ATTN_SCORE_POLAR` now reaches `kernel_mul_mv_q4_polar_f32`
+   through real Metal graph execution. The smoke covers both `use_qjl=0` and
+   `use_qjl=1`.
 
    Acceptance:
-   - Built fork smoke covers `use_qjl=0` and `use_qjl=1`.
-   - `CAPABILITIES.json.kernels.polarquant=true`.
+   - Built fork smoke covers `use_qjl=0` and `use_qjl=1`. Covered by
+     `dispatch-smoke-implemented`.
+   - `CAPABILITIES.json.kernels.polarquant=true`. Still blocked by the
+     build-script honesty gate until the full Metal kernel set, including
+     Turbo4, is runtime-ready.
 
 3. **Vulkan graph dispatch**
 
@@ -158,7 +168,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 
 | Platform class | Next required action |
 | --- | --- |
-| Apple Silicon Mac | Finish Metal Turbo/Polar graph dispatch, then rerun `dispatch-smoke`, `metal-verify`, and a real Eliza-1 bundle smoke. |
+| Apple Silicon Mac | Fix the Turbo4 fork-layout mismatch, then rerun full `dispatch-smoke`, `metal-verify`, and a real Eliza-1 bundle smoke. |
 | Intel/AMD Mac | Build `darwin-x64-metal` and run the standalone + built-fork smoke suite on real hardware. |
 | iPhone/iPad | Run `ios-xcframework/run-physical-device-smoke.mjs` on a connected physical iPhone/iPad, then run a real Eliza-1 bundle smoke that measures first audio latency and peak RSS. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. |
