@@ -560,4 +560,47 @@ describe("v5 evaluator skeleton", () => {
 		expect(result.decision).toBe("CONTINUE");
 		expect(result.messageToUser).toBeUndefined();
 	});
+	it("does not false-positive on bare 'results' word — 'Got results but ... let me check' must still CONTINUE", async () => {
+		// Live regression: bot said "Got results but rootMessage field path
+		// is off — let me check the actual schema." The previous
+		// COMPLETION_INDICATORS regex had a too-broad `results?` that
+		// matched on the bare word and let the gerund slip through.
+		// Tightened to `results?:` (must be followed by colon).
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Probe came back wrong, will retry with corrected schema.",
+  "messageToUser": "Got results but rootMessage field path is off — let me check the actual schema."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: { id: "t1", name: "BASH", params: { command: "jq ..." } },
+						result: { success: true, text: "..." },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+	});
 });

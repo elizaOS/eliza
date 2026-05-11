@@ -446,7 +446,7 @@ function trajectoryWroteToPath(
  * then I did it, here's the result").
  */
 const COMPLETION_INDICATORS =
-	/\b(?:done|completed|finished|verified|confirmed|here['']?s\s+(?:the|what|how)|here\s+is|result:|results?\b|output:|wrote\s+\d|saved\s+\d|exit\s+0|✓|all\s+(?:passed|set)|success(?:ful(?:ly)?)?:)\b/i;
+	/\b(?:done|completed|finished|verified|confirmed|here['']?s\s+(?:the|what|how)|here\s+is|results?:|output:|wrote\s+\d|saved\s+\d|exit\s+0|✓|all\s+(?:passed|set)|success(?:ful(?:ly)?)?:)\b/i;
 
 function repairForwardLookingFinish(
 	output: EvaluatorOutput,
