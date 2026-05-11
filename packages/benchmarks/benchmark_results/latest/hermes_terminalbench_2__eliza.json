@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T182209Z_76c8e5b0/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T182217Z_2_db36087f/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T183809Z_c06ff2b2/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T183853Z_5_b47ca7e8/output"
   ],
   "benchmark_directory": "hermes-adapter",
   "benchmark_id": "hermes_terminalbench_2",
@@ -11,8 +11,8 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": "Command exited with return code 1 and no result JSON found",
-  "higher_is_better": null,
+  "error": null,
+  "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
@@ -20,56 +20,69 @@
       "cache_read_input_tokens": 0,
       "turns_with_cached_field": 0
     },
+    "canonical_entries": 0,
+    "duration_s": 30.12097420799546,
+    "env_id": "terminalbench_2",
+    "eval/evaluation_time_seconds": 15.229355096817017,
+    "eval/pass_rate": 0.0,
+    "eval/pass_rate_software_engineering": 0.0,
+    "eval/passed_tasks": 0,
+    "eval/total_tasks": 1,
+    "evaluation_time_seconds": 15.229355096817017,
+    "pass_rate": 0.0,
+    "pass_rate_software_engineering": 0.0,
+    "passed_tasks": 0,
     "performance_metrics": {
-      "duration_seconds": 4.205620583001291,
+      "duration_seconds": 31.361571709014243,
       "mean_latency_ms": null,
       "p95_latency_ms": null,
-      "throughput_per_second": 0.0
+      "throughput_per_second": 0.03188615702294571
     },
-    "result_locator": "not_found",
-    "return_code": 1,
+    "return_code": 0,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
       "avg_prompt_tokens": 0.0,
       "completion_tokens": 0,
-      "llm_call_count": 0,
+      "llm_call_count": 1,
       "prompt_tokens": 0,
       "total_tokens": 0
     },
+    "total_evaluation_time_seconds": "15.229355096817017",
+    "total_tasks": 1,
     "trajectory_summary": {
-      "files": 0,
-      "prompt_chars": 0,
+      "files": 3,
+      "prompt_chars": 7,
       "repeated_prefixes": [],
-      "turns": 0
+      "turns": 1
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 4.205620583001291,
+    "duration_seconds": 31.361571709014243,
     "mean_latency_ms": null,
     "p95_latency_ms": null,
-    "throughput_per_second": 0.0
+    "throughput_per_second": 0.03188615702294571
   },
   "provider": "cerebras",
-  "result_json_path": null,
-  "run_group_id": "rg_20260511T182209Z_76c8e5b0",
-  "run_id": "run_hermes_terminalbench_2_20260511T182217Z_2_db36087f",
-  "score": null,
-  "status": "failed",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T183809Z_c06ff2b2/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T183853Z_5_b47ca7e8/output/hermes_terminalbench_2_20260511T183924Z.json",
+  "run_group_id": "rg_20260511T183809Z_c06ff2b2",
+  "run_id": "run_hermes_terminalbench_2_20260511T183853Z_5_b47ca7e8",
+  "score": 0.0,
+  "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
     "completion_tokens": 0,
-    "llm_call_count": 0,
+    "llm_call_count": 1,
     "prompt_tokens": 0,
     "total_tokens": 0
   },
   "trajectory_summary": {
-    "files": 0,
-    "prompt_chars": 0,
+    "files": 3,
+    "prompt_chars": 7,
     "repeated_prefixes": [],
-    "turns": 0
+    "turns": 1
   },
-  "unit": null,
-  "updated_at": "2026-05-11T18:22:21.331682+00:00"
+  "unit": "ratio",
+  "updated_at": "2026-05-11T18:39:24.546438+00:00"
 }

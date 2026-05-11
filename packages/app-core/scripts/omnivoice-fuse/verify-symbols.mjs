@@ -165,7 +165,7 @@ function hasElfNeededLlama(lib) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
- *   - The library MUST export every `eliza_inference_*` ABI v2 symbol
+ *   - The library MUST export every `eliza_inference_*` ABI v3 symbol
  *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
  *     half-fused artifact and only fail later at voice activation.
  *
@@ -191,6 +191,12 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_tts_synthesize_stream",
   "eliza_inference_cancel_tts",
   "eliza_inference_set_verifier_callback",
+  // ABI v3 — native Silero VAD backend.
+  "eliza_inference_vad_supported",
+  "eliza_inference_vad_open",
+  "eliza_inference_vad_process",
+  "eliza_inference_vad_reset",
+  "eliza_inference_vad_close",
   "eliza_inference_free_string",
 ]);
 
@@ -290,7 +296,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   );
   if (missingAbiSymbols.length > 0) {
     throw new Error(
-      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v2 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v3 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
     );
   }
 

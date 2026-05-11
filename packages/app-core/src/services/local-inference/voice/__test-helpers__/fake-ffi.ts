@@ -30,7 +30,7 @@ export function fakeFfi(
   let vadIdx = 0;
   return {
     libraryPath: "/fake/libelizainference.so",
-    libraryAbiVersion: "2",
+    libraryAbiVersion: "3",
     create: () => 1n,
     destroy: () => {},
     mmapAcquire: () => {},

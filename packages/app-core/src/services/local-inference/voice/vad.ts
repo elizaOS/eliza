@@ -235,6 +235,17 @@ export class NativeSileroVad {
         "[voice] Native Silero VAD is not supported by this libelizainference build.",
       );
     }
+    if (
+      !opts.ffi.vadOpen ||
+      !opts.ffi.vadProcess ||
+      !opts.ffi.vadReset ||
+      !opts.ffi.vadClose
+    ) {
+      throw new VadUnavailableError(
+        "model-load-failed",
+        "[voice] Native Silero VAD support probe succeeded, but the required VAD FFI methods are missing.",
+      );
+    }
     const ctx = typeof opts.ctx === "function" ? opts.ctx() : opts.ctx;
     const handle = opts.ffi.vadOpen({ ctx, sampleRateHz: sampleRate });
     return new NativeSileroVad(opts.ffi, handle, sampleRate);
@@ -249,17 +260,31 @@ export class NativeSileroVad {
         `[voice] NativeSileroVad.process expects a ${SILERO_WINDOW_16K}-sample window; got ${window.length}`,
       );
     }
-    return this.ffi.vadProcess({ vad: this.handle, pcm: window });
+    const vadProcess = this.ffi.vadProcess;
+    if (!vadProcess) {
+      throw new Error("[voice] NativeSileroVad.process missing FFI method");
+    }
+    return vadProcess({ vad: this.handle, pcm: window });
   }
 
   reset(): void {
-    if (!this.closed) this.ffi.vadReset(this.handle);
+    if (!this.closed) {
+      const vadReset = this.ffi.vadReset;
+      if (!vadReset) {
+        throw new Error("[voice] NativeSileroVad.reset missing FFI method");
+      }
+      vadReset(this.handle);
+    }
   }
 
   close(): void {
     if (this.closed) return;
     this.closed = true;
-    this.ffi.vadClose(this.handle);
+    const vadClose = this.ffi.vadClose;
+    if (!vadClose) {
+      throw new Error("[voice] NativeSileroVad.close missing FFI method");
+    }
+    vadClose(this.handle);
   }
 }
 

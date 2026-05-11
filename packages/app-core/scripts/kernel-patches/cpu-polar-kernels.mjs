@@ -118,6 +118,16 @@ static inline float polar_fp16_to_fp32(ggml_half h) {
     return GGML_FP16_TO_FP32(h);
 }
 
+static inline const float * polar_qjl_signs_cached(void) {
+    static float signs[QK_POLAR];
+    static int initialized = 0;
+    if (!initialized) {
+        polar_qjl_signs(signs);
+        initialized = 1;
+    }
+    return signs;
+}
+
 /* The three pre-Hadamard-transposed dot entry points. \`q_preht\` MUST be
  * the Walsh-Hadamard-transformed query for the matching head/chunk; the
  * caller owns that contract (passing a raw query is a hard error

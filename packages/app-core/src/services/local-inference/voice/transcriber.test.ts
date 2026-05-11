@@ -457,6 +457,15 @@ function makeFakeFfi(opts: {
     },
     cancelTts: () => {},
     setVerifierCallback: () => ({ close: () => {} }),
+    vadSupported: () => false,
+    vadOpen: () => {
+      throw new Error("not used");
+    },
+    vadProcess: () => {
+      throw new Error("not used");
+    },
+    vadReset: () => {},
+    vadClose: () => {},
     asrStreamSupported: () => opts.streamSupported,
     asrStreamOpen: () => {
       streamHandle += 1n;

@@ -2751,16 +2751,28 @@ export const allActionsSpec = {
 				"Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+						"Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["compose_morning", "compose_evening", "compose_weekly"],
 					},
 					descriptionCompressed:
-						"Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+						"Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Prefer action for new planner output.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["compose_morning", "compose_evening", "compose_weekly"],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Prefer action for new planner output.",
 				},
 				{
 					name: "period",
@@ -2806,6 +2818,7 @@ export const allActionsSpec = {
 					actions: ["BRIEF"],
 					params: {
 						BRIEF: {
+							action: "compose_morning",
 							subaction: "compose_morning",
 							period: "today",
 							include: "example",
@@ -3778,16 +3791,28 @@ export const allActionsSpec = {
 				"Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which scan to run: scan_today | scan_week | scan_event_proposal.",
+						"Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["scan_today", "scan_week", "scan_event_proposal"],
 					},
 					descriptionCompressed:
-						"Which scan to run: scan_today | scan_week | scan_event_proposal.",
+						"Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Prefer action for new planner output.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["scan_today", "scan_week", "scan_event_proposal"],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Prefer action for new planner output.",
 				},
 				{
 					name: "range",
@@ -3820,6 +3845,7 @@ export const allActionsSpec = {
 					actions: ["CONFLICT_DETECT"],
 					params: {
 						CONFLICT_DETECT: {
+							action: "scan_today",
 							subaction: "scan_today",
 							range: "example",
 							proposal: "example",
@@ -4423,6 +4449,7 @@ export const allActionsSpec = {
 					actions: ["DOC"],
 					params: {
 						DOC: {
+							action: "request_signature",
 							subaction: "request_signature",
 							documentRequestId: "example",
 							requesteeEntityId: "example",
@@ -5187,14 +5214,27 @@ export const allActionsSpec = {
 				"Cross-platform unified inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
 			parameters: [
 				{
-					name: "subaction",
-					description: "Which operation: list | search | summarize.",
+					name: "action",
+					description: "Canonical inbox operation: list | search | summarize.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["list", "search", "summarize"],
 					},
-					descriptionCompressed: "Which operation: list | search | summarize.",
+					descriptionCompressed:
+						"Canonical inbox operation: list | search | summarize.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Prefer action for new planner output.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["list", "search", "summarize"],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Prefer action for new planner output.",
 				},
 				{
 					name: "platforms",
@@ -5247,6 +5287,7 @@ export const allActionsSpec = {
 					actions: ["INBOX_UNIFIED"],
 					params: {
 						INBOX_UNIFIED: {
+							action: "list",
 							subaction: "list",
 							platforms: "example",
 							since: "example",
@@ -6507,16 +6548,28 @@ export const allActionsSpec = {
 				"Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
 			parameters: [
 				{
-					name: "subaction",
+					name: "action",
 					description:
-						"Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+						"Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["rank_todos", "rank_threads", "rank_decisions"],
 					},
 					descriptionCompressed:
-						"Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+						"Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+				},
+				{
+					name: "subaction",
+					description:
+						"Legacy alias for action. Prefer action for new planner output.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["rank_todos", "rank_threads", "rank_decisions"],
+					},
+					descriptionCompressed:
+						"Legacy alias for action. Prefer action for new planner output.",
 				},
 				{
 					name: "subject",
@@ -6560,6 +6613,7 @@ export const allActionsSpec = {
 					actions: ["PRIORITIZE"],
 					params: {
 						PRIORITIZE: {
+							action: "rank_todos",
 							subaction: "rank_todos",
 							subject: "todos",
 							topN: 1,

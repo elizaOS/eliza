@@ -60,17 +60,17 @@ gates:
   vad_boundary_mae_ms:
     op: "<="
     unit: "ms"
-    manifest_field: "evals.vadQuality.boundaryMaeMs"
+    manifest_field: "evals.vadLatencyMs.boundaryMs"
     description: "Median absolute error of detected speech onset against labeled speech start."
   vad_endpoint_p95_ms:
     op: "<="
     unit: "ms"
-    manifest_field: "evals.vadQuality.endpointP95Ms"
+    manifest_field: "evals.vadLatencyMs.endpointMs"
     description: "P95 endpoint overhang after labeled speech end."
   vad_false_bargein_per_hour:
     op: "<="
     unit: "events/hour"
-    manifest_field: "evals.vadQuality.falseBargeInPerHour"
+    manifest_field: "evals.vadLatencyMs.falseBargeInRate"
     description: "Extrapolated false speech-start events per hour over silence/noise fixtures."
   first_token_latency_ms:
     op: "<="

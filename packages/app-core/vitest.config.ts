@@ -103,6 +103,7 @@ export default defineConfig({
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",
       "**/*.spec.{ts,tsx}",
+      "scripts/run-mobile-build-policy.test.mjs",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",

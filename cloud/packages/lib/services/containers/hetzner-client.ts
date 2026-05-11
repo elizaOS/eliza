@@ -209,6 +209,8 @@ export interface HetznerContainerMetadata {
   hostPort: number;
   /** Image pulled / running on the node. */
   image: string;
+  /** Repo digest resolved by Docker after pull, when available. */
+  imageDigest?: string;
   /** Application port inside the container. */
   containerPort: number;
   /** Host filesystem path mounted at `/data` inside the container, if persistent. */
@@ -327,6 +329,7 @@ function readMetadata(row: Container): HetznerContainerMetadata | null {
     containerName: raw.containerName,
     hostPort: raw.hostPort,
     image: raw.image,
+    imageDigest: typeof raw.imageDigest === "string" ? raw.imageDigest : undefined,
     containerPort: raw.containerPort,
     volumePath: typeof raw.volumePath === "string" ? raw.volumePath : undefined,
     volumeMountPath: typeof raw.volumeMountPath === "string" ? raw.volumeMountPath : undefined,
@@ -698,6 +701,26 @@ async function loginToImageRegistry(ssh: DockerSSHClient, image: string): Promis
   );
 }
 
+async function readPulledImageDigest(
+  ssh: DockerSSHClient,
+  image: string,
+): Promise<string | undefined> {
+  const output = await ssh
+    .exec(`docker image inspect --format '{{json .RepoDigests}}' ${shellQuote(image)}`, 30_000)
+    .catch(() => "");
+  const trimmed = output.trim();
+  if (!trimmed || trimmed === "null") return undefined;
+  try {
+    const repoDigests = JSON.parse(trimmed) as unknown;
+    if (!Array.isArray(repoDigests)) return undefined;
+    return repoDigests.find((value): value is string => {
+      return typeof value === "string" && value.includes("@sha256:");
+    });
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // HetznerContainersClient
 // ---------------------------------------------------------------------------
@@ -850,6 +873,7 @@ export class HetznerContainersClient {
       });
       await loginToImageRegistry(ssh, input.image);
       await ssh.exec(`docker pull ${shellQuote(input.image)}`, 5 * 60 * 1000);
+      const imageDigest = await readPulledImageDigest(ssh, input.image);
 
       // 5. Hetzner Cloud volume attachment. The volume service handles:
       //    - waiting for the block device to appear after attach
@@ -936,6 +960,7 @@ export class HetznerContainersClient {
         containerName,
         hostPort,
         image: input.image,
+        ...(imageDigest ? { imageDigest } : {}),
         containerPort: input.port,
         ...(volumePath ? { volumePath } : {}),
         ...(volumePath ? { volumeMountPath } : {}),

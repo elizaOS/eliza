@@ -36,11 +36,7 @@ import { hasLifeOpsAccess } from "../lifeops/access.js";
 
 const ACTION_NAME = "CONFLICT_DETECT";
 
-const SUBACTIONS = [
-  "scan_today",
-  "scan_week",
-  "scan_event_proposal",
-] as const;
+const SUBACTIONS = ["scan_today", "scan_week", "scan_event_proposal"] as const;
 
 type Subaction = (typeof SUBACTIONS)[number];
 
@@ -321,7 +317,10 @@ function summarize(conflicts: readonly ConflictDetectPair[]): string {
 
 const examples: ActionExample[][] = [
   [
-    { name: "{{name1}}", content: { text: "Any conflicts on my calendar today?" } },
+    {
+      name: "{{name1}}",
+      content: { text: "Any conflicts on my calendar today?" },
+    },
     {
       name: "{{agentName}}",
       content: {
@@ -368,9 +367,15 @@ export const conflictDetectAction: Action & {
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
+      name: "action",
+      description:
+        "Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+      schema: { type: "string" as const, enum: [...SUBACTIONS] },
+    },
+    {
       name: "subaction",
       description:
-        "Which scan to run: scan_today | scan_week | scan_event_proposal.",
+        "Legacy alias for action. Prefer action for new planner output.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {

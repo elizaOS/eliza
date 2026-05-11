@@ -272,8 +272,17 @@
       "description": "Compose the owner's morning, evening, or weekly briefing by pulling calendar feed, inbox triage, life-domain due items, and money recurring charges into a single LifeOpsBriefing. Subactions: compose_morning, compose_evening, compose_weekly.",
       "parameters": [
         {
+          "name": "action",
+          "description": "Canonical brief operation: compose_morning | compose_evening | compose_weekly.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["compose_morning", "compose_evening", "compose_weekly"]
+          }
+        },
+        {
           "name": "subaction",
-          "description": "Which brief to compose: compose_morning | compose_evening | compose_weekly.",
+          "description": "Legacy alias for action. Prefer action for new planner output.",
           "required": false,
           "schema": {
             "type": "string",
@@ -314,6 +323,7 @@
           "actions": ["BRIEF"],
           "params": {
             "BRIEF": {
+              "action": "compose_morning",
               "subaction": "compose_morning",
               "period": "today",
               "include": "example",
@@ -1176,8 +1186,17 @@
       "description": "Proactively scan the owner's calendar for overlapping events, or evaluate a proposed event window against the owner's feed. Subactions: scan_today, scan_week, scan_event_proposal.",
       "parameters": [
         {
+          "name": "action",
+          "description": "Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["scan_today", "scan_week", "scan_event_proposal"]
+          }
+        },
+        {
           "name": "subaction",
-          "description": "Which scan to run: scan_today | scan_week | scan_event_proposal.",
+          "description": "Legacy alias for action. Prefer action for new planner output.",
           "required": false,
           "schema": {
             "type": "string",
@@ -1208,6 +1227,7 @@
           "actions": ["CONFLICT_DETECT"],
           "params": {
             "CONFLICT_DETECT": {
+              "action": "scan_today",
               "subaction": "scan_today",
               "range": "example",
               "proposal": "example"
@@ -1566,8 +1586,24 @@
       "description": "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
       "parameters": [
         {
+          "name": "action",
+          "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "request_signature",
+              "request_approval",
+              "track_deadline",
+              "upload_asset",
+              "collect_id",
+              "close_request"
+            ]
+          }
+        },
+        {
           "name": "subaction",
-          "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+          "description": "Legacy alias for action. Prefer action for new planner output.",
           "required": false,
           "schema": {
             "type": "string",
@@ -1678,6 +1714,7 @@
           "actions": ["DOC"],
           "params": {
             "DOC": {
+              "action": "request_signature",
               "subaction": "request_signature",
               "documentRequestId": "example",
               "requesteeEntityId": "example",
@@ -2339,8 +2376,17 @@
       "description": "Cross-platform unified inbox: fan out to Gmail, Slack, Discord, Telegram, Signal, iMessage, and WhatsApp and merge into a single recency-ordered feed. Subactions: list, search, summarize.",
       "parameters": [
         {
+          "name": "action",
+          "description": "Canonical inbox operation: list | search | summarize.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["list", "search", "summarize"]
+          }
+        },
+        {
           "name": "subaction",
-          "description": "Which operation: list | search | summarize.",
+          "description": "Legacy alias for action. Prefer action for new planner output.",
           "required": false,
           "schema": {
             "type": "string",
@@ -2390,6 +2436,7 @@
           "actions": ["INBOX_UNIFIED"],
           "params": {
             "INBOX_UNIFIED": {
+              "action": "list",
               "subaction": "list",
               "platforms": "example",
               "since": "example",
@@ -3494,8 +3541,17 @@
       "description": "Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
       "parameters": [
         {
+          "name": "action",
+          "description": "Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["rank_todos", "rank_threads", "rank_decisions"]
+          }
+        },
+        {
           "name": "subaction",
-          "description": "Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+          "description": "Legacy alias for action. Prefer action for new planner output.",
           "required": false,
           "schema": {
             "type": "string",
@@ -3535,6 +3591,7 @@
           "actions": ["PRIORITIZE"],
           "params": {
             "PRIORITIZE": {
+              "action": "rank_todos",
               "subaction": "rank_todos",
               "subject": "todos",
               "topN": 1,

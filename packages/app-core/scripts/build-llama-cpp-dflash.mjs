@@ -225,6 +225,27 @@ function envFlag(name) {
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
+function prependLocalToolDirs() {
+  const candidates = [
+    path.join(os.homedir(), "Library", "Python", "3.13", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.12", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.11", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.10", "bin"),
+    path.join(os.homedir(), "Library", "Python", "3.9", "bin"),
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+  ].filter((dir) => fs.existsSync(dir));
+
+  if (candidates.length === 0) return;
+  const current = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
+  const merged = [...candidates, ...current].filter(
+    (dir, idx, arr) => dir && arr.indexOf(dir) === idx,
+  );
+  process.env.PATH = merged.join(path.delimiter);
+}
+
+prependLocalToolDirs();
+
 function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, {
     stdio: opts.capture ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -1312,9 +1333,9 @@ function parseArgs(argv) {
           "  ELIZA_DFLASH_LLAMA_CPP_REMOTE / ELIZA_DFLASH_LLAMA_CPP_REF",
           "                         Build from a standalone clone of the given fork/ref instead of",
           "                         the in-repo submodule.",
-          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=0",
-          "                         For darwin-arm64-metal only, opt out of the",
-          "                         automatic spiritbuun/buun-llama-cpp runtime",
+          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=1",
+          "                         For darwin-arm64-metal only, opt in to the",
+          "                         temporary spiritbuun/buun-llama-cpp runtime",
           "                         bridge that can load general.architecture=dflash-draft.",
           "                         Bridge CAPABILITIES.json is diagnostic and publishable=false.",
         ].join("\n"),
@@ -1551,6 +1572,38 @@ function isRuntimeLibrary(name) {
   );
 }
 
+function cleanGeneratedTargetOutput(outDir) {
+  if (!fs.existsSync(outDir)) return;
+  for (const name of fs.readdirSync(outDir)) {
+    const generated =
+      name === "CAPABILITIES.json" ||
+      name === "default.metallib" ||
+      name === "gguf-py" ||
+      name === "include" ||
+      /^llama-/.test(name) ||
+      /^lib.*\.a$/.test(name) ||
+      isRuntimeLibrary(name);
+    if (!generated) continue;
+    const targetPath = path.join(outDir, name);
+    const stat = fs.lstatSync(targetPath);
+    if (stat.isSymbolicLink() || stat.isFile()) {
+      fs.unlinkSync(targetPath);
+    } else {
+      fs.rmSync(targetPath, { recursive: true, force: true });
+    }
+  }
+}
+
+function copyBuildArtifact(src, dst) {
+  fs.rmSync(dst, { recursive: true, force: true });
+  const stat = fs.lstatSync(src);
+  if (stat.isSymbolicLink()) {
+    fs.symlinkSync(fs.readlinkSync(src), dst);
+  } else {
+    fs.copyFileSync(src, dst);
+  }
+}
+
 function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
   if (process.platform !== "darwin") return;
   for (const name of names) {
@@ -1570,7 +1623,7 @@ function useLegacyDflashDrafterRuntime(target) {
   const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME;
   const enabled =
     explicit === undefined
-      ? true
+      ? false
       : envFlag("ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME");
   return (
     enabled &&
@@ -2682,6 +2735,7 @@ function buildTarget({ target, args, ctx }) {
   );
 
   fs.mkdirSync(outDir, { recursive: true });
+  cleanGeneratedTargetOutput(outDir);
 
   const installedNames = [];
   const installedBaseNames = [];
@@ -2758,7 +2812,7 @@ function buildTarget({ target, args, ctx }) {
     for (const name of installedNames) {
       const src = path.join(binDir, name);
       const dst = path.join(outDir, name);
-      fs.copyFileSync(src, dst);
+      copyBuildArtifact(src, dst);
       if (executableNames.includes(name.replace(/\.(exe)$/i, ""))) {
         fs.chmodSync(dst, 0o755);
       }
@@ -2779,7 +2833,7 @@ function buildTarget({ target, args, ctx }) {
         );
       }
       const metallibDst = path.join(outDir, "default.metallib");
-      fs.copyFileSync(metallibCandidate, metallibDst);
+      copyBuildArtifact(metallibCandidate, metallibDst);
       installedNames.push("default.metallib");
       console.log(
         `[dflash-build] installed default.metallib (${fs.statSync(metallibDst).size} bytes) -> ${outDir}`,

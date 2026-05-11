@@ -161,7 +161,8 @@ static bool eliza_is_region(const char * region_name) {
         (std::strcmp(region_name, "tts") == 0 ||
          std::strcmp(region_name, "asr") == 0 ||
          std::strcmp(region_name, "text") == 0 ||
-         std::strcmp(region_name, "dflash") == 0);
+         std::strcmp(region_name, "dflash") == 0 ||
+         std::strcmp(region_name, "vad") == 0);
 }
 
 static std::vector<std::string> eliza_find_ggufs(const std::filesystem::path & dir) {
@@ -761,7 +762,7 @@ int eliza_inference_asr_transcribe(
  * pick the batch path (or the whisper.cpp interim adapter) instead of
  * opening a session that would only return ELIZA_ERR_NOT_IMPLEMENTED.
  * These symbols exist so the ABI surface is complete and the loader's
- * version check (ffi-bindings.ts expects v2) succeeds.
+ * version check (ffi-bindings.ts expects v3) succeeds.
  */
 
 int eliza_inference_asr_stream_supported(void) {
@@ -885,6 +886,55 @@ int eliza_inference_set_verifier_callback(
         "[libelizainference] native DFlash verifier callback is not implemented in this build; "
         "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+/* ---- Native VAD (ABI v3) ------------------------------------------- *
+ *
+ * The JS runtime can use the ONNX Silero path today. Native VAD is an
+ * additive fused-runtime backend; until the fused target wires it,
+ * advertise unsupported and return structured not-implemented errors.
+ */
+
+int eliza_inference_vad_supported(void) {
+    return 0;
+}
+
+EliVad * eliza_inference_vad_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error) {
+    (void) ctx;
+    (void) sample_rate_hz;
+    eliza_set_error(out_error,
+        "[libelizainference] native VAD is not implemented in this build "
+        "(eliza_inference_vad_supported() == 0); use the ONNX Silero VAD path");
+    return nullptr;
+}
+
+int eliza_inference_vad_process(
+    EliVad * vad,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error) {
+    (void) vad;
+    (void) pcm;
+    (void) n_samples;
+    (void) out_probability;
+    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_vad_reset(
+    EliVad * vad,
+    char ** out_error) {
+    (void) vad;
+    eliza_set_error(out_error, "[libelizainference] native VAD is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_vad_close(EliVad * vad) {
+    (void) vad;
 }
 
 void eliza_inference_free_string(char * str) {
@@ -1472,6 +1522,41 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
   };
 }
 
+function applyMiladyOmnivoiceHttpRoute({ llamaCppRoot }) {
+  const serverPath = path.join(llamaCppRoot, "tools", "server", "server.cpp");
+  if (!fs.existsSync(serverPath)) {
+    throw new Error(
+      `[omnivoice-fuse] server route patch target missing: ${serverPath}`,
+    );
+  }
+  const sentinel = "milady-omnivoice-http-route";
+  let server = fs.readFileSync(serverPath, "utf8");
+  if (server.includes(sentinel)) {
+    return {
+      name: "milady-omnivoice-http-route",
+      status: "already-applied",
+      files: [],
+    };
+  }
+
+  const anchor =
+    '    ctx_http.post("/api/chat",            ex_wrapper(routes.post_chat_completions)); // ollama specific endpoint\n';
+  const route = `${anchor}#ifdef MILADY_FUSE_OMNIVOICE\n    // ${sentinel}: the fused binary must expose the OpenAI-compatible\n    // speech route in this same llama-server process. Until the full HTTP\n    // streaming handler is wired to ov_synthesize, fail closed with a\n    // structured 503 instead of looking like a stock text-only server.\n    ctx_http.post("/v1/audio/speech", ex_wrapper([](const server_http_req &) -> server_http_res_ptr {\n        auto res = std::make_unique<server_http_res>();\n        res->status = 503;\n        res->data = R"({\"error\":{\"code\":503,\"message\":\"omnivoice TTS route is mounted in the fused server, but no OmniVoice runtime handler is configured in this build\",\"type\":\"server_error\"}})";\n        return res;\n    }));\n#endif\n`;
+
+  if (!server.includes(anchor)) {
+    throw new Error(
+      "[omnivoice-fuse] server route patch anchor not found: /api/chat route",
+    );
+  }
+  server = server.replace(anchor, route);
+  fs.writeFileSync(serverPath, server, "utf8");
+  return {
+    name: "milady-omnivoice-http-route",
+    status: "applied",
+    files: ["tools/server/server.cpp"],
+  };
+}
+
 /**
  * Main entry. Performs the full prepare phase. All errors propagate.
  */
@@ -1559,8 +1644,10 @@ export function prepareOmnivoiceFusion({
   // Apply any reconciliation patches keyed to specific drifts.
   const patchesDir = new URL("./patches/", import.meta.url).pathname;
   const qwen3aBackport = applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot });
+  const omnivoiceHttpRoute = applyMiladyOmnivoiceHttpRoute({ llamaCppRoot });
   const appliedPatches = [
     qwen3aBackport,
+    omnivoiceHttpRoute,
     ...applyPatches({ patchesDir, llamaCppRoot }),
   ];
 

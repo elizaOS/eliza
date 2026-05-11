@@ -3,7 +3,7 @@
 //
 // What this module does:
 //
-//   1. Copies the five verified standalone Metal shaders from
+//   1. Copies the required and optimization standalone Metal shaders from
 //      packages/inference/metal/ into the fork's tree at
 //      ggml/src/ggml-metal/milady-shipped/<kernel>.metal. The standalones are
 //      self-contained TUs (only #include <metal_stdlib>; their own structs,
@@ -52,15 +52,19 @@ const STANDALONE_METAL_DIR = path.resolve(
 
 // Map: standalone-shader-filename → in-fork relative path (under cacheDir).
 // Each standalone is copied verbatim — its content is not edited. Per agent
-// contract: the 5 standalone shaders are verified and must not be touched.
+// contract, verified shader math lives under packages/inference/metal/ and the
+// fork copy is a generated shipping copy.
 //
-// The fused-attention + Polar pre-Hadamard-query standalones (fused_attn_*,
-// polar_preht) are AUTHORED but hardware-verify pending (no Apple HW on the
-// authoring machine — verified bit-for-bit on the Vulkan ports). They ship in
-// the metallib so a Metal host can run metal-verify-fused / dispatch-smoke; the
-// build gate still treats their runtime-ready capability bit as not-yet-flipped
-// (fused_attn is an optimization on top of the five required kernels, AGENTS.md
-// §3 — not a required kernel) until a Metal host reports a fused dispatch smoke.
+// Apple M4 Max verification on 2026-05-11:
+//   * metal-verify: turbo3, turbo4, turbo3_tcq, qjl, polar, polar+QJL,
+//     polar_preht, polar_preht+QJL all 8/8 PASS.
+//   * metal-verify-multiblock: TurboQuant/QJL multi-block variants PASS.
+//   * metal-verify-fused: fused_attn_qjl_tbq and fused_attn_qjl_polar PASS.
+//
+// Runtime dispatch is flipped only for the graph ops listed in
+// METAL_RUNTIME_DISPATCH_GATES. The fused-attention kernels are shipped and
+// verified, but remain an explicit runtime promotion step because they replace
+// a larger score/softmax/V subgraph rather than one standalone score op.
 export const METAL_KERNEL_FILES = [
   "turbo3.metal",
   "turbo4.metal",
@@ -541,6 +545,9 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
     };`,
       `        /* n_tokens   = */ n_tokens,
         /* proj_dim   = */ 256u,
+        // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
+        // Keep N=32 as the tail-latency-biased default until per-device
+        // autotuning can persist a device-specific table.
         /* tokens_per_threadgroup = */ 32u,
     };`,
     );
@@ -625,6 +632,9 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         /* n_kv_heads = */ n_kv_heads,
         /* n_tokens   = */ n_tokens,
         /* proj_dim   = */ 256u,
+        // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
+        // Keep N=32 as the tail-latency-biased default until per-device
+        // autotuning can persist a device-specific table.
         /* tokens_per_threadgroup = */ 32u,
     };
 
@@ -1466,12 +1476,27 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     console.log(`${dryRun ? "(dry-run) " : ""}${message}`);
   }
   const qjlAttn = patchMetalQjlAttnDispatch(cacheDir, { dryRun });
-  const tbqPolarAttn = patchMetalTbqPolarAttnDispatch(cacheDir, { dryRun });
+  const qjlAnchorsAlreadyPresent = [
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h"),
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.h"),
+    path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-ops.cpp"),
+  ].every(
+    (file) =>
+      fs.existsSync(file) &&
+      fs.readFileSync(file, "utf8").includes(SENTINEL_QJL_ATTN),
+  );
+  const tbqPolarAttn =
+    dryRun && !qjlAnchorsAlreadyPresent
+      ? { deferredUntilQjlPatchWrites: true }
+      : patchMetalTbqPolarAttnDispatch(cacheDir, { dryRun });
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_QJL dispatch via kernel_attn_score_qjl1_256_multi`,
   );
   console.log(
-    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_TBQ / GGML_OP_ATTN_SCORE_POLAR dispatch via shipped TurboQuant and PolarQuant kernels`,
+    `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_TBQ / GGML_OP_ATTN_SCORE_POLAR dispatch via shipped TurboQuant and PolarQuant kernels` +
+      (tbqPolarAttn.deferredUntilQjlPatchWrites
+        ? " (deferred in dry-run until QJL patch writes anchors)"
+        : ""),
   );
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}runtime-ready gates: ` +

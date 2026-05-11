@@ -24,6 +24,7 @@ import { createServer } from "node:http";
 import { extname, resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import net from "node:net";
+import { WebSocket, WebSocketServer } from "ws";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
@@ -101,12 +102,13 @@ function contentTypeFor(filePath) {
 function resolveDistAsset(pathname) {
   // Strip leading slash + try the path verbatim, then index.html fallback for SPA.
   const segments = pathname.replace(/^\/+/, "").split("/").filter(Boolean);
-  if (segments.length > 0) {
-    const candidate = resolve(APP_DIST, segments.join("/"));
+  for (let index = 0; index < segments.length; index += 1) {
+    const candidate = resolve(APP_DIST, segments.slice(index).join("/"));
     if (
       candidate.startsWith(APP_DIST) &&
       existsSync(candidate) &&
-      statSync(candidate).isFile()
+      statSync(candidate).isFile() &&
+      extname(candidate).length > 0
     ) {
       return candidate;
     }
@@ -150,6 +152,53 @@ async function proxyToApi({ apiBase, request, response }) {
   response.writeHead(upstream.status, headersOut);
   const buf = Buffer.from(await upstream.arrayBuffer());
   response.end(buf);
+}
+
+function relayWebSocket({ apiBase, request, clientSocket }) {
+  const requestUrl = new URL(request.url ?? "/ws", "http://127.0.0.1");
+  const upstreamUrl = new URL(apiBase);
+  upstreamUrl.protocol = upstreamUrl.protocol === "https:" ? "wss:" : "ws:";
+  upstreamUrl.pathname = requestUrl.pathname;
+  upstreamUrl.search = requestUrl.search;
+
+  const upstreamSocket = new WebSocket(upstreamUrl);
+  const pendingClientMessages = [];
+
+  const closeSocket = (socket) => {
+    if (
+      socket.readyState === WebSocket.OPEN ||
+      socket.readyState === WebSocket.CONNECTING
+    ) {
+      socket.close();
+    }
+  };
+
+  clientSocket.on("message", (data, isBinary) => {
+    if (upstreamSocket.readyState === WebSocket.OPEN) {
+      upstreamSocket.send(data, { binary: isBinary });
+      return;
+    }
+    if (upstreamSocket.readyState === WebSocket.CONNECTING) {
+      pendingClientMessages.push({ data, isBinary });
+    }
+  });
+
+  upstreamSocket.on("open", () => {
+    for (const message of pendingClientMessages.splice(0)) {
+      upstreamSocket.send(message.data, { binary: message.isBinary });
+    }
+  });
+
+  upstreamSocket.on("message", (data, isBinary) => {
+    if (clientSocket.readyState === WebSocket.OPEN) {
+      clientSocket.send(data, { binary: isBinary });
+    }
+  });
+
+  clientSocket.on("close", () => closeSocket(upstreamSocket));
+  upstreamSocket.on("close", () => closeSocket(clientSocket));
+  clientSocket.on("error", () => closeSocket(upstreamSocket));
+  upstreamSocket.on("error", () => closeSocket(clientSocket));
 }
 
 process.on("uncaughtException", (err) => {
@@ -253,6 +302,23 @@ async function main() {
         response.end(body);
       })
       .catch((error) => sendError(response, error));
+  });
+  const wss = new WebSocketServer({ noServer: true });
+  uiServer.on("upgrade", (request, socket, head) => {
+    const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (requestUrl.pathname !== "/ws") {
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (clientSocket) => {
+      relayWebSocket({ apiBase, request, clientSocket });
+    });
+  });
+  uiServer.on("close", () => {
+    for (const client of wss.clients) {
+      client.close();
+    }
+    wss.close();
   });
   uiServer.on("clientError", (err, socket) => {
     console.error("[ai-qa static-stack] client error:", err.message);

@@ -144,7 +144,9 @@ function normalizeSubject(value: unknown): Subject | null {
   return null;
 }
 
-function resolveSubaction(params: PrioritizeActionParameters): Subaction | null {
+function resolveSubaction(
+  params: PrioritizeActionParameters,
+): Subaction | null {
   return (
     normalizeSubaction(params.subaction) ??
     normalizeSubaction(params.action) ??
@@ -307,9 +309,15 @@ export const prioritizeAction: Action & {
   validate: async (runtime, message) => hasLifeOpsAccess(runtime, message),
   parameters: [
     {
+      name: "action",
+      description:
+        "Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+      schema: { type: "string" as const, enum: [...SUBACTIONS] },
+    },
+    {
       name: "subaction",
       description:
-        "Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
+        "Legacy alias for action. Prefer action for new planner output.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
@@ -371,7 +379,11 @@ export const prioritizeAction: Action & {
       return {
         success: true,
         text,
-        data: { subaction, subject, ranked: [] as readonly PrioritizeRankedItem[] },
+        data: {
+          subaction,
+          subject,
+          ranked: [] as readonly PrioritizeRankedItem[],
+        },
       };
     }
 
@@ -379,14 +391,14 @@ export const prioritizeAction: Action & {
       logger.warn(
         `[PRIORITIZE] ${subaction} runtime.useModel unavailable, returning natural order`,
       );
-      const fallbackRanked = items.slice(0, topN).map<PrioritizeRankedItem>(
-        (item, index) => ({
+      const fallbackRanked = items
+        .slice(0, topN)
+        .map<PrioritizeRankedItem>((item, index) => ({
           ...item,
           rank: index + 1,
           score: 0,
           reasoning: "model unavailable; preserved input order",
-        }),
-      );
+        }));
       const text = `Ranked ${fallbackRanked.length} ${subject} (model unavailable, used input order).`;
       await callback?.({ text, source: "action", action: ACTION_NAME });
       return {

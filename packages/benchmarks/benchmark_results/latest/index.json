@@ -344,75 +344,75 @@
     },
     "hermes_swe_env::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_swe_env__eliza.json",
-      "run_id": "run_hermes_swe_env_20260511T182223Z_2_44425bfc",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:42.855024+00:00"
+      "run_id": "run_hermes_swe_env_20260511T183932Z_5_90f9a298",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:39:48.038683+00:00"
     },
     "hermes_swe_env::hermes": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_swe_env__hermes.json",
-      "run_id": "run_hermes_swe_env_20260511T182252Z_2_aba37bb8",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:57.439327+00:00"
+      "run_id": "run_hermes_swe_env_20260511T184100Z_5_c64656f4",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:41:09.378768+00:00"
     },
     "hermes_swe_env::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_swe_env__openclaw.json",
-      "run_id": "run_hermes_swe_env_20260511T182306Z_2_250ff403",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:23:33.293553+00:00"
+      "run_id": "run_hermes_swe_env_20260511T184354Z_5_91e367ce",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:44:10.823489+00:00"
     },
     "hermes_tblite::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_tblite__eliza.json",
-      "run_id": "run_hermes_tblite_20260511T182209Z_2_3c9b7df6",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:17.104246+00:00"
+      "run_id": "run_hermes_tblite_20260511T183809Z_5_841770a7",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:38:53.107704+00:00"
     },
     "hermes_tblite::hermes": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_tblite__hermes.json",
-      "run_id": "run_hermes_tblite_20260511T182243Z_2_ff26b4c7",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:45.482105+00:00"
+      "run_id": "run_hermes_tblite_20260511T183948Z_5_e5b523e7",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:40:21.019822+00:00"
     },
     "hermes_tblite::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_tblite__openclaw.json",
-      "run_id": "run_hermes_tblite_20260511T182257Z_2_6929223d",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:23:01.441020+00:00"
+      "run_id": "run_hermes_tblite_20260511T184111Z_5_5770afb4",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:42:03.661652+00:00"
     },
     "hermes_terminalbench_2::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_terminalbench_2__eliza.json",
-      "run_id": "run_hermes_terminalbench_2_20260511T182217Z_2_db36087f",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:21.331682+00:00"
+      "run_id": "run_hermes_terminalbench_2_20260511T183853Z_5_b47ca7e8",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:39:24.546438+00:00"
     },
     "hermes_terminalbench_2::hermes": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_terminalbench_2__hermes.json",
-      "run_id": "run_hermes_terminalbench_2_20260511T182245Z_2_95bcf37a",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:47.882448+00:00"
+      "run_id": "run_hermes_terminalbench_2_20260511T184021Z_5_8a995df8",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:40:53.853067+00:00"
     },
     "hermes_terminalbench_2::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_terminalbench_2__openclaw.json",
-      "run_id": "run_hermes_terminalbench_2_20260511T182301Z_2_02b1a43d",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:23:04.446616+00:00"
+      "run_id": "run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:43:43.236895+00:00"
     },
     "hermes_yc_bench::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_yc_bench__eliza.json",
-      "run_id": "run_hermes_yc_bench_20260511T182221Z_2_59d99e5d",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:23.832321+00:00"
+      "run_id": "run_hermes_yc_bench_20260511T184454Z_6_f77036b7",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:45:02.785525+00:00"
     },
     "hermes_yc_bench::hermes": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_yc_bench__hermes.json",
-      "run_id": "run_hermes_yc_bench_20260511T182247Z_2_779deb20",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:22:52.357997+00:00"
+      "run_id": "run_hermes_yc_bench_20260511T184503Z_6_732a2e50",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:45:10.768818+00:00"
     },
     "hermes_yc_bench::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/hermes_yc_bench__openclaw.json",
-      "run_id": "run_hermes_yc_bench_20260511T182304Z_2_c23dc4d0",
-      "status": "failed",
-      "updated_at": "2026-05-11T18:23:06.738481+00:00"
+      "run_id": "run_hermes_yc_bench_20260511T184511Z_6_87bbb0d1",
+      "status": "succeeded",
+      "updated_at": "2026-05-11T18:45:16.917161+00:00"
     },
     "humaneval::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/humaneval__eliza.json",
@@ -901,5 +901,5 @@
       "updated_at": "2026-05-11T14:03:03.504082+00:00"
     }
   },
-  "updated_at": "2026-05-11T18:23:33.294082+00:00"
+  "updated_at": "2026-05-11T18:45:16.917785+00:00"
 }

@@ -160,6 +160,18 @@ updates should come from a signed apt repository with Release metadata and a
 stable package name. The app can show package version and whether `apt` is the
 install method, but it should not run OS upgrades from Settings.
 
+Release authority for Debian-like targets is explicit:
+
+- OS packages: Debian/Ubuntu archive, private apt repo, or the administrator's
+  configured mirror. Settings may surface `apt` status, lock errors, held
+  packages, and the exact command/operator action.
+- Direct desktop `.deb`: if shipped as an Electrobun artifact, GitHub Releases
+  can own the app updater metadata. If installed from apt, apt owns updates and
+  the in-app updater must be disabled.
+- Server agent package: the package manager/operator owns updates. A future
+  remote update endpoint must be admin-authenticated, audited, supervised, and
+  rollback-aware before it can run privileged commands.
+
 ### Android Apps
 
 `android-cloud` is the Play-compliant thin client and must remain store-managed.
@@ -170,6 +182,21 @@ unless that store explicitly delegates updates back to the publisher. F-Droid is
 possible only if the app can meet its source/build/signing expectations; when
 F-Droid signs builds differently, cross-updates with GitHub/Play will fail due
 to Android signature rules.
+
+The mobile build script now exposes the release-authority mapping through
+`resolveMobileBuildPolicy`:
+
+| Target | Build variant | Runtime mode | Release authority | Allowed Settings action |
+| --- | --- | --- | --- | --- |
+| `android-cloud` | `store` | `cloud` | Google Play | Open Play/release notes |
+| `android` | `direct` | `local` | GitHub Release + Android package installer | Open GitHub release; user installs |
+| `android-system` | `direct` | `local` | AOSP OTA/privileged package channel | Show OTA/version status only |
+| `ios` | `store` | `cloud` | Apple App Store/TestFlight | Open App Store/TestFlight/release notes |
+| `ios-local` | `direct` | `local` | Xcode, Apple Configurator, MDM, or developer sideload tooling | Show build provenance/release notes |
+
+None of these mobile targets has app-controlled binary OTA. The direct mobile
+variant means "not app-store sandboxed"; it does not mean the app may silently
+replace itself.
 
 ### Android AOSP / ElizaOS
 
@@ -183,6 +210,27 @@ The existing `scripts/distro-android` pipeline should grow release jobs that
 emit build fingerprint, OTA metadata, signed full OTA, optional incremental OTA,
 Cuttlefish boot validation, and rollback validation. GitHub can host metadata
 and artifacts, but devices must verify payload signatures before install.
+
+The first metadata guard is
+`scripts/distro-android/validate-ota-metadata.mjs`. It validates a JSON release
+index without requiring an AOSP checkout or build artifacts. The file is meant
+to sit beside signed OTA ZIPs on GitHub Releases or a static mirror and must
+record the brand, package name, channel, release version, build ID/fingerprint,
+security patch level, release notes URL, and one or more payloads. Each payload
+declares `type`, `fileName`, `url`, `sha256`, `sizeBytes`,
+`targetBuildFingerprint`, rollback index fields, and optional
+`payloadPropertiesUrl`/`metadataSha256`.
+
+Example local validation:
+
+```bash
+node scripts/distro-android/validate-ota-metadata.mjs \
+  --brand-config scripts/distro-android/brand.eliza.json \
+  path/to/ota-release.json
+```
+
+Use `--allow-file-urls` only for local dry-runs; published release metadata
+should use HTTPS URLs.
 
 ### iOS
 

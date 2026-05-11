@@ -5,6 +5,14 @@ const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
+let conversationCounter = 0;
+let messageCounter = 0;
+const stubConversations = [];
+const stubConversationMessages = new Map();
+const ONE_PIXEL_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
+  "base64",
+);
 
 const stubPlugins = [
   {
@@ -662,6 +670,54 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function createStubConversation({
+  title = "New chat",
+  metadata = {},
+} = {}) {
+  conversationCounter += 1;
+  const createdAt = nowIso();
+  const conversation = {
+    id: `stub-conversation-${conversationCounter}`,
+    title:
+      typeof title === "string" && title.trim().length > 0
+        ? title.trim()
+        : "New chat",
+    roomId: `stub-room-${conversationCounter}`,
+    metadata:
+      metadata && typeof metadata === "object" && !Array.isArray(metadata)
+        ? metadata
+        : {},
+    createdAt,
+    updatedAt: createdAt,
+  };
+  stubConversations.unshift(conversation);
+  stubConversationMessages.set(conversation.id, []);
+  return conversation;
+}
+
+function findStubConversation(id) {
+  return stubConversations.find((conversation) => conversation.id === id);
+}
+
+function createStubMessage(role, text) {
+  messageCounter += 1;
+  return {
+    id: `stub-message-${messageCounter}`,
+    role,
+    text: typeof text === "string" ? text : "",
+    timestamp: Date.now(),
+  };
+}
+
+function appendStubMessage(conversationId, message) {
+  const messages = stubConversationMessages.get(conversationId) ?? [];
+  messages.push(message);
+  stubConversationMessages.set(conversationId, messages);
+  const conversation = findStubConversation(conversationId);
+  if (conversation) conversation.updatedAt = nowIso();
+  return message;
+}
+
 function buildRuntimeSnapshot(url) {
   const maxDepth = parsePositiveInt(url.searchParams.get("depth"), 10);
   const maxArrayLength = parsePositiveInt(
@@ -878,6 +934,13 @@ function sendEmpty(req, res, status) {
   res.end();
 }
 
+function sendBinary(req, res, status, contentType, body) {
+  applyCors(req, res);
+  res.statusCode = status;
+  res.setHeader("Content-Type", contentType);
+  res.end(req.method === "HEAD" ? undefined : body);
+}
+
 function sendSseHeaders(req, res) {
   applyCors(req, res);
   res.writeHead(200, {
@@ -946,13 +1009,19 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "HEAD" && url.pathname === "/api/avatar/vrm") {
-    sendEmpty(req, res, 404);
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname === "/api/avatar/vrm"
+  ) {
+    sendBinary(req, res, 200, "application/octet-stream", Buffer.alloc(0));
     return;
   }
 
-  if (req.method === "HEAD" && url.pathname === "/api/avatar/background") {
-    sendEmpty(req, res, 404);
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname === "/api/avatar/background"
+  ) {
+    sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
     return;
   }
 
@@ -1055,8 +1124,123 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/conversations") {
-    sendJson(req, res, 200, { conversations: [] });
+  if (url.pathname === "/api/conversations") {
+    if (req.method === "GET") {
+      sendJson(req, res, 200, { conversations: stubConversations });
+      return;
+    }
+    if (req.method === "POST") {
+      const body = (await readJsonBody(req)) || {};
+      const conversation = createStubConversation({
+        title: body.title,
+        metadata: body.metadata,
+      });
+      sendJson(req, res, 200, { conversation });
+      return;
+    }
+  }
+
+  const conversationMessagesMatch = url.pathname.match(
+    /^\/api\/conversations\/([^/]+)\/messages(?:\/(stream|truncate))?$/,
+  );
+  if (conversationMessagesMatch) {
+    const conversationId = decodeURIComponent(conversationMessagesMatch[1]);
+    const action = conversationMessagesMatch[2] ?? null;
+    const conversation = findStubConversation(conversationId);
+    if (!conversation) {
+      sendJson(req, res, 404, { error: "Conversation not found" });
+      return;
+    }
+
+    if (req.method === "GET" && action === null) {
+      sendJson(req, res, 200, {
+        messages: stubConversationMessages.get(conversationId) ?? [],
+      });
+      return;
+    }
+
+    if (req.method === "POST" && action === "truncate") {
+      stubConversationMessages.set(conversationId, []);
+      conversation.updatedAt = nowIso();
+      sendJson(req, res, 200, { ok: true, messages: [] });
+      return;
+    }
+
+    if (req.method === "POST" && action === "stream") {
+      const body = (await readJsonBody(req)) || {};
+      appendStubMessage(conversationId, createStubMessage("user", body.text));
+      const text =
+        "This is a stubbed QA response. The app surface is loaded and interactive.";
+      appendStubMessage(conversationId, createStubMessage("assistant", text));
+      sendSseHeaders(req, res);
+      writeSseEvent(res, { type: "token", text, fullText: text });
+      writeSseEvent(res, { type: "done", fullText: text, agentName: "Eliza" });
+      res.end();
+      return;
+    }
+
+    if (req.method === "POST" && action === null) {
+      const body = (await readJsonBody(req)) || {};
+      appendStubMessage(conversationId, createStubMessage("user", body.text));
+      const text =
+        "This is a stubbed QA response. The app surface is loaded and interactive.";
+      appendStubMessage(conversationId, createStubMessage("assistant", text));
+      sendJson(req, res, 200, { text, agentName: "Eliza" });
+      return;
+    }
+  }
+
+  const conversationMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
+  if (conversationMatch) {
+    const conversationId = decodeURIComponent(conversationMatch[1]);
+    const conversation = findStubConversation(conversationId);
+    if (!conversation) {
+      sendJson(req, res, 404, { error: "Conversation not found" });
+      return;
+    }
+    if (req.method === "PATCH") {
+      const body = (await readJsonBody(req)) || {};
+      if (typeof body.title === "string" && body.title.trim().length > 0) {
+        conversation.title = body.title.trim();
+      }
+      if (
+        Object.hasOwn(body, "metadata") &&
+        body.metadata &&
+        typeof body.metadata === "object" &&
+        !Array.isArray(body.metadata)
+      ) {
+        conversation.metadata = body.metadata;
+      }
+      conversation.updatedAt = nowIso();
+      sendJson(req, res, 200, { conversation });
+      return;
+    }
+    if (req.method === "DELETE") {
+      const index = stubConversations.findIndex(
+        (item) => item.id === conversationId,
+      );
+      if (index >= 0) stubConversations.splice(index, 1);
+      stubConversationMessages.delete(conversationId);
+      sendJson(req, res, 200, { ok: true });
+      return;
+    }
+  }
+
+  const conversationGreetingMatch = url.pathname.match(
+    /^\/api\/conversations\/([^/]+)\/greeting$/,
+  );
+  if (req.method === "POST" && conversationGreetingMatch) {
+    const conversationId = decodeURIComponent(conversationGreetingMatch[1]);
+    if (!findStubConversation(conversationId)) {
+      sendJson(req, res, 404, { error: "Conversation not found" });
+      return;
+    }
+    sendJson(req, res, 200, {
+      text: "What would you like to check?",
+      agentName: "Eliza",
+      generated: false,
+      persisted: true,
+    });
     return;
   }
 

@@ -171,10 +171,8 @@ async function main() {
     dflashBench?.data?.summary?.dflashAcceptanceRate ?? null;
   const dflashSpeedup = dflashBench?.data?.summary?.dflashSpeedup ?? null;
   const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;
-  const vadBoundaryMaeMs =
-    vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
-  const vadEndpointP95Ms =
-    vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
+  const vadBoundaryMaeMs = vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
+  const vadEndpointP95Ms = vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
   const vadFalseBargeInPerHour =
     vadQuality?.data?.summary?.vadFalseBargeInPerHour ?? null;
   const bargeInCancelMs = bargein?.data?.summary?.bargeInCancelMs ?? null;
@@ -245,42 +243,37 @@ async function main() {
       dflashAcceptance >= (gatesDoc?.dflash?.minAcceptanceRate ?? 0.65) &&
       dflashSpeedup >= (gatesDoc?.dflash?.minSpeedup ?? 1.5),
   };
+  const vadGateNames = [
+    "vad_latency_ms",
+    "vad_boundary_mae_ms",
+    "vad_endpoint_p95_ms",
+    "vad_false_bargein_per_hour",
+  ];
+  const vadQualityMeasured = [
+    vadLatencyMs,
+    vadBoundaryMaeMs,
+    vadEndpointP95Ms,
+    vadFalseBargeInPerHour,
+  ].some((v) => v !== null);
+  const vadLatencyEval = vadQualityMeasured && {
+    median: vadLatencyMs ?? -1,
+    ...(vadBoundaryMaeMs !== null ? { boundaryMs: vadBoundaryMaeMs } : {}),
+    ...(vadEndpointP95Ms !== null ? { endpointMs: vadEndpointP95Ms } : {}),
+    ...(vadFalseBargeInPerHour !== null
+      ? { falseBargeInRate: Math.min(1, vadFalseBargeInPerHour) }
+      : {}),
+    passed: results
+      .filter((r) => vadGateNames.includes(r.name))
+      .filter((r) => r.measured !== null)
+      .every((r) => r.status === "pass"),
+  };
   const manifestEvalsFragment = {
     // Only emit `thirtyTurnOk`/`e2eLoopOk` when actually measured (true or
     // false from a real run). `null` means "not measured" — the publish
     // side keeps whatever it had / treats it as not-ready.
     ...(thirtyTurnOk !== null ? { thirtyTurnOk } : {}),
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
-    ...(vadLatencyMs !== null
-      ? {
-          vadLatencyMs: {
-            median: vadLatencyMs,
-            passed: results.some(
-              (r) => r.name === "vad_latency_ms" && r.status === "pass",
-            ),
-          },
-        }
-      : {}),
-    ...(vadBoundaryMaeMs !== null ||
-    vadEndpointP95Ms !== null ||
-    vadFalseBargeInPerHour !== null
-      ? {
-          vadQuality: {
-            boundaryMaeMs: vadBoundaryMaeMs,
-            endpointP95Ms: vadEndpointP95Ms,
-            falseBargeInPerHour: vadFalseBargeInPerHour,
-            passed: results
-              .filter((r) =>
-                [
-                  "vad_boundary_mae_ms",
-                  "vad_endpoint_p95_ms",
-                  "vad_false_bargein_per_hour",
-                ].includes(r.name),
-              )
-              .every((r) => r.status === "pass"),
-          },
-        }
-      : {}),
+    ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
     dflash: dflashEval,
   };
 

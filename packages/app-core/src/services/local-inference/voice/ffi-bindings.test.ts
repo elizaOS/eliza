@@ -261,12 +261,13 @@ describe("ffi-bindings — ABI v3 surface (fake FFI)", () => {
       vadSupported: true,
       vadProbs: [0.1, 0.8],
     });
-    expect(ffi.vadSupported()).toBe(true);
-    const vad = ffi.vadOpen({ ctx: 1n, sampleRateHz: 16_000 });
-    expect(ffi.vadProcess({ vad, pcm: new Float32Array(512) })).toBe(0.1);
-    expect(ffi.vadProcess({ vad, pcm: new Float32Array(512) })).toBe(0.8);
-    expect(() => ffi.vadReset(vad)).not.toThrow();
-    expect(() => ffi.vadClose(vad)).not.toThrow();
+    expect(ffi.vadSupported?.()).toBe(true);
+    const vad = ffi.vadOpen?.({ ctx: 1n, sampleRateHz: 16_000 });
+    if (!vad) throw new Error("fake native VAD did not open");
+    expect(ffi.vadProcess?.({ vad, pcm: new Float32Array(512) })).toBe(0.1);
+    expect(ffi.vadProcess?.({ vad, pcm: new Float32Array(512) })).toBe(0.8);
+    expect(() => ffi.vadReset?.(vad)).not.toThrow();
+    expect(() => ffi.vadClose?.(vad)).not.toThrow();
   });
 });
 

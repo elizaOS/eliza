@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import type { AgentUpdateAuthority, AgentUpdateStatus } from "@elizaos/shared";
 import { type BuildVariant, getBuildVariant } from "../../build-variant";
 import { isElizaOS } from "../../platform";
 
@@ -46,6 +47,26 @@ export interface ApplicationUpdateSnapshot extends AppUpdatePolicy {
   build: string | null;
   platform: AppUpdatePlatform;
   buildVariant: BuildVariant;
+}
+
+export type AgentUpdateUiStatus = "current" | "update-available" | "error";
+
+export interface ConnectedAgentUpdateSnapshot {
+  authority: AgentUpdateAuthority;
+  authorityLabel: string;
+  installMethod: string;
+  currentVersion: string;
+  latestVersion: string | null;
+  channel: AgentUpdateStatus["channel"];
+  updateAvailable: boolean;
+  lastCheckAt: string | null;
+  error: string | null;
+  status: AgentUpdateUiStatus;
+  statusLabel: string;
+  detail: string;
+  canManualCheck: boolean;
+  canAutoUpdate: boolean;
+  actionLabel: string | null;
 }
 
 export function resolveAppUpdatePolicy(
@@ -152,6 +173,107 @@ export function resolveAppUpdatePolicy(
     canOpenReleaseNotes: true,
     statusLabel: "Updated on reload",
     detail: "The hosted web app updates when the deployed site changes.",
+    actionLabel: null,
+  };
+}
+
+function resolveAgentAuthority(
+  installMethod: string,
+): Pick<
+  ConnectedAgentUpdateSnapshot,
+  "authority" | "authorityLabel" | "detail"
+> {
+  switch (installMethod) {
+    case "npm-global":
+      return {
+        authority: "npm",
+        authorityLabel: "npm global",
+        detail:
+          "The connected agent is updated with npm on the host running the agent.",
+      };
+    case "bun-global":
+      return {
+        authority: "bun",
+        authorityLabel: "Bun global",
+        detail:
+          "The connected agent is updated with Bun on the host running the agent.",
+      };
+    case "homebrew":
+      return {
+        authority: "homebrew",
+        authorityLabel: "Homebrew",
+        detail:
+          "The connected agent is managed by Homebrew on the host running the agent.",
+      };
+    case "snap":
+      return {
+        authority: "snap",
+        authorityLabel: "Snap",
+        detail:
+          "The connected agent is managed by Snap on the host running the agent.",
+      };
+    case "apt":
+      return {
+        authority: "apt",
+        authorityLabel: "Debian apt",
+        detail:
+          "The connected agent is managed by the Debian package manager on the host.",
+      };
+    case "flatpak":
+      return {
+        authority: "flatpak",
+        authorityLabel: "Flatpak",
+        detail:
+          "The connected agent is managed by Flatpak on the host running the agent.",
+      };
+    case "local-dev":
+      return {
+        authority: "local-dev",
+        authorityLabel: "Local development checkout",
+        detail:
+          "The connected agent is a local development checkout and should be updated with workspace tooling.",
+      };
+    default:
+      return {
+        authority: "unknown",
+        authorityLabel: "Agent host",
+        detail:
+          "The connected agent reports update metadata, but its install authority is not known to the app.",
+      };
+  }
+}
+
+export function mapAgentUpdateStatusToSnapshot(
+  status: AgentUpdateStatus | null | undefined,
+): ConnectedAgentUpdateSnapshot | null {
+  if (!status) return null;
+
+  const authority = resolveAgentAuthority(status.installMethod);
+  const uiStatus: AgentUpdateUiStatus = status.error
+    ? "error"
+    : status.updateAvailable
+      ? "update-available"
+      : "current";
+
+  return {
+    ...authority,
+    installMethod: status.installMethod,
+    currentVersion: status.currentVersion,
+    latestVersion: status.latestVersion,
+    channel: status.channel,
+    updateAvailable: status.updateAvailable,
+    lastCheckAt: status.lastCheckAt,
+    error: status.error,
+    status: uiStatus,
+    statusLabel:
+      uiStatus === "error"
+        ? "Check failed"
+        : uiStatus === "update-available"
+          ? "Update available"
+          : "Current",
+    detail: status.updateInstructions ?? authority.detail,
+    canManualCheck: true,
+    canAutoUpdate: status.canAutoUpdate ?? false,
     actionLabel: null,
   };
 }

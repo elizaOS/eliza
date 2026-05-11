@@ -342,12 +342,12 @@
           <tr><td><code>handle</code></td><td>If an <code>abort</code> op exists, calls <code>turnControllers.abortTurn(roomId, reason)</code>, forces simple response text, and returns <code>ack-and-stop</code> preemption. For non-abort ops, adds work-thread action hints and planning contexts.</td></tr>
         </tbody>
       </table>
-      <p>That handler is currently only reachable if <code>ResponseHandlerFieldRegistry.dispatch()</code> is called. I did not find such a production call.</p>
+      <p>That handler is now production-reachable through <code>ResponseHandlerFieldRegistry.dispatch()</code> in <code>message.ts</code>. Abort ops preempt the planner; non-abort ops stage work-thread routing through the existing action path.</p>
     </section>
 
     <section>
       <h2>Post-Parse Response-Handler Evaluators</h2>
-      <p>This is the system that actually runs after Stage 1 today. It is defined by <code>ResponseHandlerEvaluator</code> in <code>response-handler-evaluators.ts</code>. These evaluators do not influence the Stage-1 model schema or prompt. They inspect and mutate the parsed <code>MessageHandlerResult</code> deterministically.</p>
+      <p>This is the deterministic repair system that runs after field-registry dispatch, unless a field handler preempts the turn. It is defined by <code>ResponseHandlerEvaluator</code> in <code>response-handler-evaluators.ts</code>. These evaluators do not influence the Stage-1 model schema or prompt. They inspect and mutate the parsed <code>MessageHandlerResult</code> deterministically.</p>
 
       <h3>Registered Evaluators</h3>
       <table>
@@ -364,12 +364,6 @@
             <td>app-lifeops</td>
             <td>30</td>
             <td>Owner-only deterministic extraction. Parses names, location, timezone, partner, platform handles, and relationships via regex, writes owner facts/entities/relationship edges, and adds a context slice.</td>
-          </tr>
-          <tr>
-            <td><code>lifeops.work_thread_router</code></td>
-            <td>app-lifeops</td>
-            <td>40</td>
-            <td>Owner-only work-thread router. If active thread state, pending prompts, or explicit thread intent exists, it forces tool routing, clears simple reply, adds <code>tasks</code>, <code>messaging</code>, <code>automation</code>, and adds work-thread / scheduled-task action hints.</td>
           </tr>
         </tbody>
       </table>
@@ -597,11 +591,29 @@
     </section>
 
     <section>
+      <h2>Follow-Up Benchmark Review</h2>
+      <p>A bounded live LifeOpsBench comparison was run on May 11, 2026 against Cerebras <code>gpt-oss-120b</code>, using two static calendar scenarios, one seed, concurrency 1, and JS scenarios skipped. Mockoon was disabled because the local shell does not expose <code>npx</code>; these scenarios do not require connector mocks.</p>
+      <table>
+        <thead><tr><th>Agent</th><th>Scenarios</th><th>Pass@1</th><th>Mean Score</th><th>Cost</th><th>Latency</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>eliza</code></td><td>2</td><td>0.000</td><td>0.000</td><td>$0.0000</td><td>0.0s recorded</td><td>Server started after switching to Homebrew Node. Both scenarios ended at <code>max_turns</code>; server logs show repeated Cerebras <code>Not Found</code> failures during Stage 1.</td></tr>
+          <tr><td><code>hermes</code></td><td>2</td><td>0.000</td><td>0.100</td><td>$0.0061</td><td>6.0s</td><td>Completed both scenarios; first responded early, second reached max turns.</td></tr>
+          <tr><td><code>openclaw</code></td><td>2</td><td>0.000</td><td>0.125</td><td>$0.0130</td><td>6.4s</td><td>Completed both scenarios; emitted malformed calendar/search args in the second scenario, but partial score beat Hermes on this tiny sample.</td></tr>
+        </tbody>
+      </table>
+      <p class="small">Artifacts: <code>~/.milady/runs/lifeops/lifeops-multiagent-1778524352851/</code> for Hermes/OpenClaw and <code>~/.milady/runs/lifeops/lifeops-multiagent-1778524474307/</code> for Eliza.</p>
+      <p>Existing latest benchmark-result snapshots cover 50 benchmark families with all three agents present; 46 had numeric scores. On a per-benchmark normalized score, Hermes averaged 0.803, Eliza 0.781, and OpenClaw 0.652. Winner counts across those 46 scored families were: Eliza 9, Hermes 3, OpenClaw 2, ties 32. Raw averages are not directly comparable because benchmark score scales differ.</p>
+      <div class="callout warn">
+        <strong>Missed item found:</strong> <code>response-grammar.test.ts</code> still had a weak legacy assertion that did not explicitly pin the field-registry envelope. The test now asserts that registered fields replace the legacy envelope and start in priority order.
+      </div>
+    </section>
+
+    <section>
       <h2>Validation Status</h2>
       <ol>
         <li>Core Stage-1, grammar, registry, abort, planner, context-catalog, tiered-action, and stress-compaction tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
         <li>LifeOps <code>threadOps</code>, action-structure audit, and work-thread integration tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
-        <li>The interrupt benchmark scenario suite passes. The work-thread benchmark script now measures <code>threadOps</code> field-evaluator routing instead of the deleted post-parse router.</li>
+        <li>The interrupt benchmark scenario suite passes. The work-thread benchmark script now measures <code>threadOps</code> field-evaluator routing instead of the deleted post-parse router; after repairing the nested <code>@elizaos/agent</code> package metadata, <code>evaluator.handle</code> averaged 0.03ms and <code>evaluator.shouldRun</code> averaged 1.18ms over 30 iterations.</li>
         <li>The remaining known compile risk is broader LifeOps TypeScript debt outside this response-handler migration, not the registry/threadOps path itself.</li>
       </ol>
     </section>

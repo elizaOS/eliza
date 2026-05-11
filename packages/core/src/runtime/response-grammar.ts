@@ -397,6 +397,10 @@ function gbnfRefForFieldSchema(
  *
  * The skeleton's spans, in order:
  *   `{` literal
+ * Field-registry path:
+ *   [one span per registered field evaluator, priority-ordered]
+ *
+ * Legacy fallback path (only when no fields are supplied):
  *   [non-direct only] `"shouldRespond":` literal → enum span (RESPOND/IGNORE/STOP)
  *   `,"thought":` (or `{"thought":` when direct) literal → free-string span
  *   `,"replyText":` literal → free-string span
@@ -406,7 +410,6 @@ function gbnfRefForFieldSchema(
  *   `,"contextSlices":` literal → free-json span (string array)
  *   `,"candidateActions":` … `,"parentActionHints":` … `,"requiresTool":` …
  *   `,"extract":` literal → free-json span (object)
- *   [one span per registered field evaluator, priority-ordered]
  *   `}` literal
  *
  * Single-value enums (e.g. a field evaluator whose schema is a one-element

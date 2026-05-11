@@ -16,6 +16,7 @@ import { useBranding } from "../../config/branding";
 import {
   type ApplicationUpdateSnapshot,
   getApplicationUpdateSnapshot,
+  mapAgentUpdateStatusToSnapshot,
 } from "../../services/app-updates/update-policy";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
@@ -174,13 +175,12 @@ export function ReleaseCenterView() {
   };
 
   const appStatus = updateStatus as AppReleaseStatus | null | undefined;
+  const agentUpdate = mapAgentUpdateStatusToSnapshot(updateStatus ?? null);
   const appVersion =
-    applicationUpdate?.version ?? appStatus?.currentVersion ?? "—";
+    applicationUpdate?.version ??
+    t("common.unknown", { defaultValue: "Unknown" });
   const desktopVersion = nativeUpdater?.currentVersion ?? "—";
   const channel = nativeUpdater?.channel ?? "—";
-  const latestVersion =
-    appStatus?.latestVersion ??
-    t("releasecenterview.Current", { defaultValue: "Current" });
   const lastCheckAt = appStatus?.lastCheckAt;
   const lastChecked = lastCheckAt
     ? new Date(lastCheckAt).toLocaleString()
@@ -225,6 +225,18 @@ export function ReleaseCenterView() {
           },
         ]
       : []),
+    ...(applicationUpdate
+      ? [
+          {
+            label: t("releasecenterview.AutoUpdates", {
+              defaultValue: "Auto updates",
+            }),
+            value: canAutoUpdate
+              ? t("common.enabled", { defaultValue: "Enabled" })
+              : t("common.disabled", { defaultValue: "Disabled" }),
+          },
+        ]
+      : []),
     ...(desktopRuntime
       ? [
           {
@@ -242,16 +254,6 @@ export function ReleaseCenterView() {
         ]
       : []),
     {
-      label: t("releasecenterview.Latest", { defaultValue: "Latest" }),
-      value: latestVersion,
-    },
-    {
-      label: t("releasecenter.LastChecked", {
-        defaultValue: "Last checked",
-      }),
-      value: lastChecked,
-    },
-    {
       label: t("common.status", { defaultValue: "Status" }),
       value: (
         <span className="inline-flex items-center gap-1.5">
@@ -264,15 +266,58 @@ export function ReleaseCenterView() {
         </span>
       ),
     },
-    ...(applicationUpdate
+    ...(agentUpdate
       ? [
           {
-            label: t("releasecenterview.AutoUpdates", {
-              defaultValue: "Auto updates",
+            label: t("releasecenterview.Agent", {
+              defaultValue: "Agent",
             }),
-            value: canAutoUpdate
-              ? t("common.enabled", { defaultValue: "Enabled" })
-              : t("common.disabled", { defaultValue: "Disabled" }),
+            value: agentUpdate.currentVersion,
+          },
+          {
+            label: t("releasecenterview.AgentLatest", {
+              defaultValue: "Agent latest",
+            }),
+            value:
+              agentUpdate.latestVersion ??
+              t("releasecenterview.Current", { defaultValue: "Current" }),
+          },
+          {
+            label: t("releasecenterview.AgentAuthority", {
+              defaultValue: "Agent authority",
+            }),
+            value: agentUpdate.authorityLabel,
+          },
+          {
+            label: t("releasecenterview.AgentChannel", {
+              defaultValue: "Agent channel",
+            }),
+            value: agentUpdate.channel,
+          },
+          {
+            label: t("releasecenterview.AgentLastChecked", {
+              defaultValue: "Agent last checked",
+            }),
+            value: lastChecked,
+          },
+          {
+            label: t("releasecenterview.AgentStatus", {
+              defaultValue: "Agent status",
+            }),
+            value: (
+              <span className="inline-flex items-center gap-1.5">
+                {agentUpdate.status === "error" ||
+                agentUpdate.status === "update-available" ? (
+                  <AlertTriangle
+                    className="h-3.5 w-3.5 text-warn"
+                    aria-hidden
+                  />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-ok" aria-hidden />
+                )}
+                {agentUpdate.statusLabel}
+              </span>
+            ),
           },
         ]
       : []),
@@ -310,6 +355,14 @@ export function ReleaseCenterView() {
           className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
         >
           {applicationUpdate.detail}
+        </div>
+      )}
+      {agentUpdate && (
+        <div
+          role="status"
+          className="rounded-lg border border-border/60 bg-bg/40 px-3 py-2 text-xs text-muted"
+        >
+          {agentUpdate.error ?? agentUpdate.detail}
         </div>
       )}
 

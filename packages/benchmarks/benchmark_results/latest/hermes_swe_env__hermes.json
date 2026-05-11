@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T182242Z_9d39632b/hermes-adapter__hermes_swe_env/run_hermes_swe_env_20260511T182252Z_2_aba37bb8/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T183948Z_8d6cf32e/hermes-adapter__hermes_swe_env/run_hermes_swe_env_20260511T184100Z_5_c64656f4/output"
   ],
   "benchmark_directory": "hermes-adapter",
   "benchmark_id": "hermes_swe_env",
@@ -11,8 +11,8 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": "Command exited with return code 1 and no result JSON found",
-  "higher_is_better": null,
+  "error": null,
+  "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
@@ -20,14 +20,18 @@
       "cache_read_input_tokens": 0,
       "turns_with_cached_field": 0
     },
+    "canonical_entries": 0,
+    "duration_s": 8.629946625005687,
+    "env_id": "hermes_swe_env",
+    "eval/placeholder": 0.0,
     "performance_metrics": {
-      "duration_seconds": 5.060504374996526,
+      "duration_seconds": 8.757634457986569,
       "mean_latency_ms": null,
       "p95_latency_ms": null,
       "throughput_per_second": 0.0
     },
-    "result_locator": "not_found",
-    "return_code": 1,
+    "placeholder": 0.0,
+    "return_code": 0,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
       "avg_prompt_tokens": 0.0,
@@ -36,8 +40,9 @@
       "prompt_tokens": 0,
       "total_tokens": 0
     },
+    "total_evaluation_time_seconds": "0.0",
     "trajectory_summary": {
-      "files": 0,
+      "files": 3,
       "prompt_chars": 0,
       "repeated_prefixes": [],
       "turns": 0
@@ -45,17 +50,17 @@
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 5.060504374996526,
+    "duration_seconds": 8.757634457986569,
     "mean_latency_ms": null,
     "p95_latency_ms": null,
     "throughput_per_second": 0.0
   },
   "provider": "cerebras",
-  "result_json_path": null,
-  "run_group_id": "rg_20260511T182242Z_9d39632b",
-  "run_id": "run_hermes_swe_env_20260511T182252Z_2_aba37bb8",
-  "score": null,
-  "status": "failed",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T183948Z_8d6cf32e/hermes-adapter__hermes_swe_env/run_hermes_swe_env_20260511T184100Z_5_c64656f4/output/hermes_hermes_swe_env_20260511T184109Z.json",
+  "run_group_id": "rg_20260511T183948Z_8d6cf32e",
+  "run_id": "run_hermes_swe_env_20260511T184100Z_5_c64656f4",
+  "score": 0.0,
+  "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
@@ -65,11 +70,11 @@
     "total_tokens": 0
   },
   "trajectory_summary": {
-    "files": 0,
+    "files": 3,
     "prompt_chars": 0,
     "repeated_prefixes": [],
     "turns": 0
   },
-  "unit": null,
-  "updated_at": "2026-05-11T18:22:57.439327+00:00"
+  "unit": "ratio",
+  "updated_at": "2026-05-11T18:41:09.378768+00:00"
 }

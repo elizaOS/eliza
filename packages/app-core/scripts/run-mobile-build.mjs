@@ -162,7 +162,6 @@ function parseAndroidUserAgentMarkers(configSrc) {
 }
 
 const APP = readAppIdentity();
-console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -564,7 +563,7 @@ export function applyIosAppIdentity({
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-async function buildWeb(platform) {
+export function resolveMobileBuildPolicy(platform) {
   const capacitorTarget =
     platform === "android-system" ||
     platform === "android-cloud" ||
@@ -592,12 +591,48 @@ async function buildWeb(platform) {
         : null;
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
+  const releaseAuthority =
+    platform === "android-cloud"
+      ? "google-play"
+      : platform === "android"
+        ? "github-release-android-package-installer"
+        : platform === "android-system"
+          ? "aosp-ota"
+          : platform === "ios"
+            ? "apple-app-store"
+            : platform === "ios-local"
+              ? "developer-toolchain"
+              : platform === "android-cloud-debug"
+                ? "developer-debug"
+                : "developer-toolchain";
+  return {
+    capacitorTarget,
+    buildVariant,
+    androidRuntimeMode,
+    iosRuntimeMode,
+    releaseAuthority,
+    appControlledOta: false,
+  };
+}
+
+async function buildWeb(platform) {
+  const {
+    capacitorTarget,
+    buildVariant,
+    androidRuntimeMode,
+    iosRuntimeMode,
+    releaseAuthority,
+  } = resolveMobileBuildPolicy(platform);
   const env = {
     ...process.env,
     ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
     MILADY_CAPACITOR_BUILD_TARGET: capacitorTarget,
     MILADY_BUILD_VARIANT: process.env.MILADY_BUILD_VARIANT || buildVariant,
     ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
+    ELIZA_RELEASE_AUTHORITY:
+      process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
+    MILADY_RELEASE_AUTHORITY:
+      process.env.MILADY_RELEASE_AUTHORITY || releaseAuthority,
     ...(androidRuntimeMode
       ? {
           VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
@@ -4008,5 +4043,6 @@ const isMain =
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (isMain) {
+  console.log(`[mobile-build] App: ${APP.appName} (${APP.appId})`);
   await main();
 }
