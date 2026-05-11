@@ -11,6 +11,10 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
+import {
+  PatchMemoryRequestSchema,
+  PostMemoryRememberRequestSchema,
+} from "@elizaos/shared";
 import { parsePositiveInteger } from "../utils/number-parsing.ts";
 import {
   type DocumentsServiceResult,
@@ -364,13 +368,14 @@ export async function handleMemoryRoutes(
   );
 
   if (method === "POST" && pathname === "/api/memory/remember") {
-    const body = await readJsonBody<{ text?: string }>(req, res);
-    if (!body) return true;
-    const text = typeof body.text === "string" ? body.text.trim() : "";
-    if (!text) {
-      error(res, "text is required", 400);
+    const rawRem = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawRem === null) return true;
+    const parsedRem = PostMemoryRememberRequestSchema.safeParse(rawRem);
+    if (!parsedRem.success) {
+      error(res, parsedRem.error.issues[0]?.message ?? "text is required", 400);
       return true;
     }
+    const text = parsedRem.data.text;
     const createdAt = Date.now();
     const message = createMessageMemory({
       id: crypto.randomUUID() as UUID,
@@ -620,13 +625,14 @@ export async function handleMemoryRoutes(
     // embedding in a single transaction). If embedding generation fails we
     // return 500 *before* touching the database, so there is nothing to roll
     // back.
-    const body = await readJsonBody<{ text?: unknown }>(req, res);
-    if (!body) return true;
-    const text = typeof body.text === "string" ? body.text.trim() : "";
-    if (!text) {
-      error(res, "text is required", 400);
+    const rawPat = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPat === null) return true;
+    const parsedPat = PatchMemoryRequestSchema.safeParse(rawPat);
+    if (!parsedPat.success) {
+      error(res, parsedPat.error.issues[0]?.message ?? "text is required", 400);
       return true;
     }
+    const text = parsedPat.data.text;
 
     const existingContent =
       (existing.content as Record<string, unknown> | undefined) ?? {};
