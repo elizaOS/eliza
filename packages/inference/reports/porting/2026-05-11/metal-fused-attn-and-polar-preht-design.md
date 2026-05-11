@@ -473,33 +473,20 @@ they're "nice perf data".
    (remaining-work ledger) is a smoke that loads a real Eliza-1 bundle on the device and
    records first-token / first-audio latency, peak RSS, thermal state. Needs a connected,
    unlocked, Developer-Mode iPhone/iPad + a built XCFramework + a staged bundle.
-4. **darwin-x64-metal (Intel Mac) — the different-SIMD-group risk.** Every Metal shader in
-   this dir assumes `threadgroup_size == 32 == one Apple SIMD-group` so `simd_sum` covers
-   the whole reduction. On Apple Silicon the SIMD-group width is a per-vendor guarantee of
-   32. On Intel Macs with an AMD or Intel GPU the Metal SIMD-group ("threadexecutionwidth")
-   can be 16, 32, or 64 — if it's *not* 32, `simd_sum` under- or over-reduces and every
-   kernel here returns wrong values (this is exactly the failure mode the Vulkan turbo*
-   shaders hit on Intel ARL before the W4-A shared-memory-reduction fix). Needs an actual
-   Intel Mac to: (a) check `pso.threadExecutionWidth` for each kernel, (b) if ≠ 32, the
-   Metal shaders need a `darwin-x64` variant using threadgroup scratch + barrier instead
-   of `simd_sum` (mirror the Vulkan tree reduction), and (c) run the full standalone +
-   built-fork smoke suite. Until then `darwin-x64-metal` cannot be marked verified — the
-   remaining-work ledger already lists this as the next action for Intel Macs and it's an
-   honest *unknown*, not a known pass.
-5. **Apple-Silicon `kv_tile` / `_multi` N retuning on non-M4-Max parts.** The N table
+4. **Apple-Silicon `kv_tile` / `_multi` N retuning on non-M4-Max parts.** The N table
    (turbo3=8, turbo4=32, turbo3_tcq=4) and any fused-attn `kv_tile` defaults were learned
    on an M4 Max (40-core GPU). M1/M2/M3 base/Pro/Ultra and the A-series iPhone/iPad GPUs
    have different core counts and bandwidth; the optimal N/tile will differ. Needs a sweep
    on at least one A-series device and one lower-core M-series part. Perf-only, not a
    correctness gate — but it does affect the iPhone/iPad latency/thermal numbers the
    publish gate records.
-6. **Polar pre-Hadamard CPU SIMD variants** (NEON / AVX2 / AVX512-VNNI) and the QJL int8
+5. **Polar pre-Hadamard CPU SIMD variants** (NEON / AVX2 / AVX512-VNNI) and the QJL int8
    sketch path. The scalar references are landed (`ggml_vec_dot_q4_polar_preht_f32_ref`,
    `qjl_score_qk_i8_ref`); the SIMD implementations + per-device latency gates need real
    ARM64 and x86_64 hardware. Out of Metal scope but flagged because the runtime's
    small-device CPU-spill path (>64k context) depends on them being fast enough to hit
    voice latency targets.
-7. **Re-confirm the standalone Metal 8/8 after any shader edit.** The README's
+6. **Re-confirm the standalone Metal 8/8 after any shader edit.** The README's
    verification matrix shows all five standalones at 8/8 PASS on M4 Max — but if an
    M-series agent lands the Part 1 / Part 2 kernels they must re-run
    `make -C packages/inference/verify metal-verify metal-verify-multiblock` and
@@ -574,8 +561,7 @@ robustness observation.
   GPU's SIMD-group width is 32. `metal_verify.mm`, `metal_bench.mm`, and the patcher's
   graph dispatch all use `MTLSizeMake(32,1,1)`, and Apple Silicon guarantees a 32-lane
   SIMD-group — so on the verified targets it's fine. But this is load-bearing and
-  undocumented in some of the `_multi` kernels; the iOS/Intel-Mac sections above call out
-  exactly why (Intel-Mac GPUs can have width 16/64). If anyone ever bumps the threadgroup
+  undocumented in some of the `_multi` kernels. If anyone ever bumps the threadgroup
   size, *all* of these need the Vulkan-style threadgroup-scratch + barrier reduction, not
   `simd_sum`. The README's "most likely on-hardware failure modes" list already says this;
   keeping it true is the main thing to watch.
