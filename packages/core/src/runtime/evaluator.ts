@@ -355,6 +355,61 @@ function isForwardLookingPromise(text: string): boolean {
 }
 
 /**
+ * Match the present-continuous file-write promise pattern, e.g.
+ *   "Writing `/tmp/arxiv-grab-fixed.py` now..."
+ *   "writing /tmp/X now"
+ *   "Writing (bold-md-wrapped) /tmp/file now ..."
+ *
+ * Captures the inner path so we can cross-check it against what the
+ * trajectory actually wrote. The path is unwrapped from backticks,
+ * bold-markdown wrappers, or appears bare.
+ */
+const WRITING_PATH_NOW_PATTERN =
+	/\b(?:writing|saving)\s+(?:`([^`]+)`|\*\*([^*]+?)\*\*|((?:[/~]|\.{1,2}\/)[^\s`*"'<>]+))\s+now\b/i;
+
+function extractPromisedWritePath(text: string): string | null {
+	const match = text.match(WRITING_PATH_NOW_PATTERN);
+	if (!match) return null;
+	const captured = match[1] ?? match[2] ?? match[3];
+	if (!captured) return null;
+	const trimmed = captured.trim();
+	return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Look at every tool call in the trajectory and return true if any of
+ * them either:
+ *   - has `args.file_path` / `args.path` matching the promised path, OR
+ *   - has `args.command` whose text contains the promised path (which
+ *     covers `BASH` writes like `cat > /tmp/x <<EOF`, `tee /tmp/x`, or
+ *     `> /tmp/x` redirects), AND succeeded.
+ *
+ * We only count successful tool results — a `BASH` that mentioned the
+ * path but errored out doesn't satisfy the promise.
+ */
+function trajectoryWroteToPath(
+	trajectory: PlannerTrajectory,
+	path: string,
+): boolean {
+	for (const step of trajectory.steps) {
+		const result = step.result;
+		if (!result || result.success !== true) continue;
+		const toolArgs =
+			(step.toolCall as { params?: Record<string, unknown> } | undefined)
+				?.params ?? {};
+		const filePath = toolArgs.file_path ?? toolArgs.path;
+		if (typeof filePath === "string" && filePath.trim() === path) {
+			return true;
+		}
+		const command = toolArgs.command;
+		if (typeof command === "string" && command.includes(path)) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/**
  * Repair the failure mode where the evaluator picks `FINISH` but the
  * `messageToUser` is a forward-looking promise about work that hasn't been
  * executed yet (e.g. "On it — kicking off a build task now"). The prompt
@@ -381,6 +436,29 @@ function repairForwardLookingFinish(
 	if (typeof output.messageToUser !== "string") return output;
 	const trimmed = output.messageToUser.trim();
 	if (!trimmed) return output;
+
+	// Case A: messageToUser names a specific path the LLM is "writing now"
+	// but no successful tool call in the trajectory actually wrote to that
+	// path. This catches the failure mode where the planner runs a bunch
+	// of probing tools (some succeed, some fail), forms a diagnosis, and
+	// then closes the turn with "Writing `/path/to/fix.py` now..." without
+	// ever emitting the WRITE itself. The previous "latest tool failed"
+	// guard misses this because the latest tool (typically a debug BASH)
+	// did succeed — the unfulfilled promise is about a DIFFERENT action.
+	const promisedPath = extractPromisedWritePath(trimmed);
+	if (promisedPath && !trajectoryWroteToPath(trajectory, promisedPath)) {
+		return {
+			...output,
+			decision: "CONTINUE",
+			messageToUser: undefined,
+			success: false,
+		};
+	}
+
+	// Case B: latest tool failed and messageToUser is a generic
+	// forward-looking promise (e.g. "On it — kicking off..."). The
+	// original failure mode from the upstream-merged version of this
+	// repair.
 	const latestStep = [...trajectory.steps]
 		.reverse()
 		.find((step) => step.toolCall && step.result);

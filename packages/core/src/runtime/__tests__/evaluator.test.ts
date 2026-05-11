@@ -317,4 +317,166 @@ describe("v5 evaluator skeleton", () => {
 		expect(result.decision).toBe("FINISH");
 		expect(result.messageToUser).toContain("exit 2");
 	});
+
+	it("downgrades FINISH to CONTINUE when messageToUser promises 'Writing `/path` now...' but no tool wrote to that path", async () => {
+		// Live failure: bot ran READ + BASH + ATTACHMENT + multi-tool probing,
+		// landed on a correct diagnosis, then closed with
+		// 'Writing `/tmp/arxiv-grab-fixed.py` now...'. The latest tool (a
+		// debug BASH) succeeded, so the simple "last-tool-failed" guard
+		// missed it. The fix checks whether the promised path was actually
+		// written by any successful tool in the trajectory.
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Found bug. Should write fix.",
+  "messageToUser": "Found the bug — regex uses double quotes but HTML uses single. Writing \`/tmp/arxiv-grab-fixed.py\` now..."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "t1",
+							name: "READ",
+							params: { file_path: "/tmp/arxiv-grab.py" },
+						},
+						result: { success: true, text: "...source..." },
+					},
+					{
+						toolCall: {
+							id: "t2",
+							name: "WRITE",
+							params: {
+								// Wrote to a DIFFERENT path (debug), not the promised path.
+								file_path: "/tmp/arxiv-debug.py",
+								content: "...",
+							},
+						},
+						result: { success: true, text: "wrote 1373 bytes" },
+					},
+					{
+						// Latest tool succeeds — original repair would have left FINISH alone.
+						toolCall: {
+							id: "t3",
+							name: "BASH",
+							params: { command: "curl -s arxiv.org | head" },
+						},
+						result: { success: true, text: "exit 0" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		expect(result.decision).toBe("CONTINUE");
+		expect(result.messageToUser).toBeUndefined();
+		expect(result.success).toBe(false);
+	});
+
+	it("leaves FINISH alone when the promised 'Writing `/path` now' file WAS written by a tool", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Wrote the fix.",
+  "messageToUser": "Writing \`/tmp/arxiv-grab-fixed.py\` now... done. 38 lines, syntax checks pass."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "t1",
+							name: "WRITE",
+							params: {
+								file_path: "/tmp/arxiv-grab-fixed.py",
+								content: "...fix...",
+							},
+						},
+						result: { success: true, text: "wrote 1200 bytes" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		// Promise is grounded — the file WAS written, so FINISH stands.
+		expect(result.decision).toBe("FINISH");
+		expect(result.messageToUser).toContain("done.");
+	});
+
+	it("accepts a BASH-style write (cat > /path / tee /path / > /path) as fulfilling the path promise", async () => {
+		const runtime = {
+			useModel: vi.fn(
+				async () => `{
+  "success": true,
+  "decision": "FINISH",
+  "thought": "Wrote it via tee.",
+  "messageToUser": "Writing \`/tmp/script.sh\` now. Done."
+}`,
+			),
+		};
+
+		const result = await runEvaluator({
+			runtime,
+			context: {
+				id: "ctx",
+				staticPrefix: {
+					characterPrompt: { content: "agent_name: Eliza", stable: true },
+				},
+				events: [],
+			},
+			trajectory: {
+				context: { id: "ctx" },
+				steps: [
+					{
+						toolCall: {
+							id: "t1",
+							name: "BASH",
+							params: { command: "echo 'hi' | tee /tmp/script.sh" },
+						},
+						result: { success: true, text: "hi" },
+					},
+				],
+				archivedSteps: [],
+				plannedQueue: [],
+				evaluatorOutputs: [],
+			},
+		});
+
+		// The BASH command mentions /tmp/script.sh and succeeded, so the
+		// promise is considered fulfilled.
+		expect(result.decision).toBe("FINISH");
+	});
 });
