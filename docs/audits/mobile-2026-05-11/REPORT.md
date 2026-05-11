@@ -413,3 +413,112 @@ This is the minimum end-to-end. Voice, tools, planning beyond a single response 
 - Reproducible: `bun run ios:simulator` from a fresh checkout, no manual Xcode steps.
 
 When this is true, the iOS local agent is real. Everything else is hardening, tiers, and feature parity. Phase 1 of section 8.2 is the path.
+
+---
+
+## Appendix A — "Compile Bun for iOS and embed it" — Feasibility
+
+The user asked for a thorough look at compiling Bun for iOS and embedding it, with `fs` calls etc. erroring gracefully on the iOS sandbox. Three parallel research passes (Bun build system + JSC JIT, alternative embedded JS runtimes, real Node API surface across our code) produced a cohesive picture. Honest verdict:
+
+### A.1 Three things the research established
+
+**1. Bun has no iOS port, and the project is mid-rewrite.**
+- `oven-sh/bun#339` (mobile build) was closed *not planned*.
+- `oven-sh/bun#9436` (iOS discussion, March 2024) has zero maintainer engagement; the one community Swift-bridge experiment was abandoned.
+- There is no Android port either — Bun has never been built for any mobile OS.
+- Anthropic acquired Bun on 2 December 2025 and the team is **trialing a Zig→Rust rewrite**. Any port done against today's Zig codebase is rebasing onto sand.
+
+**2. JIT-less JSC on iOS is well-understood (this part is real).**
+- JSC has a no-JIT mode: `ENABLE_JIT=0` at build, `JSC::Options::useJIT() = false` at runtime. Falls back to LLInt interpreter. Used by NativeScript, RN-JSC, node-jsc.
+- Performance hit: ~7.5× slower on compute (Coote 2020 benchmark). For our agent (mostly I/O, JSON, prompt assembly, native LLM calls), the practical hit is more like 2-3× — bearable, not great.
+- WKWebView gets full JIT via Apple's WebKit entitlement. Anything *outside* WKWebView (a separate `JSContext` or embedded JSC in Bun's binary) runs LLInt-only.
+
+**3. Our actual Node API surface is tiny.**
+
+Real grep counts across `eliza/packages/core`, `eliza/packages/agent`, `eliza/packages/app-core`, `eliza/plugins`, and `packages/`:
+
+| API                | Files using it | Classification           |
+|--------------------|----------------|--------------------------|
+| `process.env`      | 705            | PORTABLE                 |
+| `process.cwd/argv` | 149            | PORTABLE                 |
+| `EventEmitter`     | 17             | PORTABLE (polyfill)      |
+| `Bun.spawn`        | 14             | SHIM (throw on iOS)      |
+| `bun:ffi`          | 13             | SHIM (static symbols only) |
+| `Bun.build`        | 63             | STUB (build-time only, never runtime) |
+| `fs` (any)         | **4**          | SHIM                     |
+| `Bun.file`         | 3              | SHIM                     |
+| `path`             | 3              | PORTABLE                 |
+| `os`               | 2              | SHIM                     |
+| `crypto.randomUUID`| 1              | PORTABLE                 |
+| `Bun.serve`        | **1**          | STUB (game plugin only)  |
+| `url.fileURLToPath`| 2              | PORTABLE                 |
+
+The agent core does not depend on the Node-shaped surface in any meaningful way. The 705 `process.env` count is a one-liner shim. `fs` is used in 4 files — video temp files, training CLI, build-time tooling. **`Bun.serve` is used in exactly one file**, in a game plugin (`app-2004scape`). The whole "we need Bun to run the agent" framing turns out to be wrong because we already wrote the agent for a browser-shaped runtime.
+
+### A.2 Cost matrix
+
+| Path                                          | Eng-weeks | Binary cost | Perf class      | Risk                              |
+|-----------------------------------------------|-----------|-------------|-----------------|-----------------------------------|
+| **Port Bun to iOS (custom)**                  | 16–24+    | +8–15 MB    | JSC LLInt (~7×) | Highest. Bun is mid-rewrite; you're maintaining a fork forever |
+| **nodejs-mobile + Bun-shape shim**            | 4–8       | +10–15 MB   | V8 jitless (~3×) | Medium. nodejs-mobile is dormant (last release Oct 2024, Node 18 EOL April 2025) |
+| **System JSC (`JSContext`) + Bun+Node shim**  | 4–8       | 0           | JSC LLInt (~7×) | Medium. ~6–10k LOC of polyfills + Swift bridges to write |
+| **Agent in WKWebView (in-process or Worker)** | **1–2**   | **0**       | **Full JIT**    | **Lowest.** Agent already uses ~zero Node APIs |
+
+### A.3 What "fs calls etc. error gracefully" actually means
+
+Across all four paths above, the strategy is the same: **stub the unportable Node surface with a small shim file that throws helpful errors.** The mobile-stubs directory already does this for `sharp`, `canvas`, `onnxruntime-node`, `node-llama-cpp`, `pty-manager`, `puppeteer-core`. We extend the same pattern:
+
+- `child_process.spawn` / `Bun.spawn` → throws `Error("spawn is not available on iOS — agent runs in-process")`.
+- `fs.watch` → throws (rarely used).
+- `bun:ffi.dlopen("/path/to.dylib")` → throws unless the path is a known statically-linked symbol allow-list.
+- `os.homedir()` → returns iOS app sandbox `~/Library/Application Support/Milady`.
+- `os.tmpdir()` → returns `NSTemporaryDirectory()`.
+- `fs.readFile / writeFile / mkdir / readdir / stat` → routes through `@capacitor/filesystem` (already a dep) or directly to system calls in the embedded runtime case.
+
+The shim work is **the same code regardless of which runtime we pick** — because the agent code is what calls these APIs. Picking Bun-on-iOS vs WKWebView only changes where the shim is hosted.
+
+### A.4 The hard truth about porting Bun to iOS
+
+Even setting aside the Zig→Rust rewrite uncertainty, the actual work is:
+
+1. **Cross-build WebKit's JSC as a static lib for iOS without private APIs** (2–3 weeks; recipes exist in `node-jsc`, NativeScript). With `ENABLE_JIT=0`, `ENABLE_DFG_JIT=0`, `ENABLE_FTL_JIT=0`, `ENABLE_WEBASSEMBLY_BBQJIT=0`.
+2. **Cross-build every other native dep**: BoringSSL, c-ares, lolhtml, zstd, mimalloc, libuv. 1–2 weeks.
+3. **Wire `aarch64-ios` and `aarch64-ios-simulator` Zig targets** into Bun's `build.zig` + CMake. 2 weeks. The Zig support is there since 0.10; Bun's build config is not.
+4. **Refactor `main()` → `bun_embedded_run()` C ABI.** Bun's process-init owns the process today. 1–2 weeks.
+5. **Audit every `posix_spawn` / `fork` / TinyCC / arbitrary-`dlopen` site** and stub or remove. **3–4 weeks. This is the long pole.** Bun assumes desktop OS semantics in many places.
+6. **Refactor `bun:ffi`** to allow only statically-linked symbols (no TinyCC `cc`, no `dlopen` of arbitrary paths). Could be a feature flag.
+7. **First simulator boot + first device boot + sandbox path correctness + signals + kqueue + crypto entropy.** 4–6 weeks.
+8. **App Review pass.** Expect 1–2 rejection round-trips.
+9. **Permanent rebase tax** onto upstream Bun's weekly releases. Forever.
+
+Realistic total: **4–6 engineer-months minimum, 9–12 if anything goes wrong.** And "anything goes wrong" is the base case for a port of this complexity against an unsupportive upstream and a runtime mid-rewrite.
+
+For comparison: the **WKWebView agent path is 1–2 engineer-weeks**.
+
+### A.5 Recommendation (revised)
+
+**Do not port Bun to iOS.** Run the agent in the existing WKWebView. The justification is no longer "JIT is forbidden outside the WebView" — the JIT issue is real but solvable. The justification is:
+
+1. **Bun is the wrong abstraction for the agent.** We thought it was a hard dependency. The grep proves it's not. The agent uses `process.env`, `EventEmitter`, `Buffer`, `path`, `crypto.randomUUID`, and a handful of Bun-specific globals (`Bun.serve`, `Bun.file`) which are 200 LOC of trivial shimming. There is no `child_process` in the agent core. There are no `worker_threads`. There is no `bun:ffi` outside the Android-specific AOSP llama loader (which is already gated by `ELIZA_LOCAL_LLAMA=1`).
+2. **The mobile bundle already does most of this work.** `build-mobile-bundle.mjs` produces a static ESM-like bundle with no `node_modules` at runtime, statically inlined plugins via `STATIC_ELIZA_PLUGINS`, and mobile stubs replacing the heavy native modules. We add **one more emission target** — `--target=webview` — that swaps the remaining Node-shaped stubs for browser-shaped ones, and the bundle imports cleanly into the React app's JS.
+3. **WKWebView gives us full-tier JSC JIT for free.** No engine to ship. No App Review surprise. No fork to maintain.
+4. **The performance ceiling is set by llama.cpp on Metal, not by the JS runtime.** The JS does prompt assembly, planner state, tool dispatch — all of which is dwarfed by the actual LLM token generation in Metal shaders.
+5. **The "we lose Bun.serve" problem is a non-problem.** Bun.serve is used in one file in the entire codebase, in a game plugin. The agent's HTTP API surface in mobile mode can be served by in-process function calls instead of a loopback HTTP server. The WebView UI talks to the agent via `postMessage` or direct function imports, not via `fetch('http://localhost:31337')`.
+
+The only argument for porting Bun would be **API compatibility for future plugins that assume Bun globals**. That's a real concern but the right answer is a 200-LOC `Bun` polyfill shipped with the WebView bundle, not 5 months of build-system work.
+
+### A.6 If you still want a Bun-on-iOS path
+
+I'll be wrong about the WKWebView path eventually — there will be a plugin that genuinely needs full Node semantics. When that happens, the staircase is:
+
+- **Tier A (today):** Agent in WKWebView. Bun-polyfill (~200 LOC) for `Bun.serve` / `Bun.file`. Browser-shape `fs` over Capacitor Filesystem. ~95% of plugins work.
+- **Tier B (when A breaks):** Add **nodejs-mobile** as a second runtime, used by plugins that genuinely need full Node. The React UI talks to the nodejs-mobile worker over a JSI bridge or a loopback socket. 4–8 engineer-weeks.
+- **Tier C (when B is insufficient):** Reconsider the Bun port at that point, against post-rewrite Rust Bun. Likely never needed.
+
+We have nodejs-mobile as a backstop. We do not need to commit to it preemptively. We do not need to commit to the Bun port at all.
+
+### A.7 Bottom line
+
+The user's instinct ("compile Bun to iOS and just make sure fs calls etc. error") was correct in spirit (use the same agent code, error gracefully on what doesn't work) but wrong in mechanism (Bun-the-runtime is not the actual dependency). The agent's only meaningful Bun dependence is on **the Bun build system as a TypeScript-to-static-bundle compiler** — which we use offline, on a Mac, before shipping. The runtime side of Bun is barely touched by our code.
+
+The right read of this is: **the iOS port is a mobile bundle build variant and a small polyfill, not a runtime port.** We are ~2 engineer-weeks from end-to-end on-device on iOS Simulator. The Bun-port path is 5 months. Pick the 2 weeks.
