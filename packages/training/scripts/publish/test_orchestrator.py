@@ -425,9 +425,12 @@ def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:
 def test_bad_checksum_manifest_blocks_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     checksum_path = bundle / "checksums" / "SHA256SUMS"
-    checksum_path.write_text(
-        checksum_path.read_text().replace("0", "1", 1)
-    )
+    lines = checksum_path.read_text().splitlines()
+    target_i = next(i for i, line in enumerate(lines) if "  text/" in line)
+    first_sha, first_path = lines[target_i].split(None, 1)
+    lines[target_i] = f"{'f' * 64}  {first_path}"
+    assert first_sha != "f" * 64
+    checksum_path.write_text("\n".join(lines) + "\n")
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
@@ -490,6 +493,7 @@ def test_failing_kernel_verification_blocks_publish(tmp_path: Path) -> None:
             }
         )
     )
+    _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
