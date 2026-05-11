@@ -177,11 +177,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// elizaOS/llama.cpp @ v0.4.0-milady (milady/integration HEAD).
-// Composes TBQ (apothic) + QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources
-// (W1-D) + DFlash spec-decode (W2) + W3-B fused CPU kernels + W4-B CUDA
-// QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. See
-// docs/porting/unified-fork-strategy.md for the full migration story.
+// elizaOS/llama.cpp @ v1.0.0-eliza (same tree as the prior v0.4.0-milady tag,
+// commit 08032d57 — re-tagged on the elizaOS rename). Composes TBQ (apothic) +
+// QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
+// (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
+// upstream b8198. See docs/porting/unified-fork-strategy.md for the full
+// migration story.
+//
+// The fork ships in-tree as the git submodule at packages/inference/llama.cpp
+// (next to the dflash build at scripts/build-llama-cpp-dflash.mjs — same
+// pinned commit so both build paths land on identical kernels). When that
+// submodule is initialized this path defaults to it (no clone needed); pass
+// `--src-dir` to point at another checkout, or `--cache-dir` to force a
+// standalone clone of `${LLAMA_CPP_REMOTE}` at `${LLAMA_CPP_TAG}`.
 //
 // Pre-2026-05-09 the AOSP path consumed apothic/llama.cpp-1bit-turboquant
 // directly and applied vendored QJL + PolarQuant patch series via
@@ -189,11 +197,32 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v0.4.0-milady";
+export const LLAMA_CPP_TAG = "v1.0.0-eliza";
 export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
 export const LLAMA_CPP_REMOTE =
   "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+
+// The in-repo submodule checkout of the fork (packages/inference/llama.cpp).
+// `repoRoot` resolves to the repo root that contains a top-level package.json.
+const LLAMA_CPP_SUBMODULE_DIR = path.join(
+  repoRoot,
+  "packages",
+  "inference",
+  "llama.cpp",
+);
+// True when the submodule is checked out (has a worktree). When so, the AOSP
+// cross-compile defaults its source dir to it instead of cloning.
+export function llamaCppSubmodulePresent() {
+  try {
+    return (
+      fs.existsSync(path.join(LLAMA_CPP_SUBMODULE_DIR, ".git")) &&
+      fs.existsSync(path.join(LLAMA_CPP_SUBMODULE_DIR, "CMakeLists.txt"))
+    );
+  } catch {
+    return false;
+  }
+}
 
 export const ABI_TARGETS = [
   {
@@ -231,6 +260,7 @@ export function parseArgs(argv) {
     skipIfPresent: false,
     jobs: Math.max(1, Math.min(os.cpus().length, 8)),
     srcDir: null,
+    cacheDirExplicit: false,
   };
 
   const readFlagValue = (flag, index) => {
@@ -248,6 +278,7 @@ export function parseArgs(argv) {
       i += 1;
     } else if (arg === "--cache-dir") {
       args.cacheDir = path.resolve(readFlagValue(arg, i));
+      args.cacheDirExplicit = true;
       i += 1;
     } else if (arg === "--src-dir") {
       args.srcDir = path.resolve(readFlagValue(arg, i));
@@ -276,16 +307,27 @@ export function parseArgs(argv) {
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-libllama.mjs " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
           "[--abi <arm64-v8a|x86_64>] [--jobs <N>] [--skip-if-present]\n" +
-          "  --src-dir <PATH>  Use an existing llama.cpp / buun-llama-cpp checkout\n" +
-          "                    instead of cloning. The directory's HEAD is used as-is;\n" +
-          "                    the pinned LLAMA_CPP_TAG/COMMIT in this script is ignored.\n" +
-          "                    Use this to build the spiritbuun/buun-llama-cpp fork\n" +
-          "                    (TurboQuant KV-cache + DFlash kernels).",
+          "  --src-dir <PATH>  Use an existing llama.cpp checkout instead of the\n" +
+          "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
+          "                    is used as-is; the pinned LLAMA_CPP_TAG/COMMIT is ignored.\n" +
+          `  Default source:   the git submodule packages/inference/llama.cpp\n` +
+          `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_TAG}) when initialized;\n` +
+          `                    otherwise a standalone clone under --cache-dir.\n` +
+          "  --cache-dir <PATH>  Force the standalone-clone path even when the submodule\n" +
+          "                    is present.",
       );
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
     }
+  }
+
+  // Default the source dir to the in-repo submodule when it is initialized and
+  // the caller did not point us elsewhere (--src-dir) or force a standalone
+  // clone (--cache-dir). Keeps both build paths (dflash + AOSP) on the exact
+  // same pinned commit.
+  if (!args.srcDir && !args.cacheDirExplicit && llamaCppSubmodulePresent()) {
+    args.srcDir = LLAMA_CPP_SUBMODULE_DIR;
   }
 
   return args;
@@ -1260,19 +1302,40 @@ export async function main(argv = process.argv.slice(2)) {
     if (!fs.existsSync(path.join(args.srcDir, "CMakeLists.txt"))) {
       throw new Error(
         `[compile-libllama] --src-dir ${args.srcDir} does not contain a CMakeLists.txt; ` +
-          `expected a llama.cpp / buun-llama-cpp checkout.`,
+          `expected a llama.cpp checkout.`,
       );
     }
     srcDir = args.srcDir;
+    const isSubmodule =
+      path.resolve(srcDir) === path.resolve(LLAMA_CPP_SUBMODULE_DIR);
     let headRef = "(unknown)";
     try {
-      headRef = fs.readFileSync(path.join(srcDir, ".git", "HEAD"), "utf8").trim();
+      // A submodule's `.git` is a file (`gitdir: ...`), not a dir, so resolve
+      // HEAD via `git rev-parse` rather than reading `.git/HEAD` directly.
+      const out = spawnSync("git", ["-C", srcDir, "rev-parse", "HEAD"], {
+        encoding: "utf8",
+      });
+      if (out.status === 0) headRef = out.stdout.trim();
     } catch {}
-    console.log(
-      `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
-        `pinned tag ${LLAMA_CPP_TAG} ignored.`,
-    );
-    srcDescription = `external src-dir ${srcDir}`;
+    if (isSubmodule) {
+      // The in-repo submodule is pinned by the eliza repo's gitlink. Discard
+      // the source patches a prior build left behind (tracked + untracked)
+      // before re-applying them, so a fresh artifact starts from the pristine
+      // submodule tree. Never detach/fetch — `bun install` keeps it pinned.
+      console.log(
+        `[compile-libllama] Using the in-repo llama.cpp submodule ${srcDir} ` +
+          `(HEAD: ${headRef}); resetting prior source patches.`,
+      );
+      run("git", ["-C", srcDir, "checkout", "--", "."], {});
+      run("git", ["-C", srcDir, "clean", "-fdx"], {});
+      srcDescription = `submodule packages/inference/llama.cpp @ ${headRef.slice(0, 12)}`;
+    } else {
+      console.log(
+        `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
+          `pinned tag ${LLAMA_CPP_TAG} ignored.`,
+      );
+      srcDescription = `external src-dir ${srcDir}`;
+    }
   } else {
     srcDir = ensureLlamaCppCheckout({
       cacheDir: args.cacheDir,
