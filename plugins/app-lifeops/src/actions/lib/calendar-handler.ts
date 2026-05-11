@@ -178,8 +178,8 @@ const CALENDAR_DETAIL_ALIASES = {
   timeZone: ["timezone", "time_zone"],
   forceSync: ["forcesync", "force_sync"],
   windowDays: ["windowdays", "window_days"],
-  startAt: ["startat", "start_at"],
-  endAt: ["endat", "end_at"],
+  startAt: ["startat", "start_at", "start", "start_time", "starttime"],
+  endAt: ["endat", "end_at", "end", "end_time", "endtime"],
   durationMinutes: ["durationminutes", "duration_minutes"],
   windowPreset: ["windowpreset", "window_preset"],
   eventId: [

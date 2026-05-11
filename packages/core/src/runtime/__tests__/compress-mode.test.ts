@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
+import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver";
 import {
 	__renderAvailableActionsBlockForTests,
 	__renderRoutingHintsBlockForTests,
@@ -62,11 +62,7 @@ describe("Wave 2-D compress mode (MILADY_PROMPT_COMPRESS)", () => {
 		});
 		const baseline = "Untouched baseline";
 
-		const before = resolveOptimizedPrompt(
-			service,
-			"message-handler",
-			baseline,
-		);
+		const before = resolveOptimizedPrompt(service, "message-handler", baseline);
 		expect(before).toContain("Demonstrations:");
 		expect(before).toContain("example user 0");
 

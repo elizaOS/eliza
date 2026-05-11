@@ -9,8 +9,8 @@ import {
 	type PersonalityAuditEntry,
 	type PersonalityProfile,
 	type PersonalityScope,
-	type PersonalitySlot,
 	PersonalityServiceType,
+	type PersonalitySlot,
 } from "../types.ts";
 
 type SlotKey = string;

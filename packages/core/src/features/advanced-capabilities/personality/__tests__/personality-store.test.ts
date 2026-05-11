@@ -82,12 +82,12 @@ describe("PersonalityStore", () => {
 			trait: "verbosity",
 			value: "verbose",
 		});
-		expect(
-			store.getSlot(USER_A as never, AGENT as never).verbosity,
-		).toBe("terse");
-		expect(
-			store.getSlot(USER_B as never, AGENT as never).verbosity,
-		).toBe("verbose");
+		expect(store.getSlot(USER_A as never, AGENT as never).verbosity).toBe(
+			"terse",
+		);
+		expect(store.getSlot(USER_B as never, AGENT as never).verbosity).toBe(
+			"verbose",
+		);
 	});
 
 	test("global scope write applies across users via getSlot('global')", () => {
@@ -100,9 +100,9 @@ describe("PersonalityStore", () => {
 			trait: "tone",
 			value: "direct",
 		});
-		expect(
-			store.getSlot(GLOBAL_PERSONALITY_SCOPE, AGENT as never).tone,
-		).toBe("direct");
+		expect(store.getSlot(GLOBAL_PERSONALITY_SCOPE, AGENT as never).tone).toBe(
+			"direct",
+		);
 	});
 
 	test("addDirective evicts FIFO at the cap", () => {

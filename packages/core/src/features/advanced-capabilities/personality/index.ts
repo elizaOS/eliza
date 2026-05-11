@@ -4,16 +4,16 @@
 
 export { characterAction } from "./actions/character.ts";
 export { personalityAction } from "./actions/personality.ts";
+export { defaultProfiles } from "./profiles/index.ts";
 export { userPersonalityProvider } from "./providers/user-personality.ts";
+export * from "./reply-gate.ts";
 // CharacterFileManager + PersonalityStore are lazy-loaded in advancedServices
 // (advanced-capabilities/index.ts) to avoid circular dependency with @elizaos/core.
 export type { CharacterFileManager } from "./services/character-file-manager.ts";
 export type { PersonalityStore } from "./services/personality-store.ts";
 export { getPersonalityStore } from "./services/personality-store.ts";
-export * from "./reply-gate.ts";
-export * from "./verbosity-enforcer.ts";
 export * from "./types.ts";
-export { defaultProfiles } from "./profiles/index.ts";
+export * from "./verbosity-enforcer.ts";
 
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel

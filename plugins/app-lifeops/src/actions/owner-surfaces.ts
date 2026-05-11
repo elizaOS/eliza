@@ -1,7 +1,9 @@
 import type {
   Action,
+  ActionParameters,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -84,30 +86,31 @@ function readStringParam(options: unknown, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-function readParameters(options: unknown): Record<string, unknown> {
+function readParameters(options: unknown): ActionParameters {
   if (!options || typeof options !== "object") return {};
   const record = options as Record<string, unknown>;
   const params = record.parameters;
-  return params && typeof params === "object" && !Array.isArray(params)
-    ? { ...(params as Record<string, unknown>) }
-    : { ...record };
+  if (params && typeof params === "object" && !Array.isArray(params)) {
+    return { ...(params as ActionParameters) };
+  }
+  return { ...(record as ActionParameters) };
 }
 
 function withParameters(
   options: unknown,
-  parameters: Record<string, unknown>,
-): { parameters: Record<string, unknown> } & Record<string, unknown> {
+  parameters: ActionParameters,
+): HandlerOptions {
   if (!options || typeof options !== "object") {
     return { parameters };
   }
-  const record = options as Record<string, unknown>;
+  const record = options as HandlerOptions;
   return {
     ...record,
     parameters,
   };
 }
 
-function mirrorActionToSubaction(options: unknown): unknown {
+function mirrorActionToSubaction(options: unknown): HandlerOptions {
   const params = readParameters(options);
   const action =
     typeof params.action === "string"
@@ -391,6 +394,7 @@ export const ownerHealthAction: Action = {
     },
     ...HEALTH_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
+  validate: LIFE_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runHealthHandler(
       runtime,
@@ -424,6 +428,7 @@ export const ownerScreenTimeAction: Action = {
       (parameter) => parameter.name !== "subaction",
     ),
   ],
+  validate: LIFE_VALIDATE,
   handler: (runtime, message, state, options, callback) =>
     runScreenTimeHandler(
       runtime,
@@ -450,6 +455,7 @@ export const ownerFinancesAction: Action = {
     },
     ...MONEY_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
+  validate: LIFE_VALIDATE,
   handler: (runtime, message, state, options, _callback) =>
     runMoneyHandler(runtime, message, state, mirrorActionToSubaction(options)),
 };

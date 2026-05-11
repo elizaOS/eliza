@@ -1,0 +1,67 @@
+{
+  "name": "@elizaos/capacitor-bun-runtime",
+  "version": "0.1.0",
+  "description": "Embedded Bun-shape JS runtime for iOS (and Android, falls back to JNI later)",
+  "keywords": [
+    "capacitor",
+    "bun",
+    "javascriptcore",
+    "embedded-runtime",
+    "milady",
+    "eliza"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "ios/Sources/",
+    "ios/Tests/",
+    "ElizaosCapacitorBunRuntime.podspec",
+    "dist/",
+    "src/",
+    "README.md"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/native-plugins/bun-runtime"
+  },
+  "scripts": {
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaosCapacitorBunRuntime"
+    }
+  }
+}

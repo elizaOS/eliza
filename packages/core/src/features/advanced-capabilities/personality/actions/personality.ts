@@ -22,13 +22,13 @@ import {
 	MAX_CUSTOM_DIRECTIVES,
 	MAX_DIRECTIVE_CHARS,
 	PERSONALITY_AUDIT_TABLE,
+	type PersonalityScope,
+	type PersonalitySlot,
 	REPLY_GATE_VALUES,
 	SCOPE_VALUES,
 	TONE_VALUES,
 	TRAIT_VALUES,
 	VERBOSITY_VALUES,
-	type PersonalityScope,
-	type PersonalitySlot,
 } from "../types.ts";
 
 const PERSONALITY_OPS = [
@@ -53,10 +53,7 @@ const ADMIN_REQUIRED_GLOBAL_OPS = new Set<PersonalityOp>([
 	"clear_directives",
 ]);
 
-const ADMIN_ONLY_OPS = new Set<PersonalityOp>([
-	"load_profile",
-	"save_profile",
-]);
+const ADMIN_ONLY_OPS = new Set<PersonalityOp>(["load_profile", "save_profile"]);
 
 interface PersonalityParameters {
 	op?: string;
@@ -160,7 +157,7 @@ function paramError(op: PersonalityOp, message: string): ActionResult {
 
 function clarifyScopeResult(op: PersonalityOp): ActionResult {
 	const text =
-		"Did you mean this for you specifically, or globally? Please clarify the scope (\"for me\" / \"globally\").";
+		'Did you mean this for you specifically, or globally? Please clarify the scope ("for me" / "globally").';
 	return {
 		text,
 		success: false,
@@ -361,11 +358,7 @@ export const personalityAction: Action = {
 			return result;
 		}
 
-		if (
-			scope === "global" &&
-			ADMIN_REQUIRED_GLOBAL_OPS.has(op) &&
-			!isAdmin
-		) {
+		if (scope === "global" && ADMIN_REQUIRED_GLOBAL_OPS.has(op) && !isAdmin) {
 			return denyResult(
 				op,
 				`Permission denied: only admins or the owner may change the global personality.`,
@@ -494,7 +487,10 @@ export const personalityAction: Action = {
 			},
 		],
 		[
-			{ name: "{{user}}", content: { text: "load the focused profile globally" } },
+			{
+				name: "{{user}}",
+				content: { text: "load the focused profile globally" },
+			},
 			{
 				name: "{{agent}}",
 				content: {
@@ -530,8 +526,10 @@ function isValidTraitValue(
 	trait: "verbosity" | "tone" | "formality",
 	value: string,
 ): boolean {
-	if (trait === "verbosity") return (VERBOSITY_VALUES as readonly string[]).includes(value);
-	if (trait === "tone") return (TONE_VALUES as readonly string[]).includes(value);
+	if (trait === "verbosity")
+		return (VERBOSITY_VALUES as readonly string[]).includes(value);
+	if (trait === "tone")
+		return (TONE_VALUES as readonly string[]).includes(value);
 	return (FORMALITY_VALUES as readonly string[]).includes(value);
 }
 

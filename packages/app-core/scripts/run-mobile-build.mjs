@@ -2025,6 +2025,14 @@ function generatePodfile() {
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
+    // ElizaosCapacitorBunRuntime ships the embedded JSContext-based Bun-shape
+    // runtime AND the Swift bridge to llama.cpp. The Pod's podspec vendors
+    // the LlamaCpp.xcframework built by
+    // `native/ios-bun-port/vendor-deps/llama.cpp/build-ios.sh`. Included
+    // unconditionally — on-device inference is the whole point of this Pod;
+    // if a build target doesn't want llama, drop the dep entirely instead of
+    // shipping a JS bridge that can't load a model.
+    ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
     ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
   ];
   if (!includeLlama) {

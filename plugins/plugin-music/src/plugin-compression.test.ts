@@ -12,9 +12,28 @@ describe("music plugin compression", () => {
     ]);
   });
 
-  it("registers the unified MUSIC action only", () => {
+  it("registers the unified MUSIC action with promoted subactions", () => {
     expect(musicPlugin.actions?.map((action) => action.name)).toEqual([
       "MUSIC",
+      "MUSIC_PLAY",
+      "MUSIC_PAUSE",
+      "MUSIC_RESUME",
+      "MUSIC_SKIP",
+      "MUSIC_STOP",
+      "MUSIC_QUEUE_VIEW",
+      "MUSIC_QUEUE_ADD",
+      "MUSIC_QUEUE_CLEAR",
+      "MUSIC_PLAYLIST_PLAY",
+      "MUSIC_PLAYLIST_SAVE",
+      "MUSIC_SEARCH",
+      "MUSIC_PLAY_QUERY",
+      "MUSIC_DOWNLOAD",
+      "MUSIC_PLAY_AUDIO",
+      "MUSIC_SET_ROUTING",
+      "MUSIC_SET_ZONE",
+      "MUSIC_GENERATE",
+      "MUSIC_EXTEND",
+      "MUSIC_CUSTOM_GENERATE",
     ]);
   });
 

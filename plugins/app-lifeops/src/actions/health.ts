@@ -17,6 +17,7 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
@@ -351,7 +352,7 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
 export async function runHealthHandler(
   runtime: IAgentRuntime,
   message: Memory,
-  state: unknown,
+  state: State | undefined,
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {

@@ -5,6 +5,7 @@ import {
 } from "@elizaos/agent";
 import type {
   ActionResult,
+  AgentContext,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
@@ -2033,7 +2034,7 @@ async function isForeignPageScope(
 // LIFE itself is no longer planner-visible — owner-surfaces re-publishes the
 // individual reminder/alarm/goal/todo/routine umbrellas that delegate into
 // `runLifeOperationHandler` below.
-export const LIFE_TAGS: readonly string[] = [
+export const LIFE_TAGS: string[] = [
   "domain:reminders",
   "capability:read",
   "capability:write",
@@ -2043,7 +2044,7 @@ export const LIFE_TAGS: readonly string[] = [
   "surface:internal",
 ];
 
-export const LIFE_CONTEXTS: readonly string[] = [
+export const LIFE_CONTEXTS: AgentContext[] = [
   "general",
   "tasks",
   "todos",
@@ -2068,7 +2069,7 @@ export async function runLifeOperationHandler(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
-  options: unknown,
+  options: HandlerOptions | undefined,
   _callback?: HandlerCallback,
 ): Promise<ActionResult> {
     // Defense-in-depth: validate() excludes LIFE from planner candidates on
