@@ -119,7 +119,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "needs-runtime-smoke",
+        "vulkan": "runtime-ready",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -150,7 +150,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "needs-runtime-smoke",
+        "vulkan": "runtime-ready",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -182,7 +182,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "needs-runtime-smoke",
+        "vulkan": "runtime-ready",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -213,7 +213,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "needs-runtime-smoke",
+        "vulkan": "runtime-ready",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }
@@ -248,7 +248,7 @@
       },
       "runtimeStatus": {
         "metal": "runtime-ready",
-        "vulkan": "needs-runtime-smoke",
+        "vulkan": "runtime-ready",
         "cuda": "needs-hardware",
         "cpu": "reference-only"
       }

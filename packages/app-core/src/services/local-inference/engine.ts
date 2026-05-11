@@ -43,10 +43,7 @@ import {
   resolveDefaultPoolSize,
   SessionPool,
 } from "./session-pool";
-import {
-  compileSkeletonToGbnf,
-  resolveResponseSkeleton,
-} from "./structured-output";
+import { resolveGrammarForParams } from "./structured-output";
 import {
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
@@ -115,20 +112,15 @@ interface LlamaContext {
 
 /**
  * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
- * Precedence: an explicit `grammar` on the args, then a compiled forced
- * skeleton (single-value enums collapsed to literals). Returns null when
- * neither is set — generation is unconstrained as before.
+ * Precedence: an explicit `grammar` string on the args, then a compiled
+ * forced skeleton (single-value enums collapsed to literals). Returns null
+ * when neither is set — generation is unconstrained as before. node-llama-cpp
+ * has no `grammar_lazy`, so a lazy grammar from the skeleton is applied
+ * eagerly here; that's still correct (the leading literal is the trigger).
  */
 function resolveBindingGrammarSource(args: GenerateArgs): string | null {
-  if (args.grammar && args.grammar.source.trim().length > 0) {
-    return args.grammar.source;
-  }
-  const skeleton = resolveResponseSkeleton(args);
-  if (skeleton) {
-    const compiled = compileSkeletonToGbnf(skeleton);
-    if (compiled) return compiled.source;
-  }
-  return null;
+  const grammar = resolveGrammarForParams(args);
+  return grammar ? grammar.source : null;
 }
 
 interface LlamaGrammar {
@@ -805,6 +797,52 @@ export class LocalInferenceEngine {
       },
       slotId: handle.slotId,
     };
+  }
+
+  /**
+   * KV-prefill a conversation's pinned slot with a known prompt prefix
+   * (system prompt + provider context + tool/action schema block + the
+   * assistant-turn start), before the real request lands. This is item I1 /
+   * C1 of the voice swarm — fire it the moment a message arrives / STT
+   * starts so the response-handler prompt is already in the slot's KV when
+   * the user's tokens are appended.
+   *
+   * `conversationOrId` may be a `ConversationHandle` (preferred — pins to
+   * the handle's slot) or a raw conversation id (a handle is opened on the
+   * fly so the slot derivation matches the real request). Idempotent /
+   * cheap to call repeatedly: `cache_prompt: true` reuses the prefix so a
+   * second call is a no-op forward pass. Only meaningful on the
+   * llama-server backend — the node-llama-cpp session pool already pins
+   * by cache key, so this is a no-op (returns false) there. Returns true
+   * when a pre-warm request was issued.
+   */
+  async prewarmConversation(
+    conversationOrId: ConversationHandle | string,
+    promptPrefix: string,
+    opts: { modelId?: string } = {},
+  ): Promise<boolean> {
+    if (this.activeBackendId() !== "llama-server") return false;
+    let slotId: number;
+    let cacheKey: string;
+    if (typeof conversationOrId === "string") {
+      const modelId =
+        opts.modelId ??
+        this.currentModelPath() ??
+        "default-local-model";
+      const handle =
+        this.conversation(conversationOrId, modelId) ??
+        this.openConversation({ conversationId: conversationOrId, modelId });
+      slotId = handle.slotId;
+      cacheKey = `conv:${handle.conversationId}`;
+    } else {
+      if (conversationOrId.closed) return false;
+      slotId = conversationOrId.slotId;
+      cacheKey = `conv:${conversationOrId.conversationId}`;
+    }
+    return dflashLlamaServer.prewarmConversation(promptPrefix, {
+      slotId,
+      cacheKey,
+    });
   }
 
   /**
