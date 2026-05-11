@@ -12,8 +12,8 @@ import { existsSync, readdirSync, readFileSync, statSync } from "fs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import { homedir } from "os";
 import { join } from "path";
-import { parseArgs } from "util";
 import { fileURLToPath } from "url";
+import { parseArgs } from "util";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,
@@ -38,6 +38,7 @@ import {
 } from "./roleplay-trajectories.js";
 import { ALL_BLUEPRINTS, BLUEPRINT_STATS } from "./scenario-blueprints.js";
 import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
+
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
 type AgentDecision = (typeof AGENT_DECISIONS)[number];
 
@@ -74,7 +75,8 @@ function getTeacherModel(): TeacherModel {
   // teacher generates synthetic conversations; the agent under test is
   // unaffected.
   const trainProvider =
-    process.env.TRAIN_MODEL_PROVIDER?.trim() ?? process.env.TRAINING_PROVIDER?.trim();
+    process.env.TRAIN_MODEL_PROVIDER?.trim() ??
+    process.env.TRAINING_PROVIDER?.trim();
   const cerebrasKey = process.env.CEREBRAS_API_KEY;
   if (trainProvider === "cerebras" && cerebrasKey) {
     console.log("Using Cerebras gpt-oss-120b as teacher model");
@@ -222,7 +224,9 @@ async function cmdCompare(args: string[]) {
       "  --mode <mode>          vs_historical (default) | pairwise",
     );
     console.error("  --max-examples N       Cap evaluations (default: all)");
-    console.error("  --tolerance N          Pass threshold delta (default: 0.02)");
+    console.error(
+      "  --tolerance N          Pass threshold delta (default: 0.02)",
+    );
     console.error("  --temperature N        Sampling temperature (default: 0)");
     console.error("  --max-tokens N         Per-completion cap (default: 512)");
     console.error("  -o, --output <path>    Write JSON result to file");
@@ -358,9 +362,7 @@ function stringifyContent(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function stageToJsonlRow(
-  stage: RecordedStage,
-): Record<string, unknown> | null {
+function stageToJsonlRow(stage: RecordedStage): Record<string, unknown> | null {
   const messages = stage.model?.messages ?? [];
   const response = stage.model?.response;
   if (messages.length === 0) return null;
@@ -500,6 +502,82 @@ async function cmdValidate(args: string[]) {
   console.log(formatQualityReport(report));
 }
 
+const OPTIMIZED_PROMPT_TASKS_CLI = [
+  "should_respond",
+  "context_routing",
+  "action_planner",
+  "response",
+  "media_description",
+] as const;
+type OptimizedPromptTaskCli = (typeof OPTIMIZED_PROMPT_TASKS_CLI)[number];
+
+function isOptimizedPromptTaskCli(
+  value: string,
+): value is OptimizedPromptTaskCli {
+  return (OPTIMIZED_PROMPT_TASKS_CLI as readonly string[]).includes(value);
+}
+
+/**
+ * Flip the `current` and `previous` symlinks in
+ * `<state-dir>/optimized-prompts/<task>/` so the previously-deployed prompt
+ * artifact becomes live again. Defers to `OptimizedPromptService.rollback`
+ * so the CLI and runtime share one implementation.
+ */
+async function cmdRollbackPrompt(args: string[]) {
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      task: { type: "string" },
+      "store-root": { type: "string" },
+    },
+    allowPositionals: true,
+  });
+
+  const taskName =
+    (values.task as string | undefined)?.trim() ?? positionals[0]?.trim();
+  if (!taskName) {
+    console.error(
+      `Usage: rollback-prompt <task>\n  task: one of ${OPTIMIZED_PROMPT_TASKS_CLI.join(", ")}`,
+    );
+    process.exit(1);
+  }
+  if (!isOptimizedPromptTaskCli(taskName)) {
+    console.error(
+      `Unknown task "${taskName}". Must be one of: ${OPTIMIZED_PROMPT_TASKS_CLI.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
+  const { OptimizedPromptService } = await import("@elizaos/core");
+  const service = new OptimizedPromptService();
+  const customRoot = (values["store-root"] as string | undefined)?.trim();
+  if (customRoot) {
+    service.setStoreRoot(customRoot);
+  } else {
+    // Match the runtime precedence used by `bun run train`: MILADY_STATE_DIR
+    // then ELIZA_STATE_DIR then ~/.eliza. Stay aligned so `rollback-prompt`
+    // operates on the same store the runtime + train CLI write to.
+    const stateDir =
+      process.env.MILADY_STATE_DIR?.trim() ||
+      process.env.ELIZA_STATE_DIR?.trim() ||
+      join(homedir(), ".eliza");
+    service.setStoreRoot(join(stateDir, "optimized-prompts"));
+  }
+
+  await service.refresh();
+  try {
+    const newCurrent = await service.rollback(taskName);
+    console.log(
+      `[rollback-prompt] task=${taskName} now points at ${newCurrent}`,
+    );
+  } catch (err) {
+    console.error(
+      `[rollback-prompt] ${err instanceof Error ? err.message : String(err)}`,
+    );
+    process.exit(1);
+  }
+}
+
 // ==================== Main ====================
 
 async function main() {
@@ -519,6 +597,9 @@ async function main() {
       break;
     case "export-trajectories":
       await cmdExportTrajectories(restArgs);
+      break;
+    case "rollback-prompt":
+      await cmdRollbackPrompt(restArgs);
       break;
     default:
       console.log(`Usage: cli.ts <command> [options]
@@ -552,6 +633,12 @@ Commands:
     --max-tokens N     Per-completion cap (default: 512)
     -o, --output PATH  Write JSON result to file
     Exits with code 2 if variant regresses beyond --tolerance.
+
+  rollback-prompt   Flip the optimized-prompt 'current' and 'previous' symlinks
+    <task>            Required positional: should_respond | context_routing |
+                      action_planner | response | media_description
+    --store-root DIR  Override the optimized-prompts store root (default:
+                      $MILADY_STATE_DIR / $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model
