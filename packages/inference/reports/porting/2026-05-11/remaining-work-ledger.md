@@ -28,7 +28,10 @@ with the status below.
 | Metal artifact gate | `darwin-arm64-metal`, `darwin-arm64-metal-fused`, `ios-arm64-metal`, and `ios-arm64-simulator-metal` pass the build-script capability gate. | `build-llama-cpp-dflash.mjs` reads `verify/metal-runtime-dispatch-evidence.json` and reports each Metal runtime capability true only when the matching shipped symbol and runtime-ready evidence are both present. Fresh builds wrote `CAPABILITIES.json` with `dflash`, `turbo3`, `turbo4`, `turbo3_tcq`, `qjl_full`, `polarquant`, `lookahead`, and `ngramDraft` true. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
 | Android Vulkan standalone runner | Pixel 6a Mali standalone validation is real-device ready; Adreno and graph-dispatch evidence remain open. | Homebrew `android-platform-tools` + `android-commandlinetools` installed; SDK at `~/Library/Android/sdk`; `android_vulkan_smoke.sh` resolves NDKs under `ANDROID_HOME` / `ANDROID_SDK_ROOT`, statically links libc++, refuses emulators/software Vulkan unless explicitly allowed, and no longer trips `pipefail` on `vulkaninfo` truncation. `make -C packages/inference/verify android-vulkan-smoke` passed all six fixtures on Pixel 6a / Mali-G78 (`turbo3`, `turbo4`, `turbo3_tcq`, `qjl`, `polar`, `polar_qjl`; max diff <= `7.629e-06`) with evidence `verify/hardware-results/android-vulkan-smoke-20260511T062056Z.log`. |
-| Vulkan built-fork graph dispatch | Source-patched, pending native hardware smoke. | `vulkan-kernels.mjs` now stages the SPIR-V blobs, repairs `polar_preht` shader registration/pipeline creation, creates milady Vulkan pipelines, patches `ggml-vulkan.cpp` with milady-native runtime dispatch for `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ`, and `GGML_OP_ATTN_SCORE_POLAR`, and patches `supports_op`. `vulkan_dispatch_smoke.cpp` now drives all QJL, Turbo3, Turbo4, Turbo3-TCQ, Polar, and Polar+QJL graph routes numerically. This is not runtime-ready until `make -C packages/inference/verify vulkan-dispatch-smoke` passes on a native Vulkan build and Android graph-dispatch evidence is attached. |
+| Vulkan built-fork graph dispatch | **Runtime-ready on native Linux Intel-ANV hardware.** A2 built `linux-x64-vulkan` from the fork and ran `vulkan-dispatch-smoke` → 6/6 graph routes PASS on real Intel Arc/Xe (Mesa ANV); `kernel-contract.json` `runtimeStatus.vulkan` is `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` (commit e662143015) and `make -C packages/inference/verify kernel-contract` is green. | Evidence: `verify/vulkan-runtime-dispatch-evidence.json` (`runtimeReady: true`, all 5 kernels, `maxDiff` 2.7e-7…1.9e-6) + `verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`. Caveat: single Intel-ANV device class — AMD-native, NVIDIA-native, and Android Adreno/Mali Vulkan graph dispatch still needed. `vulkan-kernels.mjs` stages SPIR-V blobs, patches `ggml-vulkan.cpp` for `GGML_OP_ATTN_SCORE_{QJL,TBQ,POLAR}` + `supports_op`; `vulkan_dispatch_smoke.cpp` drives all six numeric routes. |
+| Fused attention (QJL-K + TBQ-V / Polar-V) | Foundation landed; no backend has verified a fused dispatch. C reference `eliza_fused_attn_qjl_tbq3` is bit-exact to the fork's `GGML_OP_FUSED_ATTN_QJL_TBQ` CPU op; round-tripped by `make -C packages/inference/verify reference-test`. Registered in `kernel-contract.json`'s `fusedAttn` section with capability key `fused_attn` — `needs-runtime-smoke` for vulkan/metal (no fused compute shader + `cases`-array harness path yet; `make vulkan-verify-fused`/`metal-verify-fused` fail by design), `needs-hardware` for cuda (`cuda_verify` parses `fused_attn_qjl_tbq.json` but needs an NVIDIA host). NOT yet a `requiredRuntimeCapabilityKey`/`manifestKernelName` — promote only once a backend reports a runtime-ready fused smoke. | `verify/fixtures/{fused_attn_qjl_tbq.json,fused_attn_qjl_polar.json,polar_preht.json}`; `reports/porting/2026-05-11/fused-attn-op-contract.md`; `reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md`. |
+| CPU SIMD paths | AVX-VNNI int8-QJL path (5.25× on this box), Polar pre-Hadamard SIMD, and ARM dotprod variants landed in `qjl-cpu`/`polarquant-cpu`. | `verify/bench_results/cpu_avxvnni_2026-05-11.json`; baseline `verify/hardware-results/linux-thismachine-cpu-baseline-2026-05-11.json`; `reports/porting/2026-05-11/this-machine-test-capability.md`. |
+| Platform target matrix | `kernel-contract.json` now tracks 23 build targets — added `linux-aarch64-{cpu,cuda}`, `windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` with cmake plumbing + CUDA arch pins (incl. Blackwell `sm_120`, GH200 `sm_90a`). All new targets `needs-hardware`. A `27b-1m` (1M-context, CUDA-only-backend) tier is now in the catalog/schema/Python manifest/platform-plan; `defaultEligible` blocked on real GH200 verify. | `make -C packages/inference/verify kernel-contract` (`targets=23`). |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
 | CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh --report <path>` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh --report <path>` additionally requires arm64 Linux + Hopper/compute-capability-9.x. Skip modes exit non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
@@ -56,28 +59,26 @@ with the status below.
    - A full Eliza-1 bundle smoke loads real text + voice assets on iOS and
      records first token, first audio, peak RSS, and thermal state.
 
-2. **Vulkan native graph-dispatch evidence**
+2. **Vulkan native graph-dispatch evidence — partially DONE (Intel-ANV)**
 
-   The Vulkan shaders and fixtures are verified, and the fork runtime patcher
-   now installs milady-native descriptors/push constants for QJL, TurboQuant,
-   and PolarQuant graph routes. The remaining blocker is native hardware
-   evidence from the built fork; MoltenVK fixture success is useful but does
-   not prove Linux/Android runtime dispatch.
+   Native Linux Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe
+   (Mesa ANV): `vulkan-dispatch-smoke` 6/6 PASS, `kernel-contract.json`
+   `runtimeStatus.vulkan` = `runtime-ready` for the 5 score kernels. Remaining:
+   native AMD and NVIDIA desktop Vulkan + Android Adreno/Mali. Fused-attention
+   on Vulkan/Metal still needs a fused compute kernel + `cases`-array harness
+   (no backend has verified a fused dispatch).
 
    Acceptance:
    - Native `linux-x64-vulkan` build contains the SPIR-V blobs and graph
-     routing.
+     routing. **Done.**
    - Smoke tests run on at least Intel/AMD/NVIDIA desktop Vulkan and one
-     Android Vulkan device class.
+     Android Vulkan device class. **Intel done** (`verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`); AMD, NVIDIA, Android still open.
    - `make -C packages/inference/verify vulkan-native-smoke` passes on native
-     Linux hardware without `ELIZA_ALLOW_SOFTWARE_VULKAN=1`; the runner now
-     writes `hardware-results/linux-vulkan-smoke-*.log`, refuses stale prebuilts
-     unless explicitly allowed, dumps `CAPABILITIES.json`, and stops on
-     symbol-only build output.
+     Linux hardware without `ELIZA_ALLOW_SOFTWARE_VULKAN=1`. **Done on Intel-ANV.**
    - `make -C packages/inference/verify android-vulkan-smoke` passes on one
      Adreno and one Mali device with `ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE`
-     pointing at a built-fork/app graph-dispatch report. Standalone fixture
-     success alone exits non-zero and remains evidence only.
+     pointing at a built-fork/app graph-dispatch report. **Still open** —
+     standalone fixture success alone exits non-zero and remains evidence only.
 
 3. **Fused voice runtime**
 
@@ -173,12 +174,14 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | iPhone/iPad | XCFramework symbol/structure audit passes for physical-device and simulator slices, and physical XCTest now passes 3/3 on iPhone 15 Pro. Next required action is a real Eliza-1 bundle smoke from the Capacitor app shell that measures first token, first audio latency, peak RSS, and thermal state. The current iOS ABI bridge is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired. |
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. Re-check at `2026-05-11T13:31:09Z`: local `adb` still lists only `emulator-5554`, `system_profiler SPUSBDataType` shows no Pixel/Android USB device, and `make -C packages/inference/verify android-vulkan-smoke` with explicit `ADB` correctly refused emulator evidence. |
 | Android Mali | Standalone Pixel 6a / Mali-G78 fixture validation passes for all six kernels. Remaining action is built-fork/app graph-dispatch evidence plus thermal/RSS. Re-check at `2026-05-11T13:31:09Z`: local `adb` still lists only `emulator-5554`, so no new physical-device run was possible from this Mac; runner evidence log is `packages/inference/verify/hardware-results/android-vulkan-smoke-20260511T133109Z.log`. |
-| Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |
-| Linux x64 Vulkan | Run `make -C packages/inference/verify vulkan-native-smoke` on Intel/AMD/NVIDIA, not only MoltenVK. |
-| Linux x64 ROCm | Build and run on MI300/MI250/RDNA; HIP parity is unproven. |
-| Linux aarch64 CUDA | Run on GH200-class host for the `27b-256k` tier. |
-| Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required. |
-| Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required. |
+| Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. `cuda_verify.cu` is now a self-contained fixture-parity harness (parses `fused_attn_qjl_tbq.json`); pending-evidence stub at `verify/hardware-results/cuda-linux-thismachine-2026-05-11.pending.json` (this box's dGPU is in D3cold, no kmod/nvcc). |
+| Linux x64 Vulkan | **DONE on Intel-ANV** — `vulkan-dispatch-smoke` 6/6 PASS, evidence `verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log` + `verify/vulkan-runtime-dispatch-evidence.json`. Still need native AMD and NVIDIA Vulkan, not only MoltenVK/Intel-ANV. |
+| Linux aarch64 CPU | Run CPU backend parity on an arm64 Linux host (`linux-aarch64-cpu` target, `needs-hardware`). |
+| Linux aarch64 CUDA | Run `gh200_runner.sh` on a GH200/H100/H200 aarch64 CUDA host for the `27b-256k` and `27b-1m` tiers. |
+| Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required (`windows-x64-{cpu,cuda,vulkan}` targets). |
+| Windows arm64 | Snapdragon X build + CPU/Vulkan smoke required (`windows-arm64-{cpu,vulkan}` targets). |
+| Intel/AMD Mac (x64) | Build `darwin-x64-metal` and run metal-verify + built-fork dispatch smoke on Intel/AMD Mac hardware. |
+| Fused attention (all backends) | Port the fused QJL-K + TBQ-V / Polar-V op to a Metal/Vulkan compute kernel (none exists yet) + a `cases`-array parser in `metal_verify`/`vulkan_verify`, then run `metal-verify-fused`/`vulkan-verify-fused` on hardware. CUDA fixture parity harness exists; needs an NVIDIA host. |
 
 ## Training And Publishing Remaining Work
 

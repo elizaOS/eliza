@@ -264,6 +264,48 @@
     "tier": "27b",
     "voice_quant": "Q8_0"
   },
+  "27b-1m": {
+    "contexts": [
+      "1m"
+    ],
+    "required_files": [
+      "text/eliza-1-27b-1m.gguf",
+      "tts/omnivoice-base-Q8_0.gguf",
+      "tts/omnivoice-tokenizer-Q8_0.gguf",
+      "asr/eliza-1-asr.gguf",
+      "asr/eliza-1-asr-mmproj.gguf",
+      "vad/silero-vad-int8.onnx",
+      "dflash/drafter-27b-1m.gguf",
+      "dflash/target-meta.json",
+      "cache/voice-preset-default.bin",
+      "evals/aggregate.json",
+      "evals/cuda_verify.json",
+      "evals/cuda_dispatch.json",
+      "licenses/LICENSE.text",
+      "licenses/LICENSE.voice",
+      "licenses/LICENSE.asr",
+      "licenses/LICENSE.vad",
+      "licenses/LICENSE.dflash",
+      "licenses/LICENSE.eliza-1",
+      "licenses/LICENSE.vision",
+      "checksums/SHA256SUMS",
+      "evidence/release.json",
+      "quantization/turboquant.json",
+      "quantization/fused_turboquant.json",
+      "quantization/qjl_config.json",
+      "quantization/polarquant_config.json"
+    ],
+    "required_platform_evidence": [
+      {
+        "backend": "cuda",
+        "evidence_path": "evidence/platform/linux-aarch64-cuda.json",
+        "id": "linux-aarch64-cuda"
+      }
+    ],
+    "text_quant": "Q4_K_M",
+    "tier": "27b-1m",
+    "voice_quant": "Q8_0"
+  },
   "27b-256k": {
     "contexts": [
       "256k"
