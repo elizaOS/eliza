@@ -422,7 +422,10 @@ function readElizagotchiOpParam(
   parameters: Record<string, unknown> | undefined,
 ): ElizagotchiOp | undefined {
   const allowed = new Set<string>(ELIZAGOTCHI_OPS);
-  for (const key of ["op", "subaction", "action"]) {
+  // Canonical discriminator is "action" per the post-consolidation taxonomy
+  // (docs/audits/action-structure-audit-2026-05-10.md). "op" and "subaction"
+  // remain accepted as legacy aliases for older callers.
+  for (const key of ["action", "op", "subaction"]) {
     const normalized = normalizeElizagotchiOp(parameters?.[key]);
     if (!normalized) continue;
     const aliased = ELIZAGOTCHI_ACTION_ALIASES[normalized];
@@ -481,9 +484,9 @@ async function runGameMutation(
 const elizagotchiAction: ElizaAction = {
   name: "ELIZAGOTCHI",
   description:
-    "Play the Elizagotchi virtual pet game. Use op to tick, check status, show help, reset, export/import saves, rename, feed, play, clean, sleep, give medicine, discipline, or toggle lights.",
+    "Play the Elizagotchi virtual pet game. Use `action` to tick, check status, show help, reset, export/import saves, rename, feed, play, clean, sleep, give medicine, discipline, or toggle lights.",
   descriptionCompressed:
-    "Elizagotchi virtual pet. op=tick/status/help/reset/export/import/name/feed/play/clean/sleep/medicine/discipline/light_toggle.",
+    "Elizagotchi virtual pet. action=tick/status/help/reset/export/import/name/feed/play/clean/sleep/medicine/discipline/light_toggle.",
   contexts: [...ELIZAGOTCHI_CONTEXTS],
   contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   roleGate: { minRole: "USER" },
@@ -493,8 +496,18 @@ const elizagotchiAction: ElizaAction = {
   },
   parameters: [
     {
+      name: "action",
+      description:
+        "Elizagotchi operation to run. Canonical discriminator (legacy aliases: op, subaction).",
+      required: false,
+      schema: {
+        type: "string",
+        enum: [...ELIZAGOTCHI_OPS],
+      },
+    },
+    {
       name: "op",
-      description: "Elizagotchi operation to run.",
+      description: "Legacy alias for `action`. Prefer `action`.",
       required: false,
       schema: {
         type: "string",
@@ -768,25 +781,25 @@ function actionNameFromCommand(cmd: GameCommand | null): {
   actionName: string;
   params?: Record<string, string>;
 } {
-  if (!cmd) return { actionName: "ELIZAGOTCHI", params: { op: "help" } };
+  if (!cmd) return { actionName: "ELIZAGOTCHI", params: { action: "help" } };
 
   switch (cmd.action) {
     case "status":
-      return { actionName: "ELIZAGOTCHI", params: { op: "status" } };
+      return { actionName: "ELIZAGOTCHI", params: { action: "status" } };
     case "help":
-      return { actionName: "ELIZAGOTCHI", params: { op: "help" } };
+      return { actionName: "ELIZAGOTCHI", params: { action: "help" } };
     case "reset":
-      return { actionName: "ELIZAGOTCHI", params: { op: "reset" } };
+      return { actionName: "ELIZAGOTCHI", params: { action: "reset" } };
     case "name":
       return cmd.parameter
         ? {
             actionName: "ELIZAGOTCHI",
-            params: { op: "name", name: cmd.parameter },
+            params: { action: "name", name: cmd.parameter },
           }
-        : { actionName: "ELIZAGOTCHI", params: { op: "name" } };
+        : { actionName: "ELIZAGOTCHI", params: { action: "name" } };
     default: {
       const action = cmd.action as GameAction;
-      return { actionName: "ELIZAGOTCHI", params: { op: action } };
+      return { actionName: "ELIZAGOTCHI", params: { action } };
     }
   }
 }
@@ -841,7 +854,7 @@ async function elizagotchiModelHandler(
     return toToonResponse({
       thought: "Advance simulation tick",
       actionName: "ELIZAGOTCHI",
-      actionParams: { op: "tick" },
+      actionParams: { action: "tick" },
     });
   }
 
@@ -849,7 +862,7 @@ async function elizagotchiModelHandler(
     return toToonResponse({
       thought: "Export save data",
       actionName: "ELIZAGOTCHI",
-      actionParams: { op: "export" },
+      actionParams: { action: "export" },
     });
   }
 
@@ -859,7 +872,7 @@ async function elizagotchiModelHandler(
     return toToonResponse({
       thought: "Import save data",
       actionName: "ELIZAGOTCHI",
-      actionParams: { op: "import", saveJson },
+      actionParams: { action: "import", saveJson },
     });
   }
 
@@ -869,7 +882,7 @@ async function elizagotchiModelHandler(
     return toToonResponse({
       thought: "Reset with chosen name",
       actionName: "ELIZAGOTCHI",
-      actionParams: { op: "reset", name },
+      actionParams: { action: "reset", name },
     });
   }
 

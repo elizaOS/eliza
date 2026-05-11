@@ -87,6 +87,32 @@ def test_27b_fits_on_48gb_quantized_at_144k() -> None:
     assert e.infer_mem_gb_quantized < 48.0
 
 
+def test_27b_default_seq_len_leaves_real_headroom() -> None:
+    """Gap M35: 27B default seq_len at 147k left ~1% headroom on the 2× B6000
+    (192 GB) cluster and ~6% on 2× H200 — one activation spike OOMed the run.
+    Default must stay at or below 64k so the registry default is safe on every
+    documented 27B target. Override per run via `--max-seq-len`."""
+    e = get("qwen3.6-27b")
+    assert e.seq_len <= 65536, (
+        f"qwen3.6-27b seq_len={e.seq_len} > 64k — drift back toward the "
+        "unsafe 147k default; keep registry default conservative and bump "
+        "via `--max-seq-len` per run instead."
+    )
+
+
+def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
+    """M35 only lowered the 27B default. 2B and 9B defaults must stay where
+    they are — those tiers have plenty of headroom at the documented budgets."""
+    assert get("qwen3.5-2b").seq_len == 8192
+    assert get("qwen3.5-9b").seq_len == 16384
+
+
+def test_smoke_entry_seq_len_unchanged_by_m35() -> None:
+    """The 0.6B smoke-only entry runs on a single consumer GPU — its 2k
+    default is independent of the 27B headroom problem."""
+    assert get("qwen3-0.6b").seq_len == 2048
+
+
 def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
     for public_name in ELIZA_1_PUBLIC_NAMES:

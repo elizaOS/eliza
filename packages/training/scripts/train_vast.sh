@@ -14,10 +14,10 @@
 #   qwen3.6-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
 #
 # Other targets (use VAST_GPU_TARGET=...):
-#   blackwell6000-2x — 2× RTX PRO 6000 Blackwell, 192 GB total. NOT safe
-#                      for 27B at seq_len=147456 (190 GB budget = 99% util,
-#                      one activation spike OOMs). OK for 27B if you also
-#                      pass --max-seq-len ≤ 65536.
+#   blackwell6000-2x — 2× RTX PRO 6000 Blackwell, 192 GB total. Safe for
+#                      27B at the registry's seq_len=65536 default
+#                      (M35-lowered from 147456). Long-context experiments
+#                      (--max-seq-len > 65k) still need b200-2x.
 #   h100-2x          — 2× H100 SXM/NVL, 160 GB total. Insufficient for 27B
 #                      at the registry budget; OK for 9B as a fallback.
 #   h100-1x / h200-1x — single H100 / H200 alternates for 9B if the
@@ -40,10 +40,9 @@
 #     2× B200          (366 GB)  ~33 h  ~$253    DEFAULT (fast + safe)
 #     2× H200 SXM     (282 GB)   ~76 h  ~$485    2× as slow, 2× as expensive
 #     2× Blackwell 6000 (192 GB) ~208 h ~$558    cheapest $/hr, slowest;
-#                                                ALSO needs --max-seq-len 65536
-#                                                because the registry's
-#                                                seq=147456 budget (190 GB) is
-#                                                99% util on 192 GB cap.
+#                                                fits at the registry's
+#                                                seq=65536 default (190 GB
+#                                                budget vs 192 GB cap).
 #
 # Required env:
 #   VAST_API_KEY               # NEVER bake this into a committed file —

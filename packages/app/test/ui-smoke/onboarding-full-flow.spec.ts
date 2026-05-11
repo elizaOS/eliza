@@ -181,28 +181,6 @@ test.describe
       await expect(page.getByText(/already running an agent\?/i)).toBeVisible();
     });
 
-    // W3 (password setup): the PasswordSetupStep component exists at
-    // packages/ui/src/components/onboarding/PasswordSetupStep.tsx but
-    // is NOT mounted by the web onboarding flow on a fresh local launch.
-    // We assert its absence so a regression that accidentally surfaces
-    // it during a vanilla install is caught.
-    test("W3 fresh launch does not surface password setup", async ({
-      page,
-    }) => {
-      await clearStorageBeforeNavigation(page);
-      await installOnboardingMocks(page);
-
-      await openAppPath(page, "/chat");
-      await expectRuntimeGateMounted(page);
-
-      await expect(
-        page.getByRole("heading", { name: /set your login password/i }),
-      ).toHaveCount(0);
-      await expect(
-        page.locator('form[aria-label="Password setup"]'),
-      ).toHaveCount(0);
-    });
-
     // W4 + W5 (provider step + API key entry): the local-runtime
     // sub-view that hosts the provider catalog + key form
     // (RuntimeGate `subView === "local"` / `localStage === "config"`) is

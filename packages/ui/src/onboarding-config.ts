@@ -88,7 +88,7 @@ function resolveArgsServerTarget(
   return args.onboardingServerTarget ?? "";
 }
 
-export function resolveOnboardingPrimaryModel(args: {
+function resolveOnboardingPrimaryModel(args: {
   providerId: string;
   onboardingPrimaryModel: string;
   onboardingOpenRouterModel: string;

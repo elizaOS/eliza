@@ -13,7 +13,12 @@ import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts"
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
 import {
+	checkSecretAction,
+	deleteSecretAction,
+	getSecretAction,
+	listSecretsAction,
 	manageSecretAction,
+	mirrorSecretToVaultAction,
 	requestSecretAction,
 	setSecretAction,
 } from "./actions/index.ts";
@@ -92,9 +97,16 @@ export const secretsManagerPlugin: Plugin = {
 	// Actions for natural language secret management and onboarding.
 	// SET_SECRET and MANAGE_SECRET are umbrellas; their subactions are
 	// promoted to virtual top-level actions for direct planner picking.
+	// The atomic GET/LIST/CHECK/DELETE/MIRROR actions are also registered
+	// directly so structured callers can invoke them without LLM extraction.
 	actions: [
 		...promoteSubactionsToActions(setSecretAction),
 		...promoteSubactionsToActions(manageSecretAction),
+		getSecretAction,
+		listSecretsAction,
+		checkSecretAction,
+		deleteSecretAction,
+		mirrorSecretToVaultAction,
 		updateSettingsAction,
 		requestSecretAction,
 	],

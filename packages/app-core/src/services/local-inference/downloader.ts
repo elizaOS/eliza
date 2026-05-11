@@ -26,7 +26,14 @@ import {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   findCatalogModel,
+  isDefaultEligibleId,
 } from "./catalog";
+import {
+  parseManifestOrThrow,
+  type Eliza1FileEntry,
+  type Eliza1Files,
+  type Eliza1Manifest,
+} from "./manifest";
 import {
   downloadsStagingDir,
   elizaModelsDir,
@@ -50,28 +57,7 @@ interface ActiveJob {
 }
 
 type DownloadListener = (event: DownloadEvent) => void;
-type BundleFileKind =
-  | "text"
-  | "voice"
-  | "asr"
-  | "vision"
-  | "dflash"
-  | "cache"
-  | "embedding"
-  | "vad"
-  | "wakeword";
-
-interface BundleFileEntry {
-  path: string;
-  sha256: string;
-  ctx?: number;
-}
-
-interface BundleManifest {
-  id: string;
-  version: string;
-  files: Record<BundleFileKind, BundleFileEntry[]>;
-}
+type BundleFileKind = keyof Eliza1Files;
 
 interface DownloadedFile {
   path: string;
@@ -144,114 +130,31 @@ function bundleTargetPath(root: string, filePath: string): string {
   return target;
 }
 
-function parseBundleFileEntry(
-  value: unknown,
-  kind: BundleFileKind,
-): BundleFileEntry {
-  if (!value || typeof value !== "object") {
-    throw new Error(`Invalid Eliza-1 manifest file entry in files.${kind}`);
-  }
-  const entry = value as { path?: unknown; sha256?: unknown; ctx?: unknown };
-  if (typeof entry.path !== "string" || entry.path.length === 0) {
-    throw new Error(`Invalid Eliza-1 manifest file path in files.${kind}`);
-  }
-  if (
-    typeof entry.sha256 !== "string" ||
-    !/^[a-f0-9]{64}$/.test(entry.sha256)
-  ) {
-    throw new Error(`Invalid Eliza-1 manifest sha256 for ${entry.path}`);
-  }
-  const parsed: BundleFileEntry = {
-    path: entry.path,
-    sha256: entry.sha256,
-  };
-  if (typeof entry.ctx === "number") parsed.ctx = entry.ctx;
-  return parsed;
-}
-
 function parseBundleManifestOrThrow(
   input: unknown,
   catalogEntry: CatalogModel,
-): BundleManifest {
-  if (!input || typeof input !== "object") {
-    throw new Error("Invalid Eliza-1 manifest: expected object");
-  }
-  const raw = input as {
-    id?: unknown;
-    version?: unknown;
-    files?: unknown;
-    defaultEligible?: unknown;
-  };
-  if (raw.id !== catalogEntry.id) {
+): Eliza1Manifest {
+  const manifest = parseManifestOrThrow(input);
+  if (manifest.id !== catalogEntry.id) {
     throw new Error(
-      `Invalid Eliza-1 manifest: id ${String(raw.id)} does not match ${catalogEntry.id}`,
+      `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id}`,
     );
   }
-  if (typeof raw.version !== "string" || raw.version.length === 0) {
-    throw new Error("Invalid Eliza-1 manifest: missing version");
-  }
-  if (raw.defaultEligible !== true) {
-    throw new Error("Invalid Eliza-1 manifest: defaultEligible must be true");
-  }
-  if (!raw.files || typeof raw.files !== "object") {
-    throw new Error("Invalid Eliza-1 manifest: missing files");
-  }
-
-  const filesRaw = raw.files as Record<string, unknown>;
-  const files = {} as Record<BundleFileKind, BundleFileEntry[]>;
-  for (const kind of [
-    "text",
-    "voice",
-    "asr",
-    "vision",
-    "dflash",
-    "cache",
-    "embedding",
-    "vad",
-    "wakeword",
-  ] as const) {
-    const value = filesRaw[kind];
-    if (
-      value === undefined &&
-      (kind === "embedding" || kind === "vad" || kind === "wakeword")
-    ) {
-      files[kind] = [];
-      continue;
-    }
-    if (!Array.isArray(value)) {
-      throw new Error(
-        `Invalid Eliza-1 manifest: files.${kind} must be an array`,
-      );
-    }
-    files[kind] = value.map((entry) => parseBundleFileEntry(entry, kind));
-  }
-
-  for (const kind of ["text", "voice", "dflash", "cache"] as const) {
-    if (files[kind].length === 0) {
-      throw new Error(
-        `Invalid Eliza-1 manifest: files.${kind} must be non-empty`,
-      );
-    }
-  }
-  if (!files.text.some((entry) => entry.path === catalogEntry.ggufFile)) {
+  if (!manifest.files.text.some((entry) => entry.path === catalogEntry.ggufFile)) {
     throw new Error(
       `Invalid Eliza-1 manifest: primary text file ${catalogEntry.ggufFile} is missing`,
     );
   }
 
-  return {
-    id: catalogEntry.id,
-    version: raw.version,
-    files,
-  };
+  return manifest;
 }
 
 function collectBundleFiles(
-  manifest: BundleManifest,
-): Array<{ kind: BundleFileKind; entry: BundleFileEntry }> {
+  manifest: Eliza1Manifest,
+): Array<{ kind: BundleFileKind; entry: Eliza1FileEntry }> {
   const seen = new Map<
     string,
-    { kind: BundleFileKind; entry: BundleFileEntry }
+    { kind: BundleFileKind; entry: Eliza1FileEntry }
   >();
   for (const kind of [
     "text",
@@ -264,7 +167,7 @@ function collectBundleFiles(
     "vad",
     "wakeword",
   ] as const) {
-    for (const entry of manifest.files[kind]) {
+    for (const entry of manifest.files[kind] ?? []) {
       const current = seen.get(entry.path);
       if (current && current.entry.sha256 !== entry.sha256) {
         throw new Error(
@@ -598,11 +501,13 @@ export class Downloader {
       };
       await upsertElizaModel(installed);
 
-      // First-light convenience: assign the freshly-installed model to any
-      // empty slot so chat works without a Settings detour. Idempotent —
-      // ignores slots the user has already configured. See
-      // assignments.ts#ensureDefaultAssignment for the per-slot policy.
-      if (catalogEntry.runtimeRole !== "dflash-drafter") {
+      // First-light convenience: only default-eligible Eliza-1 downloads
+      // can fill empty slots. Ad-hoc Hugging Face downloads remain
+      // explicit opt-in even though Eliza owns the downloaded file.
+      if (
+        catalogEntry.runtimeRole !== "dflash-drafter" &&
+        isDefaultEligibleId(installed.id)
+      ) {
         await ensureDefaultAssignment(installed.id);
       }
 
@@ -786,7 +691,9 @@ export class Downloader {
       });
     }
 
-    await ensureDefaultAssignment(installed.id);
+    if (isDefaultEligibleId(installed.id)) {
+      await ensureDefaultAssignment(installed.id);
+    }
 
     this.updateState(record, "completed");
     record.job.received = completedBytes;

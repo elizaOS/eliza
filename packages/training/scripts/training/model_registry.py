@@ -36,9 +36,18 @@ class ModelEntry:
 
     # ─── training budgets ───
     seq_len: int
-    """Training sequence length. Bounded by the fp32 logits transient
+    """Default training sequence length. Bounded by the fp32 logits transient
     (B*S*V*4 bytes; Qwen vocab=248k makes this dominant). With Liger kernel
-    fused chunked CE we can roughly 4× this on the same VRAM budget."""
+    fused chunked CE we can roughly 4× this on the same VRAM budget.
+
+    This is a *default* — `scripts/train_local.py` and `scripts/run_pipeline.py`
+    both accept ``--max-seq-len <int>`` to override per run. CLI flags always
+    win over registry values (see ``train_local.py`` arg-merge near
+    ``args.max_seq_len == ap.get_default("max_seq_len")``). The 27B default
+    is intentionally conservative (64k) so the registry's memory budget
+    leaves real headroom on a 2× H200 / 2× B200 cluster; bump it via
+    ``--max-seq-len`` for long-context runs when you've validated capacity
+    with ``scripts/training/memory_calc.py --shape qwen3.6-27b``."""
 
     optimizer: str
     """One of: apollo, apollo_mini."""
@@ -270,7 +279,12 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizalabs/eliza-1-27b",
         abliteration_repo_id="elizalabs/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=147456, optimizer="apollo_mini", optimizer_rank=512,
+        # seq_len lowered from 147456 to 65536 (gap M35): 147k left only ~1%
+        # headroom on a 2× Blackwell 6000 (192 GB) cluster and ~6% on 2× H200
+        # (282 GB) at the registry's 190 GB budget — one activation spike
+        # OOMed the run. 64k is the safe default; bump per run via
+        # `--max-seq-len` after validating with `memory_calc.py`.
+        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
@@ -279,9 +293,11 @@ REGISTRY: dict[str, ModelEntry] = {
         # train_vast.sh as `scripts/quantization/${name}_apply.py`. Only
         # names with a real apply.py belong in this tuple.
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="2× H200 SXM with FSDP for 144k-context training (187 GB total, "
-              "44% per-GPU utilization on 282 GB — plenty of headroom). Full "
-              "quant stack (PolarQuant + QJL-1bit + TurboQuant-4bit) lets "
+        notes="2× H200 SXM with FSDP. Default training seq_len is 64k — "
+              "headroom on 2× H200 (282 GB) and even fits 2× Blackwell 6000 "
+              "(192 GB) safely. Override per run with `--max-seq-len` once "
+              "you've validated VRAM via `memory_calc.py --shape qwen3.6-27b`. "
+              "Full quant stack (PolarQuant + QJL-1bit + TurboQuant-4bit) lets "
               "144k inference fit in 14.5 GB on a 48 GB RTX Pro 5000 "
               "Blackwell (30% util) and 1M-token inference fit in 23 GB (48% util). "
               "Q6_K GGUF served on RTX 5090 via Vast (cloud/services/vast-pyworker).",

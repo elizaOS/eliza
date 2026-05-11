@@ -88,6 +88,11 @@ import {
   toOpencodeCommand,
   toPiCommand,
 } from "./pty-types.js";
+import {
+  mergeSessionLogIntoTrajectory,
+  type MergeSessionLogResult,
+} from "./session-log-merger.js";
+import { readClaudeCodeSession } from "./session-log-reader.js";
 import { CLAUDE_SKILL_ESSENTIALS } from "./skill-essentials.js";
 import {
   TRAJECTORY_CHILD_STEP_ENV_KEY,
@@ -1278,6 +1283,83 @@ export class PTYService {
   }
 
   /**
+   * Read the spawned sub-agent's structured session log and merge the
+   * captured reasoning + tool calls into the parent trajectory step. Wired
+   * into the `task_complete` hook (W1-T1 / closes C1 Claude path).
+   *
+   * Today this only handles `claude` agents — Codex and OpenCode get
+   * sibling readers in W1-T2/W1-T3. Failures are logged and swallowed
+   * (this path must never block auto-stop or session teardown).
+   */
+  private async captureSubAgentTrajectoryOnTaskComplete(
+    sessionId: string,
+  ): Promise<MergeSessionLogResult | undefined> {
+    const metadata = this.sessionMetadata.get(sessionId);
+    const agentType =
+      typeof metadata?.agentType === "string" ? metadata.agentType : undefined;
+    if (agentType !== "claude") return undefined;
+
+    const parentStepId =
+      typeof metadata?.[TRAJECTORY_PARENT_STEP_METADATA_KEY] === "string"
+        ? (metadata[TRAJECTORY_PARENT_STEP_METADATA_KEY] as string).trim()
+        : "";
+    if (parentStepId.length === 0) {
+      this.log(
+        `[session-log-capture] no parent trajectory step for ${sessionId}; skipping capture`,
+      );
+      return undefined;
+    }
+
+    const workdir = this.sessionWorkdirs.get(sessionId);
+    if (!workdir) {
+      this.log(
+        `[session-log-capture] no workdir recorded for ${sessionId}; skipping capture`,
+      );
+      return undefined;
+    }
+
+    try {
+      const capture = await readClaudeCodeSession({
+        workspaceDir: workdir,
+        parentStepId,
+        logger: {
+          warn: (msg) => this.log(msg),
+          debug: (msg) => this.log(msg),
+        },
+      });
+      if (capture.reason === "missing") {
+        this.log(
+          `[session-log-capture] no Claude Code session log found for ${sessionId} under ${workdir}; falling back to stdout-only capture`,
+        );
+        return undefined;
+      }
+      const result = await mergeSessionLogIntoTrajectory({
+        runtime: this.runtime,
+        parentStepId,
+        capture,
+        ptySessionId: sessionId,
+        agentType,
+        workspaceDir: workdir,
+        logger: {
+          warn: (msg) => this.log(msg),
+          debug: (msg) => this.log(msg),
+          info: (msg) => this.log(msg),
+        },
+      });
+      this.log(
+        `[session-log-capture] merged ${result.stepsWritten} Claude Code steps into parent ${parentStepId} (child trajectory ${result.childTrajectoryId ?? "<none>"})`,
+      );
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(
+        `[session-log-capture] capture failed for ${sessionId}: ${message}`,
+      );
+      return undefined;
+    }
+  }
+
+  /**
    * Cancel a pending task_complete auto-stop for this session. Returns true
    * if a timer was cancelled, false if none was pending. Safe to call any
    * number of times. Intended for the swarm coordinator's task_complete
@@ -1639,6 +1721,11 @@ export class PTYService {
         break;
       case "task_complete":
         this.emitEvent(sessionId, "task_complete", { ...data, source: "hook" });
+        // Capture the Claude Code session log into the parent trajectory.
+        // This is the W1-T1 / C1 closure — without it, the parent only sees
+        // ANSI-stripped stdout. Fire-and-forget; failures must NOT block
+        // the auto-stop path below.
+        void this.captureSubAgentTrajectoryOnTaskComplete(sessionId);
         // Auto-stop the PTY after a short grace period. Without this,
         // subagents sit around firing stall classifications that trigger
         // phantom heartbeats in downstream streamers minutes after the

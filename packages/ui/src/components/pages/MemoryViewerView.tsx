@@ -39,13 +39,24 @@ const TYPE_LABELS: Record<string, string> = {
   documents: "Documents",
 };
 
-const TYPE_COLORS: Record<string, { bg: string; fg: string }> = {
-  messages: { bg: "rgba(99, 102, 241, 0.15)", fg: "rgb(99, 102, 241)" },
-  memories: { bg: "rgba(168, 85, 247, 0.15)", fg: "rgb(168, 85, 247)" },
-  facts: { bg: "rgba(34, 197, 94, 0.15)", fg: "rgb(34, 197, 94)" },
-  documents: { bg: "rgba(245, 158, 11, 0.15)", fg: "rgb(245, 158, 11)" },
-  unknown: { bg: "rgba(156, 163, 175, 0.15)", fg: "rgb(156, 163, 175)" },
-};
+// Memory type color tokens are defined as CSS custom properties in
+// `packages/ui/src/styles/brand-gold.css` (`--memory-type-<key>-bg/fg`)
+// and exposed via `.memory-type-badge-<key>` / `.memory-type-dot-<key>`.
+// Components reference them by class name instead of inline rgba literals.
+const TYPE_KEYS = [
+  "messages",
+  "memories",
+  "facts",
+  "documents",
+  "unknown",
+] as const;
+type MemoryTypeKey = (typeof TYPE_KEYS)[number];
+
+function memoryTypeKey(type: string): MemoryTypeKey {
+  return (TYPE_KEYS as readonly string[]).includes(type)
+    ? (type as MemoryTypeKey)
+    : "unknown";
+}
 
 type ViewMode = "feed" | "browse";
 
@@ -61,10 +72,6 @@ const BROWSE_PAGE_SIZE = 50;
 
 function typeLabel(type: string): string {
   return TYPE_LABELS[type] ?? type;
-}
-
-function typeColor(type: string): { bg: string; fg: string } {
-  return TYPE_COLORS[type] ?? TYPE_COLORS.unknown;
 }
 
 function truncateText(text: string, max = 200): string {
@@ -93,7 +100,7 @@ function MemoryCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const color = typeColor(memory.type);
+  const typeKey = memoryTypeKey(memory.type);
   const text = memory.text || "(empty)";
 
   return (
@@ -105,8 +112,7 @@ function MemoryCard({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span
-          className="inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]"
-          style={{ backgroundColor: color.bg, color: color.fg }}
+          className={`memory-type-badge-${typeKey} inline-flex items-center rounded-full px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.12em]`}
         >
           {typeLabel(memory.type)}
         </span>
@@ -541,7 +547,7 @@ export function MemoryViewerView({
                     All
                   </Button>
                   {Object.keys(stats.byType).map((type) => {
-                    const color = typeColor(type);
+                    const typeKey = memoryTypeKey(type);
                     const active = typeFilter === type;
                     return (
                       <Button
@@ -555,8 +561,7 @@ export function MemoryViewerView({
                         onClick={() => setTypeFilter(active ? null : type)}
                       >
                         <span
-                          className="mr-1.5 inline-block h-2 w-2 rounded-full"
-                          style={{ backgroundColor: color.fg }}
+                          className={`memory-type-dot-${typeKey} mr-1.5 inline-block h-2 w-2 rounded-full`}
                         />
                         {typeLabel(type)}
                       </Button>

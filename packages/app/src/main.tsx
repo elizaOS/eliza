@@ -37,7 +37,6 @@ import {
   CONNECT_EVENT,
   client,
   DESKTOP_TRAY_MENU_ITEMS,
-  DesktopOnboardingRuntime,
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
@@ -696,7 +695,6 @@ function mountReactApp(): void {
             </div>
           ) : (
             <>
-              <DesktopOnboardingRuntime />
               <DesktopSurfaceNavigationRuntime />
               <DesktopTrayRuntime />
               <LifeOpsActivitySignalsEffect />

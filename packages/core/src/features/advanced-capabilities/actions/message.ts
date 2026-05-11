@@ -13,6 +13,7 @@ import { findEntityByName } from "../../../entities.ts";
 import { getActionSpec } from "../../../generated/spec-helpers.ts";
 import { logger } from "../../../logger.ts";
 import { resolveCanonicalOwnerIdForMessage } from "../../../roles.ts";
+import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
 import type {
 	Action,
 	ActionExample,
@@ -3125,13 +3126,17 @@ async function delegateToTriage(
 	responses: Parameters<Action["handler"]>[5],
 ): Promise<ActionResult> {
 	const action = TRIAGE_OP_TO_ACTION[op];
-	const result = await action.handler(
-		runtime,
-		message,
-		state,
-		options,
-		callback,
-		responses,
+	const result = await runWithActionRoutingContext(
+		{ actionName: action.name, modelClass: action.modelClass },
+		() =>
+			action.handler(
+				runtime,
+				message,
+				state,
+				options,
+				callback,
+				responses,
+			),
 	);
 	const normalized: ActionResult = result ?? {
 		success: true,

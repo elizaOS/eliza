@@ -9,6 +9,7 @@ import { createDiscordConnectorAccountProvider } from "./connector-account-provi
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { DiscordService } from "./service";
+import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
 import { DiscordUserAccountScraperImpl } from "./user-account-scraper/service";
@@ -42,6 +43,8 @@ const discordPlugin: Plugin = {
 				"Failed to register Discord provider with ConnectorAccountManager",
 			);
 		}
+
+		registerDiscordDmSensitiveRequestAdapter(runtime);
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;

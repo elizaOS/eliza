@@ -29,7 +29,7 @@
 
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
-import { afterAll, describe, expect, test } from "vitest";
+import { describe, expect, test } from "vitest";
 
 // ── Connector inventory ────────────────────────────────────────────────────
 
@@ -162,44 +162,18 @@ function loadConnector(target: ConnectorTarget): ParsedExport | null {
 
 // ── Contract assertions ────────────────────────────────────────────────────
 
-interface ComplianceRecord {
-	connector: string;
-	checks: Record<string, boolean>;
-	score: number;
-	max: number;
-}
-
-const compliance: ComplianceRecord[] = [];
-
-function record(
-	connector: string,
-	check: string,
-	pass: boolean,
-): void {
-	let entry = compliance.find((c) => c.connector === connector);
-	if (!entry) {
-		entry = { connector, checks: {}, score: 0, max: 0 };
-		compliance.push(entry);
-	}
-	entry.checks[check] = pass;
-	entry.max += 1;
-	if (pass) entry.score += 1;
-}
-
 for (const target of CONNECTORS) {
 	describe(`connector: ${target.connector}`, () => {
 		const parsed = loadConnector(target);
 
 		test("setup-routes source file exists", () => {
 			expect(parsed, `missing ${target.file}`).not.toBeNull();
-			record(target.connector, "file_exists", parsed !== null);
 		});
 
 		if (!parsed) return;
 
 		test(`exports a non-empty Route[] as ${target.exportName}`, () => {
 			expect(parsed.routes.length, "no routes parsed from export").toBeGreaterThan(0);
-			record(target.connector, "routes_parsed", parsed.routes.length > 0);
 		});
 
 		// ── Contract rule 1: path prefix `/api/setup/<connector>/`
@@ -210,8 +184,6 @@ for (const target of CONNECTORS) {
 				const offending = parsed.routes.filter(
 					(r) => !r.path.startsWith(expectedPrefix),
 				);
-				const pass = offending.length === 0;
-				record(target.connector, "path_prefix", pass);
 				expect(offending, `routes not under ${expectedPrefix}`).toEqual([]);
 			},
 		);
@@ -224,7 +196,6 @@ for (const target of CONNECTORS) {
 				const found = parsed.routes.some(
 					(r) => r.type === "GET" && r.path === target_path,
 				);
-				record(target.connector, "status_endpoint", found);
 				expect(found, `missing GET ${target_path}`).toBe(true);
 			},
 		);
@@ -237,7 +208,6 @@ for (const target of CONNECTORS) {
 				const found = parsed.routes.some(
 					(r) => r.type === "POST" && r.path === target_path,
 				);
-				record(target.connector, "start_endpoint", found);
 				expect(found, `missing POST ${target_path}`).toBe(true);
 			},
 		);
@@ -250,7 +220,6 @@ for (const target of CONNECTORS) {
 				const found = parsed.routes.some(
 					(r) => r.type === "POST" && r.path === target_path,
 				);
-				record(target.connector, "cancel_endpoint", found);
 				expect(found, `missing POST ${target_path}`).toBe(true);
 			},
 		);
@@ -259,7 +228,6 @@ for (const target of CONNECTORS) {
 		test.fails(
 			"error responses use structured { error: { code, message } } envelope",
 			() => {
-				record(target.connector, "structured_errors", !parsed.hasBareErrorString);
 				expect(
 					parsed.hasBareErrorString,
 					"found bare `error: \"string\"` in responses",
@@ -268,50 +236,3 @@ for (const target of CONNECTORS) {
 		);
 	});
 }
-
-// ── Final summary ──────────────────────────────────────────────────────────
-
-afterAll(() => {
-	const allChecks = ["file_exists", "routes_parsed", "path_prefix", "status_endpoint", "start_endpoint", "cancel_endpoint", "structured_errors"];
-
-	const header = ["connector", ...allChecks, "%"];
-	const colWidths = header.map((h) => h.length);
-
-	const rows: string[][] = [];
-	for (const entry of compliance) {
-		const pct = entry.max > 0 ? Math.round((entry.score / entry.max) * 100) : 0;
-		const row = [
-			entry.connector,
-			...allChecks.map((check) => {
-				if (!(check in entry.checks)) return "-";
-				return entry.checks[check] ? "PASS" : "FAIL";
-			}),
-			`${pct}%`,
-		];
-		row.forEach((cell, i) => {
-			if (cell.length > colWidths[i]) colWidths[i] = cell.length;
-		});
-		rows.push(row);
-	}
-
-	const pad = (cell: string, w: number) => cell.padEnd(w, " ");
-	const fmtRow = (row: string[]) =>
-		row.map((c, i) => pad(c, colWidths[i])).join("  ");
-
-	console.log("\n=== Connector setup-routes contract compliance ===");
-	console.log(fmtRow(header));
-	console.log(colWidths.map((w) => "-".repeat(w)).join("  "));
-	for (const row of rows) {
-		console.log(fmtRow(row));
-	}
-
-	const totalScore = compliance.reduce((sum, c) => sum + c.score, 0);
-	const totalMax = compliance.reduce((sum, c) => sum + c.max, 0);
-	const overall = totalMax > 0 ? Math.round((totalScore / totalMax) * 100) : 0;
-	console.log(
-		`\nOverall compliance: ${totalScore}/${totalMax} (${overall}%)`,
-	);
-	console.log(
-		"Note: failing rule checks above are expected (test.fails) until normalization lands.",
-	);
-});

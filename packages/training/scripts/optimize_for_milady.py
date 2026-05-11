@@ -17,7 +17,7 @@ Usage::
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_milady.py \\
         --base-model elizalabs/eliza-1-0_6b \\
-        --output-dir checkpoints/eliza-1-lite \\
+        --output-dir checkpoints/eliza-1-0_6b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
         --hf-repo elizalabs/eliza-1-0_6b \\
@@ -28,15 +28,15 @@ Usage::
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
         uv run python scripts/optimize_for_milady.py \\
             --base-model elizalabs/eliza-1-0_6b \\
-            --output-dir checkpoints/eliza-1-lite \\
+            --output-dir checkpoints/eliza-1-0_6b \\
             --apply polarquant qjl turboquant \\
             --hf-repo elizalabs/eliza-1-0_6b
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
 
-    llama-server --model eliza-1-lite-Q4_POLAR.gguf \\
-                 --draft-model eliza-1-lite-drafter.gguf \\
+    llama-server --model eliza-1-0_6b-Q4_POLAR.gguf \\
+                 --draft-model eliza-1-0_6b-drafter.gguf \\
                  --spec-type dflash \\
                  --cache-type-k qjl1_256 \\
                  --cache-type-v tbq3_0

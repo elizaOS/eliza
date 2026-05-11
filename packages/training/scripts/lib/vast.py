@@ -16,19 +16,19 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
     OK trading $ for wall clock (9B fits at 80 GB only with grad-ckpt +
     activation packing — verify with memory_calc before committing).
   * ``h200-1x`` — 1 × H200 SXM (141 GB). Best 1× target for 9B (huge
-    headroom) or for 27B at very modest seq_len (≤8k); 27B at 147k
-    seq_len does NOT fit on a single H200.
+    headroom) or for 27B at very modest seq_len (≤8k); 27B at the
+    registry's 64k default does NOT fit on a single H200.
 
   Multi-GPU targets (required for 27B SFT):
   * ``blackwell6000-2x`` — 2 × RTX PRO 6000 Blackwell (96 GB each = 192 GB
-    total). DANGEROUS for 27B at the registry's seq_len=147456 (190 GB
-    budget vs 192 GB capacity = 1% headroom — single OOM-on-spike kills
-    the run). Use ``b200-2x`` instead for 27B unless cost is the only
-    constraint and you've validated with --max-seq-len ≤ 65k.
+    total). Safe for 27B at the registry's seq_len=65536 default (190 GB
+    budget vs 192 GB capacity). Long-context experiments
+    (``--max-seq-len`` > 65k) still need ``b200-2x``.
   * ``b200-2x`` — 2 × NVIDIA B200 (≈183 GB each, ≈366 GB total).
-    DEFAULT for qwen3.6-27b: 190 GB budget on 366 GB capacity = 48% util
-    with comfortable headroom for activation spikes. Also the right call
-    for seq_len ≥ 131k or 122B-A10B work.
+    Preferred cloud target for qwen3.6-27b at the default 64k seq_len
+    (190 GB budget on 366 GB capacity = 48% util with comfortable
+    headroom for activation spikes). Required for ``--max-seq-len`` >
+    65k or 122B-A10B work.
   * ``h100-2x`` — 2 × H100 SXM (80 GB each = 160 GB). Insufficient for
     qwen3.6-27b at the registry's 190 GB budget; usable for 9B if
     blackwell6000-1x and h200-1x are unavailable.

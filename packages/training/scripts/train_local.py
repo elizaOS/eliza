@@ -122,7 +122,15 @@ def main() -> int:
     ap.add_argument("--batch-size", type=int, default=4)
     ap.add_argument("--grad-accum", type=int, default=8)
     ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--max-seq-len", type=int, default=4096)
+    ap.add_argument(
+        "--max-seq-len", type=int, default=4096,
+        help="Training sequence length. When `--registry-key` is set and the "
+             "user did not pass `--max-seq-len`, the registry's `seq_len` "
+             "default is used (e.g. 8k for 2B, 16k for 9B, 64k for 27B). "
+             "Pass `--max-seq-len <N>` to override the registry default for "
+             "a single run — useful for long-context experiments on the 27B "
+             "(validate VRAM with `memory_calc.py --shape qwen3.6-27b` first)."
+    )
     ap.add_argument("--lora-r", type=int, default=32)
     ap.add_argument("--lora-alpha", type=int, default=64)
     ap.add_argument("--lora-dropout", type=float, default=0.05)

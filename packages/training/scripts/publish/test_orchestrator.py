@@ -166,7 +166,7 @@ def _build_fixture_bundle(
         bundle / "lineage.json",
         json.dumps(
             {
-                "text": {"base": "eliza-1-desktop", "license": "apache-2.0"},
+                "text": {"base": "eliza-1-9b", "license": "apache-2.0"},
                 "voice": {"base": "omnivoice-1.7b", "license": "apache-2.0"},
                 "drafter": {
                     "base": "dflash-9b-drafter",

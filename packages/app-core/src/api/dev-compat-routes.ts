@@ -8,6 +8,7 @@ import {
   isAllowedDevConsoleLogPath,
   readDevConsoleLogTail,
 } from "./dev-console-log";
+import { buildRouteCatalog } from "./dev-route-catalog";
 import { resolveDevStackFromEnv } from "./dev-stack";
 import {
   sendJsonError as sendJsonErrorResponse,
@@ -18,6 +19,7 @@ import {
  * Dev observability routes (loopback where noted).
  *
  * - `GET /api/dev/stack`
+ * - `GET /api/dev/route-catalog`
  * - `GET /api/dev/cursor-screenshot`
  * - `GET /api/dev/console-log`
  */
@@ -55,6 +57,19 @@ export async function handleDevCompatRoutes(
       payload.api.baseUrl = `http://127.0.0.1:${localPort}`;
     }
     sendJsonResponse(res, 200, payload);
+    return true;
+  }
+
+  // ── GET /api/dev/route-catalog ──────────────────────────────────────
+  if (method === "GET" && url.pathname === "/api/dev/route-catalog") {
+    if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) {
+      sendJsonErrorResponse(res, 403, "loopback only");
+      return true;
+    }
+    if (!(await ensureRouteAuthorized(req, res, state))) {
+      return true;
+    }
+    sendJsonResponse(res, 200, buildRouteCatalog());
     return true;
   }
 

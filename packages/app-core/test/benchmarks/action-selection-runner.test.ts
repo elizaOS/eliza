@@ -19,12 +19,20 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("CONFIRM_AND_SEND", "MESSAGE", ["MESSAGE"])).toBe(true);
   });
 
-  it("matches planner-invented LifeOps aliases to LIFE benchmark cases", () => {
-    expect(caseMatches("ADD_TODO", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("ADD_HABIT", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("CREATE_HABIT", "LIFE", ["CREATE_HABIT"])).toBe(true);
-    expect(caseMatches("LIST_TODOS", "LIFE", ["LIST_TODOS"])).toBe(true);
-    expect(caseMatches("LIFE.add_goal", "LIFE", undefined)).toBe(true);
+  it("matches owner task, routine, and goal names to canonical benchmark cases", () => {
+    expect(caseMatches("ADD_TODO", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("ADD_HABIT", "OWNER_ROUTINES", undefined)).toBe(true);
+    expect(caseMatches("CREATE_HABIT", "OWNER_ROUTINES", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("LIST_TODOS", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("ADD_GOAL", "OWNER_GOALS", undefined)).toBe(true);
+  });
+
+  it("does not collapse owner actions into the retired LIFE aggregate", () => {
+    expect(caseMatches("ADD_TODO", "LIFE", undefined)).toBe(false);
+    expect(caseMatches("ADD_HABIT", "LIFE", undefined)).toBe(false);
+    expect(caseMatches("LIFE.add_goal", "OWNER_GOALS", undefined)).toBe(false);
   });
 
   it("matches specialized computer-use tools to COMPUTER_USE", () => {
@@ -74,27 +82,29 @@ describe("action selection benchmark scoring helpers", () => {
     );
   });
 
-  it("matches check-in aliases to the restored check-in action", () => {
-    expect(caseMatches("LIFE_CHECK_IN", "CHECKIN", undefined)).toBe(true);
-    expect(caseMatches("MORNING_CHECK_IN", "CHECKIN", undefined)).toBe(true);
-    expect(caseMatches("NIGHT_CHECKIN", "CHECKIN", undefined)).toBe(true);
-    expect(caseMatches("AUTOMATION_RUN", "CHECKIN", undefined)).toBe(true);
+  it("keeps retired check-in aliases out of the benchmark action surface", () => {
+    expect(caseMatches("LIFE_CHECK_IN", "CHECKIN", undefined)).toBe(false);
+    expect(caseMatches("MORNING_CHECK_IN", "CHECKIN", undefined)).toBe(false);
+    expect(caseMatches("NIGHT_CHECKIN", "CHECKIN", undefined)).toBe(false);
+    expect(caseMatches("AUTOMATION_RUN", "CHECKIN", undefined)).toBe(false);
   });
 
-  it("matches generic memory set aliases to the profile action", () => {
-    expect(caseMatches("MEMORY_SET", "PROFILE", undefined)).toBe(true);
-    expect(caseMatches("MEMORY_WRITE", "PROFILE", undefined)).toBe(true);
+  it("keeps retired memory aliases out of the benchmark action surface", () => {
+    expect(caseMatches("MEMORY_SET", "PROFILE", undefined)).toBe(false);
+    expect(caseMatches("MEMORY_WRITE", "PROFILE", undefined)).toBe(false);
   });
 
-  it("matches task and desktop atomic aliases to parent benchmark actions", () => {
-    expect(caseMatches("TASKS_ADD_TODO", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("TODO_CREATE", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("TODOS_CREATE", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("TASK_LIST", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("TASKS_LIST_TODAY", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("TASKS_SET_GOAL", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("LIST_TASKS", "LIFE", undefined)).toBe(true);
-    expect(caseMatches("SET_GOAL", "LIFE", undefined)).toBe(true);
+  it("matches task and desktop atomic names to canonical benchmark actions", () => {
+    expect(caseMatches("TASKS_ADD_TODO", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("TODO_CREATE", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("TODOS_CREATE", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("TASK_LIST", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("TASKS_LIST_TODAY", "OWNER_TODOS", undefined)).toBe(
+      true,
+    );
+    expect(caseMatches("TASKS_SET_GOAL", "OWNER_GOALS", undefined)).toBe(true);
+    expect(caseMatches("LIST_TASKS", "OWNER_TODOS", undefined)).toBe(true);
+    expect(caseMatches("SET_GOAL", "OWNER_GOALS", undefined)).toBe(true);
     expect(caseMatches("DESKTOP", "COMPUTER_USE", undefined)).toBe(true);
   });
 
@@ -173,7 +183,7 @@ describe("action selection benchmark scoring helpers", () => {
       `[{"name":"todo_create","arguments":{"title":"pick up dry cleaning","due":"2026-05-10"}}]`,
     );
 
-    expect(planned).toEqual(["LIFE"]);
+    expect(planned).toEqual(["OWNER_TODOS"]);
   });
 
   it("extracts top-level tool records embedded in generated text", () => {
@@ -190,7 +200,7 @@ describe("action selection benchmark scoring helpers", () => {
       }),
     );
 
-    expect(planned).toEqual(["LIFE"]);
+    expect(planned).toEqual(["OWNER_TODOS"]);
   });
 
   it("unwraps native call_action tool calls to the selected action", () => {
