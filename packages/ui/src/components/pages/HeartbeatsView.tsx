@@ -26,6 +26,7 @@ import type { TriggerSummary } from "../../api/client";
 import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
+import { detectUiHostCapabilities } from "../../utils/host-capabilities";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
@@ -49,6 +50,75 @@ import {
   toneForLastStatus,
   validateForm,
 } from "./heartbeat-utils";
+
+// ── Long-running host banner ──────────────────────────────────────
+//
+// Surfaces a one-time, session-scoped warning when the user has scheduled
+// triggers (cron / interval) but the current host cannot keep a process
+// alive in the background (mobile without BackgroundRunner registered,
+// or a plain browser tab). The banner does NOT block save / activation —
+// it only sets expectations.
+
+const LONG_RUNNING_BANNER_DISMISS_KEY = "eliza:longrunning-banner-dismissed";
+
+function isScheduledTrigger(trigger: TriggerSummary): boolean {
+  return (
+    (trigger.triggerType === "cron" || trigger.triggerType === "interval") &&
+    trigger.enabled
+  );
+}
+
+function LongRunningHostBanner({ triggers }: { triggers: TriggerSummary[] }) {
+  const host = useMemo(() => detectUiHostCapabilities(), []);
+  const scheduledCount = useMemo(
+    () => triggers.filter(isScheduledTrigger).length,
+    [triggers],
+  );
+
+  const initialDismissed = useMemo(() => {
+    if (typeof sessionStorage === "undefined") return false;
+    return sessionStorage.getItem(LONG_RUNNING_BANNER_DISMISS_KEY) === "1";
+  }, []);
+  const [dismissed, setDismissed] = useState<boolean>(initialDismissed);
+
+  if (host.longRunning || scheduledCount === 0 || dismissed) {
+    return null;
+  }
+
+  const triggerWord = scheduledCount === 1 ? "trigger" : "triggers";
+
+  return (
+    <PagePanel.Notice
+      tone="warning"
+      role="status"
+      aria-live="polite"
+      className="mb-3 text-xs"
+      actions={
+        <button
+          type="button"
+          className="text-xs font-medium text-muted underline-offset-2 hover:text-txt hover:underline"
+          onClick={() => {
+            if (typeof sessionStorage !== "undefined") {
+              sessionStorage.setItem(LONG_RUNNING_BANNER_DISMISS_KEY, "1");
+            }
+            setDismissed(true);
+          }}
+        >
+          Dismiss
+        </button>
+      }
+    >
+      <div className="flex flex-col gap-0.5">
+        <span className="font-semibold">{host.label}</span>
+        <span>
+          You have {scheduledCount} scheduled {triggerWord}. On your current
+          device, they fire only while the app is in foreground. To run reliably
+          in background, pair Eliza Cloud or install on a server.
+        </span>
+      </div>
+    </PagePanel.Notice>
+  );
+}
 
 // ── View controller hook ───────────────────────────────────────────
 
@@ -678,6 +748,8 @@ function HeartbeatsLayout() {
             })}
           </button>
         ) : null}
+
+        <LongRunningHostBanner triggers={triggers} />
 
         {editorOpen || editingId ? (
           <HeartbeatForm

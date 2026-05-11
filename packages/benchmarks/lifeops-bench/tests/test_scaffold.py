@@ -124,6 +124,56 @@ def test_runner_instantiates_with_noop_agent_fn() -> None:
     assert runner.judge_model == "claude-opus-4-7"
 
 
+def test_runner_builds_openai_compatible_tool_manifest() -> None:
+    import re
+
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import build_tool_manifest
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    tools = build_tool_manifest(world)
+    tool_names = [tool["function"]["name"] for tool in tools]
+
+    assert "CALENDAR" in tool_names
+    assert "MESSAGE" in tool_names
+    assert "SCHEDULED_TASK_CREATE" in tool_names
+    assert "CALENDAR.create" not in tool_names
+    assert len(tools) >= 20
+
+    name_re = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+    for tool in tools:
+        function = tool["function"]
+        assert name_re.fullmatch(function["name"])
+        assert function["description"]
+        assert function["parameters"]["type"] == "object"
+
+
+@pytest.mark.asyncio
+async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
+    from eliza_lifeops_bench import LifeOpsBenchRunner, MessageTurn
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
+
+    captured_tool_names: list[str] = []
+
+    async def capture_agent_fn(_history: list[MessageTurn], tools: list[dict]) -> MessageTurn:
+        captured_tool_names.extend(tool["function"]["name"] for tool in tools)
+        return MessageTurn(role="assistant", content="done")
+
+    runner = LifeOpsBenchRunner(
+        agent_fn=capture_agent_fn,
+        world_factory=_build_world_factory(),
+        scenarios=[SCENARIOS_BY_ID["smoke_static_calendar_01"]],
+        concurrency=1,
+        seeds=1,
+        max_cost_usd=0.01,
+    )
+    await runner.run_one(SCENARIOS_BY_ID["smoke_static_calendar_01"], 2026)
+
+    assert "CALENDAR" in captured_tool_names
+    assert all("." not in name for name in captured_tool_names)
+
+
 def test_pass_at_k_formula() -> None:
     from eliza_lifeops_bench.scorer import pass_at_k
 

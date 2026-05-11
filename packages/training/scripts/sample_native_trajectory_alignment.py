@@ -14,10 +14,11 @@ three artifacts for review:
    Vercel AI Gateway adapter.
 
 When CEREBRAS_API_KEY is present and --run-cerebras is set, the reference model
-stages call https://api.cerebras.ai/v1/chat/completions with gpt-oss-120b.
-Without a key, the script writes deterministic fixture responses and marks the
-run as offline; this keeps the data-prep audit reproducible in CI and on local
-machines without credentials.
+stages call the configured Cerebras-compatible chat-completions endpoint. The
+model defaults from env/CLI, with the current development backend only as a
+fallback. Without a key, the script writes deterministic fixture responses and
+marks the run as offline; this keeps the data-prep audit reproducible in CI and
+on local machines without credentials.
 """
 
 from __future__ import annotations
@@ -66,7 +67,11 @@ SYNTHESIS_TEMPLATES_MD = AUDIT_DIR / "native_synthesis_templates.md"
 
 SCHEMA = "eliza.native_trajectory_alignment_audit.v1"
 NATIVE_BOUNDARY_FORMAT = "eliza_native_v1"
-DEFAULT_MODEL = "gpt-oss-120b"
+DEFAULT_MODEL = (
+    os.environ.get("CEREBRAS_MODEL")
+    or os.environ.get("MILADY_COLLECTION_MODEL")
+    or "gpt-oss-120b"
+)
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_SEED = "eliza-native-audit-2026-05-07"
 
@@ -812,7 +817,12 @@ def prefix_hashes(segments: list[dict[str, Any]]) -> list[str]:
     return out
 
 
-def base_context_object(scenario_name: str, scenario: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+def base_context_object(
+    scenario_name: str,
+    scenario: dict[str, Any],
+    *,
+    model: str,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     system = "You are Eliza. Use native tool calls only when selected contexts require tools."
     registry = "contexts: general, wallet, payments, email, contacts, calendar"
     static_segments = [
@@ -828,7 +838,7 @@ def base_context_object(scenario_name: str, scenario: dict[str, Any]) -> tuple[d
     context = {
         "id": f"ctx-{scenario_name}",
         "version": "v5",
-        "metadata": {"scenario": scenario_name, "model": DEFAULT_MODEL},
+        "metadata": {"scenario": scenario_name, "model": model},
         "staticPrefix": {
             "systemPrompt": static_segments[0],
             "staticProviders": [static_segments[1]],
@@ -1163,7 +1173,7 @@ def build_reference_trajectory(
     base_url: str,
     timeout: int,
 ) -> dict[str, Any]:
-    context, static_segments = base_context_object(scenario_name, scenario)
+    context, static_segments = base_context_object(scenario_name, scenario, model=model)
     trajectory_segments = []
     stages: list[dict[str, Any]] = []
     steps: list[dict[str, Any]] = []
@@ -1380,7 +1390,7 @@ def recorded_model_stage(
         "latencyMs": 0,
         "model": {
             "modelType": "RESPONSE_HANDLER" if kind in {"messageHandler", "evaluation"} else "ACTION_PLANNER",
-            "modelName": DEFAULT_MODEL,
+            "modelName": shape["cerebrasChatCompletionsPayload"].get("model", DEFAULT_MODEL),
             "provider": "cerebras",
             "prompt": prompt,
             "tools": shape["runtimeUseModelParams"].get("tools"),

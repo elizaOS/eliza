@@ -20,6 +20,7 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api";
 import type {
@@ -88,7 +89,10 @@ const PROVISION_JOB_WAIT_DEADLINE_MS = 600_000;
 const AGENT_URL_WAIT_DEADLINE_MS = 300_000;
 
 type NativeAgentPlugin = {
-  start?: () => Promise<unknown>;
+  start?: (options?: {
+    apiBase?: string;
+    mode?: "local" | "cloud" | "cloud-hybrid" | "remote-mac" | string;
+  }) => Promise<unknown>;
 };
 
 async function startMobileLocalAgent(): Promise<void> {
@@ -100,7 +104,10 @@ async function startMobileLocalAgent(): Promise<void> {
     const registeredAgent =
       capacitorWithPlugins.Plugins?.Agent ??
       Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
-    await registeredAgent.start?.();
+    await registeredAgent.start?.({
+      apiBase: MOBILE_LOCAL_AGENT_API_BASE,
+      mode: "local",
+    });
   } catch (err) {
     console.warn(
       "[RuntimeGate] Failed to start mobile local agent",
@@ -1884,9 +1891,10 @@ function GateShell({
   return (
     <div
       data-testid="onboarding-ui-overlay"
-      className={`relative h-full min-h-0 w-full overflow-hidden text-white overscroll-none ${
+      className={`relative h-full max-h-[100dvh] min-h-0 w-full overflow-hidden text-white overscroll-none ${
         lightMode ? "bg-[#1a1108]" : "bg-[#0a0805]"
       }`}
+      style={{ height: "100dvh" }}
     >
       <div
         aria-hidden="true"
@@ -1931,7 +1939,7 @@ function GateShell({
 
       <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[calc(max(0.75rem,var(--safe-area-bottom,0px))_+_var(--keyboard-height,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-7 md:px-8 md:py-8"
+          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
           style={{
             borderRadius: 0,
             clipPath:
@@ -2045,8 +2053,8 @@ function WelcomeChooser({
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
 
   return (
-    <div className="flex w-full flex-col items-center gap-6 text-center sm:gap-7">
-      <div className="flex w-full max-w-xl flex-col items-center gap-3">
+    <div className="flex w-full flex-col items-center gap-4 text-center sm:gap-5">
+      <div className="flex w-full max-w-xl flex-col items-center gap-2">
         <p
           style={{ fontFamily: MONO_FONT }}
           className="text-3xs tracking-[0.22em] text-[#ffe600]/80"
@@ -2060,12 +2068,12 @@ function WelcomeChooser({
             fontFamily: MONO_FONT,
             textShadow: "2px 2px 0 rgba(0,0,0,0.85)",
           }}
-          className="text-3xl font-light uppercase tracking-tight text-white sm:text-4xl md:text-5xl"
+          className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl md:text-4xl"
         >
           {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
         </h1>
         <p
-          className="max-w-md text-sm leading-relaxed text-white/85 sm:text-base"
+          className="max-w-md text-sm leading-relaxed text-white/85"
           style={{
             fontFamily: MONO_FONT,
             textShadow: "1px 1px 0 rgba(0,0,0,0.75)",
@@ -2273,10 +2281,10 @@ function BackButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      style={{ fontFamily: MONO_FONT }}
-      className="mt-2 self-center text-3xs uppercase tracking-[0.2em] text-white/60 underline hover:text-[#ffe600] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-white/60"
+      className="mt-2 inline-flex items-center gap-1 self-center text-sm text-white/70 transition-colors hover:text-[#ffe600] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-white/70"
     >
-      ← {t("common.back", { defaultValue: "Back" })}
+      <ChevronLeft className="h-4 w-4" aria-hidden />
+      {t("common.back", { defaultValue: "Back" })}
     </button>
   );
 }
@@ -2300,21 +2308,27 @@ function LocalEmbeddingsCheckbox({
         className="mt-0.5 shrink-0 border-white/30 bg-white/10 data-[state=checked]:border-[#f0b90b]/60 data-[state=checked]:bg-[#f0b90b]/20"
         aria-label="Use local embeddings"
       />
-      <div className="flex min-w-0 items-center gap-1.5">
-        <label
-          htmlFor="runtime-gate-local-embeddings"
-          className="cursor-pointer text-xs-tight text-white/80 select-none"
-        >
-          Use local embeddings
-        </label>
-        <TooltipHint content={LOCAL_EMBEDDINGS_TOOLTIP} side="top">
-          <span
-            className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-white/20 text-2xs text-white/50 hover:text-white/70"
-            aria-hidden="true"
+      <div className="flex min-w-0 flex-col gap-0.5">
+        <div className="flex items-center gap-1.5">
+          <label
+            htmlFor="runtime-gate-local-embeddings"
+            className="cursor-pointer text-xs-tight text-white/80 select-none"
           >
-            ?
-          </span>
-        </TooltipHint>
+            Use local embeddings
+          </label>
+          <TooltipHint content={LOCAL_EMBEDDINGS_TOOLTIP} side="top">
+            <span
+              className="inline-flex h-4 w-4 shrink-0 cursor-help items-center justify-center rounded-full border border-white/20 text-2xs text-white/50 hover:text-white/70"
+              aria-hidden="true"
+            >
+              ?
+            </span>
+          </TooltipHint>
+        </div>
+        <p className="text-2xs leading-snug text-white/50">
+          Generate semantic search locally on this device. Slower first run;
+          private.
+        </p>
       </div>
     </div>
   );

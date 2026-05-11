@@ -2,7 +2,7 @@
 
 > Per-cell status of every (platform, ABI, GPU-backend) combination
 > that ships a Milady on-device runtime artifact. The unified fork
-> ([`milady-ai/llama.cpp`](https://github.com/milady-ai/llama.cpp) @
+> ([`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) @
 > `v0.3.0-milady`) is the authoritative source; per-cell artifacts
 > live under `~/.eliza/local-inference/bin/<target>/` for host
 > targets and under `apps/app/android/app/src/main/assets/agent/<abi>/`
@@ -35,7 +35,7 @@
 
 The verification commands assume:
 
-- `MILADY_LLAMA_CPP_REMOTE=https://github.com/milady-ai/llama.cpp` and
+- `MILADY_LLAMA_CPP_REMOTE=https://github.com/elizaOS/llama.cpp` and
   `MILADY_LLAMA_CPP_REF=v0.3.0-milady` (the W3-B fused-CPU release).
 - `~/.cache/milady-llama-cpp/<commit>` is the canonical checkout
   cache used by `compile-libllama.mjs` (AOSP) and
@@ -347,7 +347,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command (mingw-w64 cross from Linux):**
   ```bash
   PATH=/path/to/mingw/bin:$PATH \
-  ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/milady-ai/llama.cpp.git" \
+  ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/elizaOS/llama.cpp.git" \
     node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
       --target windows-x64-cpu --ref v0.3.0-milady
   ```
@@ -433,6 +433,6 @@ upstream `node-llama-cpp@3.18.1` for desktop). Per-cell verification
 required reading three different build scripts and reconciling
 patch-application status by hand. After the fork unifier landed
 (`reports/porting/2026-05-09-unified/INDEX.md`), every cell pulls
-from the same `milady-ai/llama.cpp @ vX.Y.0-milady` and the only
+from the same `elizaOS/llama.cpp @ vX.Y.0-milady` and the only
 moving variable is the platform/ABI/backend. This file is the
 canonical place for that table.

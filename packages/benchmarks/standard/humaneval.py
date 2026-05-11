@@ -108,35 +108,41 @@ def _build_program(prompt: str, completion: str, test: str, entry_point: str) ->
     return f"{prompt}{body}\n{test}\ncheck({entry_point})\n"
 
 
+def _humaneval_worker(
+    connection: "mp.connection.Connection",
+    code: str,
+    timeout_s: float,
+) -> None:
+    try:
+        # Suppress stdout from the candidate.
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            # Defensive: limit per-process CPU time too when the platform
+            # supports it.
+            with contextlib.suppress(Exception):
+                import resource
+
+                resource.setrlimit(resource.RLIMIT_CPU, (int(timeout_s) + 1, int(timeout_s) + 2))
+            # The candidate prompt may import things; restrict by giving it a
+            # fresh globals dict.
+            exec(compile(code, "<humaneval>", "exec"), {"__name__": "__main__"})
+        connection.send((True, ""))
+    except SystemExit as exc:
+        connection.send((False, f"SystemExit({exc.code})"))
+    except BaseException as exc:  # noqa: BLE001
+        connection.send((False, f"{type(exc).__name__}: {exc}"))
+    finally:
+        connection.close()
+
+
 def _execute_program(program: str, timeout_s: float) -> tuple[bool, str]:
-    """Run a candidate program in a forked subprocess with a hard
-    timeout. Returns (passed, error_message).
+    """Run a candidate program in a subprocess with a hard timeout.
+
+    Returns (passed, error_message).
     """
 
-    def target(connection: "mp.connection.Connection", code: str) -> None:
-        try:
-            # Suppress stdout from the candidate.
-            buf = io.StringIO()
-            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
-                # Defensive: limit per-process CPU time too when the
-                # platform supports it.
-                with contextlib.suppress(Exception):
-                    import resource
-
-                    resource.setrlimit(resource.RLIMIT_CPU, (int(timeout_s) + 1, int(timeout_s) + 2))
-                # The candidate prompt may import things; restrict by
-                # giving it a fresh globals dict.
-                exec(compile(code, "<humaneval>", "exec"), {"__name__": "__main__"})
-            connection.send((True, ""))
-        except SystemExit as exc:
-            connection.send((False, f"SystemExit({exc.code})"))
-        except BaseException as exc:  # noqa: BLE001
-            connection.send((False, f"{type(exc).__name__}: {exc}"))
-        finally:
-            connection.close()
-
     parent_conn, child_conn = mp.Pipe(duplex=False)
-    proc = mp.Process(target=target, args=(child_conn, program))
+    proc = mp.Process(target=_humaneval_worker, args=(child_conn, program, timeout_s))
     proc.daemon = True
     proc.start()
     proc.join(timeout=timeout_s)

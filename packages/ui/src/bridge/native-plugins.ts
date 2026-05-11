@@ -125,6 +125,21 @@ export interface AppleCalendarPermissionStatus {
   reason?: string | null;
 }
 
+export type PushNotificationPermissionState =
+  | "prompt"
+  | "prompt-with-rationale"
+  | "granted"
+  | "denied";
+
+export interface PushNotificationPermissionStatus {
+  receive: PushNotificationPermissionState;
+}
+
+export interface PushNotificationsPluginLike extends NativePlugin {
+  checkPermissions?: () => Promise<PushNotificationPermissionStatus>;
+  requestPermissions?: () => Promise<PushNotificationPermissionStatus>;
+}
+
 export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
@@ -611,6 +626,10 @@ export function getMobileSignalsPlugin(): MobileSignalsPluginLike {
 
 export function getAppleCalendarPlugin(): AppleCalendarPluginLike {
   return getNativePlugin<AppleCalendarPluginLike>("AppleCalendar");
+}
+
+export function getPushNotificationsPlugin(): PushNotificationsPluginLike {
+  return getNativePlugin<PushNotificationsPluginLike>("PushNotifications");
 }
 
 export function getAppBlockerPlugin(): AppBlockerPluginLike {

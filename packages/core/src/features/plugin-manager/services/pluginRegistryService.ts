@@ -6,13 +6,12 @@ import { logger } from "../../../logger.ts";
 import type { PluginMetadata } from "../types.ts";
 
 // ---------------------------------------------------------------------------
-// Registry URLs — next branch
+// Registry URLs
 // ---------------------------------------------------------------------------
 
 const GENERATED_REGISTRY_URL =
-	"https://raw.githubusercontent.com/elizaos-plugins/registry/next/generated-registry.json";
-const INDEX_REGISTRY_URL =
-	"https://raw.githubusercontent.com/elizaos-plugins/registry/next/index.json";
+	"https://plugins.elizacloud.ai/generated-registry.json";
+const INDEX_REGISTRY_URL = "https://plugins.elizacloud.ai/index.json";
 
 const CACHE_DURATION = 3_600_000; // 1 hour
 
@@ -49,6 +48,30 @@ interface GeneratedRegistryEntry {
 	topics: string[];
 	stargazers_count: number;
 	language: string;
+	origin?: string;
+	source?: string;
+	support?: string;
+	builtIn?: boolean;
+	firstParty?: boolean;
+	thirdParty?: boolean;
+	status?: string;
+	kind?: string;
+	registryKind?: string;
+	directory?: string | null;
+	app?: {
+		displayName?: string;
+		category?: string;
+		launchType?: "connect" | "local" | "url" | "overlay" | string;
+		launchUrl?: string | null;
+		icon?: string | null;
+		capabilities?: string[];
+		viewer?: {
+			url: string;
+			embedParams?: Record<string, string>;
+			postMessageAuth?: boolean;
+			sandbox?: string;
+		};
+	};
 }
 
 interface GeneratedRegistryFile {
@@ -65,6 +88,7 @@ export interface RegistryPlugin {
 	name: string;
 	gitRepo: string;
 	gitUrl: string;
+	directory?: string | null;
 	description: string;
 	homepage: string | null;
 	topics: string[];
@@ -92,7 +116,7 @@ export interface RegistryPlugin {
 		postMessageAuth?: boolean;
 		sandbox?: string;
 	};
-	launchType?: "connect" | "local";
+	launchType?: "connect" | "local" | "url" | "overlay" | string;
 	launchUrl?: string;
 	displayName?: string;
 	kind?: string;
@@ -100,6 +124,14 @@ export interface RegistryPlugin {
 	category?: string;
 	capabilities?: string[];
 	icon?: string | null;
+	registryKind?: string;
+	origin?: "builtin" | "third-party" | string;
+	source?: string;
+	support?: "first-party" | "community" | string;
+	builtIn?: boolean;
+	firstParty?: boolean;
+	thirdParty?: boolean;
+	status?: string;
 }
 
 export interface PluginSearchResult {
@@ -148,6 +180,7 @@ function entryToPlugin(
 		name,
 		gitRepo: e.git.repo,
 		gitUrl: `https://github.com/${e.git.repo}.git`,
+		directory: e.directory ?? null,
 		description: e.description || "",
 		homepage: e.homepage,
 		topics: e.topics || [],
@@ -169,15 +202,32 @@ function entryToPlugin(
 		},
 		supports: e.supports,
 		kind: e.kind,
+		registryKind: e.registryKind,
+		origin: e.origin,
+		source: e.source,
+		support: e.support,
+		builtIn: e.builtIn,
+		firstParty: e.firstParty,
+		thirdParty: e.thirdParty,
+		status: e.status,
+		displayName: e.app?.displayName,
+		category: e.app?.category,
+		launchType: e.app?.launchType,
+		launchUrl: e.app?.launchUrl ?? undefined,
+		icon: e.app?.icon,
+		capabilities: e.app?.capabilities,
+		viewer: e.app?.viewer,
 	};
 }
 
 function stubPlugin(name: string, gitRef: string): RegistryPlugin {
 	const repo = gitRef.replace(/^github:/, "");
+	const isBuiltIn = name.startsWith("@elizaos/");
 	return {
 		name,
 		gitRepo: repo,
 		gitUrl: `https://github.com/${repo}.git`,
+		directory: null,
 		description: "",
 		homepage: null,
 		topics: [],
@@ -194,6 +244,12 @@ function stubPlugin(name: string, gitRef: string): RegistryPlugin {
 		},
 		git: { v0Branch: null, v1Branch: null, v2Branch: "next" },
 		supports: { v0: false, v1: false, v2: false },
+		origin: isBuiltIn ? "builtin" : "third-party",
+		source: isBuiltIn ? "builtin" : "third-party",
+		support: isBuiltIn ? "first-party" : "community",
+		builtIn: isBuiltIn,
+		firstParty: isBuiltIn,
+		thirdParty: !isBuiltIn,
 	};
 }
 

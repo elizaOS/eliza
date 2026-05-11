@@ -19,8 +19,26 @@ export {
   findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
+export {
+  type CloudCandidate,
+  type CloudFallbackOptions,
+  classifyLocalError,
+  type FallbackReason,
+  findCloudCandidate,
+  type LocalGenerateOutcome,
+  makeCloudFallbackHandler,
+} from "./cloud-fallback";
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
+export {
+  estimateQuantizedKvBytesPerToken,
+  KV_SPILL_MIN_CONTEXT,
+  type KvGeometry,
+  type KvRestoreClass,
+  type KvSpillPlan,
+  KvSpillUnsupportedError,
+  planKvSpill,
+} from "./kv-spill";
 export { buildTextGenerationReadiness } from "./readiness";
 export {
   assessCatalogModelFit,

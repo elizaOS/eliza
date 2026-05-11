@@ -10,17 +10,19 @@ _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
+from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS  # noqa: E402
 from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     build_plan,
     missing_files,
     plan_to_json,
+    release_status_blockers,
     render_readiness,
 )
 
 
 def test_platform_plan_is_json_serializable_and_covers_all_tiers() -> None:
     data = plan_to_json(build_plan())
-    assert set(data) == {"0_6b", "1_7b", "9b", "27b", "27b-256k"}
+    assert set(data) == set(ELIZA_1_TIERS)
     json.dumps(data, sort_keys=True)
 
 
@@ -66,3 +68,33 @@ def test_readiness_mentions_vad_sidecar_caveat() -> None:
     text = render_readiness(build_plan(), missing=None)
     assert "VAD is intentionally a sidecar ONNX artifact" in text
     assert "Release evidence must use real final weights" in text
+
+
+def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-1_7b.bundle"
+    (bundle / "evidence").mkdir(parents=True)
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "releaseState": "local-standin",
+                "publishEligible": False,
+                "final": {
+                    "weights": False,
+                    "hashes": True,
+                    "evals": False,
+                    "licenses": False,
+                    "kernelDispatchReports": False,
+                    "platformEvidence": False,
+                    "sizeFirstRepoIds": False,
+                },
+                "hf": {"status": "blocked-local-standin"},
+            }
+        )
+    )
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+    assert any("releaseState" in item for item in blockers["1_7b"])
+    assert any("final.weights" in item for item in blockers["1_7b"])
+
+    text = render_readiness(plan, missing={}, blockers=blockers)
+    assert "Publish-blocking status:" in text

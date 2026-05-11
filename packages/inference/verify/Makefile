@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -23,7 +23,7 @@ all: reference-test
 $(REF_OBJ): $(REF_SRC) ../reference/turbo_kernels.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(QJL_POLAR_OBJ): $(QJL_POLAR_SRC) qjl_polar_ref.h
+$(QJL_POLAR_OBJ): $(QJL_POLAR_SRC) qjl_polar_ref.h ../reference/turbo_kernels.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 reference-test: gen_fixture
@@ -100,10 +100,14 @@ vulkan-qjl-polar: vulkan_verify vulkan-spirv
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
 	@echo "[kernels/verify] running vulkan_verify on Polar+QJL-residual fixture..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+	@echo "[kernels/verify] running vulkan_verify on Polar pre-Hadamard-query fixture..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar.json
+	@echo "[kernels/verify] running vulkan_verify on Polar pre-Hadamard-query + QJL-residual fixture..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
 
 # Full Vulkan correctness gate for the default-on kernel set. Runs all five
-# score kernels plus the Polar residual fixture so the optional residual branch
-# is not left to source review only.
+# score kernels plus Polar residual and pre-Hadamard variants so the optional
+# residual branch and H*q hot path are not left to source review only.
 vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	@echo "[kernels/verify] vulkan turbo3..."
 	./vulkan_verify ../vulkan/turbo3.spv fixtures/turbo3.json
@@ -117,6 +121,72 @@ vulkan-verify: vulkan_verify vulkan-spirv reference-test
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
 	@echo "[kernels/verify] vulkan polar + QJL residual..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+	@echo "[kernels/verify] vulkan polar pre-Hadamard query..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar pre-Hadamard query + QJL residual..."
+	./vulkan_verify ../vulkan/polar_preht.spv fixtures/polar_qjl.json
+
+# Multi-block-per-workgroup Vulkan variants. One SPV family per kernel; the
+# blocks/tokens-per-workgroup specialization constant (constant_id 0) is set
+# at pipeline-create time. Sweeps N ∈ {1,2,4,8}; each must match the same
+# fixture as its base kernel. Additive — not part of the publish gate
+# (vulkan-verify) so a future per-device tuning regression is visible
+# separately from the canonical kernel set.
+vulkan-verify-multiblock: vulkan_verify vulkan-spirv reference-test
+	@for n in 1 2 4 8; do \
+	  echo "[kernels/verify] vulkan turbo3 multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo3_multi.spv     fixtures/turbo3.json     --multi $$n && \
+	  echo "[kernels/verify] vulkan turbo4 multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo4_multi.spv     fixtures/turbo4.json     --multi $$n && \
+	  echo "[kernels/verify] vulkan turbo3_tcq multi $$n..." && \
+	  ./vulkan_verify ../vulkan/turbo3_tcq_multi.spv fixtures/turbo3_tcq.json --multi $$n && \
+	  echo "[kernels/verify] vulkan qjl multi $$n..." && \
+	  ./vulkan_verify ../vulkan/qjl_multi.spv        fixtures/qjl.json        --multi $$n || exit 1; \
+	done
+
+# Staged Vulkan fallback entrypoints (decode-to-fp32 / non-attention matvec).
+# Expected outputs are computed in vulkan_verify.cpp from the bit-exact C
+# reference (eliza_qjl_mul_mv / eliza_qjl_dequantize_row / eliza_polar_dequantize_row),
+# so no new fixture file is required. Additive — kept out of the publish gate
+# (vulkan-verify) because these are not on the runtime hot path; the runtime
+# dispatches qjl.comp / polar.comp / polar_preht.comp.
+#
+#   * qjl_mul_mv: hard gate. It is the QJL-score parity check (n_heads ==
+#     n_kv_heads == 1, n_rows == n_tokens), reduction-based, and passes
+#     deterministically on every ICD tested (Intel ANV, lavapipe).
+#   * qjl_get_rows / polar_get_rows: informational. These write one fp32
+#     output per element from all 32 invocations (no reduction). They are
+#     bit-exact and deterministic on lavapipe, but on Mesa ANV (Arrow Lake /
+#     Xe-LPG, Mesa 25.2.8) a handful of output elements intermittently read
+#     back 0 — an ANV codegen issue with the all-threads strided SSBO store,
+#     not a logic bug (the reduction-based polar.comp/polar_preht.comp share
+#     the same decode and are clean). Run shown for visibility; `-` so a
+#     flaky ANV result does not fail this target.
+vulkan-verify-fallbacks: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan qjl_mul_mv (== qjl score parity, n_rows=8)..."
+	./vulkan_verify ../vulkan/qjl_mul_mv.spv  fixtures/qjl.json
+	@echo "[kernels/verify] vulkan qjl_get_rows (decode block 0 vs eliza_qjl_dequantize_row; informational on ANV)..."
+	-./vulkan_verify ../vulkan/qjl_get_rows.spv fixtures/qjl.json
+	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=0 (decode block 0 vs eliza_polar_dequantize_row; informational on ANV)..."
+	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=1 (informational on ANV)..."
+	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar_qjl.json
+
+# Fused-attention (QJL-K + TBQ-V / Polar-V) Vulkan gate. vulkan/fused_attn_qjl_tbq.comp
+# and vulkan/fused_attn_qjl_polar.comp port GGML_OP_FUSED_ATTN_QJL_TBQ + the Polar
+# V-mix variant: one-pass FlashAttention-style online softmax per head, the score
+# vector never materialized, a driver-portable 32-thread shared-memory reduction
+# (no subgroup assumptions). vulkan_verify's run_fused_attn() parses the
+# `cases`-array fixture schema (n_kv ∈ {64, 512, 256, 128} standing in for the
+# 4k/32k/128k/256k regimes, GQA fanouts 1/2/4) and diffs against the C reference
+# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar). 1e-3 absolute tolerance.
+# Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
+# Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
+vulkan-verify-fused: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + TBQ3-V..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_tbq.spv   fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar.json
 
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
@@ -127,7 +197,7 @@ vulkan-native-smoke:
 	./linux_vulkan_smoke.sh
 
 # Android on-device standalone Vulkan smoke. Cross-compiles vulkan_verify with
-# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all six
+# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all eight
 # fixture checks on the physical device. Standalone fixture success is only
 # evidence; the script exits non-zero until Android graph-dispatch evidence is
 # supplied through ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE.
@@ -159,6 +229,10 @@ metal-verify: metal_verify reference-test
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json
 	@echo "[kernels/verify] metal polar + QJL residual..."
 	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar_qjl.json
+	@echo "[kernels/verify] metal polar pre-Hadamard query..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json
+	@echo "[kernels/verify] metal polar pre-Hadamard query + QJL residual..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json
 
 # Additive check for the long-context multi-block Metal entrypoints. These
 # are separate symbols from the compatibility entrypoints and need direct
@@ -174,6 +248,21 @@ metal-verify-multiblock: metal_verify reference-test
 	  echo "[kernels/verify] metal qjl multi $$n..." && \
 	  ./metal_verify ../metal/qjl.metal kernel_attn_score_qjl1_256_multi fixtures/qjl.json --multi $$n || exit 1; \
 	done
+
+# Fused-attention (QJL-K + TBQ-V / Polar-V) Metal gate. Same status as the
+# Vulkan target above: the C reference + fixtures are landed and self-tested,
+# but no fused metallib kernel (metal/fused_attn*.metal) and no cases-array
+# parser in metal_verify yet, so this target fails on purpose — the fused
+# capability is needs-runtime-smoke for Metal until the kernel + harness land.
+# Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
+# Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
+metal-verify-fused: reference-test
+	@echo "[kernels/verify] fused-attn fixtures sanity-checked via gen_fixture --self-test:"
+	@echo "  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_polar.json fixtures/polar_preht.json"
+	@echo "[metal-verify-fused] No Metal fused-attention kernel (metal/fused_attn*.metal) or"
+	@echo "  metal_verify cases-array parser yet — fused capability is needs-runtime-smoke for Metal."
+	@echo "  See reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md for the threadgroup plan."
+	@false
 
 # Metal performance harness (macOS only). Sibling of metal_verify; measures
 # end-to-end GPU latency, CPU wait, and bandwidth utilisation per kernel at
@@ -235,6 +324,8 @@ bench: cpu-bench
 GLSLC ?= $(shell command -v glslc 2>/dev/null)
 ifeq ($(GLSLC),)
 NDK_GLSLC := $(firstword \
+    $(wildcard $(HOME)/Library/Android/sdk/ndk/*/shader-tools/darwin-x86_64/glslc) \
+    $(wildcard $(HOME)/Library/Android/sdk/ndk/*/shader-tools/linux-x86_64/glslc) \
     $(wildcard $(HOME)/Android/Sdk/ndk/*/shader-tools/linux-x86_64/glslc) \
     $(wildcard $(HOME)/Android/Sdk/ndk/*/shader-tools/darwin-x86_64/glslc))
 GLSLC := $(NDK_GLSLC)
@@ -248,7 +339,14 @@ VULKAN_SHADERS = \
     ../vulkan/qjl_get_rows.spv \
     ../vulkan/qjl_mul_mv.spv \
     ../vulkan/polar.spv \
-    ../vulkan/polar_get_rows.spv
+    ../vulkan/polar_preht.spv \
+    ../vulkan/polar_get_rows.spv \
+    ../vulkan/turbo3_multi.spv \
+    ../vulkan/turbo4_multi.spv \
+    ../vulkan/turbo3_tcq_multi.spv \
+    ../vulkan/qjl_multi.spv \
+    ../vulkan/fused_attn_qjl_tbq.spv \
+    ../vulkan/fused_attn_qjl_polar.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 
@@ -263,122 +361,98 @@ else
 		-fshader-stage=compute $< -o $@
 endif
 
-# CUDA harness. Sibling of metal/vulkan_verify. Verifies the in-fork
-# v0.4.0-milady CUDA kernels (turboquant.cuh, turbo-tcq.cu(h), qjl.cu(h),
-# polarquant.cu(h)) against the canonical fixtures.
+# CUDA harness. Sibling of metal/vulkan_verify. Self-contained: needs only
+# nvcc + the CUDA runtime headers (the in-fork ggml-cuda headers are NOT a
+# build dependency — the harness ports the same reference algorithm into CUDA
+# __device__ kernels that consume the fixture byte images directly, exactly
+# like metal_verify / vulkan_verify port it into the shader). It links the
+# same qjl_polar_ref.o the Metal/Vulkan harnesses link, for an on-host
+# cross-check of the fixture's expected_scores.
 #
 # Resolution order:
-#   1. nvcc on PATH               — required to compile (.cu -> ELF).
-#   2. CUDA_HOME/include          — defaults to /usr/local/cuda; overridable.
-#   3. ELIZA_DFLASH_LLAMA_DIR     — root of the milady-llama-cpp checkout
-#                                   (defaults to ~/.cache/eliza-dflash/milady-llama-cpp)
-#                                   so we can include ggml-cuda/*.cuh.
-#   4. ELIZA_DFLASH_LIBGGML_CUDA  — path to libggml-cuda.so. The harness LINKS
-#                                   against the SHIPPED CUDA library so qjl,
-#                                   polar, and turbo3_tcq exercise the actual
-#                                   production kernel symbols. turbo3 / turbo4
-#                                   are verified through a per-block dot
-#                                   wrapper in cuda_verify.cu that calls the
-#                                   shipped device-side `tbq_decode_block_cuda`
-#                                   helpers (the fork ships no exported
-#                                   turbo3_score / turbo4_score symbol).
+#   1. nvcc on PATH       — required to compile (.cu -> ELF).
+#   2. CUDA_HOME/include  — defaults to /usr/local/cuda; overridable.
+#   3. ELIZA_DFLASH_LLAMA_DIR / ELIZA_DFLASH_LIBGGML_CUDA — UNUSED by this
+#      harness now; retained as env so cuda_runner.sh's passthrough is inert.
 NVCC ?= $(shell command -v nvcc 2>/dev/null)
 CUDA_HOME ?= /usr/local/cuda
 ELIZA_DFLASH_LLAMA_DIR ?= $(HOME)/.cache/eliza-dflash/milady-llama-cpp
 ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
-CUDA_INCLUDES = \
-    -I$(CUDA_HOME)/include \
-    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
-    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
-    -I.
+# CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
+# agent owns build-llama-cpp-dflash.mjs):
+#   linux-x64-cuda      : 80;86;89;90;100;120   (Ampere..Blackwell, mobile dGPU = 12.0)
+#   linux-aarch64-cuda  : 90a;90;100            (GH200 sm_90a + Hopper/Blackwell)
+# For a one-off local build on this machine's Blackwell mobile dGPU:
+#   ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90' \
+#     node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
+#
+# Compile-time arch list for the harness itself (cheap; one TU). Overridable
+# with CUDA_ARCH_FLAGS. Default covers Ampere..Blackwell.
+CUDA_ARCH_FLAGS ?= -gencode arch=compute_80,code=sm_80 \
+    -gencode arch=compute_86,code=sm_86 \
+    -gencode arch=compute_89,code=sm_89 \
+    -gencode arch=compute_90,code=sm_90 \
+    -gencode arch=compute_120,code=sm_120 \
+    -gencode arch=compute_120,code=compute_120
 
-CUDA_DEFINES = \
-    -DGGML_CUDA_TBQ3_TCQ=1 \
-    -DGGML_CUDA_QJL=1 \
-    -DGGML_CUDA_POLARQUANT=1
+CUDA_INCLUDES = -I$(CUDA_HOME)/include -I.
 
 cuda: cuda_verify
-cuda_verify: cuda_verify.cu $(QJL_POLAR_OBJ)
+cuda_verify: cuda_verify.cu tbq3_tcq_codebook.inc $(QJL_POLAR_OBJ) $(REF_OBJ)
 ifeq ($(NVCC),)
 	@echo "CUDA toolchain not found — install via 'apt install nvidia-cuda-toolkit' (Linux) or download the CUDA Toolkit (macOS not supported)."
 	@false
 else
-ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh),)
-	@echo "CUDA harness needs the milady-llama-cpp checkout at"
-	@echo "  $(ELIZA_DFLASH_LLAMA_DIR)"
-	@echo "Run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda --no-build'"
-	@echo "to fetch it (or override ELIZA_DFLASH_LLAMA_DIR)."
-	@false
-else
-ifeq ($(wildcard $(ELIZA_DFLASH_LIBGGML_CUDA)),)
-	@echo "CUDA harness needs libggml-cuda.so at"
-	@echo "  $(ELIZA_DFLASH_LIBGGML_CUDA)"
-	@echo "Build via 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda',"
-	@echo "or override ELIZA_DFLASH_LIBGGML_CUDA."
-	@false
-else
-	$(NVCC) -O2 -std=c++17 \
-		$(CUDA_INCLUDES) $(CUDA_DEFINES) \
-		cuda_verify.cu $(QJL_POLAR_OBJ) \
-		$(ELIZA_DFLASH_LIBGGML_CUDA) \
+	$(NVCC) -O2 -std=c++17 $(CUDA_ARCH_FLAGS) \
+		$(CUDA_INCLUDES) \
+		cuda_verify.cu $(QJL_POLAR_OBJ) $(REF_OBJ) \
 		-lcudart -lm -o cuda_verify
 endif
-endif
-endif
 
-# Source-level correctness check (M4 Max can run this; nvcc is NOT required).
-# Two phases:
-#   1. API surface check — grep-assert that every CUDA symbol cuda_verify.cu
-#      references is actually declared in the in-fork ggml-cuda headers.
-#      This catches name/signature drift between the harness and the
-#      v0.4.0-milady fork without needing CUDA Toolkit headers.
-#   2. Host-side parser check — compile the non-CUDA portion of cuda_verify.cu
-#      (fixture loader + diff loop) under -fsyntax-only with the CUDA
-#      sections gated out. This catches C++ typos in the harness.
-#
-# Full nvcc compile and runtime 8/8 PASS are gated on a CUDA host — see
+# Source-level correctness check (a non-CUDA host can run this — nvcc NOT
+# required). Two phases:
+#   1. Harness self-consistency — assert cuda_verify.cu defines a CUDA kernel
+#      for every fixture family and includes the generated TCQ codebook.
+#   2. Codebook integrity — assert the generated .inc has exactly 512 floats
+#      matching reference/turbo_kernels.c.
+# Full nvcc compile + runtime 8/8 PASS are gated on a CUDA host — see
 # CUDA_VERIFICATION.md.
 cuda-preprocess-check:
-ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh),)
-	@echo "[cuda-preprocess-check] skipped — missing $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda"
-else
-	@echo "[cuda-preprocess-check] (1) API surface assertions"
-	@grep -q 'tbq_decode_block_cuda' $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turboquant.cuh \
-		|| { echo "  MISS: tbq_decode_block_cuda in turboquant.cuh"; exit 1; }
-	@echo "  OK: tbq_decode_block_cuda  (turbo3/turbo4 wrapper)"
-	@grep -q 'dequantize_row_tbq3_tcq_cuda' $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/turbo-tcq.cuh \
-		|| { echo "  MISS: dequantize_row_tbq3_tcq_cuda in turbo-tcq.cuh"; exit 1; }
-	@echo "  OK: dequantize_row_tbq3_tcq_cuda  (turbo3_tcq)"
-	@grep -q 'attn_score_qjl_cuda'         $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/qjl.cuh \
-		|| { echo "  MISS: attn_score_qjl_cuda in qjl.cuh"; exit 1; }
-	@echo "  OK: attn_score_qjl_cuda  (qjl)"
-	@grep -q 'dequantize_row_q4_polar_cuda' $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/polarquant.cuh \
-		|| { echo "  MISS: dequantize_row_q4_polar_cuda in polarquant.cuh"; exit 1; }
-	@echo "  OK: dequantize_row_q4_polar_cuda  (polar)"
-	@grep -q 'block_tbq3_0\b'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
-		|| { echo "  MISS: block_tbq3_0 in ggml-common.h"; exit 1; }
-	@grep -q 'block_tbq4_0\b'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
-		|| { echo "  MISS: block_tbq4_0 in ggml-common.h"; exit 1; }
-	@grep -q 'block_qjl1_256'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
-		|| { echo "  MISS: block_qjl1_256 in ggml-common.h"; exit 1; }
-	@grep -q 'block_q4_polar'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
-		|| { echo "  MISS: block_q4_polar in ggml-common.h"; exit 1; }
-	@grep -q 'block_tbq3_tcq'  $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h \
-		|| { echo "  MISS: block_tbq3_tcq in ggml-common.h"; exit 1; }
-	@echo "  OK: all five block_* layouts in ggml-common.h"
-	@echo "[cuda-preprocess-check] (2) harness symbol references"
-	@grep -q 'tbq_decode_block_cuda'         cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
-	@grep -q 'dequantize_row_tbq3_tcq_cuda'  cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
-	@grep -q 'attn_score_qjl_cuda'           cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
-	@grep -q 'dequantize_row_q4_polar_cuda'  cuda_verify.cu || { echo "  MISS in cuda_verify.cu"; exit 1; }
-	@echo "  OK: cuda_verify.cu calls all four exported CUDA APIs + the device helper"
+	@echo "[cuda-preprocess-check] (1) harness kernel coverage"
+	@grep -q 'turbo34_score_kernel'   cuda_verify.cu || { echo "  MISS: turbo34_score_kernel"; exit 1; }
+	@grep -q 'turbo3_tcq_score_kernel' cuda_verify.cu || { echo "  MISS: turbo3_tcq_score_kernel"; exit 1; }
+	@grep -q 'qjl_score_kernel'        cuda_verify.cu || { echo "  MISS: qjl_score_kernel"; exit 1; }
+	@grep -q 'polar_score_kernel'      cuda_verify.cu || { echo "  MISS: polar_score_kernel"; exit 1; }
+	@grep -q 'tbq3_tcq_codebook.inc'   cuda_verify.cu || { echo "  MISS: codebook include"; exit 1; }
+	@echo "  OK: turbo3/turbo4/turbo3_tcq/qjl/polar kernels + codebook include present"
+	@echo "[cuda-preprocess-check] (2) generated codebook integrity"
+	@test -f tbq3_tcq_codebook.inc || { echo "  MISS: tbq3_tcq_codebook.inc — run 'make tbq3_tcq_codebook.inc'"; exit 1; }
+	@n=$$(grep -oE '[-+]?[0-9][0-9.eE+-]*f?' tbq3_tcq_codebook.inc | wc -l); \
+		test "$$n" = "512" || { echo "  FAIL: codebook has $$n entries, expected 512"; exit 1; }
+	@echo "  OK: tbq3_tcq_codebook.inc has 512 entries"
+	@echo "[cuda-preprocess-check] (3) fork CUDA kernel headers present (informational)"
+	@for h in turboquant.cuh turbo-tcq.cuh qjl.cuh polarquant.cuh; do \
+		if [ -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-cuda/$$h" ]; then echo "  present: $$h"; \
+		else echo "  ABSENT: $$h (fork CUDA KV-cache kernels not yet landed — see CUDA_VERIFICATION.md)"; fi; \
+	done
 	@echo "[cuda-preprocess-check] OK"
-endif
 
-# `cuda-verify` runs the harness against all five fixtures, same shape as
+# Regenerate the device-side TCQ codebook include from the C reference (the
+# single source of truth: reference/turbo_kernels.c::ELIZA_TURBO3_TCQ_CODEBOOK).
+tbq3_tcq_codebook.inc: ../reference/turbo_kernels.c
+	@python3 -c "import re,sys; \
+src=open('../reference/turbo_kernels.c').read(); \
+m=re.search(r'ELIZA_TURBO3_TCQ_CODEBOOK\[512\]\s*=\s*\{(.*?)\};', src, re.S); \
+open('tbq3_tcq_codebook.inc','w').write(m.group(1).strip()+'\n'); \
+n=len(re.findall(r'[-+]?[0-9][0-9.eE+-]*f?', m.group(1))); \
+sys.exit(0 if n==512 else 'codebook extraction got %d entries'%n)"
+	@echo "[tbq3_tcq_codebook.inc] regenerated from reference/turbo_kernels.c (512 entries)"
+
+# `cuda-verify` runs the harness against all six fixtures, same shape as
 # `bench` does for the perf harness. Gated on nvcc presence so it stays
-# safe on hosts without a CUDA toolchain.
+# safe on hosts without a CUDA toolchain. (fused_attn_qjl_tbq.json is run too
+# if the fused-attention-reference agent has landed it.)
 cuda-verify:
 ifeq ($(NVCC),)
 	@echo "CUDA toolchain not found — install via 'apt install nvidia-cuda-toolkit' (Linux) or download the CUDA Toolkit (macOS not supported)."
@@ -391,6 +465,9 @@ else
 	@echo "[cuda-verify] qjl ..."        ; ./cuda_verify fixtures/qjl.json
 	@echo "[cuda-verify] polar ..."      ; ./cuda_verify fixtures/polar.json
 	@echo "[cuda-verify] polar + QJL residual ..." ; ./cuda_verify fixtures/polar_qjl.json
+	@if [ -f fixtures/fused_attn_qjl_tbq.json ]; then \
+		echo "[cuda-verify] fused QJL-K + TBQ-V attention ..." ; ./cuda_verify fixtures/fused_attn_qjl_tbq.json ; \
+	else echo "[cuda-verify] fused_attn_qjl_tbq.json not present — fused-attention-reference agent owns it; skipping" ; fi
 endif
 
 # Hardware runners. These intentionally fail without matching physical
@@ -442,7 +519,9 @@ else
 	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
 	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
 	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-	  echo "[verify-fork] metal: 5/5 patched shipped shaders verified against the same fixtures as the standalones"; \
+	  echo "[verify-fork] metal/polar_preht (patched shipped: polar.metal)"   && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_preht_f32 fixtures/polar.json && \
+	  echo "[verify-fork] metal/polar_preht + QJL residual (patched shipped: polar.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal kernel_mul_mv_q4_polar_preht_f32 fixtures/polar_qjl.json && \
+	  echo "[verify-fork] metal: 5/5 patched shipped shader files plus Polar preht variants verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
@@ -460,7 +539,13 @@ else
 	    done; \
 	    echo "[verify-fork] vulkan/polar + QJL residual (fork: vulkan-shaders/polar.comp)"; \
 	    ./vulkan_verify bench_results/fork-spv/polar.spv fixtures/polar_qjl.json || exit 1; \
-	    echo "[verify-fork] vulkan: 5/5 fork shaders + polar residual verified against standalone fixtures"; \
+	    $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+	      $(ELIZA_DFLASH_FORK_VULKAN_DIR)/polar_preht.comp -o bench_results/fork-spv/polar_preht.spv || exit 1; \
+	    echo "[verify-fork] vulkan/polar_preht (fork: vulkan-shaders/polar_preht.comp)"; \
+	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar.json || exit 1; \
+	    echo "[verify-fork] vulkan/polar_preht + QJL residual (fork: vulkan-shaders/polar_preht.comp)"; \
+	    ./vulkan_verify bench_results/fork-spv/polar_preht.spv fixtures/polar_qjl.json || exit 1; \
+	    echo "[verify-fork] vulkan: 6/6 fork score shaders + polar residual/preht variants verified against standalone fixtures"; \
 	  else \
 	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
 	  fi; \

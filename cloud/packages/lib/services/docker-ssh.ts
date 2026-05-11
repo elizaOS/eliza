@@ -419,6 +419,97 @@ export class DockerSSHClient {
   }
 
   /**
+   * Execute a command and stream bytes to its stdin.
+   *
+   * This is used for provisioning workspace files onto Docker nodes without
+   * putting file contents in shell arguments, command logs, or environment
+   * variables.
+   */
+  async execStdin(command: string, input: Buffer | string, timeoutMs?: number): Promise<string> {
+    if (!this.connected || !this.client) {
+      await this.connect();
+    }
+    this.lastActivityMs = Date.now();
+
+    const effectiveTimeout = timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
+    const client = this.client!;
+    const inputBuffer = Buffer.isBuffer(input) ? input : Buffer.from(input);
+
+    return new Promise<string>((resolve, reject) => {
+      let output = "";
+      let settled = false;
+      let stream: ClientChannel | undefined;
+      const cmdFirstToken = command.split(/\s+/)[0] ?? "unknown";
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try {
+            stream?.close();
+          } catch {
+            /* best-effort */
+          }
+          reject(
+            new Error(
+              `[docker-ssh] Command timed out after ${effectiveTimeout}ms on ${this.hostname}: ${cmdFirstToken} [redacted]`,
+            ),
+          );
+        }
+      }, effectiveTimeout);
+
+      client.exec(command, (err, s) => {
+        stream = s;
+
+        if (err) {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            reject(new Error(`[docker-ssh] exec error on ${this.hostname}: ${err.message}`));
+          }
+          return;
+        }
+
+        stream.on("data", (data: Buffer) => {
+          output += data.toString();
+        });
+
+        stream.stderr.on("data", (data: Buffer) => {
+          const text = data.toString();
+          output += output && !output.endsWith("\n") ? `\n[stderr] ${text}` : `[stderr] ${text}`;
+        });
+
+        stream.on("close", (code: number) => {
+          clearTimeout(timer);
+          if (settled) return;
+          settled = true;
+
+          if (code !== 0) {
+            reject(
+              new Error(
+                `[docker-ssh] Command exited with code ${code} on ${this.hostname}: ${output.trim()}`,
+              ),
+            );
+          } else {
+            resolve(output);
+          }
+        });
+
+        stream.on("error", (streamErr: Error) => {
+          clearTimeout(timer);
+          if (!settled) {
+            settled = true;
+            reject(
+              new Error(`[docker-ssh] stream error on ${this.hostname}: ${streamErr.message}`),
+            );
+          }
+        });
+
+        stream.end(inputBuffer);
+      });
+    });
+  }
+
+  /**
    * Open a streaming exec channel — used for long-running commands like
    * `docker logs --follow` where the caller wants every chunk as it
    * arrives. The handlers run on each stdout / stderr write; resolve()

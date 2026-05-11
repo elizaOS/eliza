@@ -28,6 +28,13 @@ from ..types import MessageTurn
 # Lazy so the agent can be built without immediately requiring API keys etc.
 ClientFactory = Callable[[], BaseClient]
 
+LIFEOPS_TOOL_SYSTEM_PROMPT = (
+    "You are running LifeOpsBench. When the user request requires changing or "
+    "querying LifeOps state, call the supplied tool with structured arguments "
+    "instead of describing the action in prose. Emit one clear tool call per "
+    "action and wait for the tool result before finalizing."
+)
+
 
 def message_turns_to_openai(history: list[MessageTurn]) -> list[dict[str, Any]]:
     """Convert the runner's ``MessageTurn`` history to OpenAI-format messages.
@@ -127,6 +134,8 @@ class OpenAICompatAgent:
         tools: list[dict[str, Any]],
     ) -> MessageTurn:
         messages = message_turns_to_openai(history)
+        if tools and not any(msg.get("role") == "system" for msg in messages):
+            messages.insert(0, {"role": "system", "content": LIFEOPS_TOOL_SYSTEM_PROMPT})
         call = ClientCall(
             messages=messages,
             tools=list(tools) if tools else None,

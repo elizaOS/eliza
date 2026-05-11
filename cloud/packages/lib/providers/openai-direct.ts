@@ -28,15 +28,16 @@ function stripOpenAIPrefix(model: string): string {
 
 export class OpenAIDirectProvider implements AIProvider {
   name = "openai";
-  private baseUrl = "https://api.openai.com/v1";
+  private baseUrl: string;
   private apiKey: string;
   private timeout = 2 * 60000;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, baseUrl = "https://api.openai.com/v1") {
     if (!apiKey) {
       throw new Error("OpenAI API key is required");
     }
     this.apiKey = apiKey;
+    this.baseUrl = baseUrl.replace(/\/+$/, "");
   }
 
   private getHeaders(): Record<string, string> {

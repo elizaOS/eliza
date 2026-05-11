@@ -1,12 +1,22 @@
 import fs from "node:fs";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  appendKvOffloadFlags,
+  appendOptimizationFlags,
+  dflashDevDisabled,
   dflashEnabled,
+  dflashLlamaServer,
+  extractStreamingChatDelta,
+  extractVerifierRejectRange,
   getDflashRuntimeStatus,
+  logDflashDevDisabledWarning,
   parseDflashMetrics,
   resolveDflashBinary,
+  resolveDflashKvOffload,
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
@@ -29,6 +39,58 @@ function makeManagedBinary(root: string): string {
   fs.writeFileSync(managed, "#!/bin/sh\n", "utf8");
   fs.chmodSync(managed, 0o755);
   return managed;
+}
+
+async function readBody(req: http.IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    req.on("data", (chunk: Buffer) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+}
+
+async function startStreamingMockServer(): Promise<{
+  baseUrl: string;
+  close: () => Promise<void>;
+}> {
+  const server = http.createServer(async (req, res) => {
+    if (req.method === "GET" && req.url === "/metrics") {
+      res.statusCode = 200;
+      res.end(
+        [
+          "llamacpp:prompt_tokens_total 0",
+          "llamacpp:n_tokens_predicted_total 0",
+          "llamacpp:n_drafted_total 2",
+          "llamacpp:n_accepted_total 2",
+        ].join("\n"),
+      );
+      return;
+    }
+    if (req.method === "POST" && req.url === "/v1/chat/completions") {
+      const body = JSON.parse(await readBody(req)) as { stream?: boolean };
+      expect(body.stream).toBe(true);
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "Hel" } }] })}\n\n`,
+      );
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "lo" } }] })}\n\n`,
+      );
+      res.end("data: [DONE]\n\n");
+      return;
+    }
+    res.statusCode = 404;
+    res.end();
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  return {
+    baseUrl: `http://127.0.0.1:${port}`,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
 }
 
 describe("DFlash runtime discovery", () => {
@@ -75,6 +137,38 @@ describe("DFlash runtime discovery", () => {
 
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(resolveDflashBinary()).toBe(path.join(binDir, "llama-server"));
+  });
+});
+
+describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
+  it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
+    delete process.env.MILADY_DFLASH_DISABLE;
+    process.env.ELIZA_DFLASH_ENABLED = "1";
+    expect(dflashDevDisabled()).toBe(false);
+    expect(dflashEnabled()).toBe(true);
+
+    process.env.MILADY_DFLASH_DISABLE = "1";
+    expect(dflashDevDisabled()).toBe(true);
+    expect(dflashEnabled()).toBe(false);
+    expect(getDflashRuntimeStatus().reason).toContain("MILADY_DFLASH_DISABLE");
+  });
+
+  it("logs a loud warning when active and is silent otherwise", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      delete process.env.MILADY_DFLASH_DISABLE;
+      logDflashDevDisabledWarning();
+      expect(warn).not.toHaveBeenCalled();
+
+      process.env.MILADY_DFLASH_DISABLE = "1";
+      logDflashDevDisabledWarning();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(
+        "MILADY_DFLASH_DISABLE=1",
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 
@@ -128,5 +222,162 @@ llamacpp:n_drafted_accepted_total 0
     expect(snapshot).not.toBeNull();
     expect(snapshot?.drafted).toBe(0);
     expect(Number.isNaN(snapshot?.acceptanceRate)).toBe(true);
+  });
+});
+
+describe("extractStreamingChatDelta", () => {
+  it("extracts OpenAI chat streaming delta content", () => {
+    expect(
+      extractStreamingChatDelta({
+        choices: [{ delta: { content: "Hello" } }],
+      }),
+    ).toBe("Hello");
+  });
+
+  it("extracts legacy text streaming chunks", () => {
+    expect(
+      extractStreamingChatDelta({
+        choices: [{ text: "Hi" }, { text: " there" }],
+      }),
+    ).toBe("Hi there");
+  });
+
+  it("ignores role-only or malformed chunks", () => {
+    expect(
+      extractStreamingChatDelta({
+        choices: [{ delta: { role: "assistant" } }],
+      }),
+    ).toBe("");
+    expect(extractStreamingChatDelta(null)).toBe("");
+  });
+});
+
+describe("extractVerifierRejectRange", () => {
+  it("returns null when the chunk has no verifier extension", () => {
+    expect(
+      extractVerifierRejectRange({ choices: [{ delta: { content: "hi" } }] }),
+    ).toBeNull();
+    expect(extractVerifierRejectRange(null)).toBeNull();
+    expect(extractVerifierRejectRange({ verifier: {} })).toBeNull();
+  });
+
+  it("parses a well-formed inclusive reject range", () => {
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [3, 5] } }),
+    ).toEqual([3, 5]);
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [0, 0] } }),
+    ).toEqual([0, 0]);
+  });
+
+  it("rejects malformed ranges", () => {
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [5, 3] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [1] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [-1, 2] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [1.5, 2] } }),
+    ).toBeNull();
+  });
+});
+
+describe("DFlash streaming callbacks", () => {
+  it("synthesizes verifier accept events from streamed OpenAI deltas", async () => {
+    const mock = await startStreamingMockServer();
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = mock.baseUrl;
+    target.cacheParallel = 4;
+    const textChunks: string[] = [];
+    const verifierChunks: Array<{ index: number; text: string }> = [];
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "say hello",
+        onTextChunk: (chunk) => {
+          textChunks.push(chunk);
+        },
+        onVerifierEvent: (event) => {
+          expect(event.kind).toBe("accept");
+          verifierChunks.push(...event.tokens);
+        },
+      });
+
+      expect(result.text).toBe("Hello");
+      expect(textChunks).toEqual(["Hel", "lo"]);
+      expect(verifierChunks).toEqual([
+        { index: 0, text: "Hel" },
+        { index: 1, text: "lo" },
+      ]);
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      await mock.close();
+    }
+  });
+});
+
+describe("llama-server optimization flags", () => {
+  it("keeps KV placement distinct from layer offload", () => {
+    const args: string[] = [];
+    appendKvOffloadFlags(args, resolveDflashKvOffload({ kvOffload: "cpu" }));
+    expect(args).toEqual(["--no-kv-offload"]);
+
+    expect(resolveDflashKvOffload({ kvOffload: { gpuLayers: 10 } })).toBeNull();
+  });
+
+  it("uses ELIZA_LOCAL_KV_OFFLOAD when no per-load KV override is present", () => {
+    process.env.ELIZA_LOCAL_KV_OFFLOAD = "cpu";
+    expect(resolveDflashKvOffload(undefined)).toBe("cpu");
+    expect(resolveDflashKvOffload({ kvOffload: "gpu" })).toBe("gpu");
+  });
+
+  it("appends cache, batching, and server offload knobs from catalog metadata", () => {
+    const args: string[] = [];
+    appendOptimizationFlags(args, {
+      cacheReuse: 256,
+      cacheRamMb: 4096,
+      batchSize: 1024,
+      ubatchSize: 128,
+      contBatching: true,
+      kvUnified: true,
+      opOffload: false,
+    });
+
+    expect(args).toEqual([
+      "--cache-reuse",
+      "256",
+      "--cache-ram",
+      "4096",
+      "--batch-size",
+      "1024",
+      "--ubatch-size",
+      "128",
+      "--cont-batching",
+      "--kv-unified",
+      "--no-op-offload",
+    ]);
+  });
+
+  it("lets env override cache and batching optimization metadata", () => {
+    process.env.ELIZA_LOCAL_CACHE_REUSE = "64";
+    process.env.ELIZA_LOCAL_CONT_BATCHING = "off";
+    const args: string[] = [];
+    appendOptimizationFlags(args, {
+      cacheReuse: 256,
+      contBatching: true,
+    });
+
+    expect(args).toEqual(["--cache-reuse", "64", "--no-cont-batching"]);
   });
 });

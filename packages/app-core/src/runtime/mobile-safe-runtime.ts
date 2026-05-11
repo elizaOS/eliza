@@ -8,6 +8,15 @@ export type MobileSafeRuntimeProviderKind =
   | "wasm"
   | "android-isolated-process";
 
+export type AndroidAvfMicrodroidCapabilityState =
+  | "unsupported-platform"
+  | "unsupported-api"
+  | "framework-unavailable"
+  | "permission-denied"
+  | "service-unavailable"
+  | "payload-missing"
+  | "ready";
+
 export type MobileSafeRuntimeCapability =
   | "fs.read"
   | "fs.write"
@@ -34,10 +43,22 @@ export interface MobileSafeRuntimeFeatureProbe {
   platform?: MobileSafeRuntimePlatform;
   androidAvfAvailable?: boolean;
   androidMicrodroidAvailable?: boolean;
+  androidAvfPayloadAvailable?: boolean;
+  androidAvfCapabilityState?: AndroidAvfMicrodroidCapabilityState;
   androidIsolatedProcessAvailable?: boolean;
   iosJavaScriptCoreAvailable?: boolean;
   iosQuickJsAvailable?: boolean;
   allowInProcessSafeJsApplet?: boolean;
+}
+
+export interface AndroidAvfMicrodroidRuntimeStatus {
+  state: AndroidAvfMicrodroidCapabilityState;
+  available: boolean;
+  avfAvailable: boolean;
+  microdroidAvailable: boolean;
+  payloadAvailable: boolean;
+  capabilities: string[];
+  reason?: string;
 }
 
 export interface MobileSafeRuntimeFeatures {
@@ -49,6 +70,7 @@ export interface MobileSafeRuntimeFeatures {
   hasBunRuntime: boolean;
   availableProviders: MobileSafeRuntimeProviderKind[];
   unavailableProviders: Partial<Record<MobileSafeRuntimeProviderKind, string>>;
+  androidAvfMicrodroid: AndroidAvfMicrodroidRuntimeStatus;
 }
 
 export interface MobileSafeRuntimeFileInfo {
@@ -237,6 +259,9 @@ export interface AndroidIsolatedProcessBoundary {
 
 export interface AndroidAvfMicrodroidBoundary {
   kind: "android-avf-microdroid";
+  capabilityState?: AndroidAvfMicrodroidCapabilityState;
+  reason?: string;
+  capabilities?: string[];
   request(
     request: MobileSafeRuntimeCapabilityRequest,
   ): Promise<MobileSafeRuntimeCapabilityResponse>;
@@ -266,14 +291,12 @@ export function detectMobileSafeRuntimeFeatures(
     typeof globals.SharedArrayBuffer === "function";
   const hasNodeRuntime = typeof globals.process === "object";
   const hasBunRuntime = typeof globals.Bun === "object";
-  const androidAvfAvailable =
-    probe.androidAvfAvailable === true ||
-    probe.androidMicrodroidAvailable === true ||
-    env.ELIZA_ANDROID_AVF_AVAILABLE === "1" ||
-    env.ELIZA_ANDROID_MICRODROID_AVAILABLE === "1" ||
-    readBooleanGlobal(globals.AndroidVirtualization, "available") === true ||
-    readBooleanGlobal(globals.AndroidVirtualization, "microdroidAvailable") ===
-      true;
+  const androidAvfMicrodroid = resolveAndroidAvfMicrodroidStatus(
+    platform,
+    probe,
+    env,
+    globals,
+  );
   const androidIsolatedProcessAvailable =
     probe.androidIsolatedProcessAvailable === true ||
     env.ELIZA_ANDROID_ISOLATED_PROCESS_AVAILABLE === "1" ||
@@ -319,10 +342,11 @@ export function detectMobileSafeRuntimeFeatures(
   }
 
   if (platform === "android") {
-    if (androidAvfAvailable) {
+    if (androidAvfMicrodroid.available) {
       availableProviders.push("android-avf-microdroid");
     } else {
       unavailableProviders["android-avf-microdroid"] =
+        androidAvfMicrodroid.reason ??
         "Android AVF/Microdroid boundary is not available on this device/build";
     }
     if (androidIsolatedProcessAvailable) {
@@ -362,6 +386,7 @@ export function detectMobileSafeRuntimeFeatures(
     hasBunRuntime,
     availableProviders,
     unavailableProviders,
+    androidAvfMicrodroid,
   };
 }
 
@@ -372,6 +397,15 @@ export function createAndroidAvfMicrodroidProvider(
     return createUnavailableMobileSafeRuntimeProvider(
       "android-avf-microdroid",
       "Android AVF/Microdroid boundary is not attached",
+    );
+  }
+  if (
+    boundary.capabilityState !== undefined &&
+    boundary.capabilityState !== "ready"
+  ) {
+    return createUnavailableMobileSafeRuntimeProvider(
+      "android-avf-microdroid",
+      boundary.reason ?? androidAvfMicrodroidReason(boundary.capabilityState),
     );
   }
 
@@ -388,6 +422,16 @@ export function createAndroidAvfMicrodroidProvider(
           code: input.code,
           entrypoint: input.entrypoint,
           env: input.env ?? {},
+          mode: input.mode ?? "evaluate",
+          applet: input.applet ?? {},
+          virtualFileSystem: {
+            attached: Boolean(input.files),
+            transport: input.broker
+              ? "mobile-safe-capability-broker"
+              : input.files
+                ? "host-vfs"
+                : "none",
+          },
         },
       });
 
@@ -1690,6 +1734,122 @@ function resolveMobileSafeRuntimePlatform(
   return "unknown";
 }
 
+function resolveAndroidAvfMicrodroidStatus(
+  platform: MobileSafeRuntimePlatform,
+  probe: MobileSafeRuntimeFeatureProbe,
+  env: Record<string, string | undefined>,
+  globals: Record<string, unknown>,
+): AndroidAvfMicrodroidRuntimeStatus {
+  const virtualization = objectGlobal(globals.AndroidVirtualization);
+  const explicitState =
+    probe.androidAvfCapabilityState ??
+    parseAndroidAvfCapabilityState(
+      env.ELIZA_ANDROID_AVF_MICRODROID_STATE ??
+        readStringGlobal(virtualization, "state"),
+    );
+  const capabilities = readStringArrayGlobal(virtualization, "capabilities");
+  const reason = readStringGlobal(virtualization, "reason");
+
+  if (platform !== "android") {
+    return {
+      state: "unsupported-platform",
+      available: false,
+      avfAvailable: false,
+      microdroidAvailable: false,
+      payloadAvailable: false,
+      capabilities,
+      reason:
+        "Android AVF/Microdroid boundary is only available in supported Android app shells",
+    };
+  }
+
+  const avfAvailable =
+    probe.androidAvfAvailable === true ||
+    env.ELIZA_ANDROID_AVF_AVAILABLE === "1" ||
+    readBooleanGlobal(virtualization, "avfAvailable") === true ||
+    readBooleanGlobal(virtualization, "frameworkAvailable") === true ||
+    readBooleanGlobal(virtualization, "hasVirtualizationService") === true;
+  const microdroidAvailable =
+    probe.androidMicrodroidAvailable === true ||
+    env.ELIZA_ANDROID_MICRODROID_AVAILABLE === "1" ||
+    readBooleanGlobal(virtualization, "microdroidAvailable") === true;
+  const payloadAvailable =
+    probe.androidAvfPayloadAvailable === true ||
+    env.ELIZA_ANDROID_MICRODROID_PAYLOAD_READY === "1" ||
+    readBooleanGlobal(virtualization, "payloadAvailable") === true ||
+    explicitState === "ready";
+  const legacyAvailable =
+    readBooleanGlobal(virtualization, "available") === true;
+  const state =
+    explicitState ??
+    (payloadAvailable &&
+    (avfAvailable || microdroidAvailable || legacyAvailable)
+      ? "ready"
+      : avfAvailable || microdroidAvailable || legacyAvailable
+        ? "payload-missing"
+        : "framework-unavailable");
+
+  return {
+    state,
+    available: state === "ready" && payloadAvailable,
+    avfAvailable:
+      avfAvailable ||
+      microdroidAvailable ||
+      legacyAvailable ||
+      state === "ready" ||
+      state === "payload-missing",
+    microdroidAvailable:
+      microdroidAvailable || legacyAvailable || state === "ready",
+    payloadAvailable,
+    capabilities,
+    reason: reason ?? androidAvfMicrodroidReason(state),
+  };
+}
+
+function parseAndroidAvfCapabilityState(
+  value: string | undefined,
+): AndroidAvfMicrodroidCapabilityState | undefined {
+  switch (value) {
+    case "unsupported-platform":
+    case "unsupported-api":
+    case "framework-unavailable":
+    case "permission-denied":
+    case "service-unavailable":
+    case "payload-missing":
+    case "ready":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function androidAvfMicrodroidReason(
+  state: AndroidAvfMicrodroidCapabilityState,
+): string {
+  switch (state) {
+    case "ready":
+      return "Android AVF/Microdroid payload boundary is ready";
+    case "unsupported-platform":
+      return "Android AVF/Microdroid boundary is only available in supported Android app shells";
+    case "unsupported-api":
+      return "Android AVF/Microdroid requires API 34+";
+    case "framework-unavailable":
+      return "Device image does not expose Android AVF/Microdroid virtualization framework";
+    case "permission-denied":
+      return "MANAGE_VIRTUAL_MACHINE is not declared or granted";
+    case "service-unavailable":
+      return "VirtualMachineManager service unavailable";
+    case "payload-missing":
+      return "Android AVF/Microdroid framework is present, but no Microdroid payload boundary is packaged for this build";
+  }
+}
+
+function objectGlobal(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 function displayNameForProvider(kind: MobileSafeRuntimeProviderKind): string {
   switch (kind) {
     case "android-avf-microdroid":
@@ -1786,6 +1946,20 @@ function readBooleanGlobal(value: unknown, key: string): boolean | undefined {
   if (value === null || typeof value !== "object") return undefined;
   const raw = (value as Record<string, unknown>)[key];
   return typeof raw === "boolean" ? raw : undefined;
+}
+
+function readStringGlobal(value: unknown, key: string): string | undefined {
+  if (value === null || typeof value !== "object") return undefined;
+  const raw = (value as Record<string, unknown>)[key];
+  return typeof raw === "string" && raw.length > 0 ? raw : undefined;
+}
+
+function readStringArrayGlobal(value: unknown, key: string): string[] {
+  if (value === null || typeof value !== "object") return [];
+  const raw = (value as Record<string, unknown>)[key];
+  return Array.isArray(raw)
+    ? raw.filter((item): item is string => typeof item === "string")
+    : [];
 }
 
 function parentPath(path: string): string {

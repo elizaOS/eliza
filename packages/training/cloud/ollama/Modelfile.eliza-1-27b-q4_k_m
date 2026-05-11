@@ -15,12 +15,12 @@
 #
 # For the absolute best quality on the 27B at consumer-GPU sizes, the
 # Q6_K sibling is also published (~22 GB on disk). Build with:
-#   FROM hf.co/elizalabs/eliza-1-27b-gguf-q6_k
+#   FROM hf.co/elizaos/eliza-1-27b-gguf-q6_k
 #
 # Availability: requires `scripts/publish_all_eliza1.sh --filter-size 27b
 # --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
 # checkpoint. The HF repo does not exist before that runs.
-FROM hf.co/elizalabs/eliza-1-27b-gguf-q4_k_m
+FROM hf.co/elizaos/eliza-1-27b-gguf-q4_k_m
 
 SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
 

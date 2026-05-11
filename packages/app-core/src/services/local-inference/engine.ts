@@ -23,7 +23,7 @@ import type {
   LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { findCatalogModel } from "./catalog";
+import { type Eliza1TierId, findCatalogModel } from "./catalog";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -34,6 +34,7 @@ import {
   dflashLlamaServer,
   dflashRequired,
   getDflashRuntimeStatus,
+  logDflashDevDisabledWarning,
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { listInstalledModels } from "./registry";
@@ -42,17 +43,31 @@ import {
   resolveDefaultPoolSize,
   SessionPool,
 } from "./session-pool";
+import { resolveGrammarForParams } from "./structured-output";
+import {
+  buildLocalEmbeddingRoute,
+  type LocalEmbeddingRoute,
+} from "./voice/embedding";
 import {
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
   VoiceStartupError,
 } from "./voice/engine-bridge";
+import type { VoicePipelineEvents } from "./voice/pipeline";
+import { dflashTextRunner } from "./voice/pipeline-impls";
 import type {
   RejectedTokenRange,
   TextToken,
   TranscriptionAudio,
   VerifierStreamEvent,
 } from "./voice/types";
+
+/**
+ * Default DFlash draft window per round for voice turns. Small (≤8) so a
+ * rollback is cheap (AGENTS.md §4 — "small chunk = low latency cost on
+ * rollback"). Overridable per call via `runVoiceTurn({ maxDraftTokens })`.
+ */
+const DEFAULT_VOICE_MAX_DRAFT_TOKENS = 8;
 
 // Re-exported from backend.ts so consumers can keep importing GenerateArgs
 // from engine.ts without churn. backend.ts owns the canonical shape,
@@ -108,6 +123,31 @@ interface LlamaContext {
   dispose(): Promise<void>;
 }
 
+/**
+ * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
+ * Precedence: an explicit `grammar` string on the args, then a compiled
+ * forced skeleton (single-value enums collapsed to literals). Returns null
+ * when neither is set — generation is unconstrained as before. node-llama-cpp
+ * has no `grammar_lazy`, so a lazy grammar from the skeleton is applied
+ * eagerly here; that's still correct (the leading literal is the trigger).
+ */
+function resolveBindingGrammarSource(args: GenerateArgs): string | null {
+  const grammar = resolveGrammarForParams(args);
+  return grammar ? grammar.source : null;
+}
+
+interface LlamaGrammar {
+  // Opaque to us — passed straight back to `session.prompt({ grammar })`.
+  readonly _grammarBrand?: never;
+}
+
+interface LlamaGrammarCtor {
+  new (
+    llama: Llama,
+    options: { grammar: string; rootRuleName?: string },
+  ): LlamaGrammar;
+}
+
 interface LlamaChatSession {
   prompt(
     text: string,
@@ -117,6 +157,8 @@ interface LlamaChatSession {
       topP?: number;
       stopOnAbortSignal?: AbortSignal;
       customStopTriggers?: string[];
+      grammar?: LlamaGrammar;
+      onTextChunk?: (chunk: string) => void;
     },
   ): Promise<string>;
   /**
@@ -178,6 +220,7 @@ interface Llama {
 interface LlamaBindingModule {
   getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
   LlamaChatSession: LlamaChatSessionCtor;
+  LlamaGrammar: LlamaGrammarCtor;
 }
 
 /**
@@ -403,6 +446,18 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       args.cacheKey && args.cacheKey.length > 0
         ? args.cacheKey
         : DEFAULT_SESSION_KEY;
+    // Resolve a grammar from `args.grammar` (explicit GBNF) or a forced
+    // skeleton. node-llama-cpp can do constrained decoding even though it
+    // can't stream — wire the schema/grammar path here. The no-streaming
+    // limitation means `streamStructured` degrades to one final chunk on
+    // this backend.
+    const grammarSource = resolveBindingGrammarSource(args);
+    const grammar =
+      grammarSource && this.bindingModule && this.llama
+        ? new this.bindingModule.LlamaGrammar(this.llama, {
+            grammar: grammarSource,
+          })
+        : undefined;
     const run = async (): Promise<string> => {
       const session = await pool.acquire(cacheKey);
       // Default slot mirrors the historical "stateless per call" semantics
@@ -412,12 +467,60 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       if (cacheKey === DEFAULT_SESSION_KEY) {
         await session.resetChatHistory?.();
       }
-      return session.prompt(args.prompt, {
+      const promptOpts: {
+        maxTokens?: number;
+        temperature?: number;
+        topP?: number;
+        stopOnAbortSignal?: AbortSignal;
+        customStopTriggers?: string[];
+        grammar?: LlamaGrammar;
+        onTextChunk?: (chunk: string) => void;
+      } = {
         maxTokens: args.maxTokens ?? 2048,
         temperature: args.temperature ?? 0.7,
         topP: args.topP ?? 0.9,
-        customStopTriggers: args.stopSequences,
-      });
+      };
+      if (args.stopSequences) {
+        promptOpts.customStopTriggers = args.stopSequences;
+      }
+      if (args.signal) {
+        // node-llama-cpp's `stopOnAbortSignal` aborts the generation loop
+        // on the next sampler tick when the signal is aborted. Wiring this
+        // is the canonical way to make local inference cancellable.
+        promptOpts.stopOnAbortSignal = args.signal;
+      }
+      if (grammar) promptOpts.grammar = grammar;
+      // Assistant-turn prefill: node-llama-cpp has no first-class "continue
+      // this assistant message" knob, so we seed the prompt text with the
+      // partial assistant turn and re-prepend it to the result so callers
+      // see the full assistant message.
+      const prefill = typeof args.prefill === "string" ? args.prefill : "";
+      const promptText =
+        prefill.length > 0 ? `${args.prompt}\n${prefill}` : args.prompt;
+      if (args.onTextChunk || args.onVerifierEvent) {
+        let idx = 0;
+        if (prefill.length > 0) {
+          await args.onVerifierEvent?.({
+            kind: "accept",
+            tokens: [{ index: idx++, text: prefill }],
+          });
+          await args.onTextChunk?.(prefill);
+        }
+        promptOpts.onTextChunk = (chunk: string) => {
+          if (chunk.length === 0) return;
+          void args.onVerifierEvent?.({
+            kind: "accept",
+            tokens: [{ index: idx++, text: chunk }],
+          });
+          void args.onTextChunk?.(chunk);
+        };
+        const tail = await session.prompt(promptText, promptOpts);
+        return prefill + tail;
+      }
+      // No callbacks were supplied (the `if` above returned otherwise) — plain
+      // string return, no per-token fan-out.
+      const tail = await session.prompt(promptText, promptOpts);
+      return prefill + tail;
     };
     const job = this.generationQueue.then(run, run);
     this.generationQueue = job.catch(() => {
@@ -458,6 +561,7 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         typeof mod === "object" &&
         "getLlama" in mod &&
         "LlamaChatSession" in mod &&
+        "LlamaGrammar" in mod &&
         typeof (mod as { getLlama: unknown }).getLlama === "function"
       ) {
         return mod as LlamaBindingModule;
@@ -590,7 +694,10 @@ export class LocalInferenceEngine {
   }
 
   async generate(args: GenerateArgs): Promise<string> {
-    return this.dispatcher.generate(args);
+    const streaming = this.voiceStreamingArgs(args);
+    const text = await this.dispatcher.generate(streaming.args);
+    await streaming.finish(text);
+    return text;
   }
 
   /**
@@ -667,13 +774,15 @@ export class LocalInferenceEngine {
     }
     handle.lastUsedMs = Date.now();
     const cacheKey = `conv:${handle.conversationId}`;
+    const streaming = this.voiceStreamingArgs(args);
     if (this.activeBackendId() === "llama-server") {
       const result: DflashGenerateResult =
         await dflashLlamaServer.generateWithUsage({
-          ...args,
+          ...streaming.args,
           cacheKey,
           slotId: handle.slotId,
         });
+      await streaming.finish(result.text);
       return result;
     }
     // node-llama-cpp path: forward via the dispatcher and synthesize a
@@ -681,9 +790,10 @@ export class LocalInferenceEngine {
     // cacheKey, so cache reuse still works — we just don't have
     // observability on this backend.
     const text = await this.dispatcher.generate({
-      ...args,
+      ...streaming.args,
       cacheKey,
     });
+    await streaming.finish(text);
     return {
       text,
       usage: {
@@ -694,6 +804,52 @@ export class LocalInferenceEngine {
       },
       slotId: handle.slotId,
     };
+  }
+
+  /**
+   * KV-prefill a conversation's pinned slot with a known prompt prefix
+   * (system prompt + provider context + tool/action schema block + the
+   * assistant-turn start), before the real request lands. This is item I1 /
+   * C1 of the voice swarm — fire it the moment a message arrives / STT
+   * starts so the response-handler prompt is already in the slot's KV when
+   * the user's tokens are appended.
+   *
+   * `conversationOrId` may be a `ConversationHandle` (preferred — pins to
+   * the handle's slot) or a raw conversation id (a handle is opened on the
+   * fly so the slot derivation matches the real request). Idempotent /
+   * cheap to call repeatedly: `cache_prompt: true` reuses the prefix so a
+   * second call is a no-op forward pass. Only meaningful on the
+   * llama-server backend — the node-llama-cpp session pool already pins
+   * by cache key, so this is a no-op (returns false) there. Returns true
+   * when a pre-warm request was issued.
+   */
+  async prewarmConversation(
+    conversationOrId: ConversationHandle | string,
+    promptPrefix: string,
+    opts: { modelId?: string } = {},
+  ): Promise<boolean> {
+    if (this.activeBackendId() !== "llama-server") return false;
+    let slotId: number;
+    let cacheKey: string;
+    if (typeof conversationOrId === "string") {
+      const modelId =
+        opts.modelId ??
+        this.currentModelPath() ??
+        "default-local-model";
+      const handle =
+        this.conversation(conversationOrId, modelId) ??
+        this.openConversation({ conversationId: conversationOrId, modelId });
+      slotId = handle.slotId;
+      cacheKey = `conv:${handle.conversationId}`;
+    } else {
+      if (conversationOrId.closed) return false;
+      slotId = conversationOrId.slotId;
+      cacheKey = `conv:${conversationOrId.conversationId}`;
+    }
+    return dflashLlamaServer.prewarmConversation(promptPrefix, {
+      slotId,
+      cacheKey,
+    });
   }
 
   /**
@@ -855,8 +1011,73 @@ export class LocalInferenceEngine {
     );
   }
 
+  async prewarmVoicePhrases(
+    texts: ReadonlyArray<string>,
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    return this.requireVoiceBridge("prewarm voice phrases").prewarmPhrases(
+      texts,
+      opts,
+    );
+  }
+
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
+  }
+
+  /**
+   * Run one fused mic→speech voice turn through the overlapped
+   * `VoicePipeline` (`packages/inference/AGENTS.md` §4): ASR → {DFlash
+   * drafts ∥ target verifies} → phrase chunker → OmniVoice → PCM ring
+   * buffer, with rollback-on-reject and barge-in cancel. The drafter and
+   * verifier are wired against the running DFlash llama-server; the ASR is
+   * the fused ABI's ASR. Requires `startVoice()` + `armVoice()` first.
+   *
+   * Resolves with the turn's exit reason (`done` / `token-cap` /
+   * `cancelled`). A missing ASR region in voice mode surfaces as a
+   * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
+   */
+  async runVoiceTurn(
+    audio: TranscriptionAudio,
+    opts: {
+      maxDraftTokens?: number;
+      maxGeneratedTokens?: number;
+      events?: VoicePipelineEvents;
+    } = {},
+  ): Promise<"done" | "token-cap" | "cancelled"> {
+    const bridge = this.requireVoiceBridge("run a voice turn");
+    return bridge.runVoiceTurn(
+      audio,
+      dflashTextRunner(dflashLlamaServer),
+      {
+        maxDraftTokens: opts.maxDraftTokens ?? DEFAULT_VOICE_MAX_DRAFT_TOKENS,
+        maxGeneratedTokens: opts.maxGeneratedTokens,
+      },
+      opts.events,
+    );
+  }
+
+  /**
+   * Build the local-embedding route for an activated Eliza-1 bundle.
+   * On `0_6b` the embedding model is the text backbone with `--pooling
+   * last` (no separate GGUF); on `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
+   * dedicated 1024-dim Matryoshka `embedding/` region is used. See
+   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_6b` tier is
+   * missing its dedicated region — no fallback to pooled text (which would
+   * regress the dimension contract).
+   */
+  localEmbeddingRoute(args: {
+    bundleRoot: string;
+    tierId: Eliza1TierId;
+    textModelPath?: string;
+  }): LocalEmbeddingRoute {
+    const textModelPath =
+      args.textModelPath ?? this.currentModelPath() ?? "";
+    return buildLocalEmbeddingRoute({
+      bundleRoot: args.bundleRoot,
+      tierId: args.tierId,
+      textModelPath,
+    });
   }
 
   /**
@@ -879,6 +1100,67 @@ export class LocalInferenceEngine {
       );
     }
     return bridge;
+  }
+
+  private voiceStreamingArgs<T extends Omit<GenerateArgs, "cacheKey">>(
+    args: T,
+  ): {
+    args: T;
+    finish: (finalText: string) => Promise<void>;
+  } {
+    // AGENTS.md §4: when the developer kill-switch disables DFlash, every
+    // generation turn must log a loud warning. No-op when the flag is unset.
+    // Called before the voice early-return so text-only turns warn too.
+    logDflashDevDisabledWarning();
+
+    const bridge = this.voiceBridge;
+    const voiceOn = bridge?.lifecycle.current().kind === "voice-on";
+    if (!voiceOn || !bridge) {
+      return {
+        args,
+        finish: async () => {},
+      };
+    }
+
+    let nextIndex = 0;
+    let streamedAny = false;
+    let verifierHandled = false;
+    const callerOnTextChunk = args.onTextChunk;
+    const callerOnVerifierEvent = args.onVerifierEvent;
+    const wrapped = {
+      ...args,
+      onVerifierEvent: async (event: VerifierStreamEvent) => {
+        verifierHandled = true;
+        if (event.kind === "accept" && event.tokens.length > 0) {
+          streamedAny = true;
+          const last = event.tokens[event.tokens.length - 1];
+          nextIndex = Math.max(nextIndex, last.index + 1);
+        }
+        await this.pushVerifierEvent(event);
+        await callerOnVerifierEvent?.(event);
+      },
+      onTextChunk: async (chunk: string) => {
+        if (chunk.length > 0 && !verifierHandled) {
+          streamedAny = true;
+          const token: TextToken = { index: nextIndex++, text: chunk };
+          await bridge.pushAcceptedToken(token);
+        }
+        await callerOnTextChunk?.(chunk);
+      },
+    } as T;
+
+    return {
+      args: wrapped,
+      finish: async (finalText: string) => {
+        if (!streamedAny && finalText.length > 0) {
+          await bridge.pushAcceptedToken({
+            index: nextIndex++,
+            text: finalText,
+          });
+        }
+        await bridge.settle();
+      },
+    };
   }
 
   /**
@@ -929,6 +1211,33 @@ export class LocalInferenceEngine {
    */
   async pushAcceptedTokens(tokens: ReadonlyArray<TextToken>): Promise<void> {
     await this.pushVerifierEvent({ kind: "accept", tokens: [...tokens] });
+  }
+
+  /**
+   * Real `DflashDrafterHandle` backed by the running llama-server's `-md`
+   * drafter, or null when no llama-server is running with a drafter
+   * configured (node-llama-cpp has no drafter — text-only, no speculative
+   * decoding). The voice lifecycle wraps this in its shared-resource
+   * registry so the drafter is refcounted alongside the text weights
+   * (AGENTS.md §4 — the drafter is always wired and shared by text + voice
+   * modes). The engine doesn't cache the handle: `createDflashDrafterHandle`
+   * is cheap and the registry deduplicates by id.
+   */
+  async dflashDrafterHandle(): Promise<
+    import("./voice/shared-resources").DflashDrafterHandle | null
+  > {
+    if (this.activeBackendId() !== "llama-server") return null;
+    const drafterPath = dflashLlamaServer.loadedDrafterModelPath();
+    if (!drafterPath) return null;
+    const installed = await listInstalledModels();
+    const drafter = installed.find((m) => m.path === drafterPath);
+    const { createDflashDrafterHandle } = await import(
+      "./voice/shared-resources"
+    );
+    return createDflashDrafterHandle({
+      drafterModelId: drafter?.id ?? drafterPath,
+      drafterModelPath: drafterPath,
+    });
   }
 
   /**

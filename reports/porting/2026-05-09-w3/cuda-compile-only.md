@@ -1,9 +1,9 @@
-# CUDA compile-only validation - milady-ai/llama.cpp v0.1.0-milady
+# CUDA compile-only validation - elizaOS/llama.cpp v0.1.0-milady
 
 **Date:** 2026-05-09
 **Wave:** W3 agent D
 **Scope:** Install CUDA toolkit on this Linux x86_64 host (no GPU bound) and
-compile-validate every CUDA kernel in `milady-ai/llama.cpp` at tag
+compile-validate every CUDA kernel in `elizaOS/llama.cpp` at tag
 `v0.1.0-milady` (commit `edd55d8b`). Goal: every kernel produces clean PTX /
 cubin with no errors. Real-GPU runtime is for a future agent on NVIDIA
 hardware.
@@ -65,7 +65,7 @@ Build cuda_12.6.r12.6/compiler.35059454_0
 
 ```
 git clone --depth 1 --branch v0.1.0-milady \
-  https://github.com/milady-ai/llama.cpp.git \
+  https://github.com/elizaOS/llama.cpp.git \
   /home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0
 ```
 HEAD = `edd55d8 merge: Metal kernels from milady/metal into milady/integration`,

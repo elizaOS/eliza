@@ -77,6 +77,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
             text_source=text_source,
             drafter_source=drafter_source,
             context="64k",
+            all_contexts=False,
             version="0.0.0-local.test",
             generated_at="2026-05-11T12:00:00Z",
             local_smoke_report=smoke,
@@ -97,6 +98,10 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert (bundle / "evals" / "voice-rtf.json").is_file()
     assert (bundle / "evals" / "e2e-loop.json").is_file()
     assert (bundle / "checksums" / "SHA256SUMS").is_file()
+    assert (bundle / "quantization" / "turboquant.json").is_file()
+    assert (bundle / "quantization" / "fused_turboquant.json").is_file()
+    assert (bundle / "quantization" / "qjl_config.json").is_file()
+    assert (bundle / "quantization" / "polarquant_config.json").is_file()
     assert (bundle / "licenses" / "LICENSE.text").is_file()
     assert (bundle / "licenses" / "LICENSE.dflash").is_file()
     assert (bundle / "licenses" / "LICENSE.eliza-1").is_file()
@@ -113,6 +118,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert release["releaseState"] == "local-standin"
     assert release["publishEligible"] is False
     assert release["final"]["weights"] is False
+    assert "quantization/turboquant.json" in release["quantizationSidecars"]
     assert any("stand-in" in reason for reason in release["publishBlockingReasons"])
     assert stage.validate_checksum_manifest(bundle) == ()
     assert Path(report["repoEvidence"]).is_file()

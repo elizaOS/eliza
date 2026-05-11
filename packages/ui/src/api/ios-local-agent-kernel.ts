@@ -1,10 +1,9 @@
-import { asRecord } from "@elizaos/shared";
+import { asRecord, type ProviderStatus } from "@elizaos/shared";
 import { getBootConfig } from "../config/boot-config-store";
 import {
   findCatalogModel,
   MODEL_CATALOG,
 } from "../services/local-inference/catalog";
-import type { ProviderStatus } from "../services/local-inference/providers";
 import {
   assessCatalogModelFit,
   catalogDownloadSizeGb,
@@ -66,6 +65,9 @@ const EMPTY_ROUTING_PREFERENCES: RoutingPreferences = {
   policy: {},
 };
 
+const IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON =
+  "iOS local mode uses the WebView ITTP route kernel. Capacitor BackgroundRunner wakes in a separate JSContext and cannot call that WebView kernel while the app is suspended.";
+
 type Role = "user" | "assistant";
 
 interface LocalConversation {
@@ -106,8 +108,8 @@ interface IosBundleManifest {
     vision: IosBundleFileEntry[];
     dflash: IosBundleFileEntry[];
     cache: IosBundleFileEntry[];
+    vad: IosBundleFileEntry[];
     embedding?: IosBundleFileEntry[];
-    vad?: IosBundleFileEntry[];
     wakeword?: IosBundleFileEntry[];
   };
 }
@@ -574,6 +576,70 @@ function localConfig(): Record<string, unknown> {
       cloudProvisioned: false,
     },
   };
+}
+
+function localAgentCapabilities(): Record<string, unknown> {
+  return {
+    mode: "ios-local",
+    apiBase: "http://127.0.0.1:31337",
+    transport: {
+      foreground: "ittp",
+      background: "unavailable",
+      tcpListener: false,
+      nativeRequestProxy: false,
+    },
+    routeKernel: {
+      shape: "fetch",
+      hostedIn: "webview",
+      honoRoutesDetected: false,
+    },
+    backendRuntime: {
+      state: "compatibility-kernel",
+      fullAgentRuntime: false,
+      node: false,
+      bun: false,
+      taskService: false,
+      pluginLoader: false,
+    },
+    storage: {
+      conversations: "native-synced-localStorage",
+      localInferenceState: "native-synced-localStorage",
+    },
+    localInference: {
+      state: "available-when-native-llama-plugin-is-present",
+      provider: "capacitor-llama",
+    },
+    scheduledTasks: {
+      state: "unavailable",
+      primitive: "ScheduledTask",
+      reason: IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON,
+    },
+    apps: {
+      state: "catalog-unavailable",
+      reason: "The runtime AppManager is not mounted in the iOS ITTP kernel.",
+    },
+    plugins: {
+      state: "loader-unavailable",
+      reason: "The runtime plugin loader is not mounted in the iOS ITTP kernel.",
+    },
+  };
+}
+
+function unavailableLocalBackendRoute(
+  error: string,
+  details: Record<string, unknown> = {},
+  status = 503,
+): Response {
+  return json(
+    {
+      ok: false,
+      error,
+      mode: "ios-local",
+      capabilities: localAgentCapabilities(),
+      ...details,
+    },
+    status,
+  );
 }
 
 function localCharacter(): Record<string, unknown> {
@@ -1198,9 +1264,24 @@ function parseIosBundleManifest(
     "vision",
     "dflash",
     "cache",
+    "vad",
   ] as const) {
     if (!Array.isArray(raw.files[kind])) {
       throw new Error(`Invalid Eliza-1 manifest files.${kind}`);
+    }
+  }
+  for (const kind of [
+    "text",
+    "voice",
+    "asr",
+    "dflash",
+    "cache",
+    "vad",
+  ] as const) {
+    if (raw.files[kind].length === 0) {
+      throw new Error(
+        `Invalid Eliza-1 manifest files.${kind} must be non-empty`,
+      );
     }
   }
   if (!raw.files.text.some((entry) => entry.path === model.ggufFile)) {
@@ -1722,6 +1803,47 @@ function buildPrompt(messages: LocalMessage[], latestText: string): string {
   return `${DEFAULT_SYSTEM_PROMPT}\n\n${history}${history ? "\n" : ""}User: ${latestText}\nAssistant:`;
 }
 
+/**
+ * Classify a thrown error from `llama.generate` so the caller can decide
+ * between "rotate to cloud" and "propagate". Same shape and reasons as the
+ * AOSP bootstrap's wrapper — we don't share the type because the iOS kernel
+ * deliberately has zero dependency on `@elizaos/app-core`.
+ */
+type IosLocalGenerateFallbackReason =
+  | "local-unavailable"
+  | "local-overloaded"
+  | "local-error"
+  | "local-aborted-pre-completion";
+
+function classifyIosLocalGenerateError(err: unknown): {
+  fallback: boolean;
+  reason: IosLocalGenerateFallbackReason;
+} {
+  if (err instanceof Error) {
+    const name = err.name;
+    const msg = err.message.toLowerCase();
+    if (name === "AbortError") {
+      return { fallback: false, reason: "local-aborted-pre-completion" };
+    }
+    if (
+      msg.includes("native eliza-1 runtime is not available") ||
+      msg.includes("not loaded") ||
+      msg.includes("not installed") ||
+      msg.includes("not staged")
+    ) {
+      return { fallback: true, reason: "local-unavailable" };
+    }
+    if (
+      msg.includes("thermal") ||
+      msg.includes("low-power") ||
+      msg.includes("memory slot")
+    ) {
+      return { fallback: true, reason: "local-overloaded" };
+    }
+  }
+  return { fallback: false, reason: "local-error" };
+}
+
 async function generateLocalReply(
   conversation: LocalConversation,
   text: string,
@@ -1731,27 +1853,56 @@ async function generateLocalReply(
   await ensureActiveModelLoaded();
   const llama = await loadCapacitorLlama();
   if (!llama?.generate) {
-    throw new Error("Native Eliza-1 runtime is not available on this build.");
+    // Surface as a fallback-eligible failure so the caller / future cloud
+    // routing layer can detect it cleanly instead of grepping the message.
+    const err = new Error(
+      "Native Eliza-1 runtime is not available on this build.",
+    );
+    err.name = "LocalRuntimeUnavailableError";
+    throw err;
   }
   const prompt = buildPrompt(conversation.messages, text);
-  const result = await llama.generate({
-    prompt,
-    maxTokens: 256,
-    temperature: 0.7,
-    topP: 0.9,
-    stopSequences: ["\nUser:", "\nAssistant:"],
-  });
-  const cleaned =
-    result.text.trim() || "I could not generate a local response.";
-  return {
-    text: cleaned,
-    usage: {
-      promptTokens: result.promptTokens,
-      completionTokens: result.outputTokens,
-      totalTokens: result.promptTokens + result.outputTokens,
-      ...(activeState.modelId ? { model: activeState.modelId } : {}),
-    },
-  };
+  try {
+    const result = await llama.generate({
+      prompt,
+      maxTokens: 256,
+      temperature: 0.7,
+      topP: 0.9,
+      stopSequences: ["\nUser:", "\nAssistant:"],
+    });
+    const cleaned =
+      result.text.trim() || "I could not generate a local response.";
+    return {
+      text: cleaned,
+      usage: {
+        promptTokens: result.promptTokens,
+        completionTokens: result.outputTokens,
+        totalTokens: result.promptTokens + result.outputTokens,
+        ...(activeState.modelId ? { model: activeState.modelId } : {}),
+      },
+    };
+  } catch (err) {
+    const cls = classifyIosLocalGenerateError(err);
+    if (!cls.fallback) {
+      throw err;
+    }
+    // Local failed in a way that would normally be served by cloud, but
+    // this kernel only exposes the on-device llama adapter — there's no
+    // cloud handler registered here. Surface an honest, actionable error
+    // instead of inventing a fake response. Wave 3C / cloud routing layer
+    // can intercept this and forward to Eliza Cloud when a session token
+    // is available.
+    const reasonDetail = cls.reason;
+    const cause = err instanceof Error ? err : undefined;
+    const honest = new Error(
+      `Local inference unavailable on this device (${reasonDetail}). Pair Eliza Cloud or activate a smaller local model to continue.`,
+    );
+    honest.name = "LocalInferenceFallbackRequired";
+    if (cause) {
+      (honest as Error & { cause?: unknown }).cause = cause;
+    }
+    throw honest;
+  }
 }
 
 async function generateLocalGreeting(): Promise<LocalReply> {
@@ -2301,6 +2452,25 @@ export async function handleIosLocalAgentRequest(
       connectors: {},
       uptime: Math.floor((Date.now() - startedAt) / 1000),
       agentState: running ? "running" : "not_started",
+      localAgent: {
+        mode: "ios-local",
+        transport: "ittp",
+        fullAgentRuntime: false,
+        taskService: false,
+      },
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/local-agent/capabilities") {
+    return json(localAgentCapabilities());
+  }
+
+  if (method === "GET" && pathname === "/api/runtime/mode") {
+    return json({
+      mode: "local",
+      deploymentRuntime: "local",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
     });
   }
 
@@ -2346,6 +2516,20 @@ export async function handleIosLocalAgentRequest(
         pendingRestart: false,
         pendingRestartReasons: [],
       },
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/background/run-due-tasks") {
+    return unavailableLocalBackendRoute("task_service_unavailable", {
+      reason: IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON,
+      ranTasks: 0,
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/internal/wake") {
+    return unavailableLocalBackendRoute("task_service_unavailable", {
+      reason: IOS_LOCAL_BACKGROUND_UNAVAILABLE_REASON,
+      ranTasks: 0,
     });
   }
 
@@ -2471,7 +2655,178 @@ export async function handleIosLocalAgentRequest(
       triggers: [],
       todos: [],
       autonomy: { enabled: false, thinking: false, lastEventAt: null },
+      summary: {
+        totalTasks: 0,
+        completedTasks: 0,
+        totalTriggers: 0,
+        activeTriggers: 0,
+        totalTodos: 0,
+        completedTodos: 0,
+      },
+      tasksAvailable: false,
+      triggersAvailable: false,
+      todosAvailable: false,
     });
+  }
+
+  if (
+    method === "GET" &&
+    (pathname === "/api/workbench/tasks" ||
+      pathname === "/api/workbench/todos")
+  ) {
+    return json(pathname.endsWith("/todos") ? { todos: [] } : { tasks: [] });
+  }
+
+  if (
+    method !== "GET" &&
+    (pathname === "/api/workbench/tasks" ||
+      pathname.startsWith("/api/workbench/tasks/") ||
+      pathname === "/api/workbench/todos" ||
+      pathname.startsWith("/api/workbench/todos/"))
+  ) {
+    return unavailableLocalBackendRoute("task_service_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/triggers") {
+    return json({ triggers: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/triggers/health") {
+    return json({
+      ok: true,
+      triggersEnabled: false,
+      workflowAvailable: false,
+      reason: "The AgentRuntime trigger service is not mounted in iOS local mode.",
+    });
+  }
+
+  if (
+    pathname.startsWith("/api/triggers/") ||
+    (method !== "GET" && pathname === "/api/triggers")
+  ) {
+    return unavailableLocalBackendRoute("task_service_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/documents/stats") {
+    return json({
+      totalDocuments: 0,
+      totalFragments: 0,
+      totalBytes: 0,
+      bySource: {},
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/documents") {
+    return json({
+      documents: [],
+      total: 0,
+      limit: integerFromUnknown(url.searchParams.get("limit")) ?? 100,
+      offset: integerFromUnknown(url.searchParams.get("offset")) ?? 0,
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/documents/search") {
+    return json({ documents: [], results: [], total: 0 });
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/documents/")) {
+    if (pathname.endsWith("/fragments")) {
+      const documentId = decodeURIComponent(
+        pathname.slice("/api/documents/".length, -"/fragments".length),
+      );
+      return json({ documentId, fragments: [], count: 0 });
+    }
+    return json({ error: "Document not found" }, 404);
+  }
+
+  if (pathname.startsWith("/api/documents")) {
+    return unavailableLocalBackendRoute("document_store_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/memories/stats") {
+    return json({ total: 0, byType: {}, recent: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/mcp/config") {
+    return json({ servers: {} });
+  }
+
+  if (method === "GET" && pathname === "/api/mcp/status") {
+    return json({ servers: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
+    return json({ results: [] });
+  }
+
+  if (pathname.startsWith("/api/mcp/")) {
+    return unavailableLocalBackendRoute("mcp_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/manager/backends") {
+    return json({
+      backends: [
+        {
+          id: "in-house",
+          label: "Local (encrypted)",
+          available: false,
+          signedIn: false,
+          detail: "Secrets manager backend is not mounted in iOS local mode.",
+          authMode: null,
+        },
+      ],
+    });
+  }
+
+  if (pathname === "/api/secrets/manager/preferences") {
+    return json({ preferences: { enabled: ["in-house"], routing: {} } });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/manager/install/methods") {
+    return json({ methods: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/inventory") {
+    return json({ entries: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/routing") {
+    return json({ rules: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/logins") {
+    return json({ logins: [] });
+  }
+
+  if (pathname.startsWith("/api/secrets/")) {
+    return unavailableLocalBackendRoute("secrets_manager_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/config") {
+    return json({ enabled: false });
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/status") {
+    return json({ enabled: false, running: false, jobs: [] });
+  }
+
+  if (
+    method === "GET" &&
+    (pathname === "/api/training/status" ||
+      pathname === "/api/training/datasets" ||
+      pathname === "/api/training/jobs" ||
+      pathname === "/api/training/models" ||
+      pathname === "/api/training/inference/endpoints")
+  ) {
+    if (pathname.endsWith("/status")) return json({ available: false });
+    if (pathname.endsWith("/datasets")) return json({ datasets: [] });
+    if (pathname.endsWith("/jobs")) return json({ jobs: [] });
+    if (pathname.endsWith("/models")) return json({ models: [] });
+    return json({ endpoints: [] });
+  }
+
+  if (pathname.startsWith("/api/training/")) {
+    return unavailableLocalBackendRoute("training_service_unavailable");
   }
 
   if (
@@ -2481,12 +2836,139 @@ export async function handleIosLocalAgentRequest(
     return json([]);
   }
 
+  if (
+    method === "GET" &&
+    (pathname === "/api/apps/search" ||
+      pathname === "/api/apps/installed" ||
+      pathname === "/api/apps/runs" ||
+      pathname === "/api/apps/plugins" ||
+      pathname === "/api/apps/plugins/search" ||
+      pathname === "/api/apps/permissions")
+  ) {
+    return json([]);
+  }
+
+  if (pathname === "/api/apps/favorites") {
+    if (method === "GET") return json({ favoriteApps: [] });
+    if (method === "PUT") return json({ favoriteApps: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/apps/favorites/replace") {
+    return json({ favoriteApps: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/apps/overlay-presence") {
+    return json({ ok: true });
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/apps/launch" ||
+      pathname === "/api/apps/create" ||
+      pathname === "/api/apps/relaunch" ||
+      pathname === "/api/apps/load-from-directory")
+  ) {
+    return unavailableLocalBackendRoute("app_manager_unavailable");
+  }
+
   if (method === "GET" && pathname === "/api/plugins") {
     return json({ plugins: [] });
   }
 
+  if (method === "GET" && pathname === "/api/plugins/installed") {
+    return json({ count: 0, plugins: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/plugins/core") {
+    return json({ core: [], optional: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/plugins/core/toggle") {
+    return unavailableLocalBackendRoute("plugin_loader_unavailable");
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/plugins/install" ||
+      pathname === "/api/plugins/update" ||
+      pathname === "/api/plugins/uninstall")
+  ) {
+    return unavailableLocalBackendRoute("plugin_loader_unavailable");
+  }
+
   if (method === "GET" && pathname === "/api/skills") {
     return json({ skills: [] });
+  }
+
+  if (method === "POST" && pathname === "/api/skills/refresh") {
+    return json({ ok: true, skills: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/skills/curated") {
+    return json({ skills: [] });
+  }
+
+  if (
+    (method === "POST" || method === "DELETE") &&
+    pathname.startsWith("/api/skills/curated/")
+  ) {
+    return json({ ok: true });
+  }
+
+  if (method === "GET" && pathname === "/api/skills/catalog") {
+    return json({
+      total: 0,
+      page: 1,
+      perPage: 50,
+      totalPages: 0,
+      installedCount: 0,
+      skills: [],
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/skills/catalog/search") {
+    return json({
+      query: url.searchParams.get("q") ?? "",
+      count: 0,
+      results: [],
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/skills/catalog/refresh") {
+    return json({ ok: true, count: 0 });
+  }
+
+  if (
+    method === "POST" &&
+    (pathname === "/api/skills/catalog/install" ||
+      pathname === "/api/skills/catalog/uninstall" ||
+      pathname === "/api/skills/marketplace/install" ||
+      pathname === "/api/skills/marketplace/uninstall")
+  ) {
+    return unavailableLocalBackendRoute("skill_installer_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/skills/marketplace/search") {
+    return json({ ok: true, results: [] });
+  }
+
+  if (pathname === "/api/skills/marketplace/config") {
+    if (method === "GET" || method === "PUT") return json({ keySet: false });
+  }
+
+  if (method === "GET" && pathname === "/api/registry/plugins") {
+    return json({ plugins: [] });
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/registry/plugins/")) {
+    return json({ plugin: null }, 404);
+  }
+
+  if (method === "GET" && pathname === "/api/models") {
+    return json({
+      provider: url.searchParams.get("provider") ?? null,
+      models: [],
+    });
   }
 
   if (method === "GET" && pathname === "/api/local-inference/hub") {

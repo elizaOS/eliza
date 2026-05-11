@@ -31,7 +31,9 @@
  */
 
 import { findCatalogModel } from "./catalog";
+import type { StructuredGenerateParams } from "./structured-output";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
+import type { VerifierStreamEvent } from "./voice/types";
 
 /**
  * Per-load runtime overrides forwarded by the dispatcher to whichever
@@ -81,7 +83,7 @@ export interface BackendPlan {
   overrides?: BackendLoadOverrides;
 }
 
-export interface GenerateArgs {
+export interface GenerateArgs extends StructuredGenerateParams {
   prompt: string;
   stopSequences?: string[];
   /** Upper bound on output tokens; defaults to 2048. */
@@ -100,6 +102,30 @@ export interface GenerateArgs {
    * Empty / absent keys fall through to the historical stateless path.
    */
   cacheKey?: string;
+  /**
+   * Per-request abort signal. Backends honour it cooperatively:
+   *   - `node-llama-cpp` passes it to `LlamaChatSession.prompt()` as
+   *     `stopOnAbortSignal`, so the binding bails out of the generation
+   *     loop on the next sampler tick.
+   *   - `llama-server`   wires it into the HTTP request so the outgoing
+   *     fetch is cancelled and the server-side slot releases the KV.
+   * Callers that want hard cancel for things like app pause / kill-switch
+   * pass the same signal here that they pass into `runtime.useModel`.
+   */
+  signal?: AbortSignal;
+  /**
+   * Incremental accepted text from the backend. llama-server calls this for
+   * streamed OpenAI-compatible deltas; node-llama-cpp calls it once with the
+   * completed text until the binding path exposes token callbacks here.
+   */
+  onTextChunk?: (chunk: string) => void | Promise<void>;
+  /**
+   * Native verifier stream from speculative backends. Current llama-server
+   * builds synthesize accept events from streamed text deltas; future DFlash
+   * builds should emit exact accept/reject token ranges here so voice TTS
+   * rollback does not need to infer them from text chunks.
+   */
+  onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
 
 export type GenerateResult = string;

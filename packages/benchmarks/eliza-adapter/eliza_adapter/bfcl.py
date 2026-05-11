@@ -157,6 +157,7 @@ class ElizaBFCLAgent:
         self._client = client or ElizaClient()
         self._model_name = model_name or "eliza-ts-bridge"
         self._initialized = False
+        self._manager = None
 
     @property
     def model_name(self) -> Optional[str]:
@@ -166,6 +167,12 @@ class ElizaBFCLAgent:
         """Ensure the eliza benchmark server is reachable."""
         if self._initialized:
             return
+        if getattr(self._client, "_delegate", None) is None and not os.environ.get("ELIZA_BENCH_URL"):
+            from eliza_adapter.server_manager import ElizaServerManager
+
+            self._manager = ElizaServerManager()
+            self._manager.start()
+            self._client = self._manager.client
         self._client.wait_until_ready(timeout=120)
         self._initialized = True
 
@@ -229,5 +236,7 @@ class ElizaBFCLAgent:
         return predicted, response.text or "", latency_ms
 
     async def close(self) -> None:
-        """No-op; the server manager owns subprocess lifecycle."""
+        if self._manager is not None:
+            self._manager.stop()
+            self._manager = None
         self._initialized = False

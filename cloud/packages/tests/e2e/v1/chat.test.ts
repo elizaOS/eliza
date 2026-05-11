@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import * as api from "../helpers/api-client";
+import { resolveE2EChatModel } from "../helpers/chat-model";
 import { readJson } from "../helpers/json-body";
 
 type ChatCompletionResponse = {
   choices?: unknown[];
   id?: string;
 };
+
+const E2E_CHAT_MODEL = resolveE2EChatModel("openai/gpt-5-mini");
 
 /**
  * Chat API E2E Tests
@@ -33,7 +36,7 @@ describe("Chat API", () => {
     const response = await api.post(
       "/api/v1/chat",
       {
-        id: "openai/gpt-5-mini",
+        id: E2E_CHAT_MODEL,
         messages: [{ role: "user", content: "Say hello in one word" }],
       },
       { authenticated: true },
@@ -50,7 +53,7 @@ describe("Chat API", () => {
 describe("Chat Completions API (OpenAI-compat)", () => {
   test("POST /api/v1/chat/completions requires auth", async () => {
     const response = await api.post("/api/v1/chat/completions", {
-      model: "gpt-5-mini",
+      model: E2E_CHAT_MODEL,
       messages: [{ role: "user", content: "Hello" }],
     });
     expect([200, 401, 403]).toContain(response.status);
@@ -60,7 +63,7 @@ describe("Chat Completions API (OpenAI-compat)", () => {
     const response = await api.post(
       "/api/v1/chat/completions",
       {
-        model: "openai/gpt-5-mini",
+        model: E2E_CHAT_MODEL,
         messages: [{ role: "user", content: "Say ok" }],
         max_tokens: 16,
         stream: false,

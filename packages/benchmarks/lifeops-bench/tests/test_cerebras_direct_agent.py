@@ -165,7 +165,8 @@ async def test_cerebras_direct_agent_returns_tool_call_turn() -> None:
     body = captured[0]
     assert body["model"] == "gpt-oss-120b"
     assert "tools" in body and len(body["tools"]) == 1
-    assert body["messages"][0]["role"] == "user"
+    assert body["messages"][0]["role"] == "system"
+    assert body["messages"][1]["role"] == "user"
 
 
 # ---------------------------------------------------------------------------

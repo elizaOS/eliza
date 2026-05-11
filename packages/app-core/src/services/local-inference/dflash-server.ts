@@ -28,14 +28,35 @@ import {
   readCacheStats,
   slotSavePath,
 } from "./cache-bridge";
-import { findCatalogModel } from "./catalog";
+import { ELIZA_1_PLACEHOLDER_IDS, findCatalogModel } from "./catalog";
+import { probeHardware } from "./hardware";
+import {
+  estimateQuantizedKvBytesPerToken,
+  KV_SPILL_MIN_CONTEXT,
+  type KvSpillPlan,
+  KvSpillUnsupportedError,
+  planKvSpill,
+  residentKvBudgetFromRamBudget,
+  restoreClassForHardware,
+} from "./kv-spill";
 import {
   diffSnapshots,
   fetchMetricsSnapshot,
   type LocalUsageBlock,
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
-import type { LocalRuntimeOptimizations } from "./types";
+import { resolveRamBudget } from "./ram-budget";
+import {
+  grammarRequestFields,
+  resolveGrammarForParams,
+  type StructuredGenerateParams,
+} from "./structured-output";
+import type {
+  CatalogModel,
+  InstalledModel,
+  LocalRuntimeOptimizations,
+} from "./types";
+import type { VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
   targetModelPath: string;
@@ -46,10 +67,25 @@ export interface DflashServerPlan {
   draftMax: number;
   gpuLayers: number | "auto";
   draftGpuLayers: number | "auto";
+  kvOffload?: DflashKvOffloadMode;
   disableThinking: boolean;
+  /**
+   * KV-cache spill plan for context > 64k (packages/inference/AGENTS.md §3
+   * item 7). Resolved in `load()` from the catalog + a hardware probe + the
+   * bundle's RAM budget. `null`/absent when the context is short enough that
+   * the whole cache fits resident. When `mode === "spill"` the server is
+   * launched with `--no-kv-offload` so the cold pages live in host RAM, plus
+   * a `--cache-ram` hint sized to the resident pages. A
+   * `KvSpillUnsupportedError` thrown by `planKvSpill` propagates out of
+   * `load()` so the engine surfaces a structured 4xx — there is no
+   * silent-slow fallback.
+   */
+  kvSpillPlan?: KvSpillPlan | null;
 }
 
-export interface DflashGenerateArgs {
+export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
+
+export interface DflashGenerateArgs extends StructuredGenerateParams {
   prompt: string;
   stopSequences?: string[];
   maxTokens?: number;
@@ -68,6 +104,17 @@ export interface DflashGenerateArgs {
    * disables slot pinning ("any free slot").
    */
   slotId?: number;
+  /** Per-request abort signal forwarded to llama-server's HTTP request. */
+  signal?: AbortSignal;
+  /** Incremental accepted text chunks from streaming chat completions. */
+  onTextChunk?: (chunk: string) => void | Promise<void>;
+  /**
+   * Speculative verifier event stream. Today this backend synthesizes
+   * accept events from OpenAI streaming deltas; native DFlash builds can
+   * replace that with exact accept/reject token ranges without changing
+   * callers.
+   */
+  onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
 
 /**
@@ -107,16 +154,34 @@ export interface DflashRuntimeStatus {
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_START_TIMEOUT_MS = 120_000;
-const METAL_UNSUPPORTED_CACHE_TYPES = new Set([
-  "turbo2",
-  "turbo3",
-  "turbo4",
-  "turbo2_0",
-  "turbo3_0",
-  "turbo4_0",
-  "turbo2_tcq",
-  "turbo3_tcq",
-]);
+
+/**
+ * Map a llama-server `--cache-type-k/v` value to the `CAPABILITIES.json`
+ * kernel bit that must be `true` in the installed binary for that cache type
+ * to be safe. Cache types not in this map (`f16`, `q8_0`, …) are stock and
+ * always allowed. Used by `assertCacheTypeSupportedOnBackend` so the refusal
+ * keys off the *real* shipped-kernel set, not a static "decorative-only"
+ * blocklist (L1 — the kernel-patches now do real work; see
+ * `packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`).
+ */
+const CACHE_TYPE_REQUIRED_KERNEL: Record<
+  string,
+  keyof DflashBinaryCapabilities["kernels"]
+> = {
+  turbo3: "turbo3",
+  turbo3_0: "turbo3",
+  turbo4: "turbo4",
+  turbo4_0: "turbo4",
+  turbo3_tcq: "turbo3_tcq",
+  // turbo2* are the older naming for the same families — gate on turbo3.
+  turbo2: "turbo3",
+  turbo2_0: "turbo3",
+  turbo2_tcq: "turbo3_tcq",
+  qjl1_256: "qjl_full",
+  qjl_full: "qjl_full",
+  polar: "polarquant",
+  polarquant: "polarquant",
+};
 
 const DFLASH_METRIC_ALIASES = {
   decoded: ["llamacpp:n_decode_total", "llamacpp:n_decode"],
@@ -168,6 +233,40 @@ export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
 function readBool(name: string): boolean {
   const raw = process.env[name]?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes";
+}
+
+/**
+ * Developer-only escape hatch from the always-on speculative-decoding
+ * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
+ * the user disables speculative decoding for debugging, that is a
+ * developer-only flag (`MILADY_DFLASH_DISABLE=1`), it is not a user
+ * setting, and it MUST log a loud warning every turn.").
+ *
+ * This is NOT a product setting — there is no UI surface and no
+ * `MILADY_LOCAL_*` mapping. It exists so a developer can bisect a
+ * suspected DFlash regression. When set, `dflashEnabled()` returns false
+ * (the dispatcher then routes to node-llama-cpp) and every generation
+ * turn that runs while it is set logs `logDflashDevDisabledWarning()`.
+ */
+export function dflashDevDisabled(): boolean {
+  return readBool("MILADY_DFLASH_DISABLE");
+}
+
+/**
+ * Emit the loud, every-turn warning required by AGENTS.md §4 when the
+ * developer kill-switch is active. Callers invoke this once per
+ * generation turn (text or voice). No-op when the flag is unset, so the
+ * call site can be unconditional.
+ */
+export function logDflashDevDisabledWarning(): void {
+  if (!dflashDevDisabled()) return;
+  console.warn(
+    "[local-inference] ⚠️  MILADY_DFLASH_DISABLE=1 — speculative decoding is OFF. " +
+      "This is a developer-only debug flag, NOT a product setting. Eliza-1's " +
+      "always-on DFlash contract is violated for this turn; voice latency and " +
+      "throughput are degraded. Unset MILADY_DFLASH_DISABLE to restore the " +
+      "shipped path.",
+  );
 }
 
 function managedDflashBinaryPath(): string {
@@ -278,26 +377,32 @@ function dflashMetalAutoEnabled(): boolean {
   );
 }
 
+/**
+ * Refuse a `--cache-type-k/v` value when the installed llama-server binary
+ * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
+ * is no longer static: `kernel-patches/[metal,vulkan]-kernels.mjs` compile the
+ * turbo / qjl / polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
+ * records which ones actually shipped under `kernels.*`. So a Metal binary
+ * built with the kernel patches enabled passes; one without them is refused
+ * with an actionable "rebuild your fork" message. When `CAPABILITIES.json` is
+ * absent (older / hand-built binaries) we trust the request and let the load
+ * attempt clarify — same policy as the dispatcher's `unsatisfiedKernels`.
+ */
 function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
-  if (
-    isMetalDflashRuntime() &&
-    METAL_UNSUPPORTED_CACHE_TYPES.has(value.toLowerCase())
-  ) {
-    // Wave-3 hardware-verified all 5 Metal kernels 8/8 PASS on Apple M4 Max
-    // via the JIT harness, but the patch coverage audit (2026-05-10) found
-    // the standalones do NOT actually ship in the v0.4.0-milady binary —
-    // build-llama-cpp-dflash.mjs's patchMetal* hooks are decorative-only.
-    // Until the shader-shipping work lands AND the shipped binary itself
-    // is re-verified, the runtime correctly refuses these cache types on
-    // Metal. Once capabilities.kernels.turbo3 etc. flip to true via a real
-    // build, gate this on the capability instead of the static set.
-    throw new Error(
-      `${name}=${value} is not yet shipped in the Metal binary. Wave-3 verified the kernels in a JIT harness but the build pipeline doesn't compile them into the shipped artifact. Use f16 KV on Metal until the kernel-shipping work lands.`,
-    );
-  }
+  const requiredKernel = CACHE_TYPE_REQUIRED_KERNEL[value.toLowerCase()];
+  if (!requiredKernel) return; // stock cache type (f16/q8_0/...) — always ok
+  const caps = readDflashBinaryCapabilities();
+  if (!caps) return; // no capability probe — trust the request, load clarifies
+  if (caps.kernels[requiredKernel] === true) return; // shipped — allow
+  throw new Error(
+    `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or use a stock KV cache type (f16/q8_0).`,
+  );
 }
 
 export function dflashEnabled(): boolean {
+  // Developer kill-switch wins over everything, including ELIZA_DFLASH_ENABLED.
+  // See dflashDevDisabled() — this is a debug-only hatch, never a product path.
+  if (dflashDevDisabled()) return false;
   if (readBool("ELIZA_DFLASH_DISABLED")) return false;
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
   if (!fs.existsSync(managedDflashBinaryPath())) return false;
@@ -352,8 +457,9 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
     const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
-    const reason =
-      managedBinaryExists && isMetalDflashRuntime()
+    const reason = dflashDevDisabled()
+      ? "DFlash is disabled by the developer-only MILADY_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
+      : managedBinaryExists && isMetalDflashRuntime()
         ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
         : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
     return {
@@ -394,12 +500,120 @@ function resolveDflashGpuLayers(
   if (typeof overrides?.gpuLayers === "number") return overrides.gpuLayers;
   if (overrides?.gpuLayers === "auto") return "auto";
   if (overrides?.gpuLayers === "max") return "auto";
-  if (overrides?.kvOffload !== undefined) {
+  if (
+    overrides?.kvOffload !== undefined &&
+    typeof overrides.kvOffload === "object"
+  ) {
     const mapped = gpuLayersForKvOffload(overrides.kvOffload);
     return mapped === "max" ? "auto" : mapped;
   }
   if (overrides?.useGpu === false) return 0;
   return fallback;
+}
+
+function normalizeDflashKvOffloadMode(
+  value: string | undefined,
+): DflashKvOffloadMode | null {
+  const mode = value?.trim().toLowerCase();
+  if (mode === "cpu" || mode === "gpu" || mode === "split") return mode;
+  return null;
+}
+
+export function resolveDflashKvOffload(
+  overrides: BackendPlan["overrides"] | null | undefined,
+): DflashKvOffloadMode | null {
+  if (typeof overrides?.kvOffload === "string") {
+    return normalizeDflashKvOffloadMode(overrides.kvOffload);
+  }
+  return normalizeDflashKvOffloadMode(process.env.ELIZA_LOCAL_KV_OFFLOAD);
+}
+
+export function appendKvOffloadFlags(
+  args: string[],
+  mode: DflashKvOffloadMode | null,
+): string[] {
+  if (mode === "cpu") {
+    args.push("--no-kv-offload");
+  }
+  return args;
+}
+
+/** True when `id` is one of the Eliza-1 tier ids (bundles that ship voice). */
+function isEliza1TierCatalogId(id: string): boolean {
+  return ELIZA_1_PLACEHOLDER_IDS.has(id);
+}
+
+/**
+ * Resolve the KV-cache spill plan for a llama-server launch.
+ *
+ * Returns `null` when `contextSize <= 64k` (no spill by contract). For longer
+ * contexts it consults a hardware probe + the bundle's RAM budget via
+ * `planKvSpill`:
+ *   - whole cache fits resident → `{ mode: "resident" }` (caller ignores it),
+ *   - fits with paging inside the latency budget → `{ mode: "spill", ... }`,
+ *   - would miss the latency budget → `planKvSpill` throws
+ *     `KvSpillUnsupportedError`, which propagates so the engine returns a
+ *     structured 4xx instead of half-loading.
+ *
+ * Exported for `dflash-server.test.ts`.
+ */
+export async function resolveKvSpillPlan(args: {
+  contextSize: number;
+  catalog: CatalogModel | undefined;
+  installed: InstalledModel | undefined;
+  voiceEnabled: boolean;
+}): Promise<KvSpillPlan | null> {
+  if (!args.contextSize || args.contextSize <= KV_SPILL_MIN_CONTEXT) {
+    return null;
+  }
+  const hardware = await probeHardware();
+  const ram = args.catalog
+    ? resolveRamBudget(args.catalog, args.installed)
+    : null;
+  // Without a catalog row there is no RAM budget to size the resident slice
+  // against — fall back to a conservative 1 GiB resident-KV budget so the
+  // spill math is still defined and fails closed on small devices.
+  const residentKvBudgetBytes = ram
+    ? residentKvBudgetFromRamBudget(ram)
+    : 1024 * 1024 * 1024;
+  const bytesPerToken = estimateQuantizedKvBytesPerToken(
+    args.catalog?.params ?? "27B",
+  );
+  const hasDiscreteGpu = hardware.gpu !== null && !hardware.appleSilicon;
+  // CPU spill is available when the host has appreciable RAM headroom over
+  // the resident budget. Apple Silicon always has unified RAM; x86 needs the
+  // total to comfortably exceed the resident slice.
+  const cpuSpillAvailable =
+    hardware.appleSilicon ||
+    hardware.totalRamGb * 1024 * 1024 * 1024 > residentKvBudgetBytes * 2;
+  return planKvSpill({
+    requestedContext: args.contextSize,
+    geometry: { bytesPerToken, voiceEnabled: args.voiceEnabled },
+    residentKvBudgetBytes,
+    restoreClass: restoreClassForHardware({
+      appleSilicon: hardware.appleSilicon,
+      hasDiscreteGpu,
+    }),
+    cpuSpillAvailable,
+  });
+}
+
+/**
+ * Translate a resolved KV-spill plan into llama-server flags. `resident`
+ * (and `null`) are no-ops; `spill` forces the cold KV into host RAM with
+ * `--no-kv-offload` and hints the resident working set with `--cache-ram`.
+ */
+export function appendKvSpillFlags(
+  args: string[],
+  plan: KvSpillPlan | null | undefined,
+): string[] {
+  if (!plan || plan.mode !== "spill") return args;
+  if (!args.includes("--no-kv-offload")) {
+    args.push("--no-kv-offload");
+  }
+  const cacheRamMb = Math.max(1, Math.floor(plan.residentBytes / 1024 / 1024));
+  args.push("--cache-ram", String(cacheRamMb));
+  return args;
 }
 
 function findPython(): string | null {
@@ -418,10 +632,35 @@ function maybeRepairDflashDrafter(
   targetModelPath: string,
   drafterModelPath: string,
 ): string {
-  if (readBool("ELIZA_DFLASH_REPAIR_DISABLED")) return drafterModelPath;
-  if (!fs.existsSync(targetModelPath) || !fs.existsSync(drafterModelPath)) {
-    return drafterModelPath;
+  return maybeRepairGgufMerges(binaryPath, targetModelPath, drafterModelPath);
+}
+
+/**
+ * If `strippedGgufPath` ships without `tokenizer.ggml.merges` metadata,
+ * copy the merges from `sourceWithMergesPath` (a GGUF that *does* carry
+ * them — the text backbone in this lineage; all five Eliza-1 components
+ * share the 151,936-token Qwen vocab, B1's finding) into a sidecar
+ * `<name>.repaired.gguf` and return that path; otherwise return the
+ * original path unchanged. Used for the DFlash drafter and — per B1's
+ * handoff — generalized to ASR and embedding GGUFs that ship the same
+ * stripped tokenizer. A no-op when `ELIZA_DFLASH_REPAIR_DISABLED` is set,
+ * when either input is missing, when Python/gguf-py isn't available, or
+ * when the stripped GGUF already has merges.
+ */
+export function maybeRepairGgufMerges(
+  binaryPath: string,
+  sourceWithMergesPath: string,
+  strippedGgufPath: string,
+): string {
+  if (readBool("ELIZA_DFLASH_REPAIR_DISABLED")) return strippedGgufPath;
+  if (
+    !fs.existsSync(sourceWithMergesPath) ||
+    !fs.existsSync(strippedGgufPath)
+  ) {
+    return strippedGgufPath;
   }
+  const targetModelPath = sourceWithMergesPath;
+  const drafterModelPath = strippedGgufPath;
 
   const repairedPath = drafterModelPath.replace(/\.gguf$/i, ".repaired.gguf");
   if (repairedPath === drafterModelPath) return drafterModelPath;
@@ -536,8 +775,12 @@ async function fetchJson(
   url: string,
   init: RequestInit,
   timeoutMs = 60_000,
+  externalSignal?: AbortSignal,
 ): Promise<unknown> {
   const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
@@ -550,6 +793,159 @@ async function fetchJson(
     return await res.json();
   } finally {
     clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
+  }
+}
+
+export function extractStreamingChatDelta(json: unknown): string {
+  if (!json || typeof json !== "object") return "";
+  const record = json as Record<string, unknown>;
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  let out = "";
+  for (const choice of choices) {
+    if (!choice || typeof choice !== "object") continue;
+    const c = choice as Record<string, unknown>;
+    const delta = c.delta;
+    if (delta && typeof delta === "object") {
+      const content = (delta as Record<string, unknown>).content;
+      if (typeof content === "string") out += content;
+      continue;
+    }
+    const text = c.text;
+    if (typeof text === "string") out += text;
+  }
+  return out;
+}
+
+/**
+ * Extract a DFlash verifier reject-range from a streaming SSE chunk, if the
+ * fork's `--spec-type dflash` server attached one. The contract (see
+ * docs/porting/dflash-drafter-strategy.md "DFlash↔TTS Rollback Coupling"):
+ * when the target rejects a contiguous span of previously-streamed
+ * drafted tokens, the chunk carries `{ "verifier": { "rejected": [a, b] } }`
+ * (inclusive token-index range, in target output order). Returns the
+ * `[a, b]` pair, or null when the chunk has no reject extension.
+ *
+ * Upstream llama-server does not emit this today — the field is the agreed
+ * extension point for the native verifier-event stream (remaining-work
+ * ledger "Native DFlash verifier event stream"). Until then this returns
+ * null for every real chunk and the synthesized accept-only stream is what
+ * runs in production. The shape is parsed (not faked) so the moment the
+ * fork emits it, rollback is exact with no further runtime changes.
+ */
+export function extractVerifierRejectRange(
+  json: unknown,
+): [number, number] | null {
+  if (!json || typeof json !== "object") return null;
+  const verifier = (json as Record<string, unknown>).verifier;
+  if (!verifier || typeof verifier !== "object") return null;
+  const rejected = (verifier as Record<string, unknown>).rejected;
+  if (
+    Array.isArray(rejected) &&
+    rejected.length === 2 &&
+    typeof rejected[0] === "number" &&
+    typeof rejected[1] === "number" &&
+    Number.isInteger(rejected[0]) &&
+    Number.isInteger(rejected[1]) &&
+    rejected[0] >= 0 &&
+    rejected[1] >= rejected[0]
+  ) {
+    return [rejected[0], rejected[1]];
+  }
+  return null;
+}
+
+async function fetchStreamingChatCompletion(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+  callbacks: {
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
+  },
+  externalSignal?: AbortSignal,
+  startIndex = 0,
+): Promise<string> {
+  const controller = new AbortController();
+  const abort = () => controller.abort(externalSignal?.reason);
+  if (externalSignal?.aborted) abort();
+  externalSignal?.addEventListener("abort", abort, { once: true });
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `HTTP ${res.status} from ${url}${body ? `: ${body}` : ""}`,
+      );
+    }
+    if (!res.body) {
+      throw new Error(`[dflash] Streaming response from ${url} had no body`);
+    }
+
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let text = "";
+    let nextIndex = startIndex;
+    const consumeEvent = async (raw: string): Promise<void> => {
+      const dataLines = raw
+        .split(/\r?\n/)
+        .map((line) => line.trimEnd())
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice("data:".length).trimStart());
+      if (dataLines.length === 0) return;
+      const data = dataLines.join("\n").trim();
+      if (!data || data === "[DONE]") return;
+      const parsed = JSON.parse(data);
+
+      // Native DFlash reject-range, if the fork attached one: retract the
+      // already-streamed drafted tokens in [a, b] and rewind the index
+      // cursor so re-decoded tokens get the correct indices. The phrase
+      // chunker drops the not-yet-spoken audio for the overlapping phrases.
+      const rejectRange = extractVerifierRejectRange(parsed);
+      if (rejectRange) {
+        const [from, to] = rejectRange;
+        if (callbacks.onVerifierEvent) {
+          const tokens = [];
+          for (let i = from; i <= to; i += 1)
+            tokens.push({ index: i, text: "" });
+          await callbacks.onVerifierEvent({ kind: "reject", tokens });
+        }
+        nextIndex = Math.min(nextIndex, from);
+        return;
+      }
+
+      const chunk = extractStreamingChatDelta(parsed);
+      if (!chunk) return;
+      text += chunk;
+      if (callbacks.onVerifierEvent) {
+        await callbacks.onVerifierEvent({
+          kind: "accept",
+          tokens: [{ index: nextIndex++, text: chunk }],
+        });
+      }
+      await callbacks.onTextChunk?.(chunk);
+    };
+
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep = buffer.search(/\r?\n\r?\n/);
+      while (sep !== -1) {
+        const raw = buffer.slice(0, sep);
+        buffer = buffer.slice(buffer[sep] === "\r" ? sep + 4 : sep + 2);
+        await consumeEvent(raw);
+        sep = buffer.search(/\r?\n\r?\n/);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) await consumeEvent(buffer);
+    return text;
+  } finally {
+    clearTimeout(timer);
+    externalSignal?.removeEventListener("abort", abort);
   }
 }
 
@@ -601,6 +997,15 @@ function resolveParallel(catalogParallel?: number): number {
  *                                    else conservative defaults)
  *   ELIZA_LOCAL_PARALLEL=N         → --parallel N (handled by resolveParallel
  *                                    at the call site, not here)
+ *   ELIZA_LOCAL_CACHE_REUSE=N      → --cache-reuse N
+ *   ELIZA_LOCAL_CACHE_RAM_MB=N     → --cache-ram N
+ *   ELIZA_LOCAL_BATCH_SIZE=N       → --batch-size N
+ *   ELIZA_LOCAL_UBATCH_SIZE=N      → --ubatch-size N
+ *   ELIZA_LOCAL_CONT_BATCHING=0|1  → --cont-batching / --no-cont-batching
+ *   ELIZA_LOCAL_KV_UNIFIED=0|1     → --kv-unified / --no-kv-unified
+ *   ELIZA_LOCAL_OP_OFFLOAD=0|1     → --op-offload / --no-op-offload
+ *   ELIZA_LOCAL_KV_OFFLOAD=cpu     → --no-kv-offload (handled by
+ *                                    appendKvOffloadFlags at start)
  *   ELIZA_LOCAL_MOE_OFFLOAD=cpu    → -ot ".*=CPU"
  *   ELIZA_LOCAL_MLOCK=1            → --mlock
  *   ELIZA_LOCAL_NO_MMAP=1          → --no-mmap
@@ -618,6 +1023,38 @@ function readBoolFlag(name: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function appendPositiveIntFlag(
+  args: string[],
+  flag: string,
+  value: number | undefined,
+): void {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value > 0
+  ) {
+    args.push(flag, String(value));
+  }
+}
+
+function appendBooleanFlag(
+  args: string[],
+  enabledFlag: string,
+  disabledFlag: string,
+  value: boolean | undefined,
+): void {
+  if (value === true) args.push(enabledFlag);
+  if (value === false) args.push(disabledFlag);
 }
 
 export function appendOptimizationFlags(
@@ -651,6 +1088,45 @@ export function appendOptimizationFlags(
     args.push("--draft-max", String(ngramEffective.max));
     args.push("--draft-min-prob", String(ngramEffective.minProb));
   }
+
+  appendPositiveIntFlag(
+    args,
+    "--cache-reuse",
+    readPositiveIntEnv("ELIZA_LOCAL_CACHE_REUSE") ?? optimizations?.cacheReuse,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--cache-ram",
+    readPositiveIntEnv("ELIZA_LOCAL_CACHE_RAM_MB") ?? optimizations?.cacheRamMb,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--batch-size",
+    readPositiveIntEnv("ELIZA_LOCAL_BATCH_SIZE") ?? optimizations?.batchSize,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--ubatch-size",
+    readPositiveIntEnv("ELIZA_LOCAL_UBATCH_SIZE") ?? optimizations?.ubatchSize,
+  );
+  appendBooleanFlag(
+    args,
+    "--cont-batching",
+    "--no-cont-batching",
+    readBoolFlag("ELIZA_LOCAL_CONT_BATCHING") ?? optimizations?.contBatching,
+  );
+  appendBooleanFlag(
+    args,
+    "--kv-unified",
+    "--no-kv-unified",
+    readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvUnified,
+  );
+  appendBooleanFlag(
+    args,
+    "--op-offload",
+    "--no-op-offload",
+    readBoolFlag("ELIZA_LOCAL_OP_OFFLOAD") ?? optimizations?.opOffload,
+  );
 
   // -ot ".*=CPU" — MoE expert offload to CPU.
   const moeEnv = process.env.ELIZA_LOCAL_MOE_OFFLOAD?.trim().toLowerCase();
@@ -747,6 +1223,53 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   }
 
   /**
+   * Path of the DFlash drafter GGUF the running server was launched with
+   * (`-md`), or null when no server is loaded. The drafter is co-resident
+   * with the target the whole time the server runs — there is no separate
+   * "load drafter" step; `start()` passes `-md` and the fork mmaps both.
+   * The voice shared-resource registry wraps this in a `DflashDrafterHandle`
+   * so the lifecycle can refcount it alongside the text weights (AGENTS.md
+   * §4 — the drafter is always wired and shared by text + voice modes).
+   */
+  loadedDrafterModelPath(): string | null {
+    return this.loadedPlan?.drafterModelPath ?? null;
+  }
+
+  /** Loopback base URL of the running server, or null. Used by tests/diagnostics. */
+  currentBaseUrl(): string | null {
+    return this.baseUrl;
+  }
+
+  /**
+   * Merged HTTP route descriptor for the fused build (`packages/inference/
+   * AGENTS.md` §4 + remaining-work-ledger P0 #3): when the installed
+   * `llama-server` binary is the omnivoice-fused build it serves
+   * `/v1/audio/speech` *itself*, so there is no compat `llama-omnivoice-
+   * server` process. Returns the route info (loopback base URL + the
+   * `/v1/audio/speech` path) only when a fused server is running; returns
+   * `null` for a stock llama-server (text/DFlash only — TTS goes through
+   * the FFI `ttsSynthesize` path instead) or when no server is up.
+   *
+   * "Fused" is detected from `CAPABILITIES.json` next to the binary: the
+   * fused build's `binaries` list includes `llama-omnivoice-server` /
+   * `libelizainference`, which only the omnivoice-graft target produces.
+   */
+  audioSpeechRoute(): {
+    baseUrl: string;
+    speechPath: "/v1/audio/speech";
+    fused: true;
+  } | null {
+    if (!this.baseUrl || !this.hasLoadedModel()) return null;
+    const caps = readDflashBinaryCapabilities();
+    if (!caps) return null;
+    const fused = caps.binaries.some(
+      (b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
+    );
+    if (!fused) return null;
+    return { baseUrl: this.baseUrl, speechPath: "/v1/audio/speech", fused: true };
+  }
+
+  /**
    * Scrape the running llama-server's `/metrics` endpoint and return a
    * `DflashMetricsSnapshot` with `drafted` / `accepted` / `decoded` counts.
    * Returns `null` when no server is loaded, the endpoint isn't reachable,
@@ -832,6 +1355,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         ? overrides.contextSize
         : dflash.contextSize;
     const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
+    const kvOffload = resolveDflashKvOffload(overrides);
+
+    // KV-cache spill for context > 64k (AGENTS.md §3 item 7). Every Eliza-1
+    // bundle ships the voice loop, so a tier-id match means the tighter voice
+    // latency gate applies. A `KvSpillUnsupportedError` thrown here propagates
+    // out of `load()` — the engine surfaces it to the UI verbatim.
+    const kvSpillPlan = await resolveKvSpillPlan({
+      contextSize,
+      catalog,
+      installed: target,
+      voiceEnabled: catalog ? isEliza1TierCatalogId(catalog.id) : false,
+    });
 
     await this.start(
       {
@@ -843,7 +1378,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         draftMax: dflash.draftMax,
         gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
+        kvOffload: kvOffload ?? undefined,
         disableThinking: dflash.disableThinking,
+        kvSpillPlan,
       },
       optimizations,
     );
@@ -882,12 +1419,13 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
     const parallel = resolveParallel(optimizations?.parallel);
+    const kvOffload = plan.kvOffload ?? resolveDflashKvOffload(null);
     const modelHash = buildModelHash({
       targetModelPath: plan.targetModelPath,
       drafterModelPath,
       cacheTypeK: cacheTypeK ?? null,
       cacheTypeV: cacheTypeV ?? null,
-      extra: `ctx=${plan.contextSize};parallel=${parallel}`,
+      extra: `ctx=${plan.contextSize};parallel=${parallel};kv=${kvOffload ?? "default"}`,
     });
     const slotDir = slotSavePath(modelHash);
     // llama-server's slot API treats `filename` as a basename relative to
@@ -963,19 +1501,31 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       args.push("--cache-type-v", cacheTypeV);
     }
 
+    appendKvOffloadFlags(args, kvOffload);
     appendOptimizationFlags(args, optimizations ?? null);
+    // CPU-offloaded KV spill for context > 64k. Forces `--no-kv-offload`
+    // (cold pages live in host RAM) + a `--cache-ram` hint sized to the
+    // resident pages — appended after the optimization flags so the spill
+    // budget wins over any catalog `cacheRamMb`. `resident`/`null` plans
+    // are no-ops.
+    appendKvSpillFlags(args, plan.kvSpillPlan);
 
     const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
-    if (extra && isMetalDflashRuntime()) {
-      for (const cacheType of METAL_UNSUPPORTED_CACHE_TYPES) {
-        if (extra.toLowerCase().split(/\s+/).includes(cacheType)) {
-          throw new Error(
-            `ELIZA_DFLASH_LLAMA_ARGS includes ${cacheType}, but that KV cache type is not production-safe on Metal in the DFlash fork. Use f16 KV on Metal or run this variant on CUDA/ROCm.`,
-          );
+    if (extra) {
+      // Apply the same capability gate to any kernel cache type passed via
+      // the raw-args escape hatch: a `--cache-type-k turbo3` here must be
+      // backed by the shipped `turbo3` kernel just like the env-var path.
+      const tokens = extra.split(/\s+/).filter(Boolean);
+      for (let i = 0; i < tokens.length; i += 1) {
+        if (
+          (tokens[i] === "--cache-type-k" || tokens[i] === "--cache-type-v") &&
+          i + 1 < tokens.length
+        ) {
+          assertCacheTypeSupportedOnBackend(tokens[i], tokens[i + 1]);
         }
       }
+      args.push(...tokens);
     }
-    if (extra) args.push(...extra.split(/\s+/).filter(Boolean));
 
     fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
     this.stderrTail = [];
@@ -1258,32 +1808,110 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       typeof dflashArgs.slotId === "number" && dflashArgs.slotId >= -1
         ? dflashArgs.slotId
         : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
+    const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
+    const prefill =
+      typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
+        ? dflashArgs.prefill
+        : "";
+    const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
+    const before = await fetchMetricsSnapshot(baseUrl);
+    let json: Record<string, unknown> | null = null;
+    let text: string;
+    if (streaming) {
+      // When the assistant turn is prefilled, the model only streams the
+      // continuation — surface the full assistant message (prefill + tail)
+      // and fire the prefill chunk through the callbacks first so the voice
+      // bridge / structured-field tracker sees a complete envelope.
+      let idx = 0;
+      if (prefill.length > 0) {
+        await dflashArgs.onVerifierEvent?.({
+          kind: "accept",
+          tokens: [{ index: idx++, text: prefill }],
+        });
+        await args.onTextChunk?.(prefill);
+      }
+      const tail = await fetchStreamingChatCompletion(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        60_000,
+        {
+          onTextChunk: args.onTextChunk,
+          onVerifierEvent: dflashArgs.onVerifierEvent,
+        },
+        args.signal,
+        idx,
+      );
+      text = prefill + tail;
+    } else {
+      json = (await fetchJson(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        60_000,
+        args.signal,
+      )) as Record<string, unknown>;
+      text = prefill + extractCompletionText(json);
+    }
+    const after = await fetchMetricsSnapshot(baseUrl);
+    const responseUsage = json ? extractResponseUsage(json) : undefined;
+    const usage = diffSnapshots(before, after, responseUsage);
+    return { text, usage, slotId };
+  }
+
+  /**
+   * Materialize the KV cache for `promptPrefix` on the slot a conversation
+   * is pinned to, before the real request arrives. Fires a `max_tokens: 1`
+   * chat completion with `cache_prompt: true` against the deterministic
+   * slot, so the system-prompt / provider-context / tool-schema prefix is
+   * already in the slot's KV when the user's tokens land. Idempotent and
+   * cheap to call repeatedly — `cache_prompt` reuses the prefix so a second
+   * call is a no-op forward pass over the same tokens.
+   *
+   * No-op when the server isn't running (returns false). W6 calls this from
+   * the cache-precache path; W4 exposes it through the engine.
+   */
+  async prewarmConversation(
+    promptPrefix: string,
+    opts: { slotId?: number; cacheKey?: string } = {},
+  ): Promise<boolean> {
+    const baseUrl = this.baseUrl;
+    if (!baseUrl) return false;
+    if (!promptPrefix || promptPrefix.length === 0) return false;
+    const slotId =
+      typeof opts.slotId === "number" && opts.slotId >= -1
+        ? opts.slotId
+        : deriveSlotId(opts.cacheKey ?? "", this.cacheParallel);
     const payload: Record<string, unknown> = {
       model: "local-dflash",
-      messages: [{ role: "user", content: args.prompt }],
-      max_tokens: args.maxTokens ?? 2048,
-      temperature: args.temperature ?? 0.7,
-      top_p: args.topP ?? 0.9,
-      stop: args.stopSequences,
-      stream: false,
-      // `cache_prompt: true` is always safe — the worst case is the
-      // server matches no prefix tokens and the request behaves like a
-      // cold call. Pinning by `slot_id` only happens when the runtime
-      // gave us a stable cache key.
+      messages: [{ role: "user", content: promptPrefix }],
+      max_tokens: 1,
+      temperature: 0,
       cache_prompt: true,
       slot_id: slotId,
     };
-    const before = await fetchMetricsSnapshot(baseUrl);
-    const json = (await fetchJson(`${baseUrl}/v1/chat/completions`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    })) as Record<string, unknown>;
-    const after = await fetchMetricsSnapshot(baseUrl);
-    const text = extractCompletionText(json);
-    const responseUsage = extractResponseUsage(json);
-    const usage = diffSnapshots(before, after, responseUsage);
-    return { text, usage, slotId };
+    try {
+      await fetchJson(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        30_000,
+      );
+      return true;
+    } catch {
+      // Pre-warm is best-effort by definition — a failure just means the
+      // real request cold-prefills, which is the pre-prewarm behaviour.
+      return false;
+    }
   }
 
   private captureLog(chunk: Buffer | string): void {
@@ -1331,6 +1959,60 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 }
 
 export const dflashLlamaServer = new DflashLlamaServer();
+
+/**
+ * Build the `/v1/chat/completions` request body for a generation call,
+ * folding in the structured-output extensions:
+ *   - `prefill`        → a trailing partial assistant message + the fork's
+ *     `continue_final_message: true` so the model continues it rather than
+ *     starting a fresh assistant turn (recent llama.cpp/Jinja chat templates
+ *     honour this; older builds simply ignore the extra message and the
+ *     prefill is still re-prepended client-side).
+ *   - `grammar` / `responseSkeleton` → `grammar` (+ `grammar_lazy` /
+ *     `grammar_triggers` when the compiled skeleton is lazy).
+ *
+ * `cache_prompt: true` is always safe — the worst case is the server matches
+ * no prefix tokens and the request behaves like a cold call. Pinning by
+ * `slot_id` only happens when the runtime gave us a stable cache key.
+ */
+export function buildChatCompletionBody(
+  args: DflashGenerateArgs,
+  slotId: number,
+  streaming: boolean,
+): Record<string, unknown> {
+  const messages: Array<{ role: string; content: string }> = [
+    { role: "user", content: args.prompt },
+  ];
+  const prefill =
+    typeof args.prefill === "string" && args.prefill.length > 0
+      ? args.prefill
+      : "";
+  if (prefill.length > 0) {
+    messages.push({ role: "assistant", content: prefill });
+  }
+  const payload: Record<string, unknown> = {
+    model: "local-dflash",
+    messages,
+    max_tokens: args.maxTokens ?? 2048,
+    temperature: args.temperature ?? 0.7,
+    top_p: args.topP ?? 0.9,
+    stop: args.stopSequences,
+    stream: streaming,
+    cache_prompt: true,
+    slot_id: slotId,
+  };
+  if (prefill.length > 0) {
+    // Continue the partial assistant turn instead of opening a new one.
+    payload.continue_final_message = true;
+    // Some fork builds spell it `add_generation_prompt: false` instead.
+    payload.add_generation_prompt = false;
+  }
+  const grammar = resolveGrammarForParams(args);
+  if (grammar) {
+    Object.assign(payload, grammarRequestFields(grammar));
+  }
+  return payload;
+}
 
 /**
  * Extract the assistant text from a llama-server `/v1/chat/completions`

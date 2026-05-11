@@ -17,7 +17,10 @@ function readWavPcm16Mono(path: string): {
   sampleRateHz: number;
 } {
   const buf = readFileSync(path);
-  if (buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") {
+  if (
+    buf.toString("ascii", 0, 4) !== "RIFF" ||
+    buf.toString("ascii", 8, 12) !== "WAVE"
+  ) {
     throw new Error(`unsupported WAV container: ${path}`);
   }
 
@@ -46,7 +49,12 @@ function readWavPcm16Mono(path: string): {
     offset += size + (size & 1);
   }
 
-  if (audioFormat !== 1 || channels !== 1 || bitsPerSample !== 16 || dataOffset < 0) {
+  if (
+    audioFormat !== 1 ||
+    channels !== 1 ||
+    bitsPerSample !== 16 ||
+    dataOffset < 0
+  ) {
     throw new Error(
       `expected mono PCM16 WAV; got format=${audioFormat} channels=${channels} bits=${bitsPerSample}`,
     );
@@ -70,6 +78,14 @@ const bundle = arg(
 const wav = arg("--wav", "/tmp/eliza-asr-hello.wav");
 const expected = arg("--expected", "hello world").toLowerCase();
 
+function normalizeTranscript(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 const ffi = loadElizaInferenceFfi(dylib);
 const ctx = ffi.create(bundle);
 const started = performance.now();
@@ -82,7 +98,9 @@ try {
   const transcribeStarted = performance.now();
   const transcript = ffi.asrTranscribe({ ctx, pcm, sampleRateHz });
   const transcribeMs = performance.now() - transcribeStarted;
-  const ok = transcript.toLowerCase().includes(expected);
+  const normalizedTranscript = normalizeTranscript(transcript);
+  const normalizedExpected = normalizeTranscript(expected);
+  const ok = normalizedTranscript.includes(normalizedExpected);
 
   ffi.mmapEvict(ctx, "asr");
   const result = {
@@ -92,7 +110,9 @@ try {
     bundle,
     wav,
     transcript,
+    normalizedTranscript,
     expectedContains: expected,
+    normalizedExpected,
     sampleRateHz,
     samples: pcm.length,
     acquireMs,

@@ -287,6 +287,220 @@ static int gen_polar_qjl(const char * outdir) {
     return 0;
 }
 
+/* ---------- Fused attention (GGML_OP_FUSED_ATTN_QJL_TBQ + Polar V) ---------- */
+
+/* Representative cases. head_dim is always 128; n_kv stands in for the 4k /
+ * 32k / 128k / 256k context regimes (the math is identical, only the loop
+ * trip count changes — fixtures stay small). Each case carries its own GQA
+ * head config so the ports exercise both no-fanout and grouped layouts. */
+typedef struct { int n_heads, n_kv_heads, n_kv; } fused_case;
+static const fused_case FUSED_CASES[] = {
+    { 1, 1,   64 },   /* "4k regime" stand-in, no GQA fanout */
+    { 4, 2,  512 },   /* "32k regime" stand-in, gqa = 2     */
+    { 8, 2,  256 },   /* "128k regime" stand-in, gqa = 4    */
+    { 2, 1,  128 },   /* "256k regime" stand-in, gqa = 2    */
+};
+#define FUSED_N_CASES ((int)(sizeof(FUSED_CASES) / sizeof(FUSED_CASES[0])))
+/* sm_scale = 1/sqrt(head_dim) for head_dim = 128. */
+#define FUSED_SM_SCALE 0.08838834764831845f
+
+static void gen_fused_q_and_k(int n_heads, int n_kv_heads, int n_kv,
+                              const float * prj,
+                              float * q_sketch /* [proj, n_heads] */,
+                              eliza_block_qjl1_256 * pk /* [n_kv, n_kv_heads] */) {
+    for (int h = 0; h < n_heads; h++) {
+        float q_row[ELIZA_QJL_HEAD_DIM];
+        for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) q_row[i] = rand_normal();
+        eliza_qjl_sketch_query(q_row, prj, q_sketch + (size_t)h * ELIZA_QJL_PROJECTION_DIM);
+    }
+    for (int hk = 0; hk < n_kv_heads; hk++) {
+        for (int t = 0; t < n_kv; t++) {
+            float k[ELIZA_QJL_HEAD_DIM];
+            for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) k[i] = rand_normal();
+            eliza_qjl_quantize_row(k, prj, pk + (size_t)hk * n_kv + t);
+        }
+    }
+}
+
+static int gen_fused_attn_qjl_tbq(const char * outdir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/fused_attn_qjl_tbq.json", outdir);
+    FILE * f = fopen(path, "w");
+    if (!f) { perror(path); return 1; }
+
+    static float prj[ELIZA_QJL_HEAD_DIM * ELIZA_QJL_PROJECTION_DIM];
+    eliza_qjl_make_projection(prj, 0xF00DCAFEBABE1234ULL);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"kernel\": \"fused_attn_qjl_tbq\",\n");
+    fprintf(f, "  \"head_dim\": %d,\n", ELIZA_QJL_HEAD_DIM);
+    fprintf(f, "  \"proj_dim\": %d,\n", ELIZA_QJL_PROJECTION_DIM);
+    fprintf(f, "  \"k_block_bytes\": 34,\n");
+    fprintf(f, "  \"v_block_bytes\": 14,\n");
+    fprintf(f, "  \"v_blocks_per_token\": %d,\n", ELIZA_FUSED_TBQ_PER_TOKEN);
+    fprintf(f, "  \"sm_scale\": %.9g,\n", (double)FUSED_SM_SCALE);
+    fprintf(f, "  \"q_is_pre_projected\": 1,\n");
+    fprintf(f, "  \"cases\": [\n");
+    for (int ci = 0; ci < FUSED_N_CASES; ci++) {
+        const fused_case c = FUSED_CASES[ci];
+        float * q_sketch = malloc((size_t)c.n_heads * ELIZA_QJL_PROJECTION_DIM * sizeof(float));
+        eliza_block_qjl1_256 * pk = malloc((size_t)c.n_kv_heads * c.n_kv * sizeof(eliza_block_qjl1_256));
+        size_t nv = (size_t)c.n_kv_heads * c.n_kv * ELIZA_FUSED_TBQ_PER_TOKEN;
+        eliza_block_tbq3_0 * pv = malloc(nv * sizeof(eliza_block_tbq3_0));
+        float * out = malloc((size_t)c.n_heads * ELIZA_FUSED_HEAD_DIM * sizeof(float));
+        if (!q_sketch || !pk || !pv || !out) { perror("malloc"); fclose(f); return 1; }
+
+        gen_fused_q_and_k(c.n_heads, c.n_kv_heads, c.n_kv, prj, q_sketch, pk);
+        for (int hk = 0; hk < c.n_kv_heads; hk++) {
+            for (int t = 0; t < c.n_kv; t++) {
+                for (int cc = 0; cc < ELIZA_FUSED_TBQ_PER_TOKEN; cc++) {
+                    float v32[32];
+                    for (int i = 0; i < 32; i++) v32[i] = rand_normal();
+                    eliza_quantize_tbq3_block(v32,
+                        pv + ((size_t)hk * c.n_kv + t) * ELIZA_FUSED_TBQ_PER_TOKEN + cc);
+                }
+            }
+        }
+        eliza_fused_attn_qjl_tbq3(q_sketch, pk, pv, c.n_heads, c.n_kv_heads, c.n_kv,
+                                  FUSED_SM_SCALE, out);
+
+        fprintf(f, "    {\n");
+        fprintf(f, "      \"n_heads\": %d, \"n_kv_heads\": %d, \"n_kv\": %d,\n",
+                c.n_heads, c.n_kv_heads, c.n_kv);
+        fprintf(f, "      \"q_sketch\": ");
+        write_floats_json(f, q_sketch, c.n_heads * ELIZA_QJL_PROJECTION_DIM);
+        fprintf(f, ",\n");
+        fprintf(f, "      \"k_blocks\": ");
+        write_bytes_json(f, (uint8_t *)pk, (size_t)c.n_kv_heads * c.n_kv * sizeof(eliza_block_qjl1_256));
+        fprintf(f, ",\n");
+        fprintf(f, "      \"v_blocks\": ");
+        write_bytes_json(f, (uint8_t *)pv, nv * sizeof(eliza_block_tbq3_0));
+        fprintf(f, ",\n");
+        fprintf(f, "      \"expected_out\": ");
+        write_floats_json(f, out, c.n_heads * ELIZA_FUSED_HEAD_DIM);
+        fprintf(f, "\n    }%s\n", ci + 1 < FUSED_N_CASES ? "," : "");
+        free(q_sketch); free(pk); free(pv); free(out);
+    }
+    fprintf(f, "  ]\n}\n");
+    fclose(f);
+    printf("[gen_fixture] wrote %s (%d cases)\n", path, FUSED_N_CASES);
+    return 0;
+}
+
+static int gen_fused_attn_qjl_polar(const char * outdir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/fused_attn_qjl_polar.json", outdir);
+    FILE * f = fopen(path, "w");
+    if (!f) { perror(path); return 1; }
+
+    static float prj[ELIZA_QJL_HEAD_DIM * ELIZA_QJL_PROJECTION_DIM];
+    eliza_qjl_make_projection(prj, 0xF00DCAFEBABE1234ULL);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"kernel\": \"fused_attn_qjl_polar\",\n");
+    fprintf(f, "  \"head_dim\": %d,\n", ELIZA_QJL_HEAD_DIM);
+    fprintf(f, "  \"proj_dim\": %d,\n", ELIZA_QJL_PROJECTION_DIM);
+    fprintf(f, "  \"k_block_bytes\": 34,\n");
+    fprintf(f, "  \"v_block_bytes\": 82,\n");
+    fprintf(f, "  \"v_blocks_per_token\": 1,\n");
+    fprintf(f, "  \"use_qjl\": 1,\n");
+    fprintf(f, "  \"sm_scale\": %.9g,\n", (double)FUSED_SM_SCALE);
+    fprintf(f, "  \"q_is_pre_projected\": 1,\n");
+    fprintf(f, "  \"cases\": [\n");
+    for (int ci = 0; ci < FUSED_N_CASES; ci++) {
+        const fused_case c = FUSED_CASES[ci];
+        float * q_sketch = malloc((size_t)c.n_heads * ELIZA_QJL_PROJECTION_DIM * sizeof(float));
+        eliza_block_qjl1_256 * pk = malloc((size_t)c.n_kv_heads * c.n_kv * sizeof(eliza_block_qjl1_256));
+        eliza_block_q4_polar * pv = malloc((size_t)c.n_kv_heads * c.n_kv * sizeof(eliza_block_q4_polar));
+        float * out = malloc((size_t)c.n_heads * ELIZA_FUSED_HEAD_DIM * sizeof(float));
+        if (!q_sketch || !pk || !pv || !out) { perror("malloc"); fclose(f); return 1; }
+
+        gen_fused_q_and_k(c.n_heads, c.n_kv_heads, c.n_kv, prj, q_sketch, pk);
+        for (int hk = 0; hk < c.n_kv_heads; hk++) {
+            for (int t = 0; t < c.n_kv; t++) {
+                float v[ELIZA_QK_POLAR];
+                for (int i = 0; i < ELIZA_QK_POLAR; i++) v[i] = rand_normal();
+                eliza_polar_quantize_row(v, pv + (size_t)hk * c.n_kv + t, ELIZA_QK_POLAR, /*use_qjl=*/1);
+            }
+        }
+        eliza_fused_attn_qjl_polar(q_sketch, pk, pv, c.n_heads, c.n_kv_heads, c.n_kv,
+                                   FUSED_SM_SCALE, /*use_qjl=*/1, out);
+
+        fprintf(f, "    {\n");
+        fprintf(f, "      \"n_heads\": %d, \"n_kv_heads\": %d, \"n_kv\": %d,\n",
+                c.n_heads, c.n_kv_heads, c.n_kv);
+        fprintf(f, "      \"q_sketch\": ");
+        write_floats_json(f, q_sketch, c.n_heads * ELIZA_QJL_PROJECTION_DIM);
+        fprintf(f, ",\n");
+        fprintf(f, "      \"k_blocks\": ");
+        write_bytes_json(f, (uint8_t *)pk, (size_t)c.n_kv_heads * c.n_kv * sizeof(eliza_block_qjl1_256));
+        fprintf(f, ",\n");
+        fprintf(f, "      \"v_blocks\": ");
+        write_bytes_json(f, (uint8_t *)pv, (size_t)c.n_kv_heads * c.n_kv * sizeof(eliza_block_q4_polar));
+        fprintf(f, ",\n");
+        fprintf(f, "      \"expected_out\": ");
+        write_floats_json(f, out, c.n_heads * ELIZA_FUSED_HEAD_DIM);
+        fprintf(f, "\n    }%s\n", ci + 1 < FUSED_N_CASES ? "," : "");
+        free(q_sketch); free(pk); free(pv); free(out);
+    }
+    fprintf(f, "  ]\n}\n");
+    fclose(f);
+    printf("[gen_fixture] wrote %s (%d cases)\n", path, FUSED_N_CASES);
+    return 0;
+}
+
+/* ---------- Polar pre-Hadamard query path (dot(H·x, q) == dot(x, H·q)) ---------- */
+
+static int gen_polar_preht(const char * outdir) {
+    char path[512];
+    snprintf(path, sizeof(path), "%s/polar_preht.json", outdir);
+    FILE * f = fopen(path, "w");
+    if (!f) { perror(path); return 1; }
+
+    /* The `*_preht` shader variants apply the 128-element Walsh-Hadamard
+     * butterfly to the QUERY host-side and dot it against the *rotated*
+     * (pre-uncondition) Polar block, exploiting H^T = H so
+     *   <dequant(K), q> == <rotated_decode(K), H·q / QK_POLAR>.
+     * This fixture stores both q and H·q so a port can verify it consumes
+     * the right one given its manifest `q_is_pre_hadamarded` bit. The
+     * expected scores are identical to fixtures/polar.json / polar_qjl.json
+     * (same RNG seed sequence not guaranteed — these are independent draws,
+     * but parity holds within tolerance). */
+    float q[ELIZA_QK_POLAR];
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) q[i] = rand_normal();
+    float hq[ELIZA_QK_POLAR];
+    for (int i = 0; i < ELIZA_QK_POLAR; i++) hq[i] = q[i];
+    eliza_polar_hadamard_inplace(hq);   /* hq = H·q (unnormalised butterfly) */
+
+    eliza_block_q4_polar blocks[N_KV], blocks_qjl[N_KV];
+    for (int r = 0; r < N_KV; r++) {
+        float src[ELIZA_QK_POLAR];
+        for (int i = 0; i < ELIZA_QK_POLAR; i++) src[i] = rand_normal();
+        eliza_polar_quantize_row(src, &blocks[r],     ELIZA_QK_POLAR, /*use_qjl=*/0);
+        eliza_polar_quantize_row(src, &blocks_qjl[r], ELIZA_QK_POLAR, /*use_qjl=*/1);
+    }
+    float scores[N_KV], scores_qjl[N_KV];
+    eliza_polar_mul_mv(blocks,     q, N_KV, /*use_qjl=*/0, scores);
+    eliza_polar_mul_mv(blocks_qjl, q, N_KV, /*use_qjl=*/1, scores_qjl);
+
+    fprintf(f, "{\n");
+    fprintf(f, "  \"kernel\": \"polar_preht\",\n");
+    fprintf(f, "  \"head_dim\": %d,\n", ELIZA_QK_POLAR);
+    fprintf(f, "  \"n_rows\": %d,\n", N_KV);
+    fprintf(f, "  \"block_bytes\": 82,\n");
+    fprintf(f, "  \"hadamard_inv_scale\": %.9g,\n", 1.0 / (double)ELIZA_QK_POLAR);
+    fprintf(f, "  \"q\": ");          write_floats_json(f, q,  ELIZA_QK_POLAR);   fprintf(f, ",\n");
+    fprintf(f, "  \"hq\": ");         write_floats_json(f, hq, ELIZA_QK_POLAR);   fprintf(f, ",\n");
+    fprintf(f, "  \"k_blocks\": ");     write_bytes_json(f, (uint8_t *)blocks, sizeof(blocks)); fprintf(f, ",\n");
+    fprintf(f, "  \"k_blocks_qjl\": "); write_bytes_json(f, (uint8_t *)blocks_qjl, sizeof(blocks_qjl)); fprintf(f, ",\n");
+    fprintf(f, "  \"expected_scores\": ");     write_floats_json(f, scores,     N_KV); fprintf(f, ",\n");
+    fprintf(f, "  \"expected_scores_qjl\": "); write_floats_json(f, scores_qjl, N_KV); fprintf(f, "\n");
+    fprintf(f, "}\n");
+    fclose(f);
+    printf("[gen_fixture] wrote %s (%d rows)\n", path, N_KV);
+    return 0;
+}
+
 static int self_test(void) {
     /* Reference vs reference: dequant(quant(x)) followed by Q · K should be
      * close to the dot product of Q against the rotated centroid grid. We
@@ -367,7 +581,90 @@ static int self_test(void) {
         return 1;
     }
 
-    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f polar_qjl=%.6f (all finite)\n",
+    /* TBQ V-cache round-trip: encode/decode one tbq3_0 and one tbq4_0 block
+     * (the fork-exact V-cache decode path used by the fused-attn op). The
+     * decoded vector must be finite and roughly preserve the input scale. */
+    {
+        float v32[32];
+        for (int i = 0; i < 32; i++) v32[i] = x[i];
+        eliza_block_tbq3_0 vb3; eliza_quantize_tbq3_block(v32, &vb3);
+        eliza_block_tbq4_0 vb4; eliza_quantize_tbq4_block(v32, &vb4);
+        float d3[32], d4[32];
+        eliza_tbq3_decode_block_uncond(&vb3, d3);
+        eliza_tbq4_decode_block_uncond(&vb4, d4);
+        for (int i = 0; i < 32; i++) {
+            if (!isfinite(d3[i]) || !isfinite(d4[i])) {
+                fprintf(stderr, "tbq decode self-test: non-finite at %d\n", i); return 1;
+            }
+        }
+    }
+
+    /* Fused-attention parity: the fused output must equal the unfused
+     * pipeline (QJL score -> softmax -> per-token V decode -> weighted mix)
+     * computed independently from the same inputs. Tolerance 1e-3 (the
+     * softmax-then-mix path accumulates fp32 round-off). Exercised for the
+     * TBQ3 V-cache; the Polar variant differs only in the V decode. */
+    {
+        const int nh = 4, nkv_h = 2, nkv = 24;
+        const int gqa = nh / nkv_h;
+        float q_sketch[4 * ELIZA_QJL_PROJECTION_DIM];
+        for (int h = 0; h < nh; h++) {
+            float qr[ELIZA_QJL_HEAD_DIM];
+            for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) qr[i] = rand_normal();
+            eliza_qjl_sketch_query(qr, prj, q_sketch + h * ELIZA_QJL_PROJECTION_DIM);
+        }
+        eliza_block_qjl1_256 pk[2 * 24];
+        for (int hk = 0; hk < nkv_h; hk++)
+            for (int t = 0; t < nkv; t++) {
+                float k[ELIZA_QJL_HEAD_DIM];
+                for (int i = 0; i < ELIZA_QJL_HEAD_DIM; i++) k[i] = rand_normal();
+                eliza_qjl_quantize_row(k, prj, &pk[hk * nkv + t]);
+            }
+        eliza_block_tbq3_0 pv[2 * 24 * 4];
+        for (int hk = 0; hk < nkv_h; hk++)
+            for (int t = 0; t < nkv; t++)
+                for (int c = 0; c < 4; c++) {
+                    float v32[32];
+                    for (int i = 0; i < 32; i++) v32[i] = rand_normal();
+                    eliza_quantize_tbq3_block(v32, &pv[(hk * nkv + t) * 4 + c]);
+                }
+        float out_fused[4 * 128];
+        eliza_fused_attn_qjl_tbq3(q_sketch, pk, pv, nh, nkv_h, nkv,
+                                  0.08838834764831845f, out_fused);
+
+        /* Unfused reference recompute. */
+        float scores[4 * 24];
+        eliza_qjl_score_qk(q_sketch, pk, nh, nkv_h, nkv, scores);
+        float maxdiff = 0.0f;
+        for (int hq = 0; hq < nh; hq++) {
+            int hk = hq / gqa;
+            float raw[24], w[24];
+            float m = -INFINITY;
+            for (int t = 0; t < nkv; t++) { raw[t] = scores[hq * nkv + t] * 0.08838834764831845f; if (raw[t] > m) m = raw[t]; }
+            double l = 0.0;
+            for (int t = 0; t < nkv; t++) { w[t] = expf(raw[t] - m); l += w[t]; }
+            for (int t = 0; t < nkv; t++) w[t] /= (float)l;
+            float ref[128];
+            for (int d = 0; d < 128; d++) ref[d] = 0.0f;
+            for (int t = 0; t < nkv; t++) {
+                for (int c = 0; c < 4; c++) {
+                    float dec[32];
+                    eliza_tbq3_decode_block_uncond(&pv[(hk * nkv + t) * 4 + c], dec);
+                    for (int i = 0; i < 32; i++) ref[c * 32 + i] += w[t] * dec[i];
+                }
+            }
+            for (int d = 0; d < 128; d++) {
+                float diff = fabsf(out_fused[hq * 128 + d] - ref[d]);
+                if (diff > maxdiff) maxdiff = diff;
+            }
+        }
+        if (!(maxdiff < 1e-3f)) {
+            fprintf(stderr, "fused-attn parity: max |fused - unfused| = %g (> 1e-3)\n", (double)maxdiff);
+            return 1;
+        }
+    }
+
+    printf("[self-test] turbo3=%.6f turbo4=%.6f turbo3_tcq=%.6f qjl=%.6f polar=%.6f polar_qjl=%.6f (all finite; fused-attn + tbq V-cache parity OK)\n",
            (double)s3, (double)s4, (double)stcq, (double)sqjl, (double)spolar, (double)spolar_qjl);
     return 0;
 }
@@ -383,6 +680,9 @@ int main(int argc, char ** argv) {
     if (gen_qjl(outdir))        return 1;
     if (gen_polar(outdir))      return 1;
     if (gen_polar_qjl(outdir))  return 1;
+    if (gen_polar_preht(outdir)) return 1;
+    if (gen_fused_attn_qjl_tbq(outdir))   return 1;
+    if (gen_fused_attn_qjl_polar(outdir)) return 1;
     printf("[gen_fixture] OK — fixtures written to %s/\n", outdir);
     return 0;
 }

@@ -47,20 +47,21 @@ Status legend (do not soften):
 |---|-----------------------------------------------|------------------------|----------|-------------------------------------------|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1 | Apple Silicon Mac, M4 Max                     | 9b, 27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED**            | [`README.md` lines 7–10, 308–312](README.md); [`bench_M4Max_2026-05-10.md`](bench_M4Max_2026-05-10.md). 5/5 shaders 8/8 PASS via `MTLDevice.newLibraryWithSource` (Wave-3, Darwin 25.2.0).                                                                                     |
 | 2 | Apple Silicon Mac, M1 / M2 / M3               | 9b, 27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED-ADJACENT**   | Same Apple GPU family, Metal 3 / Family-Apple7+, same 32-thread SIMD-group assumption ([`README.md` line 51, 209–212](README.md)). Untested on M1/M2/M3; should retest before flipping `defaultEligible: true` on the desktop manifest for these chips.                        |
-| 3 | Intel/AMD Mac (x64 + AMD/Intel GPU)           | 9b             | metal    | `darwin-x64-metal`                        | **TARGET-ONLY**         | Triple parses ([`build-llama-cpp-dflash.mjs:90`](../app-core/scripts/build-llama-cpp-dflash.mjs)) and `cmakeFlagsForTarget` honors it, but no Intel-Mac hardware in lab. AMD Radeon Pro / Intel Iris Metal driver behavior on `simd_sum` over 32-lane TG is **not** verified.  |
+| 3 | Intel/AMD Mac (x64 + AMD/Intel GPU)           | 9b             | metal    | `darwin-x64-metal`                        | **TARGET-ONLY**         | `cmakeFlagsForTarget` now pins `-DCMAKE_OSX_ARCHITECTURES=x86_64` for this triple and the build prints a COMPILE-ONLY warning. Still no Intel-Mac hardware in lab. AMD Radeon Pro / Intel Iris Metal driver behavior on `simd_sum` over 32-lane TG is **not** verified — do not flip past TARGET-ONLY without an Intel-Mac `metal_verify` diff against the M4 Max reference.  |
 | 4 | iOS arm64 (iPhone 14+)                        | 0_6b, 1_7b | metal    | `ios-arm64-metal`                         | **PARTIALLY-RESOLVED** | `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()` delegates to `build-llama-cpp-dflash.mjs --target ios-arm64-metal`, then `ios-xcframework/build-xcframework.mjs --verify` fills `LlamaCpp.xcframework`. The Metal EMBED path is now patched to ship the same standalone metallib symbols as desktop. A physical-device XCTest entrypoint now exists at `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` and hard-fails when no real iPhone/iPad is attached. **Still missing:** an actual on-device PASS and runtime-ready capability bits for Turbo/Polar graph dispatch. |
 | 5 | iOS arm64 simulator (Apple Silicon Mac)       | 0_6b, 1_7b | metal    | `ios-arm64-simulator-metal`               | **PARTIALLY-RESOLVED** | Same packaging path as row 4 for the simulator slice. Symbol shipping is not enough for publish eligibility; the remaining blocker is the same graph-dispatch/device-smoke gap. |
-| 6 | Android arm64 (Adreno 6xx+ / Mali-G7x+)       | 0_6b, 1_7b | vulkan   | `android-arm64-vulkan`                    | **TARGET-ONLY**         | Build target exists, NDK toolchain wired ([`build-llama-cpp-dflash.mjs:670–689`](../app-core/scripts/build-llama-cpp-dflash.mjs)). Vulkan turbo* shaders verified on Mesa lavapipe + Intel ARL only. **No on-device Adreno/Mali run.** Android API floor `android-28` (line 680). |
-| 7 | Android arm64 (CPU fallback)                  | 0_6b              | cpu      | `android-arm64-cpu`                       | **TARGET-ONLY**         | Build target exists; runtime CPU NEON paths from `qjl-cpu` / `polarquant-cpu` referenced in `patchGgmlBaseForWindowsQjl`. No on-device Snapdragon/Tensor run logged.                                                                                                            |
-| 8 | Linux x64 + NVIDIA (RTX/A100)                 | 9b, 27b    | cuda     | `linux-x64-cuda`                          | **TARGET-ONLY**         | Triple compiles; `-DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON` set ([`build-llama-cpp-dflash.mjs:638`](../app-core/scripts/build-llama-cpp-dflash.mjs)). No `CMAKE_CUDA_ARCHITECTURES` pin (relies on llama.cpp default = host probe / native). No CUDA host in lab; W4-B CUDA QJL/Polar/TBQ3_TCQ kernels in v0.4.0-milady fork are unverified end-to-end.        |
-| 9 | Linux x64 + AMD (MI300 / MI250 / RX 7000)     | 9b, 27b    | rocm     | `linux-x64-rocm`                          | **TARGET-ONLY**         | Triple compiles when `hipcc`/`rocminfo` present. `-DGGML_HIP=ON` only — no AMD GPU arch pin (`GFX942`, `GFX1100`, etc.). No ROCm host in lab; QJL/Polar HIP path inherits from CUDA via hipify and is unverified.                                                              |
+| 6 | Android arm64 (Adreno 6xx+ / Mali-G7x+)       | 0_6b, 1_7b | vulkan   | `android-arm64-vulkan`                    | **COMPILE-ONLY**        | Build target exists, NDK toolchain wired. `applyForkPatches` now folds the QJL TUs into `ggml-base` for `android-*` too (the `libggml-base.so` link was failing on undefined `quantize_qjl1_256` without it), so `android-arm64-vulkan` builds clean (all kernels detected) from a Linux host with `~/Android/Sdk/ndk`. Verified compiled 2026-05-11. Vulkan turbo* shaders verified on Mesa lavapipe + Intel ARL only; **no on-device Adreno/Mali graph-dispatch run** — see `android-vulkan-smoke` make target. Android API floor `android-28`. |
+| 7 | Android arm64 (CPU fallback)                  | 0_6b              | cpu      | `android-arm64-cpu`                       | **TARGET-ONLY**         | Build target exists; same QJL-in-`ggml-base` fix applies. Runtime CPU NEON paths from `qjl-cpu` / `polarquant-cpu`. No on-device Snapdragon/Tensor run logged.                                                                                                            |
+| 8 | Linux x64 + NVIDIA (RTX/A100/Blackwell)      | 9b, 27b, 27b-256k | cuda  | `linux-x64-cuda`                          | **TARGET-ONLY**         | Triple compiles; `-DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON` set. `CMAKE_CUDA_ARCHITECTURES` now pinned to a fat-binary list (`90a;90;89;86;80`, plus Blackwell `100;120` when `nvcc >= 12.8`) via `cudaArchListFlag()` — no longer relies on the host-probe default. No CUDA host in lab; W4-B CUDA QJL/Polar/TBQ3_TCQ kernels unverified end-to-end. Hardware runner: `verify/cuda_runner.sh --report <path>`.        |
+| 9 | Linux x64 + AMD (MI300 / MI250 / RX 7000/9000) | 9b, 27b    | rocm   | `linux-x64-rocm`                          | **TARGET-ONLY**         | Triple compiles when `hipcc`/`rocminfo` present. `CMAKE_HIP_ARCHITECTURES` now pinned to `gfx90a;gfx942;gfx1100;gfx1101;gfx1102` (plus RDNA4 `gfx1200;gfx1201` when HIP >= 6.3) via `hipArchListFlag()`. No ROCm host in lab; QJL/Polar HIP path inherits from CUDA via hipify and is unverified. Hardware runner: `verify/rocm_runner.sh`.                                                              |
 | 10 | Linux x64 + Intel/AMD/NVIDIA (Vulkan)         | 1_7b → 27b             | vulkan   | `linux-x64-vulkan`                        | **PARTIAL VERIFIED**    | Standalone Vulkan harness now covers all five kernels. turbo3 / turbo4 / turbo3_tcq: VERIFIED on Intel ARL Mesa 25.2.8 + lavapipe. qjl / polar: VERIFIED on Apple M4 Max via MoltenVK 1.4.1. **Still missing:** native Linux Intel/AMD/NVIDIA runtime graph dispatch smoke; MoltenVK is not a substitute for native desktop drivers. |
-| 11 | Linux x64 (CPU)                               | all                    | cpu      | `linux-x64-cpu`                           | **VERIFIED (reference)** | `verify/gen_fixture --self-test` passes on host with QJL/Polar reference parity checks ([`README.md` lines 322–334](README.md)). This verifies the C reference, not a particular x86 SIMD path. AVX2/NEON dispatch in `qjl-cpu`/`polarquant-cpu` not separately benched here.   |
-| 12 | Linux aarch64 (GH200, Ampere Altra, Graviton) | 27b-256k            | cpu / cuda | **NONE**                                | **NO-TARGET**           | `SUPPORTED_TARGETS` ([`build-llama-cpp-dflash.mjs:82–109`](../app-core/scripts/build-llama-cpp-dflash.mjs)) has no `linux-aarch64-*` entry. GH200 has aarch64 CPU + H100/H200 GPU; the H100/H200 GPU half *might* work via `linux-x64-cuda` if you put a discrete x64 launcher in front of it, but the canonical GH200 deployment is single-binary aarch64 host + sm_90a CUDA. **Hard miss for the `27b-256k` tier.**                                              |
-| 13 | Windows x64 (CPU)                             | 9b, 27b    | cpu      | `windows-x64-cpu`                         | **COMPILE-ONLY**        | Cross-compile via x86_64-w64-mingw32 wired ([`build-llama-cpp-dflash.mjs:285–417, 690–734`](../app-core/scripts/build-llama-cpp-dflash.mjs)) with `patchGgmlBaseForWindowsQjl` to fix QJL symbol-resolution under PE/COFF. **Not run on a Windows host;** AVX2 `qjl_quantize_avx2.c` SIMD path on Windows untested.                                |
-| 14 | Windows x64 (CUDA)                            | 9b, 27b    | cuda     | `windows-x64-cuda`                        | **TARGET-ONLY**         | Triple in `SUPPORTED_TARGETS`; no Windows-specific CUDA toolchain wiring beyond `LLAMA_CURL=OFF` and the multi-config `--config Release` workaround. No native Windows + CUDA host in lab. Cross from Linux is not implemented (mingw doesn't host nvcc).                       |
-| 15 | Windows arm64 (Snapdragon X / Copilot+ PC)    | 1_7b, 9b | cpu / vulkan | **NONE**                              | **NO-TARGET**           | No `windows-arm64-*` triple. Snapdragon X Elite is a real device class in 2026 with Adreno X1 GPU + 12-core ARM CPU. NEON path from `qjl-cpu`/`polarquant-cpu` would apply.                                                                                                     |
-| 16 | WebGPU (any browser)                          | 0_6b, 1_7b | webgpu   | **NONE**                                  | **NO-TARGET**           | llama.cpp upstream has a WebGPU backend in progress; no `*-webgpu` triple, no WGSL ports of turbo*/qjl/polar. Out of scope for ship-1 unless mandated.                                                                                                                          |
+| 11 | Linux x64 (CPU)                               | all                    | cpu      | `linux-x64-cpu`                           | **VERIFIED (reference)** | `verify/gen_fixture --self-test` passes on host with QJL/Polar reference parity checks ([`README.md` lines 322–334](README.md)). This verifies the C reference, not a particular x86 SIMD path. AVX2/NEON dispatch in `qjl-cpu`/`polarquant-cpu` not separately benched here. Build re-verified clean 2026-05-11 (then hard-fails the kernel-completeness gate as designed — CPU has no Turbo/QJL/Polar GPU kernels).   |
+| 12 | Linux aarch64 (GH200, Ampere Altra, Graviton) | 27b-256k            | cpu / cuda | `linux-aarch64-cpu` / `linux-aarch64-cuda` | **TARGET-ONLY**        | Triples now in `SUPPORTED_TARGETS`. `cmakeFlagsForTarget` adds `-DCMAKE_SYSTEM_PROCESSOR=aarch64`; the CUDA arch list leads with `sm_90a` for GH200/Hopper. **Requires a real arm64 Linux host** — `targetCompatibility()` refuses the triple on x64 hosts (no aarch64 cross-toolchain wired). Hardware runner: `verify/gh200_runner.sh --report <path>` (requires arm64 Linux + Hopper). Unblocks the `27b-256k` tier's canonical single-binary GH200 deployment.                                              |
+| 13 | Windows x64 (CPU)                             | 9b, 27b    | cpu      | `windows-x64-cpu`                         | **COMPILE-VERIFIED**    | Cross-compile via x86_64-w64-mingw32 wired, with `patchGgmlBaseForWindowsQjl` to fix QJL symbol-resolution under PE/COFF. Build re-verified clean 2026-05-11 from a Linux host (mingw on PATH; the `~/.local/x86_64-w64-mingw32` extracted-deb install must be on PATH at build time because CMake's static-archive rule emits a bare `x86_64-w64-mingw32-ar`). **Not run on a Windows host;** AVX2 `qjl_quantize_avx2.c` SIMD path on Windows untested.                                |
+| 14 | Windows x64 (CUDA)                            | 9b, 27b    | cuda     | `windows-x64-cuda`                        | **TARGET-ONLY**         | Triple in `SUPPORTED_TARGETS`; CUDA arch list pinned via `cudaArchListFlag()` (same fat-binary list as Linux). No native Windows + CUDA host in lab. Cross from Linux is not implemented (mingw doesn't host nvcc). Hardware runner: `verify/windows_runner.ps1 -Backend cuda`.                       |
+| 15 | Windows x64 / arm64 (generic GPU / Vulkan)    | 1_7b → 27b | vulkan   | `windows-x64-vulkan` / `windows-arm64-vulkan` | **TARGET-ONLY**     | `windows-x64-vulkan` cross-builds from Linux/Darwin via mingw + Khronos Vulkan-Headers (same shape as `windows-x64-cpu` plus the Vulkan-headers prep). `windows-arm64-vulkan` (Snapdragon X / Copilot+ PC, Adreno X1) needs a native MSVC arm64 host (`-A ARM64`) or `MINGW_TOOLCHAIN_FILE` pointing at a clang/LLVM `aarch64-w64-mingw32` toolchain — the bundled mingw discovery only handles `x86_64-w64-mingw32`. No native Windows Vulkan run logged. Hardware runner: `verify/windows_runner.ps1 -Backend vulkan`. |
+| 16 | Windows arm64 (Snapdragon X / Copilot+ PC, CPU) | 1_7b, 9b | cpu     | `windows-arm64-cpu`                       | **TARGET-ONLY**         | Triple in `SUPPORTED_TARGETS`; `cmakeFlagsForTarget` enables the ARMv8.4 NEON paths from `qjl-cpu`/`polarquant-cpu`. Same arm64 toolchain requirement as row 15. No on-device run logged.                                                                                                     |
+| 17 | WebGPU (any browser)                          | 0_6b, 1_7b | webgpu   | **NONE**                                  | **NO-TARGET**           | llama.cpp upstream has a WebGPU backend in progress; no `*-webgpu` triple, no WGSL ports of turbo*/qjl/polar. Out of scope for ship-1 unless mandated.                                                                                                                          |
 
 ### Sub-row: per-kernel status on the two verified backends
 
@@ -92,15 +93,17 @@ in this document's status vocabulary:
    Owner: device-lab (real-iPhone XCTest harness) + kernel team (remaining graph dispatch).
    Effort: S (XCTest harness) + M (dispatch parity).
 
-2. **No `linux-aarch64-*` target = no GH200 / `27b-256k` path.** The
-   tier matrix mandates a `27b-256k` tier and the manifest schema
-   ([`local-inference/manifest/schema.ts:80`](../app-core/src/services/local-inference/manifest/schema.ts))
-   declares its backend matrix as `cuda + vulkan + cpu`, but
-   `SUPPORTED_TARGETS` has no aarch64 entry. GH200 is an aarch64 host
-   with H100/H200 GPU(s). Currently impossible to publish a `27b-256k`
-   bundle that loads on a GH200.
-   Owner: build team + kernel team (`sm_90a` CUDA arch flag).
-   Effort: M (target plumbing) → L (verification on real GH200).
+2. **`linux-aarch64-*` target = GH200 / `27b-256k` path.**
+   ~~RESOLVED IN WIRING (2026-05-11)~~ — `linux-aarch64-cpu` and
+   `linux-aarch64-cuda` are now in `SUPPORTED_TARGETS`,
+   `cmakeFlagsForTarget` adds `-DCMAKE_SYSTEM_PROCESSOR=aarch64` and the
+   CUDA arch list leads with `sm_90a` for GH200/Hopper. `targetCompatibility()`
+   gates the triple on a real arm64 Linux host (no aarch64 cross-toolchain
+   is wired here on purpose — run on a real arm64 build runner / the GH200
+   itself). **Residual:** an actual build + `cuda_verify` / `gh200_runner.sh`
+   PASS on a real GH200; nothing has run through this triple end-to-end yet.
+   Owner: device-lab (GH200 runner).
+   Effort: M (verification on real GH200).
 
 3. **Vulkan graph dispatch gap.** The standalone Vulkan harness gap is
    resolved: `vulkan_verify` now branches on QJL and Polar fixtures and
@@ -155,31 +158,33 @@ in this document's status vocabulary:
    cover both `use_qjl=0` and `use_qjl=1` in a built-fork smoke.
    Owner: kernel team.
 
-3. **Pin `CMAKE_CUDA_ARCHITECTURES` and document the matrix.** Add
-   `-DCMAKE_CUDA_ARCHITECTURES="80;86;89;90"` (Ampere, Ada, Hopper) to
-   the cuda branch in `cmakeFlagsForTarget` so cross-host CI builds
-   produce a fat binary that actually runs on H100/H200/RTX 4090. Today
-   the build relies on llama.cpp's default = host probe; on a build host
-   without a GPU that means `sm_52` only.
-   Owner: build team.
+3. **Pin `CMAKE_CUDA_ARCHITECTURES`.** ~~DONE (2026-05-11)~~ — the cuda
+   branch in `cmakeFlagsForTarget` now emits `cudaArchListFlag()` =
+   `-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80` (Ampere → Hopper), and
+   appends Blackwell `100;120` when the installed `nvcc` reports
+   `>= 12.8` (older toolkits reject `sm_100`/`sm_120`). Same idea for HIP
+   via `hipArchListFlag()` (RDNA4 `gfx1200;gfx1201` gated on HIP `>= 6.3`).
+   Operators still override via `ELIZA_DFLASH_CMAKE_FLAGS`.
 
 4. **Add `windows-arm64-cpu` and `windows-arm64-vulkan` to
-   `SUPPORTED_TARGETS`.** No new toolchain code needed beyond a triple
-   parse + cmake flag for `-A ARM64` (MSVC) or
-   `--target=aarch64-w64-mingw32` (LLVM mingw). `qjl-cpu`/`polarquant-cpu`
-   already have NEON paths. Snapdragon X Elite shipped 2024 — by 2026 it
-   is in the same "Capacitor must support this" bucket as iOS.
-   Owner: build team.
+   `SUPPORTED_TARGETS`.** ~~DONE (2026-05-11)~~ — both triples are in
+   `SUPPORTED_TARGETS`. `cmakeFlagsForTarget` handles `-A ARM64` on a
+   native MSVC arm64 host and otherwise expects `MINGW_TOOLCHAIN_FILE`
+   pointing at a clang/LLVM `aarch64-w64-mingw32` toolchain; the
+   `backend === "cpu" && arch === "arm64"` block keeps the ARMv8.4 NEON
+   paths from `qjl-cpu`/`polarquant-cpu` on. `windows-x64-vulkan` was
+   also added (generic-GPU x64 Windows via mingw + Khronos headers).
+   **Residual:** a real Snapdragon X build + run; nothing has run through
+   either arm64 triple. Owner: device-lab.
 
 5. **Run the `darwin-x64-metal` build on any Intel-Mac** (a single CI
    pass on a 2019 MBP, or a friend with a Mac mini Intel) and just diff
-   the `metal_verify` numbers against the M4 Max reference. The
-   verification path uses `MTLDevice.newLibraryWithSource`, no Apple
-   Silicon assumption beyond the threadgroup-=-32 = SIMD-group identity,
-   which holds on every Apple GPU but **not** on AMD/Intel Mac GPUs.
-   This is the cheapest way to find out whether `darwin-x64-metal` is
-   actually shippable for `9b`.
-   Owner: device-lab.
+   the `metal_verify` numbers against the M4 Max reference. The triple now
+   pins `-DCMAKE_OSX_ARCHITECTURES=x86_64` and the build prints a
+   COMPILE-ONLY warning, but it's still untested — the threadgroup-of-32
+   == SIMD-group identity holds on every Apple GPU but **not** on AMD/Intel
+   Mac GPUs. This is the cheapest way to find out whether `darwin-x64-metal`
+   is actually shippable for `9b`. Owner: device-lab.
 
 ---
 

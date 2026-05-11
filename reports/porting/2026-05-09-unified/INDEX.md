@@ -1,7 +1,7 @@
 # Unified-fork verification metrics — 2026-05-09
 
 Post-pin snapshot for the
-[milady-ai/llama.cpp @ v0.1.0-milady](https://github.com/milady-ai/llama.cpp)
+[elizaOS/llama.cpp @ v0.1.0-milady](https://github.com/elizaOS/llama.cpp)
 fork landing. Diffs against
 [`reports/porting/2026-05-09-baseline/`](../2026-05-09-baseline/).
 
@@ -10,7 +10,7 @@ were under this directory.
 
 ## What landed
 
-- `milady-ai/llama.cpp` repo created with branches
+- `elizaOS/llama.cpp` repo created with branches
   `milady/main` (= upstream `b8198`),
   `milady/tbq` (+TBQ from apothic),
   `milady/qjl` (+QJL from W1-A),
@@ -119,5 +119,5 @@ host).
   on the dev box's local artifacts; the docs claim 2 / 2 elsewhere —
   the baseline recorded that discrepancy as larp E3, this run clears
   it).
-- llama.cpp pin: apothic + 5 vendored patches → milady-ai/llama.cpp
+- llama.cpp pin: apothic + 5 vendored patches → elizaOS/llama.cpp
   @ v0.1.0-milady (single tag).

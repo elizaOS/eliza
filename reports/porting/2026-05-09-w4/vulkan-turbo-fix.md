@@ -200,7 +200,7 @@ VK_LOADER_DRIVERS_SELECT=intel_icd.json ./vulkan_verify ../vulkan/turbo3.spv fix
 `packages/app-core/scripts/build-llama-cpp-dflash.mjs::patchVulkanKernels`
 flipped from opt-in (`ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1`) to default-on
 (`ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0` to silence the log). The function
-itself is still a no-op tracking placeholder — the milady-ai/llama.cpp
+itself is still a no-op tracking placeholder — the elizaOS/llama.cpp
 fork consumes the same source-of-truth shaders in
 `packages/inference/vulkan/`, so this hook just confirms they're in sync.
 The `warn-on-mismatch guard` shape (sentinel-based idempotent layout

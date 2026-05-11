@@ -1,0 +1,83 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133611Z_ddcbd023/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133611Z_3_654904c4/output"
+  ],
+  "benchmark_directory": "lifeops-bench",
+  "benchmark_id": "lifeops_bench",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "agent_cost_usd": 0,
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "eval_cost_usd": 0,
+    "judge_model_name": "claude-opus-4-7",
+    "model_name": "gpt-oss-120b",
+    "pass_at_1": 0.0,
+    "pass_at_k": 0,
+    "performance_metrics": {
+      "duration_seconds": 88.20082591701066,
+      "mean_latency_ms": 0.0,
+      "p95_latency_ms": 0.0,
+      "throughput_per_second": 0.09070209849879758
+    },
+    "return_code": 0,
+    "seeds": 1,
+    "token_metrics": {
+      "llm_call_count": 8,
+      "prompt_tokens": 182461,
+      "completion_tokens": 17052,
+      "total_tokens": 199513,
+      "avg_prompt_tokens": 22807.625,
+      "avg_completion_tokens": 2131.5
+    },
+    "total_cost_usd": 0,
+    "total_latency_ms": 0,
+    "trajectory_summary": {
+      "files": 1,
+      "turns": 8,
+      "prompt_chars": 711,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 88.20082591701066,
+    "mean_latency_ms": 0.0,
+    "p95_latency_ms": 0.0,
+    "throughput_per_second": 0.09070209849879758
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133611Z_ddcbd023/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133611Z_3_654904c4/output/lifeops_gpt-oss-120b_20260511_063739.json",
+  "run_group_id": "rg_20260511T133611Z_ddcbd023",
+  "run_id": "run_lifeops_bench_20260511T133611Z_3_654904c4",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 8,
+    "prompt_tokens": 182461,
+    "completion_tokens": 17052,
+    "total_tokens": 199513,
+    "avg_prompt_tokens": 22807.625,
+    "avg_completion_tokens": 2131.5
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "turns": 8,
+    "prompt_chars": 711,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:03:01.561738+00:00"
+}

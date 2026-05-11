@@ -4,15 +4,48 @@ export interface CachedPhraseAudio {
   sampleRate: number;
 }
 
+export interface PhraseCacheOptions {
+  /** Maximum distinct phrase texts retained. Older non-accessed entries
+   * are evicted first. */
+  maxEntries?: number;
+  /**
+   * Guardrail for live opportunistic caching. Long-form direct TTS can be
+   * megabytes of PCM and is not a good phrase-cache resident.
+   */
+  maxPcmSamplesPerEntry?: number;
+}
+
 export function canonicalizePhraseText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+const DEFAULT_MAX_ENTRIES = 128;
+const DEFAULT_MAX_PCM_SAMPLES_PER_ENTRY = 24000 * 8;
+
 export class PhraseCache {
   private readonly entries = new Map<string, CachedPhraseAudio>();
+  private readonly maxEntries: number;
+  private readonly maxPcmSamplesPerEntry: number;
+
+  constructor(opts: PhraseCacheOptions = {}) {
+    this.maxEntries = Math.max(
+      1,
+      Math.floor(opts.maxEntries ?? DEFAULT_MAX_ENTRIES),
+    );
+    this.maxPcmSamplesPerEntry = Math.max(
+      1,
+      Math.floor(
+        opts.maxPcmSamplesPerEntry ?? DEFAULT_MAX_PCM_SAMPLES_PER_ENTRY,
+      ),
+    );
+  }
 
   put(entry: CachedPhraseAudio): void {
-    this.entries.set(canonicalizePhraseText(entry.text), entry);
+    if (entry.pcm.length > this.maxPcmSamplesPerEntry) return;
+    const key = canonicalizePhraseText(entry.text);
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    this.evictOverflow();
   }
 
   /**
@@ -37,7 +70,12 @@ export class PhraseCache {
   }
 
   get(text: string): CachedPhraseAudio | undefined {
-    return this.entries.get(canonicalizePhraseText(text));
+    const key = canonicalizePhraseText(text);
+    const entry = this.entries.get(key);
+    if (!entry) return undefined;
+    this.entries.delete(key);
+    this.entries.set(key, entry);
+    return entry;
   }
 
   has(text: string): boolean {
@@ -46,5 +84,13 @@ export class PhraseCache {
 
   size(): number {
     return this.entries.size;
+  }
+
+  private evictOverflow(): void {
+    while (this.entries.size > this.maxEntries) {
+      const oldest = this.entries.keys().next().value;
+      if (oldest === undefined) return;
+      this.entries.delete(oldest);
+    }
   }
 }

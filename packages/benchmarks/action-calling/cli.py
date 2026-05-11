@@ -166,7 +166,7 @@ def _build_argparser() -> argparse.ArgumentParser:
     p.add_argument(
         "--provider",
         default="vllm",
-        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "cerebras", "mock"),
+        choices=("vllm", "openai", "groq", "openrouter", "anthropic", "cerebras", "eliza", "mock"),
     )
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None)
@@ -181,6 +181,15 @@ def _build_argparser() -> argparse.ArgumentParser:
 
 def _make_client(args: argparse.Namespace):
     provider = args.provider.strip().lower()
+    if provider == "eliza":
+        from eliza_adapter import ElizaClient, ElizaServerManager  # noqa: WPS433
+
+        manager = ElizaServerManager()
+        manager.start()
+        return manager.client if getattr(manager.client, "_delegate", None) is not None else ElizaClient(
+            manager.client.base_url,
+            token=manager.token,
+        )
     if provider == "anthropic":
         from anthropic import Anthropic  # noqa: WPS433
 
@@ -222,6 +231,18 @@ def _generate(
     max_tokens: int,
     temperature: float,
 ) -> str:
+    if provider == "eliza":
+        response = client.send_message(
+            text=str(messages[-1].get("content", "")) if messages else "",
+            context={
+                "benchmark": "action-calling",
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
+        )
+        return response.text or ""
+
     if provider == "anthropic":
         system = "\n\n".join(str(m.get("content") or "") for m in messages if m.get("role") == "system")
         chat_messages = [

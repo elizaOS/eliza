@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyTrajectoryFieldCap,
+	captureSkillInvocationIO,
 	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
 	encodeTrajectoryFieldValue,
@@ -736,6 +737,59 @@ describe("action exec input/output/error capture (M12)", () => {
 			expect(marker.originalBytes).toBe(200_000);
 			expect(marker.capBytes).toBe(2048);
 		}
+	});
+});
+
+describe("skill invocation capture (W1-T5 / M13)", () => {
+	it("encodes args + result and omits unset fields", () => {
+		const captured = captureSkillInvocationIO({
+			args: { mode: "guidance", slug: "weather" },
+			result: { instructions: "use the api", estimatedTokens: 12 },
+		});
+		expect(captured.args).toBe('{"mode":"guidance","slug":"weather"}');
+		expect(captured.result).toBe(
+			'{"instructions":"use the api","estimatedTokens":12}',
+		);
+		expect(captured.truncated).toBeUndefined();
+	});
+
+	it("respects an explicit capBytes and attaches per-field markers", () => {
+		const big = "z".repeat(200_000);
+		const captured = captureSkillInvocationIO({
+			args: { mode: "script" },
+			result: big,
+			capBytes: 2048,
+		});
+		expect(captured.args).toBe('{"mode":"script"}');
+		expect(captured.result?.endsWith("...[truncated]")).toBe(true);
+		expect(
+			Buffer.byteLength(captured.result ?? "", "utf8"),
+		).toBeLessThanOrEqual(2048);
+		expect(captured.truncated).toEqual([
+			{ field: "result", originalBytes: 200_000, capBytes: 2048 },
+		]);
+	});
+
+	it("defaults to the 64KB shared cap when capBytes is omitted", () => {
+		const big = "y".repeat(100_000);
+		const captured = captureSkillInvocationIO({
+			args: { q: "small" },
+			result: big,
+		});
+		expect(
+			Buffer.byteLength(captured.result ?? "", "utf8"),
+		).toBeLessThanOrEqual(64 * 1024);
+		expect(captured.truncated?.[0]).toMatchObject({
+			field: "result",
+			capBytes: 64 * 1024,
+		});
+	});
+
+	it("omits args/result when input fields are undefined", () => {
+		const captured = captureSkillInvocationIO({});
+		expect(captured.args).toBeUndefined();
+		expect(captured.result).toBeUndefined();
+		expect(captured.truncated).toBeUndefined();
 	});
 });
 

@@ -102,6 +102,16 @@ export const CreateCreativeSchema = z.object({
   tiktokIdentityType: z.string().min(1).optional(),
 });
 
+export const UpdateCreativeSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  headline: z.string().max(100).optional(),
+  primaryText: z.string().max(500).optional(),
+  description: z.string().max(200).optional(),
+  callToAction: CallToActionSchema.optional(),
+  destinationUrl: z.string().url().optional(),
+  media: z.array(CreativeMediaSchema).optional(),
+});
+
 export const UploadMediaSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   type: MediaTypeSchema,

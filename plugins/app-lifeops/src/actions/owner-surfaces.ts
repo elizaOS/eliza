@@ -7,14 +7,21 @@ import type {
   State,
 } from "@elizaos/core";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
-import { bookTravelAction } from "./book-travel.js";
+import { runBookTravelHandler } from "./book-travel.js";
 import {
   HEALTH_PARAMETERS,
   HEALTH_SIMILES,
   runHealthHandler,
 } from "./health.js";
-import { schedulingAction as schedulingNegotiationAction } from "./lib/scheduling-handler.js";
-import { lifeAction } from "./life.js";
+import { runSchedulingNegotiationHandler } from "./lib/scheduling-handler.js";
+import {
+  LIFE_CONTEXTS,
+  LIFE_ROLE_GATE,
+  LIFE_SUPPRESS_POST_ACTION_CONTINUATION,
+  LIFE_TAGS,
+  LIFE_VALIDATE,
+  runLifeOperationHandler,
+} from "./life.js";
 import {
   MONEY_LEGACY_SIMILES,
   MONEY_PARAMETERS,
@@ -133,23 +140,6 @@ function normalizeOwnerActionFromAllowed<TAction extends string>(
     : undefined;
 }
 
-function delegateHandler(
-  target: Action,
-  runtime: IAgentRuntime,
-  message: Memory,
-  state: State | undefined,
-  options: unknown,
-  callback?: HandlerCallback,
-): Promise<ActionResult> {
-  return target.handler(
-    runtime,
-    message,
-    state,
-    options as Parameters<NonNullable<Action["handler"]>>[3],
-    callback,
-  );
-}
-
 function makeOwnerLifeAction(args: {
   name: string;
   similes: string[];
@@ -165,11 +155,11 @@ function makeOwnerLifeAction(args: {
     description: args.description,
     descriptionCompressed: args.descriptionCompressed,
     routingHint: `${args.descriptionCompressed} -> ${args.name}; owner-only LifeOps surface`,
-    tags: lifeAction.tags,
-    contexts: lifeAction.contexts,
-    roleGate: lifeAction.roleGate,
-    suppressPostActionContinuation: lifeAction.suppressPostActionContinuation,
-    validate: lifeAction.validate,
+    tags: LIFE_TAGS,
+    contexts: LIFE_CONTEXTS,
+    roleGate: LIFE_ROLE_GATE,
+    suppressPostActionContinuation: LIFE_SUPPRESS_POST_ACTION_CONTINUATION,
+    validate: LIFE_VALIDATE,
     parameters: [
       {
         name: "action",
@@ -226,8 +216,7 @@ function makeOwnerLifeAction(args: {
         ...(action ? { action, subaction: action } : {}),
         ownerSurface: args.name,
       };
-      return delegateHandler(
-        lifeAction,
+      return runLifeOperationHandler(
         runtime,
         message,
         state,
@@ -373,8 +362,7 @@ export const ownerRoutinesAction: Action = {
       ...(action ? { action, subaction: action } : {}),
       ownerSurface: "OWNER_ROUTINES",
     };
-    return delegateHandler(
-      lifeAction,
+    return runLifeOperationHandler(
       runtime,
       message,
       state,
@@ -589,8 +577,7 @@ export const personalAssistantAction: Action = {
   handler: async (runtime, message, state, options, callback) => {
     const action = readStringParam(options, "action")?.trim().toLowerCase();
     if (action === "book_travel") {
-      return delegateHandler(
-        bookTravelAction,
+      return runBookTravelHandler(
         runtime,
         message,
         state,
@@ -599,8 +586,7 @@ export const personalAssistantAction: Action = {
       );
     }
     if (action === "scheduling") {
-      return delegateHandler(
-        schedulingNegotiationAction,
+      return runSchedulingNegotiationHandler(
         runtime,
         message,
         state,

@@ -203,6 +203,7 @@ async function fetchSingleEndpoint(
         name,
         gitRepo: (git.repo as string) ?? "unknown/unknown",
         gitUrl: `https://github.com/${(git.repo as string) ?? "unknown/unknown"}.git`,
+        directory: (e.directory as string | null) ?? null,
         description: (e.description as string) ?? "",
         homepage: (e.homepage as string) ?? null,
         topics: (e.topics as string[]) ?? [],
@@ -223,6 +224,15 @@ async function fetchSingleEndpoint(
             ((git.v2 as Record<string, unknown>)?.branch as string) ?? null,
         },
         supports,
+        kind: e.kind as string | undefined,
+        registryKind: e.registryKind as string | undefined,
+        origin: e.origin as string | undefined,
+        source: e.source as string | undefined,
+        support: e.support as string | undefined,
+        builtIn: e.builtIn as boolean | undefined,
+        firstParty: e.firstParty as boolean | undefined,
+        thirdParty: e.thirdParty as boolean | undefined,
+        status: e.status as string | undefined,
       });
     }
     return plugins;

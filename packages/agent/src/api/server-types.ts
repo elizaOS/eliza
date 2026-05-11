@@ -185,6 +185,15 @@ export interface PluginEntry {
   validationErrors: Array<{ field: string; message: string }>;
   validationWarnings: Array<{ field: string; message: string }>;
   npmName?: string;
+  directory?: string | null;
+  registryKind?: string;
+  origin?: "builtin" | "third-party" | string;
+  registrySource?: string;
+  support?: "first-party" | "community" | string;
+  builtIn?: boolean;
+  firstParty?: boolean;
+  thirdParty?: boolean;
+  status?: string;
   version?: string;
   releaseStream?: "latest" | "beta";
   requestedVersion?: string;

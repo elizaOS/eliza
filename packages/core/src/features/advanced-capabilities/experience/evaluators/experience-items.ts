@@ -10,7 +10,10 @@ import type {
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
-const EXPERIENCE_EXTRACTION_INTERVAL = 25;
+const EXPERIENCE_EXTRACTION_FALLBACK_INTERVAL = 25;
+const EXPERIENCE_EXTRACTION_MIN_SIGNAL_GAP = 4;
+const RECENT_MESSAGES_LIMIT = 12;
+const MAX_CONVERSATION_CONTEXT_CHARS = 6000;
 const EXISTING_EXPERIENCE_LIMIT = 5;
 const DEFAULT_AUTO_RECORD_THRESHOLD = 0.6;
 
@@ -84,6 +87,7 @@ interface ExperiencePrepared {
 	experienceService: ExperienceService;
 	recentMessages: Memory[];
 	conversationContext: string;
+	signalSummary: string;
 	existingExperiences: Experience[];
 	provenance: Pick<
 		Experience,
@@ -98,6 +102,13 @@ interface ExperiencePrepared {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function actionResultsFromState(state: unknown): unknown[] {
+	if (!isRecord(state)) return [];
+	const data = isRecord(state.data) ? state.data : {};
+	const actionResults = data.actionResults;
+	return Array.isArray(actionResults) ? actionResults : [];
 }
 
 function getNumberSetting(
@@ -216,48 +227,260 @@ function normalizeStoredText(runtime: IAgentRuntime, text: string): string {
 	return runtime.redactSecrets(text).slice(0, 500);
 }
 
+function normalizeLearningKey(text: string): string {
+	return text
+		.normalize("NFKC")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function safeText(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (value === null || value === undefined) return "";
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+}
+
+function isSyntheticMemory(memory: Memory): boolean {
+	const metadata = isRecord(memory.metadata) ? memory.metadata : {};
+	const source = typeof metadata.source === "string" ? metadata.source : "";
+	const tags = Array.isArray(metadata.tags)
+		? metadata.tags.filter((tag): tag is string => typeof tag === "string")
+		: [];
+	const text =
+		typeof memory.content?.text === "string" ? memory.content.text : "";
+	return (
+		/\b(?:compaction|compactor|synthetic|summary)\b/i.test(source) ||
+		tags.some((tag) =>
+			/\b(?:compaction|compactor|synthetic|summary)\b/i.test(tag),
+		) ||
+		/^\[(?:conversation|system) (?:summary|hybrid-ledger|state)\]/i.test(
+			text.trim(),
+		) ||
+		/^compacted prior planner trajectory steps/i.test(text.trim())
+	);
+}
+
+function getMessageText(memory: Memory): string {
+	return typeof memory.content?.text === "string" ? memory.content.text : "";
+}
+
+function hasExplicitExperienceRequest(text: string): boolean {
+	return /\b(?:remember|store|learn|note)\s+(?:this|that|this lesson|this pattern|for next time|going forward)\b/i.test(
+		text,
+	);
+}
+
+function scoreExperienceSignals(input: {
+	latestText: string;
+	responseTexts?: string[];
+	actionResults?: unknown[];
+	recentTexts?: string[];
+}): { score: number; reasons: string[] } {
+	const reasons = new Set<string>();
+	const combinedText = [
+		input.latestText,
+		...(input.responseTexts ?? []),
+		...(input.recentTexts ?? []),
+	]
+		.map((text) => text.toLowerCase())
+		.join("\n");
+
+	if (hasExplicitExperienceRequest(input.latestText)) {
+		reasons.add("explicit learning request");
+	}
+	if (
+		/\b(?:actually|correction|correcting|i was wrong|you were wrong|mistake|incorrect|misread|misunderstood)\b/.test(
+			combinedText,
+		)
+	) {
+		reasons.add("correction");
+	}
+	if (
+		/\b(?:root cause|lesson learned|learned that|next time|from now on|avoid|workaround|regression|postmortem)\b/.test(
+			combinedText,
+		)
+	) {
+		reasons.add("reusable lesson");
+	}
+	if (
+		/\b(?:failed|failure|error|exception|timeout|blocked|stuck|bug|broke|broken|invalid|flaky)\b/.test(
+			combinedText,
+		)
+	) {
+		reasons.add("failure signal");
+	}
+	if (
+		/\b(?:fixed|resolved|validated|verified|confirmed|works now|passes now|green|succeeded)\b/.test(
+			combinedText,
+		)
+	) {
+		reasons.add("validated outcome");
+	}
+	if (
+		/\b(?:discovered|found that|turns out|notably|surprising|unexpected|novel|new behavior)\b/.test(
+			combinedText,
+		)
+	) {
+		reasons.add("discovery");
+	}
+
+	for (const result of input.actionResults ?? []) {
+		const text = safeText(result).toLowerCase();
+		if (
+			/\b(?:error|failed|failure|exception|timeout|blocked|success|completed|fixed|verified|validated)\b/.test(
+				text,
+			)
+		) {
+			reasons.add("action result outcome");
+			break;
+		}
+	}
+
+	return { score: reasons.size, reasons: Array.from(reasons) };
+}
+
+function summarizeExperienceSignals(reasons: string[]): string {
+	return reasons.length > 0 ? reasons.join(", ") : "fallback interval";
+}
+
+async function getCounter(
+	runtime: IAgentRuntime,
+	key: string,
+): Promise<number> {
+	const current = Number.parseInt(
+		(await runtime.getCache<string>(key)) || "0",
+		10,
+	);
+	return Number.isFinite(current) ? current : 0;
+}
+
+function sanitizeConversationText(
+	runtime: IAgentRuntime,
+	text: string,
+): string {
+	return runtime.redactSecrets(text).replace(/\s+\n/g, "\n").trim();
+}
+
 export const experiencePatternEvaluator: Evaluator<
 	ExperienceOutput,
 	ExperiencePrepared
 > = {
 	name: "experiencePatterns",
 	description:
-		"Periodically extracts novel agent learning experiences from the room conversation.",
+		"Extracts novel agent learning experiences from interesting or validated room conversation events.",
 	priority: EvaluatorPriority.EXPERIENCE,
 	schema: experienceSchema,
-	async shouldRun({ runtime, message }) {
+	async shouldRun({ runtime, message, state, options }) {
 		if (!message.roomId || !message.content?.text) return false;
+		if (isSyntheticMemory(message)) return false;
 		const experienceService = runtime.getService(
 			"EXPERIENCE",
 		) as ExperienceService | null;
 		if (!experienceService) return false;
 
 		const cacheKey = `experience-extraction:${message.roomId}:message-count`;
-		const currentCount = Number.parseInt(
-			(await runtime.getCache<string>(cacheKey)) || "0",
-			10,
-		);
-		const nextCount = Number.isFinite(currentCount) ? currentCount + 1 : 1;
+		const lastRunKey = `experience-extraction:${message.roomId}:last-run-count`;
+		const nextCount = (await getCounter(runtime, cacheKey)) + 1;
 		await runtime.setCache(cacheKey, String(nextCount));
-		return nextCount % EXPERIENCE_EXTRACTION_INTERVAL === 0;
+
+		const latestText = getMessageText(message);
+		const responseTexts = (options.responses ?? []).map(getMessageText);
+		const actionResults = actionResultsFromState(state);
+		const directSignal = scoreExperienceSignals({
+			latestText,
+			responseTexts,
+			actionResults,
+		});
+		const lastRunCount = await getCounter(runtime, lastRunKey);
+		const minSignalGap = Math.max(
+			0,
+			Math.floor(
+				getNumberSetting(
+					runtime,
+					"EXPERIENCE_EXTRACTION_MIN_SIGNAL_GAP",
+					EXPERIENCE_EXTRACTION_MIN_SIGNAL_GAP,
+				),
+			),
+		);
+
+		if (
+			directSignal.score > 0 &&
+			(hasExplicitExperienceRequest(latestText) ||
+				lastRunCount === 0 ||
+				nextCount - lastRunCount >= minSignalGap)
+		) {
+			await runtime.setCache(lastRunKey, String(nextCount));
+			return true;
+		}
+
+		const fallbackInterval = Math.max(
+			1,
+			Math.floor(
+				getNumberSetting(
+					runtime,
+					"EXPERIENCE_EXTRACTION_FALLBACK_INTERVAL",
+					EXPERIENCE_EXTRACTION_FALLBACK_INTERVAL,
+				),
+			),
+		);
+		if (nextCount % fallbackInterval !== 0) return false;
+
+		const recentMessages = await runtime.getMemories({
+			tableName: "messages",
+			roomId: message.roomId,
+			limit: RECENT_MESSAGES_LIMIT,
+			unique: false,
+		});
+		const recentTexts = recentMessages
+			.filter((memory) => !isSyntheticMemory(memory))
+			.map(getMessageText)
+			.filter(Boolean);
+		const fallbackSignal = scoreExperienceSignals({
+			latestText,
+			responseTexts,
+			actionResults,
+			recentTexts,
+		});
+		if (fallbackSignal.score === 0) return false;
+		await runtime.setCache(lastRunKey, String(nextCount));
+		return true;
 	},
-	async prepare({ runtime, message }) {
+	async prepare({ runtime, message, state, options }) {
 		const experienceService = runtime.getService(
 			"EXPERIENCE",
 		) as ExperienceService | null;
 		if (!experienceService) throw new Error("Experience service not available");
-		const recentMessages = await runtime.getMemories({
+		const rawRecentMessages = await runtime.getMemories({
 			tableName: "messages",
 			roomId: message.roomId,
-			limit: 10,
+			limit: RECENT_MESSAGES_LIMIT,
 			unique: false,
 		});
+		const recentMessages = rawRecentMessages.filter(
+			(memory) => !isSyntheticMemory(memory),
+		);
 		const conversationContext = recentMessages
 			.map((memory) => memory.content.text)
 			.filter(
 				(text): text is string => typeof text === "string" && text.length > 0,
 			)
-			.join("\n");
+			.map((text) => sanitizeConversationText(runtime, text))
+			.join("\n")
+			.slice(-MAX_CONVERSATION_CONTEXT_CHARS);
+		const signalSummary = summarizeExperienceSignals(
+			scoreExperienceSignals({
+				latestText: getMessageText(message),
+				responseTexts: (options.responses ?? []).map(getMessageText),
+				actionResults: actionResultsFromState(state),
+				recentTexts: recentMessages.map(getMessageText),
+			}).reasons,
+		);
 		const existingExperiences = await experienceService.findSimilarExperiences(
 			conversationContext,
 			EXISTING_EXPERIENCE_LIMIT,
@@ -266,6 +489,7 @@ export const experiencePatternEvaluator: Evaluator<
 			experienceService,
 			recentMessages,
 			conversationContext,
+			signalSummary,
 			existingExperiences,
 			provenance: buildExperienceProvenance(message, recentMessages),
 		};
@@ -278,9 +502,15 @@ Only emit experiences that describe a reusable lesson for future behavior. The l
 Rules:
 - Return at most three experiences.
 - Do not repeat existing experiences.
-- Do not extract ordinary chat, one-off user requests, or generic observations.
+- Extract operational lessons grounded in action/tool outcomes, corrections, failed assumptions, validated discoveries, or explicit requests to remember a lesson.
+- Do not extract ordinary chat, one-off user requests, generic observations, stable user facts, or personal preferences; facts and relationship evaluators handle those.
+- Do not extract from synthetic compaction summaries, benchmark scaffolding, or agent-generated summaries.
+- Do not store secrets, raw credentials, API keys, passwords, tokens, or private keys.
 - The domain should be produced from the conversation itself, not from a fixed list.
 - If nothing qualifies, return {"experiences":[]}.
+
+Detected extraction signal:
+${prepared.signalSummary}
 
 Recent conversation:
 ${prepared.conversationContext || "(none)"}
@@ -302,16 +532,24 @@ ${formatExistingExperiences(prepared.existingExperiences)}`;
 				let skippedDuplicateCount = 0;
 				const existingLearning = new Set(
 					prepared.existingExperiences.map((experience) =>
-						experience.learning.trim(),
+						normalizeLearningKey(experience.learning),
 					),
 				);
+				const seenLearning = new Set<string>();
 				for (const exp of output.experiences) {
 					if (exp.confidence < threshold) continue;
 					const learning = normalizeStoredText(runtime, exp.learning);
-					if (!learning || existingLearning.has(learning)) {
+					const learningKey = normalizeLearningKey(learning);
+					if (
+						!learning ||
+						!learningKey ||
+						existingLearning.has(learningKey) ||
+						seenLearning.has(learningKey)
+					) {
 						skippedDuplicateCount += 1;
 						continue;
 					}
+					seenLearning.add(learningKey);
 					await prepared.experienceService.recordExperience({
 						type: exp.type,
 						outcome: exp.outcome,

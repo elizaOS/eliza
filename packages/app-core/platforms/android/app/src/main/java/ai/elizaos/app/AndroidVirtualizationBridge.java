@@ -8,6 +8,7 @@ import android.os.Build;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
@@ -27,12 +28,19 @@ public final class AndroidVirtualizationBridge {
         "android.permission.MANAGE_VIRTUAL_MACHINE";
     private static final String VMM_CLASS =
         "android.system.virtualmachine.VirtualMachineManager";
+    private static final int REQUEST_CONTRACT_VERSION = 1;
+    private static final String MICRODROID_PAYLOAD_ASSET =
+        "microdroid/eliza-microdroid-payload.json";
 
     private AndroidVirtualizationBridge() {}
 
     public static final class Probe {
+        public String state = "framework-unavailable";
         public boolean available;
+        public boolean avfAvailable;
         public boolean microdroidAvailable;
+        public boolean payloadAvailable;
+        public int requestContractVersion = REQUEST_CONTRACT_VERSION;
         public int apiLevel;
         public boolean hasFeature;
         public boolean hasPermissionDeclaration;
@@ -56,14 +64,17 @@ public final class AndroidVirtualizationBridge {
                 == PackageManager.PERMISSION_GRANTED;
 
         if (probe.apiLevel < 34) {
+            probe.state = "unsupported-api";
             probe.reason = "Android AVF requires API 34+";
             return probe;
         }
         if (!probe.hasFeature) {
+            probe.state = "framework-unavailable";
             probe.reason = "Device image does not expose Android Virtualization Framework";
             return probe;
         }
         if (!probe.hasPermissionDeclaration || !probe.hasPermissionGrant) {
+            probe.state = "permission-denied";
             probe.reason = "MANAGE_VIRTUAL_MACHINE is not declared or granted";
             return probe;
         }
@@ -73,14 +84,25 @@ public final class AndroidVirtualizationBridge {
             Object manager = context.getSystemService(managerClass);
             probe.hasVirtualizationService = manager != null;
             if (manager == null) {
+                probe.state = "service-unavailable";
                 probe.reason = "VirtualMachineManager service unavailable";
                 return probe;
             }
             readCapabilities(manager, probe);
-            probe.available = true;
+            probe.avfAvailable = true;
             probe.microdroidAvailable = true;
+            probe.payloadAvailable = hasPackagedMicrodroidPayload(context);
+            if (!probe.payloadAvailable) {
+                probe.state = "payload-missing";
+                probe.reason =
+                    "Android AVF/Microdroid framework is present, but no Microdroid payload boundary is packaged for this build";
+                return probe;
+            }
+            probe.state = "ready";
+            probe.available = true;
             return probe;
         } catch (Throwable throwable) {
+            probe.state = "service-unavailable";
             probe.reason = throwable.getClass().getSimpleName() + ": " + throwable.getMessage();
             return probe;
         }
@@ -90,8 +112,12 @@ public final class AndroidVirtualizationBridge {
         Probe probe = probe(context);
         JSONObject json = new JSONObject();
         try {
+            json.put("state", probe.state);
             json.put("available", probe.available);
+            json.put("avfAvailable", probe.avfAvailable);
             json.put("microdroidAvailable", probe.microdroidAvailable);
+            json.put("payloadAvailable", probe.payloadAvailable);
+            json.put("requestContractVersion", probe.requestContractVersion);
             json.put("apiLevel", probe.apiLevel);
             json.put("hasFeature", probe.hasFeature);
             json.put("hasPermissionDeclaration", probe.hasPermissionDeclaration);
@@ -107,18 +133,48 @@ public final class AndroidVirtualizationBridge {
 
     public static String request(Context context, String requestJson) {
         String id = "android-avf-request";
+        JSONObject request;
         try {
-            JSONObject request = new JSONObject(requestJson == null ? "{}" : requestJson);
+            request = new JSONObject(requestJson == null ? "{}" : requestJson);
             id = request.optString("id", id);
         } catch (Throwable ignored) {
-            // Preserve default id and return a structured error below if needed.
+            return error(
+                id,
+                "ANDROID_AVF_INVALID_REQUEST",
+                "Android AVF/Microdroid request must be valid JSON",
+                false
+            );
+        }
+
+        if (request.optInt("contractVersion", -1) != REQUEST_CONTRACT_VERSION) {
+            return error(
+                id,
+                "ANDROID_AVF_UNSUPPORTED_CONTRACT",
+                "Android AVF/Microdroid request contract version is unsupported",
+                false
+            );
+        }
+        if (
+            request.optString("id", "").isEmpty() ||
+            request.optString("capability", "").isEmpty() ||
+            request.optString("operation", "").isEmpty()
+        ) {
+            return error(
+                id,
+                "ANDROID_AVF_INVALID_REQUEST",
+                "Android AVF/Microdroid request requires id, capability, and operation",
+                false
+            );
         }
 
         Probe probe = probe(context);
         if (!probe.available) {
+            String code = "payload-missing".equals(probe.state)
+                ? "ANDROID_AVF_MICRODROID_PAYLOAD_MISSING"
+                : "ANDROID_AVF_UNAVAILABLE";
             return error(
                 id,
-                "ANDROID_AVF_UNAVAILABLE",
+                code,
                 probe.reason != null ? probe.reason : "Android AVF/Microdroid is unavailable",
                 false
             );
@@ -130,6 +186,14 @@ public final class AndroidVirtualizationBridge {
             "Android AVF/Microdroid is available, but no Microdroid payload boundary is packaged for this build",
             false
         );
+    }
+
+    private static boolean hasPackagedMicrodroidPayload(Context context) {
+        try (InputStream ignored = context.getAssets().open(MICRODROID_PAYLOAD_ASSET)) {
+            return true;
+        } catch (Throwable ignored) {
+            return false;
+        }
     }
 
     private static void readCapabilities(Object manager, Probe probe) {

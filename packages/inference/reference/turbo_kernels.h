@@ -37,6 +37,53 @@ typedef struct {
     uint8_t  qs[16];          /* QK_TURBO4/2: first 16 low nibbles, last 16 high nibbles */
 } eliza_block_turbo4_0;       /* 18 bytes */
 
+/* ---------- Fork-exact TBQ V-cache blocks (block_tbq3_0 / block_tbq4_0) ----------
+ *
+ * These mirror the on-fork ggml-common.h `block_tbq3_0` (14 B) and
+ * `block_tbq4_0` (18 B) layouts that the V-cache uses inside
+ * GGML_OP_FUSED_ATTN_QJL_TBQ. They differ from eliza_block_turbo3_0 above:
+ *   - 32-element Hadamard preconditioning (not the 128-element FWHT/seed-42
+ *     rotation of the turbo3 K-cache),
+ *   - per-32-block RMS scale `d` (not a per-128-group L2 norm correction),
+ *   - the fork TBQ codebooks (`{-2.1519457, ...}` for 3-bit, `{-2.7321365,
+ *     ...}` for 4-bit), and a *decode-side uncondition* step (Hadamard-32
+ *     followed by the fixed ±1 sign flip) so the dequantized output lands
+ *     back in real head-dim space — the fused V-mix needs the real V vector,
+ *     not the rotated one.
+ *
+ * eliza_block_turbo4_0 above is byte-identical to block_tbq4_0 (uint16_t d +
+ * 16 code bytes); the only difference is the codebook + the missing
+ * uncondition step in eliza_dequantize_turbo4_block (which the standalone
+ * pre-rotated-Q TBQ4 score path deliberately omits). The fused-attn path
+ * uses eliza_tbq4_decode_block_uncond / eliza_block_tbq4_0 instead. */
+
+#define ELIZA_QK_TBQ 32
+#define ELIZA_TBQ_PER_HEAD (128 / ELIZA_QK_TBQ)   /* 4 32-blocks per head row */
+
+typedef struct {
+    uint16_t d;                       /* fp16 block RMS after preconditioning */
+    uint8_t  qs[ELIZA_QK_TBQ * 3 / 8];/* 12 bytes: 32 3-bit codes, LSB-first */
+} eliza_block_tbq3_0;                 /* 14 bytes — matches fork block_tbq3_0 */
+
+typedef struct {
+    uint16_t d;                       /* fp16 block RMS after preconditioning */
+    uint8_t  qs[ELIZA_QK_TBQ / 2];    /* 16 bytes: 32 4-bit codes, q4_0 packing */
+} eliza_block_tbq4_0;                 /* 18 bytes — matches fork block_tbq4_0 */
+
+extern const float ELIZA_TBQ3_CODEBOOK[8];
+extern const float ELIZA_TBQ4_CODEBOOK[16];
+extern const int8_t ELIZA_TBQ_SIGNS_32_FORK[32];
+
+/* Encode 32 floats into one block (preconditioned + nearest-codebook). */
+void eliza_quantize_tbq3_block(const float src[32], eliza_block_tbq3_0 * dst);
+void eliza_quantize_tbq4_block(const float src[32], eliza_block_tbq4_0 * dst);
+
+/* Decode one block back to 32 real-space floats (codebook lookup, Hadamard-32
+ * uncondition, ±1 sign flip — bit-exact to dequantize_row_tbq3_0 /
+ * dequantize_row_tbq4_0 in the fork's ggml-quants.c). */
+void eliza_tbq3_decode_block_uncond(const eliza_block_tbq3_0 * src, float dst[32]);
+void eliza_tbq4_decode_block_uncond(const eliza_block_tbq4_0 * src, float dst[32]);
+
 typedef struct {
     uint16_t norm;            /* fp16 */
     uint8_t  qs[49];          /* 6 prefix bits + 128*3 = 390 bits */

@@ -92,10 +92,10 @@ export const SYSTEM_PERMISSIONS: SystemPermissionDefinition[] = [
 	{
 		id: "calendar",
 		name: "Apple Calendar",
-		description: "Control Apple Calendar through user-approved automation",
+		description: "Read and update Apple Calendar events for LifeOps scheduling",
 		icon: "calendar",
 		platforms: ["darwin"],
-		requiredForFeatures: ["calendar-automation"],
+		requiredForFeatures: ["lifeops", "calendar"],
 	},
 	{
 		id: "health",

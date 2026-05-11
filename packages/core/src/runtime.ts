@@ -35,11 +35,15 @@ import {
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
+import type { ResponseHandlerFieldEvaluator } from "./runtime/response-handler-field-evaluator";
+import { ResponseHandlerFieldRegistry } from "./runtime/response-handler-field-registry";
+import { RoomHandlerQueue } from "./runtime/room-handler-queue";
 import {
 	buildCanonicalSystemPrompt,
 	resolveEffectiveSystemPrompt,
 	textFromChatMessageContent,
 } from "./runtime/system-prompt";
+import { TurnControllerRegistry } from "./runtime/turn-controller";
 import { BM25 } from "./search";
 import { redactWithSecrets } from "./security/redact.js";
 import { DefaultMessageService } from "./services/message";
@@ -640,6 +644,10 @@ export class AgentRuntime implements IAgentRuntime {
 	readonly providers: Provider[] = [];
 	readonly evaluators: RegisteredEvaluator[] = [];
 	readonly responseHandlerEvaluators: ResponseHandlerEvaluator[] = [];
+	readonly responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[] = [];
+	readonly responseHandlerFieldRegistry = new ResponseHandlerFieldRegistry();
+	readonly turnControllers = new TurnControllerRegistry();
+	readonly roomHandlerQueue = new RoomHandlerQueue();
 	readonly plugins: Plugin[] = [];
 	/**
 	 * Per-runtime context registry seeded with first-party context definitions
@@ -1595,6 +1603,27 @@ export class AgentRuntime implements IAgentRuntime {
 				}
 				this.registerResponseHandlerEvaluator(evaluator);
 				existingResponseHandlerEvaluatorNames.add(evaluator.name);
+			}
+		}
+		if (pluginToRegister.responseHandlerFieldEvaluators) {
+			const existingFieldNames = new Set(
+				this.responseHandlerFieldEvaluators.map((evaluator) => evaluator.name),
+			);
+			for (const evaluator of pluginToRegister.responseHandlerFieldEvaluators) {
+				if (existingFieldNames.has(evaluator.name)) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							evaluator: evaluator.name,
+							plugin: pluginToRegister.name,
+						},
+						"Skipping duplicate plugin response-handler field evaluator",
+					);
+					continue;
+				}
+				this.registerResponseHandlerFieldEvaluator(evaluator);
+				existingFieldNames.add(evaluator.name);
 			}
 		}
 		if (pluginToRegister.models) {
@@ -2634,6 +2663,61 @@ export class AgentRuntime implements IAgentRuntime {
 			"Response-handler evaluator unregistered",
 		);
 		return true;
+	}
+
+	registerResponseHandlerFieldEvaluator(
+		evaluator: ResponseHandlerFieldEvaluator,
+	) {
+		if (
+			this.responseHandlerFieldEvaluators.find(
+				(item) => item.name === evaluator.name,
+			)
+		) {
+			this.logger.debug(
+				{
+					src: "agent",
+					agentId: this.agentId,
+					evaluator: evaluator.name,
+				},
+				"Response-handler field evaluator already registered, skipping",
+			);
+			return;
+		}
+		this.responseHandlerFieldEvaluators.push(evaluator);
+		this.responseHandlerFieldRegistry.register(evaluator);
+		this.logger.debug(
+			{
+				src: "agent",
+				agentId: this.agentId,
+				evaluator: evaluator.name,
+				priority: evaluator.priority ?? 100,
+			},
+			"Response-handler field evaluator registered",
+		);
+	}
+
+	unregisterResponseHandlerFieldEvaluator(name: string): boolean {
+		const normalized = typeof name === "string" ? name.trim() : "";
+		if (!normalized) return false;
+		const index = this.responseHandlerFieldEvaluators.findIndex(
+			(evaluator) => evaluator.name === normalized,
+		);
+		if (index === -1) return false;
+		this.responseHandlerFieldEvaluators.splice(index, 1);
+		this.responseHandlerFieldRegistry.unregister(normalized);
+		this.logger.debug(
+			{ src: "agent", agentId: this.agentId, evaluator: normalized },
+			"Response-handler field evaluator unregistered",
+		);
+		return true;
+	}
+
+	/**
+	 * Abort the active turn for `roomId`. Convenience wrapper for
+	 * `turnControllers.abortTurn`. Returns true if a turn was aborted.
+	 */
+	abortTurn(roomId: string, reason: string): boolean {
+		return this.turnControllers.abortTurn(roomId, reason);
 	}
 
 	unregisterAction(name: string): boolean {
@@ -4364,6 +4448,7 @@ export class AgentRuntime implements IAgentRuntime {
 		interface StreamingParams {
 			stream?: boolean;
 			onStreamChunk?: StreamChunkCallback;
+			signal?: AbortSignal;
 		}
 		const streamingCtx = getStreamingContext();
 		const paramsAsStreaming = isPlainObject(modelParams)
@@ -4384,6 +4469,13 @@ export class AgentRuntime implements IAgentRuntime {
 		if (isPlainObject(modelParams) && paramsAsStreaming) {
 			paramsAsStreaming.stream = shouldStream;
 			delete paramsAsStreaming.onStreamChunk;
+			// Plumb the streaming-context abort signal into model params so the
+			// underlying handler can wire it into its transport (e.g. local
+			// llama's `stopOnAbortSignal`, fetch's `signal`). Only inject when
+			// the caller didn't already pass one explicitly.
+			if (paramsAsStreaming.signal === undefined && abortSignal) {
+				paramsAsStreaming.signal = abortSignal;
+			}
 		}
 
 		const textModelKey = TEXT_GENERATION_MODEL_KEYS.includes(

@@ -142,7 +142,11 @@ export class SandboxService extends Service {
     | { ok: true; resolved: string }
     | {
         ok: false;
-        reason: "not_absolute" | "unc_path" | "blocked";
+        reason:
+          | "not_absolute"
+          | "unc_path"
+          | "blocked"
+          | "outside_allowed_roots";
         message: string;
       }
   > {
@@ -178,7 +182,7 @@ export class SandboxService extends Service {
       if (!underAllowedRoot) {
         return {
           ok: false,
-          reason: "blocked",
+          reason: "outside_allowed_roots",
           message: `Path ${absPath} is outside the configured coding workspace roots.`,
         };
       }

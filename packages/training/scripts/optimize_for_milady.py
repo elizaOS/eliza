@@ -1,9 +1,9 @@
 """End-to-end Eliza-1 optimization -> GGUF -> HF push pipeline.
 
 Composes the per-technique apply scripts in dependency order, runs the
-``milady-ai/llama.cpp`` GGUF conversion (fork-aware, understands the new
+``elizaOS/llama.cpp`` GGUF conversion (fork-aware, understands the new
 GGML types ``Q4_POLAR=47`` and ``QJL1_256=46``), and publishes a
-single ``elizalabs/eliza-1-<tier>`` HuggingFace repo whose contents are
+single ``elizaos/eliza-1-<tier>`` HuggingFace repo whose contents are
 ready for the on-device Eliza-1 downloader to consume.
 
 The orchestrator is **idempotent**: each step writes its sidecar
@@ -16,21 +16,21 @@ Usage::
 
     # Dry-run on the smallest Eliza-1 tier.
     uv run python scripts/optimize_for_milady.py \\
-        --base-model elizalabs/eliza-1-0_6b \\
+        --base-model elizaos/eliza-1-0_6b \\
         --output-dir checkpoints/eliza-1-0_6b \\
         --apply polarquant qjl turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo elizalabs/eliza-1-0_6b \\
+        --hf-repo elizaos/eliza-1-0_6b \\
         --dry-run
 
-    # Real run (needs the milady-ai/llama.cpp v0.4.0-milady checkout
+    # Real run (needs the elizaOS/llama.cpp v0.4.0-milady checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
         uv run python scripts/optimize_for_milady.py \\
-            --base-model elizalabs/eliza-1-0_6b \\
+            --base-model elizaos/eliza-1-0_6b \\
             --output-dir checkpoints/eliza-1-0_6b \\
             --apply polarquant qjl turboquant \\
-            --hf-repo elizalabs/eliza-1-0_6b
+            --hf-repo elizaos/eliza-1-0_6b
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
@@ -330,7 +330,7 @@ def _build_milady_manifest(
             ],
             "min_llama_cpp_tag": "v0.4.0-milady",
             "min_llama_cpp_commit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
-            "fork_remote": "https://github.com/milady-ai/llama.cpp.git",
+            "fork_remote": "https://github.com/elizaOS/llama.cpp.git",
         },
     }
 
@@ -394,7 +394,7 @@ def _emit_load_readme(manifest: dict[str, object]) -> str:
         f"- K cache: `{types['k_cache']}` (QJL 1-bit JL projection)\n"
         f"- V cache: `{types['v_cache']}` (TurboQuant 3-bit)\n"
         "\n"
-        "These types only exist in `milady-ai/llama.cpp` "
+        "These types only exist in `elizaOS/llama.cpp` "
         f"`>= {runtime['min_llama_cpp_tag']}` "
         f"(commit `{runtime['min_llama_cpp_commit']}`); the upstream "
         "`ggml-org/llama.cpp` build will refuse to load this file.\n"
@@ -413,7 +413,7 @@ def _emit_load_readme(manifest: dict[str, object]) -> str:
 
 
 def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
-    """Find ``convert_hf_to_gguf.py`` inside the milady-ai/llama.cpp checkout."""
+    """Find ``convert_hf_to_gguf.py`` inside the elizaOS/llama.cpp checkout."""
     if llama_cpp_dir is not None:
         cand = llama_cpp_dir / "convert_hf_to_gguf.py"
         if cand.exists():
@@ -428,7 +428,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         return Path(which)
     raise FileNotFoundError(
         "convert_hf_to_gguf.py not found. Either pass --llama-cpp-dir or set "
-        "LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp (the milady-ai/llama.cpp "
+        "LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp (the elizaOS/llama.cpp "
         "v0.4.0-milady checkout)."
     )
 
@@ -644,7 +644,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--base-model",
         required=True,
-        help="HF repo id or local path to the base model (e.g. elizalabs/eliza-1-0_6b).",
+        help="HF repo id or local path to the base model (e.g. elizaos/eliza-1-0_6b).",
     )
     p.add_argument(
         "--output-dir",
@@ -682,13 +682,13 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--llama-cpp-dir",
         type=Path,
         default=None,
-        help="Path to the milady-ai/llama.cpp v0.4.0-milady checkout. Falls back "
+        help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout. Falls back "
              "to $LLAMA_CPP_DIR env var, then $PATH.",
     )
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (e.g. elizalabs/eliza-1-0_6b). "
+        help="HuggingFace repo to publish to (e.g. elizaos/eliza-1-0_6b). "
              "When omitted the pipeline stops after manifest emission.",
     )
     p.add_argument(

@@ -87,14 +87,17 @@ export interface RecordedModelCall {
 }
 
 /**
- * Marker emitted when one of `input`, `output`, or `error` exceeds the
- * configured byte cap. The original payload is replaced with a string
- * preview followed by an annotation; the metadata block here surfaces the
- * original size so reviewers and downstream training pipelines can decide
- * how to treat the truncation.
+ * Marker emitted when one of `input`, `output`, `error`, `args`, or
+ * `result` exceeds the configured byte cap. The original payload is
+ * replaced with a string preview followed by an annotation; the metadata
+ * block here surfaces the original size so reviewers and downstream
+ * training pipelines can decide how to treat the truncation.
+ *
+ * `input` / `output` / `error` are used by tool (action) stages; `args`
+ * and `result` are used by per-skill invocation records (W1-T5 / M13).
  */
 export interface RecordedTruncationMarker {
-	field: "input" | "output" | "error";
+	field: "input" | "output" | "error" | "args" | "result";
 	originalBytes: number;
 	capBytes: number;
 }
@@ -861,6 +864,65 @@ export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 		const { value, marker } = applyTrajectoryFieldCap("error", encoded, cap);
 		out.errorText = value;
 		if (marker) markers.push(marker);
+	}
+
+	if (markers.length > 0) {
+		out.truncated = markers;
+	}
+	return out;
+}
+
+// ---------------------------------------------------------------------------
+// Skill invocation I/O capture (W1-T5 / M13)
+//
+// Mirrors `captureToolStageIO` but at the skill (USE_SKILL) seam. Args and
+// result are encoded + capped using the same primitives so all callers share
+// one canonical truncation contract.
+// ---------------------------------------------------------------------------
+
+export interface SkillInvocationIOInput {
+	args?: unknown;
+	result?: unknown;
+	capBytes?: number;
+}
+
+export type SkillInvocationTruncationMarker = Omit<
+	RecordedTruncationMarker,
+	"field"
+> & {
+	field: "args" | "result";
+};
+
+export interface SkillInvocationIOCapture {
+	args?: string;
+	result?: string;
+	truncated?: SkillInvocationTruncationMarker[];
+}
+
+/**
+ * Encode + cap skill invocation args/result for a per-skill trajectory
+ * record. Fields that are `undefined` after encoding are omitted so the
+ * persisted shape stays minimal. Caps default to
+ * `MILADY_TRAJECTORY_FIELD_CAP_BYTES` (64KB).
+ */
+export function captureSkillInvocationIO(
+	input: SkillInvocationIOInput,
+): SkillInvocationIOCapture {
+	const cap = input.capBytes ?? resolveTrajectoryFieldCapBytes();
+	const out: SkillInvocationIOCapture = {};
+	const markers: SkillInvocationTruncationMarker[] = [];
+
+	if (input.args !== undefined) {
+		const encoded = encodeTrajectoryFieldValue(input.args);
+		const { value, marker } = applyTrajectoryFieldCap("args", encoded, cap);
+		out.args = value;
+		if (marker) markers.push(marker as SkillInvocationTruncationMarker);
+	}
+	if (input.result !== undefined) {
+		const encoded = encodeTrajectoryFieldValue(input.result);
+		const { value, marker } = applyTrajectoryFieldCap("result", encoded, cap);
+		out.result = value;
+		if (marker) markers.push(marker as SkillInvocationTruncationMarker);
 	}
 
 	if (markers.length > 0) {

@@ -10,8 +10,9 @@ On mobile and store builds, "sandbox" is platform-specific rather than a
 desktop container: iOS and Google Play builds use the app sandbox plus the
 mobile-safe VFS/runtime providers and Cloud coding containers for full shell
 work; AOSP / ElizaOS Android can additionally enable the local Bun backend,
-`/system/bin/sh`, shell/coding-tools/orchestrator, and AVF/Microdroid when the
-system image grants it. See the mobile agentic IDE plan for the full policy
+`/system/bin/sh`, `@elizaos/plugin-shell`,
+`@elizaos/plugin-coding-tools`, `agent-orchestrator`, and AVF/Microdroid when
+the system image grants it. See the mobile agentic IDE plan for the full policy
 matrix.
 
 ## Table of Contents

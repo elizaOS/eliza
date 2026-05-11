@@ -10,6 +10,23 @@
  * `@elizaos/app-core/src/services/local-inference/device-bridge.ts`.
  * Keep the two in sync by hand — the message shape is the bridge
  * contract.
+ *
+ * Hardware probe (iOS):
+ *   `llama-cpp-capacitor` does not implement `getHardwareInfo` on iOS,
+ *   so the underlying adapter would return a fallback with
+ *   `deviceModel="ios"`, `totalRamGb=0`, no GPU. That breaks
+ *   `scoreDevice()` on the agent side — RAM gets a zero weighting and
+ *   iOS never wins routing.
+ *
+ *   To fix this, the bridge client probes the host app's
+ *   `MiladyIntent` / `ElizaIntent` Capacitor plugin (whichever is
+ *   registered) for a `getDeviceCapabilities()` method and merges the
+ *   real values (`utsname.machine`, `ProcessInfo.physicalMemory`,
+ *   thermal state, low-power mode, OS version) into the register
+ *   payload before we send. The merge takes precedence over the
+ *   adapter fallback but is overridden by any field the native llama
+ *   plugin does report — so when `llama-cpp-capacitor` gains real
+ *   probe support, that path wins automatically.
  */
 
 import { loadCapacitorLlama } from "./load-capacitor-llama";
@@ -116,6 +133,67 @@ export interface DeviceBridgeClientConfig {
 const INITIAL_BACKOFF_MS = 1_000;
 const MAX_BACKOFF_MS = 30_000;
 const CONNECT_TIMEOUT_MS = 5_000;
+
+/** Result returned by the iOS `MiladyIntent.getDeviceCapabilities()` /
+ * `ElizaIntent.getDeviceCapabilities()` plugin method. Matches the Swift
+ * `call.resolve([...])` shape — every field is optional from the JS side
+ * because we feature-detect at runtime and want to tolerate older app
+ * builds that ship without the method. */
+interface NativeIosCapabilities {
+  platform?: "ios";
+  deviceModel?: string;
+  machineId?: string;
+  osVersion?: string;
+  isSimulator?: boolean;
+  totalRamGb?: number;
+  availableRamGb?: number | null;
+  cpuCores?: number;
+  gpu?: { backend?: string; available?: boolean } | null;
+  gpuSupported?: boolean;
+  lowPowerMode?: boolean;
+  thermalState?: "nominal" | "fair" | "serious" | "critical" | "unknown";
+}
+
+interface CapacitorBridge {
+  isNativePlatform?: () => boolean;
+  getPlatform?: () => string;
+  Plugins?: Record<
+    string,
+    { getDeviceCapabilities?: () => Promise<NativeIosCapabilities> } | undefined
+  >;
+}
+
+function getCapacitorBridge(): CapacitorBridge | undefined {
+  return (globalThis as { Capacitor?: CapacitorBridge }).Capacitor;
+}
+
+/**
+ * Probe the host iOS app for real device capabilities. Returns `null` on
+ * non-iOS, non-native, or when the plugin is not registered (e.g. older
+ * builds that ship without `getDeviceCapabilities`). Never throws — the
+ * caller treats `null` as "nothing to merge".
+ */
+async function probeNativeIosCapabilities(): Promise<NativeIosCapabilities | null> {
+  const cap = getCapacitorBridge();
+  if (!cap?.isNativePlatform?.()) return null;
+  if (cap.getPlatform?.() !== "ios") return null;
+  const plugins = cap.Plugins ?? {};
+  // Try the milady-branded plugin first, then the legacy eliza-branded
+  // one. Both ship with the same `getDeviceCapabilities` surface in this
+  // repo; whichever is registered first wins.
+  for (const name of ["MiladyIntent", "ElizaIntent"]) {
+    const plugin = plugins[name];
+    if (typeof plugin?.getDeviceCapabilities === "function") {
+      try {
+        return await plugin.getDeviceCapabilities();
+      } catch {
+        // Plugin call failed at runtime — fall through and try the next
+        // candidate, then drop to null so the adapter fallback wins.
+      }
+    }
+  }
+  return null;
+}
 
 export class DeviceBridgeClient {
   private socket: WebSocket | null = null;
@@ -239,33 +317,98 @@ export class DeviceBridgeClient {
     const capacitorLlama = await loadCapacitorLlama();
     const hardware = await capacitorLlama.getHardwareInfo();
     const loaded = await capacitorLlama.isLoaded();
+
+    // On iOS, `llama-cpp-capacitor` does not implement `getHardwareInfo`,
+    // so the adapter returned a fallback with `deviceModel="ios"` /
+    // `totalRamGb=0` / no `isSimulator` flag. Probe our own native
+    // `MiladyIntent` plugin for real values and merge them on top of the
+    // adapter result. The adapter fallback is the floor — when the
+    // upstream plugin gains a real probe path that returns trustworthy
+    // values (`source === "native"`), we let it win.
+    const native = await probeNativeIosCapabilities();
+    const useNativeOverride =
+      native !== null && hardware.source !== "native";
+
+    const platform = useNativeOverride
+      ? (native?.platform ?? hardware.platform)
+      : hardware.platform;
+    const deviceModel = useNativeOverride
+      ? (native?.deviceModel ?? hardware.deviceModel)
+      : hardware.deviceModel;
+    const machineId = useNativeOverride
+      ? (native?.machineId ?? hardware.machineId)
+      : hardware.machineId;
+    const osVersion = useNativeOverride
+      ? (native?.osVersion ?? hardware.osVersion)
+      : hardware.osVersion;
+    const isSimulator = useNativeOverride
+      ? typeof native?.isSimulator === "boolean"
+        ? native.isSimulator
+        : hardware.isSimulator
+      : hardware.isSimulator;
+    const totalRamGb = useNativeOverride
+      ? typeof native?.totalRamGb === "number" && native.totalRamGb > 0
+        ? native.totalRamGb
+        : hardware.totalRamGb
+      : hardware.totalRamGb;
+    const availableRamGb = useNativeOverride
+      ? native?.availableRamGb !== undefined
+        ? native.availableRamGb
+        : hardware.availableRamGb
+      : hardware.availableRamGb;
+    const cpuCores = useNativeOverride
+      ? typeof native?.cpuCores === "number" && native.cpuCores > 0
+        ? native.cpuCores
+        : hardware.cpuCores
+      : hardware.cpuCores;
+    const gpu = useNativeOverride
+      ? native?.gpu && native.gpu.available
+        ? ({
+            backend:
+              native.gpu.backend === "metal" ||
+              native.gpu.backend === "vulkan" ||
+              native.gpu.backend === "gpu-delegate"
+                ? native.gpu.backend
+                : "metal",
+            available: true,
+          } as const)
+        : hardware.gpu
+      : hardware.gpu;
+    const gpuSupported = useNativeOverride
+      ? typeof native?.gpuSupported === "boolean"
+        ? native.gpuSupported
+        : hardware.gpuSupported
+      : hardware.gpuSupported;
+    const lowPowerMode = useNativeOverride
+      ? typeof native?.lowPowerMode === "boolean"
+        ? native.lowPowerMode
+        : hardware.lowPowerMode
+      : hardware.lowPowerMode;
+    const thermalState = useNativeOverride
+      ? (native?.thermalState ?? hardware.thermalState)
+      : hardware.thermalState;
+
     const msg: DeviceOutbound = {
       type: "register",
       payload: {
         deviceId: this.config.deviceId,
         pairingToken: this.config.pairingToken,
         capabilities: {
-          platform: hardware.platform,
-          deviceModel: hardware.deviceModel,
-          ...(hardware.machineId ? { machineId: hardware.machineId } : {}),
-          ...(hardware.osVersion ? { osVersion: hardware.osVersion } : {}),
-          ...(typeof hardware.isSimulator === "boolean"
-            ? { isSimulator: hardware.isSimulator }
-            : {}),
-          totalRamGb: hardware.totalRamGb,
-          availableRamGb: hardware.availableRamGb,
+          platform,
+          deviceModel,
+          ...(machineId ? { machineId } : {}),
+          ...(osVersion ? { osVersion } : {}),
+          ...(typeof isSimulator === "boolean" ? { isSimulator } : {}),
+          totalRamGb,
+          availableRamGb,
           ...(typeof hardware.freeStorageGb === "number"
             ? { freeStorageGb: hardware.freeStorageGb }
             : {}),
-          cpuCores: hardware.cpuCores,
-          gpu: hardware.gpu,
-          gpuSupported: hardware.gpuSupported,
-          ...(typeof hardware.lowPowerMode === "boolean"
-            ? { lowPowerMode: hardware.lowPowerMode }
-            : {}),
-          ...(hardware.thermalState
-            ? { thermalState: hardware.thermalState }
-            : {}),
+          cpuCores,
+          gpu,
+          gpuSupported,
+          ...(typeof lowPowerMode === "boolean" ? { lowPowerMode } : {}),
+          ...(thermalState ? { thermalState } : {}),
           dflashSupported: hardware.dflashSupported,
           ...(hardware.dflashReason
             ? { dflashReason: hardware.dflashReason }

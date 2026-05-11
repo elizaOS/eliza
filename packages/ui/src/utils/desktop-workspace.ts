@@ -23,7 +23,6 @@ export type DesktopWorkspaceSurface =
   | "release"
   | "triggers"
   | "plugins"
-  | "connectors"
   | "cloud";
 
 export interface DesktopWorkspaceSurfaceDef {
@@ -53,11 +52,6 @@ export const DESKTOP_WORKSPACE_SURFACES: readonly DesktopWorkspaceSurfaceDef[] =
       id: "plugins",
       label: "Plugins Window",
       description: "Open plugin controls in a detached window.",
-    },
-    {
-      id: "connectors",
-      label: "Connectors Window",
-      description: "Open connectors in a detached window.",
     },
     {
       id: "cloud",

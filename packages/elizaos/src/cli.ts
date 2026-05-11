@@ -2,7 +2,14 @@
 
 import * as clack from "@clack/prompts";
 import { Command } from "commander";
-import { create, info, upgrade, version } from "./commands/index.js";
+import {
+  create,
+  info,
+  registerPluginsCommand,
+  submitPluginToRegistry,
+  upgrade,
+  version,
+} from "./commands/index.js";
 import { getCliVersion } from "./package-info.js";
 
 const program = new Command();
@@ -14,6 +21,7 @@ async function defaultAction(): Promise<void> {
       { value: "create", label: "Create a new project" },
       { value: "upgrade", label: "Upgrade the current project" },
       { value: "info", label: "Show available templates" },
+      { value: "plugins", label: "Submit a plugin to the registry" },
     ],
   });
 
@@ -28,6 +36,13 @@ async function defaultAction(): Promise<void> {
   }
   if (choice === "upgrade") {
     await upgrade({});
+    return;
+  }
+  if (choice === "plugins") {
+    await submitPluginToRegistry(".", {
+      registry: "elizaos-plugins/registry",
+      base: "main",
+    });
     return;
   }
   info({});
@@ -73,6 +88,8 @@ program
   .option("--dry-run", "Preview the upgrade without writing files")
   .option("--skip-upstream", "Skip updating the upstream eliza checkout")
   .action(upgrade);
+
+registerPluginsCommand(program);
 
 program.action(defaultAction);
 

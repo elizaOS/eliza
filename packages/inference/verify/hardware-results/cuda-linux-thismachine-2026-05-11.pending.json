@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "runner": "cuda_runner.sh",
+  "status": "pending-hardware",
+  "passRecordable": false,
+  "exitCode": null,
+  "failureReason": "NVIDIA kernel module not loaded and CUDA Toolkit / nvcc not installed on this box as of 2026-05-11. Driver packages (nvidia-driver-580-open 580.126.09) are installed; the operator is bringing up the kernel module + toolkit. Re-run cuda_runner.sh once `nvidia-smi -L` and `nvcc --version` both succeed; this file will be replaced by the real evidence JSON.",
+  "host": { "os": "Linux", "arch": "x86_64" },
+  "target": "linux-x64-cuda",
+  "gpu": {
+    "pciDevice": "2c59",
+    "classGuess": "NVIDIA Blackwell-class mobile dGPU (~RTX 50-series)",
+    "computeCapabilityGuess": "12.0 (sm_120)",
+    "presentViaLspci": true,
+    "kernelModuleLoaded": false,
+    "devNodesPresent": false
+  },
+  "toolchain": {
+    "nvcc": null,
+    "cudaToolkit": null,
+    "driverPackages": "nvidia-driver-580-open 580.126.09 (libnvidia-compute-580 etc. installed; nvidia.ko not loaded)"
+  },
+  "requirements": {
+    "os": "Linux",
+    "arch": "x86_64",
+    "hardware": "NVIDIA GPU with nvidia-smi -L showing a device",
+    "toolchain": "CUDA Toolkit >= 12.8 for sm_120 device code (older nvcc works via compute_90 PTX JIT)",
+    "fixtureParity": "make cuda-verify — turbo3, turbo4, turbo3_tcq, qjl, polar, polar_qjl (and fused_attn_qjl_tbq if landed) all 8/8",
+    "graphSmoke": "runtime_graph_smoke.sh with ELIZA_DFLASH_SMOKE_MODEL — llama-cli --cache-type-k for every Turbo/QJL/Polar alias, CUDA backend evidence in the log",
+    "evidence": "this file rewritten with status:pass, passRecordable:true, gpuInfo, toolchainInfo, modelSha256"
+  },
+  "harness": {
+    "selfContained": true,
+    "linksLibggmlCuda": false,
+    "note": "cuda_verify.cu ports the C reference (reference/turbo_kernels.c + verify/qjl_polar_ref.c) into CUDA __device__ kernels operating on the on-disk fixture byte layouts — same approach as metal_verify / vulkan_verify. No build of the milady-llama-cpp fork is required for `make cuda-verify`; the fork build is only needed for the model-backed graph smoke."
+  },
+  "buildHint": {
+    "linux-x64-cuda": "ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90;89;86;80' node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda",
+    "linux-aarch64-cuda": "ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=90a;90;100' (GH200)"
+  }
+}

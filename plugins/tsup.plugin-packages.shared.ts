@@ -31,12 +31,15 @@ function collectSrcEntries(srcRoot: string): string[] {
         walk(full);
       } else if (/\.(ts|tsx)$/.test(ent.name)) {
         if (
+          /\.d\.ts$/.test(ent.name) ||
           /\.test\.(ts|tsx)$/.test(ent.name) ||
           /\.spec\.(ts|tsx)$/.test(ent.name)
         ) {
           continue;
         }
-        out.push(path.relative(resolvePackageRoot(), full).split(path.sep).join("/"));
+        out.push(
+          path.relative(resolvePackageRoot(), full).split(path.sep).join("/"),
+        );
       }
     }
   };

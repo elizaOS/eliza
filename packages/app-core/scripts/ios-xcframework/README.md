@@ -30,7 +30,7 @@ builder and pipes the produced archives through `build-xcframework.mjs`.
 
 ```
 build-llama-cpp-dflash.mjs --target ios-arm64-metal
-  ├─ checkout milady-ai/llama.cpp @ v0.4.0-milady (TBQ + QJL + Polar +
+  ├─ checkout elizaOS/llama.cpp @ v0.4.0-milady (TBQ + QJL + Polar +
   │  DFlash + W4-B kernels onto upstream b8198)
   ├─ apply Metal kernel patches (kernel-patches/metal-kernels.mjs;
   │  EMBED-path is currently a documented gap — see "Known gaps" below)
@@ -71,7 +71,7 @@ patched podspec, links against the milady xcframework)
 ## How to build the xcframework manually
 
 Prerequisites: macOS host with Xcode installed, `cmake` on PATH, network
-access to `github.com/milady-ai/llama.cpp` (first run clones the fork).
+access to `github.com/elizaOS/llama.cpp` (first run clones the fork).
 
 ```sh
 # Build both per-platform slices (~3–5 min each on M-series Mac).

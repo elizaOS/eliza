@@ -20,7 +20,7 @@ import { join } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
-import { lifeAction } from "../src/actions/life.js";
+import { runLifeOperationHandler } from "../src/actions/life.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
 
 let runtime: AgentRuntime;
@@ -73,7 +73,7 @@ function restoreIsolatedLifeSmokeEnv(): void {
 }
 
 function send(params: Record<string, unknown>, messageText?: string) {
-  return lifeAction.handler?.(
+  return runLifeOperationHandler(
     runtime,
     {
       entityId: runtime.agentId,
@@ -82,8 +82,8 @@ function send(params: Record<string, unknown>, messageText?: string) {
         text: messageText ?? (params.intent as string) ?? "test",
       },
     } as never,
-    {} as never,
-    { parameters: params } as never,
+    undefined,
+    { parameters: params },
   );
 }
 

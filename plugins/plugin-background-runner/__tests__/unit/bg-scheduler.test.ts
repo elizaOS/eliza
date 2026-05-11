@@ -42,10 +42,12 @@ describe('plugin-background-runner: pickScheduler', () => {
     expect(scheduler.kind).toBe('interval');
   });
 
-  test('falls back to IntervalBgScheduler when Capacitor is present but runner module is not', () => {
+  test('throws when on Capacitor native but runner peer dep is missing', () => {
     const env: CapacitorEnvironment = { isCapacitor: true, runner: null };
-    const scheduler = BgTaskSchedulerService.pickScheduler(env);
-    expect(scheduler).toBeInstanceOf(IntervalBgScheduler);
+    expect(() => BgTaskSchedulerService.pickScheduler(env)).toThrow(
+      /@capacitor\/background-runner.*not installed/
+    );
+    expect(() => BgTaskSchedulerService.pickScheduler(env)).toThrow(/INSTALL\.md/);
   });
 });
 

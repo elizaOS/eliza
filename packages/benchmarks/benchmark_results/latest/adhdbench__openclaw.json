@@ -1,0 +1,76 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T134007Z_6b24d8c1/adhdbench__adhdbench/run_adhdbench_20260511T134009Z_2_1b1bab0b/output"
+  ],
+  "benchmark_directory": "adhdbench",
+  "benchmark_id": "adhdbench",
+  "cache_metrics": {
+    "cache_read_input_tokens": 0,
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_read_input_tokens": 0,
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
+    },
+    "mean_score": 0.5,
+    "num_cases": 2,
+    "performance_metrics": {
+      "duration_seconds": 1.2099403329775669,
+      "mean_latency_ms": 488.3965253829956,
+      "p95_latency_ms": 539.334774017334,
+      "throughput_per_second": 1.6529740727612239
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "llm_call_count": 2,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
+    },
+    "trajectory_summary": {
+      "files": 2,
+      "turns": 2,
+      "prompt_chars": 136,
+      "repeated_prefixes": []
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 1.2099403329775669,
+    "mean_latency_ms": 488.3965253829956,
+    "p95_latency_ms": 539.334774017334,
+    "throughput_per_second": 1.6529740727612239
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T134007Z_6b24d8c1/adhdbench__adhdbench/run_adhdbench_20260511T134009Z_2_1b1bab0b/output/adhdbench_summary_2026-05-11T06-40-10Z.json",
+  "run_group_id": "rg_20260511T134007Z_6b24d8c1",
+  "run_id": "run_adhdbench_20260511T134009Z_2_1b1bab0b",
+  "score": 0.5,
+  "status": "succeeded",
+  "token_metrics": {
+    "llm_call_count": 2,
+    "prompt_tokens": 0,
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "turns": 2,
+    "prompt_chars": 136,
+    "repeated_prefixes": []
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-11T14:02:59.348332+00:00"
+}

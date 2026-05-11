@@ -46,36 +46,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `checksums/SHA256SUMS`
-- `dflash/drafter-0_6b.gguf`
-- `dflash/target-meta.json`
-- `evals/aggregate.json`
-- `evals/cpu_dispatch.json`
-- `evals/cpu_reference.json`
-- `evals/metal_dispatch.json`
-- `evals/metal_verify.json`
-- `evals/vulkan_dispatch.json`
-- `evals/vulkan_verify.json`
-- `evidence/platform/android-adreno-vulkan.json`
-- `evidence/platform/android-mali-vulkan.json`
-- `evidence/platform/darwin-arm64-metal.json`
-- `evidence/platform/ios-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-arm64-cpu.json`
-- `evidence/platform/windows-arm64-vulkan.json`
-- `evidence/platform/windows-x64-cpu.json`
-- `evidence/platform/windows-x64-vulkan.json`
-- `evidence/release.json`
-- `licenses/LICENSE.dflash`
-- `licenses/LICENSE.eliza-1`
-- `licenses/LICENSE.text`
-- `quantization/fused_turboquant.json`
-- `quantization/polarquant_config.json`
-- `quantization/qjl_config.json`
-- `quantization/turboquant.json`
-- `text/eliza-1-0_6b-32k.gguf`
+Missing files/evidence: none recorded by this check.
 
 ## 1_7b
 
@@ -115,22 +86,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `evals/cpu_reference.json`
-- `evidence/platform/android-adreno-vulkan.json`
-- `evidence/platform/android-mali-vulkan.json`
-- `evidence/platform/ios-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-arm64-cpu.json`
-- `evidence/platform/windows-arm64-vulkan.json`
-- `evidence/platform/windows-x64-cpu.json`
-- `evidence/platform/windows-x64-vulkan.json`
-- `quantization/fused_turboquant.json`
-- `quantization/polarquant_config.json`
-- `quantization/qjl_config.json`
-- `quantization/turboquant.json`
-- `text/eliza-1-1_7b-32k.gguf`
+Missing files/evidence: none recorded by this check.
 
 ## 9b
 
@@ -176,44 +132,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `checksums/SHA256SUMS`
-- `dflash/drafter-9b.gguf`
-- `dflash/target-meta.json`
-- `evals/aggregate.json`
-- `evals/cpu_dispatch.json`
-- `evals/cpu_reference.json`
-- `evals/cuda_dispatch.json`
-- `evals/cuda_verify.json`
-- `evals/metal_dispatch.json`
-- `evals/metal_verify.json`
-- `evals/rocm_dispatch.json`
-- `evals/rocm_verify.json`
-- `evals/vulkan_dispatch.json`
-- `evals/vulkan_verify.json`
-- `evidence/platform/android-adreno-vulkan.json`
-- `evidence/platform/android-mali-vulkan.json`
-- `evidence/platform/darwin-arm64-metal.json`
-- `evidence/platform/ios-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/platform/linux-x64-rocm.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-x64-cpu.json`
-- `evidence/platform/windows-x64-cuda.json`
-- `evidence/platform/windows-x64-vulkan.json`
-- `evidence/release.json`
-- `licenses/LICENSE.dflash`
-- `licenses/LICENSE.eliza-1`
-- `licenses/LICENSE.text`
-- `licenses/LICENSE.vision`
-- `quantization/fused_turboquant.json`
-- `quantization/polarquant_config.json`
-- `quantization/qjl_config.json`
-- `quantization/turboquant.json`
-- `text/eliza-1-9b-128k.gguf`
-- `text/eliza-1-9b-64k.gguf`
-- `vision/mmproj-9b.gguf`
+Missing files/evidence: none recorded by this check.
 
 ## 27b
 
@@ -259,40 +178,7 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `checksums/SHA256SUMS`
-- `dflash/drafter-27b.gguf`
-- `dflash/target-meta.json`
-- `evals/aggregate.json`
-- `evals/cpu_dispatch.json`
-- `evals/cpu_reference.json`
-- `evals/cuda_dispatch.json`
-- `evals/cuda_verify.json`
-- `evals/metal_dispatch.json`
-- `evals/metal_verify.json`
-- `evals/rocm_dispatch.json`
-- `evals/rocm_verify.json`
-- `evals/vulkan_dispatch.json`
-- `evals/vulkan_verify.json`
-- `evidence/platform/darwin-arm64-metal.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/platform/linux-x64-rocm.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/platform/windows-x64-cuda.json`
-- `evidence/platform/windows-x64-vulkan.json`
-- `evidence/release.json`
-- `licenses/LICENSE.dflash`
-- `licenses/LICENSE.eliza-1`
-- `licenses/LICENSE.text`
-- `licenses/LICENSE.vision`
-- `quantization/fused_turboquant.json`
-- `quantization/polarquant_config.json`
-- `quantization/qjl_config.json`
-- `quantization/turboquant.json`
-- `text/eliza-1-27b-128k.gguf`
-- `text/eliza-1-27b-256k.gguf`
-- `vision/mmproj-27b.gguf`
+Missing files/evidence: none recorded by this check.
 
 ## 27b-256k
 
@@ -337,35 +223,40 @@ Required files:
 - `quantization/qjl_config.json`
 - `quantization/polarquant_config.json`
 
-Missing files/evidence:
-- `checksums/SHA256SUMS`
-- `dflash/drafter-27b-256k.gguf`
+Missing files/evidence: none recorded by this check.
+
+## 27b-1m
+
+- Text quant: `Q4_K_M`
+- Voice quant: `Q8_0`
+- Contexts: `1m`
+- Required platform evidence: `linux-aarch64-cuda`
+
+Required files:
+- `text/eliza-1-27b-1m.gguf`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `asr/eliza-1-asr.gguf`
+- `asr/eliza-1-asr-mmproj.gguf`
+- `vad/silero-vad-int8.onnx`
+- `dflash/drafter-27b-1m.gguf`
 - `dflash/target-meta.json`
+- `cache/voice-preset-default.bin`
 - `evals/aggregate.json`
-- `evals/cpu_dispatch.json`
-- `evals/cpu_reference.json`
-- `evals/cuda_dispatch.json`
 - `evals/cuda_verify.json`
-- `evals/metal_dispatch.json`
-- `evals/metal_verify.json`
-- `evals/rocm_dispatch.json`
-- `evals/rocm_verify.json`
-- `evals/vulkan_dispatch.json`
-- `evals/vulkan_verify.json`
-- `evidence/platform/darwin-arm64-metal.json`
-- `evidence/platform/linux-aarch64-cuda.json`
-- `evidence/platform/linux-x64-cpu.json`
-- `evidence/platform/linux-x64-cuda.json`
-- `evidence/platform/linux-x64-rocm.json`
-- `evidence/platform/linux-x64-vulkan.json`
-- `evidence/release.json`
+- `evals/cuda_dispatch.json`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.voice`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.vad`
 - `licenses/LICENSE.dflash`
 - `licenses/LICENSE.eliza-1`
-- `licenses/LICENSE.text`
 - `licenses/LICENSE.vision`
-- `quantization/fused_turboquant.json`
-- `quantization/polarquant_config.json`
-- `quantization/qjl_config.json`
+- `checksums/SHA256SUMS`
+- `evidence/release.json`
 - `quantization/turboquant.json`
-- `text/eliza-1-27b-256k.gguf`
-- `vision/mmproj-27b-256k.gguf`
+- `quantization/fused_turboquant.json`
+- `quantization/qjl_config.json`
+- `quantization/polarquant_config.json`
+
+Missing files/evidence: none recorded by this check.

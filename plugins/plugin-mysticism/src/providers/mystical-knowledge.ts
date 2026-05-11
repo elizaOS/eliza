@@ -124,7 +124,7 @@ export const mysticalKnowledgeProvider: Provider = {
       "room",
     ];
     const __providerRegex = new RegExp(`\\b(${__providerKeywords.join("|")})\\b`, "i");
-    const __recentMessages = _state?.recentMessagesData || [];
+    const __recentMessages = (_state?.recentMessagesData || []) as Memory[];
     const __isRelevant =
       validateActionKeywords(message, __recentMessages, __providerKeywords) ||
       validateActionRegex(message, __recentMessages, __providerRegex);

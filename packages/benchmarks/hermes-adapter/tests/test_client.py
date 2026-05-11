@@ -67,7 +67,7 @@ def test_client_health_validates_venv(client_with_fake_venv: HermesClient) -> No
     cmd = call_args.args[0] if call_args.args else call_args.kwargs.get("args") or []
     assert cmd[0] == str(client_with_fake_venv.venv_python)
     assert "-c" in cmd
-    assert "import environments" in cmd[cmd.index("-c") + 1]
+    assert "import openai" in cmd[cmd.index("-c") + 1]
 
 
 def test_client_health_reports_error_on_missing_venv(tmp_path: Path) -> None:
@@ -219,3 +219,34 @@ def test_message_response_dataclass_shape() -> None:
     assert r.thought is None
     assert r.actions == []
     assert r.params == {}
+
+
+def test_client_send_message_passes_env(client_with_fake_venv: HermesClient) -> None:
+    """The subprocess env must include OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL
+    and TERMINAL_ENV=local — even when the parent shell has no such vars set."""
+    captured_env: dict[str, str] = {}
+
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        captured_env.update(kwargs.get("env") or {})
+        return _fake_completed(
+            stdout=json.dumps({"text": "ok", "thought": None, "actions": [], "params": {}}) + "\n",
+            rc=0,
+        )
+
+    with patch("hermes_adapter.client.subprocess.run", side_effect=_fake_run):
+        client_with_fake_venv.send_message("hi")
+
+    assert captured_env["OPENAI_API_KEY"] == "test-key"
+    assert captured_env["OPENAI_BASE_URL"] == "https://test.example/v1"
+    assert captured_env["OPENAI_MODEL"] == "gpt-oss-120b"
+    assert captured_env["TERMINAL_ENV"] == "local"
+
+
+def test_client_health_runs_import_check(client_with_fake_venv: HermesClient) -> None:
+    """health() verifies the one-shot OpenAI-compatible path used by smokes."""
+    with patch("hermes_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout="ok\n", rc=0)
+        client_with_fake_venv.health()
+    cmd = mock_run.call_args.args[0]
+    script = cmd[cmd.index("-c") + 1]
+    assert "import openai" in script

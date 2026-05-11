@@ -14,7 +14,11 @@ import { getProviderKey } from "./provider-env";
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
 let vastClient: ReturnType<typeof createOpenAI> | null = null;
-let openAIClient: ReturnType<typeof createOpenAI> | null = null;
+let openAIClient: {
+  apiKey: string;
+  baseURL?: string;
+  client: ReturnType<typeof createOpenAI>;
+} | null = null;
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
@@ -53,16 +57,24 @@ function getVastClient() {
 }
 
 function getOpenAIClient() {
-  if (!openAIClient) {
-    const apiKey = getProviderKey("OPENAI_API_KEY");
-    if (!apiKey) {
-      throw new Error("OPENAI_API_KEY environment variable is required");
-    }
-
-    openAIClient = createOpenAI({ apiKey });
+  const apiKey = getProviderKey("OPENAI_API_KEY");
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY environment variable is required");
   }
 
-  return openAIClient;
+  const baseURL = getProviderKey("OPENAI_BASE_URL") ?? undefined;
+  if (!openAIClient || openAIClient.apiKey !== apiKey || openAIClient.baseURL !== baseURL) {
+    openAIClient = {
+      apiKey,
+      baseURL,
+      client: createOpenAI({
+        apiKey,
+        ...(baseURL ? { baseURL } : {}),
+      }),
+    };
+  }
+
+  return openAIClient.client;
 }
 
 function getOpenRouterApiKey(): string | null {
@@ -223,7 +235,10 @@ export function getLanguageModel(model: string) {
   }
 
   if (isOpenAINativeModel(model) && getProviderKey("OPENAI_API_KEY")) {
-    return getOpenAIClient().languageModel(normalizeOpenAIModelId(model));
+    const modelId = normalizeOpenAIModelId(model);
+    return getProviderKey("OPENAI_BASE_URL")
+      ? getOpenAIClient().chat(modelId)
+      : getOpenAIClient().languageModel(modelId);
   }
 
   if (isAnthropicNativeModel(model) && getProviderKey("ANTHROPIC_API_KEY")) {

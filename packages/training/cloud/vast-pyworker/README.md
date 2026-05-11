@@ -35,7 +35,7 @@ When the underlying registry / vLLM args drift, regenerate by hand from
 >    `vast_template_env.{MODEL_REPO,MODEL_ALIAS,VLLM_PORT,VLLM_REGISTRY_KEY}`.
 >    Each manifest declares the script via the `onstart_script` field.
 > 2. **GGUF/llama-server (legacy)** — point a Vast template at
->    `MODEL_REPO=elizalabs/eliza-1-<size>-gguf-q4_k_m` (or `-gguf-q6_k`)
+>    `MODEL_REPO=elizaos/eliza-1-<size>-gguf-q4_k_m` (or `-gguf-q6_k`)
 >    plus the upstream `onstart.sh`. That matches the pyworker
 >    contract without any wrapper, and is what
 >    `eliza/cloud/scripts/vast/upsert-template.ts` does for the 27B
@@ -65,7 +65,7 @@ VASTAI_API_KEY=vastai_… \
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-9b-vllm \
 PYWORKER_REPO=https://github.com/elizaOS/cloud.git \
 PYWORKER_REF=<commit-sha> \
-MODEL_REPO=elizalabs/eliza-1-9b-polarquant \
+MODEL_REPO=elizaos/eliza-1-9b-polarquant \
 MODEL_ALIAS=vast/eliza-1-9b \
 bun eliza/cloud/scripts/vast/upsert-template.ts
 # → prints VAST_TEMPLATE_ID=<n>
@@ -90,7 +90,7 @@ Required env (sourced from the manifest's `vast_template_env` block):
 
 | Var               | Meaning                                              |
 |-------------------|------------------------------------------------------|
-| `MODEL_REPO`      | HuggingFace repo id (e.g. `elizalabs/eliza-1-9b`).     |
+| `MODEL_REPO`      | HuggingFace repo id (e.g. `elizaos/eliza-1-9b`).     |
 | `MODEL_ALIAS`     | Display alias the pyworker reports (e.g. `vast/eliza-1-9b`). |
 | `VLLM_PORT`       | Port vLLM binds to (must match the manifest `port`). |
 | `VLLM_REGISTRY_KEY` | Training-side key, used for log lines + manifest auto-resolve. |
@@ -117,7 +117,7 @@ vastai create instance <offer-id> \
   --image vllm/vllm-openai:v0.20.1 \
   --disk 120 \
   --label eliza-1-27b \
-  --env '-p 8000:8000 -e MODEL_REPO=elizalabs/eliza-1-27b-fp8 -e MODEL_ALIAS=vast/eliza-1-27b -e VLLM_PORT=8000 -e VLLM_REGISTRY_KEY=eliza-1-27b' \
+  --env '-p 8000:8000 -e MODEL_REPO=elizaos/eliza-1-27b-fp8 -e MODEL_ALIAS=vast/eliza-1-27b -e VLLM_PORT=8000 -e VLLM_REGISTRY_KEY=eliza-1-27b' \
   --onstart-cmd "$(cat onstart-vllm.sh)"
 
 # Get the public endpoint.

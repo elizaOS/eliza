@@ -1,5 +1,5 @@
-// metal_bench.mm — Metal performance harness for the five Eliza-1 KV-cache
-// kernels (turbo3, turbo4, turbo3_tcq, qjl, polar).
+// metal_bench.mm — Metal performance harness for the Eliza-1 KV-cache
+// kernels (turbo3, turbo4, turbo3_tcq, qjl, polar, polar_preht).
 //
 // SCOPE: this is a perf harness, not a correctness harness. metal_verify.mm
 // (sibling file) handles correctness against fixtures. metal_bench dispatches
@@ -39,7 +39,7 @@
 //           (or --out path). Console prints a per-shader summary.
 //
 // Robustness to thermal throttling: shaders are interleaved (round-robin
-// pass over all 5 kernels per outer iteration), not run back-to-back, so a
+// pass over all kernels per outer iteration), not run back-to-back, so a
 // hot shader doesn't bias one kernel's percentile distribution.
 
 #import <Foundation/Foundation.h>
@@ -171,6 +171,19 @@ static std::vector<uint8_t> rand_bytes(size_t n, uint32_t seed) {
     std::mt19937 rng(seed);
     for (auto & b : v) b = (uint8_t)(rng() & 0xFF);
     return v;
+}
+
+static void hadamard128_inplace(std::vector<float> & x) {
+    for (int h = 1; h < kHeadDim; h <<= 1) {
+        for (int i = 0; i < kHeadDim; i += (h << 1)) {
+            for (int j = i; j < i + h; ++j) {
+                float a = x[(size_t)j];
+                float b = x[(size_t)j + (size_t)h];
+                x[(size_t)j] = a + b;
+                x[(size_t)j + (size_t)h] = a - b;
+            }
+        }
+    }
 }
 
 static double percentile(std::vector<double> & xs, double p) {
@@ -1311,7 +1324,7 @@ int main(int argc, const char * argv[]) {
         int default_runs_local   = (runs_override   > 0) ? runs_override   : 1;
 
         // -------- Build per-kernel state --------
-        std::vector<KernelBench> kernels(5);
+        std::vector<KernelBench> kernels(6);
         kernels[0].name = "turbo3";
         kernels[0].source_path = "../metal/turbo3.metal";
         kernels[0].kernel_func = "kernel_turbo3_dot";
@@ -1327,6 +1340,9 @@ int main(int argc, const char * argv[]) {
         kernels[4].name = "polar";
         kernels[4].source_path = "../metal/polar.metal";
         kernels[4].kernel_func = "kernel_mul_mv_q4_polar_f32";
+        kernels[5].name = "polar_preht";
+        kernels[5].source_path = "../metal/polar.metal";
+        kernels[5].kernel_func = "kernel_mul_mv_q4_polar_preht_f32";
 
         // Compile pipelines.
         for (auto & kb : kernels) {
@@ -1352,6 +1368,8 @@ int main(int argc, const char * argv[]) {
         // Polar: q is (n_rows, head_dim) fp32 activations; k is (n_rows, block) packed.
         // The shader signature in metal_verify drives n_rows = number of blocks.
         std::vector<float>   q_polar   = randn_floats((size_t)kHeadDim, 0xC1);
+        std::vector<float>   q_polar_preht = q_polar;
+        hadamard128_inplace(q_polar_preht);
         std::vector<uint8_t> k_polar   = rand_bytes((size_t)kPolarRows * kPolarBlockBytes, 0xC2);
 
         auto make_buf = [&](const void * data, size_t bytes) {
@@ -1436,6 +1454,20 @@ int main(int argc, const char * argv[]) {
                                   + (uint64_t)kPolarRows * sizeof(float);
             kb.n_outputs = kPolarRows;
         }
+        // polar with pre-Hadamard query
+        {
+            auto & kb = kernels[5];
+            kb.q_buf      = make_buf(q_polar_preht.data(), q_polar_preht.size() * sizeof(float));
+            kb.k_buf      = make_buf(k_polar.data(), k_polar.size());
+            kb.scores_buf = zero_buf((size_t)kPolarRows * sizeof(float));
+            kb.polar_args = PolarMvArgs{ (uint32_t)kPolarRows, kHeadDim, 0u };
+            kb.threadgroup = MTLSizeMake(32, 1, 1);
+            kb.grid        = MTLSizeMake((NSUInteger)kPolarRows, 1, 1);
+            kb.bytes_per_dispatch = (uint64_t)q_polar_preht.size() * sizeof(float)
+                                  + (uint64_t)k_polar.size()
+                                  + (uint64_t)kPolarRows * sizeof(float);
+            kb.n_outputs = kPolarRows;
+        }
 
         // -------- Warmup (interleaved, default_warmup_local outer passes over all 5) --------
         std::printf("[metal_bench] warming up (%d outer × %zu kernels)...\n",
@@ -1444,7 +1476,7 @@ int main(int argc, const char * argv[]) {
             for (size_t i = 0; i < kernels.size(); i++) {
                 double g, c;
                 bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
-                bool is_qjl = (i == 3), is_pol = (i == 4);
+                bool is_qjl = (i == 3), is_pol = (i == 4 || i == 5);
                 encode_dispatch(queue, kernels[i], is_t3, is_t4, is_tcq, is_qjl, is_pol, g, c);
             }
         }
@@ -1459,7 +1491,7 @@ int main(int argc, const char * argv[]) {
             for (size_t i = 0; i < kernels.size(); i++) {
                 double g, c;
                 bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
-                bool is_qjl = (i == 3), is_pol = (i == 4);
+                bool is_qjl = (i == 3), is_pol = (i == 4 || i == 5);
                 encode_dispatch(queue, kernels[i], is_t3, is_t4, is_tcq, is_qjl, is_pol, g, c);
                 if (c > max_warm_us) max_warm_us = c;
             }
@@ -1487,7 +1519,7 @@ int main(int argc, const char * argv[]) {
                 for (size_t i = 0; i < kernels.size(); i++) {
                     double g, c;
                     bool is_t3  = (i == 0), is_t4 = (i == 1), is_tcq = (i == 2);
-                    bool is_qjl = (i == 3), is_pol = (i == 4);
+                    bool is_qjl = (i == 3), is_pol = (i == 4 || i == 5);
                     encode_dispatch(queue, kernels[i], is_t3, is_t4, is_tcq, is_qjl, is_pol, g, c);
                     kernels[i].gpu_us.push_back(g);
                     kernels[i].cpu_us.push_back(c);

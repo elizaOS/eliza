@@ -1,7 +1,7 @@
 /**
  * CALENDAR — umbrella action for the owner's calendar surface.
  *
- * Routes to the existing handlers for Google Calendar, availability checks,
+ * Routes to the existing handlers for live calendar reads/writes, availability checks,
  * meeting-preference updates, and the bulk-reschedule preview. Decomposed in
  * Wave 2 W2-C per `docs/audit/HARDCODING_AUDIT.md` §6 #13 / §7 and
  * `docs/audit/IMPLEMENTATION_PLAN.md` §5.3:
@@ -57,7 +57,7 @@ import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js
 export { extractCalendarPlanWithLlm } from "./lib/calendar-handler.js";
 
 type OwnerCalendarSubaction =
-  // Google Calendar
+  // Calendar reads/writes
   | "feed"
   | "next_event"
   | "search_events"
@@ -76,7 +76,7 @@ const ACTION_NAME = "CALENDAR";
 
 interface OwnerCalendarParameters {
   subaction?: OwnerCalendarSubaction | string;
-  // Google Calendar (calendar.ts)
+  // Calendar reads/writes (calendar.ts)
   intent?: string;
   title?: string;
   query?: string;
@@ -195,20 +195,20 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "query", "queries", "details"],
   },
   create_event: {
-    description: "Create a new Google Calendar event.",
-    descriptionCompressed: "create gcal event",
+    description: "Create a new calendar event.",
+    descriptionCompressed: "create calendar event",
     required: [],
     optional: ["title", "intent", "details"],
   },
   update_event: {
-    description: "Update an existing Google Calendar event.",
-    descriptionCompressed: "update gcal event",
+    description: "Update an existing calendar event.",
+    descriptionCompressed: "update calendar event",
     required: [],
     optional: ["title", "intent", "details"],
   },
   delete_event: {
-    description: "Delete a Google Calendar event.",
-    descriptionCompressed: "delete gcal event",
+    description: "Delete a calendar event.",
+    descriptionCompressed: "delete calendar event",
     required: [],
     optional: ["intent", "details"],
   },
@@ -415,7 +415,7 @@ async function handleBulkReschedulePreview(args: {
     if (error instanceof LifeOpsServiceError) {
       const failureText =
         error.status === 403
-          ? "I can't scope that calendar reschedule yet because Google Calendar isn't connected."
+          ? "I can't scope that calendar reschedule yet because calendar access is not available. Grant Apple Calendar access or connect Google Calendar."
           : `I couldn't inspect the calendar cohort for that bulk reschedule (${error.message}).`;
       await args.callback?.({
         text: failureText,
@@ -568,7 +568,7 @@ export const calendarAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage Google Calendar plus availability and meeting preferences. Subactions: " +
+    "Manage live calendar events plus availability and meeting preferences. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
     "Use CALENDLY for calendly.com URLs and SCHEDULING_NEGOTIATION for multi-turn proposal/response flows.",
@@ -586,7 +586,7 @@ export const calendarAction: Action & {
   // `subPlanner` 2-layer dispatch was removed once `promoteSubactionsToActions`
   // (in `plugin.ts`) gave the planner a discoverable top-level entry per
   // subaction (e.g. `CALENDAR_FEED`, `CALENDAR_CREATE_EVENT`,
-  // `CALENDAR_PROPOSE_TIMES`). The internal handlers (Google Calendar,
+  // `CALENDAR_PROPOSE_TIMES`). The internal handlers (calendar reads/writes,
   // availability, preferences) stay imported as private implementation
   // targets, not as registered child Actions.
   suppressPostActionContinuation: true,
@@ -658,7 +658,7 @@ export const calendarAction: Action & {
     {
       name: "action",
       description:
-        "Which calendar operation to run. Google Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
+        "Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
       required: false,
       schema: {
         type: "string" as const,

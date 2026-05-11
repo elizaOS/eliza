@@ -23,7 +23,7 @@
  *      C++ side.
  *
  * The test does NOT assert that the C++ kernel for `tbq4_0` actually
- * runs to completion — that requires the milady-ai/llama.cpp custom
+ * runs to completion — that requires the elizaOS/llama.cpp custom
  * binary, shipped through `@node-llama-cpp/<platform>`'s prebuilds
  * only against the upstream llama.cpp tree. With the upstream binary,
  * the binding accepts the string at the TS layer and forwards enum
@@ -206,7 +206,7 @@ describe("ActiveModel runtime: cache-type override → milady fork binding", () 
       // on the loaded `@node-llama-cpp/<platform>` binary:
       //   - upstream prebuild: silently falls back to the default cache
       //     type when the enum int isn't in its ggml type table.
-      //   - milady-ai/llama.cpp prebuild: dispatches the actual TBQ
+      //   - elizaOS/llama.cpp prebuild: dispatches the actual TBQ
       //     kernel, generation runs.
       // Either is a passing run for this test.
       await engine.load(modelPath, resolved);

@@ -1,6 +1,7 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
   AgentPlugin,
+  AgentStartOptions,
   AgentRequestOptions,
   AgentRequestResult,
   AgentStatus,
@@ -154,7 +155,7 @@ export class AgentWeb extends WebPlugin implements AgentPlugin {
     return proto === "http:" || proto === "https:";
   }
 
-  async start(): Promise<AgentStatus> {
+  async start(_options?: AgentStartOptions): Promise<AgentStatus> {
     if (!this.canReachApi()) {
       return {
         state: "not_started",

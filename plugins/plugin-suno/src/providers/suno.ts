@@ -104,8 +104,8 @@ export const sunoStatusProvider: Provider = {
                     suno: {
                         configured,
                         status: configured ? 'ready' : 'missing_api_key',
-                        action: 'MUSIC_GENERATION',
-                        subactions: ['generate', 'custom', 'extend'],
+                        action: 'MUSIC',
+                        subactions: ['generate', 'custom_generate', 'extend'],
                     },
                 },
                 null,

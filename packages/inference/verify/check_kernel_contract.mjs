@@ -482,6 +482,85 @@ for (const [name, smoke] of Object.entries(contract.runtimeSmoke || {})) {
   }
 }
 
+// 3c. Fused-attention capability: fixtures must exist with the right kernel
+// field and shape, the contract docs must be real, and the per-backend verify
+// targets must exist in the Makefile. The fused op is an optimization layered
+// on the existing five kernels — it deliberately is NOT in
+// requiredRuntimeCapabilityKeys / manifestKernelNames until a backend reports a
+// runtime-ready fused smoke, so it must not leak into those coverage sets.
+const fusedAttn = contract.fusedAttn;
+if (!fusedAttn || typeof fusedAttn !== "object") {
+  fail("contract missing fusedAttn section");
+} else {
+  if (fusedAttn.capabilityKey !== "fused_attn") {
+    fail(`fusedAttn.capabilityKey must be "fused_attn", got ${fusedAttn.capabilityKey}`);
+  }
+  if (contract.requiredRuntimeCapabilityKeys.includes(fusedAttn.capabilityKey)) {
+    fail("fused_attn must not be in requiredRuntimeCapabilityKeys until a backend verifies a fused dispatch");
+  }
+  if (contract.manifestKernelNames.includes(fusedAttn.capabilityKey)) {
+    fail("fused_attn must not be a manifestKernelName until a backend verifies a fused dispatch");
+  }
+  for (const doc of fusedAttn.contractDocs || []) {
+    if (!fs.existsSync(relFromInference(doc))) {
+      fail(`fusedAttn.contractDocs entry does not exist: ${doc}`);
+    }
+  }
+  for (const fixture of fusedAttn.fixtures || []) {
+    const fixturePath = relFromInference(fixture.path);
+    if (!fs.existsSync(fixturePath)) {
+      fail(`fusedAttn: missing fixture ${fixture.path}`);
+      continue;
+    }
+    const data = readJson(fixturePath);
+    if (data.kernel !== fixture.kernelField) {
+      fail(`fusedAttn: ${fixture.path} kernel field ${data.kernel} != ${fixture.kernelField}`);
+    }
+    for (const field of fixture.requiredFields || []) {
+      if (!(field in data)) fail(`fusedAttn: ${fixture.path} missing ${field}`);
+    }
+    if (fixture.shape === "cases") {
+      if (!Array.isArray(data.cases) || data.cases.length === 0) {
+        fail(`fusedAttn: ${fixture.path} cases must be a non-empty array`);
+      } else {
+        for (const [i, c] of data.cases.entries()) {
+          for (const field of fixture.caseRequiredFields || []) {
+            if (!(field in c)) fail(`fusedAttn: ${fixture.path} cases[${i}] missing ${field}`);
+          }
+          if (!Array.isArray(c.expected_out) || c.expected_out.length === 0) {
+            fail(`fusedAttn: ${fixture.path} cases[${i}].expected_out must be non-empty`);
+          }
+        }
+      }
+    } else if (fixture.shape === "scores") {
+      if (!Array.isArray(data.expected_scores) || data.expected_scores.length === 0) {
+        fail(`fusedAttn: ${fixture.path} expected_scores must be non-empty`);
+      }
+    } else {
+      fail(`fusedAttn: ${fixture.path} unknown shape ${fixture.shape}`);
+    }
+  }
+  for (const [backend, target] of Object.entries(fusedAttn.verifyTargets || {})) {
+    if (!targetBody(makefile, target)) {
+      fail(`fusedAttn.verifyTargets.${backend} target ${target} missing or empty in Makefile`);
+    }
+  }
+  if (fusedAttn.selfTest && !targetBody(makefile, fusedAttn.selfTest.makeTarget)) {
+    fail(`fusedAttn.selfTest.makeTarget ${fusedAttn.selfTest?.makeTarget} missing from Makefile`);
+  }
+  for (const [backend, status] of Object.entries(fusedAttn.runtimeStatus || {})) {
+    if (!allowedStatuses.has(status)) {
+      fail(`fusedAttn.runtimeStatus.${backend}=${status} is not an allowed status`);
+    }
+    if (status === "runtime-ready") {
+      fail(`fusedAttn.runtimeStatus.${backend} cannot be runtime-ready until a fused smoke + manifest promotion lands`);
+    }
+  }
+  if (typeof fusedAttn.nextGate !== "string" || fusedAttn.nextGate.trim().length < 8) {
+    fail("fusedAttn.nextGate must describe the next verification action");
+  }
+}
+
 // 4. Makefile targets must actually run the declared fixtures.
 const metalVerifyBody = targetBody(makefile, "metal-verify");
 const metalMultiblockBody = targetBody(makefile, "metal-verify-multiblock");

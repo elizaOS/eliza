@@ -103,8 +103,8 @@
 #   bash scripts/train_vast.sh fetch                            # rsync checkpoints + benchmarks back
 #   bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1 [--bootstrap rsync|hf]
 #                                                               # provision + sync (or HF download) + run in one shot
-#   bash scripts/train_vast.sh bootstrap-from-hf [--data-repo elizalabs/eliza-1-training] \
-#                                                [--pipeline-repo elizalabs/eliza-1-pipeline]
+#   bash scripts/train_vast.sh bootstrap-from-hf [--data-repo elizaos/eliza-1-training] \
+#                                                [--pipeline-repo elizaos/eliza-1-pipeline]
 #                                                               # remote: pull pipeline + dataset from HF (no local rsync)
 #   bash scripts/train_vast.sh status                           # instance id, GPU, uptime, current step, ETA
 #   bash scripts/train_vast.sh pull-checkpoints [--latest-only] # rsync checkpoint-* dirs back
@@ -630,8 +630,8 @@ provision_and_train() {
   local epochs=""
   local rk=""
   local bootstrap_mode="rsync"
-  local data_repo="elizalabs/eliza-1-training"
-  local pipeline_repo="elizalabs/eliza-1-pipeline"
+  local data_repo="elizaos/eliza-1-training"
+  local pipeline_repo="elizaos/eliza-1-pipeline"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --registry-key) rk="$2"; shift 2 ;;
@@ -678,8 +678,8 @@ bootstrap_from_hf() {
   # Pulls the pipeline + dataset directly onto the remote Vast instance from
   # HuggingFace. Once finished the local box can be powered off — Vast has
   # everything it needs to train.
-  local data_repo="elizalabs/eliza-1-training"
-  local pipeline_repo="elizalabs/eliza-1-pipeline"
+  local data_repo="elizaos/eliza-1-training"
+  local pipeline_repo="elizaos/eliza-1-pipeline"
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --data-repo) data_repo="$2"; shift 2 ;;
@@ -696,9 +696,9 @@ can self-bootstrap without your dev machine staying online.
 
 Options:
   --pipeline-repo <id>   HF model repo with the trainer scripts.
-                         Default: elizalabs/eliza-1-pipeline
+                         Default: elizaos/eliza-1-pipeline
   --data-repo <id>       HF dataset repo with train/val/test JSONL.
-                         Default: elizalabs/eliza-1-training
+                         Default: elizaos/eliza-1-training
 
 Requires: VAST_INSTANCE_ID (or .vast_instance_id) and a HuggingFace token
 on the remote box (HUGGING_FACE_HUB_TOKEN forwarded via ssh env).

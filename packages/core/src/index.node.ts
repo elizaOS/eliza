@@ -124,6 +124,7 @@ export {
 	triageMessagesAction,
 	WhatsappMessageAdapter,
 } from "./features/messaging/triage";
+export { paymentsPlugin } from "./features/payments/index.ts";
 export { PluginManagerService } from "./features/plugin-manager/services/pluginManagerService.ts";
 export {
 	SECRETS_SERVICE_TYPE,
@@ -155,15 +156,20 @@ export * from "./providers/skill-eligibility";
 export * from "./provisioning";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/response-handler-evaluators";
+export * from "./runtime/response-handler-field-evaluator";
+export * from "./runtime/response-handler-field-registry";
+export * from "./runtime/room-handler-queue";
 export * from "./runtime/schema-compat";
 export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
+export * from "./runtime/turn-controller";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 export * from "./runtime-env";

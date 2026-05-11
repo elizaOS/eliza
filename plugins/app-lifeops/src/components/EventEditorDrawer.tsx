@@ -26,6 +26,8 @@ import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const APPLE_CALENDAR_GRANT_ID = "apple-calendar";
+const APPLE_CALENDAR_PROVIDER = "apple_calendar";
 
 function toLocalInputValue(isoString: string | null): string {
   if (!isoString) {
@@ -298,7 +300,10 @@ export function EventEditorDrawer({
     // when no calendar is supplied on create/update.
     return [
       {
-        provider: "google" as const,
+        provider:
+          form.grantId === APPLE_CALENDAR_GRANT_ID
+            ? APPLE_CALENDAR_PROVIDER
+            : "google",
         side: form.side,
         grantId: form.grantId,
         accountEmail: null,
