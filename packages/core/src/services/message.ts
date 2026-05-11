@@ -1762,6 +1762,7 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog([...params.actions], {
 		localizedExamples: params.localizedExamples,
 	});
+	const measurementMode = process.env.MILADY_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -1772,6 +1773,7 @@ function buildV5PlannerActionSurface(params: {
 		selectedContexts: params.selectedContexts,
 		candidateActions,
 		parentActionHints,
+		measurementMode,
 	});
 	const tieredSurface = tierActionResults({
 		catalog,
@@ -1840,6 +1842,12 @@ function buildV5PlannerActionSurface(params: {
 					},
 					durationMs: toolSearchEndedAt - toolSearchStartedAt,
 					fallback,
+					...(retrieval.measurement
+						? {
+								perStageScores: retrieval.measurement.perStageScores,
+								fusedTopK: retrieval.measurement.fusedTopK,
+							}
+						: {}),
 				},
 			})
 			.catch((err) => {

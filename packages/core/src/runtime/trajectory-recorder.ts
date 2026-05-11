@@ -136,6 +136,31 @@ export interface RecordedToolStage {
 }
 
 /**
+ * Per-stage retrieval entry captured when measurement mode is on. One
+ * entry per (action, stage) pair, recorded BEFORE reciprocal-rank-fusion
+ * so the funnel analyzer can see what each individual stage produced.
+ */
+export interface RecordedRetrievalStageEntry {
+	actionName: string;
+	score: number;
+	rank: number;
+}
+
+/**
+ * Per-stage retrieval scores captured under `MILADY_RETRIEVAL_MEASUREMENT=1`.
+ * Default `undefined` — no perf cost in production unless the env var is
+ * explicitly enabled.
+ */
+export interface RecordedRetrievalPerStageScores {
+	exact: RecordedRetrievalStageEntry[];
+	regex: RecordedRetrievalStageEntry[];
+	keyword: RecordedRetrievalStageEntry[];
+	bm25: RecordedRetrievalStageEntry[];
+	embedding: RecordedRetrievalStageEntry[];
+	contextMatch: RecordedRetrievalStageEntry[];
+}
+
+/**
  * Snapshot of the tool-search / action-retrieval phase. Logged once per
  * planner turn before the LLM call so reviewers can see which actions
  * were considered, the retrieval scores, and which tier each landed in.
@@ -158,6 +183,29 @@ export interface RecordedToolSearchStage {
 	tier: { tierA: string[]; tierB: string[]; omitted: number };
 	durationMs: number;
 	fallback?: string;
+	/**
+	 * Per-stage retrieval funnel. Populated only when the retrieval call
+	 * ran with measurement mode on (`MILADY_RETRIEVAL_MEASUREMENT=1`).
+	 */
+	perStageScores?: RecordedRetrievalPerStageScores;
+	/**
+	 * Top-K fused (RRF) results. Mirrors `results` but exposes the raw
+	 * `rrfScore` field directly so downstream analyzers don't need to
+	 * unify the two shapes. Populated only under measurement mode.
+	 */
+	fusedTopK?: Array<{ actionName: string; rrfScore: number; rank: number }>;
+	/**
+	 * Actions the planner ultimately invoked this turn. Recorded by the
+	 * caller after the planner loop resolves — the retrieval call itself
+	 * does not know which results were selected.
+	 */
+	selectedActions?: string[];
+	/**
+	 * Ground-truth actions for this scenario, when available. Sourced from
+	 * the scenario manifest by the benchmark harness; never inferred from
+	 * the trajectory.
+	 */
+	correctActions?: string[];
 }
 
 export interface RecordedEvaluationStage extends EvaluationResult {
