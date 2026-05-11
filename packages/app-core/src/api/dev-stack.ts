@@ -95,6 +95,7 @@ export function resolveDevStackFromEnv(
       "With dev:desktop:watch, open desktop.rendererUrl in a browser or Browser MCP for UI parity when native-only bridges are not required.",
       "Full-screen PNG for agents: with desktop dev (screenshot server on by default), GET /api/dev/cursor-screenshot on the API (loopback). Capture uses OS screen APIs, not webview-only pixels.",
       "Aggregated vite/api/electrobun lines: GET /api/dev/console-log?maxLines=400&maxBytes=256000 (loopback) or read desktopDevLog.filePath.",
+      "Voice-loop latency traces + per-stage p50/p90/p99 histograms: GET /api/dev/voice-latency?limit=50 (loopback), or `bun run voice:latency-report` for a printed table.",
     ],
   };
 }

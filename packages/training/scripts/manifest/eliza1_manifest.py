@@ -631,6 +631,40 @@ def validate_manifest(
                 if not isinstance(expressive.get("passed"), bool):
                     errors.append("evals.expressive.passed: must be a boolean")
 
+        dflash_eval = evals.get("dflash")
+        if dflash_eval is not None:
+            if not _is_object(dflash_eval):
+                errors.append("evals.dflash: must be an object when present")
+            else:
+                rate = dflash_eval.get("acceptanceRate")
+                if rate is not None and (
+                    not isinstance(rate, (int, float))
+                    or isinstance(rate, bool)
+                    or not 0 <= rate <= 1
+                ):
+                    errors.append(
+                        "evals.dflash.acceptanceRate: must be null or a number in [0, 1]"
+                    )
+                speedup = dflash_eval.get("speedup")
+                if speedup is not None and (
+                    not isinstance(speedup, (int, float))
+                    or isinstance(speedup, bool)
+                    or speedup < 0
+                ):
+                    errors.append(
+                        "evals.dflash.speedup: must be null or a non-negative number"
+                    )
+                if not isinstance(dflash_eval.get("passed"), bool):
+                    errors.append("evals.dflash.passed: must be a boolean")
+                # A needs-hardware bench (null numbers) cannot be passed.
+                elif dflash_eval.get("passed") and (
+                    dflash_eval.get("acceptanceRate") is None
+                    or dflash_eval.get("speedup") is None
+                ):
+                    errors.append(
+                        "evals.dflash: passed=true but acceptanceRate/speedup is null"
+                    )
+
     # ── ram budget ───────────────────────────────────────────────────────
     ram = manifest["ramBudgetMb"]
     if not _is_object(ram):
@@ -860,6 +894,14 @@ def build_manifest(
     expressive_mos: float | None = None,
     expressive_tag_leakage: float | None = None,
     expressive_passed: bool | None = None,
+    # DFlash speculative-decode bench. ``acceptance_rate`` / ``speedup`` are
+    # ``None`` ("needs hardware / needs a trained drafter" — recorded, not
+    # faked) when the bench could not run. Set ``dflash_eval=True`` to emit
+    # the slot at all (a manifest with no DFlash bench just omits it).
+    dflash_eval: bool = False,
+    dflash_acceptance_rate: float | None = None,
+    dflash_speedup: float | None = None,
+    dflash_passed: bool | None = None,
     voice_capabilities: Sequence[str] | None = None,
     voice_version: str = ELIZA_1_VOICE_MANIFEST_VERSION,
     voice_frozen: bool = True,
@@ -929,6 +971,18 @@ def build_manifest(
                 expressive_tag_leakage if expressive_tag_leakage is not None else -1
             ),
             "passed": bool(expressive_passed),
+        }
+    if (
+        dflash_eval
+        or dflash_acceptance_rate is not None
+        or dflash_speedup is not None
+        or dflash_passed is not None
+    ):
+        evals["dflash"] = {
+            # null (None) when not measured — never a fabricated number.
+            "acceptanceRate": dflash_acceptance_rate,
+            "speedup": dflash_speedup,
+            "passed": bool(dflash_passed),
         }
 
     manifest: dict[str, Any] = {

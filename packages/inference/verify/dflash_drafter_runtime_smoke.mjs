@@ -9,10 +9,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function firstExisting(...candidates) {
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+  return (
+    candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
+  );
 }
 
-const MODELS_ROOT = path.join(os.homedir(), ".eliza", "local-inference", "models");
+const MODELS_ROOT = path.join(
+  os.homedir(),
+  ".eliza",
+  "local-inference",
+  "models",
+);
 const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-1_7b.bundle");
 const DEFAULT_TARGET = firstExisting(
   path.join(DEFAULT_BUNDLE, "text", "eliza-1-1_7b-64k.gguf"),
@@ -33,7 +40,10 @@ const DEFAULT_BIN = path.join(
 );
 
 function timestamp() {
-  return new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  return new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}Z$/, "Z");
 }
 
 function parseArgs(argv) {
@@ -50,24 +60,31 @@ function parseArgs(argv) {
     specType: process.env.ELIZA_DFLASH_SMOKE_SPEC_TYPE || "",
     temperature: process.env.ELIZA_DFLASH_SMOKE_TEMP || "",
     treeBudget: process.env.ELIZA_DFLASH_SMOKE_TREE_BUDGET || "",
-    report: process.env.ELIZA_DFLASH_DRAFTER_REPORT || path.join(
-      __dirname,
-      "hardware-results",
-      `dflash-drafter-runtime-${timestamp()}.json`,
-    ),
+    report:
+      process.env.ELIZA_DFLASH_DRAFTER_REPORT ||
+      path.join(
+        __dirname,
+        "hardware-results",
+        `dflash-drafter-runtime-${timestamp()}.json`,
+      ),
     metadataOnly: false,
     // --bench: in addition to the loadability smoke, run a short generation
     // with and without the drafter (`-md`), record tok/s + DFlash acceptance
     // rate, and write a speedup report under packages/inference/reports/.
     bench: process.env.ELIZA_DFLASH_BENCH === "1",
-    benchTokens: Number.parseInt(process.env.ELIZA_DFLASH_BENCH_TOKENS || "128", 10),
-    benchReport: process.env.ELIZA_DFLASH_BENCH_REPORT || path.join(
-      __dirname,
-      "..",
-      "reports",
-      "dflash-bench",
-      `dflash-bench-${timestamp()}.json`,
+    benchTokens: Number.parseInt(
+      process.env.ELIZA_DFLASH_BENCH_TOKENS || "128",
+      10,
     ),
+    benchReport:
+      process.env.ELIZA_DFLASH_BENCH_REPORT ||
+      path.join(
+        __dirname,
+        "..",
+        "reports",
+        "dflash-bench",
+        `dflash-bench-${timestamp()}.json`,
+      ),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -81,7 +98,8 @@ function parseArgs(argv) {
     else if (arg === "--drafter-model") args.drafterModel = next();
     else if (arg === "--spec-binary") args.specBinary = next();
     else if (arg === "--reference-binary") args.referenceBinary = next();
-    else if (arg === "--reference-library-path") args.referenceLibraryPath = next();
+    else if (arg === "--reference-library-path")
+      args.referenceLibraryPath = next();
     else if (arg === "--skip-installed") args.skipInstalled = true;
     else if (arg === "--ngl") args.ngl = next();
     else if (arg === "--ngld") args.ngld = next();
@@ -92,32 +110,35 @@ function parseArgs(argv) {
     else if (arg === "--report") args.report = next();
     else if (arg === "--metadata-only") args.metadataOnly = true;
     else if (arg === "--bench") args.bench = true;
-    else if (arg === "--bench-tokens") args.benchTokens = Number.parseInt(next(), 10);
+    else if (arg === "--bench-tokens")
+      args.benchTokens = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
     else if (arg === "--help" || arg === "-h") {
-      console.log([
-        "Usage: node packages/inference/verify/dflash_drafter_runtime_smoke.mjs [options]",
-        "",
-        "Options:",
-        "  --target-model <path>          Target GGUF (default: local qwen3.5 DFlash target)",
-        "  --drafter-model <path>         DFlash drafter GGUF",
-        "  --spec-binary <path>           llama-speculative-simple binary to test",
-        "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",
-        "  --reference-library-path <dir> Optional DYLD/LD library path for the reference binary",
-        "  --skip-installed              Only run the reference binary",
-        "  --ngl <N>                     Target GPU layers for runtime smoke (default: 0)",
-        "  --ngld <N>                    Draft GPU layers for runtime smoke (default: 0)",
-        "  --allow-devices               Do not pass --device none / --device-draft none",
-        "  --spec-type <type>            Optional --spec-type value for the runtime smoke",
-        "  --temp <N>                    Optional target sampler temperature",
-        "  --tree-budget <N>             Optional DFlash tree budget",
-        "  --report <path>                JSON report path",
-        "  --metadata-only                Parse GGUF metadata only; skip runtime execution",
-        "  --bench                        Also run a short generation with vs without -md and",
-        "                                 record tok/s + DFlash acceptance rate to a speedup report",
-        "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
-        "  --bench-report <path>          Speedup report JSON path (default: packages/inference/reports/dflash-bench/)",
-      ].join("\n"));
+      console.log(
+        [
+          "Usage: node packages/inference/verify/dflash_drafter_runtime_smoke.mjs [options]",
+          "",
+          "Options:",
+          "  --target-model <path>          Target GGUF (default: local qwen3.5 DFlash target)",
+          "  --drafter-model <path>         DFlash drafter GGUF",
+          "  --spec-binary <path>           llama-speculative-simple binary to test",
+          "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",
+          "  --reference-library-path <dir> Optional DYLD/LD library path for the reference binary",
+          "  --skip-installed              Only run the reference binary",
+          "  --ngl <N>                     Target GPU layers for runtime smoke (default: 0)",
+          "  --ngld <N>                    Draft GPU layers for runtime smoke (default: 0)",
+          "  --allow-devices               Do not pass --device none / --device-draft none",
+          "  --spec-type <type>            Optional --spec-type value for the runtime smoke",
+          "  --temp <N>                    Optional target sampler temperature",
+          "  --tree-budget <N>             Optional DFlash tree budget",
+          "  --report <path>                JSON report path",
+          "  --metadata-only                Parse GGUF metadata only; skip runtime execution",
+          "  --bench                        Also run a short generation with vs without -md and",
+          "                                 record tok/s + DFlash acceptance rate to a speedup report",
+          "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
+          "  --bench-report <path>          Speedup report JSON path (default: packages/inference/reports/dflash-bench/)",
+        ].join("\n"),
+      );
       process.exit(0);
     } else {
       throw new Error(`unknown argument: ${arg}`);
@@ -224,7 +245,8 @@ function readScalar(buf, off, type) {
     case 11: {
       const value = buf.readBigInt64LE(off.value);
       off.value += 8;
-      return value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
+      return value >= BigInt(Number.MIN_SAFE_INTEGER) &&
+        value <= BigInt(Number.MAX_SAFE_INTEGER)
         ? Number(value)
         : value.toString();
     }
@@ -285,7 +307,8 @@ function parseGguf(file) {
     const key = readString(buf, off);
     const type = buf.readUInt32LE(off.value);
     off.value += 4;
-    const capture = !key.startsWith("tokenizer.ggml.tokens") &&
+    const capture =
+      !key.startsWith("tokenizer.ggml.tokens") &&
       !key.startsWith("tokenizer.ggml.token_type") &&
       !key.startsWith("tokenizer.ggml.merges");
     metadataTypes[key] = type;
@@ -343,14 +366,7 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
   if (options.deviceNone) {
     args.push("--device", "none", "--device-draft", "none");
   }
-  args.push(
-    "--draft",
-    "1",
-    "--draft-min",
-    "1",
-    "--draft-p-min",
-    "0.1",
-  );
+  args.push("--draft", "1", "--draft-min", "1", "--draft-p-min", "0.1");
   if (options.specType) {
     args.push("--spec-type", options.specType);
   }
@@ -379,7 +395,14 @@ function classifyRuntimeOutput(text) {
   return "runtime_failed_unclassified";
 }
 
-function runRuntime(label, binary, libraryPath, targetModel, drafterModel, options) {
+function runRuntime(
+  label,
+  binary,
+  libraryPath,
+  targetModel,
+  drafterModel,
+  options,
+) {
   if (!binary) return null;
   const args = buildRuntimeArgs(targetModel, drafterModel, options);
   if (!fs.existsSync(binary)) {
@@ -411,7 +434,10 @@ function runRuntime(label, binary, libraryPath, targetModel, drafterModel, optio
     args,
     status: result.status,
     signal: result.signal,
-      classification: result.status === 0 ? "generation_attempt_completed" : classifyRuntimeOutput(output),
+    classification:
+      result.status === 0
+        ? "generation_attempt_completed"
+        : classifyRuntimeOutput(output),
     outputTail: lines.slice(-120).join("\n"),
   };
 }
@@ -566,6 +592,20 @@ function runDflashBench(args) {
   fs.mkdirSync(path.dirname(args.benchReport), { recursive: true });
   fs.writeFileSync(args.benchReport, `${JSON.stringify(report, null, 2)}\n`);
   console.log(`wrote ${args.benchReport}`);
+  // Also write/overwrite a stable `dflash-bench-latest.json` next to the
+  // timestamped report so `eliza1_gates_collect.mjs` and the manifest evals
+  // writer have a fixed path to read (the collector also picks the newest
+  // timestamped file — this is the convenience alias). Null fields are kept
+  // as-is: a needs-hardware bench produces a latest entry that says so.
+  try {
+    const latest = path.join(
+      path.dirname(args.benchReport),
+      "dflash-bench-latest.json",
+    );
+    fs.writeFileSync(latest, `${JSON.stringify(report, null, 2)}\n`);
+  } catch {
+    // Non-fatal — the timestamped report is the source of truth.
+  }
   if (report.available) {
     console.log(
       `dflash-bench: tok/s with-drafter=${withDrafter.tokensPerSecond} ` +
@@ -595,7 +635,7 @@ function main() {
   const parsed = parseGguf(args.drafterModel);
   const metadata = parsed.metadata;
   const tensorNames = new Set(parsed.tensorNames);
-  const hasTokenizerMerges = Object.prototype.hasOwnProperty.call(metadata, "tokenizer.ggml.merges");
+  const hasTokenizerMerges = Object.hasOwn(metadata, "tokenizer.ggml.merges");
   const tokenizerModel = metadata["tokenizer.ggml.model"];
   const architecture = metadata["general.architecture"];
 
@@ -663,9 +703,7 @@ function main() {
   const upstreamShapeOk =
     isUpstreamDflashArch &&
     upstreamRequiredTensors.every((name) => tensorNames.has(name)) &&
-    upstreamRequiredMetadata.every((key) =>
-      Object.prototype.hasOwnProperty.call(metadata, key),
-    );
+    upstreamRequiredMetadata.every((key) => Object.hasOwn(metadata, key));
   const plainArShapeOk =
     !isUpstreamDflashArch &&
     typeof architecture === "string" &&
@@ -692,31 +730,38 @@ function main() {
   // converted base won't have it yet); the publish gate is where it is
   // mandatory. Record it without failing.
   if (!report.checks.gpt2TokenizerHasMerges) {
-    failedMetadata.push("tokenizer.ggml.model is gpt2 but tokenizer.ggml.merges is absent");
+    failedMetadata.push(
+      "tokenizer.ggml.model is gpt2 but tokenizer.ggml.merges is absent",
+    );
   }
-  report.metadataStatus = failedMetadata.length === 0 ? "metadata_loadable" : "metadata_invalid";
+  report.metadataStatus =
+    failedMetadata.length === 0 ? "metadata_loadable" : "metadata_invalid";
   report.metadataFailures = failedMetadata;
 
   if (!args.metadataOnly) {
     if (!args.skipInstalled) {
-      report.runtime.push(runRuntime(
-        "installed",
-        args.specBinary,
-        "",
-        args.targetModel,
-        args.drafterModel,
-        args,
-      ));
+      report.runtime.push(
+        runRuntime(
+          "installed",
+          args.specBinary,
+          "",
+          args.targetModel,
+          args.drafterModel,
+          args,
+        ),
+      );
     }
     if (args.referenceBinary) {
-      report.runtime.push(runRuntime(
-        "reference",
-        args.referenceBinary,
-        args.referenceLibraryPath,
-        args.targetModel,
-        args.drafterModel,
-        args,
-      ));
+      report.runtime.push(
+        runRuntime(
+          "reference",
+          args.referenceBinary,
+          args.referenceLibraryPath,
+          args.targetModel,
+          args.drafterModel,
+          args,
+        ),
+      );
     }
   }
 
@@ -729,7 +774,9 @@ function main() {
   console.log(`wrote ${args.report}`);
   console.log(`metadataStatus=${report.metadataStatus}`);
   for (const run of report.runtime.filter(Boolean)) {
-    console.log(`${run.label}: status=${run.status} classification=${run.classification}`);
+    console.log(
+      `${run.label}: status=${run.status} classification=${run.classification}`,
+    );
   }
 
   const runtimeFailed = report.runtime
