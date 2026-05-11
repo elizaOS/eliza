@@ -1,4 +1,4 @@
-import type { ChatMessage } from "../types/model";
+import type { ChatMessage, ChatMessageContentPart } from "../types/model";
 import type { JsonValue } from "../types/primitives.ts";
 import { stringifyForModel } from "./json-output";
 import type { PlannerStep, PlannerToolResult } from "./planner-types";
@@ -14,6 +14,19 @@ import {
  * for native tool-calling. Skips steps that lack a toolCall or result (e.g.
  * terminal-only steps). The resulting array grows append-only across planner
  * iterations, which keeps the prefix byte-identical for cache hits.
+ *
+ * Emits AI SDK v6's `AssistantModelMessage` / `ToolModelMessage` shape — tool
+ * calls live inside `content` as `ToolCallPart`, tool results inside `content`
+ * as `ToolResultPart`. The legacy OpenAI v0.x shape (`assistant` with a
+ * top-level `toolCalls` array + `tool` with `toolCallId`/`name` siblings) is
+ * silently ignored by AI SDK v6's message conversion: `AssistantContent` only
+ * understands `string | Array<TextPart | FilePart | ReasoningPart |
+ * ToolCallPart | ToolResultPart | ToolApprovalRequest>` and has no top-level
+ * `toolCalls` field. Emitting the legacy shape leaves the evaluator's
+ * downstream model call with no view of the tool history, so the LLM keeps
+ * routing CONTINUE under the belief that no tool has been executed yet — the
+ * planner-loop then iterates until `TrajectoryLimitExceeded` on every
+ * shell-tool turn.
  */
 export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 	const messages: ChatMessage[] = [];
@@ -22,24 +35,33 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 			continue;
 		}
 		const toolCallId = stableToolCallId(step);
-		// The model's prior decision: assistant message with a tool call.
-		messages.push({
-			role: "assistant",
-			content: step.thought ?? null,
-			toolCalls: [
-				{
-					id: toolCallId,
-					type: "function",
-					name: step.toolCall.name,
-					arguments: JSON.stringify(step.toolCall.params ?? {}),
-				},
-			],
+
+		const assistantContent: ChatMessageContentPart[] = [];
+		const thought = (step.thought ?? "").trim();
+		if (thought) {
+			assistantContent.push({ type: "text", text: thought });
+		}
+		assistantContent.push({
+			type: "tool-call",
+			toolCallId,
+			toolName: step.toolCall.name,
+			input: (step.toolCall.params ?? {}) as Record<string, unknown>,
 		});
 		messages.push({
+			role: "assistant",
+			content: assistantContent,
+		});
+
+		messages.push({
 			role: "tool",
-			toolCallId,
-			name: step.toolCall.name,
-			content: toolMessageContent(step.result),
+			content: [
+				{
+					type: "tool-result",
+					toolCallId,
+					toolName: step.toolCall.name,
+					output: { type: "text", value: toolMessageContent(step.result) },
+				},
+			],
 		});
 	}
 	return messages;
