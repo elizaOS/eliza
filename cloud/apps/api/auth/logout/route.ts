@@ -7,8 +7,12 @@
 import { Hono } from "hono";
 import { deleteCookie, getCookie } from "hono/cookie";
 import { invalidateSessionCaches } from "@/lib/auth";
+import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { userSessionsService } from "@/lib/services/user-sessions";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -32,10 +36,12 @@ app.post("/", async (c) => {
       await userSessionsService.endAllUserSessions(user.id);
     }
 
-    deleteCookie(c, "steward-token", { path: "/" });
-    deleteCookie(c, "steward-refresh-token", { path: "/" });
-    deleteCookie(c, "steward-authed", { path: "/" });
-    deleteCookie(c, "eliza-anon-session", { path: "/" });
+    const domain = cookieDomainForHost(c.req.header("host"));
+    const opts = domain ? { path: "/", domain } : { path: "/" };
+    deleteCookie(c, "steward-token", opts);
+    deleteCookie(c, "steward-refresh-token", opts);
+    deleteCookie(c, "steward-authed", opts);
+    deleteCookie(c, "eliza-anon-session", opts);
 
     return c.json({ success: true, message: "Logged out successfully" });
   } catch (error) {
