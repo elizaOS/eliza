@@ -4,17 +4,23 @@
  *
  * One command, no flags: `bun run personality:bench`.
  *
- * Drives the 200 W3-2 personality scenarios against three agent profiles
- * (eliza, hermes, openclaw) on Cerebras gpt-oss-120b, then invokes the
- * W3-3 judge layer on every recorded trajectory and aggregates a
- * side-by-side report.
+ * Drives the 200 W3-2 personality scenarios against four agent profiles
+ * (eliza, hermes, openclaw, eliza-runtime) on Cerebras gpt-oss-120b, then
+ * invokes the W3-3 judge layer on every recorded trajectory and aggregates
+ * a side-by-side report.
  *
- * Agent profiles are LLM-only — the three differences are the system
- * prompt the model sees. We do NOT instantiate elizaOS / hermes-adapter /
- * openclaw-adapter runtimes here. Personality scenarios are pure
- * conversational; no tools, no plugins, no PGLite. This keeps the runner
- * fast and the comparison clean: same model, same temperature, same turns
- * — only the system prompt varies.
+ * Three of the four profiles are LLM-only — what differs is the system
+ * prompt the model sees. Personality scenarios are pure conversational; no
+ * tools, no plugins, no PGLite. This keeps the comparison clean: same model,
+ * same temperature, same turns — only the system prompt varies.
+ *
+ * The fourth profile, `eliza-runtime`, is different. It spawns the real
+ * elizaOS bench HTTP server (`packages/app-core/src/benchmark/server.ts`)
+ * with ADVANCED_CAPABILITIES enabled (so W3-1's reply-gate / verbosity
+ * enforcer / PERSONALITY action are live), then routes every user turn
+ * through `POST /api/benchmark/message`. This exercises the actual runtime
+ * path including the personality reply-gate short-circuit. The other three
+ * profiles stay system-prompt approximations for comparison.
  *
  * Steps:
  *   1. Load .env, verify CEREBRAS_API_KEY present.
@@ -35,7 +41,7 @@
  *
  * Env knobs (all optional — defaults make the bare command work):
  *
- *   MILADY_PERSONALITY_AGENT       all|eliza|hermes|openclaw   (default: all)
+ *   MILADY_PERSONALITY_AGENT       all|eliza|hermes|openclaw|eliza-runtime   (default: all)
  *   MILADY_PERSONALITY_LIMIT       int                          (default: 200)
  *   MILADY_PERSONALITY_MODEL       Cerebras model id            (default: gpt-oss-120b)
  *   MILADY_PERSONALITY_CONCURRENCY int                          (default: 1)
@@ -59,13 +65,16 @@
  */
 
 import { spawn, spawnSync } from "node:child_process";
+import crypto from "node:crypto";
 import {
   existsSync,
   mkdirSync,
+  openSync,
   readFileSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
+import net from "node:net";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -100,7 +109,7 @@ if (existsSync(ENV_FILE)) {
 // ─────────────────────────────────────────────────────────────────────────
 // Tuning knobs.
 // ─────────────────────────────────────────────────────────────────────────
-const AGENT_ORDER = ["eliza", "hermes", "openclaw"];
+const AGENT_ORDER = ["eliza", "hermes", "openclaw", "eliza-runtime"];
 const KNOWN_AGENTS = new Set(AGENT_ORDER);
 
 function envInt(name, fallback) {
@@ -426,12 +435,16 @@ console.log(
 );
 
 // ─────────────────────────────────────────────────────────────────────────
-// System prompts. The three agent profiles differ only by the system
+// System prompts. The LLM-only agent profiles differ only by the system
 // prompt the model sees. Eliza approximates the elizaOS reply-gate /
 // verbosity-enforcer / structured-slots stance; Hermes approximates the
 // Hermes-template tool-call adapter (which on tool-less personality
 // scenarios just degrades to "be brief, respond to the user"); OpenClaw
 // approximates the OpenClaw text-embedded tool-call profile.
+//
+// The fourth profile, `eliza-runtime`, does NOT use a system prompt here —
+// it drives the real bench HTTP server, which loads the W3-1 personality
+// stack on top of a real character defined in `packages/app-core/src/benchmark/server.ts`.
 // ─────────────────────────────────────────────────────────────────────────
 const SYSTEM_PROMPTS = {
   eliza:
@@ -536,6 +549,460 @@ async function callCerebras(args) {
     }
   }
   throw lastErr ?? new Error("cerebras: exhausted retries");
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// eliza-runtime profile — spawns the real bench HTTP server and routes
+// every user turn through `POST /api/benchmark/message`. This exercises
+// W3-1's reply-gate / verbosity enforcer / PERSONALITY action live.
+// ─────────────────────────────────────────────────────────────────────────
+
+function findFreePort() {
+  return new Promise((resolveP, rejectP) => {
+    const sock = net.createServer();
+    sock.unref();
+    sock.on("error", rejectP);
+    sock.listen({ host: "127.0.0.1", port: 0 }, () => {
+      const addr = sock.address();
+      sock.close(() => {
+        if (addr && typeof addr === "object" && typeof addr.port === "number") {
+          resolveP(addr.port);
+        } else {
+          rejectP(new Error("could not allocate free port"));
+        }
+      });
+    });
+  });
+}
+
+// Module-level handle so the SIGINT/exit hooks can reach the spawned proc
+// without threading state through every call site.
+let ACTIVE_RUNTIME_SERVER = null;
+
+function killRuntimeServer() {
+  const s = ACTIVE_RUNTIME_SERVER;
+  if (!s || s.killed) return;
+  s.killed = true;
+  const pid = s.proc?.pid;
+  if (!pid) return;
+  // Kill the process group we created via `detached: true` so any tsx
+  // workers / child node processes go with it. SIGTERM first, then SIGKILL
+  // after a short grace period.
+  try {
+    process.kill(-pid, "SIGTERM");
+  } catch {
+    // Process group missing — fall back to direct PID, then ignore.
+    try {
+      s.proc.kill("SIGTERM");
+    } catch {
+      // already gone
+    }
+  }
+  setTimeout(() => {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      try {
+        s.proc.kill("SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
+  }, 5000).unref();
+}
+
+let RUNTIME_CLEANUP_HOOKED = false;
+function ensureRuntimeCleanupHooked() {
+  if (RUNTIME_CLEANUP_HOOKED) return;
+  RUNTIME_CLEANUP_HOOKED = true;
+  const onExit = () => killRuntimeServer();
+  process.on("exit", onExit);
+  for (const sig of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(sig, () => {
+      killRuntimeServer();
+      // Exit with the conventional signal code so parent shells see a kill.
+      process.exit(sig === "SIGINT" ? 130 : 1);
+    });
+  }
+  process.on("uncaughtException", (err) => {
+    console.error("[personality-bench-run] uncaughtException:", err);
+    killRuntimeServer();
+    process.exit(1);
+  });
+}
+
+async function waitForHealth(baseUrl, token, deadlineMs) {
+  const start = Date.now();
+  let lastErr = "";
+  while (Date.now() - start < deadlineMs) {
+    try {
+      const res = await fetch(`${baseUrl}/api/benchmark/health`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const body = await res.json();
+        if (body?.status === "ready") return body;
+        lastErr = `status=${body?.status ?? "(missing)"}`;
+      } else {
+        lastErr = `HTTP ${res.status}`;
+      }
+    } catch (e) {
+      lastErr = e?.message ?? String(e);
+    }
+    await sleep(1000);
+  }
+  throw new Error(
+    `bench server not ready after ${deadlineMs}ms: ${lastErr || "no /health response"}`,
+  );
+}
+
+async function spawnElizaServer({ extraEnv = {} } = {}) {
+  const port = await findFreePort();
+  const host = "127.0.0.1";
+  const token = crypto.randomBytes(32).toString("hex");
+  const baseUrl = `http://${host}:${port}`;
+
+  const serverScript = join(
+    REPO_ROOT,
+    "packages",
+    "app-core",
+    "src",
+    "benchmark",
+    "server.ts",
+  );
+  const cwd = join(REPO_ROOT, "packages", "app-core");
+  if (!existsSync(serverScript)) {
+    throw new Error(`bench server script missing at ${serverScript}`);
+  }
+
+  // Aggregated log files for postmortem. Match the eliza-adapter convention
+  // (`<tmpdir>/eliza-bench-server-<port>-*.log`) so existing debugging
+  // workflows still apply.
+  const stdoutLog = join(
+    tmpdir(),
+    `personality-bench-server-${port}-${Date.now()}.stdout.log`,
+  );
+  const stderrLog = join(
+    tmpdir(),
+    `personality-bench-server-${port}-${Date.now()}.stderr.log`,
+  );
+  const stdoutFd = openLogFile(stdoutLog);
+  const stderrFd = openLogFile(stderrLog);
+
+  // ADVANCED_CAPABILITIES=true wires up the W3-1 reply-gate / verbosity
+  // enforcer / PERSONALITY action. The bench server reads this directly
+  // (see `runtimeSettingKeys` in server.ts) and passes it through to the
+  // AgentRuntime character settings.
+  const env = {
+    ...process.env,
+    ELIZA_BENCH_HOST: host,
+    ELIZA_BENCH_PORT: String(port),
+    ELIZA_BENCH_TOKEN: token,
+    // Cerebras path — same provider config the bench server expects when
+    // OPENAI_BASE_URL points at api.cerebras.ai.
+    CEREBRAS_API_KEY: cerebrasApiKey,
+    OPENAI_BASE_URL: cerebrasBaseUrl,
+    OPENAI_API_KEY: cerebrasApiKey,
+    MILADY_PROVIDER: "cerebras",
+    BENCHMARK_MODEL_PROVIDER: "cerebras",
+    OPENAI_LARGE_MODEL: model,
+    OPENAI_SMALL_MODEL: model,
+    OPENAI_MEDIUM_MODEL: model,
+    LARGE_MODEL: model,
+    SMALL_MODEL: model,
+    MEDIUM_MODEL: model,
+    ADVANCED_CAPABILITIES: "true",
+    // W1-9 fix — keep planner deterministic for benchmark turns.
+    MILADY_BENCH_FORCE_TOOL_CALL: process.env.MILADY_BENCH_FORCE_TOOL_CALL ?? "1",
+    ...extraEnv,
+  };
+
+  console.log(
+    `[personality-bench-run]   spawning bench server: node --import tsx ${serverScript} (port=${port})`,
+  );
+  console.log(`[personality-bench-run]   server logs: ${stdoutLog}`);
+  console.log(`[personality-bench-run]     stderr:    ${stderrLog}`);
+
+  const proc = spawn("node", ["--import", "tsx", serverScript], {
+    cwd,
+    env,
+    stdio: ["ignore", stdoutFd, stderrFd],
+    detached: true,
+  });
+
+  const handle = { proc, port, host, token, baseUrl, stdoutLog, stderrLog, killed: false };
+  ACTIVE_RUNTIME_SERVER = handle;
+  ensureRuntimeCleanupHooked();
+
+  // If the server dies before ready, surface that promptly.
+  let exitedEarly = false;
+  proc.on("exit", (code, signal) => {
+    if (!handle.ready) {
+      exitedEarly = true;
+      console.error(
+        `[personality-bench-run]   bench server exited early code=${code} signal=${signal}`,
+      );
+    }
+  });
+
+  const healthDeadlineMs = Number(
+    process.env.MILADY_PERSONALITY_RUNTIME_HEALTH_MS ?? 120_000,
+  );
+  try {
+    await waitForHealth(baseUrl, token, healthDeadlineMs);
+    handle.ready = true;
+  } catch (e) {
+    if (exitedEarly) {
+      // Surface the tail of stderr so the operator sees the actual cause.
+      try {
+        const tail = readFileSync(stderrLog, "utf8").slice(-4000);
+        console.error("[personality-bench-run]   bench server stderr tail:");
+        console.error(tail);
+      } catch {
+        // best-effort log dump
+      }
+    }
+    killRuntimeServer();
+    throw e;
+  }
+  return handle;
+}
+
+function openLogFile(path) {
+  // Append + create (0o644) so the log survives across restarts and any
+  // operator can read it without sudo.
+  return openSync(path, "a", 0o644);
+}
+
+async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
+  const body = {
+    text,
+    context: {
+      benchmark: "personality_bench",
+      task_id: taskId,
+      // The bench server doesn't currently pin userId from `context` — the
+      // session's `userEntityId` is fixed at reset time — but we still pass
+      // it through for trajectory diagnostics. Per-room/user isolation in
+      // scope_global_vs_user scenarios uses a separate `task_id` per "room"
+      // so each room ↔ session is distinct.
+      user_id: userId,
+    },
+  };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const res = await fetch(`${baseUrl}/api/benchmark/message`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+    const raw = await res.text();
+    if (!res.ok) {
+      throw new Error(
+        `bench HTTP ${res.status}: ${raw.slice(0, 400)}`,
+      );
+    }
+    const json = JSON.parse(raw);
+    return {
+      text: typeof json?.text === "string" ? json.text : "",
+      thought: typeof json?.thought === "string" ? json.thought : null,
+      actions: Array.isArray(json?.actions) ? json.actions : [],
+      params:
+        json?.params && typeof json.params === "object" && !Array.isArray(json.params)
+          ? json.params
+          : {},
+      benchmark: typeof json?.benchmark === "string" ? json.benchmark : null,
+      taskId: typeof json?.task_id === "string" ? json.task_id : null,
+      roomId: typeof json?.room_id === "string" ? json.room_id : null,
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function resetBenchSession({ baseUrl, token, taskId }) {
+  const res = await fetch(`${baseUrl}/api/benchmark/reset`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ task_id: taskId, benchmark: "personality_bench" }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`bench reset HTTP ${res.status}: ${text.slice(0, 300)}`);
+  }
+  return res.json();
+}
+
+// PERSONALITY-action smoke. Sends a single canonical "set my verbosity to
+// terse" message and reports whether the runtime emitted a PERSONALITY
+// action (or a near-cousin like SET_REPLY_GATE, depending on the planner).
+// Operator-facing log only — does not gate the rest of the run.
+async function smokeRuntimePersonalityAction({ baseUrl, token }) {
+  const taskId = `smoke-${Date.now()}`;
+  try {
+    await resetBenchSession({ baseUrl, token, taskId });
+    const res = await postBenchMessage({
+      baseUrl,
+      token,
+      text: "set my verbosity to terse",
+      taskId,
+      userId: "smoke-user",
+    });
+    const sawPersonality =
+      Array.isArray(res.actions) &&
+      res.actions.some((a) =>
+        typeof a === "string" && /personality/i.test(a),
+      );
+    console.log(
+      `[personality-bench-run]   smoke: actions=${JSON.stringify(res.actions)} sawPersonality=${sawPersonality}`,
+    );
+    if (typeof res.text === "string" && res.text.length > 0) {
+      console.log(
+        `[personality-bench-run]   smoke: response="${res.text.slice(0, 200).replace(/\s+/g, " ")}"`,
+      );
+    }
+    return { ok: true, sawPersonality, actions: res.actions };
+  } catch (e) {
+    console.warn(
+      `[personality-bench-run]   smoke: failed (${e?.message ?? e}) — continuing with main run`,
+    );
+    return { ok: false, error: `${e?.message ?? e}` };
+  }
+}
+
+async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
+  // Scope scenarios (`scope_global_vs_user`) put admin + user in different
+  // rooms; each room maps to a distinct session id so the runtime's
+  // personality store keys (`global` + per-user) work as the scenario
+  // expects. For other buckets there's one room, so one session id.
+  const roomMeta = new Map();
+  for (const r of scenario.rooms ?? []) {
+    const isAdmin = /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
+    roomMeta.set(r.id, {
+      userId: r.id,
+      userRole: isAdmin ? "admin" : "member",
+    });
+  }
+
+  const trajectory = [];
+  let totalPrompt = 0;
+  let totalCompletion = 0;
+  let totalWallMs = 0;
+  let error = null;
+  const usedTaskIds = new Map(); // room → taskId
+  const taskIdFor = (roomId) => {
+    const key = roomId ?? "main";
+    if (!usedTaskIds.has(key)) {
+      usedTaskIds.set(
+        key,
+        `personality-${scenario.id.replace(/[^A-Za-z0-9._-]+/g, "_")}-${key}-${Date.now()}`,
+      );
+    }
+    return usedTaskIds.get(key);
+  };
+
+  // Reset each room's session up front so the personality store starts clean.
+  for (const r of scenario.rooms ?? []) {
+    try {
+      await resetBenchSession({ baseUrl, token, taskId: taskIdFor(r.id) });
+    } catch (e) {
+      error = `reset ${r.id}: ${e?.message ?? e}`;
+      break;
+    }
+  }
+  if (!error && (scenario.rooms?.length ?? 0) === 0) {
+    try {
+      await resetBenchSession({ baseUrl, token, taskId: taskIdFor("main") });
+    } catch (e) {
+      error = `reset default: ${e?.message ?? e}`;
+    }
+  }
+
+  for (let i = 0; i < scenario.turns.length && !error; i++) {
+    const turn = scenario.turns[i];
+    if (turn.kind !== "message" || typeof turn.text !== "string") continue;
+    const meta = turn.room
+      ? roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" }
+      : { userId: "user", userRole: "member" };
+    trajectory.push({
+      role: "user",
+      content: turn.text,
+      roomId: turn.room,
+      userId: meta.userId,
+      userRole: meta.userRole,
+      turnIndex: trajectory.length + 1,
+    });
+    const startedAt = Date.now();
+    let assistantText = "";
+    let actions = [];
+    let params = {};
+    try {
+      const res = await postBenchMessage({
+        baseUrl,
+        token,
+        text: turn.text,
+        taskId: taskIdFor(turn.room),
+        userId: meta.userId,
+      });
+      assistantText = res.text;
+      actions = res.actions;
+      params = res.params;
+    } catch (e) {
+      error = `${e?.message ?? e}`;
+    }
+    totalWallMs += Date.now() - startedAt;
+    trajectory.push({
+      role: "assistant",
+      content: assistantText,
+      roomId: turn.room,
+      userId: meta.userId,
+      userRole: meta.userRole,
+      turnIndex: trajectory.length + 1,
+      // Runtime-only fields — preserved so operators can see the actual
+      // action invocations vs. the LLM-only profiles. Judges ignore extra
+      // fields.
+      actions,
+      params,
+    });
+  }
+
+  // Token usage is reported per-turn via the bench server's `usage` field
+  // but the message endpoint doesn't surface it in the response JSON. We
+  // leave promptTokens/completionTokens at 0 for now — the wall-time and
+  // action capture is what makes this profile distinct, not token cost.
+  const pricing = pricingFor(model);
+  const costUsd =
+    totalPrompt * pricing.input + totalCompletion * pricing.output;
+
+  const bridged = bridgePersonalityExpect(scenario);
+  return {
+    id: scenario.id,
+    bucket: bridged.bucket,
+    agent: "eliza-runtime",
+    name: scenario.title,
+    description: scenario.description,
+    personalityExpect: {
+      bucket: bridged.bucket,
+      directiveTurn: bridged.directiveTurn,
+      checkTurns: bridged.checkTurns,
+      options: bridged.options,
+    },
+    trajectory,
+    telemetry: {
+      promptTokens: totalPrompt,
+      completionTokens: totalCompletion,
+      costUsd,
+      wallMs: totalWallMs,
+      error,
+    },
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -671,22 +1138,59 @@ async function runAgent(agent) {
   console.log(`\n[personality-bench-run] ▶ agent=${agent}`);
   console.log(`[personality-bench-run]   runDir=${runDir}`);
 
+  // The `eliza-runtime` profile spawns the actual bench HTTP server before
+  // any scenario runs. The other three profiles are LLM-only and skip this.
+  let runtimeHandle = null;
+  if (agent === "eliza-runtime") {
+    runtimeHandle = await spawnElizaServer();
+    console.log(
+      `[personality-bench-run]   eliza-runtime: server ready at ${runtimeHandle.baseUrl}`,
+    );
+    await smokeRuntimePersonalityAction({
+      baseUrl: runtimeHandle.baseUrl,
+      token: runtimeHandle.token,
+    });
+  }
+
+  // The runtime profile must run scenarios sequentially. Each scenario hits
+  // shared per-room sessions on the bench server; running concurrently
+  // would interleave reset+message calls in a way that breaks the
+  // personality store's per-user/global isolation guarantees.
+  const runtimeConcurrency = agent === "eliza-runtime" ? 1 : concurrency;
+
   const startedAt = Date.now();
-  const personalityScenarios = await runWithConcurrency(
-    scenarios,
-    async (scenario, i) => {
-      const out = await runScenarioForAgent(scenario, agent, model);
-      const fileName = `${String(i + 1).padStart(3, "0")}-${scenario.id.replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
-      writeFileSync(join(scenariosDir, fileName), JSON.stringify(out, null, 2));
-      if ((i + 1) % 10 === 0 || i === scenarios.length - 1) {
-        console.log(
-          `[personality-bench-run]   ${agent}: ${i + 1}/${scenarios.length} scenarios complete`,
-        );
-      }
-      return out;
-    },
-    concurrency,
-  );
+  let personalityScenarios;
+  try {
+    personalityScenarios = await runWithConcurrency(
+      scenarios,
+      async (scenario, i) => {
+        const out =
+          agent === "eliza-runtime"
+            ? await runScenarioOnElizaRuntime(scenario, {
+                baseUrl: runtimeHandle.baseUrl,
+                token: runtimeHandle.token,
+              })
+            : await runScenarioForAgent(scenario, agent, model);
+        const fileName = `${String(i + 1).padStart(3, "0")}-${scenario.id.replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
+        writeFileSync(join(scenariosDir, fileName), JSON.stringify(out, null, 2));
+        if ((i + 1) % 10 === 0 || i === scenarios.length - 1) {
+          console.log(
+            `[personality-bench-run]   ${agent}: ${i + 1}/${scenarios.length} scenarios complete`,
+          );
+        }
+        return out;
+      },
+      runtimeConcurrency,
+    );
+  } finally {
+    if (runtimeHandle) {
+      console.log(
+        `[personality-bench-run]   eliza-runtime: stopping bench server (pid=${runtimeHandle.proc?.pid})`,
+      );
+      killRuntimeServer();
+      ACTIVE_RUNTIME_SERVER = null;
+    }
+  }
 
   const wallMs = Date.now() - startedAt;
   const totalCost = personalityScenarios.reduce(
