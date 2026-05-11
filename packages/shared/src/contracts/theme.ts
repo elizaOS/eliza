@@ -293,8 +293,5 @@ export function validateThemeDefinition(data: unknown): ThemeValidationError[] {
 
 // ── Constants ──────────────────────────────────────────────────────
 
-/** Default theme ID applied when no theme is explicitly selected */
-export const DEFAULT_THEME_ID = "bsc-gold";
-
 /** Data attribute used to identify the injected font <link> */
 export const THEME_FONT_LINK_ID = "eliza-theme-font";

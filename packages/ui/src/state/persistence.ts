@@ -9,11 +9,6 @@ import {
   type UiLanguage,
 } from "../i18n";
 import type { Tab } from "../navigation";
-import {
-  applyThemeToDocument,
-  clearThemeOverrides,
-  resolveBuiltinTheme,
-} from "../themes/apply-theme";
 import type {
   CompanionHalfFramerateMode,
   CompanionVrmPowerMode,
@@ -43,7 +38,6 @@ export type { UiTheme } from "./ui-preferences";
 
 const UI_THEME_STORAGE_KEY = "eliza:ui-theme";
 const LEGACY_UI_THEME_STORAGE_KEY = "elizaos:ui-theme";
-const THEME_ID_STORAGE_KEY = "eliza:theme-id";
 const THEME_SWITCHING_ATTRIBUTE = "data-theme-switching";
 let themeSwitchResetFrameId: number | null = null;
 
@@ -80,20 +74,6 @@ export function saveUiTheme(theme: UiTheme): void {
     const normalized = normalizeUiTheme(theme);
     localStorage.setItem(UI_THEME_STORAGE_KEY, normalized);
     localStorage.setItem(LEGACY_UI_THEME_STORAGE_KEY, normalized);
-  }, undefined);
-}
-
-/* ── Theme ID persistence ────────────────────────────────────────────── */
-
-export function loadThemeId(): string {
-  return tryLocalStorage(() => {
-    return localStorage.getItem(THEME_ID_STORAGE_KEY) ?? "bsc-gold";
-  }, "bsc-gold");
-}
-
-export function saveThemeId(themeId: string): void {
-  tryLocalStorage(() => {
-    localStorage.setItem(THEME_ID_STORAGE_KEY, themeId);
   }, undefined);
 }
 
@@ -291,18 +271,6 @@ export function applyUiTheme(theme: UiTheme): void {
         root.classList.remove("dark");
       }
     }
-  }
-
-  // Apply the active theme's color set (must run even when only themeId changed)
-  const themeId = loadThemeId();
-  if (themeId && themeId !== "bsc-gold") {
-    const theme = resolveBuiltinTheme(themeId);
-    if (theme) {
-      applyThemeToDocument(theme, normalizedTheme);
-    }
-  } else {
-    // BSC Gold is the base.css default — clear any overrides
-    clearThemeOverrides();
   }
 }
 
