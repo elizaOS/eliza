@@ -334,9 +334,7 @@ describe("DflashLlamaServer.prewarmConversation", () => {
       if (req.method === "POST" && req.url === "/v1/chat/completions") {
         seen.push(JSON.parse(await readBody(req)) as Record<string, unknown>);
         res.statusCode = 200;
-        res.end(
-          JSON.stringify({ choices: [{ message: { content: "" } }] }),
-        );
+        res.end(JSON.stringify({ choices: [{ message: { content: "" } }] }));
         return;
       }
       res.statusCode = 404;
@@ -351,7 +349,10 @@ describe("DflashLlamaServer.prewarmConversation", () => {
       cacheParallel: number;
       lastPrewarmBySlot: Map<number, { prefix: string; touchedAtMs: number }>;
     };
-    const prev = { baseUrl: target.baseUrl, cacheParallel: target.cacheParallel };
+    const prev = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
     target.baseUrl = `http://127.0.0.1:${port}`;
     target.cacheParallel = 4;
     target.lastPrewarmBySlot.clear();

@@ -174,7 +174,11 @@ export function parseSlotCacheTtlClass(
   const lastDot = withoutBin.lastIndexOf(".");
   if (lastDot < 0) return undefined;
   const candidate = withoutBin.slice(lastDot + 1);
-  if (candidate === "short" || candidate === "long" || candidate === "extended") {
+  if (
+    candidate === "short" ||
+    candidate === "long" ||
+    candidate === "extended"
+  ) {
     return candidate;
   }
   return undefined;
