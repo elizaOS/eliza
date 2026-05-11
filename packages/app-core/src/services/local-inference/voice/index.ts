@@ -1,5 +1,6 @@
 export {
   BargeInController,
+  type BargeInControllerConfig,
   type BargeInListener,
   type CancelSignal,
 } from "./barge-in";
@@ -22,6 +23,12 @@ export {
   type VoiceLifecycleLoaders,
   type VoiceLifecycleState,
 } from "./lifecycle";
+export {
+  DesktopMicSource,
+  type DesktopMicSourceOptions,
+  PushMicSource,
+  pipeMicToRingBuffer,
+} from "./mic-source";
 export {
   CharacterPhonemeStub,
   type Phoneme,
@@ -64,6 +71,18 @@ export {
   SpeakerPresetCache,
 } from "./speaker-preset-cache";
 export * from "./types";
+export {
+  createSileroVadDetector,
+  RmsEnergyGate,
+  type RmsEnergyGateConfig,
+  resolveSileroVadPath,
+  rms,
+  SILERO_VAD_BUNDLE_REL_PATH,
+  SileroVad,
+  VadDetector,
+  type VadDetectorConfig,
+  VadUnavailableError,
+} from "./vad";
 export {
   readVoicePresetFile,
   VOICE_PRESET_HEADER_BYTES,
