@@ -8,6 +8,8 @@ import android.webkit.WebView;
 
 import com.getcapacitor.BridgeActivity;
 
+import app.eliza.BuildConfig;
+
 import java.lang.reflect.Method;
 
 public class MainActivity extends BridgeActivity {
@@ -81,7 +83,7 @@ public class MainActivity extends BridgeActivity {
             // bypasses Capacitor's plugin executor. See ElizaNativeBridge
             // for the dead-Handler bug it works around.
             getBridge().getWebView().addJavascriptInterface(
-                new ElizaNativeBridge(), ElizaNativeBridge.JS_NAME);
+                new ElizaNativeBridge(this), ElizaNativeBridge.JS_NAME);
         }
 
         // Auto-start the local Eliza agent runtime as a foreground service.

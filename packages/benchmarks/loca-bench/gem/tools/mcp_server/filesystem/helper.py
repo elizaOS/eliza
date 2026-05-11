@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shlex
 from typing import Optional
 
 from gem.tools.mcp_tool import MCPTool
@@ -53,6 +54,7 @@ def get_filesystem_stdio_config(
     
     # Convert to absolute path
     abs_directory = str(Path(directory).absolute())
+    quoted_directory = shlex.quote(abs_directory)
     
     if use_local_server:
         # Use compiled JavaScript from local TypeScript server (avoids npx timeout)
@@ -74,7 +76,7 @@ def get_filesystem_stdio_config(
                 "command": "bash",
                 "args": [
                     "-c",
-                    f"exec 2>/dev/null; node '{str(server_script.absolute())}' '{abs_directory}'"
+                    f"cd {quoted_directory} && exec 2>/dev/null; node {shlex.quote(str(server_script.absolute()))} {quoted_directory}"
                 ],
                 "cwd": abs_directory
             }
@@ -89,7 +91,7 @@ def get_filesystem_stdio_config(
                 "command": "bash",
                 "args": [
                     "-c",
-                    f"exec 2>/dev/null; npx @modelcontextprotocol/server-filesystem '{abs_directory}'"
+                    f"cd {quoted_directory} && exec 2>/dev/null; npx @modelcontextprotocol/server-filesystem {quoted_directory}"
                 ],
                 "cwd": abs_directory
             }
@@ -172,4 +174,3 @@ __all__ = [
     "get_filesystem_stdio_config",
     "create_filesystem_tool",
 ]
-

@@ -1,5 +1,4 @@
 import { Button } from "@elizaos/ui";
-import { AlertTriangle } from "lucide-react";
 import type { CSSProperties } from "react";
 
 type CloudHeaderStatusKind =
@@ -186,10 +185,6 @@ export function CloudStatusBadge(props: CloudStatusBadgeProps) {
         ...toneStyle,
       }}
     >
-      <AlertTriangle
-        className="pointer-events-none h-3.5 w-3.5 shrink-0"
-        aria-hidden="true"
-      />
       <span
         className={`pointer-events-none leading-none ${compactOnMobile ? "max-[380px]:hidden" : ""}`}
       >

@@ -9,8 +9,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { enterWorktreeAction } from "./enter-worktree.js";
-import { exitWorktreeAction } from "./exit-worktree.js";
+import { enterWorktreeHandler } from "./enter-worktree.js";
+import { exitWorktreeHandler } from "./exit-worktree.js";
 
 interface TestEnv {
   repoDir: string;
@@ -86,7 +86,7 @@ function makeMessage(conversationId: string): Memory {
 }
 
 async function enter(env: TestEnv): Promise<string> {
-  const result = await enterWorktreeAction.handler?.(
+  const result = await enterWorktreeHandler(
     env.runtime,
     makeMessage(env.conversationId),
     undefined,
@@ -118,7 +118,7 @@ describe("EXIT_WORKTREE", () => {
       path.resolve(worktreePath),
     );
 
-    const result = await exitWorktreeAction.handler?.(
+    const result = await exitWorktreeHandler(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -145,7 +145,7 @@ describe("EXIT_WORKTREE", () => {
   });
 
   it("fails with invalid_param when no worktree is on the stack", async () => {
-    const result = await exitWorktreeAction.handler?.(
+    const result = await exitWorktreeHandler(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -159,7 +159,7 @@ describe("EXIT_WORKTREE", () => {
   it("with cleanup=true removes the worktree directory", async () => {
     const worktreePath = await enter(env);
 
-    const result = await exitWorktreeAction.handler?.(
+    const result = await exitWorktreeHandler(
       env.runtime,
       makeMessage(env.conversationId),
       state,
@@ -184,7 +184,7 @@ describe("EXIT_WORKTREE", () => {
   });
 
   it("fails with missing_param when message has no roomId", async () => {
-    const result = await exitWorktreeAction.handler?.(
+    const result = await exitWorktreeHandler(
       env.runtime,
       {} as Memory,
       state,

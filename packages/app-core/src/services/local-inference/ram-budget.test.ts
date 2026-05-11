@@ -32,6 +32,7 @@ function syntheticManifest(overrides: Partial<Eliza1Manifest>): Eliza1Manifest {
         metal: { status: "pass", atCommit: "abc", report: "ok" },
         vulkan: { status: "pass", atCommit: "abc", report: "ok" },
         cuda: { status: "pass", atCommit: "abc", report: "ok" },
+        rocm: { status: "pass", atCommit: "abc", report: "ok" },
         cpu: { status: "pass", atCommit: "abc", report: "ok" },
       },
     },

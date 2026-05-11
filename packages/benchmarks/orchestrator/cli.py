@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -82,14 +82,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
     workspace_root = _workspace_root_from_here()
     discovery = discover_adapters(workspace_root)
     request = _build_request(args, discovery.adapters)
+    harnesses = _selected_harnesses(args)
+    all_outcomes = []
+    viewer_snapshot: Path | None = None
 
-    run_group_id, outcomes, viewer_snapshot = run_benchmarks(
-        workspace_root=workspace_root,
-        request=request,
-    )
+    for harness in harnesses:
+        harness_request = replace(request, agent=harness)
+        run_group_id, outcomes, viewer_snapshot = run_benchmarks(
+            workspace_root=workspace_root,
+            request=harness_request,
+        )
+        all_outcomes.extend(outcomes)
+        print(f"Run group ({harness}): {run_group_id}")
 
-    print(f"Run group: {run_group_id}")
-    print(f"Viewer snapshot: {viewer_snapshot}")
+    if viewer_snapshot is not None:
+        print(f"Viewer snapshot: {viewer_snapshot}")
     print("")
 
     succeeded = 0
@@ -97,7 +104,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
     skipped = 0
     incompatible = 0
 
-    for outcome in outcomes:
+    for outcome in all_outcomes:
         print(
             f"- {outcome.benchmark_id:16s} "
             f"run_id={outcome.run_id} "
@@ -119,6 +126,24 @@ def _cmd_run(args: argparse.Namespace) -> int:
         f"skipped={skipped} incompatible={incompatible}"
     )
     return 1 if failed > 0 else 0
+
+
+def _selected_harnesses(args: argparse.Namespace) -> tuple[str, ...]:
+    if getattr(args, "all_harnesses", False):
+        return ("eliza", "hermes", "openclaw")
+    raw = getattr(args, "harnesses", None)
+    if raw:
+        values: list[str] = []
+        for item in raw:
+            values.extend(part.strip().lower() for part in str(item).split(",") if part.strip())
+        deduped: list[str] = []
+        for value in values:
+            if value not in {"eliza", "hermes", "openclaw"}:
+                raise SystemExit(f"Unknown harness '{value}'. Expected eliza, hermes, or openclaw.")
+            if value not in deduped:
+                deduped.append(value)
+        return tuple(deduped) if deduped else (args.agent,)
+    return (args.agent,)
 
 
 def _cmd_export_viewer(args: argparse.Namespace) -> int:
@@ -544,8 +569,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="Benchmark IDs to run (default: all)",
     )
     p_run.add_argument("--agent", default="eliza", help="Agent label for this run")
-    p_run.add_argument("--provider", default="groq", help="Model provider")
-    p_run.add_argument("--model", default="openai/gpt-oss-120b", help="Model name")
+    p_run.add_argument(
+        "--harnesses",
+        nargs="+",
+        default=None,
+        help="Harnesses to run (space- or comma-separated): eliza hermes openclaw",
+    )
+    p_run.add_argument(
+        "--all-harnesses",
+        action="store_true",
+        help="Run each selected benchmark with eliza, hermes, and openclaw",
+    )
+    p_run.add_argument("--provider", default="cerebras", help="Model provider")
+    p_run.add_argument("--model", default="gpt-oss-120b", help="Model name")
     p_run.add_argument("--extra", default=None, help="JSON object with benchmark-specific options")
     p_run.add_argument("--resume", action="store_true", help="Alias for idempotent run behavior")
     p_run.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")

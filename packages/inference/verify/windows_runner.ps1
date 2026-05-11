@@ -12,6 +12,14 @@
     pwsh -File packages/inference/verify/windows_runner.ps1 `
       -Backend cuda `
       -Model C:\models\eliza-1-smoke.gguf
+
+  Environment overrides:
+    WINDOWS_BUILD_FORK=0 skips the build step for an existing native binary.
+    WINDOWS_SKIP_GRAPH_SMOKE=1 exits non-zero after preflight; it is not
+      recordable hardware evidence.
+    ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS tune the
+      llama-cli graph smoke.
+    ELIZA_STATE_DIR controls the default native binary lookup root.
 #>
 
 [CmdletBinding()]
@@ -103,7 +111,7 @@ function Write-EvidenceReport([int] $ExitCode) {
 function Fail([string] $Message) {
   $script:FailureReason = $Message
   Write-EvidenceReport 1
-  Write-Error "[windows_runner] $Message"
+  [Console]::Error.WriteLine("[windows_runner] $Message")
   exit 1
 }
 
@@ -129,6 +137,19 @@ function Resolve-CacheType([string] $Help, [string] $Family, [string[]] $Aliases
     }
   }
   Fail "llama-cli help does not advertise a cache-type alias for $Family"
+}
+
+trap {
+  if ([string]::IsNullOrWhiteSpace($script:FailureReason)) {
+    $script:FailureReason = "unhandled error: $($_.Exception.Message)"
+  }
+  try {
+    Write-EvidenceReport 1
+  } catch {
+    [Console]::Error.WriteLine("[windows_runner] failed to write evidence report: $($_.Exception.Message)")
+  }
+  [Console]::Error.WriteLine("[windows_runner] $($script:FailureReason)")
+  exit 1
 }
 
 if (-not $IsWindows) {

@@ -10,7 +10,7 @@ import {
 import { creditsService } from "@/lib/services/credits";
 import { secretsService } from "@/lib/services/secrets";
 import { logger } from "@/lib/utils/logger";
-import { contentSafetyService, type ContentSafetyReview } from "../content-safety";
+import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
 import { googleAdsProvider } from "./providers/google";
 import { metaAdsProvider } from "./providers/meta";
 import { tiktokAdsProvider } from "./providers/tiktok";
@@ -18,12 +18,15 @@ import type {
   AdAccountCredentials,
   AdPlatform,
   AdProvider,
+  AdProviderMediaUploadResult,
   CampaignMetrics,
   ConnectAccountInput,
   CreateCampaignInput,
   CreateCreativeInput,
+  CreativeMedia,
   UpdateCampaignInput,
   UpdateCreativeInput,
+  UploadMediaInput,
 } from "./types";
 import { AD_CREDIT_RATES, calculateSpendCredits } from "./types";
 
@@ -276,6 +279,112 @@ class AdvertisingService {
     return await provider.listAdAccounts({ accessToken });
   }
 
+  async uploadMedia(
+    organizationId: string,
+    adAccountId: string,
+    input: UploadMediaInput,
+  ): Promise<AdProviderMediaUploadResult> {
+    const account = await adAccountsRepository.findById(adAccountId);
+    if (!account || account.organization_id !== organizationId) {
+      throw new Error("Ad account not found");
+    }
+
+    const provider = this.getProvider(account.platform);
+    if (!provider.uploadMedia) {
+      throw new Error(`Advertising platform ${account.platform} does not support media upload`);
+    }
+
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "advertising_creative",
+      organizationId,
+      text: [
+        input.name ? `Media name: ${input.name}` : undefined,
+        `Media type: ${input.type}`,
+        `Media URL: ${input.url}`,
+      ],
+      imageUrls:
+        input.type === "image"
+          ? [input.url]
+          : input.thumbnailUrl
+            ? [input.thumbnailUrl]
+            : undefined,
+      metadata: { platform: account.platform, adAccountId },
+    });
+
+    const credentials = await this.getCredentials(account);
+    const result = await provider.uploadMedia(credentials, account.external_account_id, input);
+    if (!result.success) {
+      throw new Error(result.error || "Failed to upload media to advertising platform");
+    }
+    return result;
+  }
+
+  private async prepareCreativeMediaForProvider(
+    organizationId: string,
+    account: AdAccount,
+    provider: AdProvider,
+    credentials: AdAccountCredentials,
+    input: CreateCreativeInput,
+  ): Promise<CreativeMedia[]> {
+    if (!provider.uploadMedia || input.media.length === 0) {
+      return input.media;
+    }
+
+    const prepared: CreativeMedia[] = [];
+    for (const media of input.media) {
+      if (media.providerAssetId) {
+        prepared.push(media);
+      } else {
+        const upload = await this.uploadMedia(organizationId, account.id, {
+          name: `${input.name}-${media.order}`,
+          type: media.type,
+          url: media.url,
+          thumbnailUrl: media.thumbnailUrl,
+        });
+        if (!upload.providerAssetId) {
+          throw new Error("Advertising media upload returned no provider asset id");
+        }
+        prepared.push({
+          ...media,
+          providerAssetId: upload.providerAssetId,
+          thumbnailUrl: media.thumbnailUrl ?? upload.providerAssetUrl,
+        });
+      }
+
+      if (
+        (account.platform === "tiktok" || account.platform === "google") &&
+        media.type === "video" &&
+        media.thumbnailUrl &&
+        !input.media.some((candidate) => candidate.type === "image")
+      ) {
+        const thumbnailUpload = await provider.uploadMedia(
+          credentials,
+          account.external_account_id,
+          {
+            name: `${input.name}-thumbnail`,
+            type: "image",
+            url: media.thumbnailUrl,
+          },
+        );
+        if (!thumbnailUpload.success || !thumbnailUpload.providerAssetId) {
+          throw new Error(
+            thumbnailUpload.error || `Failed to upload ${account.platform} video thumbnail`,
+          );
+        }
+        prepared.push({
+          id: crypto.randomUUID(),
+          source: media.source,
+          url: media.thumbnailUrl,
+          providerAssetId: thumbnailUpload.providerAssetId,
+          type: "image",
+          order: media.order + 1,
+        });
+      }
+    }
+
+    return prepared;
+  }
+
   // ============================================
   // Campaign Operations
   // ============================================
@@ -429,12 +538,14 @@ class AdvertisingService {
       });
 
       if (result.externalCampaignId) {
-        await provider.deleteCampaign(credentials, result.externalCampaignId).catch((deleteError) => {
-          logger.error("[Advertising] Failed to compensate provider campaign create", {
-            externalCampaignId: result.externalCampaignId,
-            error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+        await provider
+          .deleteCampaign(credentials, result.externalCampaignId)
+          .catch((deleteError) => {
+            logger.error("[Advertising] Failed to compensate provider campaign create", {
+              externalCampaignId: result.externalCampaignId,
+              error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+            });
           });
-        });
       }
       if (campaign) {
         await adCampaignsRepository.delete(campaign.id).catch((deleteError) => {
@@ -705,22 +816,54 @@ class AdvertisingService {
       throw new Error("Insufficient credits to create creative");
     }
 
+    let preparedInput = input;
+    let account: AdAccount | undefined;
+    let credentials: AdAccountCredentials | undefined;
+    let provider: AdProvider | undefined;
+    if (campaign.external_campaign_id) {
+      account = await adAccountsRepository.findById(campaign.ad_account_id);
+      if (account) {
+        try {
+          credentials = await this.getCredentials(account);
+          provider = this.getProvider(account.platform);
+          const preparedMedia = await this.prepareCreativeMediaForProvider(
+            organizationId,
+            account,
+            provider,
+            credentials,
+            input,
+          );
+          preparedInput = { ...input, media: preparedMedia };
+        } catch (error) {
+          await creditsService.refundCredits({
+            organizationId,
+            amount: AD_CREDIT_RATES.createCreative,
+            description: `Refund: Creative media upload failed - ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            metadata: { campaignId: input.campaignId, creativeName: input.name },
+          });
+          throw error;
+        }
+      }
+    }
+
     // Create creative record
     const creative = await adCreativesRepository.create({
-      campaign_id: input.campaignId,
-      name: input.name,
-      type: input.type,
-      headline: input.headline,
-      primary_text: input.primaryText,
-      description: input.description,
-      call_to_action: input.callToAction,
-      destination_url: input.destinationUrl,
-      media: input.media,
+      campaign_id: preparedInput.campaignId,
+      name: preparedInput.name,
+      type: preparedInput.type,
+      headline: preparedInput.headline,
+      primary_text: preparedInput.primaryText,
+      description: preparedInput.description,
+      call_to_action: preparedInput.callToAction,
+      destination_url: preparedInput.destinationUrl,
+      media: preparedInput.media,
       metadata: {
-        facebook_page_id: input.pageId,
-        instagram_account_id: input.instagramActorId,
-        tiktok_identity_id: input.tiktokIdentityId,
-        tiktok_identity_type: input.tiktokIdentityType,
+        facebook_page_id: preparedInput.pageId,
+        instagram_account_id: preparedInput.instagramActorId,
+        tiktok_identity_id: preparedInput.tiktokIdentityId,
+        tiktok_identity_type: preparedInput.tiktokIdentityType,
         content_safety: this.contentSafetyMetadata(safetyReview),
       },
       status: "draft",
@@ -728,16 +871,12 @@ class AdvertisingService {
 
     // Sync with platform if campaign is synced
     if (campaign.external_campaign_id) {
-      const account = await adAccountsRepository.findById(campaign.ad_account_id);
-      if (account) {
-        const credentials = await this.getCredentials(account);
-        const provider = this.getProvider(account.platform);
-
+      if (account && credentials && provider) {
         const result = await provider.createCreative(
           credentials,
           account.external_account_id,
           campaign.external_campaign_id,
-          input,
+          preparedInput,
         );
 
         if (result.success && result.externalCreativeId) {

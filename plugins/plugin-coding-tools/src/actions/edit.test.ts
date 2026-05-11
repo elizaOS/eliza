@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
-import { editAction } from "./edit.js";
+import { editFileHandler } from "./edit.js";
 
 describe("EDIT", () => {
   let env: TestEnv;
@@ -25,7 +25,7 @@ describe("EDIT", () => {
   it("replaces a unique substring and reports the line number", async () => {
     const file = await seedFile("a.txt", "line one\nfoo bar\nline three");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -49,7 +49,7 @@ describe("EDIT", () => {
   it("fails on no_match when old_string isn't in the file", async () => {
     const file = await seedFile("b.txt", "the quick brown fox");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -69,7 +69,7 @@ describe("EDIT", () => {
   it("rejects ambiguous matches when replace_all is false", async () => {
     const file = await seedFile("c.txt", "alpha alpha alpha");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -90,7 +90,7 @@ describe("EDIT", () => {
   it("replaces every occurrence with replace_all=true", async () => {
     const file = await seedFile("d.txt", "x x x");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -114,7 +114,7 @@ describe("EDIT", () => {
   it("rejects identical old_string and new_string", async () => {
     const file = await seedFile("e.txt", "noop content");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -135,7 +135,7 @@ describe("EDIT", () => {
   it("refuses edits that introduce a detected secret", async () => {
     const file = await seedFile("f.txt", "API_KEY = REPLACE_ME");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -157,7 +157,7 @@ describe("EDIT", () => {
     const file = path.join(env.tmpDir, "no-read.txt");
     await fs.writeFile(file, "content here", "utf8");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -179,7 +179,7 @@ describe("EDIT", () => {
     await new Promise((r) => setTimeout(r, 20));
     await fs.writeFile(file, "external edit", "utf8");
 
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,
@@ -199,7 +199,7 @@ describe("EDIT", () => {
   it("rejects paths under the blocklist", async () => {
     const file = path.join(env.blockedPath, "x.txt");
     await fs.writeFile(file, "hello");
-    const result = await editAction.handler?.(
+    const result = await editFileHandler(
       env.runtime,
       env.message,
       undefined,

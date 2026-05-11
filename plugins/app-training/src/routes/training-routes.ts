@@ -809,6 +809,10 @@ export async function handleTrainingRoutes(
       outputPath?: string;
       outputDir?: string;
       splitByTask?: boolean;
+      bundle?: boolean;
+      exportBundle?: boolean;
+      includeRaw?: boolean;
+      includeRawJsonl?: boolean;
       tasks?: string[];
     }>(req, res);
     if (!body) return true;
@@ -841,6 +845,41 @@ export async function handleTrainingRoutes(
           ),
         )
       ).filter((t): t is Trajectory => t !== null);
+
+      if (body.bundle || body.exportBundle) {
+        const { buildTrajectoryExportBundle } = await import(
+          "../core/trajectory-export-bundle.js"
+        );
+        const bundle = await buildTrajectoryExportBundle({
+          trajectories: details,
+          outputDir:
+            body.outputDir ?? `.tmp/training-trajectory-bundle-${Date.now()}`,
+          includeRawJsonl:
+            body.includeRawJsonl === true || body.includeRaw === true,
+          tasks: narrowTrainingTasks(body.tasks),
+          source: {
+            kind: "training-route",
+            metadata: {
+              requestedLimit: body.limit ?? 100,
+              explicitTrajectoryIds: explicitIds.length,
+              selectedTrajectoryIds: trajectoryIds.length,
+              loadedTrajectories: details.length,
+            },
+          },
+        });
+
+        json(
+          res,
+          {
+            trajectoriesConsidered: trajectoryIds.length,
+            outputDir: bundle.outputDir,
+            manifestPath: bundle.manifestPath,
+            bundle: bundle.manifest,
+          },
+          201,
+        );
+        return true;
+      }
 
       let exported = 0;
       let taskDataset:

@@ -140,8 +140,10 @@ iMessage supports multiple target types:
 ## Limitations
 
 - **macOS Only**: iMessage doesn't have an official API and only works on macOS
-- **No Official API**: Relies on AppleScript or CLI tools
-- **Permissions**: Requires Full Disk Access and Automation permissions
+- **No Official API**: Sending still relies on AppleScript or CLI tools
+- **Permissions**: Message history requires Full Disk Access, sending through
+  Messages requires Automation, and contact resolution/editing requires
+  Contacts access
 - **Rate Limits**: Apple may throttle excessive automation
 
 ## Development
@@ -165,7 +167,7 @@ npm test
 ### "Cannot access Messages app"
 
 1. Ensure Full Disk Access is granted
-2. Ensure Automation permissions are granted
+2. Ensure Automation permissions are granted if sending through Messages fails
 3. Try opening Messages app manually first
 
 ### "Service not available"

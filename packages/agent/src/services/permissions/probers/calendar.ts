@@ -1,25 +1,29 @@
 /**
  * Calendar prober.
- *
- * Calendar.app integration is AppleScript-backed, so check() reads the
- * Apple Events TCC row for this runtime → Calendar.app. The osascript call
- * is only used in request(), where prompting is expected.
- *
- * INTEGRATION TODO: switch this to EventKit authorization checks if a
- * Calendar connector starts using EventKit instead of AppleScript.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
 import {
   buildState,
+  getNativeDylib,
   IS_DARWIN,
+  mapNativePrivacyAuthStatus,
+  openPrivacyPane,
   platformUnsupportedState,
-  queryAppleEventsTccStatus,
-  runOsascript,
+  queryTccStatus,
+  resolveBundleId,
 } from "./_bridge.js";
 
 const ID = "calendar" as const;
-const CALENDAR_BUNDLE_ID = "com.apple.iCal";
+const CALENDAR_TCC_SERVICE = "kTCCServiceCalendar";
+
+function stateFromNative(value: number): PermissionState {
+  const status = mapNativePrivacyAuthStatus(value);
+  return buildState(ID, status, {
+    canRequest: status === "not-determined" || value === 4,
+    restrictedReason: status === "restricted" ? "os_policy" : undefined,
+  });
+}
 
 export const calendarProber: Prober = {
   id: ID,
@@ -27,7 +31,12 @@ export const calendarProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
 
-    const tcc = await queryAppleEventsTccStatus(CALENDAR_BUNDLE_ID);
+    const native = await getNativeDylib();
+    if (native) {
+      return stateFromNative(native.checkCalendarPermission());
+    }
+
+    const tcc = await queryTccStatus(CALENDAR_TCC_SERVICE, resolveBundleId());
     if (tcc === "granted")
       return buildState(ID, "granted", { canRequest: false });
     if (tcc === "denied")
@@ -37,7 +46,12 @@ export const calendarProber: Prober = {
 
   async request({ reason: _reason }): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
-    await runOsascript('tell application "Calendar" to count of calendars');
+    const native = await getNativeDylib();
+    if (native) {
+      const state = stateFromNative(native.requestCalendarPermission());
+      return { ...state, lastRequested: Date.now() };
+    }
+    await openPrivacyPane("Calendars");
     const state = await calendarProber.check();
     return { ...state, lastRequested: Date.now() };
   },

@@ -13,9 +13,9 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
-import { ModelType } from "../../types/model";
 import type { ActionModelClass } from "../../types/components";
 import type { ModelHandler } from "../../types/model";
+import { ModelType } from "../../types/model";
 import {
 	ACTION_MODEL_STRATEGIES,
 	executeChainWithFallback,
@@ -23,10 +23,10 @@ import {
 	isLocalProvider,
 	isLowConfidence,
 	maybeReroute,
-	resolveChain,
-	resolveStep,
 	type ResolvedActionModel,
 	ROUTABLE_TEXT_MODEL_TYPES,
+	resolveChain,
+	resolveStep,
 } from "../action-model-routing";
 import {
 	getActionRoutingContext,
@@ -130,9 +130,7 @@ describe("getActionModelStrategy", () => {
 		expect(getActionModelStrategy("TEXT_LARGE")).toBe(
 			ACTION_MODEL_STRATEGIES.TEXT_LARGE,
 		);
-		expect(getActionModelStrategy("LOCAL")).toBe(
-			ACTION_MODEL_STRATEGIES.LOCAL,
-		);
+		expect(getActionModelStrategy("LOCAL")).toBe(ACTION_MODEL_STRATEGIES.LOCAL);
 	});
 });
 
@@ -361,11 +359,10 @@ describe("executeChainWithFallback", () => {
 			mkResolved(ModelType.TEXT_SMALL, "ollama", async () => "x"),
 			mkResolved(ModelType.TEXT_LARGE, "anthropic", async () => "x"),
 		];
-		const result = (await executeChainWithFallback(
-			chain,
-			0.5,
-			invoke,
-		)) as { provider: string; confidence: number };
+		const result = (await executeChainWithFallback(chain, 0.5, invoke)) as {
+			provider: string;
+			confidence: number;
+		};
 		expect(result.provider).toBe("anthropic");
 		expect(result.confidence).toBeGreaterThanOrEqual(0.5);
 		expect(invoke).toHaveBeenCalledTimes(2);

@@ -3289,7 +3289,7 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  void attachMobileDeviceBridgeToServer(server).catch((err) => {
+  void attachMobileDeviceBridgeToServer(server).catch((err: unknown) => {
     logger.warn(
       "[eliza-api] Failed to attach mobile device bridge:",
       err instanceof Error ? err.message : String(err),

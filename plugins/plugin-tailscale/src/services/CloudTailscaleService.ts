@@ -25,7 +25,9 @@ const authKeyResponseSchema = z.object({
 });
 
 type AuthKeyResponse = z.infer<typeof authKeyResponseSchema>;
-export type CloudTunnelProvisionBilling = NonNullable<AuthKeyResponse["billing"]>;
+export type CloudTunnelProvisionBilling = NonNullable<
+  AuthKeyResponse["billing"]
+>;
 
 interface CloudFetchInit {
   method: "POST";
@@ -134,7 +136,9 @@ export class CloudTailscaleService extends Service implements ITunnelService {
     options: { accountId?: string } = {},
   ): Promise<string | undefined> {
     if (this.startInFlight) {
-      elizaLogger.warn("[CloudTailscaleService] tunnel start already in progress");
+      elizaLogger.warn(
+        "[CloudTailscaleService] tunnel start already in progress",
+      );
       return this.startInFlight;
     }
     this.startInFlight = this.startTunnelInternal(port, options);
@@ -312,8 +316,14 @@ export class CloudTailscaleService extends Service implements ITunnelService {
 
   private async cleanupAfterFailedStart(error: unknown): Promise<void> {
     if (this.joinedTailnet) {
-      await this.runBestEffort("serve reset after failed start", ["serve", "reset"]);
-      await this.runBestEffort("funnel reset after failed start", ["funnel", "reset"]);
+      await this.runBestEffort("serve reset after failed start", [
+        "serve",
+        "reset",
+      ]);
+      await this.runBestEffort("funnel reset after failed start", [
+        "funnel",
+        "reset",
+      ]);
       await this.runBestEffort("logout after failed start", ["logout"]);
     }
     this.cleanup();

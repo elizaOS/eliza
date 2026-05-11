@@ -24,10 +24,12 @@ from .db import (
     insert_run_start,
     next_attempt_for_signature,
     recover_stale_running_runs,
+    replace_run_trajectories,
     update_run_result,
 )
 from .env_utils import git_head, load_env_file, merged_environment, safe_version_from_package_json
 from .leaderboard import delta_to_high_score
+from .analyze_trajectory import summarize as summarize_trajectory
 from .types import (
     BenchmarkAdapter,
     BenchmarkRunOutcome,
@@ -92,6 +94,19 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
     merged_extra = dict(adapter.default_extra_config)
     merged_extra.update(per_benchmark_extra)
     merged_extra.update(request_extra)
+    explicit_agent = "agent" in per_benchmark_extra or "agent" in request_extra
+    agent_label = request.agent.strip()
+    if agent_label and not explicit_agent and agent_label != "compare":
+        merged_extra["agent"] = agent_label
+    if (
+        adapter.id == "trust"
+        and agent_label.lower() in {"eliza", "hermes", "openclaw"}
+        and "handler" not in per_benchmark_extra
+        and "handler" not in request_extra
+    ):
+        merged_extra["handler"] = "eliza"
+    if agent_label:
+        merged_extra.setdefault("harness", agent_label)
     return RunRequest(
         benchmarks=request.benchmarks,
         agent=request.agent,
@@ -106,6 +121,14 @@ def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunReq
 
 def _result_subdir(run_root: Path, adapter: BenchmarkAdapter, run_id: str) -> Path:
     return run_root / f"{_sanitize_name(adapter.directory)}__{_sanitize_name(adapter.id)}" / run_id
+
+
+def _provider_model_name(provider: str, model: str) -> str:
+    provider = provider.strip().lower()
+    model = model.strip()
+    if provider == "cerebras" and model.startswith("openai/"):
+        return model.split("/", 1)[1]
+    return model
 
 
 def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
@@ -126,9 +149,16 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
         for candidate in sorted(plugins_root.glob("*/python")):
             if candidate.is_dir():
                 plugin_python_paths.append(str(candidate))
+    benchmarks_root = workspace_root / "benchmarks"
+    adapter_python_paths = [
+        str((benchmarks_root / "eliza-adapter").resolve()),
+        str((benchmarks_root / "hermes-adapter").resolve()),
+        str((benchmarks_root / "openclaw-adapter").resolve()),
+    ]
     workspace_python = [
         str(workspace_root),
         str(workspace_root / "eliza" / "packages" / "python"),
+        *adapter_python_paths,
         *plugin_python_paths,
     ]
     existing_pythonpath = env.get("PYTHONPATH", "")
@@ -137,17 +167,31 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
         if existing_pythonpath
         else os.pathsep.join(workspace_python)
     )
-    env["BENCHMARK_MODEL_PROVIDER"] = request.provider
-    env["BENCHMARK_MODEL_NAME"] = request.model
-    env["MODEL_NAME"] = request.model
-    env["ANTHROPIC_MODEL"] = request.model
-    env["OPENAI_LARGE_MODEL"] = request.model
-    env["OPENAI_SMALL_MODEL"] = request.model
-    env["GROQ_LARGE_MODEL"] = request.model
-    env["GROQ_SMALL_MODEL"] = request.model
-    env["OPENROUTER_LARGE_MODEL"] = request.model
-    env["OPENROUTER_SMALL_MODEL"] = request.model
     provider = request.provider.strip().lower()
+    model_name = _provider_model_name(provider, request.model)
+    harness = request.agent.strip().lower() or "eliza"
+    env["BENCHMARK_MODEL_PROVIDER"] = provider or request.provider
+    env["BENCHMARK_MODEL_NAME"] = model_name
+    env["BENCHMARK_HARNESS"] = harness
+    env["ELIZA_BENCH_HARNESS"] = harness
+    env["BENCHMARK_AGENT"] = harness
+    env["MILADY_PROVIDER"] = provider or request.provider
+    env["MODEL_NAME"] = model_name
+    env["OPENAI_MODEL"] = model_name
+    env["ANTHROPIC_MODEL"] = model_name
+    env["OPENAI_LARGE_MODEL"] = model_name
+    env["OPENAI_SMALL_MODEL"] = model_name
+    env["GROQ_LARGE_MODEL"] = model_name
+    env["GROQ_SMALL_MODEL"] = model_name
+    env["OPENROUTER_LARGE_MODEL"] = model_name
+    env["OPENROUTER_SMALL_MODEL"] = model_name
+    env["CEREBRAS_MODEL"] = model_name
+    env["CEREBRAS_LARGE_MODEL"] = model_name
+    env["CEREBRAS_SMALL_MODEL"] = model_name
+    env.setdefault("ELIZA_ACTION_COMPACTION", "true")
+    env.setdefault("ELIZA_CONVERSATION_COMPACTOR", "structured-state")
+    env.setdefault("MAX_CONVERSATION_TOKENS", "120000")
+    env.setdefault("BENCHMARK_CAPTURE_TRAJECTORIES", "1")
     if provider in PROVIDER_DUMMY_KEY:
         provider_key = PROVIDER_KEY_ENV.get(provider)
         if provider_key and not env.get(provider_key):
@@ -168,6 +212,8 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
             env["OPENAI_BASE_URL"] = env["VLLM_BASE_URL"]
         else:
             env["OPENAI_BASE_URL"] = OPENAI_COMPAT_BASE_URL[provider]
+        if provider == "cerebras":
+            env["CEREBRAS_BASE_URL"] = env["OPENAI_BASE_URL"]
     return env
 
 
@@ -215,6 +261,120 @@ def _ensure_viewer_snapshot(
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
     return out
+
+
+def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    summary, records = summarize_trajectory(run_root)
+    trajectory_summary = {
+        "files": summary.files,
+        "turns": summary.turns,
+        "prompt_chars": summary.prompt_chars,
+        "repeated_prefixes": [
+            {"snippet": snippet, "count": count}
+            for snippet, count in summary.repeated_prefixes
+        ],
+    }
+    token_metrics = {
+        "llm_call_count": summary.turns,
+        "prompt_tokens": summary.prompt_tokens,
+        "completion_tokens": summary.completion_tokens,
+        "total_tokens": summary.prompt_tokens + summary.completion_tokens,
+        "avg_prompt_tokens": (summary.prompt_tokens / summary.turns) if summary.turns else 0.0,
+        "avg_completion_tokens": (summary.completion_tokens / summary.turns) if summary.turns else 0.0,
+    }
+    cache_metrics = {
+        "cache_read_input_tokens": summary.cached_tokens,
+        "cache_creation_input_tokens": summary.cache_creation_tokens,
+        "turns_with_cached_field": summary.turns_with_cached_field,
+        "cache_hit_ratio": summary.cache_hit_ratio,
+    }
+    throughput = (summary.turns / duration_seconds) if duration_seconds > 0 else None
+    performance_metrics = {
+        "duration_seconds": duration_seconds,
+        "mean_latency_ms": summary.mean_latency_ms,
+        "p95_latency_ms": summary.p95_latency_ms,
+        "throughput_per_second": throughput,
+    }
+    trajectory_rows = [
+        {
+            "trajectory_file": record.file,
+            "turn_index": record.index,
+            "prompt_tokens": record.tokens.prompt,
+            "completion_tokens": record.tokens.completion,
+            "cached_tokens": record.tokens.cached,
+            "cache_creation_tokens": record.tokens.cache_creation,
+            "latency_ms": record.latency_ms,
+            "prompt_chars": len(record.prompt_text),
+        }
+        for record in records
+    ]
+    return trajectory_summary, token_metrics, cache_metrics, performance_metrics, trajectory_rows
+
+
+def _write_latest_result_snapshot(
+    output_root: Path,
+    *,
+    adapter: BenchmarkAdapter,
+    request: RunRequest,
+    run_group_id: str,
+    run_id: str,
+    status: str,
+    score: float | None,
+    unit: str | None,
+    higher_is_better: bool | None,
+    metrics: dict[str, Any],
+    trajectory_summary: dict[str, Any] | None = None,
+    token_metrics: dict[str, Any] | None = None,
+    cache_metrics: dict[str, Any] | None = None,
+    performance_metrics: dict[str, Any] | None = None,
+    result_json_path: str | None = None,
+    artifacts: list[str] | None = None,
+    error: str | None = None,
+) -> Path:
+    latest_dir = output_root / "latest"
+    latest_dir.mkdir(parents=True, exist_ok=True)
+    snapshot_path = latest_dir / f"{_sanitize_name(adapter.id)}__{_sanitize_name(request.agent)}.json"
+    payload = {
+        "updated_at": _utc_now(),
+        "benchmark_id": adapter.id,
+        "benchmark_directory": adapter.directory,
+        "run_group_id": run_group_id,
+        "run_id": run_id,
+        "status": status,
+        "agent": request.agent,
+        "provider": request.provider,
+        "model": request.model,
+        "score": score,
+        "unit": unit,
+        "higher_is_better": higher_is_better,
+        "metrics": metrics,
+        "trajectory_summary": trajectory_summary or {},
+        "token_metrics": token_metrics or {},
+        "cache_metrics": cache_metrics or {},
+        "performance_metrics": performance_metrics or {},
+        "result_json_path": result_json_path,
+        "artifacts": artifacts or [],
+        "error": error,
+    }
+    snapshot_path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
+
+    index: dict[str, Any] = {"updated_at": _utc_now(), "latest": {}}
+    for path in sorted(latest_dir.glob("*.json")):
+        if path.name == "index.json":
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        key = f"{data.get('benchmark_id')}::{data.get('agent')}"
+        index["latest"][key] = {
+            "path": str(path),
+            "run_id": data.get("run_id"),
+            "status": data.get("status"),
+            "updated_at": data.get("updated_at"),
+        }
+    (latest_dir / "index.json").write_text(json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
+    return snapshot_path
 
 
 def run_benchmarks(
@@ -348,6 +508,19 @@ def run_benchmarks(
                     cwd=adapter.cwd,
                 )
                 outcomes.append(outcome)
+                _write_latest_result_snapshot(
+                    output_root,
+                    adapter=adapter,
+                    request=effective_request,
+                    run_group_id=run_group_id,
+                    run_id=run_id,
+                    status="skipped",
+                    score=None,
+                    unit=None,
+                    higher_is_better=None,
+                    metrics=outcome.metrics,
+                    error=None,
+                )
                 continue
 
         if request.rerun_failed and not request.force:
@@ -431,6 +604,19 @@ def run_benchmarks(
                     cwd=adapter.cwd,
                 )
                 outcomes.append(outcome)
+                _write_latest_result_snapshot(
+                    output_root,
+                    adapter=adapter,
+                    request=effective_request,
+                    run_group_id=run_group_id,
+                    run_id=run_id,
+                    status="skipped",
+                    score=None,
+                    unit=None,
+                    higher_is_better=None,
+                    metrics=outcome.metrics,
+                    error=None,
+                )
                 continue
 
         required_env = _required_env_for_request(adapter, effective_request)
@@ -506,6 +692,19 @@ def run_benchmarks(
                 cwd=adapter.cwd,
             )
             outcomes.append(outcome)
+            _write_latest_result_snapshot(
+                output_root,
+                adapter=adapter,
+                request=effective_request,
+                run_group_id=run_group_id,
+                run_id=run_id,
+                status="incompatible",
+                score=None,
+                unit=None,
+                higher_is_better=None,
+                metrics=outcome.metrics,
+                error=outcome.error,
+            )
             continue
 
         attempt = next_attempt_for_signature(conn, signature)
@@ -632,6 +831,18 @@ def run_benchmarks(
                 metrics["stale_result_path"] = stale_result_path
         metrics["return_code"] = effective_returncode
 
+        (
+            trajectory_summary,
+            token_metrics,
+            cache_metrics,
+            performance_metrics,
+            trajectory_rows,
+        ) = _collect_run_trajectory_metrics(bench_run_root, duration_seconds=duration)
+        metrics["trajectory_summary"] = trajectory_summary
+        metrics["token_metrics"] = token_metrics
+        metrics["cache_metrics"] = cache_metrics
+        metrics["performance_metrics"] = performance_metrics
+
         high_label, high_value, delta = delta_to_high_score(adapter.id, score)
 
         update_run_result(
@@ -650,33 +861,57 @@ def run_benchmarks(
             high_score_label=high_label,
             high_score_value=high_value,
             delta_to_high_score=delta,
+            trajectory_summary=trajectory_summary,
+            token_metrics=token_metrics,
+            cache_metrics=cache_metrics,
+            performance_metrics=performance_metrics,
         )
+        replace_run_trajectories(conn, run_id=run_id, trajectories=trajectory_rows)
 
-        outcomes.append(
-            BenchmarkRunOutcome(
+        artifacts = [str(bench_output_root)]
+        outcome = BenchmarkRunOutcome(
+            benchmark_id=adapter.id,
+            run_id=run_id,
+            status=status,
+            attempt=attempt,
+            score=score,
+            unit=unit,
+            higher_is_better=higher_is_better,
+            metrics=metrics,
+            error=error,
+            result_json_path=str(result_path) if result_path else None,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            artifacts=artifacts,
+            comparison=LeaderboardComparison(
                 benchmark_id=adapter.id,
-                run_id=run_id,
-                status=status,
-                attempt=attempt,
-                score=score,
-                unit=unit,
-                higher_is_better=higher_is_better,
-                metrics=metrics,
-                error=error,
-                result_json_path=str(result_path) if result_path else None,
-                stdout_path=str(stdout_path),
-                stderr_path=str(stderr_path),
-                artifacts=[str(bench_output_root)],
-                comparison=LeaderboardComparison(
-                    benchmark_id=adapter.id,
-                    high_score_label=high_label,
-                    high_score_value=high_value,
-                    delta_to_high_score=delta,
-                ),
-                duration_seconds=duration,
-                command=command,
-                cwd=adapter.cwd,
-            )
+                high_score_label=high_label,
+                high_score_value=high_value,
+                delta_to_high_score=delta,
+            ),
+            duration_seconds=duration,
+            command=command,
+            cwd=adapter.cwd,
+        )
+        outcomes.append(outcome)
+        _write_latest_result_snapshot(
+            output_root,
+            adapter=adapter,
+            request=effective_request,
+            run_group_id=run_group_id,
+            run_id=run_id,
+            status=status,
+            score=score,
+            unit=unit,
+            higher_is_better=higher_is_better,
+            metrics=metrics,
+            trajectory_summary=trajectory_summary,
+            token_metrics=token_metrics,
+            cache_metrics=cache_metrics,
+            performance_metrics=performance_metrics,
+            result_json_path=str(result_path) if result_path else None,
+            artifacts=artifacts,
+            error=error,
         )
 
     finish_run_group(conn, run_group_id=run_group_id, finished_at=_utc_now())

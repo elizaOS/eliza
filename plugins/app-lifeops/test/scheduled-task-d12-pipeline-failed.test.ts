@@ -29,6 +29,7 @@ import {
   ChannelKeyError,
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
 } from "../src/lifeops/scheduled-task/runner.js";
 import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.js";
 import type {
@@ -69,6 +70,7 @@ function makeRunner(opts?: { channelKeys?: () => ReadonlySet<string> }) {
       globalPause,
       activity,
       subjectStore,
+      dispatcher: TestNoopScheduledTaskDispatcher,
       channelKeys: opts?.channelKeys,
       newTaskId: () => {
         counter += 1;

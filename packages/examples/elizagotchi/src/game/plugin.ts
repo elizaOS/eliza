@@ -471,6 +471,7 @@ async function runGameMutation(
     data: {
       actionName: "ELIZAGOTCHI",
       legacyActionName: actionNameForOp(action),
+      action,
       op: action,
       petState: result.newState,
     },
@@ -536,7 +537,7 @@ const elizagotchiAction: ElizaAction = {
       return {
         success: true,
         text: getHelp(),
-        data: { actionName: "ELIZAGOTCHI", op: "help" },
+        data: { actionName: "ELIZAGOTCHI", action: "help", op: "help" },
       };
     }
 
@@ -552,6 +553,7 @@ const elizagotchiAction: ElizaAction = {
         data: {
           actionName: "ELIZAGOTCHI",
           legacyActionName: "ELIZAGOTCHI_TICK",
+          action: op,
           op,
         },
       };
@@ -573,6 +575,7 @@ const elizagotchiAction: ElizaAction = {
         data: {
           actionName: "ELIZAGOTCHI",
           legacyActionName: "ELIZAGOTCHI_STATUS",
+          action: op,
           op,
           petState: updated,
         },
@@ -589,6 +592,7 @@ const elizagotchiAction: ElizaAction = {
         data: {
           actionName: "ELIZAGOTCHI",
           legacyActionName: "ELIZAGOTCHI_HELP",
+          action: op,
           op,
         },
       };
@@ -610,6 +614,7 @@ const elizagotchiAction: ElizaAction = {
         data: {
           actionName: "ELIZAGOTCHI",
           legacyActionName: "ELIZAGOTCHI_RESET",
+          action: op,
           op,
           petState: fresh,
         },
@@ -630,6 +635,7 @@ const elizagotchiAction: ElizaAction = {
         data: {
           actionName: "ELIZAGOTCHI",
           legacyActionName: "ELIZAGOTCHI_EXPORT",
+          action: op,
           op,
           saveData,
         },
@@ -676,6 +682,7 @@ const elizagotchiAction: ElizaAction = {
           data: {
             actionName: "ELIZAGOTCHI",
             legacyActionName: "ELIZAGOTCHI_IMPORT",
+            action: op,
             op,
             petState: restored,
           },
@@ -705,6 +712,7 @@ const elizagotchiAction: ElizaAction = {
         data: {
           actionName: "ELIZAGOTCHI",
           legacyActionName: "ELIZAGOTCHI_NAME",
+          action: op,
           op,
           petState: updated,
         },

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
-import { getSecretAction } from "./get-secret";
+import { getSecretHandler } from "./get-secret";
 
 interface ServiceOverrides {
 	get?: (key: string) => Promise<string | null>;
@@ -32,9 +32,9 @@ function createMessage() {
 	};
 }
 
-describe("GET_SECRET", () => {
+describe("SECRETS action=get", () => {
 	test("returns the masked value by default", async () => {
-		const result = await getSecretAction.handler(
+		const result = await getSecretHandler(
 			createRuntime() as never,
 			createMessage() as never,
 			undefined,
@@ -50,7 +50,7 @@ describe("GET_SECRET", () => {
 	});
 
 	test("reports null value when the secret is missing", async () => {
-		const result = await getSecretAction.handler(
+		const result = await getSecretHandler(
 			createRuntime({ get: async () => null }) as never,
 			createMessage() as never,
 			undefined,
@@ -65,7 +65,7 @@ describe("GET_SECRET", () => {
 	});
 
 	test("fails when key parameter is missing", async () => {
-		const result = await getSecretAction.handler(
+		const result = await getSecretHandler(
 			createRuntime() as never,
 			createMessage() as never,
 			undefined,

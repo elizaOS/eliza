@@ -14,6 +14,14 @@ vi.mock("../../platform/init", () => ({
   canRunLocal: () => canRunLocalMock(),
 }));
 
+import type { AgentStatus } from "../../api/client-types-core";
+import { restartAgentAfterOnboarding } from "../../state/onboarding-restart";
+import {
+  hasPartialOnboardingConnectionConfig,
+  inferOnboardingResumeStep,
+} from "../../state/onboarding-resume";
+import type { OnboardingStep } from "../../state/types";
+import { ONBOARDING_STEPS } from "../../state/types";
 import {
   canRevertOnboardingTo,
   getFlaminaTopicForOnboardingStep,
@@ -26,14 +34,6 @@ import {
   shouldSkipFeaturesStep,
   shouldUseCloudOnboardingFastTrack,
 } from "../flow";
-import {
-  inferOnboardingResumeStep,
-  hasPartialOnboardingConnectionConfig,
-} from "../../state/onboarding-resume";
-import { restartAgentAfterOnboarding } from "../../state/onboarding-restart";
-import type { AgentStatus } from "../../api/client-types-core";
-import type { OnboardingStep } from "../../state/types";
-import { ONBOARDING_STEPS } from "../../state/types";
 
 const FAKE_RUNNING_STATUS: AgentStatus = {
   state: "running",
@@ -44,7 +44,11 @@ const FAKE_RUNNING_STATUS: AgentStatus = {
 };
 
 const STEP_IDS = ONBOARDING_STEPS.map((s) => s.id);
-const EXPECTED_ORDER: OnboardingStep[] = ["deployment", "providers", "features"];
+const EXPECTED_ORDER: OnboardingStep[] = [
+  "deployment",
+  "providers",
+  "features",
+];
 
 const INVALID_STEPS = [
   "",
@@ -99,12 +103,11 @@ describe("getStepOrder", () => {
 });
 
 describe("getOnboardingStepIndex", () => {
-  it.each(EXPECTED_ORDER.map((id, idx) => [id, idx] as const))(
-    "%s -> index %i",
-    (id, idx) => {
-      expect(getOnboardingStepIndex(id)).toBe(idx);
-    },
-  );
+  it.each(
+    EXPECTED_ORDER.map((id, idx) => [id, idx] as const),
+  )("%s -> index %i", (id, idx) => {
+    expect(getOnboardingStepIndex(id)).toBe(idx);
+  });
 
   it.each(INVALID_STEPS)("returns -1 for invalid id %j", (bad) => {
     // @ts-expect-error — intentionally passing an out-of-domain string to
@@ -189,10 +192,8 @@ describe("next/prev round trip", () => {
 
 describe("canRevertOnboardingTo (sidebar jump rules)", () => {
   it("strictly earlier targets are allowed (full cross product)", () => {
-    for (let curIdx = 0; curIdx < EXPECTED_ORDER.length; curIdx += 1) {
-      for (let tgtIdx = 0; tgtIdx < EXPECTED_ORDER.length; tgtIdx += 1) {
-        const current = EXPECTED_ORDER[curIdx]!;
-        const target = EXPECTED_ORDER[tgtIdx]!;
+    for (const [curIdx, current] of EXPECTED_ORDER.entries()) {
+      for (const [tgtIdx, target] of EXPECTED_ORDER.entries()) {
         const allowed = canRevertOnboardingTo({ current, target });
         expect(allowed).toBe(tgtIdx < curIdx);
       }
@@ -318,9 +319,9 @@ describe("shouldSkipConnectionStepsForCloudProvisionedContainer", () => {
 describe("shouldSkipFeaturesStep", () => {
   it("is always false (current product behaviour: features always shown)", () => {
     for (const target of ["local", "remote", "elizacloud", ""]) {
-      expect(
-        shouldSkipFeaturesStep({ onboardingServerTarget: target }),
-      ).toBe(false);
+      expect(shouldSkipFeaturesStep({ onboardingServerTarget: target })).toBe(
+        false,
+      );
     }
   });
 });
@@ -458,9 +459,9 @@ describe("inferOnboardingResumeStep (resume from persisted state)", () => {
   });
 
   it("no persisted step + empty config object -> deployment", () => {
-    expect(
-      inferOnboardingResumeStep({ persistedStep: null, config: {} }),
-    ).toBe("deployment");
+    expect(inferOnboardingResumeStep({ persistedStep: null, config: {} })).toBe(
+      "deployment",
+    );
   });
 
   it("partial connection config (non-local runtime) -> providers", () => {
@@ -504,9 +505,9 @@ describe("inferOnboardingResumeStep (resume from persisted state)", () => {
 
 describe("restartAgentAfterOnboarding", () => {
   it("delegates to client.restartAndWait with the provided timeout", async () => {
-    const restartAndWait = vi.fn<
-      (maxWaitMs?: number) => Promise<AgentStatus>
-    >(async () => FAKE_RUNNING_STATUS);
+    const restartAndWait = vi.fn<(maxWaitMs?: number) => Promise<AgentStatus>>(
+      async () => FAKE_RUNNING_STATUS,
+    );
     const result = await restartAgentAfterOnboarding({ restartAndWait }, 5000);
     expect(restartAndWait).toHaveBeenCalledTimes(1);
     expect(restartAndWait).toHaveBeenCalledWith(5000);
@@ -514,9 +515,9 @@ describe("restartAgentAfterOnboarding", () => {
   });
 
   it("uses the documented 120s default when no timeout is supplied", async () => {
-    const restartAndWait = vi.fn<
-      (maxWaitMs?: number) => Promise<AgentStatus>
-    >(async () => FAKE_RUNNING_STATUS);
+    const restartAndWait = vi.fn<(maxWaitMs?: number) => Promise<AgentStatus>>(
+      async () => FAKE_RUNNING_STATUS,
+    );
     await restartAgentAfterOnboarding({ restartAndWait });
     expect(restartAndWait).toHaveBeenCalledWith(120_000);
   });

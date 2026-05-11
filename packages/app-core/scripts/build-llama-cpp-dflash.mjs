@@ -72,6 +72,12 @@ const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/milady-ai/llama.cpp.git";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.4.0-milady";
+const LEGACY_DFLASH_DRAFTER_REMOTE =
+  process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REMOTE ||
+  "https://github.com/spiritbuun/buun-llama-cpp.git";
+const LEGACY_DFLASH_DRAFTER_REF =
+  process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REF ||
+  "6575873e9c4872709d374d854b583cfaa270caff";
 // Minimum commit on milady/integration that contains the DFlash CLI
 // surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
 // Also satisfied by the W4-B v0.4.0-milady CUDA kernel additions.
@@ -170,6 +176,11 @@ function stateDir() {
   return (
     process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
   );
+}
+
+function envFlag(name) {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function run(cmd, args, opts = {}) {
@@ -1041,6 +1052,13 @@ function parseArgs(argv) {
           "  --out-dir <path>       Override the output directory (single target).",
           "  --cache-dir <path>     Override the source checkout cache.",
           "  --jobs N | -j N        Parallel build jobs.",
+          "",
+          "Environment:",
+          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=0",
+          "                         For darwin-arm64-metal only, opt out of the",
+          "                         automatic spiritbuun/buun-llama-cpp runtime",
+          "                         bridge that can load general.architecture=dflash-draft.",
+          "                         Bridge CAPABILITIES.json is diagnostic and publishable=false.",
         ].join("\n"),
       );
       process.exit(0);
@@ -1181,6 +1199,307 @@ function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
     tryRun("install_name_tool", ["-delete_rpath", rpath, file]);
     tryRun("install_name_tool", ["-add_rpath", rpath, file]);
   }
+}
+
+function useLegacyDflashDrafterRuntime(target) {
+  const { platform, arch, backend, fused } = parseTarget(target);
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME;
+  const enabled =
+    explicit === undefined
+      ? true
+      : envFlag("ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME");
+  return (
+    enabled &&
+    platform === "darwin" &&
+    arch === "arm64" &&
+    backend === "metal" &&
+    !fused
+  );
+}
+
+function legacyDflashDrafterSourceDir() {
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_SOURCE_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-dflash",
+    "buun-llama-cpp-drafter-runtime",
+  );
+}
+
+function legacyDflashDrafterBuildDir(sourceDir) {
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_BUILD_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(sourceDir, "build", "metal");
+}
+
+function legacyDflashDrafterBinDir() {
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_BIN_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-dflash",
+    "buun-llama-cpp",
+    "build",
+    "metal",
+    "bin",
+  );
+}
+
+function hasLegacyDflashDrafterBinaries(binDir) {
+  return [
+    "llama-server",
+    "llama-cli",
+    "llama-speculative-simple",
+  ].every((name) => fs.existsSync(path.join(binDir, name)));
+}
+
+function sourceContainsDflashDraft(root) {
+  const archPath = path.join(root, "src", "llama-arch.cpp");
+  const specPath = path.join(root, "common", "speculative.cpp");
+  return (
+    fs.existsSync(path.join(root, "src", "models", "dflash_draft.cpp")) &&
+    fs.existsSync(archPath) &&
+    fs.existsSync(specPath) &&
+    fs.readFileSync(archPath, "utf8").includes('"dflash-draft"') &&
+    fs
+      .readFileSync(specPath, "utf8")
+      .includes("common_speculative_state_dflash")
+  );
+}
+
+function ensureLegacyDflashDrafterCheckout(sourceDir) {
+  if (fs.existsSync(path.join(sourceDir, ".git"))) {
+    run("git", ["fetch", "--depth", "1", "origin", LEGACY_DFLASH_DRAFTER_REF], {
+      cwd: sourceDir,
+    });
+    run("git", ["checkout", "--detach", "FETCH_HEAD"], { cwd: sourceDir });
+  } else {
+    fs.mkdirSync(path.dirname(sourceDir), { recursive: true });
+    run("git", [
+      "clone",
+      "--filter=blob:none",
+      LEGACY_DFLASH_DRAFTER_REMOTE,
+      sourceDir,
+    ]);
+    run("git", ["fetch", "--depth", "1", "origin", LEGACY_DFLASH_DRAFTER_REF], {
+      cwd: sourceDir,
+    });
+    run("git", ["checkout", "--detach", "FETCH_HEAD"], { cwd: sourceDir });
+  }
+
+  if (!sourceContainsDflashDraft(sourceDir)) {
+    throw new Error(
+      `[dflash-build] ${LEGACY_DFLASH_DRAFTER_REMOTE}@${LEGACY_DFLASH_DRAFTER_REF} ` +
+        `did not expose the dflash-draft architecture needed by the local drafter GGUF`,
+    );
+  }
+  return sourceDir;
+}
+
+function resolveLegacyDflashDrafterBuiltBinDir(buildDir) {
+  const candidates = [
+    path.join(buildDir, "bin", "Release"),
+    path.join(buildDir, "bin", "Debug"),
+    path.join(buildDir, "bin"),
+  ];
+  return candidates.find(hasLegacyDflashDrafterBinaries) ?? null;
+}
+
+function buildLegacyDflashDrafterRuntime({ args }) {
+  const sourceDir = ensureLegacyDflashDrafterCheckout(
+    legacyDflashDrafterSourceDir(),
+  );
+  const buildDir = legacyDflashDrafterBuildDir(sourceDir);
+  fs.mkdirSync(buildDir, { recursive: true });
+  run(
+    "cmake",
+    [
+      "-S",
+      sourceDir,
+      "-B",
+      buildDir,
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DLLAMA_BUILD_EXAMPLES=ON",
+      "-DLLAMA_BUILD_SERVER=ON",
+      "-DGGML_METAL=ON",
+      "-DGGML_METAL_EMBED_LIBRARY=ON",
+    ],
+    { cwd: sourceDir },
+  );
+  run(
+    "cmake",
+    [
+      "--build",
+      buildDir,
+      "--target",
+      "llama-server",
+      "llama-cli",
+      "llama-speculative-simple",
+      "-j",
+      String(args.jobs),
+    ],
+    { cwd: sourceDir },
+  );
+  const binDir = resolveLegacyDflashDrafterBuiltBinDir(buildDir);
+  if (!binDir) {
+    throw new Error(
+      `[dflash-build] legacy DFlash drafter runtime build did not produce ` +
+        `llama-server, llama-cli, and llama-speculative-simple under ${buildDir}`,
+    );
+  }
+  return {
+    sourceDir,
+    buildDir,
+    binDir,
+    commit: run("git", ["rev-parse", "HEAD"], {
+      cwd: sourceDir,
+      capture: true,
+    }),
+  };
+}
+
+function ensureLegacyDflashDrafterRuntime({ args }) {
+  const binDir = legacyDflashDrafterBinDir();
+  if (hasLegacyDflashDrafterBinaries(binDir)) {
+    const sourceDir = fs.existsSync(
+      path.join(path.resolve(binDir, "..", "..", ".."), ".git"),
+    )
+      ? path.resolve(binDir, "..", "..", "..")
+      : null;
+    return {
+      binDir,
+      sourceDir,
+      buildDir: path.resolve(binDir, ".."),
+      commit: sourceDir
+        ? run("git", ["rev-parse", "HEAD"], {
+            cwd: sourceDir,
+            capture: true,
+          })
+        : "",
+      reusedPrebuilt: true,
+    };
+  }
+  return { ...buildLegacyDflashDrafterRuntime({ args }), reusedPrebuilt: false };
+}
+
+function writeLegacyDflashDrafterCapabilities({
+  outDir,
+  target,
+  runtime,
+  installedBaseNames,
+}) {
+  const { platform, arch, backend } = parseTarget(target);
+  const kernels = {
+    dflash: true,
+    turbo3: false,
+    turbo4: false,
+    turbo3_tcq: false,
+    qjl_full: false,
+    polarquant: false,
+    lookahead: true,
+    ngramDraft: true,
+  };
+  const capabilities = {
+    target,
+    platform,
+    arch,
+    backend,
+    fused: false,
+    builtAt: new Date().toISOString(),
+    fork: "spiritbuun/buun-llama-cpp",
+    forkRemote: LEGACY_DFLASH_DRAFTER_REMOTE,
+    forkRef: LEGACY_DFLASH_DRAFTER_REF,
+    forkCommit: runtime.commit || null,
+    kernels,
+    publishable: false,
+    missingRequiredKernels: requiredKernelsMissing(target, kernels),
+    smokeOnlyIncompleteAllowed: true,
+    shippedKernels: null,
+    runtimeDispatch: {
+      sourceOfTruth:
+        "temporary Darwin Metal drafter runtime for loading general.architecture=dflash-draft",
+      status: "dflash-draft-loader-only",
+      requiredSmoke:
+        "GGML_METAL_NO_RESIDENCY=1 node packages/inference/verify/dflash_drafter_runtime_smoke.mjs --allow-devices --ngl 99 --ngld 99 --spec-type dflash --temp 0 --tree-budget 0",
+      blocker:
+        "Milady v0.4.0 DFlash CLI surface does not register the dflash-draft model architecture.",
+      notes:
+        "The local repaired drafter also requires tokenizer.ggml.merges copied from the target GGUF.",
+    },
+    binaries: installedBaseNames,
+    dflashDrafterRuntime: {
+      sourceBinDir: runtime.binDir,
+      sourceDir: runtime.sourceDir,
+      buildDir: runtime.buildDir,
+      reusedPrebuilt: Boolean(runtime.reusedPrebuilt),
+      installedAt: new Date().toISOString(),
+      nonPublishableReason:
+        "runtime-repair path for local DFlash drafter verification only; not a full Eliza-1 kernel bundle",
+    },
+  };
+  fs.writeFileSync(
+    path.join(outDir, "CAPABILITIES.json"),
+    `${JSON.stringify(capabilities, null, 2)}\n`,
+  );
+  return capabilities;
+}
+
+function installLegacyDflashDrafterRuntime({ target, outDir, args }) {
+  const runtime = ensureLegacyDflashDrafterRuntime({ args });
+  const executableBaseNames = [
+    "llama-server",
+    "llama-cli",
+    "llama-speculative-simple",
+  ];
+  const installedNames = [];
+  const installedBaseNames = [];
+
+  fs.mkdirSync(outDir, { recursive: true });
+  for (const name of fs.readdirSync(runtime.binDir)) {
+    const base = name.replace(/\.(exe)$/i, "");
+    if (
+      executableBaseNames.includes(base) ||
+      isRuntimeLibrary(name) ||
+      name === "default.metallib"
+    ) {
+      const dst = path.join(outDir, name);
+      fs.rmSync(dst, { force: true });
+      fs.cpSync(path.join(runtime.binDir, name), dst, {
+        force: true,
+        verbatimSymlinks: true,
+      });
+      installedNames.push(name);
+      if (executableBaseNames.includes(base)) {
+        fs.chmodSync(dst, 0o755);
+        installedBaseNames.push(base);
+      }
+    }
+  }
+
+  const missing = executableBaseNames.filter(
+    (name) => !fs.existsSync(path.join(outDir, name)),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `[dflash-build] legacy DFlash drafter runtime install missing: ${missing.join(", ")}`,
+    );
+  }
+
+  makeDarwinInstallSelfContained(outDir, installedNames, runtime.binDir);
+  const capabilities = writeLegacyDflashDrafterCapabilities({
+    outDir,
+    target,
+    runtime,
+    installedBaseNames,
+  });
+  console.log(
+    `[dflash-build] installed non-publishable DFlash drafter runtime -> ${outDir}`,
+  );
+  return capabilities;
 }
 
 // Probe a freshly-built llama-server for kernel availability.
@@ -1891,6 +2210,18 @@ function buildTarget({ target, args, ctx }) {
   const { platform, backend, fused } = parseTarget(target);
   const outDir = targetOutDir(target, args.outDirOverride);
   const buildDir = path.join(args.cacheDir, "build", target);
+  if (useLegacyDflashDrafterRuntime(target)) {
+    if (args.dryRun) {
+      console.log(
+        `[dflash-build] (dry-run) target=${target} legacy-dflash-drafter-runtime=true`,
+      );
+      console.log(
+        `  install ${legacyDflashDrafterBinDir()} -> ${outDir}`,
+      );
+      return null;
+    }
+    return installLegacyDflashDrafterRuntime({ target, outDir, args });
+  }
   const flags = cmakeFlagsForTarget(target, ctx);
 
   // Fused targets graft omnivoice.cpp's `src/` + `tools/` into the
@@ -2212,6 +2543,10 @@ function build(args) {
     }
   }
 
+  const legacyDrafterRuntimeOnly = targets.every((target) =>
+    useLegacyDflashDrafterRuntime(target),
+  );
+
   if (!args.dryRun) {
     if (args.targets && args.targets.length > 0 && !args.all) {
       for (const target of targets) {
@@ -2223,7 +2558,9 @@ function build(args) {
         }
       }
     }
-    ctx.forkCommit = ensureCheckout(args.cacheDir, args.ref);
+    ctx.forkCommit = legacyDrafterRuntimeOnly
+      ? ""
+      : ensureCheckout(args.cacheDir, args.ref);
   } else if (fs.existsSync(path.join(args.cacheDir, ".git"))) {
     ctx.forkCommit = run("git", ["rev-parse", "HEAD"], {
       cwd: args.cacheDir,
@@ -2292,8 +2629,16 @@ function build(args) {
 try {
   build(parseArgs(process.argv.slice(2)));
 } catch (err) {
+  const detail =
+    process.env.ELIZA_DFLASH_DEBUG_STACK === "1" &&
+    err instanceof Error &&
+    err.stack
+      ? err.stack
+      : err instanceof Error
+        ? err.message
+        : String(err);
   console.error(
-    `[dflash-build] ${err instanceof Error ? err.message : String(err)}`,
+    `[dflash-build] ${detail}`,
   );
   process.exit(1);
 }

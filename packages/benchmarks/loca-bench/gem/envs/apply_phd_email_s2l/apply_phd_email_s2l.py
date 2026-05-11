@@ -12,7 +12,7 @@ from gem.utils.constants import TERMINAL_STATE
 from gem.utils.filesystem import nfs_safe_rmtree
 
 # Constants
-TASK_INSTRUCTION = '''Please check my inbox, find all replies to PhD Applications, and for those that require submission of application materials, help me submit the relevant materials according to the request. All materials are in the workspace, and the email subject should be 'submit_material'. My personal information is in the memory.'''
+TASK_INSTRUCTION = '''This is a synthetic benchmark workspace. Please check the inbox, find all replies to PhD Applications, and for those that require submission of application materials, submit the relevant materials according to the request. All materials are in the workspace, the email subject should be 'submit_material', and the benchmark applicant profile is available in the provided memory records.'''
 
 LOG_FORMAT = '%(asctime)s - %(levelname)s - %(message)s'
 LOG_DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
@@ -618,4 +618,3 @@ class ApplyPhDEmailS2LEnv(Env):
             f"Error details:\n{error_msg}\n"
             "=" * 80 + "\n"
         )
-

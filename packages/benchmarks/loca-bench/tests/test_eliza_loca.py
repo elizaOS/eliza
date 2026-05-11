@@ -6,9 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from eliza_loca.run_cerebras import build_command, build_env
+from eliza_loca.run_cerebras import build_command, build_env, main, parse_args
 from eliza_loca.trajectory_audit import audit_output_dir
 from eliza_loca.long_context import (
+    CONTEXT_TIERS,
     audit_long_context_trajectory,
     build_long_context_trajectory,
     compact_with_summary_tail,
@@ -25,6 +26,7 @@ def _args(**overrides):
         "output_dir": "/tmp/loca-out",
         "max_workers": 1,
         "max_tool_uses": 5,
+        "max_steps": None,
         "max_tokens": 2048,
         "timeout": 123,
         "max_retries": 2,
@@ -101,6 +103,55 @@ def test_cerebras_wrapper_env_maps_key_and_base_url(monkeypatch) -> None:
     assert env["LOCA_QUIET"] == "1"
 
 
+def test_cerebras_wrapper_dry_run_does_not_require_api_key(monkeypatch, capsys) -> None:
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("LOCA_OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_cerebras.py", "--dry-run", "--output-dir", "/tmp/loca-dry-run"],
+    )
+
+    assert main() == 0
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["command"][2:4] == ["loca.cli.main", "run"]
+    assert "--output-dir" in payload["command"]
+
+
+def test_cerebras_wrapper_rejects_reset_and_summary_at_parse(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_cerebras.py", "--context-reset", "--context-summary", "--dry-run"],
+    )
+
+    with pytest.raises(SystemExit):
+        parse_args()
+
+
+def test_cerebras_wrapper_rejects_reset_and_summary_at_command_build() -> None:
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        build_command(_args(context_reset=True, context_summary=True))
+
+
+def test_cerebras_wrapper_passes_max_steps_when_set() -> None:
+    command = build_command(_args(max_steps=17))
+
+    assert "--max-steps" in command
+    assert command[command.index("--max-steps") + 1] == "17"
+
+
+def test_filesystem_mcp_config_cd_into_allowed_directory(tmp_path) -> None:
+    pytest.importorskip("fastmcp")
+    from gem.tools.mcp_server.filesystem.helper import get_filesystem_stdio_config
+
+    config = get_filesystem_stdio_config(allowed_directory=str(tmp_path))
+    args = config["filesystem"]["args"]
+
+    assert config["filesystem"]["cwd"] == str(tmp_path)
+    assert args[:1] == ["-c"]
+    assert f"cd {tmp_path}" in args[1]
+
+
 def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     root = tmp_path / "run"
     task_dir = root / "tasks" / "DemoTask" / "state0"
@@ -154,6 +205,52 @@ def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     assert audit["previews"]
 
 
+def test_trajectory_audit_accepts_provider_error_without_usage(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [
+                {"role": "user", "content": "do task"},
+                {"role": "assistant", "content": "Error: provider failed"},
+            ],
+            "full_messages_history": [
+                {"role": "user", "content": "do task"},
+                {"role": "assistant", "content": "Error: provider failed"},
+            ],
+        },
+        "events": {"reset": [], "summary": [], "trim": [], "thinking_reset": []},
+        "metrics": {"accuracy": 0.0, "total_steps": 1, "status": "error"},
+        "provider_payload": {
+            "usage_tracking": [],
+            "error": "Error: provider failed",
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(
+        json.dumps({"status": "error", "accuracy": 0.0, "steps": 1}),
+        encoding="utf-8",
+    )
+    (task_dir / "token_stats.json").write_text(
+        json.dumps({"usage_tracking": []}),
+        encoding="utf-8",
+    )
+    (root / "results.json").write_text(
+        json.dumps({"metadata": {"total_tasks": 1}, "summary": {"total_error": 1}}),
+        encoding="utf-8",
+    )
+    (root / "all_trajectories.json").write_text(
+        json.dumps({"DemoTask": {"state0": trajectory}}),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    assert audit["summary"]["issue_count"] == 0
+
+
 def test_trajectory_audit_counts_summary_skip_events(tmp_path) -> None:
     root = tmp_path / "run"
     task_dir = root / "tasks" / "DemoTask" / "state0"
@@ -201,6 +298,155 @@ def test_trajectory_audit_counts_summary_skip_events(tmp_path) -> None:
     assert audit["summary"]["issue_count"] == 0
     assert audit["context_events"]["summary"] == 1
     assert audit["context_events"]["summary_skip"] == 1
+
+
+def test_trajectory_audit_flags_missing_required_outputs(tmp_path) -> None:
+    audit = audit_output_dir(tmp_path)
+
+    issue_names = {issue["issue"] for issue in audit["issues"]}
+    assert "missing_results_json" in issue_names
+    assert "missing_all_trajectories_json" in issue_names
+    assert "empty_output" in issue_names
+
+
+def test_trajectory_audit_allow_empty_suppresses_empty_output_only(tmp_path) -> None:
+    audit = audit_output_dir(tmp_path, allow_empty=True)
+
+    issue_names = {issue["issue"] for issue in audit["issues"]}
+    assert "empty_output" not in issue_names
+    assert "missing_results_json" in issue_names
+    assert "missing_all_trajectories_json" in issue_names
+
+
+def test_trajectory_audit_compares_metadata_total_tasks(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [{"role": "user", "content": "done"}],
+            "full_messages_history": [{"role": "user", "content": "start"}],
+        },
+        "events": {"reset": [], "summary": [], "trim": [], "thinking_reset": []},
+        "provider_payload": {
+            "usage_tracking": [
+                {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
+            ]
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(json.dumps({"status": "success"}), encoding="utf-8")
+    (task_dir / "token_stats.json").write_text(json.dumps({}), encoding="utf-8")
+    (root / "results.json").write_text(
+        json.dumps({"metadata": {"total_tasks": 2}, "summary": {}}),
+        encoding="utf-8",
+    )
+    (root / "all_trajectories.json").write_text(
+        json.dumps({"DemoTask": {"state0": trajectory}}),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    mismatches = [
+        issue
+        for issue in audit["issues"]
+        if issue["issue"] == "metadata_total_tasks_mismatch"
+    ]
+    assert {issue["source"] for issue in mismatches} == {"aggregate", "per_task"}
+    assert audit["summary"]["metadata_total_tasks"] == 2
+
+
+def test_trajectory_audit_flags_secret_leaks_and_bad_summary_events(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [{"role": "user", "content": "api_key=test-secret-value"}],
+            "full_messages_history": [{"role": "user", "content": "start"}],
+        },
+        "events": {
+            "reset": [],
+            "summary": [
+                {
+                    "messages_before_count": 3,
+                    "messages_after_count": 4,
+                    "summary_tail_count": 2,
+                    "summary_tail": [{"role": "user", "content": "tail"}],
+                    "summary_user_message": {"role": "assistant", "content": "summary"},
+                    "summary_response_original": {"role": "tool", "content": "summary"},
+                }
+            ],
+            "trim": [],
+            "thinking_reset": [],
+        },
+        "provider_payload": {
+            "usage_tracking": [
+                {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120}
+            ]
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(json.dumps({"status": "success"}), encoding="utf-8")
+    (task_dir / "token_stats.json").write_text(json.dumps({}), encoding="utf-8")
+    (root / "results.json").write_text(json.dumps({"summary": {}}), encoding="utf-8")
+    (root / "all_trajectories.json").write_text(
+        json.dumps({"DemoTask": {"state0": trajectory}}),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    issue_names = {issue["issue"] for issue in audit["issues"]}
+    assert "secret_leak_detected" in issue_names
+    assert "summary_event_message_count_increased" in issue_names
+    assert "summary_event_invalid_summary_user_role" in issue_names
+    assert "summary_event_invalid_summary_response_role" in issue_names
+    assert "summary_event_tail_count_mismatch" in issue_names
+
+
+def test_trajectory_audit_checks_active_messages_for_tool_pairing(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{"id": "missing_result", "function": {"name": "lookup"}}],
+                }
+            ],
+            "full_messages_history": [{"role": "user", "content": "start"}],
+        },
+        "events": {"reset": [], "summary": [], "trim": [], "thinking_reset": []},
+        "provider_payload": {
+            "usage_tracking": [
+                {"prompt_tokens": 10, "completion_tokens": 2, "total_tokens": 12}
+            ]
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(json.dumps({"status": "success"}), encoding="utf-8")
+    (task_dir / "token_stats.json").write_text(json.dumps({}), encoding="utf-8")
+    (root / "results.json").write_text(json.dumps({"summary": {}}), encoding="utf-8")
+    (root / "all_trajectories.json").write_text(
+        json.dumps({"DemoTask": {"state0": trajectory}}),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    assert {
+        issue.get("scope")
+        for issue in audit["issues"]
+        if issue["issue"] == "unpaired_tool_call_or_result"
+    } == {"messages"}
 
 
 def test_context_summary_trigger_has_hysteresis() -> None:
@@ -268,10 +514,88 @@ def test_context_summary_trigger_has_hysteresis() -> None:
     assert tail[0]["role"] == "assistant"
     assert tail[1]["tool_call_id"] == "call_1"
 
+    split_tail = select_summary_tail(
+        [
+            {"role": "user", "content": "old"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "call_2"}]},
+            {"role": "tool", "tool_call_id": "call_2", "content": "raw facts"},
+            {"role": "user", "content": "latest"},
+        ],
+        max_messages=2,
+    )
+    assert split_tail[0]["role"] == "assistant"
+    assert split_tail[1]["tool_call_id"] == "call_2"
+
+
+def test_react_api_token_metrics_sum_totals_and_expose_maxima() -> None:
+    pytest.importorskip("fire")
+    from inference.run_react import compute_api_token_metrics
+
+    metrics = compute_api_token_metrics(
+        [
+            {"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+            {"prompt_tokens": 80, "completion_tokens": 30, "total_tokens": 110},
+            {"prompt_tokens": 150, "completion_tokens": 10, "total_tokens": 90},
+        ]
+    )
+
+    assert metrics["api_prompt_tokens"] == 330
+    assert metrics["api_completion_tokens"] == 60
+    assert metrics["api_total_tokens"] == 320
+    assert metrics["api_max_prompt_tokens"] == 150
+    assert metrics["api_max_total_tokens"] == 120
+
+
+def test_react_final_status_requires_terminal_success_or_clear_reward() -> None:
+    pytest.importorskip("fire")
+    from inference.run_react import determine_final_status
+
+    assert (
+        determine_final_status(terminated=True, truncated=False, reward=0.0)
+        == "success"
+    )
+    assert (
+        determine_final_status(terminated=False, truncated=True, reward=0.0)
+        == "truncated"
+    )
+    assert (
+        determine_final_status(terminated=True, truncated=True, reward=0.5)
+        == "truncated"
+    )
+    assert (
+        determine_final_status(terminated=False, truncated=True, reward=1.0)
+        == "success"
+    )
+    assert (
+        determine_final_status(terminated=False, truncated=False, reward=0.0)
+        == "error"
+    )
+
+
+def test_react_run_metrics_persist_done_flags_and_stop_reason() -> None:
+    pytest.importorskip("fire")
+    from inference.run_react import build_run_metrics
+
+    metrics = build_run_metrics(
+        accuracy=0.5,
+        total_steps=7,
+        completed=True,
+        terminated=False,
+        truncated=True,
+        stop_reason="max_steps",
+        status="truncated",
+    )
+
+    assert metrics["terminated"] is False
+    assert metrics["truncated"] is True
+    assert metrics["stop_reason"] == "max_steps"
+    assert metrics["status"] == "truncated"
+
 
 def test_long_context_generator_builds_million_token_compacted_fixture(tmp_path) -> None:
     trajectory = build_long_context_trajectory(
         target_tokens=1_000_000,
+        tier="1m",
         turns=240,
         needle_count=24,
     )
@@ -280,15 +604,76 @@ def test_long_context_generator_builds_million_token_compacted_fixture(tmp_path)
 
     assert audit["estimated_full_history_tokens"] >= 950_000
     assert audit["estimated_current_tokens"] < audit["estimated_full_history_tokens"]
+    assert audit["compression"]["within_current_token_ratio"] is True
+    assert audit["compression"]["within_current_token_limit"] is True
     assert audit["needle_count"] == 24
+    assert audit["record_count"] == 120
+    assert audit["preserved_record_count"] == 72
     assert audit["missing_current_needles"] == []
     assert audit["missing_full_history_needles"] == []
+    assert audit["missing_current_records"] == []
+    assert audit["missing_full_history_records"] == []
     assert audit["summary_events"] == 1
+    assert audit["failure_count"] == 0
 
     write_loca_output(tmp_path, compacted)
     output_audit = audit_output_dir(tmp_path)
     assert output_audit["summary"]["issue_count"] == 0
     assert output_audit["summary"]["trajectory_count"] == 1
+
+
+def test_long_context_tier_builds_128k_fixture_with_realistic_records() -> None:
+    trajectory = build_long_context_trajectory(
+        target_tokens=CONTEXT_TIERS["128k"],
+        tier="128k",
+        turns=400,
+        needle_count=8,
+    )
+    compacted = compact_with_summary_tail(trajectory, tail_messages=8)
+    audit = audit_long_context_trajectory(compacted)
+    records = trajectory["metadata"]["long_context"]["records"]
+
+    assert trajectory["metadata"]["long_context"]["tier"] == "128k"
+    assert audit["estimated_full_history_tokens"] >= 120_000
+    assert audit["failure_count"] == 0
+    assert {record["kind"] for record in records} == {
+        "conflicting_update",
+        "rescinded_decision",
+        "tool_observation",
+        "distractor",
+    }
+    assert any(record["should_preserve"] is False for record in records)
+    assert any("LOCA_TOOL_OBSERVATION" in record["value"] for record in records)
+
+
+def test_long_context_lossy_summary_mode_is_caught() -> None:
+    trajectory = build_long_context_trajectory(
+        target_tokens=40_000,
+        turns=48,
+        needle_count=6,
+    )
+    compacted = compact_with_summary_tail(trajectory, tail_messages=0, summary_mode="lossy")
+    audit = audit_long_context_trajectory(compacted)
+
+    assert audit["failure_count"] > 0
+    assert audit["missing_current_needles"] == ["needle_000"]
+    assert audit["missing_current_records"]
+    assert audit["missing_full_history_needles"] == []
+    assert audit["missing_full_history_records"] == []
+
+
+def test_long_context_audit_enforces_current_token_threshold() -> None:
+    trajectory = build_long_context_trajectory(
+        target_tokens=40_000,
+        turns=40,
+        needle_count=4,
+    )
+    compacted = compact_with_summary_tail(trajectory, tail_messages=12)
+    audit = audit_long_context_trajectory(compacted, max_current_tokens=100)
+
+    assert audit["compression"]["within_current_token_limit"] is False
+    assert audit["failures"]["current_token_limit_exceeded"]
+    assert audit["failure_count"] > 0
 
 
 def test_long_context_audit_catches_missing_compacted_needle() -> None:

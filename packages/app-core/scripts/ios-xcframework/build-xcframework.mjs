@@ -192,6 +192,44 @@ function defaultSliceDir(target) {
   return path.join(elizaStateDir(), "local-inference", "bin", "dflash", target);
 }
 
+function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
+  if (!fs.existsSync(sliceDir)) return;
+  const source = path.join(__dirname, "runtime-symbol-shim.c");
+  if (!fs.existsSync(source)) {
+    throw new Error(`[ios-xcframework] runtime symbol shim missing: ${source}`);
+  }
+  const sdk = isSimulator ? "iphonesimulator" : "iphoneos";
+  const sdkPath = captureStdout("xcrun", ["--sdk", sdk, "--show-sdk-path"]).trim();
+  const obj = path.join(sliceDir, "eliza-ios-runtime-shim.o");
+  const archive = path.join(sliceDir, "libeliza-ios-runtime-shim.a");
+  const minVersionFlag = isSimulator
+    ? "-mios-simulator-version-min=14.0"
+    : "-miphoneos-version-min=14.0";
+
+  run("xcrun", [
+    "--sdk",
+    sdk,
+    "clang",
+    "-std=c11",
+    "-arch",
+    "arm64",
+    "-isysroot",
+    sdkPath,
+    minVersionFlag,
+    "-fvisibility=default",
+    "-c",
+    source,
+    "-o",
+    obj,
+  ]);
+  run("xcrun", ["--sdk", sdk, "ar", "rcs", archive, obj]);
+  run("xcrun", ["--sdk", sdk, "ranlib", archive]);
+  fs.rmSync(obj, { force: true });
+  console.log(
+    `[ios-xcframework] refreshed runtime symbol shim: ${path.relative(process.cwd(), archive)}`,
+  );
+}
+
 /**
  * @param {string} cmd
  * @param {string[]} args
@@ -509,6 +547,9 @@ async function main() {
       ]);
     }
   }
+
+  refreshIosRuntimeSymbolShim({ sliceDir: deviceDir, isSimulator: false });
+  refreshIosRuntimeSymbolShim({ sliceDir: simDir, isSimulator: true });
 
   const deviceSlice = loadSlice(deviceDir, "device");
   const simSlice = loadSlice(simDir, "simulator");

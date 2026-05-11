@@ -27,7 +27,7 @@ SHA = "0" * 64
 def passing_backends() -> dict[str, KernelVerification]:
     return {
         b: KernelVerification(status="pass", at_commit="abc1234", report=f"{b}.txt")
-        for b in ("metal", "vulkan", "cuda", "cpu")
+        for b in ("metal", "vulkan", "cuda", "rocm", "cpu")
     }
 
 
@@ -145,6 +145,56 @@ def test_default_eligible_with_failing_eval_rejected():
     assert any("defaultEligible" in e for e in exc.value.errors)
 
 
+def test_non_publishable_manifest_can_validate_for_local_staging():
+    kwargs = base_kwargs("1_7b")
+    kwargs["default_eligible"] = False
+    kwargs["text_eval_score"] = 0.0
+    kwargs["text_eval_passed"] = False
+    kwargs["voice_rtf"] = 1.52
+    kwargs["voice_rtf_passed"] = False
+    kwargs["asr_wer"] = 1.0
+    kwargs["asr_wer_passed"] = False
+    kwargs["vad_latency_ms_median"] = 0.0
+    kwargs["vad_latency_ms_passed"] = False
+    kwargs["e2e_loop_ok"] = False
+    kwargs["thirty_turn_ok"] = False
+    kwargs["expressive_tag_faithfulness"] = 0.0
+    kwargs["expressive_mos"] = 0.0
+    kwargs["expressive_tag_leakage"] = 1.0
+    kwargs["expressive_passed"] = False
+    kwargs["voice_capabilities"] = ["tts", "emotion-tags", "singing"]
+    backends = passing_backends()
+    backends["metal"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="metal.txt"
+    )
+    backends["vulkan"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="vulkan.txt"
+    )
+    backends["cpu"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="cpu.txt"
+    )
+    kwargs["verified_backends"] = backends
+
+    manifest = build_manifest(**kwargs, require_publish_ready=False)
+
+    assert manifest["defaultEligible"] is False
+    assert validate_manifest(manifest, require_publish_ready=False) == ()
+    publish_errors = validate_manifest(manifest)
+    assert any("textEval" in e for e in publish_errors)
+    assert any("metal" in e for e in publish_errors)
+
+
+def test_default_eligible_true_still_rejected_in_local_staging_mode():
+    kwargs = base_kwargs("1_7b")
+    kwargs["text_eval_passed"] = False
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs, require_publish_ready=False)
+
+    assert any("defaultEligible" in e for e in exc.value.errors)
+    assert any("textEval" in e for e in exc.value.errors)
+
+
 def test_default_eligible_with_failing_voice_rtf_rejected():
     kwargs = base_kwargs("9b")
     kwargs["voice_rtf_passed"] = False
@@ -219,8 +269,8 @@ def test_default_eligible_with_failing_backend_rejected():
     assert any("cuda" in e for e in exc.value.errors)
 
 
-def test_lite_tier_does_not_require_cuda_pass():
-    """Lite tier ships on metal/vulkan/cpu — a failing cuda backend
+def test_lite_tier_does_not_require_cuda_or_rocm_pass():
+    """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
     kwargs = base_kwargs("0_6b")
@@ -228,9 +278,24 @@ def test_lite_tier_does_not_require_cuda_pass():
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
     )
+    backends["rocm"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="rocm.txt"
+    )
     kwargs["verified_backends"] = backends
     manifest = build_manifest(**kwargs)
     assert validate_manifest(manifest) == ()
+
+
+def test_desktop_tier_requires_rocm_pass():
+    kwargs = base_kwargs("9b")
+    backends = passing_backends()
+    backends["rocm"] = KernelVerification(
+        status="fail", at_commit="abc1234", report="rocm.txt"
+    )
+    kwargs["verified_backends"] = backends
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("rocm" in e for e in exc.value.errors)
 
 
 def test_long_context_requires_turbo3_tcq():
@@ -333,6 +398,28 @@ def test_write_manifest_refuses_invalid(tmp_path: Path):
     with pytest.raises(Eliza1ManifestError):
         write_manifest(manifest, out)
     assert not out.exists()
+
+
+def test_write_manifest_allows_non_publishable_only_when_requested(
+    tmp_path: Path,
+):
+    kwargs = base_kwargs("1_7b")
+    kwargs["default_eligible"] = False
+    kwargs["text_eval_score"] = 0.0
+    kwargs["text_eval_passed"] = False
+    kwargs["voice_rtf_passed"] = False
+    kwargs["asr_wer_passed"] = False
+    kwargs["vad_latency_ms_passed"] = False
+    kwargs["e2e_loop_ok"] = False
+    kwargs["thirty_turn_ok"] = False
+    manifest = build_manifest(**kwargs, require_publish_ready=False)
+
+    out = tmp_path / "local.manifest.json"
+    with pytest.raises(Eliza1ManifestError):
+        write_manifest(manifest, out)
+
+    write_manifest(manifest, out, require_publish_ready=False)
+    assert json.loads(out.read_text())["defaultEligible"] is False
 
 
 # ---------------------------------------------------------------------------

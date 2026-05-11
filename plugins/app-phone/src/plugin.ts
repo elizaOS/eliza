@@ -41,5 +41,4 @@ export const appPhonePlugin: Plugin = {
 
 export default appPhonePlugin;
 
-export { placeCallAction } from "./actions/place-call";
 export { phoneCallLogProvider } from "./providers/call-log";

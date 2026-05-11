@@ -32,7 +32,7 @@ export async function handleImageGeneration(
 
     const typedData = await createElizaCloudClient(runtime).generateImage(requestBody);
 
-    const result = typedData.images.map((img) => ({
+    const result = typedData.images.map((img: { url?: string; image?: string }) => ({
       url: img.url ?? img.image ?? "",
     }));
     return result;
@@ -157,8 +157,12 @@ export async function handleImageDescription(
       break;
     }
 
-    if (!response?.ok) {
-      const status = response?.status ?? 0;
+    if (!response) {
+      throw new Error("ElizaOS Cloud API did not return a response");
+    }
+
+    if (!response.ok) {
+      const status = response.status;
       if (status === 402) {
         throw new Error(
           "Eliza Cloud credits exhausted — top up at https://www.elizacloud.ai/dashboard/settings?tab=billing"

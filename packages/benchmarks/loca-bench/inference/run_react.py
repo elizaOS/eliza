@@ -144,22 +144,145 @@ def should_generate_context_summary(
 
 
 def select_summary_tail(messages: List[Dict[str, Any]], max_messages: int = 8) -> List[Dict[str, Any]]:
-    """Keep a recent tail after summary without dangling tool results."""
+    """Keep a recent tail after summary without split tool-call blocks."""
 
     if max_messages <= 0:
         return []
-    tail = [dict(message) for message in messages[-max_messages:]]
-    while tail and tail[0].get("role") == "tool":
-        tool_call_id = tail[0].get("tool_call_id")
-        has_call = any(
-            any(call.get("id") == tool_call_id for call in message.get("tool_calls", []) or [])
+    start = max(0, len(messages) - max_messages)
+
+    def produced_call_ids(candidate: List[Dict[str, Any]]) -> set[str]:
+        ids: set[str] = set()
+        for message in candidate:
+            if not isinstance(message, dict):
+                continue
+            for call in message.get("tool_calls", []) or []:
+                if isinstance(call, dict) and call.get("id"):
+                    ids.add(str(call["id"]))
+        return ids
+
+    while True:
+        tail = [dict(message) for message in messages[start:]]
+        producer_ids = produced_call_ids(tail)
+        missing_tool_call_ids = [
+            str(message.get("tool_call_id"))
             for message in tail
             if isinstance(message, dict)
-        )
-        if has_call:
-            break
-        tail.pop(0)
-    return tail
+            and message.get("role") == "tool"
+            and message.get("tool_call_id")
+            and str(message.get("tool_call_id")) not in producer_ids
+        ]
+        if not missing_tool_call_ids:
+            return tail
+
+        moved = False
+        for index in range(start - 1, -1, -1):
+            message = messages[index]
+            if not isinstance(message, dict):
+                continue
+            call_ids = {
+                str(call["id"])
+                for call in message.get("tool_calls", []) or []
+                if isinstance(call, dict) and call.get("id")
+            }
+            if call_ids.intersection(missing_tool_call_ids):
+                start = index
+                moved = True
+                break
+        if not moved:
+            while tail and tail[0].get("role") == "tool":
+                tail.pop(0)
+            return tail
+
+
+def compute_api_token_metrics(usage_tracking: List[Dict[str, Any]]) -> Dict[str, int]:
+    """Aggregate provider usage for a run."""
+
+    api_prompt_tokens = 0
+    api_completion_tokens = 0
+    api_total_tokens = 0
+    api_max_prompt_tokens = 0
+    api_max_total_tokens = 0
+
+    for usage in usage_tracking or []:
+        prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
+        completion_tokens = int(usage.get("completion_tokens", 0) or 0)
+        total_tokens = int(usage.get("total_tokens", 0) or 0)
+
+        api_prompt_tokens += prompt_tokens
+        api_completion_tokens += completion_tokens
+        api_total_tokens += total_tokens
+        api_max_prompt_tokens = max(api_max_prompt_tokens, prompt_tokens)
+        api_max_total_tokens = max(api_max_total_tokens, total_tokens)
+
+    return {
+        "api_prompt_tokens": api_prompt_tokens,
+        "api_completion_tokens": api_completion_tokens,
+        "api_total_tokens": api_total_tokens,
+        "api_max_prompt_tokens": api_max_prompt_tokens,
+        "api_max_total_tokens": api_max_total_tokens,
+    }
+
+
+def extract_stop_reason(response: Dict[str, Any]) -> Optional[str]:
+    """Return the provider stop/finish reason when present."""
+
+    stop_reason = response.get("stop_reason")
+    if stop_reason:
+        return str(stop_reason)
+
+    raw_response = response.get("raw_response", {})
+    choices = raw_response.get("choices", []) if isinstance(raw_response, dict) else []
+    if choices and isinstance(choices[0], dict):
+        finish_reason = choices[0].get("finish_reason")
+        if finish_reason is not None:
+            return str(finish_reason)
+    return None
+
+
+def reward_clearly_successful(reward: Any) -> bool:
+    """Treat only unambiguous full-credit rewards as successful."""
+
+    if reward is True:
+        return True
+    try:
+        return float(reward) >= 1.0
+    except (TypeError, ValueError):
+        return False
+
+
+def determine_final_status(*, terminated: bool, truncated: bool, reward: Any) -> str:
+    """Map environment termination flags to the persisted run status."""
+
+    if terminated and not truncated:
+        return "success"
+    if reward_clearly_successful(reward):
+        return "success"
+    if truncated:
+        return "truncated"
+    return "error"
+
+
+def build_run_metrics(
+    *,
+    accuracy: Any,
+    total_steps: int,
+    completed: bool,
+    terminated: bool,
+    truncated: bool,
+    stop_reason: Optional[str],
+    status: Optional[str] = None,
+) -> Dict[str, Any]:
+    metrics = {
+        "accuracy": accuracy,
+        "total_steps": total_steps,
+        "completed": completed,
+        "terminated": bool(terminated),
+        "truncated": bool(truncated),
+        "stop_reason": stop_reason,
+    }
+    if status is not None:
+        metrics["status"] = status
+    return metrics
 
 
 @contextlib.contextmanager
@@ -870,6 +993,7 @@ def make_aihubmix_api_request(
                             'data': result,
                             'call_messages': normalize_assistant_message_for_history(res['choices'][0]['message']),
                             'raw_response': res,
+                            'stop_reason': res['choices'][0].get('finish_reason'),
                             'trimmed_messages': trimmed_messages,  # Return trimmed messages if any
                             'trim_info': trim_info  # Return trim information if any
                         }
@@ -879,6 +1003,7 @@ def make_aihubmix_api_request(
                             'data': result,
                             'call_messages': normalize_assistant_message_for_history(res['choices'][0]['message']),
                             'raw_response': res,
+                            'stop_reason': res['choices'][0].get('finish_reason'),
                             'trimmed_messages': trimmed_messages,  # Return trimmed messages if any
                             'trim_info': trim_info  # Return trim information if any
                         }
@@ -1246,6 +1371,7 @@ def run_single_task(
     reasoning_enabled: bool = True,
     reasoning_exclude: bool = False,
     config_name: str = "",
+    max_steps: Optional[int] = None,
 ):
     """Run a single task with configurable environment and tools.
 
@@ -1276,6 +1402,7 @@ def run_single_task(
                                   Warning is issued when total_tokens >= reset_size * threshold and < reset_size.
         thinking_reset: If True, clear reasoning_content from assistant messages when exceeding token limit
         keep_thinking: Number of most recent assistant messages to keep reasoning_content for (default: 1)
+        max_steps: Maximum model interaction steps before marking the run truncated.
 
         Note: context_reset and context_summary are mutually exclusive.
               If both are False, no context management is performed even if reset_size is set.
@@ -1320,6 +1447,18 @@ def run_single_task(
     memory_warning_issued = False  # Track if memory warning has been issued
     tool = None  # Initialize tool to None for cleanup in finally block
     messages = []
+    reward = 0.0
+    terminated = False
+    truncated = False
+    stop_reason = None
+    info = {}
+
+    if max_steps is None:
+        max_steps = max(1, int(max_tool_uses or 0) + 1)
+    elif int(max_steps) <= 0:
+        max_steps = None
+    else:
+        max_steps = int(max_steps)
 
     try:
         # Dynamically import and instantiate environment class
@@ -1479,6 +1618,7 @@ def run_single_task(
                 reasoning_enabled=reasoning_enabled,
                 reasoning_exclude=reasoning_exclude,
             )
+            stop_reason = extract_stop_reason(response) or stop_reason
 
             # Track API usage per step
             raw_resp = response.get('raw_response', {})
@@ -1537,6 +1677,7 @@ def run_single_task(
                 error_text = "\n".join(str(item) for item in response.get('data', []))
                 if not error_text:
                     error_text = "Error: provider returned an error response."
+                token_metrics = compute_api_token_metrics(usage_tracking)
                 call_messages = response.get('call_messages') or {
                     "role": "assistant",
                     "content": error_text,
@@ -1562,11 +1703,15 @@ def run_single_task(
                         "trim": trim_events or [],
                         "thinking_reset": thinking_reset_events or [],
                     },
-                    "metrics": {
-                        "accuracy": 0.0,
-                        "total_steps": step_count,
-                        "completed": False,
-                    },
+                    "metrics": build_run_metrics(
+                        accuracy=0.0,
+                        total_steps=step_count,
+                        completed=False,
+                        terminated=False,
+                        truncated=False,
+                        stop_reason=stop_reason,
+                        status="error",
+                    ),
                 }
                 envelope = make_base_envelope(
                     backend="openai",
@@ -1594,9 +1739,7 @@ def run_single_task(
                 )
                 attach_metrics(
                     envelope,
-                    accuracy=0.0,
-                    total_steps=step_count,
-                    completed=False,
+                    **episode_data["metrics"],
                 )
                 attach_provider_payload(
                     envelope,
@@ -1611,12 +1754,11 @@ def run_single_task(
                     legacy_payload=episode_data,
                     indent=2,
                 )
-                if usage_tracking:
-                    write_json_file(
-                        save_file.parent / "token_stats.json",
-                        {"usage_tracking": usage_tracking},
-                        indent=2,
-                    )
+                write_json_file(
+                    save_file.parent / "token_stats.json",
+                    {"usage_tracking": usage_tracking},
+                    indent=2,
+                )
                 write_eval_file(
                     task_workspace=save_file.parent,
                     status="error",
@@ -1638,9 +1780,10 @@ def run_single_task(
                     "env_class": env_class,
                     "env_params": env_params,
                     "tool_calls": 0,
-                    "api_prompt_tokens": usage_tracking[-1].get('prompt_tokens', 0) if usage_tracking else 0,
-                    "api_completion_tokens": sum(ut.get('completion_tokens', 0) for ut in usage_tracking),
-                    "api_total_tokens": usage_tracking[-1].get('total_tokens', 0) if usage_tracking else 0,
+                    "terminated": False,
+                    "truncated": False,
+                    "stop_reason": stop_reason,
+                    **token_metrics,
                     "trimmed_tokens": 0,
                     "reset_tokens": 0,
                     "thinking_reset_tokens": 0,
@@ -1695,16 +1838,45 @@ def run_single_task(
                 print("terminated", terminated)
                 print("truncated", truncated)
                 print("info", info)
+
+            # If the model produced tool calls, preserve the paired tool
+            # results even when the run is about to stop for max_steps. Without
+            # this, truncated trajectories contain an assistant tool_call with
+            # no tool result, which makes them invalid for compaction replay.
+            tool_results = None
+            if call_messages.get("tool_calls"):
+                try:
+                    parsed_tool_results = json.loads(next_obs)
+                    if isinstance(parsed_tool_results, list):
+                        tool_results = parsed_tool_results
+                        messages.extend(tool_results)
+                        full_messages_history.extend(
+                            [
+                                dict(item) if isinstance(item, dict) else item
+                                for item in tool_results
+                            ]
+                        )
+                except (TypeError, json.JSONDecodeError):
+                    tool_results = None
             
             # Update state
             done = terminated or truncated
+            if not done and max_steps is not None and step_count >= max_steps:
+                truncated = True
+                done = True
+                stop_reason = "max_steps"
+                if info is None:
+                    info = {}
+                info["max_steps_exceeded"] = True
+                info["max_steps"] = max_steps
 
             if not done:
                 try:
-                    tool_results = json.loads(next_obs)
-                    messages.extend(tool_results)
-                    # Also add to full history
-                    full_messages_history.extend(tool_results)
+                    if tool_results is None:
+                        tool_results = json.loads(next_obs)
+                        messages.extend(tool_results)
+                        # Also add to full history
+                        full_messages_history.extend(tool_results)
 
                     # Add token usage information if context_awareness is enabled
                     if context_awareness and max_context_size is not None:
@@ -2084,6 +2256,8 @@ def run_single_task(
                     }
                     messages_before_summary_request = messages.copy()
                     messages.append(summary_request_message)
+                    import copy
+                    full_messages_history.append(copy.deepcopy(summary_request_message))
 
                     # Call API to get summary
                     if verbose:
@@ -2132,6 +2306,7 @@ def run_single_task(
                     # Get summary message
                     if 'call_messages' in summary_response and not summary_failed:
                         summary_message = summary_response['call_messages']
+                        full_messages_history.append(copy.deepcopy(summary_message))
                         
                         # Extract summary content and create a new user message
                         summary_text = summary_message.get('content', '')
@@ -2143,6 +2318,7 @@ def run_single_task(
                                 "role": "user",
                                 "content": summary_content
                             }
+                            full_messages_history.append(copy.deepcopy(summary_user_message))
                             summary_tail = select_summary_tail(messages_before_summary_request)
                             
                             # Reset messages to initial + summary plus a recent raw tail.
@@ -2150,7 +2326,6 @@ def run_single_task(
                             messages = [initial_user_message, summary_user_message] + summary_tail
                         
                             # Record summary event
-                            import copy
                             summary_event = {
                                 'step': step_count,
                                 'total_tokens': total_tokens,
@@ -2221,11 +2396,19 @@ def run_single_task(
                     "trim": trim_events or [],
                     "thinking_reset": thinking_reset_events or [],
                 },
-                "metrics": {
-                    "accuracy": reward,
-                    "total_steps": step_count,
-                    "completed": done,
-                },
+                "metrics": build_run_metrics(
+                    accuracy=reward,
+                    total_steps=step_count,
+                    completed=done,
+                    terminated=terminated,
+                    truncated=truncated,
+                    stop_reason=stop_reason,
+                    status=determine_final_status(
+                        terminated=terminated,
+                        truncated=truncated,
+                        reward=reward,
+                    ) if done else None,
+                ),
             }
 
             envelope = make_base_envelope(
@@ -2254,9 +2437,7 @@ def run_single_task(
             )
             attach_metrics(
                 envelope,
-                accuracy=reward,
-                total_steps=step_count,
-                completed=done,
+                **episode_data["metrics"],
             )
             attach_provider_payload(
                 envelope,
@@ -2271,13 +2452,18 @@ def run_single_task(
             )
 
             # Save stats.json with API usage tracking (progress)
-            if usage_tracking:
-                stats_data = {"usage_tracking": usage_tracking}
-                stats_file = save_file.parent / "token_stats.json"
-                write_json_file(stats_file, stats_data, indent=2)
+            stats_data = {"usage_tracking": usage_tracking}
+            stats_file = save_file.parent / "token_stats.json"
+            write_json_file(stats_file, stats_data, indent=2)
 
             if verbose:
                 print(f"[Task {task_id} | {task_label}] Progress saved to: {save_file}")
+
+        final_status = determine_final_status(
+            terminated=terminated,
+            truncated=truncated,
+            reward=reward,
+        )
 
         # Update final episode data (simplified format)
         episode_data = {
@@ -2290,11 +2476,15 @@ def run_single_task(
                 "trim": trim_events or [],
                 "thinking_reset": thinking_reset_events or [],
             },
-            "metrics": {
-                "accuracy": reward,
-                "total_steps": step_count,
-                "completed": True,
-            },
+            "metrics": build_run_metrics(
+                accuracy=reward,
+                total_steps=step_count,
+                completed=done,
+                terminated=terminated,
+                truncated=truncated,
+                stop_reason=stop_reason,
+                status=final_status,
+            ),
         }
 
         envelope = make_base_envelope(
@@ -2323,9 +2513,7 @@ def run_single_task(
         )
         attach_metrics(
             envelope,
-            accuracy=reward,
-            total_steps=step_count,
-            completed=True,
+            **episode_data["metrics"],
         )
         attach_provider_payload(
             envelope,
@@ -2340,16 +2528,15 @@ def run_single_task(
         )
 
         # Save token_stats.json with API usage tracking
-        if usage_tracking:
-            stats_data = {"usage_tracking": usage_tracking}
-            stats_file = save_file.parent / "token_stats.json"
-            write_json_file(stats_file, stats_data, indent=2)
+        stats_data = {"usage_tracking": usage_tracking}
+        stats_file = save_file.parent / "token_stats.json"
+        write_json_file(stats_file, stats_data, indent=2)
 
         # Save eval.json alongside trajectory.json
         feedback = info.get("env_observation", "") if info else ""
         write_eval_file(
             task_workspace=save_file.parent,
-            status="success",
+            status=final_status,
             accuracy=reward,
             steps=step_count,
             feedback=feedback,
@@ -2372,16 +2559,7 @@ def run_single_task(
                 total_length = sum(event['thinking_reset_info']['total_reasoning_content_length'] for event in thinking_reset_events)
                 print(f"[Task {task_id} | {task_label}] Total thinking resets: {len(thinking_reset_events)} (cleared {total_cleared} assistant messages, {total_length} characters total)")
 
-        # Compute token aggregates from usage_tracking (MAX/SUM logic same as ana_all_configs.py)
-        api_prompt_tokens = 0
-        api_completion_tokens = 0
-        api_total_tokens = 0
-        for ut in usage_tracking:
-            step_total = ut.get('total_tokens', 0)
-            if step_total > api_total_tokens:
-                api_total_tokens = step_total
-                api_prompt_tokens = ut.get('prompt_tokens', 0)
-            api_completion_tokens += ut.get('completion_tokens', 0)
+        token_metrics = compute_api_token_metrics(usage_tracking)
 
         # Tokens removed by trim events
         trimmed_tokens = sum(
@@ -2412,7 +2590,7 @@ def run_single_task(
             "config_id": config_id,
             "run_id": run_id,
             "config_name": config_name,
-            "status": "success",
+            "status": final_status,
             "steps": step_count,
             "final_reward": reward,
             "accuracy": reward,  # Final reward as accuracy
@@ -2420,9 +2598,10 @@ def run_single_task(
             "env_class": env_class,
             "env_params": env_params,
             "tool_calls": info.get("tool_use_counter", 0) if info else 0,
-            "api_prompt_tokens": api_prompt_tokens,
-            "api_completion_tokens": api_completion_tokens,
-            "api_total_tokens": api_total_tokens,
+            "terminated": terminated,
+            "truncated": truncated,
+            "stop_reason": stop_reason,
+            **token_metrics,
             "trimmed_tokens": trimmed_tokens,
             "reset_tokens": reset_tokens,
             "thinking_reset_tokens": thinking_reset_tokens,
@@ -2434,6 +2613,7 @@ def run_single_task(
         print(f"[Task {task_id} | {task_label}] Error: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
+        token_metrics = compute_api_token_metrics(usage_tracking)
 
         error_save_file = task_workspace / "trajectory.json"
         error_save_file.parent.mkdir(parents=True, exist_ok=True)
@@ -2449,11 +2629,15 @@ def run_single_task(
                 "trim": trim_events or [],
                 "thinking_reset": thinking_reset_events or [],
             },
-            "metrics": {
-                "accuracy": 0.0,
-                "total_steps": len(episode),
-                "completed": False,
-            },
+            "metrics": build_run_metrics(
+                accuracy=0.0,
+                total_steps=len(episode),
+                completed=False,
+                terminated=terminated,
+                truncated=truncated,
+                stop_reason=stop_reason,
+                status="error",
+            ),
         }
 
         envelope = make_base_envelope(
@@ -2482,9 +2666,7 @@ def run_single_task(
         )
         attach_metrics(
             envelope,
-            accuracy=0.0,
-            total_steps=len(episode),
-            completed=False,
+            **episode_data["metrics"],
         )
         attach_provider_payload(
             envelope,
@@ -2498,12 +2680,11 @@ def run_single_task(
             legacy_payload=episode_data,
             indent=2,
         )
-        if usage_tracking:
-            write_json_file(
-                error_save_file.parent / "token_stats.json",
-                {"usage_tracking": usage_tracking},
-                indent=2,
-            )
+        write_json_file(
+            error_save_file.parent / "token_stats.json",
+            {"usage_tracking": usage_tracking},
+            indent=2,
+        )
 
         write_eval_file(
             task_workspace=error_save_file.parent,
@@ -2524,8 +2705,15 @@ def run_single_task(
             "status": "error",
             "error": str(e),
             "steps": len(episode),
+            "final_reward": 0.0,
+            "accuracy": 0.0,
+            "save_file": str(error_save_file),
             "env_class": env_class,
             "env_params": env_params,
+            "terminated": terminated,
+            "truncated": truncated,
+            "stop_reason": stop_reason,
+            **token_metrics,
         }
 
     finally:
@@ -2817,6 +3005,7 @@ def run_config_combinations(
     reasoning_enabled: bool = True,
     reasoning_exclude: bool = False,
     resume_dir: Optional[str] = None,
+    max_steps: Optional[int] = None,
 ):
     """Run multiple configurations in parallel with flexible environment and tool setup.
 
@@ -2851,6 +3040,7 @@ def run_config_combinations(
         reasoning_enabled: Whether to enable reasoning (default: True). Automatically inferred from effort or max_tokens.
         reasoning_exclude: Set to True to exclude reasoning tokens from response (default: False).
         resume_dir: Path to existing output directory to resume from. If provided, only failed runs will be re-executed.
+        max_steps: Maximum model interaction steps per run. Defaults to max_tool_uses + 1.
 
         Note: context_reset and context_summary are mutually exclusive.
               If both are False, no context management is performed.
@@ -3075,12 +3265,15 @@ def run_config_combinations(
                 config_reasoning_max_tokens = config.get('reasoning_max_tokens', reasoning_max_tokens)
                 config_reasoning_enabled = config.get('reasoning_enabled', reasoning_enabled)
                 config_reasoning_exclude = config.get('reasoning_exclude', reasoning_exclude)
+                config_max_steps = config.get('max_steps', max_steps)
 
                 # Convert empty strings to None
                 if config_reasoning_effort == "":
                     config_reasoning_effort = None
                 if config_reasoning_max_tokens == "":
                     config_reasoning_max_tokens = None
+                if config_max_steps == "":
+                    config_max_steps = None
 
                 task_args.append((
                     task_id,
@@ -3113,6 +3306,7 @@ def run_config_combinations(
                     config_reasoning_enabled,
                     config_reasoning_exclude,
                     config_name,
+                    config_max_steps,
                 ))
                 task_id += 1
                 run_id += 1
@@ -3144,12 +3338,15 @@ def run_config_combinations(
                 config_reasoning_max_tokens = config.get('reasoning_max_tokens', reasoning_max_tokens)
                 config_reasoning_enabled = config.get('reasoning_enabled', reasoning_enabled)
                 config_reasoning_exclude = config.get('reasoning_exclude', reasoning_exclude)
+                config_max_steps = config.get('max_steps', max_steps)
 
                 # Convert empty strings to None
                 if config_reasoning_effort == "":
                     config_reasoning_effort = None
                 if config_reasoning_max_tokens == "":
                     config_reasoning_max_tokens = None
+                if config_max_steps == "":
+                    config_max_steps = None
 
                 task_args.append((
                     task_id,
@@ -3182,6 +3379,7 @@ def run_config_combinations(
                     config_reasoning_enabled,
                     config_reasoning_exclude,
                     cfg_name,
+                    config_max_steps,
                 ))
                 task_id += 1
 
@@ -3360,6 +3558,8 @@ def run_config_combinations(
                 "steps": [],
                 "tool_calls": [],
                 "api_total_tokens": [],
+                "api_max_prompt_tokens": [],
+                "api_max_total_tokens": [],
                 "trimmed_tokens": [],
                 "reset_tokens": [],
                 "thinking_reset_tokens": [],
@@ -3374,6 +3574,8 @@ def run_config_combinations(
             config_stats[config_id]["steps"].append(result["steps"])
             config_stats[config_id]["tool_calls"].append(result.get("tool_calls", 0))
             config_stats[config_id]["api_total_tokens"].append(result.get("api_total_tokens", 0))
+            config_stats[config_id]["api_max_prompt_tokens"].append(result.get("api_max_prompt_tokens", 0))
+            config_stats[config_id]["api_max_total_tokens"].append(result.get("api_max_total_tokens", 0))
             config_stats[config_id]["trimmed_tokens"].append(result.get("trimmed_tokens", 0))
             config_stats[config_id]["reset_tokens"].append(result.get("reset_tokens", 0))
             config_stats[config_id]["thinking_reset_tokens"].append(result.get("thinking_reset_tokens", 0))
@@ -3382,13 +3584,15 @@ def run_config_combinations(
             config_stats[config_id]["error"] += 1
     
     total_success = sum(1 for r in results if r["status"] == "success")
-    total_error = sum(1 for r in results if r["status"] in ["error", "exception"])
+    total_error = sum(1 for r in results if r["status"] != "success")
 
     # Calculate overall averages
     all_accuracies = []
     all_steps = []
     all_tool_calls = []
     all_api_total_tokens = []
+    all_api_max_prompt_tokens = []
+    all_api_max_total_tokens = []
     all_trimmed_tokens = []
     all_reset_tokens = []
     all_thinking_reset_tokens = []
@@ -3398,6 +3602,8 @@ def run_config_combinations(
         all_steps.extend(stats['steps'])
         all_tool_calls.extend(stats['tool_calls'])
         all_api_total_tokens.extend(stats['api_total_tokens'])
+        all_api_max_prompt_tokens.extend(stats['api_max_prompt_tokens'])
+        all_api_max_total_tokens.extend(stats['api_max_total_tokens'])
         all_trimmed_tokens.extend(stats['trimmed_tokens'])
         all_reset_tokens.extend(stats['reset_tokens'])
         all_thinking_reset_tokens.extend(stats['thinking_reset_tokens'])
@@ -3407,6 +3613,8 @@ def run_config_combinations(
     avg_tool_calls = sum(all_tool_calls) / len(all_tool_calls) if all_tool_calls else None
     total_api_tokens_all = sum(all_api_total_tokens)
     avg_api_tokens = sum(all_api_total_tokens) / len(all_api_total_tokens) if all_api_total_tokens else None
+    max_api_prompt_tokens = max(all_api_max_prompt_tokens) if all_api_max_prompt_tokens else 0
+    max_api_total_tokens = max(all_api_max_total_tokens) if all_api_max_total_tokens else 0
     # Compute per-run "inclusive" token sums, then average
     all_tokens_incl_trimmed = [a + t for a, t in zip(all_api_total_tokens, all_trimmed_tokens)]
     all_tokens_incl_reset = [a + t + r for a, t, r in zip(all_api_total_tokens, all_trimmed_tokens, all_reset_tokens)]
@@ -3432,6 +3640,8 @@ def run_config_combinations(
             "avg_tool_calls": round(sum(v["tool_calls"]) / len(v["tool_calls"]), 2) if v["tool_calls"] else None,
             "total_api_tokens": sum(v["api_total_tokens"]),
             "avg_api_tokens": round(sum(v["api_total_tokens"]) / n, 0) if v["api_total_tokens"] else None,
+            "api_max_prompt_tokens": max(v["api_max_prompt_tokens"]) if v["api_max_prompt_tokens"] else 0,
+            "api_max_total_tokens": max(v["api_max_total_tokens"]) if v["api_max_total_tokens"] else 0,
             "avg_api_tokens_incl_trimmed": round(sum(cfg_incl_trimmed) / n, 0) if cfg_incl_trimmed else None,
             "avg_api_tokens_incl_reset": round(sum(cfg_incl_reset) / n, 0) if cfg_incl_reset else None,
             "avg_api_tokens_incl_all": round(sum(cfg_incl_all) / n, 0) if cfg_incl_all else None,
@@ -3452,6 +3662,8 @@ def run_config_combinations(
             "avg_tool_calls": round(avg_tool_calls, 2) if avg_tool_calls is not None else None,
             "total_api_tokens": total_api_tokens_all,
             "avg_api_tokens": round(avg_api_tokens, 0) if avg_api_tokens is not None else None,
+            "api_max_prompt_tokens": max_api_prompt_tokens,
+            "api_max_total_tokens": max_api_total_tokens,
             "avg_api_tokens_incl_trimmed": round(avg_tokens_incl_trimmed, 0) if avg_tokens_incl_trimmed is not None else None,
             "avg_api_tokens_incl_reset": round(avg_tokens_incl_reset, 0) if avg_tokens_incl_reset is not None else None,
             "avg_api_tokens_incl_all": round(avg_tokens_incl_all, 0) if avg_tokens_incl_all is not None else None,

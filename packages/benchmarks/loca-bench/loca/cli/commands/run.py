@@ -108,6 +108,14 @@ def run_command(
             rich_help_panel="Execution",
         ),
     ] = 500,
+    max_steps: Annotated[
+        Optional[int],
+        typer.Option(
+            "--max-steps",
+            help="Maximum model interaction steps per episode. Defaults to max-tool-uses + 1.",
+            rich_help_panel="Execution",
+        ),
+    ] = None,
     max_retries: Annotated[
         int,
         typer.Option(
@@ -322,6 +330,8 @@ def run_command(
     table.add_row("Strategy", strategy.value)
     table.add_row("Config file", str(full_config_path))
     table.add_row("Max workers", str(max_workers))
+    table.add_row("Max tool uses", str(max_tool_uses))
+    table.add_row("Max steps", str(max_steps or max_tool_uses + 1))
     table.add_row("", "")
     table.add_row("[bold]Model Configuration[/bold]", "")
     table.add_row("  Base URL", base_url)
@@ -366,6 +376,7 @@ def run_command(
         base_url=base_url or "",
         model=model,
         max_tool_uses=max_tool_uses,
+        max_steps=max_steps,
         max_tokens=max_tokens,
         timeout=timeout,
         max_workers=max_workers,

@@ -209,10 +209,21 @@ version at `dlopen` time and refuses to bind a mismatched library.
 | `eliza_inference_create`            | Allocate a per-engine `EliInferenceContext` from a bundle.  |
 | `eliza_inference_destroy`           | Free a context (idempotent on NULL).                        |
 | `eliza_inference_mmap_acquire`      | Lazy-page weights for a region (`tts`/`asr`/`text`/`dflash`). |
-| `eliza_inference_mmap_evict`        | Page-evict a region (madvise MADV_DONTNEED / VirtualUnlock). |
+| `eliza_inference_mmap_evict`        | Release a voice-only region; backends may madvise pages or unload ASR/TTS state. |
 | `eliza_inference_tts_synthesize`    | Synchronous OmniVoice forward → fp32 PCM @ 24 kHz.          |
 | `eliza_inference_asr_transcribe`    | Synchronous ASR forward → UTF-8 transcript.                 |
 | `eliza_inference_free_string`       | Free heap strings the library handed back (errors, future transcript buffers). |
+
+Implementation note: ABI v1 completes real TTS and ASR on macOS Metal.
+TTS keeps the OmniVoice LM / MaskGIT path on the selected accelerator. On
+Apple Metal, the audio tokenizer / DAC codec region is pinned to a CPU-only
+scheduler inside the same process; this avoids the previously observed
+merged-ggml Metal DAC decode stall after `[TTS] Decode` without launching a
+second model runtime or duplicating model lifecycle state. ASR uses llama.cpp
+`mtmd` with a qwen3a backport for Qwen3-ASR GGUF bundles and requires the
+canonical bundle files `asr/eliza-1-asr.gguf` and
+`asr/eliza-1-asr-mmproj.gguf`; missing or ambiguous ASR assets remain a hard
+`ELIZA_ERR_BUNDLE_INVALID` failure.
 
 All errors flow through a `char ** out_error` parameter that the
 library populates with a heap-allocated NUL-terminated message.

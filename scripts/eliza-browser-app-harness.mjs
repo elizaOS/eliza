@@ -8,17 +8,19 @@
  * performed by the agent through its built-in BROWSER action.
  */
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createWriteStream, existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { promisify } from "node:util";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DEFAULT_API_BASE = "http://127.0.0.1:31337";
 const DEFAULT_TARGET_URL = "https://example.com/";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_POLL_INTERVAL_MS = 2_500;
+const execFileAsync = promisify(execFile);
 const READ_ONLY_BROWSER_WORKSPACE_PATHS = new Set([
   "/api/browser-workspace",
   "/api/browser-workspace/events",
@@ -31,6 +33,11 @@ Options:
   --dry-run                 Print and write the planned run; do not launch, prompt, or poll.
   --no-launch               Attach to an already-running Eliza stack.
   --prompt <text>           User task for the Eliza agent. The harness wraps it with BROWSER-action instructions.
+  --prompt-via-ui           Type the prompt into the Eliza app chat UI with Puppeteer. Default.
+  --prompt-via-api          Send the prompt through the conversation API instead of the UI.
+  --require-browser-tab     Fail unless a browser workspace tab is observed by the end of the run.
+  --require-browser-events  Fail unless browser workspace events are observed by the end of the run.
+  --require-trajectory      Fail unless a trajectory record is observed by the end of the run.
   --target-url <url>        Target URL for the agent's BROWSER action task. Default: ${DEFAULT_TARGET_URL}
   --timeout <ms|30s|2m>     Total poll timeout after sending the prompt. Default: ${DEFAULT_TIMEOUT_MS}
   --api-base <url>          Eliza API base URL. Default: ${DEFAULT_API_BASE}
@@ -65,6 +72,10 @@ function parseArgs(argv) {
     dryRun: false,
     noLaunch: false,
     prompt: "",
+    promptVia: "ui",
+    requireBrowserTab: false,
+    requireBrowserEvents: false,
+    requireTrajectory: false,
     targetUrl: DEFAULT_TARGET_URL,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     pollIntervalMs: DEFAULT_POLL_INTERVAL_MS,
@@ -85,6 +96,26 @@ function parseArgs(argv) {
     }
     if (arg === "--no-launch") {
       options.noLaunch = true;
+      continue;
+    }
+    if (arg === "--prompt-via-ui") {
+      options.promptVia = "ui";
+      continue;
+    }
+    if (arg === "--prompt-via-api") {
+      options.promptVia = "api";
+      continue;
+    }
+    if (arg === "--require-browser-tab") {
+      options.requireBrowserTab = true;
+      continue;
+    }
+    if (arg === "--require-browser-events") {
+      options.requireBrowserEvents = true;
+      continue;
+    }
+    if (arg === "--require-trajectory") {
+      options.requireTrajectory = true;
       continue;
     }
     const readValue = (name) => {
@@ -306,15 +337,186 @@ async function probeEndpoint(apiBase, runDir, name, path, options = {}) {
   return result;
 }
 
-async function waitForEndpoint(apiBase, path, timeoutMs) {
+function isRuntimeReady(result) {
+  if (!result?.ok || !result.body || typeof result.body !== "object") {
+    return false;
+  }
+  return (
+    result.body.ready === true &&
+    result.body.runtime === "ok" &&
+    result.body.agentState === "running"
+  );
+}
+
+async function waitForRuntimeReady(apiBase, runDir, timeoutMs) {
   const deadline = Date.now() + timeoutMs;
+  const attempts = [];
   let last = null;
+
   while (Date.now() < deadline) {
-    last = await fetchWithCapture(apiBase, path, { timeoutMs: 3_000 });
-    if (last.ok) return last;
+    last = await fetchWithCapture(apiBase, "/api/health", {
+      timeoutMs: 5_000,
+    });
+    const record = {
+      ts: nowIso(),
+      status: last.status,
+      ok: last.ok,
+      elapsedMs: last.elapsedMs,
+      ready: last.body?.ready ?? null,
+      runtime: last.body?.runtime ?? null,
+      agentState: last.body?.agentState ?? null,
+      startupPhase: last.body?.startup?.phase ?? null,
+      bodyText:
+        last.body === null && last.bodyText
+          ? last.bodyText.slice(0, 1000)
+          : undefined,
+    };
+    attempts.push(record);
+    if (isRuntimeReady(last)) {
+      await writeJson(artifactPath(runDir, "runtime-ready.json"), {
+        ...record,
+        attempts: attempts.length,
+      });
+      return last;
+    }
     await sleep(1_000);
   }
+
+  await writeJson(artifactPath(runDir, "runtime-ready.json"), {
+    ok: false,
+    attempts,
+    last: last ? summarizePollResult(last) : null,
+  });
   return last;
+}
+
+async function waitForUiUrl(uiUrl, runDir, timeoutMs) {
+  if (!uiUrl) return null;
+  const chatUrl = resolveChatUrl(uiUrl);
+  const deadline = Date.now() + timeoutMs;
+  const attempts = [];
+  const attemptLog = makeJsonlWriter(artifactPath(runDir, "ui-ready.jsonl"));
+
+  try {
+    while (Date.now() < deadline) {
+      const startedAt = Date.now();
+      try {
+        const response = await fetch(chatUrl, {
+          headers: { Accept: "text/html,application/xhtml+xml,*/*" },
+          signal: AbortSignal.timeout(3_000),
+        });
+        const record = {
+          ts: nowIso(),
+          url: chatUrl,
+          status: response.status,
+          ok: response.ok,
+          elapsedMs: Date.now() - startedAt,
+        };
+        attempts.push(record);
+        attemptLog.write(record);
+        if (response.ok) {
+          await writeJson(artifactPath(runDir, "ui-ready.json"), {
+            ...record,
+            attempts: attempts.length,
+          });
+          return record;
+        }
+      } catch (error) {
+        const record = {
+          ts: nowIso(),
+          url: chatUrl,
+          ok: false,
+          elapsedMs: Date.now() - startedAt,
+          error: error instanceof Error ? error.message : String(error),
+        };
+        attempts.push(record);
+        attemptLog.write(record);
+      }
+      await sleep(1_000);
+    }
+  } finally {
+    await attemptLog.close();
+  }
+
+  await writeJson(artifactPath(runDir, "ui-ready.json"), {
+    ok: false,
+    url: chatUrl,
+    attempts,
+  });
+  return null;
+}
+
+async function getDescendantPids(rootPid) {
+  if (!rootPid) return [];
+  try {
+    const { stdout } = await execFileAsync("ps", ["-axo", "pid=,ppid="], {
+      maxBuffer: 1024 * 1024,
+    });
+    const childrenByParent = new Map();
+    for (const line of stdout.split(/\r?\n/)) {
+      const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+      if (!match) continue;
+      const pid = Number(match[1]);
+      const ppid = Number(match[2]);
+      const children = childrenByParent.get(ppid) ?? [];
+      children.push(pid);
+      childrenByParent.set(ppid, children);
+    }
+    const descendants = [];
+    const queue = [...(childrenByParent.get(rootPid) ?? [])];
+    while (queue.length > 0) {
+      const pid = queue.shift();
+      descendants.push(pid);
+      queue.push(...(childrenByParent.get(pid) ?? []));
+    }
+    return descendants;
+  } catch {
+    return [];
+  }
+}
+
+function signalProcess(pid, signal) {
+  if (!pid) return false;
+  try {
+    process.kill(pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function signalProcessGroup(pid, signal) {
+  if (!pid) return false;
+  try {
+    process.kill(-pid, signal);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function terminateSpawnedTree(child, timeoutMs = 5_000) {
+  if (!child?.pid) return;
+  const descendants = await getDescendantPids(child.pid);
+  signalProcessGroup(child.pid, "SIGTERM");
+  signalProcess(child.pid, "SIGTERM");
+  for (const pid of descendants.reverse()) signalProcess(pid, "SIGTERM");
+
+  const exited = child.exitCode != null || child.killed;
+  if (!exited) {
+    await Promise.race([
+      new Promise((resolveExit) => child.once("exit", resolveExit)),
+      sleep(timeoutMs),
+    ]);
+  }
+
+  const remainingDescendants = await getDescendantPids(child.pid);
+  if (child.exitCode == null && !child.killed) {
+    signalProcessGroup(child.pid, "SIGKILL");
+    signalProcess(child.pid, "SIGKILL");
+  }
+  for (const pid of remainingDescendants.reverse())
+    signalProcess(pid, "SIGKILL");
 }
 
 function spawnDevDesktop(runDir) {
@@ -324,8 +526,13 @@ function spawnDevDesktop(runDir) {
   const stderr = makeJsonlWriter(
     artifactPath(runDir, "dev-desktop.stderr.jsonl"),
   );
-  const child = spawn("bun", ["run", "dev:desktop"], {
+  const devScript =
+    process.env.ELIZA_BROWSER_APP_HARNESS_DEV_SCRIPT?.trim() ||
+    "dev:desktop:watch";
+  stdout.write({ ts: nowIso(), event: "spawn", script: devScript });
+  const child = spawn("bun", ["run", devScript], {
     cwd: ROOT,
+    detached: true,
     env: {
       ...process.env,
       ELIZA_BROWSER_APP_HARNESS_RUN_ID:
@@ -357,13 +564,7 @@ function spawnDevDesktop(runDir) {
     child,
     async close() {
       if (child.exitCode == null && !child.killed) {
-        child.kill("SIGTERM");
-        await Promise.race([
-          new Promise((resolveExit) => child.once("exit", resolveExit)),
-          sleep(5_000).then(() => {
-            if (child.exitCode == null && !child.killed) child.kill("SIGKILL");
-          }),
-        ]);
+        await terminateSpawnedTree(child);
       }
       await stdout.close();
       await stderr.close();
@@ -377,6 +578,7 @@ function composeAgentPrompt(options) {
     : `Open the target URL and summarize what the page is for.`;
   return [
     "Use the built-in BROWSER action for this task.",
+    `Harness run id: ${options.runId}`,
     `Target URL: ${options.targetUrl}`,
     `Task: ${task}`,
     "Do not ask the harness to click, type, navigate, or evaluate target pages; perform browser work through your own BROWSER action and report the result in chat.",
@@ -436,6 +638,101 @@ function summarizePollResult(result) {
       result.body === null && result.bodyText
         ? result.bodyText.slice(0, 20_000)
         : undefined,
+  };
+}
+
+function arrayLengthAtKey(value, keys) {
+  if (Array.isArray(value)) return value.length;
+  if (!value || typeof value !== "object") return 0;
+  for (const key of keys) {
+    const entry = value[key];
+    if (Array.isArray(entry)) return entry.length;
+  }
+  for (const entry of Object.values(value)) {
+    const count = arrayLengthAtKey(entry, keys);
+    if (count > 0) return count;
+  }
+  return 0;
+}
+
+function textContains(value, needles) {
+  const haystack = JSON.stringify(value ?? "").toLowerCase();
+  return needles.some((needle) => haystack.includes(needle));
+}
+
+function analyzeRunArtifacts({
+  browserWorkspace,
+  browserWorkspaceEvents,
+  devConsoleLog,
+  trajectories,
+  options,
+  promptDelivery,
+}) {
+  const browserTabCount = arrayLengthAtKey(browserWorkspace.body, ["tabs"]);
+  const browserEventCount = arrayLengthAtKey(browserWorkspaceEvents.body, [
+    "events",
+  ]);
+  const trajectoryCount = arrayLengthAtKey(trajectories.body, [
+    "trajectories",
+    "items",
+    "results",
+    "data",
+  ]);
+  const endpointErrors = [
+    browserWorkspace,
+    browserWorkspaceEvents,
+    trajectories,
+    devConsoleLog,
+  ]
+    .filter((result) => result.status >= 400 || result.status === 0)
+    .map((result) => ({
+      path: result.path,
+      status: result.status,
+      bodyText: result.bodyText?.slice(0, 1000) || undefined,
+    }));
+  const consoleHasErrors = textContains(
+    devConsoleLog.body ?? devConsoleLog.bodyText,
+    ["error", "exception", "uncaught", "failed"],
+  );
+  const assertions = [
+    {
+      name: "browser-tab",
+      required: options.requireBrowserTab,
+      passed: !options.requireBrowserTab || browserTabCount > 0,
+      observed: browserTabCount,
+    },
+    {
+      name: "browser-events",
+      required: options.requireBrowserEvents,
+      passed: !options.requireBrowserEvents || browserEventCount > 0,
+      observed: browserEventCount,
+    },
+    {
+      name: "trajectory",
+      required: options.requireTrajectory,
+      passed: !options.requireTrajectory || trajectoryCount > 0,
+      observed: trajectoryCount,
+    },
+  ];
+  const failedAssertions = assertions.filter((assertion) => !assertion.passed);
+  return {
+    schema: "elizaos.browser-app-harness.analysis/v1",
+    ts: nowIso(),
+    ok: failedAssertions.length === 0,
+    promptDelivery,
+    targetUrl: options.targetUrl,
+    counts: {
+      browserTabs: browserTabCount,
+      browserEvents: browserEventCount,
+      trajectories: trajectoryCount,
+      endpointErrors: endpointErrors.length,
+    },
+    signals: {
+      consoleHasErrors,
+    },
+    assertions,
+    failedAssertions,
+    endpointErrors,
   };
 }
 
@@ -561,8 +858,30 @@ async function captureAppScreenshots(uiUrl, runDir) {
   });
   try {
     const page = await browser.newPage();
+    const consoleLog = makeJsonlWriter(
+      artifactPath(runDir, "puppeteer-console.jsonl"),
+    );
+    page.on("console", (message) => {
+      consoleLog.write({
+        ts: nowIso(),
+        type: message.type(),
+        text: message.text(),
+      });
+    });
+    page.on("pageerror", (error) => {
+      consoleLog.write({
+        ts: nowIso(),
+        type: "pageerror",
+        text:
+          error instanceof Error ? error.stack || error.message : String(error),
+      });
+    });
+    await seedElizaAppStorage(page);
     await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
-    await page.goto(uiUrl, { waitUntil: "networkidle2", timeout: 60_000 });
+    await page.goto(resolveChatUrl(uiUrl), {
+      waitUntil: "networkidle2",
+      timeout: 60_000,
+    });
     await page.screenshot({
       path: artifactPath(runDir, "eliza-app-initial.png"),
       fullPage: true,
@@ -570,10 +889,11 @@ async function captureAppScreenshots(uiUrl, runDir) {
     await writeJson(artifactPath(runDir, "puppeteer-screenshot.json"), {
       ts: nowIso(),
       uiUrl,
+      chatUrl: resolveChatUrl(uiUrl),
       executablePath,
       screenshots: ["eliza-app-initial.png"],
     });
-    return { browser, page };
+    return { browser, page, consoleLog };
   } catch (error) {
     await browser.close();
     throw error;
@@ -590,7 +910,267 @@ async function closePuppeteer(session, runDir) {
   } catch {
     // Best-effort final screenshot.
   }
+  await session.consoleLog?.close();
   await session.browser.close();
+}
+
+function resolveChatUrl(uiUrl) {
+  try {
+    const parsed = new URL(uiUrl);
+    return new URL("/chat", parsed.origin).toString();
+  } catch {
+    return `${stripTrailingSlash(uiUrl)}/chat`;
+  }
+}
+
+async function seedElizaAppStorage(page) {
+  await page.evaluateOnNewDocument(() => {
+    try {
+      const seededKey = "eliza:browser-app-harness-storage-seeded";
+      if (sessionStorage.getItem(seededKey) === "1") return;
+      localStorage.setItem("eliza:onboarding-complete", "1");
+      localStorage.setItem("eliza:onboarding:step", "activate");
+      localStorage.setItem("eliza:ui-shell-mode", "native");
+      localStorage.setItem(
+        "elizaos:active-server",
+        JSON.stringify({
+          id: "local:embedded",
+          kind: "local",
+          label: "This device",
+        }),
+      );
+      sessionStorage.setItem(seededKey, "1");
+    } catch {
+      // Chrome error pages can block storage access while the dev server restarts.
+    }
+  });
+}
+
+async function setComposerValue(page, selector, prompt) {
+  await page.click(selector, { clickCount: 3 });
+  await page.keyboard.press(
+    process.platform === "darwin" ? "Meta+A" : "Control+A",
+  );
+  await page.keyboard.press("Backspace");
+  await page.type(selector, prompt, { delay: 0 });
+
+  const valueLength = await page.$eval(
+    selector,
+    (node) => node.value?.length ?? 0,
+  );
+  if (valueLength === prompt.length) return;
+
+  await page.$eval(
+    selector,
+    (node, value) => {
+      node.value = value;
+      node.dispatchEvent(new Event("input", { bubbles: true }));
+      node.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    prompt,
+  );
+}
+
+function extractPromptMarker(prompt) {
+  const marker = /^Harness run id: .+$/m.exec(prompt)?.[0]?.trim();
+  if (marker) return marker;
+  return prompt.trim().split(/\s+/).slice(0, 12).join(" ");
+}
+
+async function writeComposerMissingDiagnostics(page, runDir, reason) {
+  const screenshot = "eliza-app-composer-missing.png";
+  const html = "eliza-app-composer-missing.html";
+  try {
+    await page.screenshot({
+      path: artifactPath(runDir, screenshot),
+      fullPage: true,
+    });
+  } catch {
+    // Best-effort diagnostic capture.
+  }
+  try {
+    await writeFile(artifactPath(runDir, html), await page.content(), "utf8");
+  } catch {
+    // Best-effort diagnostic capture.
+  }
+  await writeJson(artifactPath(runDir, "ui-composer-ready.json"), {
+    ts: nowIso(),
+    ok: false,
+    reason,
+    screenshot,
+    html,
+  });
+}
+
+async function waitForComposerReady(page, runDir, selector, timeoutMs) {
+  try {
+    await page.waitForSelector(selector, {
+      visible: true,
+      timeout: timeoutMs,
+    });
+    const state = await page.$eval(selector, (node) => ({
+      disabled: Boolean(node.disabled),
+      readOnly: Boolean(node.readOnly),
+      valueLength: node.value?.length ?? 0,
+    }));
+    await writeJson(artifactPath(runDir, "ui-composer-ready.json"), {
+      ts: nowIso(),
+      ok: true,
+      selector,
+      state,
+    });
+    return state;
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.stack || error.message : String(error);
+    await writeComposerMissingDiagnostics(page, runDir, reason);
+    throw new Error(`Chat composer did not mount: ${reason}`);
+  }
+}
+
+async function readUiPromptState(page, marker) {
+  return await page.evaluate((promptMarker) => {
+    const messages = Array.from(
+      document.querySelectorAll('[data-testid="chat-message"]'),
+    ).map((node) => ({
+      role: node.getAttribute("data-role") || "",
+      text: node.textContent || "",
+    }));
+    const composer = document.querySelector(
+      '[data-testid="chat-composer-textarea"]',
+    );
+    return {
+      url: window.location.href,
+      activeConversationId:
+        window.localStorage.getItem("eliza:chat:activeConversationId") || null,
+      messageCount: messages.length,
+      userMessageCount: messages.filter((message) => message.role === "user")
+        .length,
+      markerSeen: promptMarker
+        ? (document.body.innerText || "").includes(promptMarker)
+        : null,
+      composerValueLength:
+        composer && "value" in composer ? composer.value.length : null,
+    };
+  }, marker);
+}
+
+async function waitForPromptAccepted(page, runDir, before, marker, timeoutMs) {
+  try {
+    await page.waitForFunction(
+      ({ beforeUserMessageCount, promptMarker }) => {
+        const userMessages = Array.from(
+          document.querySelectorAll(
+            '[data-testid="chat-message"][data-role="user"]',
+          ),
+        );
+        const markerSeen = promptMarker
+          ? (document.body.innerText || "").includes(promptMarker)
+          : true;
+        return userMessages.length > beforeUserMessageCount && markerSeen;
+      },
+      { timeout: timeoutMs },
+      {
+        beforeUserMessageCount: before.userMessageCount,
+        promptMarker: marker,
+      },
+    );
+    return await readUiPromptState(page, marker);
+  } catch (error) {
+    const screenshot = "eliza-app-prompt-not-accepted.png";
+    const html = "eliza-app-prompt-not-accepted.html";
+    try {
+      await page.screenshot({
+        path: artifactPath(runDir, screenshot),
+        fullPage: true,
+      });
+    } catch {
+      // Best-effort diagnostic capture.
+    }
+    try {
+      await writeFile(artifactPath(runDir, html), await page.content(), "utf8");
+    } catch {
+      // Best-effort diagnostic capture.
+    }
+    const after = await readUiPromptState(page, marker).catch(() => null);
+    await writeJson(artifactPath(runDir, "ui-prompt-not-accepted.json"), {
+      ts: nowIso(),
+      ok: false,
+      marker,
+      before,
+      after,
+      screenshot,
+      html,
+      error:
+        error instanceof Error ? error.stack || error.message : String(error),
+    });
+    throw error;
+  }
+}
+
+async function sendPromptViaElizaUi(session, runDir, uiUrl, prompt) {
+  const page = session?.page;
+  if (!page) {
+    throw new Error(
+      "UI prompt delivery requires Puppeteer. Set PUPPETEER_EXECUTABLE_PATH/CHROME_PATH or pass --prompt-via-api.",
+    );
+  }
+
+  const chatUrl = resolveChatUrl(uiUrl);
+  if (!page.url().startsWith(chatUrl)) {
+    await page.goto(chatUrl, { waitUntil: "networkidle2", timeout: 60_000 });
+  }
+
+  const composerSelector = '[data-testid="chat-composer-textarea"]';
+  const actionSelector = '[data-testid="chat-composer-action"]';
+  const marker = extractPromptMarker(prompt);
+  await waitForComposerReady(page, runDir, composerSelector, 180_000);
+  const beforePrompt = await readUiPromptState(page, marker);
+  await setComposerValue(page, composerSelector, prompt);
+  await page.waitForFunction(
+    (selector) => {
+      const button = document.querySelector(selector);
+      return Boolean(button && !button.disabled);
+    },
+    { timeout: 20_000 },
+    actionSelector,
+  );
+  await page.click(actionSelector);
+  const afterPrompt = await waitForPromptAccepted(
+    page,
+    runDir,
+    beforePrompt,
+    marker,
+    30_000,
+  );
+  await page.screenshot({
+    path: artifactPath(runDir, "eliza-app-after-ui-prompt.png"),
+    fullPage: true,
+  });
+  await writeJson(artifactPath(runDir, "ui-prompt.json"), {
+    ts: nowIso(),
+    uiUrl,
+    chatUrl,
+    promptLength: prompt.length,
+    promptMarker: marker,
+    composerSelector,
+    actionSelector,
+    beforePrompt,
+    afterPrompt,
+    screenshot: "eliza-app-after-ui-prompt.png",
+  });
+  return {
+    ok: true,
+    status: 0,
+    path: "puppeteer://eliza-app/chat",
+    method: "UI",
+    body: {
+      conversationId: afterPrompt.activeConversationId,
+      markerSeen: afterPrompt.markerSeen,
+      userMessageCount: afterPrompt.userMessageCount,
+    },
+    bodyText: "",
+  };
 }
 
 function resolveUiUrlFromStack(options, stackBody) {
@@ -598,10 +1178,6 @@ function resolveUiUrlFromStack(options, stackBody) {
   const rendererUrl = stackBody?.desktop?.rendererUrl;
   if (typeof rendererUrl === "string" && rendererUrl.trim()) {
     return stripTrailingSlash(rendererUrl.trim());
-  }
-  const uiPort = stackBody?.desktop?.uiPort;
-  if (typeof uiPort === "number" && uiPort > 0) {
-    return `http://127.0.0.1:${uiPort}`;
   }
   return "";
 }
@@ -623,6 +1199,7 @@ async function main() {
     },
     guardrails: [
       "Puppeteer opens only the Eliza app UI URL.",
+      "When promptVia=ui, Puppeteer may type/click only the Eliza chat composer.",
       "The harness never calls /api/browser-workspace/command.",
       "The harness never calls browser workspace tab navigate/eval/show/hide mutation endpoints.",
       "Target website operation is delegated to the Eliza agent via its built-in BROWSER action.",
@@ -639,6 +1216,10 @@ async function main() {
   let puppeteerSession = null;
   let conversation = null;
   let promptResult = null;
+  let promptConversationId = null;
+  let runtimeReady = null;
+  let uiReady = null;
+  let uiUrl = "";
   const startedAt = Date.now();
 
   try {
@@ -652,19 +1233,16 @@ async function main() {
     if (!initialHealth.ok && !options.noLaunch) {
       console.log("[harness] launching dev desktop stack");
       stackProcess = spawnDevDesktop(runDir);
-      const ready = await waitForEndpoint(
-        options.apiBase,
-        "/api/health",
-        180_000,
-      );
-      if (!ready?.ok) {
-        throw new Error(
-          `Dev desktop stack did not become healthy on ${options.apiBase}/api/health`,
-        );
-      }
     } else if (!initialHealth.ok && options.noLaunch) {
       throw new Error(
         `No running Eliza API at ${options.apiBase}; remove --no-launch or pass --api-base`,
+      );
+    }
+
+    runtimeReady = await waitForRuntimeReady(options.apiBase, runDir, 300_000);
+    if (!isRuntimeReady(runtimeReady)) {
+      throw new Error(
+        `Eliza runtime did not become ready on ${options.apiBase}/api/health`,
       );
     }
 
@@ -686,7 +1264,7 @@ async function main() {
       "probe-dev-stack",
       "/api/dev/stack",
     );
-    const uiUrl = resolveUiUrlFromStack(options, stack.body);
+    uiUrl = resolveUiUrlFromStack(options, stack.body);
     await writeJson(artifactPath(runDir, "discovery.json"), {
       ts: nowIso(),
       apiBase: options.apiBase,
@@ -695,57 +1273,92 @@ async function main() {
       status: { ok: status.ok, status: status.status },
       devStack: { ok: stack.ok, status: stack.status },
     });
+    uiReady = await waitForUiUrl(uiUrl, runDir, 120_000);
+    if (uiUrl && !uiReady?.ok) {
+      throw new Error(
+        `UI did not become reachable at ${resolveChatUrl(uiUrl)}`,
+      );
+    }
 
     puppeteerSession = await captureAppScreenshots(uiUrl, runDir);
-    conversation = await createConversation(options.apiBase, runDir);
+    if (options.promptVia === "api") {
+      conversation = await createConversation(options.apiBase, runDir);
+    }
     await writeJson(artifactPath(runDir, "agent-prompt.json"), {
       ts: nowIso(),
-      conversationId: conversation.id,
+      delivery: options.promptVia,
+      conversationId: conversation?.id ?? null,
       prompt: plannedPrompt,
     });
-    promptResult = await sendConversationPrompt(
-      options.apiBase,
-      runDir,
-      conversation.id,
-      plannedPrompt,
-    );
+    promptResult =
+      options.promptVia === "ui"
+        ? await sendPromptViaElizaUi(
+            puppeteerSession,
+            runDir,
+            uiUrl,
+            plannedPrompt,
+          )
+        : await sendConversationPrompt(
+            options.apiBase,
+            runDir,
+            conversation.id,
+            plannedPrompt,
+          );
     if (!promptResult.ok) {
       throw new Error(
         `Prompt request failed: HTTP ${promptResult.status} ${promptResult.bodyText}`,
       );
     }
+    promptConversationId =
+      conversation?.id ?? promptResult.body?.conversationId ?? null;
 
     await pollReadOnlyEndpoints(
       options.apiBase,
       runDir,
       options,
-      conversation.id,
+      promptConversationId,
     );
 
-    await probeEndpoint(
+    const finalBrowserWorkspace = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-browser-workspace",
       "/api/browser-workspace",
     );
-    await probeEndpoint(
+    const finalBrowserWorkspaceEvents = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-browser-workspace-events",
       "/api/browser-workspace/events",
     );
-    await probeEndpoint(
+    const finalTrajectories = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-trajectories",
       "/api/trajectories?limit=50&offset=0",
     );
-    await probeEndpoint(
+    const finalDevConsoleLog = await probeEndpoint(
       options.apiBase,
       runDir,
       "final-dev-console-log",
       "/api/dev/console-log?maxLines=800&maxBytes=512000",
     );
+    const analysis = analyzeRunArtifacts({
+      browserWorkspace: finalBrowserWorkspace,
+      browserWorkspaceEvents: finalBrowserWorkspaceEvents,
+      devConsoleLog: finalDevConsoleLog,
+      trajectories: finalTrajectories,
+      options,
+      promptDelivery: options.promptVia,
+    });
+    await writeJson(artifactPath(runDir, "analysis.json"), analysis);
+    if (!analysis.ok) {
+      throw new Error(
+        `Harness assertions failed: ${analysis.failedAssertions
+          .map((assertion) => assertion.name)
+          .join(", ")}`,
+      );
+    }
 
     await writeJson(artifactPath(runDir, "summary.json"), {
       schema: "elizaos.browser-app-harness.summary/v1",
@@ -755,9 +1368,11 @@ async function main() {
       elapsedMs: Date.now() - startedAt,
       runDir,
       apiBase: options.apiBase,
-      conversationId: conversation.id,
+      conversationId: promptConversationId,
+      promptDelivery: options.promptVia,
       promptStatus: promptResult.status,
       promptOk: promptResult.ok,
+      analysis,
     });
     console.log(`[harness] complete: ${runDir}`);
   } catch (error) {
@@ -769,8 +1384,20 @@ async function main() {
       elapsedMs: Date.now() - startedAt,
       runDir,
       apiBase: options.apiBase,
-      conversationId: conversation?.id ?? null,
+      conversationId: promptConversationId ?? conversation?.id ?? null,
+      promptDelivery: options.promptVia,
       promptStatus: promptResult?.status ?? null,
+      runtimeReady: runtimeReady ? summarizePollResult(runtimeReady) : null,
+      uiReady,
+      uiUrl,
+      diagnostics: {
+        runtimeReady: "runtime-ready.json",
+        uiReady: "ui-ready.json",
+        uiReadyAttempts: "ui-ready.jsonl",
+        composerReady: "ui-composer-ready.json",
+        composerMissingScreenshot: "eliza-app-composer-missing.png",
+        promptNotAccepted: "ui-prompt-not-accepted.json",
+      },
       error:
         error instanceof Error ? error.stack || error.message : String(error),
     });

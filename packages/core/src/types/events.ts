@@ -217,6 +217,9 @@ export interface ModelEventPayload extends EventPayload {
 		prompt: number;
 		completion: number;
 		total: number;
+		cacheReadInputTokens?: number;
+		cacheCreationInputTokens?: number;
+		cachedInputTokens?: number;
 	};
 }
 

@@ -1,10 +1,8 @@
 import dedent from "dedent";
 import { logger } from "../../../logger.ts";
 import {
-	type ActionExample,
 	type ActionResult,
 	ChannelType,
-	type Action as ElizaAction,
 	type HandlerCallback,
 	type IAgentRuntime,
 	type Memory,
@@ -14,7 +12,6 @@ import {
 	type UUID,
 	type World,
 } from "../../../types/index.ts";
-import { hasActionContext } from "../../../utils/action-validation.ts";
 
 const canModifyRole = (
 	currentRole: Role,
@@ -24,34 +21,6 @@ const canModifyRole = (
 	if (targetRole === currentRole) return false;
 	return currentRole === Role.OWNER;
 };
-
-const _extractionTemplate = `# Task: Extract role assignments from the conversation
-
-# Current Server Members:
-{{serverMembers}}
-
-# Available Roles:
-- OWNER: Full control over the organization
-- ADMIN: Administrative privileges
-- NONE: Standard member access
-
-# Recent Conversation:
-{{recentMessages}}
-
-# Current speaker role: {{speakerRole}}
-
-# Instructions: Analyze the conversation and extract any role assignments being made by the speaker.
-Only extract role assignments if:
-1. The speaker has appropriate permissions to make the change
-2. The role assignment is clearly stated
-3. The target user is a valid server member
-4. The new role is one of: OWNER, ADMIN, or NONE
-
-Return the results as structured roleAssignments fields:
-roleAssignments[1]{entityId,newRole}:
-  UUID-of-the-entity,ROLE_NAME
-
-If no valid role assignments are found, return no roleAssignments entries.`;
 
 interface RoleAssignment {
 	entityId: string;
@@ -107,129 +76,108 @@ function extractRoleAssignments(result: unknown): RoleAssignment[] {
 	return assignments;
 }
 
-export const updateRoleAction: ElizaAction = {
-	name: "TRUST_UPDATE_ROLE",
-	contexts: ["admin", "settings"],
-	roleGate: { minRole: "OWNER" },
-	suppressPostActionContinuation: true,
-	similes: ["CHANGE_ROLE", "SET_PERMISSIONS", "ASSIGN_ROLE", "MAKE_ADMIN"],
-	description:
-		"Assigns a role (Admin, Owner, None) to a user or list of users in a channel.",
-	parameters: [
-		{
-			name: "roleAssignments",
-			description: "Role assignments with entityId and newRole.",
-			required: false,
-			schema: {
-				type: "array" as const,
-				items: {
-					type: "object" as const,
-					properties: {
-						entityId: { type: "string" as const },
-						newRole: {
-							type: "string" as const,
-							enum: [Role.OWNER, Role.ADMIN, Role.NONE],
-						},
-					},
-					required: ["entityId", "newRole"],
-				},
-			},
-		},
-	],
+type ActionOptions = Record<string, unknown>;
 
-	validate: async (
-		_runtime: IAgentRuntime,
-		message: Memory,
-		state?: State,
-		options?: Record<string, unknown>,
-	): Promise<boolean> => {
-		const channelType = message.content.channelType as ChannelType;
-		const serverId = message.content.serverId as string;
-		if (
-			channelType !== ChannelType.GROUP &&
-			channelType !== ChannelType.WORLD
-		) {
-			return false;
-		}
-		if (!serverId) {
-			return false;
-		}
-		const params =
-			options?.parameters && typeof options.parameters === "object"
-				? (options.parameters as Record<string, unknown>)
-				: {};
-		const hasStructuredAssignments =
-			Array.isArray(params.roleAssignments) &&
-			extractRoleAssignments(params.roleAssignments).length > 0;
-		return (
-			hasStructuredAssignments ||
-			hasActionContext(message, state, {
-				contexts: ["admin", "settings"],
-				keywords: [
-					"update role",
-					"change role",
-					"assign role",
-					"make admin",
-					"set permissions",
-				],
-			})
-		);
-	},
+function readNestedParameters(
+	options: ActionOptions | undefined,
+): ActionOptions {
+	const nested = options?.parameters;
+	if (typeof nested === "object" && nested !== null && !Array.isArray(nested)) {
+		return nested as ActionOptions;
+	}
+	return {};
+}
 
-	handler: async (
-		runtime: IAgentRuntime,
-		message: Memory,
-		state?: State,
-		_options?: Record<string, unknown>,
-		callback?: HandlerCallback,
-	): Promise<ActionResult> => {
-		if (!state) {
-			logger.error("State is required for role assignment");
-			throw new Error("State is required for role assignment");
-		}
+export async function updateRoleHandler(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State | undefined,
+	options: ActionOptions | undefined,
+	callback?: HandlerCallback,
+): Promise<ActionResult> {
+	if (!state) {
+		logger.error("State is required for role assignment");
+		throw new Error("State is required for role assignment");
+	}
 
-		const { roomId } = message;
-		const serverId = message.content.serverId as string;
-		const worldId = runtime.getSetting("WORLD_ID");
-
-		let world: World | null = null;
-
-		if (worldId) {
-			world = await runtime.getWorld(worldId as UUID);
-		}
-
-		if (!world) {
-			logger.error("World not found");
-			await callback?.({
-				text: "I couldn't find the world. This action only works in a world.",
-			});
-			return {
+	const channelType = message.content.channelType as ChannelType;
+	if (channelType !== ChannelType.GROUP && channelType !== ChannelType.WORLD) {
+		await callback?.({
+			text: "Role assignment only works in a group or world channel.",
+			actions: ["TRUST"],
+			source: "discord",
+		});
+		return {
+			success: false,
+			data: {
+				actionName: "TRUST",
+				subaction: "update_role",
 				success: false,
-				data: {
-					actionName: "TRUST_UPDATE_ROLE",
-					success: false,
-					error: "World not found",
-				},
-			};
-		}
+				error: "Unsupported channel type",
+			},
+		};
+	}
 
-		if (!world.metadata?.roles) {
-			world.metadata = world.metadata || {};
-			world.metadata.roles = {};
-		}
+	const { roomId } = message;
+	const serverId = message.content.serverId as string;
+	if (!serverId) {
+		await callback?.({
+			text: "Role assignment requires a serverId on the message.",
+			actions: ["TRUST"],
+			source: "discord",
+		});
+		return {
+			success: false,
+			data: {
+				actionName: "TRUST",
+				subaction: "update_role",
+				success: false,
+				error: "Missing serverId",
+			},
+		};
+	}
 
-		const entities = await runtime.getEntitiesForRoom(roomId);
+	const worldId = runtime.getSetting("WORLD_ID");
 
-		const requesterRole = world.metadata.roles[message.entityId] || Role.NONE;
+	let world: World | null = null;
 
-		const serverMembers = entities
-			.map((entity) => {
-				const names = entity.names?.filter(Boolean).join(", ") || "Unknown";
-				return `- entityId: ${entity.id}\n  names: ${names}`;
-			})
-			.join("\n");
+	if (worldId) {
+		world = await runtime.getWorld(worldId as UUID);
+	}
 
-		const extractionPrompt = dedent`
+	if (!world) {
+		logger.error("World not found");
+		await callback?.({
+			text: "I couldn't find the world. This action only works in a world.",
+		});
+		return {
+			success: false,
+			data: {
+				actionName: "TRUST",
+				subaction: "update_role",
+				success: false,
+				error: "World not found",
+			},
+		};
+	}
+
+	if (!world.metadata?.roles) {
+		world.metadata = world.metadata || {};
+		world.metadata.roles = {};
+	}
+
+	const entities = await runtime.getEntitiesForRoom(roomId);
+
+	const requesterRole = world.metadata.roles[message.entityId] || Role.NONE;
+
+	const serverMembers = entities
+		.map((entity) => {
+			const names = entity.names?.filter(Boolean).join(", ") || "Unknown";
+			return `- entityId: ${entity.id}\n  names: ${names}`;
+		})
+		.join("\n");
+
+	const extractionPrompt = dedent`
 				# Task: Parse Role Assignment
 
 				I need to extract user role assignments from the input text. Users can be referenced by name, username, or mention.
@@ -254,177 +202,124 @@ export const updateRoleAction: ElizaAction = {
 				- newRole: The role to assign (OWNER, ADMIN, or NONE)
 			`;
 
-		const params =
-			_options?.parameters && typeof _options.parameters === "object"
-				? (_options.parameters as Record<string, unknown>)
-				: {};
-		const parsed = await runtime.dynamicPromptExecFromState({
-			state,
-			params: { prompt: extractionPrompt },
-			schema: [
-				{
-					field: "roleAssignments",
-					description:
-						"Role assignments clearly requested by the speaker, or an empty list when none are valid",
-					type: "array",
-					items: {
-						description: "One role assignment",
-						type: "object",
-						properties: [
-							{
-								field: "entityId",
-								description: "Exact entityId from Current server members",
-								required: true,
-							},
-							{
-								field: "newRole",
-								description: "One of OWNER, ADMIN, or NONE",
-								required: true,
-							},
-						],
-					},
-					required: false,
-					validateField: false,
-					streamField: false,
+	const params = readNestedParameters(options);
+	const parsed = await runtime.dynamicPromptExecFromState({
+		state,
+		params: { prompt: extractionPrompt },
+		schema: [
+			{
+				field: "roleAssignments",
+				description:
+					"Role assignments clearly requested by the speaker, or an empty list when none are valid",
+				type: "array",
+				items: {
+					description: "One role assignment",
+					type: "object",
+					properties: [
+						{
+							field: "entityId",
+							description: "Exact entityId from Current server members",
+							required: true,
+						},
+						{
+							field: "newRole",
+							description: "One of OWNER, ADMIN, or NONE",
+							required: true,
+						},
+					],
 				},
-			],
-			options: {
-				modelType: ModelType.TEXT_LARGE,
-				contextCheckLevel: 0,
-				maxRetries: 1,
+				required: false,
+				validateField: false,
+				streamField: false,
 			},
+		],
+		options: {
+			modelType: ModelType.TEXT_LARGE,
+			contextCheckLevel: 0,
+			maxRetries: 1,
+		},
+	});
+
+	const explicitAssignments = extractRoleAssignments(params.roleAssignments);
+	const result = explicitAssignments.length
+		? explicitAssignments
+		: extractRoleAssignments(parsed);
+
+	if (!result?.length) {
+		await callback?.({
+			text: "No valid role assignments found in the request.",
+			actions: ["TRUST"],
+			source: "discord",
+		});
+		return {
+			success: false,
+			data: {
+				actionName: "TRUST",
+				subaction: "update_role",
+				success: false,
+				message: "No valid role assignments found",
+			},
+		};
+	}
+
+	let worldUpdated = false;
+	const updatedRoles: Array<{
+		entityName: string;
+		entityId: string;
+		newRole: Role;
+	}> = [];
+
+	for (const assignment of result) {
+		const targetEntity = entities.find((e) => e.id === assignment.entityId);
+		if (!targetEntity) {
+			logger.error("Could not find an ID to assign to");
+			continue;
+		}
+
+		const currentRole = world.metadata.roles[assignment.entityId];
+
+		if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
+			await callback?.({
+				text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+				actions: ["TRUST"],
+				source: "discord",
+			});
+			continue;
+		}
+
+		world.metadata.roles[assignment.entityId] = assignment.newRole;
+
+		worldUpdated = true;
+		updatedRoles.push({
+			entityName: targetEntity.names[0] || "Unknown",
+			entityId: assignment.entityId,
+			newRole: assignment.newRole,
 		});
 
-		const explicitAssignments = extractRoleAssignments(params.roleAssignments);
-		const result = explicitAssignments.length
-			? explicitAssignments
-			: extractRoleAssignments(parsed);
+		await callback?.({
+			text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
+			actions: ["TRUST"],
+			source: "discord",
+		});
+	}
 
-		if (!result?.length) {
-			await callback?.({
-				text: "No valid role assignments found in the request.",
-				actions: ["TRUST_UPDATE_ROLE"],
-				source: "discord",
-			});
-			return {
-				success: false,
-				data: {
-					actionName: "TRUST_UPDATE_ROLE",
-					success: false,
-					message: "No valid role assignments found",
-				},
-			};
-		}
+	if (worldUpdated) {
+		await runtime.updateWorld(world);
+		logger.info(`Updated roles in world metadata for server ${serverId}`);
+	}
 
-		let worldUpdated = false;
-		const updatedRoles: Array<{
-			entityName: string;
-			entityId: string;
-			newRole: Role;
-		}> = [];
-
-		for (const assignment of result) {
-			const targetEntity = entities.find((e) => e.id === assignment.entityId);
-			if (!targetEntity) {
-				logger.error("Could not find an ID to assign to");
-				continue;
-			}
-
-			const currentRole = world.metadata.roles[assignment.entityId];
-
-			if (!canModifyRole(requesterRole, currentRole, assignment.newRole)) {
-				await callback?.({
-					text: `You don't have permission to change ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-					actions: ["TRUST_UPDATE_ROLE"],
-					source: "discord",
-				});
-				continue;
-			}
-
-			world.metadata.roles[assignment.entityId] = assignment.newRole;
-
-			worldUpdated = true;
-			updatedRoles.push({
-				entityName: targetEntity.names[0] || "Unknown",
-				entityId: assignment.entityId,
-				newRole: assignment.newRole,
-			});
-
-			await callback?.({
-				text: `Updated ${targetEntity?.names[0]}'s role to ${assignment.newRole}.`,
-				actions: ["TRUST_UPDATE_ROLE"],
-				source: "discord",
-			});
-		}
-
-		if (worldUpdated) {
-			await runtime.updateWorld(world);
-			logger.info(`Updated roles in world metadata for server ${serverId}`);
-		}
-
-		return {
+	return {
+		success: worldUpdated,
+		data: {
+			actionName: "TRUST",
+			subaction: "update_role",
 			success: worldUpdated,
-			data: {
-				actionName: "TRUST_UPDATE_ROLE",
-				success: worldUpdated,
-				updatedRoles,
-				totalProcessed: result.length,
-				totalUpdated: updatedRoles.length,
-			},
-			text: worldUpdated
-				? `Successfully updated ${updatedRoles.length} role(s).`
-				: "No roles were updated.",
-		};
-	},
-
-	examples: [
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Make {{name2}} an ADMIN",
-					source: "discord",
-				},
-			},
-			{
-				name: "{{name3}}",
-				content: {
-					text: "Updated {{name2}}'s role to ADMIN.",
-					actions: ["TRUST_UPDATE_ROLE"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Set @alice and @bob as admins",
-					source: "discord",
-				},
-			},
-			{
-				name: "{{name3}}",
-				content: {
-					text: "Updated alice's role to ADMIN.\nUpdated bob's role to ADMIN.",
-					actions: ["TRUST_UPDATE_ROLE"],
-				},
-			},
-		],
-		[
-			{
-				name: "{{name1}}",
-				content: {
-					text: "Ban @troublemaker",
-					source: "discord",
-				},
-			},
-			{
-				name: "{{name3}}",
-				content: {
-					text: "I cannot ban users.",
-					actions: ["REPLY"],
-				},
-			},
-		],
-	] as ActionExample[][],
-};
+			updatedRoles,
+			totalProcessed: result.length,
+			totalUpdated: updatedRoles.length,
+		},
+		text: worldUpdated
+			? `Successfully updated ${updatedRoles.length} role(s).`
+			: "No roles were updated.",
+	};
+}

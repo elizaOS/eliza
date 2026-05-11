@@ -51,6 +51,27 @@ function buildSamplePrompt(turns: number): string {
   return `${SAMPLE_PROMPT_PREFIX}${buildSampleConversation(turns)}${SAMPLE_PROMPT_SUFFIX}`;
 }
 
+function appendConversationBeforeReceived(
+  prompt: string,
+  turns: number,
+): string {
+  const lines: string[] = [];
+  for (let i = 0; i < turns; i++) {
+    const userMinute = 56 + i * 2;
+    const agentMinute = 57 + i * 2;
+    lines.push(
+      `13:${String(userMinute % 60).padStart(2, "0")} (later) [dddddddd-dddd-dddd-dddd-dddddddddddd] User: follow-up round ${i}`,
+    );
+    lines.push(
+      `13:${String(agentMinute % 60).padStart(2, "0")} (later) [eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee] Eliza: follow-up answer ${i}`,
+    );
+  }
+  return prompt.replace(
+    SAMPLE_PROMPT_SUFFIX,
+    `\n${lines.join("\n")}${SAMPLE_PROMPT_SUFFIX}`,
+  );
+}
+
 function fakeNaiveCallModel(label = "summary"): CompactorModelCall {
   return async ({ messages }) => {
     const total = messages.map((m) => m.content).join(" ");
@@ -162,6 +183,19 @@ please inspect it
       "user",
     ]);
   });
+
+  it("does not infer a pasted System speaker as an assistant turn", () => {
+    const prompt = `${SAMPLE_PROMPT_PREFIX}# Conversation Messages
+12:00 System: this is a pasted log line, not the model
+12:01 Agent: I can inspect the log.${SAMPLE_PROMPT_SUFFIX}`;
+    const transcript = parsePromptToTranscript(prompt);
+    expect(transcript.messages.map((m) => m.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "user",
+    ]);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -185,6 +219,47 @@ describe("serializeTranscriptToPrompt", () => {
     const transcript = parsePromptToTranscript(prompt);
     const reserialized = serializeTranscriptToPrompt(prompt, transcript);
     expect(reserialized).toBe(prompt);
+  });
+
+  it("reparses serialized synthetic summary and tool markers", () => {
+    const prompt = buildSamplePrompt(1);
+    const transcript = parsePromptToTranscript(prompt);
+    const activeTurn = transcript.messages.at(-1);
+    if (!activeTurn) throw new Error("missing active turn");
+    const compacted = serializeTranscriptToPrompt(prompt, {
+      messages: [
+        transcript.messages[0],
+        {
+          role: "system",
+          content: "[conversation hybrid-ledger]\nFacts:\n- parcel=LIME-4421",
+          tags: ["compactor:hybrid-ledger"],
+        },
+        {
+          role: "assistant",
+          content: "[conversation summary]\nUser chose delivery window B.",
+          tags: ["compactor:naive-summary"],
+        },
+        {
+          role: "tool",
+          toolName: "calendar_lookup",
+          content: '{"window":"B"}',
+          tags: ["compactor:tool-result"],
+        },
+        activeTurn,
+      ],
+    });
+
+    const reparsed = parsePromptToTranscript(compacted);
+    expect(reparsed.messages.map((message) => message.role)).toEqual([
+      "system",
+      "system",
+      "assistant",
+      "tool",
+      "user",
+    ]);
+    expect(reparsed.messages[1].content).toContain("parcel=LIME-4421");
+    expect(reparsed.messages[1].tags).toEqual(["compactor:hybrid-ledger"]);
+    expect(reparsed.messages[3].toolName).toBe("calendar_lookup");
   });
 });
 
@@ -213,7 +288,7 @@ describe("applyConversationCompaction", () => {
       prompt,
       strategy: "naive-summary",
       currentTokens: originalTokens,
-      targetTokens: 50,
+      targetTokens: 180,
       callModel: fakeNaiveCallModel("brief"),
       preserveTailMessages: 2,
     });
@@ -238,7 +313,7 @@ describe("applyConversationCompaction", () => {
       prompt,
       strategy: "naive-summary",
       currentTokens: originalTokens,
-      targetTokens: 20,
+      targetTokens: 260,
       callModel: async () => "x".repeat(prompt.length * 2),
       preserveTailMessages: 1,
     });
@@ -248,28 +323,61 @@ describe("applyConversationCompaction", () => {
     expect(result.artifact?.replacementMessageCount).toBe(1);
   });
 
-  it("compacts when protected sections prevent fitting the target budget", async () => {
-    const prompt = buildSamplePrompt(20);
+  it("skips paid summarization when protected sections leave no replacement budget", async () => {
+    const prompt = `${"# Persona\n"}${"noncompactable system text ".repeat(200)}\n${buildSampleConversation(20)}${SAMPLE_PROMPT_SUFFIX}`;
     const originalTokens = Math.ceil(prompt.length / 4);
     let calls = 0;
     const result = await applyConversationCompaction({
       prompt,
       strategy: "naive-summary",
       currentTokens: originalTokens,
-      targetTokens: 8,
+      targetTokens: 50,
       callModel: async () => {
         calls += 1;
         return "short";
       },
     });
-    expect(calls).toBe(1);
-    expect(result.didCompact).toBe(true);
-    expect(result.prompt).not.toBe(prompt);
-    expect(result.compactedTokens).toBeLessThan(result.originalTokens);
-    expect(result.compactedTokens).toBeGreaterThan(result.targetTokens);
-    expect(result.replacementTargetTokens).toBeLessThanOrEqual(
-      result.targetTokens,
-    );
+    expect(calls).toBe(0);
+    expect(result.didCompact).toBe(false);
+    expect(result.prompt).toBe(prompt);
+    expect(result.replacementTargetTokens).toBeGreaterThanOrEqual(0);
+    expect(result.replacementTargetTokens).toBeLessThan(64);
+    expect(result.skipReason).toBe("noncompactable-over-budget");
+  });
+
+  it("reparses a serialized summary on the next compaction cycle", async () => {
+    const prompt = buildSamplePrompt(30);
+    const firstTokens = Math.ceil(prompt.length / 4);
+    const first = await applyConversationCompaction({
+      prompt,
+      strategy: "naive-summary",
+      currentTokens: firstTokens,
+      targetTokens: 350,
+      preserveTailMessages: 2,
+      callModel: async () => "cycle-one preserved parcel code LIME-4421",
+    });
+    expect(first.didCompact).toBe(true);
+    expect(first.prompt).toContain("[Agent [compactor:naive-summary]]");
+
+    const secondPrompt = appendConversationBeforeReceived(first.prompt, 20);
+    let secondSummarizerInput = "";
+    const second = await applyConversationCompaction({
+      prompt: secondPrompt,
+      strategy: "naive-summary",
+      currentTokens: Math.ceil(secondPrompt.length / 4),
+      targetTokens: 350,
+      preserveTailMessages: 2,
+      callModel: async ({ messages }) => {
+        secondSummarizerInput = messages
+          .map((message) => message.content)
+          .join("\n");
+        return "cycle-two still preserved parcel code LIME-4421";
+      },
+    });
+
+    expect(second.didCompact).toBe(true);
+    expect(secondSummarizerInput).toContain("cycle-one preserved parcel code");
+    expect(second.prompt).toContain("cycle-two still preserved parcel code");
   });
 
   it("never includes the active Received Message suffix in summarizer input", async () => {
@@ -317,12 +425,37 @@ describe("applyConversationMessageCompaction", () => {
       messages,
       strategy: "hybrid-ledger",
       currentTokens: 5000,
-      targetTokens: 50,
+      targetTokens: 110,
       callModel: fakeNaiveCallModel(),
     });
     expect(result.didCompact).toBe(false);
     expect(result.messages).toBe(messages);
     expect(result.artifact?.replacementMessageCount).toBe(0);
+    expect(result.skipReason).toBe("empty-replacement");
+  });
+
+  it("does not call the summarizer when noncompactable messages exceed budget", async () => {
+    const messages = [
+      { role: "system" as const, content: "system ".repeat(300) },
+      { role: "user" as const, content: "old compactable history" },
+      { role: "assistant" as const, content: "tail ".repeat(120) },
+    ];
+    let calls = 0;
+    const result = await applyConversationMessageCompaction({
+      messages,
+      strategy: "naive-summary",
+      currentTokens: 1000,
+      targetTokens: 50,
+      preserveTailMessages: 1,
+      callModel: async () => {
+        calls += 1;
+        return "summary";
+      },
+    });
+    expect(calls).toBe(0);
+    expect(result.didCompact).toBe(false);
+    expect(result.messages).toBe(messages);
+    expect(result.skipReason).toBe("noncompactable-over-budget");
   });
 });
 
@@ -395,7 +528,7 @@ describe("maybeApplyConversationCompaction (prompt-optimization integration)", (
     const compactedPrompt = await maybeApplyConversationCompaction(
       fakeRuntime,
       prompt,
-      40, // tiny budget — guaranteed to be exceeded
+      400,
       callModel,
     );
     expect(callModelInvocations).toBeGreaterThanOrEqual(1);
@@ -541,6 +674,93 @@ describe("installPromptOptimizations telemetry", () => {
     expect(conversationCompaction.didCompact).toBe(true);
   });
 
+  it("carries cache-token usage from MODEL_USED events into trajectory fallback calls", async () => {
+    delete process.env.ELIZA_CONVERSATION_COMPACTOR;
+    const trajectoryCalls: Array<Record<string, unknown>> = [];
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      emitEvent: async (_event: unknown, _params?: unknown) => {},
+      getService: (type: string) =>
+        type === "trajectories"
+          ? {
+              logLlmCall: (call: Record<string, unknown>) => {
+                trajectoryCalls.push(call);
+              },
+            }
+          : null,
+      useModel: async (_type?: unknown, _params?: unknown) => {
+        await (
+          runtime.emitEvent as (
+            event: unknown,
+            params?: unknown,
+          ) => Promise<void>
+        )("MODEL_USED", {
+          source: "cerebras",
+          provider: "cerebras",
+          model: "gpt-oss-120b",
+          tokens: {
+            prompt: 120,
+            completion: 30,
+            total: 150,
+            cacheReadInputTokens: 80,
+            cacheCreationInputTokens: 12,
+          },
+        });
+        return "final response";
+      },
+    };
+    (globalThis as Record<symbol, unknown>)[
+      Symbol.for("elizaos.trajectoryContextManager")
+    ] = { active: () => ({ trajectoryStepId: "cache-step" }) };
+
+    installPromptOptimizations(
+      runtime as never,
+      {
+        models: {
+          providers: {
+            test: {
+              baseUrl: "https://example.test/v1",
+              models: [
+                {
+                  id: "gpt-oss-120b",
+                  name: "gpt-oss-120b",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 4096,
+                  maxTokens: 256,
+                },
+              ],
+            },
+          },
+        },
+      } as never,
+    );
+
+    const result = await (
+      runtime.useModel as (
+        modelType: string,
+        payload: Record<string, unknown>,
+      ) => Promise<unknown>
+    )("TEXT_LARGE", {
+      model: "gpt-oss-120b",
+      prompt: "hello",
+      maxTokens: 100,
+    });
+
+    expect(result).toBe("final response");
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({
+      promptTokens: 120,
+      completionTokens: 30,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 12,
+      tokenUsageEstimated: false,
+    });
+  });
+
   it("records and compacts v5 messages-array payloads", async () => {
     process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
     const trajectoryCalls: Array<Record<string, unknown>> = [];
@@ -632,6 +852,79 @@ describe("installPromptOptimizations telemetry", () => {
     >;
     expect(conversationCompaction.strategy).toBe("naive-summary");
     expect(conversationCompaction.didCompact).toBe(true);
+  });
+
+  it("records skip telemetry without calling the summarizer when noncompactable prompt sections exceed budget", async () => {
+    process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
+    const seenPayloads: Array<Record<string, unknown>> = [];
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      getService: () => null,
+      useModel: async (_modelType: string, payload: unknown) => {
+        const record = payload as Record<string, unknown>;
+        if (
+          typeof record.system === "string" &&
+          record.system.includes("conversation summarizer")
+        ) {
+          throw new Error("summarizer should not run");
+        }
+        seenPayloads.push(record);
+        return "final response";
+      },
+    };
+
+    installPromptOptimizations(
+      runtime as never,
+      {
+        models: {
+          providers: {
+            test: {
+              baseUrl: "https://example.test/v1",
+              models: [
+                {
+                  id: "tiny-test-model",
+                  name: "tiny-test-model",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 360,
+                  maxTokens: 100,
+                },
+              ],
+            },
+          },
+        },
+      } as never,
+    );
+
+    const prompt = `${"# Persona\n"}${"protected system text ".repeat(120)}\n${buildSampleConversation(20)}${SAMPLE_PROMPT_SUFFIX}`;
+    await runtime.useModel("TEXT_LARGE", {
+      model: "tiny-test-model",
+      prompt,
+      maxTokens: 100,
+      providerOptions: {},
+    });
+
+    expect(seenPayloads).toHaveLength(1);
+    const providerOptions = seenPayloads[0]?.providerOptions as Record<
+      string,
+      unknown
+    >;
+    const eliza = providerOptions.eliza as Record<string, unknown>;
+    const telemetry = eliza.promptOptimization as Record<string, unknown>;
+    expect(telemetry.transformations).toContain(
+      "conversation-compaction-skipped:noncompactable-over-budget",
+    );
+    const conversationCompaction = telemetry.conversationCompaction as Record<
+      string,
+      unknown
+    >;
+    expect(conversationCompaction.didCompact).toBe(false);
+    expect(conversationCompaction.skipReason).toBe(
+      "noncompactable-over-budget",
+    );
   });
 
   it("does not rewrite messages-array payloads while provider tools are present", async () => {

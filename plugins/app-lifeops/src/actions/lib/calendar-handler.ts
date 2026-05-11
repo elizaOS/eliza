@@ -31,9 +31,6 @@ import {
 } from "../../travel-time/calendar-create.js";
 import { TravelTimeUnavailableError } from "../../travel-time/service.js";
 import {
-  calendarReadUnavailableMessage,
-  calendarWriteUnavailableMessage,
-  getGoogleCapabilityStatus,
   hasLifeOpsAccess,
   INTERNAL_URL,
 } from "../../lifeops/access.js";
@@ -792,6 +789,47 @@ function buildCalendarServiceErrorFallback(
     return "Calendar is rate-limited right now. Try again in a bit.";
   }
   return "I couldn't finish that calendar change yet. Tell me the event and timing again, and I'll try it a different way.";
+}
+
+function isAppleCalendarPermissionError(error: LifeOpsServiceError): boolean {
+  return (
+    error.status === 403 &&
+    normalizeText(error.message).includes("apple calendar permission")
+  );
+}
+
+function buildAppleCalendarPermissionRequestText(
+  subaction: CalendarSubaction | null,
+): string {
+  const feature =
+    subaction === "create_event"
+      ? "lifeops.calendar.create"
+      : subaction === "update_event"
+        ? "lifeops.calendar.update"
+        : subaction === "delete_event"
+          ? "lifeops.calendar.delete"
+          : "lifeops.calendar.read";
+  const reason =
+    subaction === "create_event"
+      ? "I need Apple Calendar access to add that event."
+      : subaction === "update_event"
+        ? "I need Apple Calendar access to update that event."
+        : subaction === "delete_event"
+          ? "I need Apple Calendar access to delete that event."
+          : "I need Apple Calendar access to read your schedule.";
+  return [
+    reason,
+    "```json",
+    JSON.stringify({
+      action: "permission_request",
+      reasoning: "native Apple Calendar access is required for this LifeOps calendar action",
+      permission: "calendar",
+      reason,
+      feature,
+      fallback_offered: false,
+    }),
+    "```",
+  ].join("\n");
 }
 
 function buildCalendarEventDisambiguationFallback(args: {
@@ -3201,15 +3239,7 @@ export const calendarAction: Action & {
     }
 
     try {
-      const google = await getGoogleCapabilityStatus(service);
-
       if (subaction === "next_event") {
-        if (!google.hasCalendarRead) {
-          return respond({
-            success: false,
-            text: calendarReadUnavailableMessage(google),
-          });
-        }
         const context = await service.getNextCalendarEventContext(
           INTERNAL_URL,
           {
@@ -3228,18 +3258,12 @@ export const calendarAction: Action & {
       }
 
       if (subaction === "create_event") {
-        if (!google.hasCalendarWrite) {
-          return respond({
-            success: false,
-            text: calendarWriteUnavailableMessage(google),
-          });
-        }
         let calendarContext: CreateEventCalendarContext | null = null;
         try {
           calendarContext = await loadCreateEventCalendarContext(
             service,
             details,
-            google.hasCalendarRead,
+            true,
           );
         } catch (error) {
           runtime.logger?.warn?.(
@@ -3469,12 +3493,6 @@ export const calendarAction: Action & {
       }
 
       if (subaction === "update_event") {
-        if (!google.hasCalendarWrite) {
-          return respond({
-            success: false,
-            text: calendarWriteUnavailableMessage(google),
-          });
-        }
         const explicitEventId = detailString(details, "eventId");
         let resolvedEventId = explicitEventId;
         let resolvedCalendarId = detailString(details, "calendarId");
@@ -3605,7 +3623,7 @@ export const calendarAction: Action & {
             | "cloud_managed"
             | undefined,
           side: detailString(details, "side") as "owner" | "agent" | undefined,
-          grantId: detailString(details, "grantId"),
+          grantId: detailString(details, "grantId") ?? targetEvent?.grantId,
           calendarId: resolvedCalendarId,
           eventId: resolvedEventId ?? "",
           title: newTitle,
@@ -3637,12 +3655,6 @@ export const calendarAction: Action & {
       }
 
       if (subaction === "delete_event") {
-        if (!google.hasCalendarWrite) {
-          return respond({
-            success: false,
-            text: calendarWriteUnavailableMessage(google),
-          });
-        }
         const explicitEventId = detailString(details, "eventId");
         const calendarIdForDelete = detailString(details, "calendarId");
         const resolvedEventId = explicitEventId;
@@ -3739,7 +3751,7 @@ export const calendarAction: Action & {
                   | "owner"
                   | "agent"
                   | undefined,
-                grantId: detailString(details, "grantId"),
+                grantId: detailString(details, "grantId") ?? target.grantId,
                 calendarId: target.calendarId,
                 eventId: target.externalId,
               });
@@ -3810,13 +3822,6 @@ export const calendarAction: Action & {
           text: await renderReply("deleted_event", fallback, {
             eventTitle: resolvedEventTitle,
           }),
-        });
-      }
-
-      if (!google.hasCalendarRead) {
-        return respond({
-          success: false,
-          text: calendarReadUnavailableMessage(google),
         });
       }
 
@@ -4094,6 +4099,12 @@ export const calendarAction: Action & {
       });
     } catch (error) {
       if (error instanceof LifeOpsServiceError) {
+        if (isAppleCalendarPermissionError(error)) {
+          return respond({
+            success: false,
+            text: buildAppleCalendarPermissionRequestText(subaction),
+          });
+        }
         const fallback = buildCalendarServiceErrorFallback(error, intent);
         return respond({
           success: false,

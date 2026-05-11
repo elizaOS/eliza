@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { webFetchAction } from "./web-fetch.js";
+import { webFetchHandler } from "./web-fetch.js";
 
 interface RouteResponse {
   status?: number;
@@ -54,7 +54,7 @@ const state: State | undefined = undefined;
 describe("WEB_FETCH", () => {
   it("rejects non-http(s) URLs as invalid_param", async () => {
     const runtime = makeRuntime({ CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK: "1" });
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: { url: "ftp://example.com/foo" },
     });
     expect(result.success).toBe(false);
@@ -63,7 +63,7 @@ describe("WEB_FETCH", () => {
 
   it("rejects malformed URLs as invalid_param", async () => {
     const runtime = makeRuntime({ CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK: "1" });
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: { url: "not a url" },
     });
     expect(result.success).toBe(false);
@@ -72,7 +72,7 @@ describe("WEB_FETCH", () => {
 
   it("rejects loopback by default", async () => {
     const runtime = makeRuntime();
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: { url: `${baseUrl}/` },
     });
     expect(result.success).toBe(false);
@@ -85,7 +85,7 @@ describe("WEB_FETCH", () => {
       body: "<html><head><style>body{color:red}</style><script>alert(1)</script></head><body><h1>Hello</h1><p>World <b>bold</b></p></body></html>",
     });
     const runtime = makeRuntime({ CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK: "1" });
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: { url: `${baseUrl}/html`, prompt: "summarize" },
     });
     expect(result.success).toBe(true);
@@ -106,7 +106,7 @@ describe("WEB_FETCH", () => {
       body: "hello <not stripped> world",
     });
     const runtime = makeRuntime({ CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK: "1" });
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: { url: `${baseUrl}/plain` },
     });
     expect(result.success).toBe(true);
@@ -116,7 +116,7 @@ describe("WEB_FETCH", () => {
   it("fails on 5xx responses", async () => {
     routes.set("/boom", { status: 500, body: "server error" });
     const runtime = makeRuntime({ CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK: "1" });
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: { url: `${baseUrl}/boom` },
     });
     expect(result.success).toBe(false);
@@ -126,7 +126,7 @@ describe("WEB_FETCH", () => {
 
   it("fails on missing url param", async () => {
     const runtime = makeRuntime({ CODING_TOOLS_WEB_FETCH_ALLOW_LOOPBACK: "1" });
-    const result = await webFetchAction.handler!(runtime, message, state, {
+    const result = await webFetchHandler(runtime, message, state, {
       parameters: {},
     });
     expect(result.success).toBe(false);

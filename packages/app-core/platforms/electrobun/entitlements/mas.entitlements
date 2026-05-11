@@ -24,6 +24,16 @@
 	<key>com.apple.security.device.microphone</key>
 	<true/>
 
+	<!-- Personal information access used by native EventKit/CNContactStore paths -->
+	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+
+	<!-- Apple Events for remaining just-in-time Automation paths (Messages, Notes) -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+
 	<!-- JIT for Bun runtime (required for V8/JavaScriptCore JIT) -->
 	<key>com.apple.security.cs.allow-jit</key>
 	<true/>

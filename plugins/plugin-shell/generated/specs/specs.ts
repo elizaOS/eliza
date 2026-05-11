@@ -24,9 +24,19 @@ export const coreActionsSpec = {
   version: "1.0.0",
   actions: [
     {
-      name: "CLEAR_SHELL_HISTORY",
-      description: "Clears the recorded history of shell commands for the current conversation",
-      similes: ["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"],
+      name: "SHELL_HISTORY",
+      description:
+        "Shell command-history router. action=clear wipes the recorded history; action=view returns recent commands; action=disable is reserved.",
+      similes: [
+        "CLEAR_HISTORY",
+        "CLEAR_SHELL_HISTORY",
+        "RESET_SHELL",
+        "CLEAR_TERMINAL",
+        "RESET_HISTORY",
+        "VIEW_SHELL_HISTORY",
+        "SHOW_SHELL_HISTORY",
+        "LIST_SHELL_HISTORY",
+      ],
       parameters: [],
     },
   ],
@@ -35,9 +45,19 @@ export const allActionsSpec = {
   version: "1.0.0",
   actions: [
     {
-      name: "CLEAR_SHELL_HISTORY",
-      description: "Clears the recorded history of shell commands for the current conversation",
-      similes: ["RESET_SHELL", "CLEAR_TERMINAL", "CLEAR_HISTORY", "RESET_HISTORY"],
+      name: "SHELL_HISTORY",
+      description:
+        "Shell command-history router. action=clear wipes the recorded history; action=view returns recent commands; action=disable is reserved.",
+      similes: [
+        "CLEAR_HISTORY",
+        "CLEAR_SHELL_HISTORY",
+        "RESET_SHELL",
+        "CLEAR_TERMINAL",
+        "RESET_HISTORY",
+        "VIEW_SHELL_HISTORY",
+        "SHOW_SHELL_HISTORY",
+        "LIST_SHELL_HISTORY",
+      ],
       parameters: [],
     },
   ],

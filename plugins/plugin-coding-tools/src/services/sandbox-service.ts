@@ -26,41 +26,56 @@ import { CODING_TOOLS_LOG_PREFIX, SANDBOX_SERVICE } from "../types.js";
  *     paths. Replaces the default list when set.
  *   CODING_TOOLS_BLOCKED_PATHS_ADD=/abs1,...    — comma-separated absolute
  *     paths to ADD to the default list (most common UI use).
+ *   CODING_TOOLS_WORKSPACE_ROOTS=/abs1,/abs2    — optional comma-separated
+ *     allow roots. When set, coding tools may only access paths under these
+ *     roots after the blocklist check.
  *
  * Both `~` and `$HOME` are expanded.
  */
 export class SandboxService extends Service {
   static serviceType = SANDBOX_SERVICE;
   capabilityDescription =
-    "Path blocklist policy for coding tools. Permits anything not under a blocked path.";
+    "Path safety policy for coding tools. Blocks sensitive paths and optionally constrains access to configured workspace roots.";
 
   private blockedPaths: string[] = [];
+  private allowedRoots: string[] = [];
+  private conversationRoots = new Map<string, Set<string>>();
 
   static async start(runtime: IAgentRuntime): Promise<SandboxService> {
     const svc = new SandboxService(runtime);
     await svc.loadConfig();
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} SandboxService: blocking ${svc.blockedPaths.length} path(s)`,
+      `${CODING_TOOLS_LOG_PREFIX} SandboxService: blocking ${svc.blockedPaths.length} path(s), allow-roots=${svc.allowedRoots.length}`,
     );
     return svc;
   }
 
   async stop(): Promise<void> {
     this.blockedPaths = [];
+    this.allowedRoots = [];
+    this.conversationRoots.clear();
   }
 
   private async loadConfig(): Promise<void> {
-    const replace = this.runtime.getSetting?.("CODING_TOOLS_BLOCKED_PATHS");
-    const additions = this.runtime.getSetting?.(
+    const replace = readStringSetting(
+      this.runtime,
+      "CODING_TOOLS_BLOCKED_PATHS",
+    );
+    const additions = readStringSetting(
+      this.runtime,
       "CODING_TOOLS_BLOCKED_PATHS_ADD",
     );
+    const allowedRoots = readStringSetting(
+      this.runtime,
+      "CODING_TOOLS_WORKSPACE_ROOTS",
+    );
     let paths: string[];
-    if (typeof replace === "string" && replace.trim().length > 0) {
+    if (replace && replace.trim().length > 0) {
       paths = parseList(replace);
     } else {
       paths = defaultBlockedPaths();
     }
-    if (typeof additions === "string" && additions.trim().length > 0) {
+    if (additions && additions.trim().length > 0) {
       paths = paths.concat(parseList(additions));
     }
     // realpath each path so macOS /var ↔ /private/var (and Linux symlinked
@@ -70,6 +85,16 @@ export class SandboxService extends Service {
       paths.map(async (p) => resolveRealPath(path.resolve(expandHome(p)))),
     );
     this.blockedPaths = dedupe(resolved);
+
+    const resolvedAllowedRoots =
+      allowedRoots && allowedRoots.trim().length > 0
+        ? await Promise.all(
+            parseList(allowedRoots).map(async (p) =>
+              resolveRealPath(path.resolve(expandHome(p))),
+            ),
+          )
+        : [];
+    this.allowedRoots = dedupe(resolvedAllowedRoots);
   }
 
   /**
@@ -81,15 +106,37 @@ export class SandboxService extends Service {
   }
 
   /**
-   * No-ops kept for API compatibility with worktree actions that previously
-   * tracked allowed roots. The current sandbox model is blocklist-only.
+   * Return globally configured allow roots (resolved absolute paths).
+   * Conversation-scoped roots are intentionally omitted unless a conversation
+   * id is provided.
    */
-  addRoot(_conversationId: string | undefined, _absPath: string): void {}
+  getAllowedRoots(conversationId?: string): string[] {
+    return this.resolveAllowedRoots(conversationId).slice();
+  }
 
-  removeRoot(_conversationId: string | undefined, _absPath: string): void {}
+  addRoot(conversationId: string | undefined, absPath: string): void {
+    if (!conversationId || !isAbsolutePath(absPath) || isUncPath(absPath)) {
+      return;
+    }
+    const roots = this.conversationRoots.get(conversationId) ?? new Set();
+    roots.add(path.resolve(expandHome(absPath)));
+    this.conversationRoots.set(conversationId, roots);
+  }
+
+  removeRoot(conversationId: string | undefined, absPath: string): void {
+    if (!conversationId || !isAbsolutePath(absPath) || isUncPath(absPath)) {
+      return;
+    }
+    const roots = this.conversationRoots.get(conversationId);
+    if (!roots) return;
+    roots.delete(path.resolve(expandHome(absPath)));
+    if (roots.size === 0) {
+      this.conversationRoots.delete(conversationId);
+    }
+  }
 
   async validatePath(
-    _conversationId: string | undefined,
+    conversationId: string | undefined,
     absPath: string,
   ): Promise<
     | { ok: true; resolved: string }
@@ -123,8 +170,45 @@ export class SandboxService extends Service {
         };
       }
     }
+    const allowedRoots = this.resolveAllowedRoots(conversationId);
+    if (allowedRoots.length > 0) {
+      const underAllowedRoot = allowedRoots.some(
+        (root) => isWithin(resolved, root) || resolved === root,
+      );
+      if (!underAllowedRoot) {
+        return {
+          ok: false,
+          reason: "blocked",
+          message: `Path ${absPath} is outside the configured coding workspace roots.`,
+        };
+      }
+    }
     return { ok: true, resolved };
   }
+
+  private resolveAllowedRoots(conversationId?: string): string[] {
+    const roots = [...this.allowedRoots];
+    if (conversationId) {
+      const scoped = this.conversationRoots.get(conversationId);
+      if (scoped) roots.push(...scoped);
+    }
+    return dedupe(roots);
+  }
+}
+
+function readStringSetting(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const fromRuntime = runtime.getSetting?.(key);
+  if (typeof fromRuntime === "string" && fromRuntime.trim().length > 0) {
+    return fromRuntime;
+  }
+  const fromEnv = process.env[key];
+  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
+    return fromEnv;
+  }
+  return undefined;
 }
 
 function parseList(s: string): string[] {
@@ -154,6 +238,28 @@ function defaultBlockedPaths(): string[] {
     path.join(home, ".kube"),
     path.join(home, ".netrc"),
   ];
+
+  if (isAndroidRuntime()) {
+    return [
+      ...userHome,
+      "/apex",
+      "/config",
+      "/dev",
+      "/etc",
+      "/metadata",
+      "/mnt/runtime",
+      "/mnt/vendor",
+      "/odm",
+      "/proc",
+      "/product",
+      "/sys",
+      "/system",
+      "/vendor",
+      "/data/misc",
+      "/data/system",
+      "/data/vendor",
+    ];
+  }
 
   switch (process.platform) {
     case "darwin":
@@ -217,6 +323,13 @@ function defaultBlockedPaths(): string[] {
     default:
       return userHome;
   }
+}
+
+function isAndroidRuntime(): boolean {
+  return (
+    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "android" ||
+    Boolean(process.env.ANDROID_ROOT || process.env.ANDROID_DATA)
+  );
 }
 
 function dedupe(arr: string[]): string[] {

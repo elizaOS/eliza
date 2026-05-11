@@ -126,7 +126,11 @@ export class LocalTailscaleService extends Service implements ITunnelService {
     );
 
     if (this.useFunnel) {
-      const result = await runCommand("tailscale", ["funnel", "--bg", String(port)]);
+      const result = await runCommand("tailscale", [
+        "funnel",
+        "--bg",
+        String(port),
+      ]);
       if (result.code !== 0) {
         throw new Error(
           `tailscale funnel exited with code ${result.code}: ${result.stderr.trim()}`,

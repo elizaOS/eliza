@@ -22,9 +22,12 @@
 import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import {
+	computeCallCostUsd,
+	PRICE_TABLE_ID,
+} from "../features/trajectories/pricing";
 import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
-import { computeCallCostUsd } from "./cost-table";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -67,7 +70,20 @@ export interface RecordedModelCall {
 	toolCalls?: RecordedToolCall[];
 	usage?: RecordedUsage;
 	finishReason?: string;
+	/**
+	 * USD cost of this LLM call computed from the price table identified by
+	 * `priceTableId`. Local-inference providers (Ollama / LM Studio /
+	 * llama.cpp) record a real `0` — not "missing". The recorder emits a
+	 * warning log when a hosted-provider model has no price entry; the
+	 * field defaults to `0` in that case so cost roll-ups stay numeric.
+	 */
 	costUsd?: number;
+	/**
+	 * Snapshot identifier of the price table used to compute `costUsd`.
+	 * Closes M40 / W1-X1. Bumped whenever any rate in the canonical
+	 * pricing table at `features/trajectories/pricing.ts` changes.
+	 */
+	priceTableId?: string;
 }
 
 /**
@@ -823,9 +839,7 @@ export interface ToolStageIOCapture {
  * `undefined` after encoding are omitted so the on-disk schema stays
  * minimal for steps that have nothing to capture.
  */
-export function captureToolStageIO(
-	args: ToolStageIOInput,
-): ToolStageIOCapture {
+export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 	const cap = args.capBytes ?? resolveTrajectoryFieldCapBytes();
 	const out: ToolStageIOCapture = {};
 	const markers: RecordedTruncationMarker[] = [];
@@ -856,19 +870,36 @@ export function captureToolStageIO(
 }
 
 /**
- * Annotate a stage with `costUsd` if the model has known pricing and the
- * stage didn't already set it. The `model.modelName` is the lookup key.
+ * Annotate a stage with `costUsd` and `priceTableId` if the model has
+ * known pricing and the stage didn't already set it. The `model.modelName`
+ * is the lookup key; `model.provider` is used to suppress the
+ * missing-model warning for local-tier inference (Ollama, LM Studio,
+ * llama.cpp).
  *
  * Recorder hooks call `computeCallCostUsd` themselves when they have the
- * data; this function is a fallback for callers that hand off raw stages.
+ * data; this function is the fallback for callers that hand off raw
+ * stages. Passing a logger lets the canonical pricing module emit a
+ * structured warning when a hosted-provider model has no price entry.
  */
-export function annotateStageCost(stage: RecordedStage): void {
+export function annotateStageCost(
+	stage: RecordedStage,
+	logger?: RecorderLogger,
+): void {
 	if (!stage.model) return;
-	if (typeof stage.model.costUsd === "number") return;
-	const cost = computeCallCostUsd(stage.model.modelName, stage.model.usage);
-	if (cost > 0) {
-		stage.model.costUsd = cost;
+	if (typeof stage.model.costUsd === "number") {
+		// Caller already attached a cost — only tag the table id so consumers
+		// know which snapshot it was computed against.
+		if (!stage.model.priceTableId) {
+			stage.model.priceTableId = PRICE_TABLE_ID;
+		}
+		return;
 	}
+	const cost = computeCallCostUsd(stage.model.modelName, stage.model.usage, {
+		provider: stage.model.provider,
+		logger,
+	});
+	stage.model.costUsd = cost;
+	stage.model.priceTableId = PRICE_TABLE_ID;
 }
 
 // ---------------------------------------------------------------------------
@@ -957,7 +988,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		}
 
 		const recordedStage = cloneForRecord(stage);
-		annotateStageCost(recordedStage);
+		annotateStageCost(recordedStage, this.logger);
 		trajectory.stages.push(recordedStage);
 		applyMetricsForStage(trajectory.metrics, recordedStage);
 

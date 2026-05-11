@@ -43,13 +43,15 @@ with a specific code (see "Exit codes" below):
    actual bytes that will be uploaded. A dry-run fails here the same way
    a real publish does.
 3. **Kernel verification.** Runs `make -C ../../inference/verify
-   reference-test` for the CPU path. For Vulkan and CUDA, the
+   reference-test` for the CPU path. For Vulkan, CUDA, and ROCm, the
    orchestrator consumes recorded reports at
    `<bundle>/evals/vulkan_verify.json` and
-   `<bundle>/evals/cuda_verify.json`. **Metal is hardware-only**: pass
-   `--metal-verification PATH` pointing at a `metal_verify.json`
-   recorded on a verified Metal host. Without it, a tier that includes
-   Metal in `SUPPORTED_BACKENDS_BY_TIER` fails with
+   `<bundle>/evals/cuda_verify.json` /
+   `<bundle>/evals/rocm_verify.json` when the tier supports those
+   backends. **Metal is hardware-only**: pass `--metal-verification
+   PATH` pointing at a `metal_verify.json` recorded on a verified Metal
+   host. Without it, a tier that includes Metal in
+   `SUPPORTED_BACKENDS_BY_TIER` fails with
    `EXIT_KERNEL_VERIFY_FAIL`.
 4. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
    `apply_gates(results, tier)` from
@@ -83,7 +85,8 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
 <bundle>/
   text/      <one or more *.gguf, named eliza-1-<tier>-<ctx>.gguf>
   tts/       <omnivoice-*.gguf and tokenizer>
-  asr/       <asr.gguf or native package>
+  asr/       <eliza-1-asr.gguf and eliza-1-asr-mmproj.gguf>
+  vad/       <silero-vad-int8.onnx> # sidecar, intentionally not GGUF
   vision/    <mmproj-<tier>.gguf where applicable>
   dflash/    <drafter-<tier>.gguf and target-meta.json>
   cache/     <voice-preset-default.bin containing the default speaker preset + phrase cache seed>
@@ -91,11 +94,15 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
     aggregate.json        # input to apply_gates(); shape per eliza1_gates.py docstring
     vulkan_verify.json    # recorded report (status, atCommit, report)
     cuda_verify.json      # recorded report (server / desktop / pro tiers)
+    rocm_verify.json      # recorded report (desktop / pro / server tiers)
     <backend>_dispatch.json # runtimeReady=true graph-dispatch evidence
     <backend>_platform.json # physical/smoke platform evidence
   licenses/
     LICENSE.text
     LICENSE.voice
+    LICENSE.asr           # required when asr/ ships
+    LICENSE.vad           # required when vad/ ships
+    LICENSE.vision        # required when vision/ ships
     LICENSE.dflash
     LICENSE.eliza-1
   evidence/
@@ -171,26 +178,46 @@ the evidence is real; do not paste placeholders. Minimum shape:
     "platformEvidence": true,
     "sizeFirstRepoIds": true
   },
-  "weights": ["text/eliza-1-9b-64k.gguf"],
+  "weights": [
+    "text/eliza-1-9b-64k.gguf",
+    "tts/omnivoice-base-Q8_0.gguf",
+    "tts/omnivoice-tokenizer-Q8_0.gguf",
+    "asr/eliza-1-asr.gguf",
+    "asr/eliza-1-asr-mmproj.gguf",
+    "vad/silero-vad-int8.onnx",
+    "vision/mmproj-9b.gguf",
+    "dflash/drafter-9b.gguf"
+  ],
   "checksumManifest": "checksums/SHA256SUMS",
   "evalReports": ["evals/aggregate.json"],
   "licenseFiles": [
     "licenses/LICENSE.text",
     "licenses/LICENSE.voice",
     "licenses/LICENSE.dflash",
-    "licenses/LICENSE.eliza-1"
+    "licenses/LICENSE.eliza-1",
+    "licenses/LICENSE.asr",
+    "licenses/LICENSE.vision",
+    "licenses/LICENSE.vad"
   ],
   "kernelDispatchReports": {
     "metal": "evals/metal_dispatch.json",
     "vulkan": "evals/vulkan_dispatch.json",
     "cuda": "evals/cuda_dispatch.json",
+    "rocm": "evals/rocm_dispatch.json",
     "cpu": "evals/cpu_dispatch.json"
   },
   "platformEvidence": {
-    "metal": "evals/metal_platform.json",
-    "vulkan": "evals/vulkan_platform.json",
-    "cuda": "evals/cuda_platform.json",
-    "cpu": "evals/cpu_platform.json"
+    "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
+    "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
+    "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
+    "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
+    "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
+    "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+    "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
+    "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+    "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
+    "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
+    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
   },
   "hf": {
     "repoId": "elizalabs/eliza-1-9b",

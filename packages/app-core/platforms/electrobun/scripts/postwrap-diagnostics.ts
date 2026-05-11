@@ -243,6 +243,57 @@ export function resolveBundleLayout(
 	};
 }
 
+const MAC_PERMISSION_USAGE_DESCRIPTIONS: Record<string, string> = {
+	NSAppleEventsUsageDescription:
+		"Eliza uses Automation only when you ask it to work with apps that require Apple Events, such as Messages or Notes.",
+	NSContactsUsageDescription:
+		"Eliza uses Contacts only when you ask it to resolve, list, create, update, or delete contacts.",
+	NSRemindersUsageDescription:
+		"Eliza uses Reminders only when you ask it to create, update, or delete Apple reminders.",
+	NSRemindersFullAccessUsageDescription:
+		"Eliza needs full Reminders access to update and delete reminders it creates for you.",
+	NSCalendarsUsageDescription:
+		"Eliza uses Calendar only when a native Apple Calendar feature needs to read or write events.",
+	NSCalendarsFullAccessUsageDescription:
+		"Eliza needs full Calendar access to read, update, and delete native Apple Calendar events you request.",
+	NSCalendarsWriteOnlyAccessUsageDescription:
+		"Eliza can use write-only Calendar access only for creating native Apple Calendar events.",
+};
+
+function xmlEscape(value: string): string {
+	return value
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;");
+}
+
+export function ensureMacPermissionUsageDescriptions(
+	wrapperBundlePath: string,
+	osName: string,
+): string[] {
+	if (osName !== "macos") return [];
+	const plistPath = joinPortable(wrapperBundlePath, "Contents", "Info.plist");
+	if (!fs.existsSync(plistPath)) return [];
+
+	let plist = fs.readFileSync(plistPath, "utf8");
+	const inserted: string[] = [];
+	for (const [key, value] of Object.entries(
+		MAC_PERMISSION_USAGE_DESCRIPTIONS,
+	)) {
+		if (plist.includes(`<key>${key}</key>`)) continue;
+		inserted.push(key);
+		const entry = `\t<key>${key}</key>\n\t<string>${xmlEscape(value)}</string>\n`;
+		plist = plist.replace(
+			/\n<\/dict>\s*<\/plist>\s*$/u,
+			`\n${entry}</dict>\n</plist>\n`,
+		);
+	}
+	if (inserted.length > 0) {
+		fs.writeFileSync(plistPath, plist, "utf8");
+	}
+	return inserted;
+}
+
 export function resolveDiagnosticsOutputPath(
 	bundlePath: string,
 	env: NodeJS.ProcessEnv = process.env,
@@ -352,6 +403,16 @@ export function main(
 	if (repairedFiles.length > 0) {
 		console.log(
 			`[postwrap-diagnostics] restored wrapper runtime files: ${repairedFiles.join(", ")}`,
+		);
+	}
+
+	const insertedUsageDescriptions = ensureMacPermissionUsageDescriptions(
+		wrapperBundlePath,
+		osName,
+	);
+	if (insertedUsageDescriptions.length > 0) {
+		console.log(
+			`[postwrap-diagnostics] added Info.plist privacy strings: ${insertedUsageDescriptions.join(", ")}`,
 		);
 	}
 

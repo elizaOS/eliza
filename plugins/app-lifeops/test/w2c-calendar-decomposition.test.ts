@@ -20,7 +20,7 @@
 import { listSubactionsFromParameters } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { schedulingNegotiationAction } from "../src/actions/scheduling-negotiation.js";
+import { schedulingAction as schedulingNegotiationAction } from "../src/actions/lib/scheduling-handler.js";
 
 const NEGOTIATION_LIFECYCLE_VERBS = [
   "start",

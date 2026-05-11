@@ -1,6 +1,4 @@
 import type {
-  Action,
-  ActionExample,
   ActionResult,
   HandlerOptions,
   IAgentRuntime,
@@ -225,7 +223,7 @@ function browserTaskData(
   };
 }
 
-async function runSubscriptionsAction(
+async function runSubscriptionsActionInner(
   runtime: IAgentRuntime,
   message: Memory,
   state: State | undefined,
@@ -390,199 +388,29 @@ async function runSubscriptionsAction(
   }
 }
 
-const examples: ActionExample[][] = [
-  [
-    {
-      name: "{{name1}}",
-      content: {
-        text: "Audit my subscriptions and tell me what I can cancel.",
-      },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll audit recent subscription signals and summarize what looks active, already canceled, or worth reviewing.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: { text: "Cancel my Google Play subscription." },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll open the subscription flow, stop before the irreversible step if confirmation is needed, and then report the outcome.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: { text: "Cancel my Netflix subscription." },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll open the subscription flow for Netflix, pause for confirmation if needed, and then report the result.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: { text: "Cancel Hulu in my browser." },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll route this through the subscription cancellation flow instead of generic website blocking and tell you what happened.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: { text: "Cancel my App Store subscription on this Mac." },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll use the subscription cancellation flow for the App Store and report whether it needs any manual confirmation.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-  [
-    {
-      name: "{{name1}}",
-      content: {
-        text: "Cancel my subscription even if the site makes me sign in first.",
-      },
-    },
-    {
-      name: "{{agentName}}",
-      content: {
-        text: "I'll run the subscription cancellation flow, stop if the site requires sign-in or other human handoff, and report the exact status.",
-        actions: [ACTION_NAME],
-      },
-    },
-  ],
-];
-
 /**
- * Internal implementation of the legacy `SUBSCRIPTIONS` action surface.
+ * Handler function backing the MONEY umbrella's subscription_* subactions.
  *
- * Audit B Defer #4 folded `SUBSCRIPTIONS` and `PAYMENTS` into the single
- * `MONEY` umbrella (`./money.ts`). The umbrella forwards `subscription_audit`
- * → `audit`, `subscription_cancel` → `cancel`, and `subscription_status` →
- * `status` to this impl. The legacy export name (`subscriptionsAction`) is
- * re-exported below as an alias for `moneyAction` so cached planner outputs
- * and downstream importers keep resolving — but no `SUBSCRIPTIONS`-named
- * action is registered in the plugin anymore; the umbrella simile carries the
- * legacy name forward.
+ * Folded out of the legacy `SUBSCRIPTIONS` action surface — Audit B Defer #4.
+ * The umbrella in `./money.ts` is the only caller; no Action object is
+ * registered for this handler anymore.
  */
-export const subscriptionsActionImpl: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: ACTION_NAME,
-  similes: [
-    "CANCEL_SUBSCRIPTION",
-    "AUDIT_SUBSCRIPTIONS",
-    "CANCEL_NETFLIX",
-    "CANCEL_HULU",
-    "MANAGE_SUBSCRIPTIONS",
-  ],
-  description:
-    "Audit recurring subscriptions from LifeOps signals, cancel supported subscriptions through the browser, and report cancellation status with artifacts and human-handoff states.",
-  descriptionCompressed:
-    "paid sub audit+cancel via browser: audit | cancel(serviceSlug confirmed) | status(cancellationId); not email-list-unsubscribe",
-  contexts: ["subscriptions", "payments", "finance", "browser", "automation"],
-  roleGate: { minRole: "OWNER" },
-
-  parameters: [
-    {
-      name: "subaction",
-      description: "audit | cancel | status when supplied.",
-      required: false,
-      schema: { type: "string" as const, enum: ["audit", "cancel", "status"] },
-    },
-    {
-      name: "serviceName",
-      description: "Display name of the subscription service.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "serviceSlug",
-      description: "Normalized slug for routing.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "candidateId",
-      description: "Internal audit candidate identifier.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "cancellationId",
-      description: "Ongoing cancellation id for status lookups.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "executor",
-      description:
-        "Browser executor: user_browser | agent_browser | desktop_native.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "queryWindowDays",
-      description: "Days of history for audit queries.",
-      required: false,
-      schema: { type: "number" as const },
-    },
-    {
-      name: "confirmed",
-      description: "User confirmed cancellation prerequisites.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-  ],
-
-  suppressPostActionContinuation: true,
-  validate: async () => true,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state?: State,
-    options?: HandlerOptions,
-  ): Promise<ActionResult> => {
-    try {
-      return await runSubscriptionsAction(runtime, message, state, options);
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        return {
-          success: false,
-          text: error.message,
-          data: { status: error.status },
-        };
-      }
-      throw error;
+export async function runSubscriptionsHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+): Promise<ActionResult> {
+  try {
+    return await runSubscriptionsActionInner(runtime, message, state, options);
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      return {
+        success: false,
+        text: error.message,
+        data: { status: error.status },
+      };
     }
-  },
-  examples,
-};
-
-// Legacy export — the `SUBSCRIPTIONS` name lives on as a simile of the new
-// MONEY umbrella (subscription verbs are addressed there as `subscription_*`).
-// Importers that destructured `subscriptionsAction` get the umbrella back so
-// they continue to dispatch through the unified entry.
-export { moneyAction as subscriptionsAction } from "./money.js";
+    throw error;
+  }
+}

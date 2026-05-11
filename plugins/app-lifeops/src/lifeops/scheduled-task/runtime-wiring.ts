@@ -9,14 +9,16 @@
 
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent";
-import type { IAgentRuntime } from "@elizaos/core";
+import { logger, type IAgentRuntime } from "@elizaos/core";
 
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
+import { createGlobalPauseStore } from "../global-pause/store.js";
 import {
   ownerFactsToView,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
+import { getActivitySignalBus } from "../signals/bus.js";
 import {
   createAnchorRegistry,
   getAnchorRegistry,
@@ -140,29 +142,59 @@ function defaultOwnerFactsProvider(
   };
 }
 
-/** Stub `GlobalPauseView` — defaults to inactive. */
-const noopGlobalPause: GlobalPauseView = {
-  async current() {
-    return { active: false };
-  },
-};
+/**
+ * Diagnostic stand-in for `ActivitySignalBusView` when no bus was registered
+ * for this runtime. Logs once per runner construction so the missing wiring
+ * is visible at boot; completion-checks depending on signals will return
+ * `false` (their honest "no signal observed" state) but the operator sees
+ * the warning and can wire `registerActivitySignalBus` in plugin init.
+ */
+function makeMissingActivityBusView(
+  runtime: IAgentRuntime,
+): ActivitySignalBusView {
+  let warned = false;
+  return {
+    hasSignalSince() {
+      if (!warned) {
+        warned = true;
+        logger.warn(
+          {
+            src: "lifeops:scheduled-task:runtime-wiring",
+            agentId: runtime.agentId,
+          },
+          "ActivitySignalBus not registered; completion-checks depending on activity signals will report no-signal. Call registerActivitySignalBus during plugin init.",
+        );
+      }
+      return false;
+    },
+  };
+}
 
 /**
- * Stub `ActivitySignalBusView` — without registered subscribers,
- * completion-checks that depend on bus signals always return false.
+ * Diagnostic stand-in for `SubjectStoreView` when no store was injected.
+ * Same warn-once semantics as the activity-bus shim; `subject_updated`
+ * completion-checks will report no-update until a real store is wired.
  */
-const noopActivityBus: ActivitySignalBusView = {
-  hasSignalSince() {
-    return false;
-  },
-};
-
-/** Stub `SubjectStoreView` — defaults to "no recent update". */
-const noopSubjectStore: SubjectStoreView = {
-  wasUpdatedSince() {
-    return false;
-  },
-};
+function makeMissingSubjectStoreView(
+  runtime: IAgentRuntime,
+): SubjectStoreView {
+  let warned = false;
+  return {
+    wasUpdatedSince() {
+      if (!warned) {
+        warned = true;
+        logger.warn(
+          {
+            src: "lifeops:scheduled-task:runtime-wiring",
+            agentId: runtime.agentId,
+          },
+          "SubjectStore not registered; subject_updated completion-checks will report no-update. Inject a SubjectStoreView via createRuntimeScheduledTaskRunner({ subjectStore }).",
+        );
+      }
+      return false;
+    },
+  };
+}
 
 function normalizeChannelTarget(
   channelKey: string,
@@ -328,6 +360,18 @@ export function createRuntimeScheduledTaskRunner(
 
   const consolidation = createConsolidationRegistry();
 
+  // Default the production providers from the runtime. Tests / harnesses can
+  // still inject overrides via the options bag. The diagnostic shims warn-once
+  // on missing wiring so silent always-allow / always-false defaults are gone.
+  const globalPause: GlobalPauseView =
+    opts.globalPause ?? createGlobalPauseStore(opts.runtime);
+  const activity: ActivitySignalBusView =
+    opts.activity ??
+    getActivitySignalBus(opts.runtime) ??
+    makeMissingActivityBusView(opts.runtime);
+  const subjectStore: SubjectStoreView =
+    opts.subjectStore ?? makeMissingSubjectStoreView(opts.runtime);
+
   return createScheduledTaskRunner({
     agentId: opts.agentId,
     store: stores.store,
@@ -338,9 +382,9 @@ export function createRuntimeScheduledTaskRunner(
     anchors,
     consolidation,
     ownerFacts: opts.ownerFacts ?? defaultOwnerFactsProvider(opts.runtime),
-    globalPause: opts.globalPause ?? noopGlobalPause,
-    activity: opts.activity ?? noopActivityBus,
-    subjectStore: opts.subjectStore ?? noopSubjectStore,
+    globalPause,
+    activity,
+    subjectStore,
     channelKeys: () => {
       const registry = getChannelRegistry(opts.runtime);
       if (!registry) return new Set();

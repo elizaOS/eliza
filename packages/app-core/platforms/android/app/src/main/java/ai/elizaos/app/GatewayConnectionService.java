@@ -14,6 +14,8 @@ import android.os.IBinder;
 
 import androidx.core.app.NotificationCompat;
 
+import app.eliza.R;
+
 /**
  * Foreground service that keeps the Android process alive so the Capacitor
  * gateway plugin can maintain its WebSocket connection while the app is in
@@ -34,6 +36,12 @@ public class GatewayConnectionService extends Service {
 
     // Extras
     private static final String EXTRA_STATUS = "status";
+    private static final String EXTRA_STOP_SOURCE = "stopSource";
+    private static final String STOP_SOURCE_NOTIFICATION = "notification";
+
+    // Mirrors @capacitor/preferences default group and MOBILE_RUNTIME_MODE_STORAGE_KEY.
+    private static final String CAPACITOR_PREFS_GROUP = "CapacitorStorage";
+    private static final String RUNTIME_MODE_KEY = "eliza:mobile-runtime-mode";
 
     // Connection status constants — kept in sync with JS plugin events.
     public static final String STATUS_CONNECTED = "connected";
@@ -68,6 +76,10 @@ public class GatewayConnectionService extends Service {
         if (intent != null) {
             String action = intent.getAction();
             if (ACTION_STOP.equals(action)) {
+                if (isNotificationStop(intent) && isCloudRuntimeModeLocked()) {
+                    updateNotification();
+                    return START_STICKY;
+                }
                 stopSelf();
                 return START_NOT_STICKY;
             }
@@ -129,24 +141,46 @@ public class GatewayConnectionService extends Service {
             PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
-        // "Disconnect" action in the notification.
-        Intent stopIntent = new Intent(this, GatewayConnectionService.class);
-        stopIntent.setAction(ACTION_STOP);
-        PendingIntent stopPending = PendingIntent.getService(
-            this, 2, stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-        );
-
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(text)
             .setContentIntent(launchPending)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-            .addAction(0, "Disconnect", stopPending)
-            .build();
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE);
+
+        if (!isCloudRuntimeModeLocked()) {
+            // "Disconnect" is only safe in local/non-cloud modes.
+            Intent stopIntent = new Intent(this, GatewayConnectionService.class);
+            stopIntent.setAction(ACTION_STOP);
+            stopIntent.putExtra(EXTRA_STOP_SOURCE, STOP_SOURCE_NOTIFICATION);
+            PendingIntent stopPending = PendingIntent.getService(
+                this, 2, stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+            );
+            builder.addAction(0, "Disconnect", stopPending);
+        }
+
+        return builder.build();
+    }
+
+    private boolean isNotificationStop(Intent intent) {
+        return STOP_SOURCE_NOTIFICATION.equals(intent.getStringExtra(EXTRA_STOP_SOURCE));
+    }
+
+    private boolean isCloudRuntimeModeLocked() {
+        String mode = readRuntimeMode();
+        return "cloud".equals(mode) || "cloud-hybrid".equals(mode);
+    }
+
+    private String readRuntimeMode() {
+        try {
+            return getSharedPreferences(CAPACITOR_PREFS_GROUP, Context.MODE_PRIVATE)
+                .getString(RUNTIME_MODE_KEY, null);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     /** Push an updated notification to reflect the current connection status. */

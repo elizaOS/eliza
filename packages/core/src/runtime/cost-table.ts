@@ -1,18 +1,34 @@
 /**
- * Per-model price table and helpers for computing per-call USD cost.
+ * Per-model price table — backwards-compatible shim over the canonical
+ * `features/trajectories/pricing.ts` module.
  *
- * Source of truth for the trajectory recorder. Kept in sync with the
- * standalone copy at `scripts/lib/cost-table.ts` (used by the `trajectory`
- * CLI) — both files are written against PLAN.md §18.7
- * and MUST agree on every number. If a price changes, update both.
+ * The canonical source of truth now lives at
+ * `eliza/packages/core/src/features/trajectories/pricing.ts` and carries
+ * versioned `PRICE_TABLE_ID`, full provider coverage (Anthropic, OpenAI,
+ * Google, Groq, Cerebras, Eliza Cloud, Ollama, LM Studio, llama.cpp), and
+ * a structured warning on missing models.
  *
- * Numbers are USD per 1,000,000 tokens (provider unit pricing).
- *
- * `cacheRead` is the discount applied to input served from cache.
- * `cacheWrite` is the surcharge for writing the prompt into cache (Anthropic
- * specifically charges this; OpenAI does not). When a provider does not
- * differentiate, set cache rates to 0 — `computeCallCostUsd` falls back to
- * the regular input rate.
+ * This file preserves the legacy export shape used by the planner, the
+ * evaluator, and the standalone `scripts/lib/cost-table.ts` mirror. New
+ * callers should import from `features/trajectories/pricing` directly.
+ */
+import {
+	computeCallCostUsd as computeCallCostUsdFromPricing,
+	lookupModelPrice as lookupModelPriceFromPricing,
+	type ModelPriceUsdPerMTokens as ModelPriceUsdPerMTokensWithProvider,
+	MODEL_PRICES_USD_PER_M_TOKENS as PRICING_TABLE,
+	type TokenUsageForCost,
+} from "../features/trajectories/pricing";
+
+export type { TokenUsageForCost } from "../features/trajectories/pricing";
+export {
+	isLocalProvider,
+	PRICE_TABLE_ID,
+} from "../features/trajectories/pricing";
+
+/**
+ * Legacy price-entry shape (no `provider` field). Preserved so any external
+ * caller that imports the type continues to compile.
  */
 export interface ModelPriceUsdPerMTokens {
 	input: number;
@@ -22,102 +38,62 @@ export interface ModelPriceUsdPerMTokens {
 }
 
 /**
- * Token usage shape accepted by the cost helper. Aligned with the
- * trajectory-recorder `RecordedStage.model.usage` shape and the
- * normalized adapter usage we emit from text.ts handlers.
+ * Legacy flat price table — provider field stripped for back-compat with
+ * the original cost-table shape.
+ *
+ * Built lazily from the canonical pricing table. Mutating the canonical
+ * table would not flow through here; the table is read-only by contract.
  */
-export interface TokenUsageForCost {
-	promptTokens?: number;
-	completionTokens?: number;
-	cacheReadInputTokens?: number;
-	cacheCreationInputTokens?: number;
-	totalTokens?: number;
-}
-
 export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
 	string,
 	ModelPriceUsdPerMTokens
-> = {
-	// Cerebras (gpt-oss family, served at https://api.cerebras.ai/v1)
-	"gpt-oss-120b": { input: 0.5, output: 0.8, cacheRead: 0, cacheWrite: 0 },
-
-	// Anthropic
-	"claude-opus-4-7": {
-		input: 15.0,
-		output: 75.0,
-		cacheRead: 1.5,
-		cacheWrite: 18.75,
-	},
-	"claude-sonnet-4-6": {
-		input: 3.0,
-		output: 15.0,
-		cacheRead: 0.3,
-		cacheWrite: 3.75,
-	},
-	"claude-haiku-4-5": {
-		input: 0.8,
-		output: 4.0,
-		cacheRead: 0.08,
-		cacheWrite: 1.0,
-	},
-
-	// OpenAI
-	"gpt-5.5": { input: 1.25, output: 10.0, cacheRead: 0.125, cacheWrite: 0 },
-	"gpt-5.5-mini": { input: 0.25, output: 2.0, cacheRead: 0.025, cacheWrite: 0 },
-};
+> = (() => {
+	const out: Record<string, ModelPriceUsdPerMTokens> = {};
+	for (const [key, entry] of Object.entries(PRICING_TABLE) as Array<
+		[string, ModelPriceUsdPerMTokensWithProvider]
+	>) {
+		out[key] = {
+			input: entry.input,
+			output: entry.output,
+			cacheRead: entry.cacheRead,
+			cacheWrite: entry.cacheWrite,
+		};
+	}
+	return out;
+})();
 
 /**
- * Look up the price entry for a model name. Falls back to a partial match
- * when an exact key is missing — the adapter sometimes emits a versioned
- * model id (e.g. `claude-haiku-4-5-20251001`) where the price table only
- * stores the family key (`claude-haiku-4-5`).
+ * Look up the price entry for a model name. Returns the legacy
+ * `{ input, output, cacheRead, cacheWrite }` shape (no provider field).
+ *
+ * New callers that need the provider field should use the canonical
+ * `lookupModelPrice` from `features/trajectories/pricing` directly.
  */
 export function lookupModelPrice(
 	modelName: string | undefined,
 ): ModelPriceUsdPerMTokens | null {
-	if (!modelName) return null;
-	const exact = MODEL_PRICES_USD_PER_M_TOKENS[modelName];
-	if (exact) return exact;
-
-	const normalized = modelName.toLowerCase();
-	const match = Object.keys(MODEL_PRICES_USD_PER_M_TOKENS)
-		.filter((k) => normalized.includes(k.toLowerCase()))
-		.sort((a, b) => b.length - a.length)[0];
-	return match ? (MODEL_PRICES_USD_PER_M_TOKENS[match] ?? null) : null;
+	const result = lookupModelPriceFromPricing(modelName);
+	if (!result) return null;
+	const { price } = result;
+	return {
+		input: price.input,
+		output: price.output,
+		cacheRead: price.cacheRead,
+		cacheWrite: price.cacheWrite,
+	};
 }
 
 /**
  * Compute the USD cost of a single model call.
  *
- * Returns 0 when the model is unknown — cost computation must never be a
- * hard error in the recorder. The recorder is observability, not
- * load-bearing.
- *
- * Cache-read tokens are billed at the cacheRead rate when set, otherwise
- * the regular input rate. Cache-creation tokens are billed at cacheWrite
- * (Anthropic's surcharge) on top of the regular input portion that paid
- * for them. Non-cached input is billed at the input rate.
+ * Thin wrapper over `features/trajectories/pricing.computeCallCostUsd`.
+ * No logger is passed so this entry point stays silent; the trajectory
+ * recorder uses the canonical entry point directly and surfaces the
+ * missing-model warning there.
  */
 export function computeCallCostUsd(
 	modelName: string | undefined,
 	usage: TokenUsageForCost | undefined,
 ): number {
-	if (!usage) return 0;
-	const price = lookupModelPrice(modelName);
-	if (!price) return 0;
-
-	const cacheRead = usage.cacheReadInputTokens ?? 0;
-	const cacheWrite = usage.cacheCreationInputTokens ?? 0;
-	const totalPrompt = usage.promptTokens ?? 0;
-	const nonCachedInput = Math.max(0, totalPrompt - cacheRead - cacheWrite);
-	const completion = usage.completionTokens ?? 0;
-
-	const inputCost = (nonCachedInput / 1_000_000) * price.input;
-	const cacheReadCost =
-		(cacheRead / 1_000_000) * (price.cacheRead || price.input);
-	const cacheWriteCost =
-		(cacheWrite / 1_000_000) * (price.cacheWrite || price.input);
-	const outputCost = (completion / 1_000_000) * price.output;
-
-	return inputCost + cacheReadCost + cacheWriteCost + outputCost;
+	return computeCallCostUsdFromPricing(modelName, usage);
 }

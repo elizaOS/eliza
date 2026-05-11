@@ -998,10 +998,3 @@ export const entityAction: Action & {
     ],
   ],
 };
-
-/**
- * Backward-compatibility alias for one release: `relationshipAction` is the
- * old export name. Importers should migrate to `entityAction`. The alias is
- * removed in Wave 3 W3-C.
- */
-export const relationshipAction = entityAction;

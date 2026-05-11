@@ -516,6 +516,19 @@ export const lifeOpsProvider: Provider = {
             }
           }
         }
+
+        if (calendarLines.length === 0 && audience === "owner") {
+          try {
+            nextEventContext =
+              await service.getNextCalendarEventContext(INTERNAL_URL);
+            calendarLines.push(...summarizeNextEvent(nextEventContext));
+          } catch (cause) {
+            logger.debug(
+              { err: cause },
+              "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
+            );
+          }
+        }
       } catch (cause) {
         logger.debug(
           { err: cause },

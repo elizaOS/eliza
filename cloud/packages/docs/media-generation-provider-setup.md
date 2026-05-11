@@ -15,6 +15,32 @@ All public generation endpoints require a Cloud session or API key, reserve
 credits before provider I/O, and write usage/generation records where the route
 has durable output.
 
+All public prompts are reviewed by Cloud content safety before credits are
+reserved. Image outputs and app promotion images are reviewed again after they
+are stored in R2 and before their URLs are returned or linked to ads. Video
+generation also respects provider `has_nsfw_concepts` signals when available.
+
+Generated image/video URLs can be mapped into paid ad platforms with
+`POST /api/v1/advertising/accounts/{id}/media`. Creative creation also
+auto-uploads missing provider asset ids for synced campaigns, so an agent can
+generate media, pass the returned URL into `media[]`, and let Cloud attach the
+provider-native id before the creative is sent to Meta, TikTok, or Google.
+Google video mapping is YouTube-backed: YouTube URLs become `YOUTUBE_VIDEO`
+assets immediately, while raw generated videos enter Google Ads
+`YouTubeVideoUpload` processing and should be reconciled into a video asset once
+Google reports `PROCESSED`.
+
+Configure the safety gate with:
+
+- `OPENAI_MODERATION_API_KEY` or `OPENAI_API_KEY`
+- Optional `OPENAI_MODERATION_MODEL` defaults to `omni-moderation-latest`
+- `CONTENT_SAFETY_MODE=enforce|warn|off`, defaulting to `enforce` when a key is
+  present
+- `CONTENT_SAFETY_REQUIRE_CONFIG=true` in production so public generation fails
+  closed when moderation is not configured
+- Development-only `CONTENT_SAFETY_FAIL_OPEN=true` if moderation outage should
+  not block local testing
+
 ## Fal
 
 Official docs:

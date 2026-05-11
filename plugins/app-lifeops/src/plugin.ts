@@ -890,9 +890,6 @@ const rawAppLifeOpsPlugin: Plugin = {
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;
 
-export { firstRunAction } from "./actions/first-run.js";
-export { lifeOpsPauseAction } from "./actions/lifeops-pause.js";
-export { messageHandoffAction } from "./actions/message-handoff.js";
 export { workThreadAction } from "./actions/work-thread.js";
 export {
   getAppBlockerPermissionState,

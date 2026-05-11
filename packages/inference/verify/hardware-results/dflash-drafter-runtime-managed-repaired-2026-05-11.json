@@ -1,0 +1,95 @@
+{
+  "generatedAt": "2026-05-11T09:57:14.387Z",
+  "verifier": "packages/inference/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
+  "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
+  "checks": {
+    "architectureIsDflashDraft": true,
+    "requiredMetadataPresent": {
+      "dflash-draft.dflash.block_size": true,
+      "dflash-draft.dflash.mask_token_id": true,
+      "dflash-draft.dflash.target_layer_ids": true,
+      "dflash-draft.dflash.n_target_features": true
+    },
+    "requiredTensorsPresent": {
+      "dflash_fc.weight": true,
+      "dflash_hidden_norm.weight": true,
+      "output_norm.weight": true
+    },
+    "gpt2TokenizerHasMerges": true
+  },
+  "metadata": {
+    "version": 3,
+    "tensorCount": 58,
+    "kvCount": 32,
+    "architecture": "dflash-draft",
+    "tokenizerModel": "gpt2",
+    "tokenizerPre": "qwen35",
+    "hasTokenizerMerges": true,
+    "dflash": {
+      "blockSize": 16,
+      "maskTokenId": 248070,
+      "targetLayerIds": {
+        "type": "array",
+        "innerType": 5,
+        "length": 5,
+        "values": [
+          1,
+          8,
+          15,
+          22,
+          29
+        ],
+        "truncated": false
+      },
+      "nTargetFeatures": 12800
+    },
+    "requiredTensors": {
+      "dflash_fc.weight": true,
+      "dflash_hidden_norm.weight": true,
+      "output_norm.weight": true
+    }
+  },
+  "runtime": [
+    {
+      "label": "installed",
+      "binary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "args": [
+        "-m",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
+        "-md",
+        "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
+        "-p",
+        "Hello",
+        "-n",
+        "1",
+        "-c",
+        "128",
+        "-cd",
+        "128",
+        "-ngl",
+        "99",
+        "-ngld",
+        "99",
+        "--draft",
+        "1",
+        "--draft-min",
+        "1",
+        "--draft-p-min",
+        "0.1",
+        "--spec-type",
+        "dflash",
+        "--temp",
+        "0",
+        "--tree-budget",
+        "0"
+      ],
+      "status": 0,
+      "signal": null,
+      "classification": "generation_attempt_completed",
+      "outputTail": "print_info: n_expert_used         = 0\nprint_info: n_expert_groups       = 0\nprint_info: n_group_used          = 0\nprint_info: causal attn           = 0\nprint_info: pooling type          = -1\nprint_info: rope type             = 2\nprint_info: rope scaling          = linear\nprint_info: freq_base_train       = 10000000.0\nprint_info: freq_scale_train      = 1\nprint_info: n_ctx_orig_yarn       = 262144\nprint_info: rope_yarn_log_mul     = 0.0000\nprint_info: rope_finetuned        = unknown\nprint_info: model type            = ?B\nprint_info: model params          = 537.43 M\nprint_info: general.name          = z-lab/Qwen3.5-4B-DFlash\nprint_info: vocab type            = BPE\nprint_info: n_vocab               = 248320\nprint_info: n_merges              = 247587\nprint_info: BOS token             = 11 '[PAD11]'\nprint_info: EOS token             = 248044 '[PAD248044]'\nprint_info: EOT token             = 0 '<|endoftext|>'\nprint_info: PAD token             = 248044 '[PAD248044]'\nprint_info: EOG token             = 0 '<|endoftext|>'\nprint_info: EOG token             = 248044 '[PAD248044]'\nprint_info: max token length      = 13\nload_tensors: loading model tensors, this can take a while... (mmap = true, direct_io = false)\nload_tensors: offloading output layer to GPU\nload_tensors: offloading 4 repeating layers to GPU\nload_tensors: offloaded 6/6 layers to GPU\nload_tensors:   CPU_Mapped model buffer size =     0.01 MiB\nload_tensors:   CPU_REPACK model buffer size =    17.58 MiB\nload_tensors:  MTL0_Mapped model buffer size =   284.35 MiB\n...............................\nllama_context: constructing llama_context\nllama_context: n_seq_max     = 1\nllama_context: n_ctx         = 256\nllama_context: n_ctx_seq     = 256\nllama_context: n_batch       = 64\nllama_context: n_ubatch      = 64\nllama_context: causal_attn   = 0\nllama_context: flash_attn    = auto\nllama_context: kv_unified    = false\nllama_context: freq_base     = 10000000.0\nllama_context: freq_scale    = 1\nllama_context: n_ctx_seq (256) < n_ctx_train (262144) -- the full capacity of the model will not be utilized\nggml_metal_init: allocating\nggml_metal_init: found device: Apple M4 Max\nggml_metal_init: picking default device: Apple M4 Max\nggml_metal_init: use fusion         = true\nggml_metal_init: use concurrency    = true\nggml_metal_init: use graph optimize = true\nllama_context:        CPU  output buffer size =     0.95 MiB\nsched_reserve: reserving ...\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve: fused Gated Delta Net disabled (non-CUDA backend)\nsched_reserve:       MTL0 compute buffer size =    61.25 MiB\nsched_reserve:        CPU compute buffer size =    30.77 MiB\nsched_reserve: graph nodes  = 209\nsched_reserve: graph splits = 4\nsched_reserve: reserve took 1.07 ms, sched copies = 1\ncommon_speculative_create_ctx_dft: draft model warmup complete\ncommon_speculative_init: copyspec speculative decoding (gamma=6)\ndflash: block_size=16, mask_token=248070, n_target_layers=5, n_embd=2560\ndecode: n_tokens == 0\nllama_decode: failed to decode, ret = -1\nsched_reserve: reserving ...\nsched_reserve:       MTL0 compute buffer size =    61.25 MiB\nsched_reserve:        CPU compute buffer size =     2.05 MiB\nsched_reserve: graph nodes  = 209\nsched_reserve: graph splits = 4\nsched_reserve: reserve took 1.86 ms, sched copies = 1\nallocate_tree_buffers: allocated tree verify buffers: 24 layers × 6 tokens = 144.0 MB\nallocate_tape_gpu: allocated GPU tape buffers: 18.9 MB total (1 slot, 24 layers, 25 max tokens)\n\n=== SPECULATIVE LOOP TIMING BREAKDOWN ===\niterations:     2\ntotal decode:    1323.73 ms (100%)\n  draft gen:       21.59 ms (  1.6%)\n  backup:           0.00 ms (  0.0%)\n  decode1 (verify):  1282.95 ms ( 96.9%)  [1 tok/call avg]\n  sampling:         4.09 ms (  0.3%)\n  restore:          0.00 ms (  0.0%)\n  decode2 (reeval):     8.66 ms (  0.7%)  [1 calls, 1 tok total, 1.0 tok/call avg, 0 skipped (all-accept)]\n  other:            0.01 ms (  0.0%)\n  unaccounted:      6.43 ms (  0.5%)\n=========================================\nencoded    1 tokens in    0.135 seconds, speed:    7.385 t/s\ndecoded    2 tokens in    1.324 seconds, speed:    1.511 t/s\n\nn_draft   = 1\nn_predict = 2\nn_drafted = 1\nn_accept  = 0\naccept    = 0.000%\n\nrejection histogram (position → count [%]):\n  pos  0:    1 (100.0%)\n  all ok:    0 (  0.0%)\n\ndraft:\n\nstatistics copyspec: #calls(b,g,a) = 1 2 0, #gen drafts = 0, #acc drafts = 0, #gen tokens = 0, #acc tokens = 0, dur(b,g,a) = 0.086, 0.000, 0.000 ms\nstatistics dflash: #calls(b,g,a) = 1 2 0, #gen drafts = 1, #acc drafts = 0, #gen tokens = 1, #acc tokens = 0, dur(b,g,a) = 0.001, 21.565, 0.000 ms\n\ntarget:\n\ncommon_perf_print:    sampling time =       0.70 ms\ncommon_perf_print:    samplers time =       0.34 ms /     2 tokens\ncommon_perf_print:        load time =     601.93 ms\ncommon_perf_print: prompt eval time =      34.99 ms /     4 tokens (    8.75 ms per token,   114.33 tokens per second)\ncommon_perf_print:        eval time =      43.73 ms /     1 runs   (   43.73 ms per token,    22.87 tokens per second)\ncommon_perf_print:       total time =    1800.17 ms /     5 tokens\ncommon_perf_print: unaccounted time =    1720.75 ms /  95.6 %      (total - sampling - prompt eval - eval) / (total)\ncommon_perf_print:    graphs reused =          1\ncommon_memory_breakdown_print: | memory breakdown [MiB]  |  total     free    self   model   context   compute    unaccounted |\ncommon_memory_breakdown_print: |   - MTL0 (Apple M4 Max) | 110100 = 106636 + (2905 =  2728 +     116 +      61) +         558 |\ncommon_memory_breakdown_print: |   - Host                |                     507 =   497 +       0 +      10                |\nggml_metal_free: deallocating\n~llama_context:        CPU compute buffer size of  10.3967 MiB, does not match expectation of   1.3150 MiB\nggml_metal_free: deallocating"
+    }
+  ],
+  "metadataStatus": "metadata_loadable",
+  "metadataFailures": []
+}
