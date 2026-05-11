@@ -1,23 +1,23 @@
 /**
  * Zod schemas for the apps-lifecycle HTTP routes
- * (launch / install / stop / relaunch / create / overlay-presence).
- * Same template as the rest: schema in shared, safeParse on server,
- * infer types on client.
+ * (launch / install / stop / relaunch / create / overlay-presence /
+ * refresh). Same template as the rest: schema in shared, safeParse on
+ * server, infer types on client.
  *
  * Routes covered:
  *   POST /api/apps/launch            body: { name }                  → AppLaunchResult
- *   POST /api/apps/install           body: { name, version? }        → varies
+ *   POST /api/apps/install           body: { name, version? }        → InstallAppResponse
  *   POST /api/apps/stop              body: { name?, runId? }         → AppStopResult
  *                                     (at least one of name/runId required)
  *   POST /api/apps/relaunch          body: { name, runId?, verify? } → AppLaunchResult
- *   POST /api/apps/create            body: { intent, editTarget? }   → APP-action result
- *   POST /api/apps/overlay-presence  body: { appName?: string|null } → { ok, appName }
+ *   POST /api/apps/create            body: { intent, editTarget? }   → CreateAppResponse
+ *   POST /api/apps/overlay-presence  body: { appName?: string|null } → OverlayPresenceResponse
+ *   POST /api/apps/refresh           (no body)                       → RefreshAppsResponse
  *
- * Response shapes for these routes are not modelled here — they
- * delegate to handler-internal types (AppLaunchResult, AppStopResult,
- * the install pipeline's progress payload). Migrating the response
- * side is a separate pass that can come after the launch surface
- * stabilises.
+ * Response shapes for the routes that delegate to AppLaunchResult or
+ * AppStopResult (launch, stop, relaunch) are still defined by the
+ * TypeScript interfaces in `./apps.ts` — those tree types have not
+ * been migrated to zod yet and are out of scope for this module.
  */
 
 import z from "zod";
@@ -156,6 +156,79 @@ export const PostOverlayPresenceRequestSchema = z
     return { appName: trimmed.length > 0 ? trimmed : null };
   });
 
+// ── Response schemas ─────────────────────────────────────────────────
+//
+// Only the inline ad-hoc shapes the handlers produce are modelled here.
+// Routes returning AppLaunchResult / AppStopResult (launch, relaunch,
+// stop) keep using the TS interfaces in `./apps.ts` — migrating those
+// tree types is a separate pass.
+
+/** /overlay-presence reply: `{ ok: true, appName: string | null }`. */
+export const PostOverlayPresenceResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    appName: z.union([z.string().min(1), z.null()]),
+  })
+  .strict();
+
+/** /create reply from the unified APP action. */
+export const PostCreateAppResponseSchema = z
+  .object({
+    success: z.boolean(),
+    text: z.string(),
+    messages: z.array(z.string()),
+    data: z.unknown(),
+  })
+  .strict();
+
+/** /refresh reply — registry refresh count. */
+export const PostRefreshAppsResponseSchema = z
+  .object({
+    ok: z.literal(true),
+    count: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/**
+ * Component schema: install-progress event the installer streams as it
+ * walks through phases (download, extract, register, …). Mirrors the
+ * `InstallProgressLike` interface in
+ * `packages/agent/src/services/plugin-manager-types.ts`.
+ */
+export const InstallProgressEventSchema = z
+  .object({
+    phase: z.string(),
+    message: z.string(),
+    pluginName: z.string().optional(),
+  })
+  .strict();
+
+/**
+ * /install reply, discriminated on `success`:
+ *   - success: full install metadata + replayed progress events
+ *   - failure: error + the progress events that were captured before
+ *     the failure
+ */
+export const PostInstallAppResponseSchema = z.discriminatedUnion("success", [
+  z
+    .object({
+      success: z.literal(true),
+      pluginName: z.string(),
+      version: z.string(),
+      installPath: z.string(),
+      requiresRestart: z.boolean(),
+      progress: z.array(InstallProgressEventSchema),
+    })
+    .strict(),
+  z
+    .object({
+      success: z.literal(false),
+      error: z.string().optional(),
+      progress: z.array(InstallProgressEventSchema),
+    })
+    .strict(),
+]);
+
 export type PostLaunchAppRequest = z.infer<typeof PostLaunchAppRequestSchema>;
 export type PostInstallAppRequest = z.infer<typeof PostInstallAppRequestSchema>;
 export type PostStopAppRequest = z.infer<typeof PostStopAppRequestSchema>;
@@ -165,4 +238,15 @@ export type PostRelaunchAppRequest = z.infer<
 export type PostCreateAppRequest = z.infer<typeof PostCreateAppRequestSchema>;
 export type PostOverlayPresenceRequest = z.infer<
   typeof PostOverlayPresenceRequestSchema
+>;
+export type PostOverlayPresenceResponse = z.infer<
+  typeof PostOverlayPresenceResponseSchema
+>;
+export type PostCreateAppResponse = z.infer<typeof PostCreateAppResponseSchema>;
+export type PostRefreshAppsResponse = z.infer<
+  typeof PostRefreshAppsResponseSchema
+>;
+export type InstallProgressEvent = z.infer<typeof InstallProgressEventSchema>;
+export type PostInstallAppResponse = z.infer<
+  typeof PostInstallAppResponseSchema
 >;
