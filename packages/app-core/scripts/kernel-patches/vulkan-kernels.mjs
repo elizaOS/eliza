@@ -1,4 +1,4 @@
-// Vulkan kernel-shipment + dispatch wiring for the v0.4.0-milady fork.
+// Vulkan kernel-shipment staging for the v0.4.0-milady fork.
 //
 // What this module does:
 //
@@ -12,7 +12,7 @@
 //      ggml-vulkan-shaders.hpp) is handled by the patch in
 //      vulkan-dispatch-patches/01-vulkan-shaders-gen.patch.
 //
-//   2. Applies the two unified-anchor patches under
+//   2. Applies the two unified-anchor staging patches under
 //      vulkan-dispatch-patches/:
 //        - 01-vulkan-shaders-gen.patch — adds 8 string_to_spv() registrations
 //          at the bottom of process_shaders().
@@ -20,7 +20,8 @@
 //          pipeline slots and adds 8 ggml_vk_create_pipeline() calls at the
 //          bottom of ggml_vk_load_shaders(). End result: each milady SPV blob
 //          is referenced at link time and `nm libggml-vulkan.so | grep
-//          milady_` shows the new symbols.
+//          milady_` shows the new symbols. This is still symbol/pipeline
+//          staging, not runtime graph dispatch.
 //
 //      Patches are idempotent: each carries a `MILADY-VK-DISPATCH-PATCH-V1`
 //      sentinel; if the sentinel is already present in the target file, the
@@ -266,7 +267,7 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
   const copied = copyStandalonesIntoFork(cacheDir, { dryRun });
   const patchResults = applyPatches(cacheDir, { dryRun });
   console.log(
-    `[vulkan-kernels] ${dryRun ? "(dry-run) " : ""}staged ${copied.length} standalone Vulkan shaders into vulkan-shaders/ ` +
+    `[vulkan-kernels] ${dryRun ? "(dry-run) " : ""}target=${target ?? "unknown"} staged ${copied.length} standalone Vulkan shaders into vulkan-shaders/ ` +
       `and applied ${patchResults.length} dispatch patches:`,
   );
   for (const r of patchResults) {
@@ -274,8 +275,16 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
       `[vulkan-kernels]   ${r.file} → ${r.target}: ${r.applied} hunk(s) applied, ${r.skipped} idempotent-skipped`,
     );
   }
-  // Note: target arg is currently unused. AGENTS.md §3 enforcement (no
-  // milady-missing vulkan binary) is now done at build-llama-cpp-dflash.mjs
-  // post-build via the requiredKernels audit on the SPV blob list.
-  return { copied, patchResults };
+  // AGENTS.md §3 enforcement (no milady-missing vulkan binary) is done at
+  // build-llama-cpp-dflash.mjs post-build via the requiredKernels audit.
+  console.log(
+    `[vulkan-kernels] symbol/pipeline staging is diagnostic-only; ` +
+      `make -C packages/inference/verify vulkan-dispatch-smoke must pass before any Vulkan runtime capability flips true.`,
+  );
+  return {
+    copied,
+    patchResults,
+    runtimeReady: false,
+    requiredGraphSmoke: "make -C packages/inference/verify vulkan-dispatch-smoke",
+  };
 }

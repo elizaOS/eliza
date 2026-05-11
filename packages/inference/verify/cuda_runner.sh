@@ -24,6 +24,120 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 cd "$HERE"
 
+REPORT_PATH="${ELIZA_DFLASH_HARDWARE_REPORT:-}"
+STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+FAIL_REASON=""
+GPU_INFO=""
+TOOLCHAIN_INFO=""
+GRAPH_SMOKE_STATUS="required"
+REMOTE_DELEGATED="false"
+
+usage() {
+    cat <<'USAGE' >&2
+Usage:
+  cuda_runner.sh [--report <path>]
+
+Options:
+  --report <path>   Write machine-readable JSON evidence for pass/fail.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --report)
+            REPORT_PATH="${2:-}"; shift 2 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        *)
+            usage; echo "[cuda_runner] unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+fail() {
+    FAIL_REASON="$*"
+    echo "[cuda_runner] $FAIL_REASON" >&2
+    exit 1
+}
+
+on_error() {
+    local line="$1"
+    local command="$2"
+    if [[ -z "$FAIL_REASON" ]]; then
+        FAIL_REASON="command failed at line $line: $command"
+    fi
+}
+
+model_sha256() {
+    local model="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+    [[ -n "$model" && -f "$model" ]] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$model" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$model" | awk '{print $1}'
+    fi
+}
+
+write_report() {
+    local exit_code="$1"
+    [[ -n "$REPORT_PATH" ]] || return 0
+    mkdir -p "$(dirname "$REPORT_PATH")"
+    RUNNER="cuda_runner.sh" \
+    STATUS="$([[ "$exit_code" == "0" ]] && printf pass || printf fail)" \
+    PASS_RECORDABLE="$([[ "$exit_code" == "0" && "$GRAPH_SMOKE_STATUS" == "required" ]] && printf true || printf false)" \
+    EXIT_CODE="$exit_code" \
+    FAIL_REASON="$FAIL_REASON" \
+    STARTED_AT="$STARTED_AT" \
+    FINISHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    HOST_OS="$(uname -s 2>/dev/null || true)" \
+    HOST_ARCH="$(uname -m 2>/dev/null || true)" \
+    TARGET="${CUDA_TARGET:-}" \
+    GPU_INFO="$GPU_INFO" \
+    TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
+    MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
+    MODEL_SHA256="$(model_sha256)" \
+    GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
+    REMOTE_DELEGATED="$REMOTE_DELEGATED" \
+    REPORT_PATH="$REPORT_PATH" \
+    node <<'NODE' || true
+const fs = require('node:fs');
+const env = process.env;
+const report = {
+  schemaVersion: 1,
+  runner: env.RUNNER,
+  status: env.STATUS,
+  passRecordable: env.PASS_RECORDABLE === 'true',
+  exitCode: Number(env.EXIT_CODE || 0),
+  failureReason: env.FAIL_REASON || null,
+  startedAt: env.STARTED_AT,
+  finishedAt: env.FINISHED_AT,
+  host: { os: env.HOST_OS, arch: env.HOST_ARCH },
+  target: env.TARGET || null,
+  remoteDelegated: env.REMOTE_DELEGATED === 'true',
+  requirements: {
+    os: 'Linux',
+    toolchain: ['nvcc', 'nvidia-smi'],
+    hardware: 'NVIDIA GPU reported by nvidia-smi',
+    fixtures: 'make cuda-verify all six fixtures',
+    graphSmoke: env.GRAPH_SMOKE_STATUS
+  },
+  evidence: {
+    gpuInfo: env.GPU_INFO || null,
+    toolchainInfo: env.TOOLCHAIN_INFO || null,
+    model: env.MODEL || null,
+    modelSha256: env.MODEL_SHA256 || null
+  }
+};
+fs.writeFileSync(env.REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
+NODE
+}
+
+finish() {
+    local exit_code=$?
+    write_report "$exit_code"
+}
+trap finish EXIT
+trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
+
 host_arch_target() {
     case "$(uname -m)" in
         x86_64|amd64) printf 'linux-x64-cuda' ;;
@@ -33,6 +147,7 @@ host_arch_target() {
 }
 
 if [[ -n "${CUDA_REMOTE:-}" ]]; then
+    REMOTE_DELEGATED="true"
     REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza}/packages/inference/verify"
     REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/milady-llama-cpp}"
     echo "[cuda_runner] remote host: $CUDA_REMOTE"
@@ -46,40 +161,37 @@ if [[ -n "${CUDA_REMOTE:-}" ]]; then
         ELIZA_DFLASH_LIBGGML_CUDA='${ELIZA_DFLASH_LIBGGML_CUDA:-}' \
         ELIZA_DFLASH_SMOKE_MODEL='${ELIZA_DFLASH_SMOKE_MODEL:-}' \
         ELIZA_DFLASH_SMOKE_CACHE_TYPES='${ELIZA_DFLASH_SMOKE_CACHE_TYPES:-}' \
+        ELIZA_DFLASH_HARDWARE_REPORT='${REPORT_PATH:-}' \
         ./cuda_runner.sh"
     exit $?
 fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "[cuda_runner] CUDA hardware verification requires Linux + NVIDIA driver; this host is $(uname -s)."
-    exit 1
+    fail "CUDA hardware verification requires Linux + NVIDIA driver; this host is $(uname -s)."
 fi
 
 if ! command -v nvcc >/dev/null 2>&1; then
-    echo "[cuda_runner] nvcc not on PATH — see CUDA_VERIFICATION.md"
-    echo "[cuda_runner] install: apt install nvidia-cuda-toolkit  (Linux)"
-    exit 1
+    fail "nvcc not on PATH — see CUDA_VERIFICATION.md; install CUDA Toolkit on Linux"
 fi
 
 if ! command -v nvidia-smi >/dev/null 2>&1; then
-    echo "[cuda_runner] nvidia-smi missing — refusing to count this as CUDA hardware verification"
-    exit 1
+    fail "nvidia-smi missing — refusing to count this as CUDA hardware verification"
 fi
 
 if ! nvidia-smi -L >/dev/null 2>&1; then
-    echo "[cuda_runner] nvidia-smi did not report an NVIDIA GPU"
-    exit 1
+    fail "nvidia-smi did not report an NVIDIA GPU"
 fi
 
 CUDA_TARGET="${CUDA_TARGET:-$(host_arch_target)}"
 if [[ "$CUDA_TARGET" == *unknown* ]]; then
-    echo "[cuda_runner] unsupported host arch for CUDA target: $(uname -m)"
-    exit 1
+    fail "unsupported host arch for CUDA target: $(uname -m)"
 fi
 
 echo "[cuda_runner] target=$CUDA_TARGET"
-nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader || nvidia-smi -L
-nvcc --version
+GPU_INFO="$(nvidia-smi --query-gpu=name,driver_version,compute_cap --format=csv,noheader 2>/dev/null || nvidia-smi -L)"
+TOOLCHAIN_INFO="$(nvcc --version)"
+printf '%s\n' "$GPU_INFO"
+printf '%s\n' "$TOOLCHAIN_INFO"
 
 if [[ "${CUDA_BUILD_FORK:-1}" != "0" ]]; then
     node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" --target "$CUDA_TARGET"
@@ -88,8 +200,8 @@ fi
 make cuda-verify
 
 if [[ "${CUDA_SKIP_GRAPH_SMOKE:-0}" == "1" ]]; then
-    echo "[cuda_runner] CUDA_SKIP_GRAPH_SMOKE=1 — fixture parity only; graph dispatch NOT verified."
-    exit 0
+    GRAPH_SMOKE_STATUS="skipped"
+    fail "CUDA_SKIP_GRAPH_SMOKE=1 — fixture parity only; graph dispatch NOT verified, so no hardware pass can be recorded"
 fi
 
 "$HERE/runtime_graph_smoke.sh" \

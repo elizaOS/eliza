@@ -94,6 +94,74 @@ from inference.common.trajectory_schema import (
 load_dotenv()
 
 
+SUMMARY_MIN_STEPS_BETWEEN_EVENTS = 4
+SUMMARY_MIN_MESSAGES_SINCE_LAST = 8
+
+
+def should_generate_context_summary(
+    *,
+    total_tokens: int,
+    reset_size: int,
+    messages_count: int,
+    step_count: int,
+    messages_tokens: int = 0,
+    tools_tokens: int = 0,
+    last_summary_event: Optional[Dict[str, Any]] = None,
+    max_context_size: Optional[int] = None,
+    max_tokens: int = 4096,
+) -> tuple[bool, str]:
+    """Decide whether summary compaction can help this turn.
+
+    LOCA counts static tool schemas in ``total_tokens``. Summarizing the
+    conversation cannot shrink that static overhead, so a small reset threshold
+    can otherwise cause summary-on-every-turn thrash. A hard context limit still
+    bypasses the cooldown because the next provider call may fail without a
+    compaction attempt.
+    """
+
+    if total_tokens <= reset_size:
+        return False, "under_reset_size"
+
+    hard_limit = max_context_size - max_tokens if max_context_size is not None else None
+    if hard_limit is not None and total_tokens >= hard_limit:
+        return True, "hard_context_limit"
+
+    if tools_tokens >= int(reset_size * 0.7):
+        return False, "static_overhead_dominated"
+
+    if not last_summary_event:
+        return True, "first_over_reset_size"
+
+    last_step = int(last_summary_event.get("step", -10**9) or -10**9)
+    if step_count - last_step < SUMMARY_MIN_STEPS_BETWEEN_EVENTS:
+        return False, "summary_cooldown_steps"
+
+    messages_after = int(last_summary_event.get("messages_after_count", 0) or 0)
+    if messages_after and messages_count - messages_after < SUMMARY_MIN_MESSAGES_SINCE_LAST:
+        return False, "summary_cooldown_messages"
+
+    return True, "over_reset_size"
+
+
+def select_summary_tail(messages: List[Dict[str, Any]], max_messages: int = 8) -> List[Dict[str, Any]]:
+    """Keep a recent tail after summary without dangling tool results."""
+
+    if max_messages <= 0:
+        return []
+    tail = [dict(message) for message in messages[-max_messages:]]
+    while tail and tail[0].get("role") == "tool":
+        tool_call_id = tail[0].get("tool_call_id")
+        has_call = any(
+            any(call.get("id") == tool_call_id for call in message.get("tool_calls", []) or [])
+            for message in tail
+            if isinstance(message, dict)
+        )
+        if has_call:
+            break
+        tail.pop(0)
+    return tail
+
+
 @contextlib.contextmanager
 def suppress_stdout():
     """Context manager to suppress stdout output from preprocessing scripts."""
@@ -342,6 +410,7 @@ def make_aihubmix_api_request(
     tool_choice: Optional[str] = None,
     max_retries: int = 200,
     request_timeout: int = 60,
+    initial_retry_delay: float = 1.0,
     temperature: float = 1.0,
     top_p: float = 1.0,
     max_tokens: int = 4096,
@@ -788,7 +857,7 @@ def make_aihubmix_api_request(
                             print(f"Switched to random API key for error retry")
 
                         # Simple backoff with some randomness
-                        sleep_time = 1 + random.random()
+                        sleep_time = initial_retry_delay + random.random()
                         if verbose:
                             print(f"Retrying in {sleep_time:.2f} seconds...")
                         time.sleep(sleep_time)
@@ -828,7 +897,7 @@ def make_aihubmix_api_request(
                 if milliseconds:
                     wait_time = int(milliseconds[0])/1000
                 else:
-                    wait_time = 1 + random.random()
+                    wait_time = initial_retry_delay + random.random()
 
                 if verbose:
                     print(f"Rate limited. Retrying after {wait_time} seconds.")
@@ -930,7 +999,7 @@ def make_aihubmix_api_request(
                 print(f"Request error: {e}")
 
         # Simple backoff with some randomness
-        sleep_time = 1 + random.random()
+        sleep_time = initial_retry_delay + random.random()
         if verbose:
             print(f"Retrying in {sleep_time:.2f} seconds...")
         time.sleep(sleep_time)
@@ -1243,12 +1312,14 @@ def run_single_task(
     full_messages_history = []  # Store complete message history including reset messages
     reset_events = []  # Store information about reset events
     summary_events = []  # Store information about summary events
+    summary_skip_events = []  # Store suppressed summary attempts for audit
     trim_events = []  # Store information about trim/truncation events
     thinking_reset_events = []  # Store information about thinking reset events
     usage_tracking = []  # Store per-step API usage
     initial_user_message = None  # Store the initial user message for summary mode
     memory_warning_issued = False  # Track if memory warning has been issued
     tool = None  # Initialize tool to None for cleanup in finally block
+    messages = []
 
     try:
         # Dynamically import and instantiate environment class
@@ -1397,6 +1468,7 @@ def run_single_task(
                 tools=tools[0] if tools else None,
                 max_retries=max_retries,
                 request_timeout=timeout,
+                initial_retry_delay=initial_retry_delay,
                 temperature=1.0,
                 top_p=1.0,
                 max_tokens=max_tokens,
@@ -1461,6 +1533,120 @@ def run_single_task(
                     if verbose:
                         print(f"[Task {task_id} | {task_label}] Trim event recorded: removed {response['trim_info']['removed_count']} messages")
 
+            if response.get('type') == 'error':
+                error_text = "\n".join(str(item) for item in response.get('data', []))
+                if not error_text:
+                    error_text = "Error: provider returned an error response."
+                call_messages = response.get('call_messages') or {
+                    "role": "assistant",
+                    "content": error_text,
+                }
+                call_messages = normalize_assistant_message_for_history(call_messages)
+                messages.append(call_messages)
+                full_messages_history.append(call_messages.copy())
+                episode.append({
+                    "observation": obs,
+                    "action": response,
+                    "reward": 0.0,
+                    "info": {"error": error_text},
+                })
+
+                episode_data = {
+                    "error": error_text,
+                    "episode": episode,
+                    "messages": messages,
+                    "events": {
+                        "reset": reset_events or [],
+                        "summary": summary_events or [],
+                        "summary_skip": summary_skip_events or [],
+                        "trim": trim_events or [],
+                        "thinking_reset": thinking_reset_events or [],
+                    },
+                    "metrics": {
+                        "accuracy": 0.0,
+                        "total_steps": step_count,
+                        "completed": False,
+                    },
+                }
+                envelope = make_base_envelope(
+                    backend="openai",
+                    task={
+                        "task_id": task_id,
+                        "config_id": config_id,
+                        "run_id": run_id,
+                        "config_name": config_name,
+                        "env_class": env_class,
+                        "env_params": env_params,
+                    },
+                )
+                attach_conversation(
+                    envelope,
+                    messages=messages,
+                    full_messages_history=full_messages_history,
+                )
+                attach_events(
+                    envelope,
+                    reset=reset_events or [],
+                    summary=summary_events or [],
+                    summary_skip=summary_skip_events or [],
+                    trim=trim_events or [],
+                    thinking_reset=thinking_reset_events or [],
+                )
+                attach_metrics(
+                    envelope,
+                    accuracy=0.0,
+                    total_steps=step_count,
+                    completed=False,
+                )
+                attach_provider_payload(
+                    envelope,
+                    model=model,
+                    usage_tracking=usage_tracking,
+                    error=error_text,
+                    response=response,
+                )
+                write_trajectory_file(
+                    save_file,
+                    envelope=envelope,
+                    legacy_payload=episode_data,
+                    indent=2,
+                )
+                if usage_tracking:
+                    write_json_file(
+                        save_file.parent / "token_stats.json",
+                        {"usage_tracking": usage_tracking},
+                        indent=2,
+                    )
+                write_eval_file(
+                    task_workspace=save_file.parent,
+                    status="error",
+                    accuracy=0.0,
+                    steps=step_count,
+                    feedback=error_text,
+                )
+                return {
+                    "task_id": task_id,
+                    "config_id": config_id,
+                    "run_id": run_id,
+                    "config_name": config_name,
+                    "status": "error",
+                    "error": error_text,
+                    "steps": step_count,
+                    "final_reward": 0.0,
+                    "accuracy": 0.0,
+                    "save_file": str(save_file),
+                    "env_class": env_class,
+                    "env_params": env_params,
+                    "tool_calls": 0,
+                    "api_prompt_tokens": usage_tracking[-1].get('prompt_tokens', 0) if usage_tracking else 0,
+                    "api_completion_tokens": sum(ut.get('completion_tokens', 0) for ut in usage_tracking),
+                    "api_total_tokens": usage_tracking[-1].get('total_tokens', 0) if usage_tracking else 0,
+                    "trimmed_tokens": 0,
+                    "reset_tokens": 0,
+                    "thinking_reset_tokens": 0,
+                    "summary_tokens": 0,
+                }
+
             # Check if response has call_messages (defensive check)
             if 'call_messages' not in response:
                 print(f"ERROR: Response missing 'call_messages' key. Response: {response}")
@@ -1471,6 +1657,7 @@ def run_single_task(
                 }
             else:
                 call_messages = response['call_messages']
+            call_messages = normalize_assistant_message_for_history(call_messages)
             
             # Ensure all tool_calls have arguments field (fix for consistency)
             if 'tool_calls' in call_messages and call_messages['tool_calls']:
@@ -1781,6 +1968,8 @@ def run_single_task(
             # Check if context SUMMARY is needed (must be done AFTER tool results)
             if context_summary and reset_size is not None and 'raw_response' in response:
                 # Calculate total_tokens using tiktoken (same method as in call_openai_with_tools)
+                messages_tokens = 0
+                tools_tokens = 0
                 try:
                     import tiktoken
                     # Get tokenizer
@@ -1832,16 +2021,68 @@ def run_single_task(
                     if verbose:
                         print(f"[Task {task_id} | {task_label}] Memory warning message inserted into conversation")
 
-                if total_tokens > reset_size:
+                should_summarize, summary_trigger_reason = should_generate_context_summary(
+                    total_tokens=total_tokens,
+                    reset_size=reset_size,
+                    messages_count=len(messages),
+                    step_count=step_count,
+                    messages_tokens=messages_tokens,
+                    tools_tokens=tools_tokens,
+                    last_summary_event=summary_events[-1] if summary_events else None,
+                    max_context_size=max_context_size,
+                    max_tokens=max_tokens,
+                )
+
+                if total_tokens > reset_size and not should_summarize:
+                    skip_event = {
+                        "step": step_count,
+                        "total_tokens": total_tokens,
+                        "reset_size": reset_size,
+                        "messages_count": len(messages),
+                        "reason": summary_trigger_reason,
+                        "last_summary_step": (
+                            summary_events[-1].get("step") if summary_events else None
+                        ),
+                    }
+                    summary_skip_events.append(skip_event)
+                    if verbose:
+                        print(
+                            f"[Task {task_id} | {task_label}] Token usage ({total_tokens}) exceeds reset_size "
+                            f"({reset_size}) but context summary is deferred: {summary_trigger_reason}"
+                        )
+
+                if should_summarize:
                     # Use context summary approach
                     if verbose:
-                        print(f"[Task {task_id} | {task_label}] Token usage ({total_tokens}) exceeds reset_size ({reset_size}). Generating context summary...")
+                        print(
+                            f"[Task {task_id} | {task_label}] Token usage ({total_tokens}) exceeds reset_size "
+                            f"({reset_size}). Generating context summary ({summary_trigger_reason})..."
+                        )
 
                     # Add summary request message
                     summary_request_message = {
                         "role": "user",
-                        "content": "You are approaching the context window's length limit. To continue the task, you must produce a concise summary of the overflowing conversation trajectory. This summary will be transferred into a fresh context window and will serve—together with the user's original task description—as your only available reference. The full conversation history will no longer be accessible, so ensure the summary captures all essential information needed to proceed effectively."
+                        "content": (
+                            "You are approaching the context window's length limit. To continue the task, produce a concise, factual summary of the "
+                            "overflowing conversation trajectory. This summary will be transferred into a fresh context window together with the user's "
+                            "original task description. The full conversation history will no longer be accessible.\n\n"
+                            "Preserve the original task semantics exactly. Do not add new requirements, relax requirements, or infer that existing "
+                            "example/template rows in workspace files must be preserved unless the original user explicitly required preservation or "
+                            "source-of-truth data confirms those rows satisfy the final criteria. For file-editing tasks, distinguish clearly between "
+                            "examples/placeholders, observed source-of-truth data, files already written, and remaining work.\n\n"
+                            "For structured-output tasks such as CSV editing, preserve exact file names, headers, identifiers, dates, and every known "
+                            "field value required by the final output. If final rows have already been determined, include the exact intended rows or "
+                            "the exact source facts needed to reconstruct every column. Do not replace known values with 'unknown' or blanks.\n\n"
+                            "For tool-driven research tasks, explicitly record coverage: which source files, APIs, course IDs, object IDs, pages, or "
+                            "records have already been queried, and which required sources remain unqueried. Never infer that data is absent merely "
+                            "because the source has not been queried yet; mark it as remaining work instead.\n\n"
+                            "If any required output field has not been copied exactly from a source result, mark it uncertain and instruct the next "
+                            "context to re-query the source before writing. Do not invent plausible defaults or simplified names for required fields.\n\n"
+                            "Include only load-bearing information needed to continue: user goal, source facts already discovered, decisions made, "
+                            "files modified and their intended final contents, unresolved uncertainty, and the next concrete action."
+                        )
                     }
+                    messages_before_summary_request = messages.copy()
                     messages.append(summary_request_message)
 
                     # Call API to get summary
@@ -1855,9 +2096,10 @@ def run_single_task(
                         tools=None,  # Don't allow tool calls for summary
                         max_retries=max_retries,
                         request_timeout=timeout,
-                        temperature=0.7,
+                        initial_retry_delay=initial_retry_delay,
+                        temperature=0.0,
                         top_p=1.0,
-                        max_tokens=max_tokens,
+                        max_tokens=min(max_tokens, 2048),
                         max_context_size=max_context_size,
                         context_awareness=context_awareness,
                         reasoning_effort=reasoning_effort,
@@ -1885,12 +2127,15 @@ def run_single_task(
                             if verbose:
                                 print(f"[Task {task_id} | {task_label}] Trim event recorded (summary): removed {summary_response['trim_info']['removed_count']} messages")
                     
+                    summary_failed = summary_response.get("type") == "error"
+
                     # Get summary message
-                    if 'call_messages' in summary_response:
+                    if 'call_messages' in summary_response and not summary_failed:
                         summary_message = summary_response['call_messages']
                         
                         # Extract summary content and create a new user message
-                        if 'content' in summary_message:
+                        summary_text = summary_message.get('content', '')
+                        if isinstance(summary_text, str) and summary_text.strip() and not summary_text.lstrip().startswith("Error:"):
                             summary_content = "You previously worked on this task in an earlier context window. This is a new context window, and the text provided here is a summary of the portion you completed before.\n\n" + summary_message['content']
                             
                             # Create a new user message with the summary
@@ -1898,10 +2143,11 @@ def run_single_task(
                                 "role": "user",
                                 "content": summary_content
                             }
+                            summary_tail = select_summary_tail(messages_before_summary_request)
                             
-                            # Reset messages to initial + summary as user message
+                            # Reset messages to initial + summary plus a recent raw tail.
                             messages_before_summary = messages.copy()
-                            messages = [initial_user_message, summary_user_message]
+                            messages = [initial_user_message, summary_user_message] + summary_tail
                         
                             # Record summary event
                             import copy
@@ -1911,10 +2157,15 @@ def run_single_task(
                                 'reset_size': reset_size,
                                 'messages_before_count': len(messages_before_summary),
                                 'messages_after_count': len(messages),
+                                'summary_tail_count': len(summary_tail),
                                 'summary_request': summary_request_message,
                                 'summary_response_original': copy.deepcopy(summary_message),  # Original assistant response
                                 'summary_user_message': copy.deepcopy(summary_user_message),  # Converted to user message
+                                'summary_tail': copy.deepcopy(summary_tail),
                                 'messages_before_summary': copy.deepcopy(messages_before_summary),
+                                'trigger_reason': summary_trigger_reason,
+                                'messages_tokens': messages_tokens,
+                                'tools_tokens': tools_tokens,
                             }
                             summary_events.append(summary_event)
 
@@ -1927,8 +2178,29 @@ def run_single_task(
                             memory_warning_issued = False
                         else:
                             print(f"[Task {task_id} | {task_label}] ERROR: Summary response has no content", file=sys.stderr)
+                            messages = messages_before_summary_request
+                            summary_skip_events.append(
+                                {
+                                    "step": step_count,
+                                    "total_tokens": total_tokens,
+                                    "reset_size": reset_size,
+                                    "messages_count": len(messages),
+                                    "reason": "summary_generation_empty",
+                                }
+                            )
                     else:
                         print(f"[Task {task_id} | {task_label}] ERROR: Failed to get summary response", file=sys.stderr)
+                        messages = messages_before_summary_request
+                        summary_skip_events.append(
+                            {
+                                "step": step_count,
+                                "total_tokens": total_tokens,
+                                "reset_size": reset_size,
+                                "messages_count": len(messages),
+                                "reason": "summary_generation_failed",
+                                "error": "\n".join(str(item) for item in summary_response.get('data', [])),
+                            }
+                        )
             
             # Record episode data (without messages to save space)
             episode.append({
@@ -1940,10 +2212,12 @@ def run_single_task(
 
             # Save current progress after each step (simplified format)
             episode_data = {
+                "episode": episode,
                 "messages": messages,
                 "events": {
                     "reset": reset_events or [],
                     "summary": summary_events or [],
+                    "summary_skip": summary_skip_events or [],
                     "trim": trim_events or [],
                     "thinking_reset": thinking_reset_events or [],
                 },
@@ -1974,6 +2248,7 @@ def run_single_task(
                 envelope,
                 reset=reset_events or [],
                 summary=summary_events or [],
+                summary_skip=summary_skip_events or [],
                 trim=trim_events or [],
                 thinking_reset=thinking_reset_events or [],
             )
@@ -2006,10 +2281,12 @@ def run_single_task(
 
         # Update final episode data (simplified format)
         episode_data = {
+            "episode": episode,
             "messages": messages,
             "events": {
                 "reset": reset_events or [],
                 "summary": summary_events or [],
+                "summary_skip": summary_skip_events or [],
                 "trim": trim_events or [],
                 "thinking_reset": thinking_reset_events or [],
             },
@@ -2040,6 +2317,7 @@ def run_single_task(
             envelope,
             reset=reset_events or [],
             summary=summary_events or [],
+            summary_skip=summary_skip_events or [],
             trim=trim_events or [],
             thinking_reset=thinking_reset_events or [],
         )
@@ -2157,61 +2435,86 @@ def run_single_task(
         import traceback
         traceback.print_exc()
 
-        # Save partial episode on error
-        if episode:
-            error_save_file = task_workspace / "trajectory.json"
-            error_save_file.parent.mkdir(parents=True, exist_ok=True)
+        error_save_file = task_workspace / "trajectory.json"
+        error_save_file.parent.mkdir(parents=True, exist_ok=True)
 
-            # Create error episode data
-            episode_data = {
-                "error": str(e),
+        episode_data = {
+            "error": str(e),
+            "episode": episode,
+            "messages": messages,
+            "events": {
+                "reset": reset_events or [],
+                "summary": summary_events or [],
+                "summary_skip": summary_skip_events or [],
+                "trim": trim_events or [],
+                "thinking_reset": thinking_reset_events or [],
+            },
+            "metrics": {
+                "accuracy": 0.0,
                 "total_steps": len(episode),
-            }
+                "completed": False,
+            },
+        }
 
-            envelope = make_base_envelope(
-                backend="openai",
-                task={
-                    "task_id": task_id,
-                    "config_id": config_id,
-                    "run_id": run_id,
-                    "config_name": config_name,
-                    "env_class": env_class,
-                    "env_params": env_params,
-                },
-            )
-            attach_conversation(
-                envelope,
-                full_messages_history=full_messages_history,
-            )
-            attach_metrics(
-                envelope,
-                accuracy=0.0,
-                total_steps=len(episode),
-                completed=False,
-            )
-            attach_provider_payload(
-                envelope,
-                model=model,
-                error=str(e),
-            )
-            write_trajectory_file(
-                error_save_file,
-                envelope=envelope,
-                legacy_payload=episode_data,
-                indent=4,
+        envelope = make_base_envelope(
+            backend="openai",
+            task={
+                "task_id": task_id,
+                "config_id": config_id,
+                "run_id": run_id,
+                "config_name": config_name,
+                "env_class": env_class,
+                "env_params": env_params,
+            },
+        )
+        attach_conversation(
+            envelope,
+            messages=messages,
+            full_messages_history=full_messages_history,
+        )
+        attach_events(
+            envelope,
+            reset=reset_events or [],
+            summary=summary_events or [],
+            summary_skip=summary_skip_events or [],
+            trim=trim_events or [],
+            thinking_reset=thinking_reset_events or [],
+        )
+        attach_metrics(
+            envelope,
+            accuracy=0.0,
+            total_steps=len(episode),
+            completed=False,
+        )
+        attach_provider_payload(
+            envelope,
+            model=model,
+            usage_tracking=usage_tracking,
+            error=str(e),
+        )
+        write_trajectory_file(
+            error_save_file,
+            envelope=envelope,
+            legacy_payload=episode_data,
+            indent=2,
+        )
+        if usage_tracking:
+            write_json_file(
+                error_save_file.parent / "token_stats.json",
+                {"usage_tracking": usage_tracking},
+                indent=2,
             )
 
-            # Save eval.json for error case
-            write_eval_file(
-                task_workspace=error_save_file.parent,
-                status="error",
-                accuracy=0.0,
-                steps=len(episode),
-                feedback=str(e),
-            )
+        write_eval_file(
+            task_workspace=error_save_file.parent,
+            status="error",
+            accuracy=0.0,
+            steps=len(episode),
+            feedback=str(e),
+        )
 
-            if verbose:
-                print(f"[Task {task_id} | {task_label}] Partial episode saved to: {error_save_file}")
+        if verbose:
+            print(f"[Task {task_id} | {task_label}] Partial episode saved to: {error_save_file}")
 
         return {
             "task_id": task_id,

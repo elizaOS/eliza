@@ -167,6 +167,7 @@ def _build_fixture_bundle(
             }
         ),
     )
+    graph_kernel_set = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"]
     for backend in ("metal", "vulkan", "cuda", "cpu"):
         _write(
             bundle / "evals" / f"{backend}_dispatch.json",
@@ -175,10 +176,20 @@ def _build_fixture_bundle(
                     "backend": backend,
                     "status": "pass",
                     "runtimeReady": True,
+                    "atCommit": "deadbee",
+                    "modelSha256": "a" * 64,
+                    "kernelSet": graph_kernel_set,
+                    "graphDispatch": {
+                        "cacheFamilies": graph_kernel_set,
+                        "command": "llama-cli --cache-type-k <family>",
+                        "logs": [f"evals/{backend}_dispatch.log"],
+                    },
+                    "device": f"fixture-{backend}",
                     "report": f"{backend}_dispatch.txt",
                 }
             ),
         )
+        _write(bundle / "evals" / f"{backend}_dispatch.log", "backend ok\n")
         _write(
             bundle / "evals" / f"{backend}_platform.json",
             json.dumps(
@@ -187,6 +198,33 @@ def _build_fixture_bundle(
                     "status": "pass",
                     "platform": f"fixture-{backend}",
                     "report": f"{backend}_platform.txt",
+                }
+            ),
+        )
+
+    for target in (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cuda",
+        "windows-x64-cuda",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+    ):
+        backend = target.rsplit("-", 1)[-1]
+        _write(
+            bundle / "evidence" / "platform" / f"{target}.json",
+            json.dumps(
+                {
+                    "backend": backend,
+                    "target": target,
+                    "status": "pass",
+                    "device": f"fixture-{target}",
+                    "atCommit": "deadbee",
+                    "voiceAbi": True if target == "ios-arm64-metal" else "not-applicable",
+                    "report": f"{target}.txt",
                 }
             ),
         )
@@ -260,10 +298,15 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
                     "cpu": "evals/cpu_dispatch.json",
                 },
                 "platformEvidence": {
-                    "metal": "evals/metal_platform.json",
-                    "vulkan": "evals/vulkan_platform.json",
-                    "cuda": "evals/cuda_platform.json",
-                    "cpu": "evals/cpu_platform.json",
+                    "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
+                    "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
+                    "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
+                    "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
+                    "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
+                    "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+                    "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+                    "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
+                    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json",
                 },
                 "hf": {
                     "repoId": f"elizalabs/eliza-1-{tier}",
@@ -421,6 +464,21 @@ def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:
     assert rc == EXIT_MISSING_FILE
 
 
+def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["releaseState"] = "final"
+    release["hf"]["status"] = "uploaded"
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
 def test_bad_checksum_manifest_blocks_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     checksum_path = bundle / "checksums" / "SHA256SUMS"
@@ -453,6 +511,143 @@ def test_symbol_only_dispatch_evidence_blocks_publish(tmp_path: Path) -> None:
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "metal_dispatch.json").write_text(
+        json.dumps(
+            {
+                "backend": "metal",
+                "status": "pass",
+                "runtimeReady": True,
+                "atCommit": "deadbee",
+                "report": "metal_dispatch.txt",
+            }
+        )
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_platform_evidence_is_target_keyed(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["platformEvidence"]["ios-arm64-metal"] = (
+        "evidence/platform/darwin-arm64-metal.json"
+    )
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_ios_skipped_voice_abi_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    ios_path = bundle / "evidence" / "platform" / "ios-arm64-metal.json"
+    ios_report = json.loads(ios_path.read_text())
+    ios_report["skippedVoiceAbi"] = True
+    ios_report["voiceAbi"] = False
+    ios_path.write_text(json.dumps(ios_report, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_evidence_sidecars_must_be_checksummed(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    checksum_path = bundle / "checksums" / "SHA256SUMS"
+    lines = checksum_path.read_text().splitlines()
+    lines = [
+        line
+        for line in lines
+        if "  evidence/platform/ios-arm64-metal.json" not in line
+    ]
+    checksum_path.write_text("\n".join(lines) + "\n")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_upload_list_includes_nested_evidence(tmp_path: Path) -> None:
+    from scripts.publish.orchestrator import (  # noqa: PLC0415
+        _build_upload_list,
+        validate_bundle_layout,
+    )
+
+    bundle = _build_fixture_bundle(tmp_path)
+    ctx = _ctx("9b", bundle, metal=_metal_report(tmp_path), dry_run=True)
+    layout = validate_bundle_layout(ctx)
+    upload_targets = {target for _, target in _build_upload_list(ctx, layout)}
+    assert "evidence/platform/ios-arm64-metal.json" in upload_targets
+    assert "checksums/SHA256SUMS" in upload_targets
+
+
+def test_real_publish_finalizes_and_uploads_hf_evidence(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.publish.orchestrator as orchestrator  # noqa: PLC0415
+
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+    final_uploads: list[tuple[str, str]] = []
+
+    def fake_push_to_hf(
+        ctx: PublishContext,
+        manifest_path: Path,
+        readme_path: Path,
+        upload_pairs: list[tuple[Path, str]],
+    ) -> dict[str, Any]:
+        uploaded_paths = [
+            "eliza-1.manifest.json",
+            "README.md",
+            *(target for _, target in upload_pairs),
+        ]
+        return {
+            "repoId": ctx.repo_id,
+            "status": "uploaded",
+            "commit": "payload123",
+            "url": "https://huggingface.co/elizalabs/eliza-1-9b/commit/payload123",
+            "uploadedPaths": uploaded_paths,
+        }
+
+    def fake_push_final_release_evidence(
+        ctx: PublishContext, release_path: Path, checksum_path: Path
+    ) -> None:
+        final_uploads.append(
+            (
+                str(release_path.relative_to(ctx.bundle_dir)),
+                str(checksum_path.relative_to(ctx.bundle_dir)),
+            )
+        )
+
+    monkeypatch.setattr(orchestrator, "push_to_hf", fake_push_to_hf)
+    monkeypatch.setattr(
+        orchestrator,
+        "push_final_release_evidence",
+        fake_push_final_release_evidence,
+    )
+    monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
+
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=False))
+
+    assert rc == EXIT_OK
+    assert final_uploads == [("evidence/release.json", "checksums/SHA256SUMS")]
+    release = json.loads((bundle / "evidence" / "release.json").read_text())
+    assert release["releaseState"] == "final"
+    assert release["hf"]["status"] == "uploaded"
+    assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
+    assert release["hf"]["uploadEvidence"]["repoId"] == "elizalabs/eliza-1-9b"
+    checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
+    release_line = next(
+        line for line in checksum_lines if "  evidence/release.json" in line
+    )
+    assert release_line.startswith(_sha256(bundle / "evidence" / "release.json"))
 
 
 # ---------------------------------------------------------------------------

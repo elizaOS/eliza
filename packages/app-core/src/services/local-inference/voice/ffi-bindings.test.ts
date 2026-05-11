@@ -155,6 +155,14 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
     expect(report.contextWasNonNull).toBe(true);
   });
 
+  it("create surfaces a NULL C pointer as a structured lifecycle error", () => {
+    const report = runBunHarness({ scenario: "create-empty-fails" });
+    expectHarnessOk(report);
+    expect(report.threwLifecycleError).toBe(true);
+    expect(report.errorCode).toBe("kernel-missing");
+    expect(report.errorMessage).toMatch(/bundle_dir is required/);
+  });
+
   it("ttsSynthesize against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error (no crash)", () => {
     const report = runBunHarness({ scenario: "tts-not-implemented" });
     expectHarnessOk(report);
@@ -220,6 +228,7 @@ interface HarnessReport {
 interface HarnessOptions {
   scenario:
     | "create-destroy"
+    | "create-empty-fails"
     | "tts-not-implemented"
     | "mmap-acquire-not-implemented"
     | "mmap-evict-not-implemented"
@@ -270,7 +279,7 @@ function asLifecycleErr(e) {
   if (SCENARIO === "create-destroy") {
     const ffi = loadElizaInferenceFfi(DYLIB);
     const ctx = ffi.create("/tmp/elizainference-test-bundle");
-    const ok = ctx !== 0n;
+    const ok = ctx !== null && ctx !== undefined && ctx !== 0n && ctx !== 0;
     ffi.destroy(ctx);
     ffi.close();
     emit({
@@ -278,6 +287,26 @@ function asLifecycleErr(e) {
       scenario: SCENARIO,
       libraryAbiVersion: ffi.libraryAbiVersion,
       contextWasNonNull: ok,
+    });
+    return;
+  }
+
+  if (SCENARIO === "create-empty-fails") {
+    const ffi = loadElizaInferenceFfi(DYLIB);
+    let thrown;
+    try {
+      ffi.create("");
+    } catch (e) {
+      thrown = e;
+    }
+    ffi.close();
+    const lc = asLifecycleErr(thrown);
+    emit({
+      ok: true,
+      scenario: SCENARIO,
+      threwLifecycleError: lc !== null,
+      errorCode: lc?.code,
+      errorMessage: lc?.message,
     });
     return;
   }

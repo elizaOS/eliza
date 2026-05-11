@@ -103,7 +103,7 @@ loca = "loca.cli.main:app"
 path = "gem/__about__.py"
 
 [tool.hatch.build.targets.wheel]
-packages = ["gem", "mcp_convert", "loca"]
+packages = ["gem", "mcp_convert", "loca", "inference", "eliza_loca"]
 
 [tool.hatch.envs.types]
 extra-dependencies = ["mypy>=1.0.0"]

@@ -11,41 +11,150 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$HERE" rev-parse --show-toplevel)"
 TARGET="${ROCM_TARGET:-linux-x64-rocm}"
+REPORT_PATH="${ELIZA_DFLASH_HARDWARE_REPORT:-}"
+STARTED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+FAIL_REASON=""
+GPU_INFO=""
+TOOLCHAIN_INFO=""
+GRAPH_SMOKE_STATUS="required"
+
+usage() {
+    cat <<'USAGE' >&2
+Usage:
+  rocm_runner.sh [--report <path>]
+
+Options:
+  --report <path>   Write machine-readable JSON evidence for pass/fail.
+USAGE
+}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --report)
+            REPORT_PATH="${2:-}"; shift 2 ;;
+        -h|--help)
+            usage; exit 0 ;;
+        *)
+            usage; echo "[rocm_runner] unknown argument: $1" >&2; exit 1 ;;
+    esac
+done
+
+fail() {
+    FAIL_REASON="$*"
+    echo "[rocm_runner] $FAIL_REASON" >&2
+    exit 1
+}
+
+on_error() {
+    local line="$1"
+    local command="$2"
+    if [[ -z "$FAIL_REASON" ]]; then
+        FAIL_REASON="command failed at line $line: $command"
+    fi
+}
+
+model_sha256() {
+    local model="${ELIZA_DFLASH_SMOKE_MODEL:-}"
+    [[ -n "$model" && -f "$model" ]] || return 0
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$model" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$model" | awk '{print $1}'
+    fi
+}
+
+write_report() {
+    local exit_code="$1"
+    [[ -n "$REPORT_PATH" ]] || return 0
+    mkdir -p "$(dirname "$REPORT_PATH")"
+    RUNNER="rocm_runner.sh" \
+    STATUS="$([[ "$exit_code" == "0" ]] && printf pass || printf fail)" \
+    PASS_RECORDABLE="$([[ "$exit_code" == "0" && "$GRAPH_SMOKE_STATUS" == "required" ]] && printf true || printf false)" \
+    EXIT_CODE="$exit_code" \
+    FAIL_REASON="$FAIL_REASON" \
+    STARTED_AT="$STARTED_AT" \
+    FINISHED_AT="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    HOST_OS="$(uname -s 2>/dev/null || true)" \
+    HOST_ARCH="$(uname -m 2>/dev/null || true)" \
+    TARGET="$TARGET" \
+    GPU_INFO="$GPU_INFO" \
+    TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
+    CMAKE_FLAGS="${ELIZA_DFLASH_CMAKE_FLAGS:-}" \
+    MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
+    MODEL_SHA256="$(model_sha256)" \
+    GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
+    REPORT_PATH="$REPORT_PATH" \
+    node <<'NODE' || true
+const fs = require('node:fs');
+const env = process.env;
+const report = {
+  schemaVersion: 1,
+  runner: env.RUNNER,
+  status: env.STATUS,
+  passRecordable: env.PASS_RECORDABLE === 'true',
+  exitCode: Number(env.EXIT_CODE || 0),
+  failureReason: env.FAIL_REASON || null,
+  startedAt: env.STARTED_AT,
+  finishedAt: env.FINISHED_AT,
+  host: { os: env.HOST_OS, arch: env.HOST_ARCH },
+  target: env.TARGET,
+  requirements: {
+    os: 'Linux',
+    arch: 'x86_64/amd64',
+    toolchain: ['hipcc', 'rocminfo'],
+    hardware: 'gfx* AMD GPU agent reported by rocminfo',
+    graphSmoke: env.GRAPH_SMOKE_STATUS,
+    fixtureParity: 'blocked until HIP fixture harness exists'
+  },
+  evidence: {
+    gpuInfo: env.GPU_INFO || null,
+    toolchainInfo: env.TOOLCHAIN_INFO || null,
+    cmakeFlags: env.CMAKE_FLAGS || null,
+    model: env.MODEL || null,
+    modelSha256: env.MODEL_SHA256 || null
+  }
+};
+fs.writeFileSync(env.REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);
+NODE
+}
+
+finish() {
+    local exit_code=$?
+    write_report "$exit_code"
+}
+trap finish EXIT
+trap 'on_error "$LINENO" "$BASH_COMMAND"' ERR
 
 if [[ "$(uname -s)" != "Linux" ]]; then
-    echo "[rocm_runner] ROCm verification requires Linux; this host is $(uname -s)." >&2
-    exit 1
+    fail "ROCm verification requires Linux; this host is $(uname -s)."
 fi
 
 case "$(uname -m)" in
     x86_64|amd64) ;;
     *)
-        echo "[rocm_runner] $TARGET currently expects x86_64 Linux; host arch is $(uname -m)." >&2
-        exit 1
+        fail "$TARGET currently expects x86_64 Linux; host arch is $(uname -m)."
         ;;
 esac
 
 for cmd in hipcc rocminfo; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
-        echo "[rocm_runner] $cmd not on PATH — install ROCm/HIP before verifying." >&2
-        exit 1
+        fail "$cmd not on PATH — install ROCm/HIP before verifying."
     fi
 done
 
 ROCINFO_LOG="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$HERE/hardware-results}/rocm-rocminfo.log"
 mkdir -p "$(dirname "$ROCINFO_LOG")"
 if ! rocminfo >"$ROCINFO_LOG" 2>&1; then
-    echo "[rocm_runner] rocminfo failed; see $ROCINFO_LOG" >&2
-    exit 1
+    fail "rocminfo failed; see $ROCINFO_LOG"
 fi
 if ! grep -Eiq 'Name:[[:space:]]+gfx[0-9a-f]+' "$ROCINFO_LOG"; then
-    echo "[rocm_runner] rocminfo did not report a gfx AMD GPU agent; refusing to count this as hardware verification." >&2
-    echo "[rocm_runner] see $ROCINFO_LOG" >&2
-    exit 1
+    fail "rocminfo did not report a gfx AMD GPU agent; refusing to count this as hardware verification; see $ROCINFO_LOG"
 fi
 
-hipcc --version
-grep -Ei 'Name:[[:space:]]+gfx|Marketing Name' "$ROCINFO_LOG" | head -20 || true
+TOOLCHAIN_INFO="$(hipcc --version)"
+GPU_INFO="$(grep -Ei 'Name:[[:space:]]+gfx|Marketing Name' "$ROCINFO_LOG" | head -20 || true)"
+printf '%s\n' "$TOOLCHAIN_INFO"
+printf '%s\n' "$GPU_INFO"
 
 if [[ -z "${ELIZA_DFLASH_CMAKE_FLAGS:-}" ]]; then
     # MI250/MI300 + RDNA3 defaults; operators can override for a narrower lab.
@@ -57,8 +166,8 @@ if [[ "${ROCM_BUILD_FORK:-1}" != "0" ]]; then
 fi
 
 if [[ "${ROCM_SKIP_GRAPH_SMOKE:-0}" == "1" ]]; then
-    echo "[rocm_runner] ROCM_SKIP_GRAPH_SMOKE=1 — build/hardware preflight only; graph dispatch NOT verified."
-    exit 0
+    GRAPH_SMOKE_STATUS="skipped"
+    fail "ROCM_SKIP_GRAPH_SMOKE=1 — build/hardware preflight only; graph dispatch NOT verified, so no hardware pass can be recorded"
 fi
 
 "$HERE/runtime_graph_smoke.sh" \

@@ -51,6 +51,14 @@ if(MILADY_FUSE_OMNIVOICE)
     # Audio tokenizer tensor names exceed default GGML_MAX_NAME of 64.
     # Mirrored from omnivoice's own CMakeLists.txt.
     add_compile_definitions(GGML_MAX_NAME=128)
+    foreach(_milady_ggml_max_name_target
+            ggml ggml-base ggml-cpu ggml-blas ggml-metal ggml-vulkan ggml-cuda
+            llama common mtmd server-context)
+        if(TARGET \${_milady_ggml_max_name_target})
+            target_compile_definitions(\${_milady_ggml_max_name_target}
+                PUBLIC GGML_MAX_NAME=128)
+        endif()
+    endforeach()
 
     file(GLOB MILADY_OMNIVOICE_SOURCES
         CONFIGURE_DEPENDS
@@ -165,6 +173,10 @@ export function appendCmakeGraft({ llamaCppRoot }) {
     let upgraded = original.replace(
       "if(MILADY_FUSE_OMNIVOICE)\n    # Audio tokenizer",
       "if(MILADY_FUSE_OMNIVOICE)\n    find_package(Threads REQUIRED)\n\n    # Audio tokenizer",
+    );
+    upgraded = upgraded.replace(
+      "    add_compile_definitions(GGML_MAX_NAME=128)\n\n    file(GLOB MILADY_OMNIVOICE_SOURCES",
+      "    add_compile_definitions(GGML_MAX_NAME=128)\n    foreach(_milady_ggml_max_name_target\n            ggml ggml-base ggml-cpu ggml-blas ggml-metal ggml-vulkan ggml-cuda\n            llama common mtmd server-context)\n        if(TARGET ${_milady_ggml_max_name_target})\n            target_compile_definitions(${_milady_ggml_max_name_target}\n                PUBLIC GGML_MAX_NAME=128)\n        endif()\n    endforeach()\n\n    file(GLOB MILADY_OMNIVOICE_SOURCES",
     );
     upgraded = upgraded.replace(
       "add_library(omnivoice-core STATIC ${MILADY_OMNIVOICE_SOURCES})\n    target_include_directories(omnivoice-core PUBLIC",

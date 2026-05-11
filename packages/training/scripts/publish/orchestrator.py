@@ -149,6 +149,59 @@ REQUIRED_RELEASE_FINAL_FLAGS: tuple[str, ...] = (
     "platformEvidence",
     "sizeFirstRepoIds",
 )
+REQUIRED_GRAPH_CACHE_FAMILIES: tuple[str, ...] = (
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl",
+    "polar",
+)
+REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Mapping[str, tuple[str, ...]] = {
+    "0_6b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-arm64-cpu",
+    ),
+    "1_7b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-arm64-cpu",
+    ),
+    "9b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cuda",
+        "windows-x64-cuda",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+    ),
+    "27b": (
+        "darwin-arm64-metal",
+        "linux-x64-vulkan",
+        "linux-x64-cuda",
+        "windows-x64-cuda",
+        "linux-x64-cpu",
+    ),
+    "27b-256k": (
+        "linux-aarch64-cuda",
+        "linux-x64-cuda",
+        "linux-x64-vulkan",
+        "linux-x64-cpu",
+    ),
+}
 
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
 TIER_TAGLINES: Mapping[str, str] = {
@@ -455,7 +508,12 @@ def _expected_payload_paths(
     expected.extend(
         _relative_file_paths(layout.get("quantization_sidecars", []), ctx.bundle_dir)
     )
-    expected.append(str(RELEASE_EVIDENCE_PATH))
+    evidence_dir = ctx.bundle_dir / "evidence"
+    expected.extend(
+        str(p.relative_to(ctx.bundle_dir))
+        for p in sorted(evidence_dir.rglob("*"))
+        if p.is_file()
+    )
 
     return sorted(set(expected))
 
@@ -521,18 +579,42 @@ def _assert_checksum_coverage(
         )
 
 
+def _write_checksum_manifest(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+) -> Path:
+    """Write checksums for all payload inputs except the checksum file itself."""
+
+    checksum_path = ctx.bundle_dir / CHECKSUMS_PATH
+    checksum_path.parent.mkdir(parents=True, exist_ok=True)
+    lines = [
+        f"{_sha256_file(ctx.bundle_dir / rel)}  {rel}"
+        for rel in _expected_payload_paths(ctx, layout)
+    ]
+    checksum_path.write_text("\n".join(lines) + "\n")
+    return checksum_path
+
+
 def _require_existing_json_report(
     ctx: PublishContext,
     *,
     label: str,
-    backend: str,
+    backend: str | None = None,
+    target: str | None = None,
     rel_path: str,
     require_runtime_ready: bool,
 ) -> Mapping[str, Any]:
+    if not rel_path.startswith(("evals/", "evidence/")):
+        raise OrchestratorError(
+            f"release evidence: {label} report path must live under evals/ "
+            f"or evidence/: {rel_path}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
     path = ctx.bundle_dir / rel_path
     if not path.is_file():
         raise OrchestratorError(
-            f"release evidence: missing {label} report for {backend}: {rel_path}",
+            f"release evidence: missing {label} report "
+            f"{backend or target or ''}: {rel_path}",
             EXIT_MISSING_FILE,
         )
     try:
@@ -547,25 +629,111 @@ def _require_existing_json_report(
             f"release evidence: {rel_path} must contain a JSON object",
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
-    if data.get("backend", backend) != backend:
+    if backend is not None and data.get("backend") != backend:
         raise OrchestratorError(
             f"release evidence: {rel_path} backend {data.get('backend')!r} "
             f"does not match {backend!r}",
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
-    if data.get("status") != "pass":
+    if target is not None and data.get("target") != target:
+        raise OrchestratorError(
+            f"release evidence: {rel_path} target {data.get('target')!r} "
+            f"does not match {target!r}",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+    accepted_statuses = {"pass"} if require_runtime_ready else {"pass", "passed"}
+    if data.get("status") not in accepted_statuses:
         raise OrchestratorError(
             f"release evidence: {rel_path} status {data.get('status')!r}, "
-            "expected 'pass'",
+            f"expected one of {sorted(accepted_statuses)!r}",
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
-    if require_runtime_ready and data.get("runtimeReady") is not True:
-        raise OrchestratorError(
-            f"release evidence: {rel_path} must set runtimeReady=true; "
-            "shader symbols alone are not graph-dispatch evidence",
-            EXIT_RELEASE_EVIDENCE_FAIL,
-        )
+    if require_runtime_ready:
+        _validate_runtime_dispatch_report(rel_path, data)
+    else:
+        _validate_platform_report(rel_path, data, target=target)
     return data
+
+
+def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) -> None:
+    errors: list[str] = []
+    if data.get("runtimeReady") is not True:
+        errors.append("runtimeReady must be true")
+    at_commit = data.get("atCommit") or data.get("at_commit")
+    if not isinstance(at_commit, str) or not at_commit:
+        errors.append("atCommit required")
+    if not isinstance(data.get("report"), str) or not data.get("report"):
+        errors.append("report required")
+    model_sha = data.get("modelSha256")
+    if not isinstance(model_sha, str) or len(model_sha) != 64 or any(
+        c not in "0123456789abcdef" for c in model_sha
+    ):
+        errors.append("modelSha256 must be 64 lowercase hex chars")
+    kernel_set = data.get("kernelSet")
+    if not isinstance(kernel_set, list) or not all(
+        isinstance(k, str) for k in kernel_set
+    ):
+        errors.append("kernelSet must be an array of strings")
+    else:
+        missing = sorted(set(REQUIRED_GRAPH_CACHE_FAMILIES) - set(kernel_set))
+        if missing:
+            errors.append(f"kernelSet missing {missing}")
+    graph = data.get("graphDispatch")
+    if not isinstance(graph, dict):
+        errors.append("graphDispatch must be an object")
+    else:
+        families = graph.get("cacheFamilies")
+        if not isinstance(families, list) or not all(
+            isinstance(f, str) for f in families
+        ):
+            errors.append("graphDispatch.cacheFamilies must be an array of strings")
+        else:
+            missing = sorted(set(REQUIRED_GRAPH_CACHE_FAMILIES) - set(families))
+            if missing:
+                errors.append(f"graphDispatch.cacheFamilies missing {missing}")
+        command = graph.get("command")
+        if not isinstance(command, str) or "--cache-type-k" not in command:
+            errors.append("graphDispatch.command must include --cache-type-k")
+        if not isinstance(graph.get("logs"), list) or not graph.get("logs"):
+            errors.append("graphDispatch.logs must be a non-empty array")
+    device = data.get("device")
+    if not isinstance(device, (dict, str)) or device == "":
+        errors.append("device required")
+    if errors:
+        raise OrchestratorError(
+            f"release evidence: runtime dispatch report {rel_path} invalid:\n  - "
+            + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+
+def _validate_platform_report(
+    rel_path: str,
+    data: Mapping[str, Any],
+    *,
+    target: str | None,
+) -> None:
+    errors: list[str] = []
+    if not isinstance(data.get("device"), (dict, str)) or data.get("device") == "":
+        errors.append("device required")
+    if not isinstance(data.get("atCommit") or data.get("at_commit"), str):
+        errors.append("atCommit required")
+    if not isinstance(data.get("report"), str) or not data.get("report"):
+        errors.append("report required")
+    if data.get("skippedVoiceAbi") is True:
+        errors.append("skippedVoiceAbi must not be true")
+    if target == "ios-arm64-metal" and data.get("voiceAbi") not in (
+        True,
+        "pass",
+        "passed",
+    ):
+        errors.append("ios-arm64-metal platform evidence must prove voiceAbi")
+    if errors:
+        raise OrchestratorError(
+            f"release evidence: platform report {rel_path} invalid:\n  - "
+            + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
 
 
 def validate_release_evidence(
@@ -676,16 +844,17 @@ def validate_release_evidence(
             require_runtime_ready=True,
         )
 
-        platform_path = platform_evidence.get(backend)
+    for target in REQUIRED_PLATFORM_EVIDENCE_BY_TIER[ctx.tier]:
+        platform_path = platform_evidence.get(target)
         if not isinstance(platform_path, str):
             raise OrchestratorError(
-                f"release evidence: platformEvidence.{backend} required",
+                f"release evidence: platformEvidence.{target} required",
                 EXIT_RELEASE_EVIDENCE_FAIL,
             )
         _require_existing_json_report(
             ctx,
             label="platform",
-            backend=backend,
+            target=target,
             rel_path=platform_path,
             require_runtime_ready=False,
         )
@@ -705,6 +874,28 @@ def validate_release_evidence(
         if not upload_evidence.get("commit") or not upload_evidence.get("url"):
             raise OrchestratorError(
                 "release evidence: hf.uploadEvidence requires commit and url",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        if upload_evidence.get("status") != "uploaded":
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence.status must be 'uploaded'",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+        uploaded_paths = upload_evidence.get("uploadedPaths")
+        if not isinstance(uploaded_paths, list) or not all(
+            isinstance(p, str) for p in uploaded_paths
+        ):
+            raise OrchestratorError(
+                "release evidence: hf.uploadEvidence.uploadedPaths must be "
+                "an array of paths",
+                EXIT_RELEASE_EVIDENCE_FAIL,
+            )
+    elif not ctx.dry_run:
+        hf_status = hf.get("status") if isinstance(hf, dict) else None
+        if hf_status != "pending-upload":
+            raise OrchestratorError(
+                "release evidence: upload-candidate evidence must carry "
+                "hf.status='pending-upload' before a real publish",
                 EXIT_RELEASE_EVIDENCE_FAIL,
             )
 
@@ -822,10 +1013,7 @@ def run_kernel_verification(
     # CPU — always run reference-test (CI-safe).
     if "cpu" in supported:
         verify_dir = _verify_dir(ctx)
-        if ctx.dry_run:
-            log.info("[verify] cpu: dry-run, skipping subprocess")
-        else:
-            _run_reference_test(verify_dir)
+        _run_reference_test(verify_dir)
         out["cpu"] = KernelVerification(
             status="pass", at_commit=sha, report="reference-test"
         )
@@ -1343,11 +1531,21 @@ def _build_upload_list(
             pairs.append((p, target))
             existing_targets.add(target)
 
-    for rel in (RELEASE_EVIDENCE_PATH, CHECKSUMS_PATH):
-        target = str(rel)
-        if target not in existing_targets:
-            pairs.append((ctx.bundle_dir / rel, target))
-            existing_targets.add(target)
+    evidence_dir = ctx.bundle_dir / "evidence"
+    for p in sorted(evidence_dir.rglob("*")):
+        if p.is_file():
+            target = str(p.relative_to(ctx.bundle_dir))
+            if target not in existing_targets:
+                pairs.append((p, target))
+                existing_targets.add(target)
+
+    checksums_dir = ctx.bundle_dir / "checksums"
+    for p in sorted(checksums_dir.rglob("*")):
+        if p.is_file():
+            target = str(p.relative_to(ctx.bundle_dir))
+            if target not in existing_targets:
+                pairs.append((p, target))
+                existing_targets.add(target)
 
     return pairs
 
@@ -1357,16 +1555,16 @@ def push_to_hf(
     manifest_path: Path,
     readme_path: Path,
     upload_pairs: Sequence[tuple[Path, str]],
-) -> None:
+) -> dict[str, Any] | None:
     """Push the bundle to ``ctx.repo_id``. No-op when ``ctx.dry_run``.
 
-    Side-effects on success: tags the local training repo with
-    ``eliza-1-<tier>-v<version>`` + the training commit hash.
+    Returns the HF payload commit evidence on success so the release
+    sidecar can be finalized and uploaded in a follow-up commit.
     """
     if ctx.dry_run:
         log.info("[push] dry-run: would push %d files to %s",
                  len(upload_pairs) + 2, ctx.repo_id)
-        return
+        return None
 
     if not _hf_token():
         raise OrchestratorError(
@@ -1410,11 +1608,126 @@ def push_to_hf(
             CommitOperationAdd(path_in_repo=target, path_or_fileobj=str(src))
         )
 
-    api.create_commit(
+    commit_info = api.create_commit(
         repo_id=ctx.repo_id,
         repo_type="model",
         operations=operations,
         commit_message=f"eliza-1-{ctx.tier}: publish bundle",
+    )
+    uploaded_paths = [
+        "eliza-1.manifest.json",
+        "README.md",
+        *(target for _, target in upload_pairs),
+    ]
+    return _upload_evidence_from_commit(
+        ctx,
+        commit_info=commit_info,
+        uploaded_paths=uploaded_paths,
+    )
+
+
+def _upload_evidence_from_commit(
+    ctx: PublishContext,
+    *,
+    commit_info: object,
+    uploaded_paths: Sequence[str],
+) -> dict[str, Any]:
+    commit = (
+        getattr(commit_info, "oid", None)
+        or getattr(commit_info, "commit_id", None)
+        or getattr(commit_info, "commit_hash", None)
+    )
+    url = (
+        getattr(commit_info, "commit_url", None)
+        or getattr(commit_info, "url", None)
+    )
+    if not commit or not url:
+        raise OrchestratorError(
+            "HF upload completed but the client did not return commit/url "
+            "evidence; refusing to finalize release evidence.",
+            EXIT_HF_PUSH_FAIL,
+        )
+    return {
+        "repoId": ctx.repo_id,
+        "status": "uploaded",
+        "commit": str(commit),
+        "url": str(url),
+        "uploadedPaths": sorted(set(uploaded_paths)),
+    }
+
+
+def finalize_release_evidence(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+    upload_evidence: Mapping[str, Any],
+) -> tuple[Path, Path]:
+    """Move evidence/release.json from candidate to final after HF upload.
+
+    The payload upload commit is the non-circular proof for the final
+    evidence. The final evidence sidecar and refreshed checksum manifest
+    are uploaded in a small follow-up commit by ``push_final_release_evidence``.
+    """
+
+    release_path = ctx.bundle_dir / RELEASE_EVIDENCE_PATH
+    evidence = _read_sidecar(release_path)
+    hf = evidence.get("hf")
+    if not isinstance(hf, dict):
+        raise OrchestratorError(
+            "release evidence: hf must be an object before finalization",
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
+
+    evidence["releaseState"] = "final"
+    hf["repoId"] = ctx.repo_id
+    hf["status"] = "uploaded"
+    hf["uploadEvidence"] = dict(upload_evidence)
+    evidence["hf"] = hf
+    release_path.write_text(json.dumps(evidence, indent=2, sort_keys=False) + "\n")
+
+    checksum_path = _write_checksum_manifest(ctx, layout)
+    validate_release_evidence(ctx, layout)
+    return release_path, checksum_path
+
+
+def push_final_release_evidence(
+    ctx: PublishContext,
+    release_path: Path,
+    checksum_path: Path,
+) -> None:
+    """Upload final release evidence after the payload commit exists."""
+
+    if ctx.dry_run:
+        return
+    if not _hf_token():
+        raise OrchestratorError(
+            "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing "
+            "to push final release evidence.",
+            EXIT_HF_PUSH_FAIL,
+        )
+    try:
+        from huggingface_hub import CommitOperationAdd, HfApi
+    except ImportError as exc:  # pragma: no cover
+        raise OrchestratorError(
+            "huggingface_hub is required to push final release evidence; "
+            "install via `uv run --with huggingface_hub ...`",
+            EXIT_HF_PUSH_FAIL,
+        ) from exc
+
+    api = HfApi(token=_hf_token())
+    api.create_commit(
+        repo_id=ctx.repo_id,
+        repo_type="model",
+        operations=[
+            CommitOperationAdd(
+                path_in_repo=str(RELEASE_EVIDENCE_PATH),
+                path_or_fileobj=str(release_path),
+            ),
+            CommitOperationAdd(
+                path_in_repo=str(CHECKSUMS_PATH),
+                path_or_fileobj=str(checksum_path),
+            ),
+        ],
+        commit_message=f"eliza-1-{ctx.tier}: finalize release evidence",
     )
 
 
@@ -1521,7 +1834,15 @@ def run(ctx: PublishContext) -> int:
         log.info("[stage 7/7] push to %s%s", ctx.repo_id,
                  " (dry-run)" if ctx.dry_run else "")
         upload_pairs = _build_upload_list(ctx, layout)
-        push_to_hf(ctx, manifest_path, readme_path, upload_pairs)
+        upload_evidence = push_to_hf(ctx, manifest_path, readme_path, upload_pairs)
+        if upload_evidence is not None:
+            log.info("[stage 7/7] finalize HF upload evidence")
+            release_path, checksum_path = finalize_release_evidence(
+                ctx,
+                layout,
+                upload_evidence,
+            )
+            push_final_release_evidence(ctx, release_path, checksum_path)
 
         tag_name = tag_training_repo(ctx, version, ctx.dry_run)
         log.info("done. tag=%s", tag_name)

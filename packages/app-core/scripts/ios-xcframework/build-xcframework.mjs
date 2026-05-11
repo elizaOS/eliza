@@ -49,13 +49,12 @@ const DFLASH_BUILD_SCRIPT = path.join(SCRIPTS_DIR, "build-llama-cpp-dflash.mjs")
 //
 // Each entry: { kernel, symbolPattern, where }
 //   - `kernel` is the AGENTS.md §3 name.
-//   - `symbolPattern` is a regex tested against `nm -g <archive>` output
-//     across every produced .a in the slice. The archives include the
-//     ggml-base / ggml-cpu / ggml-metal kernels (for QJL/Polar) and,
-//     once the EMBED-path Metal kernel patcher lands, the metallib
-//     symbol stubs (for TurboQuant variants). Until then `turbo3` /
-//     `turbo4` will fail this check on iOS — which is the correct
-//     loud-failure behavior per AGENTS.md §3.
+//   - `symbolPattern` is a regex tested against `nm -g <archive>` plus
+//     `strings <archive>` output across every produced .a in the slice. The
+//     archives include the ggml-base / ggml-cpu / ggml-metal kernels and the
+//     embedded metallib payload. Metal shader function names are payload
+//     strings, not Mach-O symbols, so `strings` is required for iOS EMBED
+//     verification.
 //   - `where` indicates which archive(s) the symbol may live in;
 //     only used in the diagnostic message.
 const REQUIRED_IOS_KERNEL_SYMBOLS = [
@@ -79,10 +78,6 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
   },
   {
     kernel: "turbo3",
-    // Turbo kernels live in the metallib produced by the EMBED build.
-    // EMBED-path patcher in kernel-patches/metal-kernels.mjs is a
-    // documented gap — until it lands, this symbol check WILL fail
-    // and that is the correct hard-fail behavior per AGENTS.md §3.
     symbolPattern: /turbo3(?!_tcq)/i,
     where: "libggml-metal.a (via embedded metallib)",
   },
@@ -192,10 +187,11 @@ function captureStdout(cmd, args) {
   const result = spawnSync(cmd, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.error) {
     throw new Error(
-      `${cmd} ${args.join(" ")} failed with ${result.status}: ${result.stderr || ""}`,
+      `${cmd} ${args.join(" ")} failed with ${result.status}: ${result.error?.message || result.stderr || ""}`,
     );
   }
   return result.stdout || "";
@@ -318,15 +314,16 @@ function buildStaticFramework(tmpDir, slice, target) {
 }
 
 /**
- * Run nm against every archive in a slice and aggregate the symbol text.
+ * Run nm + strings against every archive in a slice and aggregate symbol text.
  * @param {SliceInputs} slice
  * @returns {string}
  */
 function dumpSliceSymbols(slice) {
   const chunks = [];
   for (const archive of slice.archives) {
-    const out = captureStdout("nm", ["-g", archive]);
-    chunks.push(`# ${path.basename(archive)}\n${out}`);
+    const nmOut = captureStdout("nm", ["-g", archive]);
+    const stringsOut = captureStdout("strings", [archive]);
+    chunks.push(`# ${path.basename(archive)}\n${nmOut}\n${stringsOut}`);
   }
   return chunks.join("\n");
 }

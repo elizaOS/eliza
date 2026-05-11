@@ -157,7 +157,7 @@ export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 
 interface BunFfiSymbols {
   eliza_inference_abi_version: () => unknown;
-  eliza_inference_create: (bundleDir: unknown, outErr: unknown) => bigint;
+  eliza_inference_create: (bundleDir: unknown, outErr: unknown) => unknown;
   eliza_inference_destroy: (ctx: bigint) => void;
   eliza_inference_mmap_acquire: (
     ctx: bigint,
@@ -348,6 +348,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
     return "kernel-missing";
   }
 
+  function isNullPointer(value: unknown): boolean {
+    return value === null || value === undefined || value === 0n || value === 0;
+  }
+
   return {
     libraryPath: dylibPath,
     libraryAbiVersion: reported,
@@ -356,13 +360,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
       const err = makeOutErr();
       const bundleArg = cstr(bundleDir);
       const handle = lib.symbols.eliza_inference_create(bundleArg.ptr, err.ptr);
-      if (handle === 0n) {
+      if (isNullPointer(handle)) {
         const message =
           takeError(err.buf) ??
           "[ffi-bindings] eliza_inference_create returned NULL with no diagnostic";
         throw new VoiceLifecycleError("kernel-missing", message);
       }
-      return handle;
+      return handle as ElizaInferenceContextHandle;
     },
 
     destroy(ctx: ElizaInferenceContextHandle): void {

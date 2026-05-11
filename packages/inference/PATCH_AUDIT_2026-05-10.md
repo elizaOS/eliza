@@ -32,11 +32,13 @@ divergence — both refs point at the same code.
 
 ## Build-script patch hook inventory
 
-`applyForkPatches(cacheDir, backend, target)` (build-llama-cpp-dflash.mjs:1010)
-dispatches to the in-script hooks below. Two impl modules
-(`kernel-patches/{metal,vulkan}-kernels.mjs`) are also imported but
-**neither is invoked anywhere in the build script** — they are dead
-imports. See "Dead imports" section.
+`applyForkPatches(cacheDir, backend, target)` dispatches to backend patch
+hooks. Historical note: the first 2026-05-10 read-only pass saw
+`kernel-patches/{metal,vulkan}-kernels.mjs` imported but not invoked. That is
+no longer true: the current build script calls `patchMetalKernelsImpl()` for
+Metal targets and `patchVulkanKernelsImpl()` for Vulkan targets. Treat the
+table below as historical context only; the current source and
+`remaining-work-ledger.md` are authoritative.
 
 | Hook                          | Triggered when                                | Env gate                                  | What it does in the fork                                                                  | In-fork status                                              | Still needed? |
 | ----------------------------- | --------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- |
@@ -261,12 +263,12 @@ no-op logs):**
   files to confirm 8/8 PASS still holds before signing off the next
   bundle release.
 
-**Dead-imports flag (informational):**
+**Dead-imports flag (resolved after this historical audit):**
 
-- `patchMetalKernelsImpl` / `patchVulkanKernelsImpl` /
-  `METAL_KERNEL_FILES` / `VULKAN_KERNEL_FILES` are imported but
-  unreferenced in `build-llama-cpp-dflash.mjs`. Either wire them or
-  remove the imports.
+- `patchMetalKernelsImpl` and `patchVulkanKernelsImpl` are now invoked by
+  `applyForkPatches()`. The active blocker is no longer "dead imports"; it is
+  the remaining graph-dispatch coverage for Metal TurboQuant/PolarQuant and
+  Vulkan.
 
 ## Verification
 

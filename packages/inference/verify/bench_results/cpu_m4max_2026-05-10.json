@@ -9,46 +9,46 @@
       "name": "turbo3",
       "n_outputs": 131072,
       "bytes_per_dispatch": 7864832,
-      "median_ms": 17.2830,
-      "min_ms": 16.9830,
-      "max_ms": 17.7380,
-      "bandwidth_GBs": 0.4551
+      "median_ms": 16.7090,
+      "min_ms": 16.6600,
+      "max_ms": 17.0560,
+      "bandwidth_GBs": 0.4707
     },
     {
       "name": "turbo4",
       "n_outputs": 131072,
       "bytes_per_dispatch": 9175552,
-      "median_ms": 9.0990,
-      "min_ms": 8.8870,
-      "max_ms": 9.2560,
-      "bandwidth_GBs": 1.0084
+      "median_ms": 9.1420,
+      "min_ms": 9.0050,
+      "max_ms": 9.7820,
+      "bandwidth_GBs": 1.0037
     },
     {
       "name": "turbo3_tcq",
       "n_outputs": 131072,
       "bytes_per_dispatch": 7340544,
-      "median_ms": 13.6840,
-      "min_ms": 13.5190,
-      "max_ms": 14.5140,
-      "bandwidth_GBs": 0.5364
+      "median_ms": 13.4940,
+      "min_ms": 13.4660,
+      "max_ms": 13.5360,
+      "bandwidth_GBs": 0.5440
     },
     {
       "name": "qjl",
       "n_outputs": 131072,
       "bytes_per_dispatch": 1671168,
-      "median_ms": 13.2880,
-      "min_ms": 13.1790,
-      "max_ms": 14.3020,
-      "bandwidth_GBs": 0.1258
+      "median_ms": 13.1540,
+      "min_ms": 13.1220,
+      "max_ms": 13.2720,
+      "bandwidth_GBs": 0.1270
     },
     {
       "name": "polar",
       "n_outputs": 131072,
       "bytes_per_dispatch": 11272704,
-      "median_ms": 21.2950,
-      "min_ms": 20.5720,
-      "max_ms": 21.6260,
-      "bandwidth_GBs": 0.5294
+      "median_ms": 20.7600,
+      "min_ms": 20.5750,
+      "max_ms": 20.8020,
+      "bandwidth_GBs": 0.5430
     }
   ]
 }

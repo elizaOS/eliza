@@ -22,7 +22,7 @@ import type {
   BackendPlan,
   LocalInferenceBackend,
 } from "./backend";
-import { BackendDispatcher } from "./backend";
+import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
 import { findCatalogModel } from "./catalog";
 import {
   type ConversationHandle,
@@ -89,6 +89,7 @@ function toBackendLoadOverrides(
   if (args.cacheTypeK !== undefined) overrides.cacheTypeK = args.cacheTypeK;
   if (args.cacheTypeV !== undefined) overrides.cacheTypeV = args.cacheTypeV;
   if (args.gpuLayers !== undefined) overrides.gpuLayers = args.gpuLayers;
+  if (args.kvOffload !== undefined) overrides.kvOffload = args.kvOffload;
   if (args.flashAttention !== undefined) {
     overrides.flashAttention = args.flashAttention;
   }
@@ -281,6 +282,8 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
     let gpuLayers: number | "max" | "auto" = "auto";
     if (overrides?.gpuLayers !== undefined) {
       gpuLayers = overrides.gpuLayers;
+    } else if (overrides?.kvOffload !== undefined) {
+      gpuLayers = gpuLayersForKvOffload(overrides.kvOffload);
     } else if (overrides?.useGpu === false) {
       gpuLayers = 0;
     }
@@ -515,13 +518,18 @@ export class LocalInferenceEngine {
   }
 
   async unload(): Promise<void> {
-    if (this.voiceBridge) {
+    const bridge = this.voiceBridge;
+    if (bridge) {
       // Drop voice resources before tearing down text. Disarm is a
       // no-op when the lifecycle is already in voice-off, so this is
       // safe even if the caller never called startVoice().
-      await this.voiceBridge.disarm();
-      await this.voiceBridge.settle();
-      this.voiceBridge = null;
+      try {
+        await bridge.disarm();
+        await bridge.settle();
+      } finally {
+        bridge.dispose();
+        if (this.voiceBridge === bridge) this.voiceBridge = null;
+      }
     }
     await this.dispatcher.unload();
   }
@@ -787,9 +795,10 @@ export class LocalInferenceEngine {
   }
 
   /**
-   * Arm the voice lifecycle on the active bridge — lazily loads TTS +
-   * ASR mmap regions, voice caches, and voice scheduler nodes via the
-   * shared resource registry. Throws `VoiceLifecycleError` if any
+   * Arm the voice lifecycle on the active bridge — lazily loads the TTS
+   * mmap region, optional ASR region when present, voice caches, and
+   * voice scheduler nodes via the shared resource registry. Throws
+   * `VoiceLifecycleError` if any
    * required artifact is unavailable (RAM pressure, mmap fail, kernel
    * missing) — see `voice/lifecycle.ts` for the structured codes.
    *
@@ -831,9 +840,13 @@ export class LocalInferenceEngine {
   async stopVoice(): Promise<void> {
     const bridge = this.voiceBridge;
     if (!bridge) return;
-    this.voiceBridge = null;
-    await bridge.disarm();
-    await bridge.settle();
+    try {
+      await bridge.disarm();
+      await bridge.settle();
+    } finally {
+      bridge.dispose();
+      if (this.voiceBridge === bridge) this.voiceBridge = null;
+    }
   }
 
   async synthesizeSpeech(text: string): Promise<Uint8Array> {

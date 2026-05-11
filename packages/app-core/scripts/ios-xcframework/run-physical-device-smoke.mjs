@@ -74,6 +74,8 @@ const EXIT = {
   xcodebuildFailed: 23,
 };
 
+const XCODEBUILD_TIMEOUT_MS = 15 * 60 * 1000;
+
 function parseArgs(argv) {
   const args = {
     xcframework: null,
@@ -221,6 +223,7 @@ function runCapture(cmd, args, opts = {}) {
     cwd: opts.cwd,
     env: { ...process.env, ...(opts.env ?? {}) },
     timeout: opts.timeout ?? 120_000,
+    maxBuffer: opts.maxBuffer ?? 64 * 1024 * 1024,
   });
   return {
     status: result.status,
@@ -228,6 +231,23 @@ function runCapture(cmd, args, opts = {}) {
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
     error: result.error,
+  };
+}
+
+function summarizeText(text, maxChars = 16_000) {
+  if (!text || text.length <= maxChars) return text ?? "";
+  return text.slice(text.length - maxChars);
+}
+
+function commandMetadata(cmd, args, opts = {}) {
+  const result = runCapture(cmd, args, opts);
+  return {
+    command: [cmd, ...args],
+    status: result.status,
+    signal: result.signal,
+    stdout: summarizeText(result.stdout, 4_000),
+    stderr: summarizeText(result.stderr, 4_000),
+    error: result.error ? String(result.error) : null,
   };
 }
 
@@ -247,6 +267,67 @@ function ensureTool(name) {
   if (result.status !== 0 || !result.stdout.trim()) {
     throw new Error(`[ios-smoke] required Xcode tool not found via xcrun: ${name}`);
   }
+}
+
+function parsePlistJson(plistPath) {
+  const result = runCapture("plutil", ["-convert", "json", "-o", "-", plistPath], {
+    timeout: 30_000,
+  });
+  if (result.status !== 0) {
+    throw Object.assign(
+      new Error(
+        `[ios-smoke] failed to parse ${plistPath} with plutil\n${result.stderr}`,
+      ),
+      { exitCode: EXIT.localPreflight },
+    );
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (err) {
+    throw Object.assign(
+      new Error(`[ios-smoke] malformed JSON from plutil for ${plistPath}: ${err}`),
+      { exitCode: EXIT.localPreflight },
+    );
+  }
+}
+
+function validateXcframeworkDeviceSlice(xcframework) {
+  const infoPlist = path.join(xcframework, "Info.plist");
+  if (!fs.existsSync(infoPlist)) {
+    throw Object.assign(
+      new Error(`[ios-smoke] xcframework is missing Info.plist: ${infoPlist}`),
+      { exitCode: EXIT.localPreflight },
+    );
+  }
+  const info = parsePlistJson(infoPlist);
+  const libraries = Array.isArray(info.AvailableLibraries)
+    ? info.AvailableLibraries
+    : [];
+  const deviceLibraries = libraries.filter((library) => {
+    const platform = library.SupportedPlatform;
+    const variant = library.SupportedPlatformVariant;
+    const archs = Array.isArray(library.SupportedArchitectures)
+      ? library.SupportedArchitectures
+      : [];
+    return platform === "ios" && !variant && archs.includes("arm64");
+  });
+  if (deviceLibraries.length !== 1) {
+    throw Object.assign(
+      new Error(
+        `[ios-smoke] xcframework must contain exactly one ios arm64 physical-device slice; found ${deviceLibraries.length} in ${infoPlist}`,
+      ),
+      { exitCode: EXIT.localPreflight, xcframeworkInfo: info },
+    );
+  }
+  const library = deviceLibraries[0];
+  const libraryPath = path.join(xcframework, library.LibraryIdentifier);
+  if (!fs.existsSync(libraryPath)) {
+    throw Object.assign(
+      new Error(`[ios-smoke] xcframework device slice path is missing: ${libraryPath}`),
+      { exitCode: EXIT.localPreflight, xcframeworkInfo: info },
+    );
+  }
+  return { infoPlist, library };
 }
 
 function parseXctraceDevices(text) {
@@ -333,7 +414,17 @@ function ensureXcframework(args) {
   }
 
   const existing = firstExisting(defaultXcframeworkCandidates());
-  if (existing) return existing;
+  if (existing) {
+    try {
+      locateDeviceFrameworkBinary(existing);
+      return existing;
+    } catch (err) {
+      if (!args.buildIfMissing) throw err;
+      console.warn(
+        `[ios-smoke] existing LlamaCpp.xcframework is not device-smokeable; rebuilding into smoke output: ${err.message}`,
+      );
+    }
+  }
 
   if (!args.buildIfMissing) {
     throw Object.assign(
@@ -392,6 +483,52 @@ function locateDeviceFrameworkBinary(xcframework) {
     ),
     { exitCode: EXIT.localPreflight },
   );
+}
+
+function classifyXcodebuildFailure(result) {
+  const text = `${result.stdout}\n${result.stderr}`;
+  if (/invalid option|Usage: xcodebuild/i.test(text)) return "xcodebuild-invocation";
+  if (/Developer Mode/i.test(text)) return "developer-mode-disabled";
+  if (/device .*not trusted|not trusted by this computer|trust this computer/i.test(text)) {
+    return "device-not-trusted";
+  }
+  if (/Tool-hosted testing is unavailable on device destinations|Select a host application for the test target/i.test(text)) {
+    return "requires-host-app-test-target";
+  }
+  if (/not paired|pair/i.test(text)) return "device-not-paired";
+  if (/locked/i.test(text)) return "device-locked";
+  if (/No profiles for|requires a provisioning profile|Signing for .* requires a development team|Code signing/i.test(text)) {
+    return "code-signing";
+  }
+  if (/The device .* is not available|Unable to find a destination|Ineligible destinations/i.test(text)) {
+    return "device-destination-unavailable";
+  }
+  if (/symbol\(s\) not found|Undefined symbols|Missing required Eliza-1 iOS runtime symbols/i.test(text)) {
+    return "runtime-symbol-resolution";
+  }
+  return "xcodebuild-failed";
+}
+
+function runXcodebuildForReport(xcodeArgs, { cwd }) {
+  const result = runCapture("xcodebuild", xcodeArgs, {
+    cwd,
+    timeout: XCODEBUILD_TIMEOUT_MS,
+  });
+  process.stdout.write(result.stdout);
+  process.stderr.write(result.stderr);
+  return {
+    command: ["xcodebuild", ...xcodeArgs],
+    cwd,
+    status: result.status,
+    signal: result.signal,
+    stdoutTail: summarizeText(result.stdout),
+    stderrTail: summarizeText(result.stderr),
+    error: result.error ? String(result.error) : null,
+    failureCategory:
+      result.status === 0 && !result.signal && !result.error
+        ? null
+        : classifyXcodebuildFailure(result),
+  };
 }
 
 function jsString(value) {
@@ -516,8 +653,6 @@ function buildXcodeArgs({
 }) {
   const xcodeArgs = [
     "test",
-    "-packagePath",
-    tempDir,
     "-scheme",
     "ElizaIosRuntimeSmoke",
     "-destination",
@@ -546,6 +681,16 @@ async function main() {
     device: null,
     xcframework: null,
     skippedVoiceAbi: args.skipVoiceAbi,
+    failClosed: {
+      physicalDeviceOnly: true,
+      requiresIosArm64XcframeworkSlice: true,
+      requiresRuntimeSymbols: true,
+      requiresVoiceAbi: !args.skipVoiceAbi,
+      capturesXcodebuildOutput: true,
+    },
+    toolchain: null,
+    xcodebuild: null,
+    blocker: null,
     resultBundlePath: null,
     derivedDataPath: null,
   };
@@ -559,9 +704,18 @@ async function main() {
     }
     ensureTool("xcodebuild");
     ensureTool("xctrace");
+    ensureTool("plutil");
+
+    const toolchain = {
+      xcodebuild: commandMetadata("xcodebuild", ["-version"], { timeout: 30_000 }),
+      xctrace: commandMetadata("xcrun", ["xctrace", "version"], {
+        timeout: 30_000,
+      }),
+    };
 
     const { device, devices } = resolveDevice(args.deviceId);
     const xcframework = path.resolve(ensureXcframework(args));
+    const xcframeworkDeviceSlice = validateXcframeworkDeviceSlice(xcframework);
     const frameworkBinary = locateDeviceFrameworkBinary(xcframework);
 
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-ios-smoke-"));
@@ -581,10 +735,12 @@ async function main() {
     report = {
       ...report,
       status: "running",
+      toolchain,
       device,
       connectedPhysicalDeviceCount: devices.connected.length,
       offlinePhysicalDeviceCount: devices.offline.length,
       xcframework,
+      xcframeworkDeviceSlice,
       frameworkBinary,
       tempPackage: tempDir,
       derivedDataPath,
@@ -607,7 +763,19 @@ async function main() {
       `[ios-smoke] running physical-device XCTest on ${device.name} (${device.version ?? "unknown"}) ${device.id}`,
     );
     console.log(`[ios-smoke] xcframework: ${xcframework}`);
-    runInherit("xcodebuild", xcodeArgs);
+    report.xcodebuild = runXcodebuildForReport(xcodeArgs, { cwd: tempDir });
+    if (report.xcodebuild.status !== 0 || report.xcodebuild.signal || report.xcodebuild.error) {
+      report.blocker = {
+        category: report.xcodebuild.failureCategory,
+        detail: "xcodebuild test did not complete successfully; see xcodebuild stdoutTail/stderrTail in this report.",
+      };
+      throw Object.assign(
+        new Error(
+          `[ios-smoke] xcodebuild failed: ${report.xcodebuild.failureCategory}`,
+        ),
+        { exitCode: EXIT.xcodebuildFailed },
+      );
+    }
 
     report.status = "passed";
     report.finishedAt = new Date().toISOString();
@@ -617,9 +785,25 @@ async function main() {
     report.status = "failed";
     report.finishedAt = new Date().toISOString();
     report.error = err instanceof Error ? err.message : String(err);
+    if (!report.blocker) {
+      report.blocker = {
+        category:
+          err?.exitCode === EXIT.noDevice
+            ? "no-connected-physical-device"
+            : err?.exitCode === EXIT.missingXcframework
+              ? "missing-xcframework"
+              : err?.exitCode === EXIT.localPreflight
+                ? "local-preflight"
+                : "unknown",
+        detail: report.error,
+      };
+    }
     if (err?.devices) {
       report.connectedPhysicalDevices = err.devices.connected;
       report.offlinePhysicalDevices = err.devices.offline;
+    }
+    if (err?.xcframeworkInfo) {
+      report.xcframeworkInfo = err.xcframeworkInfo;
     }
     writeReport(args.report, report);
     process.stderr.write(`${report.error}\n`);

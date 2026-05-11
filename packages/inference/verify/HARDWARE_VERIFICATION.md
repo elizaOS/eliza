@@ -39,6 +39,26 @@ export ELIZA_DFLASH_SMOKE_NGL=99
 Logs land under `packages/inference/verify/hardware-results/` unless
 `ELIZA_DFLASH_HARDWARE_REPORT_DIR` is set.
 
+Every runner also supports machine-readable evidence:
+
+```bash
+./cuda_runner.sh --report hardware-results/cuda-evidence.json
+./gh200_runner.sh --report hardware-results/gh200-evidence.json
+./rocm_runner.sh --report hardware-results/rocm-evidence.json
+```
+
+```powershell
+pwsh -File packages/inference/verify/windows_runner.ps1 `
+  -Backend cuda `
+  -Model C:\models\eliza-1-smoke.gguf `
+  -Report hardware-results\windows-cuda-evidence.json
+```
+
+The JSON report includes `status`, `passRecordable`, host OS/arch, target,
+required hardware/toolchain gates, model path/hash where available, and backend
+evidence. A report with `passRecordable: false`, a skipped graph smoke, or a
+non-zero runner exit is not publishable hardware evidence.
+
 ## CUDA Linux x64
 
 Prereqs:
@@ -79,6 +99,9 @@ Fixture-only bring-up is allowed but must not be recorded as runtime-ready:
 ```bash
 CUDA_SKIP_GRAPH_SMOKE=1 ./cuda_runner.sh
 ```
+
+That skip mode exits non-zero by design. Use it only to inspect preflight or
+fixture failures, not in CI/pass collection.
 
 ## GH200 / Linux aarch64 CUDA
 
@@ -140,6 +163,58 @@ There is still no standalone HIP fixture harness equivalent to
 `cuda_verify.cu`; ROCm cannot be marked fixture-parity verified until that
 exists and passes on MI250/MI300/RDNA hardware.
 
+`ROCM_SKIP_GRAPH_SMOKE=1` exits non-zero by design because it does not produce
+runtime dispatch evidence.
+
+## Vulkan Linux x64
+
+Prereqs:
+
+- Native Linux x86_64 host. macOS/MoltenVK does not satisfy this runner.
+- Vulkan runtime/SDK with `vulkaninfo` showing a hardware Intel, AMD, or
+  NVIDIA Vulkan device. Software ICDs are rejected unless
+  `ELIZA_ALLOW_SOFTWARE_VULKAN=1` is set for diagnostics.
+
+Run:
+
+```bash
+cd packages/inference/verify
+./linux_vulkan_smoke.sh
+```
+
+The runner writes a timestamped evidence log under `hardware-results/`, runs
+the standalone fixture gate, builds `linux-x64-vulkan`, dumps
+`CAPABILITIES.json`, and then runs `make vulkan-dispatch-smoke`. If the build
+only produces symbol/pipeline staging or exits through the required-kernel
+publish gate, the runner stops there and refuses to use stale binaries.
+
+`ELIZA_DFLASH_SKIP_BUILD=1` is only accepted with
+`ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE=1` and an existing
+`CAPABILITIES.json`; the graph-dispatch smoke still has to pass.
+
+## Android Vulkan
+
+Prereqs:
+
+- Android NDK with shader tools (`glslc`).
+- `adb` and a physical Adreno/Mali-class Android device. Emulators are rejected
+  unless `ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN=1` is set for diagnostics.
+
+Run:
+
+```bash
+cd packages/inference/verify
+./android_vulkan_smoke.sh
+```
+
+The runner cross-compiles `vulkan_verify`, pushes the verifier, SPIR-V, and
+fixtures through `adb`, records device/Vulkan evidence, and runs all six
+canonical fixtures on device. Standalone fixture success is not enough for a
+runtime-ready claim: the script fails closed unless
+`ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE` points at a built-fork/app graph-dispatch
+report with `backend=vulkan`, `platform=android`,
+`graphOp=GGML_OP_ATTN_SCORE_QJL`, `runtimeReady=true`, and finite `maxDiff`.
+
 ## Windows
 
 Prereqs:
@@ -173,15 +248,20 @@ The script builds the native target unless `WINDOWS_BUILD_FORK=0`, then runs
 the same `--cache-type-k` graph-smoke family loop. It fails if backend evidence
 is missing from the logs.
 
+`WINDOWS_SKIP_GRAPH_SMOKE=1` exits non-zero by design because it does not
+produce runtime dispatch evidence.
+
 ## Recording a real pass
 
 Only after a runner exits zero on matching hardware:
 
 1. Save the full `hardware-results/` directory under
    `packages/inference/reports/porting/<date>/`.
-2. Record host, OS, driver, toolkit, GPU model, target, model hash, command
+2. Save the runner `--report` JSON beside the raw logs. It must show
+   `status: "pass"` and `passRecordable: true`.
+3. Record host, OS, driver, toolkit, GPU model, target, model hash, command
    line, and max fixture diff where applicable.
-3. Update `packages/inference/README.md` and
+4. Update `packages/inference/README.md` and
    `packages/inference/verify/kernel-contract.json` from `needs-hardware` to a
    narrower status only for the exact backend/device class observed.
 

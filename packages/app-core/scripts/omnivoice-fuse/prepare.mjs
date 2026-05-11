@@ -40,6 +40,18 @@ export const OMNIVOICE_GGML_REF =
 // land. Stable so the CMake graft and the symbol verifier agree.
 export const OMNIVOICE_GRAFT_SUBDIR = "omnivoice";
 
+const REQUIRED_PUBLIC_OMNIVOICE_SYMBOLS = Object.freeze([
+  "ov_version",
+  "ov_last_error",
+  "ov_audio_free",
+  "ov_init_default_params",
+  "ov_tts_default_params",
+  "ov_init",
+  "ov_free",
+  "ov_synthesize",
+  "ov_duration_sec_to_tokens",
+]);
+
 function run(cmd, args, opts = {}) {
   const result = spawnSync(cmd, args, {
     stdio: opts.capture ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -166,6 +178,34 @@ static bool eliza_pick_voice_files(
     return true;
 }
 
+static int eliza_load_tts(EliInferenceContext * ctx, char ** out_error) {
+    if (!ctx) {
+        eliza_set_error(out_error, "[libelizainference] load_tts: ctx is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (ctx->ov) return ELIZA_OK;
+    if (ctx->tts_model_path.empty()) {
+        if (!eliza_pick_voice_files(std::filesystem::path(ctx->bundle_dir), ctx->tts_model_path, ctx->codec_model_path)) {
+            eliza_set_error(out_error, std::string("[libelizainference] no TTS GGUF found under ") + (std::filesystem::path(ctx->bundle_dir) / "tts").string());
+            return ELIZA_ERR_BUNDLE_INVALID;
+        }
+    }
+
+    ov_init_params params;
+    ov_init_default_params(&params);
+    params.model_path = ctx->tts_model_path.c_str();
+    params.codec_path = ctx->codec_model_path.c_str();
+    params.use_fa = true;
+    ctx->ov = ov_init(&params);
+    if (!ctx->ov) {
+        std::string msg = "[libelizainference] ov_init failed: ";
+        msg += ov_last_error();
+        eliza_set_error(out_error, msg);
+        return ELIZA_ERR_FFI_FAULT;
+    }
+    return ELIZA_OK;
+}
+
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
@@ -193,25 +233,9 @@ EliInferenceContext * eliza_inference_create(
     }
     ctx->bundle_dir = root.string();
 
-    if (!eliza_pick_voice_files(root, ctx->tts_model_path, ctx->codec_model_path)) {
-        delete ctx;
-        eliza_set_error(out_error, std::string("[libelizainference] no TTS GGUF found under ") + (root / "tts").string());
-        return nullptr;
-    }
-
-    ov_init_params params;
-    ov_init_default_params(&params);
-    params.model_path = ctx->tts_model_path.c_str();
-    params.codec_path = ctx->codec_model_path.c_str();
-    params.use_fa = true;
-    ctx->ov = ov_init(&params);
-    if (!ctx->ov) {
-        std::string msg = "[libelizainference] ov_init failed: ";
-        msg += ov_last_error();
-        delete ctx;
-        eliza_set_error(out_error, msg);
-        return nullptr;
-    }
+    // Metadata-only: heavy voice weights are intentionally loaded by
+    // eliza_inference_mmap_acquire("tts") so voice-off does not keep
+    // OmniVoice resident.
     return ctx;
 }
 
@@ -233,6 +257,13 @@ int eliza_inference_mmap_acquire(
         eliza_set_error(out_error, "[libelizainference] mmap_acquire: invalid region");
         return ELIZA_ERR_INVALID_ARG;
     }
+    if (std::strcmp(region_name, "tts") == 0) {
+        return eliza_load_tts(ctx, out_error);
+    }
+    if (std::strcmp(region_name, "asr") == 0) {
+        eliza_set_error(out_error, "[libelizainference] ASR is not wired in ABI v1");
+        return ELIZA_ERR_NOT_IMPLEMENTED;
+    }
     return ELIZA_OK;
 }
 
@@ -248,6 +279,10 @@ int eliza_inference_mmap_evict(
         eliza_set_error(out_error, "[libelizainference] mmap_evict: invalid region");
         return ELIZA_ERR_INVALID_ARG;
     }
+    if (std::strcmp(region_name, "tts") == 0 && ctx->ov) {
+        ov_free(ctx->ov);
+        ctx->ov = nullptr;
+    }
     return ELIZA_OK;
 }
 
@@ -259,8 +294,12 @@ int eliza_inference_tts_synthesize(
     float * out_pcm,
     size_t max_samples,
     char ** out_error) {
-    if (!ctx || !ctx->ov || !out_pcm || max_samples == 0) {
+    if (!ctx || !out_pcm || max_samples == 0) {
         eliza_set_error(out_error, "[libelizainference] tts_synthesize: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (!ctx->ov) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
     if (!text || text_len == 0) {
@@ -322,6 +361,74 @@ void eliza_inference_free_string(char * str) {
 `,
     "utf8",
   );
+}
+
+function hasFunctionDeclaration(source, name) {
+  return new RegExp(`\\b${name}\\s*\\(`).test(source);
+}
+
+function hasFunctionDefinition(source, name) {
+  return new RegExp(`(?:^|\\n)[^\\n;{}]*\\b${name}\\s*\\(`).test(source);
+}
+
+function inspectPreparedOmnivoiceSurface({ graftRoot }) {
+  const srcRoot = path.join(graftRoot, "src");
+  const headerPath = path.join(srcRoot, "omnivoice.h");
+  const implPath = path.join(srcRoot, "omnivoice.cpp");
+  const adapterPath = path.join(srcRoot, "eliza-inference-ffi.cpp");
+  for (const file of [headerPath, implPath, adapterPath]) {
+    if (!fs.existsSync(file)) {
+      throw new Error(
+        `[omnivoice-fuse] prepared graft missing ${file}; refusing stub-only fusion`,
+      );
+    }
+  }
+
+  const header = fs.readFileSync(headerPath, "utf8");
+  const impl = fs.readFileSync(implPath, "utf8");
+  const adapter = fs.readFileSync(adapterPath, "utf8");
+  const missingHeaderSymbols = REQUIRED_PUBLIC_OMNIVOICE_SYMBOLS.filter(
+    (symbol) => !hasFunctionDeclaration(header, symbol),
+  );
+  if (missingHeaderSymbols.length > 0) {
+    throw new Error(
+      `[omnivoice-fuse] prepared omnivoice.h missing required public symbol(s): ${missingHeaderSymbols.join(", ")}. Pin is not compatible with libelizainference ABI v1.`,
+    );
+  }
+
+  const missingImplSymbols = REQUIRED_PUBLIC_OMNIVOICE_SYMBOLS.filter(
+    (symbol) => !hasFunctionDefinition(impl, symbol),
+  );
+  if (missingImplSymbols.length > 0) {
+    throw new Error(
+      `[omnivoice-fuse] prepared omnivoice.cpp missing required implementation symbol(s): ${missingImplSymbols.join(", ")}. Refusing to build a header-only or stub-only graft.`,
+    );
+  }
+
+  const adapterRequiredCalls = [
+    "ov_init_default_params",
+    "ov_init",
+    "ov_free",
+    "ov_tts_default_params",
+    "ov_synthesize",
+    "ov_audio_free",
+    "ov_last_error",
+  ];
+  const missingAdapterCalls = adapterRequiredCalls.filter(
+    (symbol) => !hasFunctionDeclaration(adapter, symbol),
+  );
+  if (missingAdapterCalls.length > 0) {
+    throw new Error(
+      `[omnivoice-fuse] generated libelizainference adapter is not wired to OmniVoice call(s): ${missingAdapterCalls.join(", ")}`,
+    );
+  }
+
+  return {
+    header: path.relative(graftRoot, headerPath),
+    implementation: path.relative(graftRoot, implPath),
+    adapter: path.relative(graftRoot, adapterPath),
+    requiredPublicSymbols: [...REQUIRED_PUBLIC_OMNIVOICE_SYMBOLS],
+  };
 }
 
 function applyMiladyGgmlCompatibility({ graftRoot, commit }) {
@@ -588,6 +695,7 @@ export function prepareOmnivoiceFusion({
     );
   }
   applyMiladyGgmlCompatibility({ graftRoot, commit: head });
+  const sourceSurface = inspectPreparedOmnivoiceSurface({ graftRoot });
 
   // examples/ is data-only (audio prompts, sample text). Copy on a
   // best-effort basis — the build does not depend on these files. We
@@ -632,6 +740,7 @@ export function prepareOmnivoiceFusion({
     ggmlSubmoduleCommit,
     graftRoot,
     sourceCount,
+    sourceSurface,
     appliedPatches,
   };
 }

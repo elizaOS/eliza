@@ -82,7 +82,8 @@ make cuda-verify
 # (c) Full hardware gate: build fork, run fixtures, then run graph dispatch
 #     through a real GGUF model with --cache-type-k for every advertised
 #     Turbo/QJL/Polar family.
-ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh
+ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf \
+  ./cuda_runner.sh --report hardware-results/cuda-evidence.json
 ```
 
 Each fixture should print:
@@ -121,13 +122,19 @@ back. The remote must already have the eliza checkout at
    `runtime_graph_smoke.sh`, which drives `llama-cli --cache-type-k` for
    Turbo3, Turbo4, Turbo3-TCQ, QJL, and Polar aliases. The logs must contain
    CUDA/NVIDIA backend evidence.
+5. With `--report <path>` or `ELIZA_DFLASH_HARDWARE_REPORT=<path>`, it writes
+   JSON evidence containing the host OS/arch, target, NVIDIA driver/GPU
+   evidence, CUDA toolkit output, model path/hash, exit status, and
+   `passRecordable`.
 
 `CUDA_SKIP_GRAPH_SMOKE=1` is permitted only for fixture-only bring-up. It must
-not be recorded as runtime-ready graph dispatch.
+not be recorded as runtime-ready graph dispatch, and the runner exits non-zero
+in that mode so it cannot be mistaken for a hardware pass.
 
 GH200-class hosts should use `./gh200_runner.sh`, which requires arm64 Linux
 userspace plus Hopper/compute-capability-9.x GPU evidence and pins
-`linux-aarch64-cuda` with `-DCMAKE_CUDA_ARCHITECTURES=90a`.
+`linux-aarch64-cuda` with `-DCMAKE_CUDA_ARCHITECTURES=90a`. It accepts the
+same `--report <path>` evidence flag before delegating to the CUDA runner.
 
 The cross-backend runner doc is `HARDWARE_VERIFICATION.md`.
 
@@ -137,7 +144,9 @@ A. `nvcc --version` — **absent** on Darwin. The Makefile gate emits the
    expected diagnostic ("CUDA toolchain not found — install via
    `apt install nvidia-cuda-toolkit` (Linux) or download the CUDA Toolkit
    (macOS not supported).") and exits non-zero on `make cuda` /
-   `make cuda-verify`. Source-level correct, runtime gated.
+   `make cuda-verify`. `./cuda_runner.sh --report <path>` also exits non-zero
+   on Darwin and writes JSON with `status: "fail"` / `passRecordable: false`.
+   Source-level correct, runtime gated.
 
 B. `make cuda-preprocess-check` — **PASS** when the milady-llama-cpp
    checkout is present at `~/.cache/eliza-dflash/milady-llama-cpp`. The

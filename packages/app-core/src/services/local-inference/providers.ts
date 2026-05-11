@@ -85,7 +85,7 @@ const LOCAL_PROVIDER: ProviderDefinition = {
   label: "Eliza-1 local runtime",
   kind: "local",
   description:
-    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves TEXT_EMBEDDING; the voice bridge registers TEXT_TO_SPEECH and TRANSCRIPTION handlers when local runtime handlers are installed.",
+    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves TEXT_EMBEDDING; the voice bridge registers TEXT_TO_SPEECH by default and TRANSCRIPTION only when an ASR-capable local runtime is explicitly enabled.",
   // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
   // registers its own model handler against the runtime. We advertise the
   // slot here so the providers panel reports it as supported by the local

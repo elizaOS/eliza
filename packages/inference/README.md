@@ -1,13 +1,13 @@
 # TurboQuant / QJL / PolarQuant KV cache kernels (Vulkan + Metal)
 
-> **STATUS — All five Metal shaders hardware-verified 8/8 PASS on Apple M4 Max (Wave-3, 2026-05-10; perf pass 2026-05-10 dropped polar GPU median from 5726 µs → 458 µs via threadgroup-cooperative Hadamard butterfly, see `SHADER_REVIEW_2026-05-10.md`). Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each). Vulkan QJL + Polar now hardware-verified 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C harness extension; polar.comp ports the W4-B threadgroup-cooperative Hadamard, qjl.comp ports the vec4+branchless+FMA pattern; max diff 7.6e-6 / 5.7e-6).**
+> **STATUS — All five Metal shaders hardware-verified 8/8 PASS on Apple M4 Max (Wave-3, 2026-05-10; perf pass 2026-05-10 dropped polar GPU median from 5726 µs → 458 µs via threadgroup-cooperative Hadamard butterfly, see `SHADER_REVIEW_2026-05-10.md`). Vulkan turbo* hardware-verified on Intel ARL + lavapipe (8/8 PASS each). Vulkan QJL score (`qjl.comp`) + Polar matvec (`polar.comp`) are hardware-verified 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C harness extension; max diff 7.6e-6 / 5.7e-6). The Vulkan fallback entrypoints (`qjl_get_rows.comp`, `qjl_mul_mv.comp`, `polar_get_rows.comp`) are staged and `spirv-val` clean but do not yet have fixture/hardware smoke coverage.**
 >
 > | Family       | Files                                                            | Source-level checked against fork? | Compiles with target SDK? | Validated on hardware? |
 > | ------------ | ---------------------------------------------------------------- | ---------------------------------- | ------------------------- | ---------------------- |
 > | TurboQuant — Vulkan | `vulkan/turbo3.comp`, `vulkan/turbo4.comp`, `vulkan/turbo3_tcq.comp` | YES (byte layout + decode math match in-tree `dequantize_turbo3_*` and the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — 8/8 PASS on Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe |
 > | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches in-tree `dequantize_turbo3_0_t4` + the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
-> | QJL          | `metal/qjl.metal`, `vulkan/qjl{,_get_rows,_mul_mv}.comp`         | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C); max diff 7.629e-6 |
-> | PolarQuant   | `metal/polar.metal`, `vulkan/polar{,_get_rows}.comp`             | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max. Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C, after threadgroup-cooperative Hadamard mirror); max diff 5.722e-6 |
+> | QJL          | `metal/qjl.metal`, `vulkan/qjl.comp` plus staged fallback `vulkan/qjl{_get_rows,_mul_mv}.comp` | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan score: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C); fallback get-rows/matvec: COMPILE/STAGED ONLY |
+> | PolarQuant   | `metal/polar.metal`, `vulkan/polar.comp` plus staged fallback `vulkan/polar_get_rows.comp` | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max. Vulkan matvec: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C, after threadgroup-cooperative Hadamard mirror); fallback get-rows: COMPILE/STAGED ONLY |
 > | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in fork v0.4.0-milady; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
 >
 > Earlier history: the original `turbo*.comp` Vulkan port reported 0/8 PASS
@@ -352,14 +352,20 @@ make vulkan-spirv
 VULKAN_SDK=/opt/vulkan-sdk make vulkan
 make vulkan-verify
 
-# 2) On native Linux hardware, run the stricter smoke gate. This rejects
-#    software ICDs unless ELIZA_ALLOW_SOFTWARE_VULKAN=1, runs standalone
-#    fixtures, builds the patched fork, then runs the built-fork graph gate.
+# 2) On native Linux hardware, run the stricter smoke gate. This writes
+#    hardware-results/linux-vulkan-smoke-*.log, rejects software ICDs unless
+#    ELIZA_ALLOW_SOFTWARE_VULKAN=1, runs standalone fixtures, builds the
+#    patched fork, dumps CAPABILITIES.json, then runs the built-fork graph
+#    gate. Build failure stops the runner; stale/symbol-only artifacts are not
+#    reused.
 make vulkan-native-smoke
 
 # 3) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
-#    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures.
+#    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures. The runner records
+#    hardware-results/android-vulkan-smoke-*.log and fails closed after
+#    standalone fixtures unless ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE points at
+#    a built-fork/app graph-dispatch report proving GGML_OP_ATTN_SCORE_QJL.
 make android-vulkan-smoke
 
 # 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
@@ -375,8 +381,10 @@ bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
 | `turbo3.comp`     | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 4.8e-6 |
 | `turbo4.comp`     | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 5.7e-6 |
 | `turbo3_tcq.comp` | n/a                  | n/a             | yes               | yes                                 | yes (Mesa NDK glslc, SPIR-V 1.3 / Vulkan 1.1) | YES — Intel ARL Mesa 25.2.8 + lavapipe Mesa 25.2.8 LLVMpipe | YES — 8/8 PASS, max diff 6.7e-6 |
-| `qjl.comp`, `qjl_get_rows.comp`, `qjl_mul_mv.comp` | n/a | n/a | yes | YES (against `qjl_score_qk_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 7.6e-6 |
-| `polar.comp`, `polar_get_rows.comp` | n/a | n/a | yes | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 5.7e-6 |
+| `qjl.comp` | n/a | n/a | yes | YES (against `qjl_score_qk_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 7.6e-6 |
+| `qjl_get_rows.comp`, `qjl_mul_mv.comp` | n/a | n/a | yes | YES (against `qjl_score_qk_ref` / fallback contracts) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | NOT RUN — staged fallback entrypoints lack fixture harness coverage | NEEDS HARNESS EXTENSION |
+| `polar.comp` | n/a | n/a | yes | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | YES — Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C) | YES — 8/8 PASS, max diff 5.7e-6 |
+| `polar_get_rows.comp` | n/a | n/a | yes | YES (against `dequantize_row_q4_polar_ref`) | yes (glslc 2026.2, SPIR-V 1.3 / Vulkan 1.1, spirv-val clean) | NOT RUN — staged fallback entrypoint lacks fixture harness coverage | NEEDS HARNESS EXTENSION |
 | `turbo3.metal`    | n/a                  | n/a             | yes               | YES (matches fork's `dequantize_turbo3_0_t4` byte-for-byte) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 3.3e-6 |
 | `turbo4.metal`    | n/a                  | n/a             | yes               | The fork's in-tree `milady-kernels/tbq4_0.metal` is an EARLIER draft (29-line diff, materially different inner loop). The standalone is the canonical FMA-tuned variant; the build script copies the standalone into `milady-shipped/` so the metallib uses it. | YES (Apple M4 Max, runtime JIT in verify harness) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 5.7e-6 |
 | `turbo3_tcq.metal`| n/a                  | n/a             | yes               | YES (matches CUDA `dequantize_turbo3_tcq` 9-bit window decode) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 6.7e-6 |
@@ -424,11 +432,13 @@ the Metal and Vulkan harnesses; the QJL/Polar fixture shape fields
 
 Hardware run: Apple M4 Max (Darwin 25.2.0) via MoltenVK 1.4.1 + Vulkan-Loader
 1.4.341 (`brew install molten-vk vulkan-loader vulkan-headers vulkan-tools
-shaderc`; ICD at `/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json`). All 5
-kernels (turbo3, turbo4, turbo3_tcq, qjl, polar) report 8/8 PASS at the
-standard 1e-3 tolerance with max diffs in the 4.8e-7 to 7.6e-6 range — within
-1 ULP of the direct Metal harness numbers, which confirms MoltenVK's
-SPIR-V→MSL translation is bit-equivalent on Apple Silicon for these kernels.
+shaderc`; ICD at `/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json`). The
+five primary harness entrypoints (turbo3, turbo4, turbo3_tcq, qjl score,
+polar matvec) report 8/8 PASS at the standard 1e-3 tolerance with max diffs
+in the 4.8e-7 to 7.6e-6 range — within 1 ULP of the direct Metal harness
+numbers, which confirms MoltenVK's SPIR-V→MSL translation is bit-equivalent
+on Apple Silicon for these kernels. The staged Vulkan fallback entrypoints
+still need their own fixture branches before they can be called verified.
 Re-run with:
 
 ```

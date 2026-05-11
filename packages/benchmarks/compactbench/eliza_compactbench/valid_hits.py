@@ -415,6 +415,12 @@ def _is_negated_mention(
         before[-2:] == ["do", "not"]
         or before[-2:] == ["does", "not"]
         or before[-2:] == ["did", "not"]
+        or before[-2:] == ["not", "to"]
+        or joined_before.endswith("does not handle")
+        or joined_before.endswith("do not handle")
+        or joined_before.endswith("did not handle")
+        or joined_before.endswith("not handle")
+        or joined_before.endswith("not for")
         or before[-1:] in (["never"], ["avoid"], ["reject"], ["forbid"], ["prohibit"])
         or before[-1:] in (["rejected"], ["forbidden"], ["prohibited"], ["prohibits"])
     ):
@@ -432,8 +438,10 @@ def _is_negated_mention(
         "not still" in joined_after
         or "not the plan" in joined_after
         or "no longer" in joined_after
+        or "not in effect" in joined_after
         or "responsible" in joined_after
         or "responsibility" in joined_after
+        or ("belongs to" in joined_after and "responsibility" in joined_before)
     ):
         return True
 
@@ -447,6 +455,7 @@ def _is_negated_mention(
         or "is banned" in joined_after
         or "is not allowed" in joined_after
         or "not allowed" in joined_before[-20:]
+        or "not in effect" in joined_after
     )
 
 

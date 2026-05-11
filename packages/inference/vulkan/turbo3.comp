@@ -118,29 +118,24 @@ void main() {
     uint kv_idx = gl_WorkGroupID.x;
     if (kv_idx >= push.n_kv) return;
 
-    // Each thread owns 4 elements (4 * 32 = 128). Two consecutive elements
-    // come from the same qs byte.
+    // Each thread owns 4 consecutive elements. That range is fully inside one
+    // 32-element block, so hoist the per-block norm + packed code bytes out of
+    // the inner loop (mirrors the Metal port and avoids repeated raw byte
+    // loads on native Vulkan drivers).
     uint group_byte_off = push.head_offset_bytes + kv_idx * (push.kv_stride_blocks * 14u);
+    uint base_elem = tid * 4u;
+    uint block = base_elem >> 5;              // 0..3
+    uint within0 = base_elem & 31u;           // 0,4,8,...,28
+    uint blk_off = group_byte_off + block * 14u;
+    float norm = fp16_to_fp32(read_u16(blk_off));
+    uint qs_byte = read_byte(blk_off + 2u + (within0 >> 2));
+    uint sb = read_byte(blk_off + 2u + 8u + (within0 >> 3));
 
     float acc = 0.0;
     for (uint local = 0u; local < 4u; local += 1u) {
-        uint elem = tid * 4u + local;          // 0..127
-        uint block = elem >> 5;                // 0..3, which block_turbo3_0 (32 elements each)
-        uint within = elem & 31u;              // 0..31 within block
-
-        // Block base byte offset within the group.
-        uint blk_off = group_byte_off + block * 14u;
-
-        // Norm: read fp16 at blk_off + 0.
-        uint norm16 = read_u16(blk_off + 0u);
-        float norm = fp16_to_fp32(norm16);
-
-        // qs[within / 4], extract 2-bit field at (within % 4) * 2.
-        uint qs_byte = read_byte(blk_off + 2u + (within >> 2));
+        uint elem = base_elem + local;        // 0..127
+        uint within = within0 + local;        // 0..31 within block
         uint low2 = (qs_byte >> ((within & 3u) * 2u)) & 0x3u;
-
-        // signs[within / 8], extract sign bit at (within % 8).
-        uint sb = read_byte(blk_off + 2u + 8u + (within >> 3));
         uint hi1 = (sb >> (within & 7u)) & 0x1u;
 
         uint idx = low2 | (hi1 << 2);
@@ -148,7 +143,7 @@ void main() {
         // Centroid * per-block norm; multiply by pre-rotated Q[elem].
         float k_val = TURBO_CENTROIDS_3BIT[idx] * norm;
         float q_val = q[push.q_head * push.head_dim + elem];
-        acc += q_val * k_val;
+        acc = fma(q_val, k_val, acc);
     }
 
     float sum = reduce_sum_32(acc, tid);

@@ -16,11 +16,10 @@
  * Two TTS backends are exposed:
  *   - `StubOmniVoiceBackend`: deterministic synthetic PCM. Used by tests
  *     and any path that wants the streaming graph without real audio.
- *   - `FfiOmniVoiceBackend`: documents the planned FFI surface against
- *     `libelizainference.{dylib,so}`. Throws a hard "not implemented"
- *     error on every call until the fused omnivoice build target lands
- *     (see `packages/app-core/scripts/build-llama-cpp-dflash.mjs` for
- *     the fused-target build hook the other agent finished).
+ *   - `FfiOmniVoiceBackend`: forwards through the fused
+ *     `libelizainference.{dylib,so,dll}` ABI. The bridge creates the
+ *     context lazily when voice is armed or first used, so voice-off
+ *     does not keep OmniVoice weights resident.
  *
  * Per AGENTS.md §3 + §9 (no defensive code, no log-and-continue), every
  * startup precondition surfaces as a thrown `VoiceStartupError`. There
@@ -28,7 +27,9 @@
  */
 
 import { existsSync, readdirSync, statSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
+import { localInferenceRoot } from "../paths";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
@@ -45,7 +46,10 @@ import {
   type MmapRegionHandle,
   SharedResourceRegistry,
 } from "./shared-resources";
-import { SpeakerPresetCache } from "./speaker-preset-cache";
+import {
+  DEFAULT_VOICE_PRESET_REL_PATH,
+  SpeakerPresetCache,
+} from "./speaker-preset-cache";
 import type {
   AudioChunk,
   AudioSink,
@@ -141,18 +145,27 @@ export class StubOmniVoiceBackend implements OmniVoiceBackend {
 export class FfiOmniVoiceBackend implements OmniVoiceBackend {
   readonly id = "ffi" as const;
   private readonly ffi: ElizaInferenceFfi;
-  private readonly ctx: ElizaInferenceContextHandle;
+  private readonly getContext: () => ElizaInferenceContextHandle;
   private readonly sampleRate: number;
   private readonly maxSecondsPerPhrase: number;
 
   constructor(args: {
     ffi: ElizaInferenceFfi;
-    ctx: ElizaInferenceContextHandle;
+    ctx?: ElizaInferenceContextHandle;
+    getContext?: () => ElizaInferenceContextHandle;
     sampleRate?: number;
     maxSecondsPerPhrase?: number;
   }) {
     this.ffi = args.ffi;
-    this.ctx = args.ctx;
+    this.getContext = args.getContext ?? (() => {
+      if (args.ctx === undefined) {
+        throw new VoiceStartupError(
+          "missing-fused-build",
+          "[voice] FFI backend has no context provider",
+        );
+      }
+      return args.ctx;
+    });
     this.sampleRate = args.sampleRate ?? SAMPLE_RATE_DEFAULT;
     this.maxSecondsPerPhrase = args.maxSecondsPerPhrase ?? 6;
   }
@@ -164,9 +177,10 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
     onKernelTick?: () => void;
   }): Promise<AudioChunk> {
     args.onKernelTick?.();
+    const ctx = this.getContext();
     const out = new Float32Array(this.sampleRate * this.maxSecondsPerPhrase);
     const samples = this.ffi.ttsSynthesize({
-      ctx: this.ctx,
+      ctx,
       text: args.phrase.text,
       speakerPresetId: args.preset.voiceId,
       out,
@@ -182,7 +196,7 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
 
   async transcribe(args: TranscriptionAudio): Promise<string> {
     return this.ffi.asrTranscribe({
-      ctx: this.ctx,
+      ctx: this.getContext(),
       pcm: args.pcm,
       sampleRateHz: args.sampleRate,
     });
@@ -260,8 +274,9 @@ export class EngineVoiceBridge {
   readonly lifecycle: VoiceLifecycle;
   /** Loaded FFI handle when running against the fused build (else null). */
   readonly ffi: ElizaInferenceFfi | null;
-  /** FFI context this bridge owns; destroyed in `dispose()`. */
-  readonly ffiCtx: ElizaInferenceContextHandle | null;
+  /** Lazily-created FFI context this bridge owns; destroyed in `dispose()`. */
+  private readonly ffiContextRef: FfiContextRef | null;
+  readonly asrAvailable: boolean;
   private readonly bundleRoot: string;
 
   private constructor(
@@ -270,14 +285,20 @@ export class EngineVoiceBridge {
     bundleRoot: string,
     lifecycle: VoiceLifecycle,
     ffi: ElizaInferenceFfi | null,
-    ffiCtx: ElizaInferenceContextHandle | null,
+    ffiContextRef: FfiContextRef | null,
+    asrAvailable: boolean,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
     this.bundleRoot = bundleRoot;
     this.lifecycle = lifecycle;
     this.ffi = ffi;
-    this.ffiCtx = ffiCtx;
+    this.ffiContextRef = ffiContextRef;
+    this.asrAvailable = asrAvailable;
+  }
+
+  get ffiCtx(): ElizaInferenceContextHandle | null {
+    return this.ffiContextRef?.current ?? null;
   }
 
   /**
@@ -286,8 +307,12 @@ export class EngineVoiceBridge {
    * resources, then `dispose()` to close the FFI handle.
    */
   dispose(): void {
-    if (this.ffi && this.ffiCtx !== null) {
-      this.ffi.destroy(this.ffiCtx);
+    if (this.ffi) {
+      const ctx = this.ffiContextRef?.current ?? null;
+      if (ctx !== null) {
+        this.ffi.destroy(ctx);
+        if (this.ffiContextRef) this.ffiContextRef.current = null;
+      }
       this.ffi.close();
     }
   }
@@ -307,11 +332,7 @@ export class EngineVoiceBridge {
       );
     }
 
-    const presetPath = path.join(
-      opts.bundleRoot,
-      "cache",
-      "voice-preset-default.bin",
-    );
+    const presetPath = path.join(opts.bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
     if (!existsSync(presetPath)) {
       throw new VoiceStartupError(
         "missing-speaker-preset",
@@ -340,8 +361,9 @@ export class EngineVoiceBridge {
     // `evictPages`) or `backendOverride` (mocks the backend) or
     // setting `useFfiBackend: false` (stub TTS + no-op evict).
     let ffiHandle: ElizaInferenceFfi | null = null;
-    let ffiCtx: ElizaInferenceContextHandle | null = null;
+    let ffiContextRef: FfiContextRef | null = null;
     let backend: OmniVoiceBackend;
+    const asrAvailable = bundleHasRegularFile(path.join(opts.bundleRoot, "asr"));
     if (opts.backendOverride && opts.useFfiBackend) {
       throw new VoiceStartupError(
         "missing-fused-build",
@@ -359,10 +381,25 @@ export class EngineVoiceBridge {
         );
       }
       ffiHandle = loadElizaInferenceFfi(libPath);
-      ffiCtx = ffiHandle.create(opts.bundleRoot);
+      const contextRef: FfiContextRef = {
+        current: null,
+        ensure: () => {
+          if (!ffiHandle) {
+            throw new VoiceStartupError(
+              "missing-ffi",
+              "[voice] FFI context requested without a loaded libelizainference handle",
+            );
+          }
+          if (contextRef.current === null) {
+            contextRef.current = ffiHandle.create(opts.bundleRoot);
+          }
+          return contextRef.current;
+        },
+      };
+      ffiContextRef = contextRef;
       backend = new FfiOmniVoiceBackend({
         ffi: ffiHandle,
-        ctx: ffiCtx,
+        getContext: contextRef.ensure,
         sampleRate,
       });
     } else {
@@ -398,7 +435,7 @@ export class EngineVoiceBridge {
     const registry = opts.sharedResources ?? new SharedResourceRegistry();
     const loaders =
       opts.lifecycleLoaders ??
-      defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiCtx);
+      defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
     const lifecycle = new VoiceLifecycle({ registry, loaders });
 
     return new EngineVoiceBridge(
@@ -407,15 +444,16 @@ export class EngineVoiceBridge {
       opts.bundleRoot,
       lifecycle,
       ffiHandle,
-      ffiCtx,
+      ffiContextRef,
+      asrAvailable,
     );
   }
 
   /**
-   * Lazy-load TTS + ASR mmap regions and the voice scheduler nodes via
-   * the lifecycle state machine. Idempotent for repeated calls in
-   * `voice-on` (returns the existing armed resources). Surfaces RAM
-   * pressure / mmap-fail / kernel-missing as `VoiceLifecycleError` —
+   * Lazy-load the TTS mmap region, optional ASR region, and the voice
+   * scheduler nodes via the lifecycle state machine. Idempotent for
+   * repeated calls in `voice-on` (returns the existing armed resources).
+   * Surfaces RAM pressure / mmap-fail / kernel-missing as `VoiceLifecycleError` —
    * see `lifecycle.ts` for the full error taxonomy.
    */
   async arm(): Promise<void> {
@@ -426,7 +464,7 @@ export class EngineVoiceBridge {
   /**
    * Drain in-flight TTS, settle the scheduler, then disarm the
    * lifecycle. Disarm calls `evictPages()` (madvise / VirtualUnlock
-   * equivalent) on the TTS + ASR mmap regions and releases every
+   * equivalent) on the TTS + optional ASR mmap regions and releases every
    * voice-only ref. Speaker preset + phrase cache survive in the
    * registry as small LRU entries (KB-scale; not worth evicting).
    */
@@ -488,6 +526,12 @@ export class EngineVoiceBridge {
 
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     this.assertVoiceOn("transcribe audio");
+    if (!this.asrAvailable) {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        `[voice] Local transcription is unavailable for this bundle: no ASR model files were installed under ${path.join(this.bundleRoot, "asr")}.`,
+      );
+    }
     if (!isTranscriber(this.backend)) {
       throw new VoiceStartupError(
         "missing-fused-build",
@@ -631,19 +675,38 @@ function readAscii(bytes: Uint8Array, offset: number, length: number): string {
  *
  * When `ffi` is null, acquire/evict are documented no-ops — used by the
  * stub TTS path in tests + dev (no real mmap exists). Directory and
- * "contains at least one file" checks still run, so voice-on never
- * fabricates missing TTS/ASR assets.
+ * "contains at least one file" checks still run for TTS. ASR is optional
+ * for TTS-only bundles: a missing ASR directory gets a zero-byte virtual
+ * region so voice-on can synthesize while local transcription stays disabled.
  */
+interface FfiContextRef {
+  current: ElizaInferenceContextHandle | null;
+  ensure(): ElizaInferenceContextHandle;
+}
+
+function ensureContext(
+  ref: ElizaInferenceContextHandle | FfiContextRef | null,
+): ElizaInferenceContextHandle | null {
+  if (ref === null) return null;
+  if (typeof ref === "object" && "ensure" in ref) return ref.ensure();
+  return ref;
+}
+
 function defaultLifecycleLoaders(
   bundleRoot: string,
   ffi: ElizaInferenceFfi | null,
-  ctx: ElizaInferenceContextHandle | null,
+  ctx: ElizaInferenceContextHandle | FfiContextRef | null,
 ): VoiceLifecycleLoaders {
   return {
     loadTtsRegion: async () =>
       bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
-    loadAsrRegion: async () =>
-      bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
+    loadAsrRegion: async () => {
+      const asrDir = path.join(bundleRoot, "asr");
+      if (!bundleHasRegularFile(asrDir)) {
+        return virtualMmapRegion("asr", bundleRoot);
+      }
+      return bundleMmapRegion(asrDir, "asr", ffi, ctx);
+    },
     loadVoiceCaches: async () => ({
       id: `voice-caches:${bundleRoot}`,
       async release() {
@@ -678,7 +741,7 @@ function bundleMmapRegion(
   dir: string,
   kind: "tts" | "asr",
   ffi: ElizaInferenceFfi | null,
-  ctx: ElizaInferenceContextHandle | null,
+  ctx: ElizaInferenceContextHandle | FfiContextRef | null,
 ): MmapRegionHandle {
   if (!existsSync(dir)) {
     throw new Error(
@@ -694,23 +757,25 @@ function bundleMmapRegion(
   // FFI will mmap each weight file independently; this default loader
   // collapses them into one region per kind for refcount purposes.
   const st = statSync(dir);
-  if (ffi && ctx !== null) {
+  const handle = ffi ? ensureContext(ctx) : null;
+  if (ffi && handle !== null) {
     // Real fused build: load or re-page the heavy voice region now.
     // A stub or incomplete runtime returns ELIZA_ERR_NOT_IMPLEMENTED,
     // which surfaces as VoiceLifecycleError({code:"kernel-missing"})
     // before the lifecycle can enter voice-on.
-    ffi.mmapAcquire(ctx, kind);
+    ffi.mmapAcquire(handle, kind);
   }
   return {
     id: `mmap:${kind}:${st.ino}`,
     path: dir,
     sizeBytes: st.size,
     async evictPages() {
-      if (ffi && ctx !== null) {
+      const evictHandle = ffi ? ensureContext(ctx) : null;
+      if (ffi && evictHandle !== null) {
         // Real fused build: madvise / VirtualUnlock through the C ABI.
         // Throws VoiceLifecycleError on a negative return — the
         // lifecycle catches and re-classifies via `disarm-failed`.
-        ffi.mmapEvict(ctx, kind);
+        ffi.mmapEvict(evictHandle, kind);
       }
       // Else: no FFI handle (stub TTS / no fused build) — nothing to
       // evict. Documented no-op.
@@ -741,12 +806,26 @@ function libraryFilenames(): string[] {
 }
 
 function locateBundleLibrary(bundleRoot: string): string {
-  const libDir = path.join(bundleRoot, "lib");
-  for (const name of libraryFilenames()) {
-    const candidate = path.join(libDir, name);
-    if (existsSync(candidate)) return candidate;
+  const exact = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
+  if (exact && existsSync(exact)) return exact;
+
+  const dirs = [
+    path.join(bundleRoot, "lib"),
+    exact ? path.dirname(exact) : null,
+    process.env.ELIZA_INFERENCE_LIB_DIR?.trim() || null,
+    ...managedFusedRuntimeDirs(),
+  ].filter((dir): dir is string => Boolean(dir));
+
+  for (const dir of dirs) {
+    for (const name of libraryFilenames()) {
+      const candidate = path.join(dir, name);
+      if (existsSync(candidate)) return candidate;
+    }
   }
-  return path.join(libDir, libraryFilenames()[0] ?? "libelizainference.so");
+  return path.join(
+    dirs[0] ?? path.join(bundleRoot, "lib"),
+    libraryFilenames()[0] ?? "libelizainference.so",
+  );
 }
 
 function directoryHasRegularFile(dir: string): boolean {
@@ -754,4 +833,42 @@ function directoryHasRegularFile(dir: string): boolean {
     if (entry.isFile()) return true;
   }
   return false;
+}
+
+function bundleHasRegularFile(dir: string): boolean {
+  if (!existsSync(dir)) return false;
+  try {
+    return directoryHasRegularFile(dir);
+  } catch {
+    return false;
+  }
+}
+
+function virtualMmapRegion(
+  kind: "asr",
+  bundleRoot: string,
+): MmapRegionHandle {
+  return {
+    id: `mmap:${kind}:virtual:${bundleRoot}`,
+    path: path.join(bundleRoot, kind),
+    sizeBytes: 0,
+    async evictPages() {},
+    async release() {},
+  };
+}
+
+function managedFusedRuntimeDirs(): string[] {
+  if (process.env.ELIZA_INFERENCE_MANAGED_LOOKUP?.trim() === "0") {
+    return [];
+  }
+  const root = localInferenceRoot();
+  const platform = process.platform;
+  const arch = os.arch();
+  const candidates = [
+    `${platform}-${arch}-metal-fused`,
+    `${platform}-${arch}-vulkan-fused`,
+    `${platform}-${arch}-cuda-fused`,
+    `${platform}-${arch}-cpu-fused`,
+  ];
+  return candidates.map((target) => path.join(root, "bin", "dflash", target));
 }

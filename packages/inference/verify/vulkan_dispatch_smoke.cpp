@@ -2,8 +2,9 @@
 //
 // This is intentionally not a standalone SPIR-V test. It links against the
 // patched fork's libggml-vulkan and drives a real GGML graph containing
-// GGML_OP_ATTN_SCORE_QJL. PASS means ggml-vulkan selected the milady QJL
-// dispatch path and the numeric output matches the packed-byte reference.
+// GGML_OP_ATTN_SCORE_QJL. PASS means ggml-vulkan explicitly advertises support
+// for that graph op, selected the milady QJL dispatch path, and the numeric
+// output matches the packed-byte reference.
 //
 // Today this is expected to fail until Vulkan graph routing lands. That failure
 // is useful: it prevents symbol-shipped SPIR-V blobs from being confused with
@@ -139,6 +140,13 @@ int main() {
 
     ggml_tensor * scores = ggml_attn_score_qjl(ctx, q, pk, N_KV_HEADS);
     ggml_set_name(scores, "scores_qjl");
+    if (scores->op != GGML_OP_ATTN_SCORE_QJL) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] constructor produced op=%d, expected GGML_OP_ATTN_SCORE_QJL=%d\n",
+            (int) scores->op, (int) GGML_OP_ATTN_SCORE_QJL);
+        ggml_free(ctx);
+        return 1;
+    }
 
     ggml_cgraph * gf = ggml_new_graph(ctx);
     ggml_build_forward_expand(gf, scores);
@@ -146,6 +154,16 @@ int main() {
     ggml_backend_t backend = ggml_backend_vk_init(0);
     if (!backend) {
         std::fprintf(stderr, "[vulkan_dispatch_smoke] ggml_backend_vk_init failed\n");
+        ggml_free(ctx);
+        return 1;
+    }
+    std::printf("[vulkan_dispatch_smoke] backend=%s graph_op=GGML_OP_ATTN_SCORE_QJL pk_type=GGML_TYPE_QJL1_256\n",
+        ggml_backend_name(backend));
+
+    if (!ggml_backend_supports_op(backend, scores)) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] ggml-vulkan does not advertise support for GGML_OP_ATTN_SCORE_QJL with GGML_TYPE_QJL1_256 packed K. Symbol-only SPIR-V staging/pipeline creation is not runtime-ready.\n");
+        ggml_backend_free(backend);
         ggml_free(ctx);
         return 1;
     }

@@ -40,6 +40,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Source-level omnivoice.cpp fusion (text + TTS sharing one llama.cpp
 // build, one ggml pin, one kernel set). Helpers live alongside this
@@ -72,6 +76,14 @@ const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.4.0-milady";
 // surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
 // Also satisfied by the W4-B v0.4.0-milady CUDA kernel additions.
 const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
+const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "inference",
+  "verify",
+  "metal-runtime-dispatch-evidence.json",
+);
 
 const SUPPORTED_TARGETS = [
   "linux-x64-cpu",
@@ -1294,10 +1306,13 @@ function probeKernels(target, buildDir, outDir) {
   // Turbo and Polar remain symbol-only.
   if (backend === "metal") {
     const shipped = probeMetalShippedKernelSymbols(buildDir, outDir).symbols;
+    const evidence = readMetalRuntimeDispatchEvidence();
     kernels.turbo3 = false;
     kernels.turbo4 = false;
     kernels.turbo3_tcq = false;
-    kernels.qjl_full = Boolean(shipped.qjl_full);
+    kernels.qjl_full = Boolean(
+      shipped.qjl_full && metalEvidenceRuntimeReady("qjl_full", evidence),
+    );
     kernels.polarquant = false;
   } else if (backend === "vulkan") {
     kernels.turbo3 = false;
@@ -1400,11 +1415,49 @@ function probeMetalShippedKernelSymbols(buildDir, outDir) {
   return { metallibs, symbols: shipped };
 }
 
+function readMetalRuntimeDispatchEvidence() {
+  try {
+    const data = JSON.parse(fs.readFileSync(METAL_RUNTIME_DISPATCH_EVIDENCE, "utf8"));
+    return { path: METAL_RUNTIME_DISPATCH_EVIDENCE, data };
+  } catch (err) {
+    return {
+      path: METAL_RUNTIME_DISPATCH_EVIDENCE,
+      data: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function metalEvidenceForCapability(capabilityKey, evidence) {
+  const kernels = evidence?.data?.kernels;
+  if (!kernels || typeof kernels !== "object") return null;
+  return (
+    Object.values(kernels).find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        entry.runtimeCapabilityKey === capabilityKey,
+    ) ?? null
+  );
+}
+
+function metalEvidenceRuntimeReady(capabilityKey, evidence) {
+  const entry = metalEvidenceForCapability(capabilityKey, evidence);
+  return Boolean(entry?.runtimeReady === true && entry?.status === "runtime-ready");
+}
+
 function metalRuntimeDispatchStatus(shippedKernels) {
   const shipped = shippedKernels?.symbols ?? {};
+  const evidence = readMetalRuntimeDispatchEvidence();
+  const qjlReady = Boolean(
+    shipped.qjl_full && metalEvidenceRuntimeReady("qjl_full", evidence),
+  );
   return {
     sourceOfTruth:
       "dispatch-ready requires a built-fork GGML graph smoke, not just symbols in default.metallib",
+    evidencePath: evidence.path,
+    evidenceLoaded: Boolean(evidence.data),
+    evidenceError: evidence.error ?? null,
     kernels: {
       turbo3: {
         status: shipped.turbo3 ? "symbol-shipped" : "missing-symbol",
@@ -1425,8 +1478,12 @@ function metalRuntimeDispatchStatus(shippedKernels) {
           "GGML graph route dispatches kernel_turbo3_tcq_dot(_multi) with the TCQ codebook bound and matches the fixture/reference",
       },
       qjl_full: {
-        status: shipped.qjl_full ? "runtime-ready" : "missing-symbol",
-        runtimeReady: Boolean(shipped.qjl_full),
+        status: qjlReady
+          ? "runtime-ready"
+          : shipped.qjl_full
+            ? "symbol-shipped"
+            : "missing-symbol",
+        runtimeReady: qjlReady,
         graphOp: "GGML_OP_ATTN_SCORE_QJL",
         smokeTarget: "dispatch-smoke",
       },

@@ -19,7 +19,10 @@ export interface LoadedPresetBundle {
   phrases: ReadonlyArray<VoicePresetSeedPhrase>;
 }
 
-const DEFAULT_REL_PATH = path.join("cache", "voice-preset-default.bin");
+export const DEFAULT_VOICE_PRESET_REL_PATH = path.join(
+  "cache",
+  "voice-preset-default.bin",
+);
 
 export class SpeakerPresetCache {
   private readonly cache = new Map<string, SpeakerPreset>();
@@ -45,7 +48,7 @@ export class SpeakerPresetCache {
       };
     }
 
-    const rel = paths.cacheRelPath ?? DEFAULT_REL_PATH;
+    const rel = paths.cacheRelPath ?? DEFAULT_VOICE_PRESET_REL_PATH;
     const fullPath = path.join(paths.bundleRoot, rel);
     const bytes = readFileSync(fullPath);
     const parsed = readVoicePresetFile(new Uint8Array(bytes));
