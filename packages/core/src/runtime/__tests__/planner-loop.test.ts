@@ -459,6 +459,96 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).not.toContain("to=functions");
 	});
 
+	it("throws TrajectoryLimitExceeded(trajectory_token_budget) when cumulative prompt tokens exceed config.maxTrajectoryPromptTokens", async () => {
+		// Each planner call reports 60_000 prompt tokens. With a 100_000
+		// budget the loop should survive call 1 (60k) and abort on call 2
+		// (cumulative 120k > 100k) before tool execution recurses.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "",
+				toolCalls: [{ id: "call-1", name: "LOOKUP", arguments: {} }],
+				usage: {
+					promptTokens: 60_000,
+					completionTokens: 100,
+					totalTokens: 60_100,
+				},
+			})),
+		};
+		const executeToolCall = vi.fn(async () => ({
+			success: true,
+			text: "ok",
+		}));
+		const evaluate = vi.fn(async () => ({
+			success: true,
+			decision: "CONTINUE" as const,
+			thought: "Keep going.",
+		}));
+
+		let thrown: unknown;
+		try {
+			await runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				config: { maxTrajectoryPromptTokens: 100_000 },
+				executeToolCall,
+				evaluate,
+			});
+		} catch (err) {
+			thrown = err;
+		}
+		expect(thrown).toBeInstanceOf(TrajectoryLimitExceeded);
+		expect((thrown as TrajectoryLimitExceeded).kind).toBe(
+			"trajectory_token_budget",
+		);
+		// Bounded at the call that crossed the line — 2 model calls, not 3+.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not fire trajectory_token_budget when usage stays under the limit", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "done.",
+				toolCalls: [],
+				messageToUser: "done.",
+				usage: {
+					promptTokens: 1_000,
+					completionTokens: 50,
+					totalTokens: 1_050,
+				},
+			})),
+		};
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				config: { maxTrajectoryPromptTokens: 100_000 },
+				executeToolCall: vi.fn(),
+				evaluate: vi.fn(),
+			}),
+		).resolves.toBeDefined();
+	});
+
+	it("tolerates missing usage on the model response (back-compat with older adapters)", async () => {
+		// Some adapter shims emit no `usage` field. The token guard should
+		// silently no-op rather than crash the loop.
+		const runtime = {
+			useModel: vi.fn(async () => ({
+				text: "done.",
+				toolCalls: [],
+				messageToUser: "done.",
+				// no usage field
+			})),
+		};
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			config: { maxTrajectoryPromptTokens: 100 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+		expect(result).toBeDefined();
+	});
+
 	it("throws when the same tool failure repeats beyond the configured limit", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
