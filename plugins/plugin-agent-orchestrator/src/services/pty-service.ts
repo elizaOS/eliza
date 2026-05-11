@@ -45,6 +45,12 @@ import {
   peekTaskResponse,
 } from "./ansi-utils.js";
 import { ensureBundledClaudeCodeSkills } from "./claude-code-skill-installer.js";
+import {
+  type MergeCodexSessionResult,
+  mergeCodexSessionIntoTrajectory,
+  tagParentTrajectoryWithDegradedCodexCapture,
+} from "./codex-trajectory-merger.js";
+import { readCodexSession } from "./codex-trajectory-reader.js";
 import { readConfigEnvKey } from "./config-env.js";
 import {
   type CoordinatorNormalizedEvent,
@@ -573,6 +579,12 @@ export class PTYService {
     string,
     ReturnType<typeof setTimeout>
   > = new Map();
+  /**
+   * Session ids for which we have already kicked off a trajectory-capture
+   * read. `task_complete` can fire from three independent paths (hook,
+   * adapter_fast_path, output_reconcile); we must only merge once.
+   */
+  private trajectoryCaptureStarted: Set<string> = new Set();
   /** Background auth-recovery watchers keyed by blocked session id. */
   private authRecoveryTimers: Map<string, ReturnType<typeof setInterval>> =
     new Map();
@@ -947,6 +959,7 @@ export class PTYService {
     }
 
     let codexApprovalEnv: Record<string, string> | undefined;
+    let resolvedCodexHome: string | undefined;
 
     // Write approval config files before spawn.
     if (effectiveApprovalPreset && resolvedAgentType !== "shell") {
@@ -957,6 +970,7 @@ export class PTYService {
           options.credentials,
         );
         codexApprovalEnv = { CODEX_HOME: codexHome };
+        resolvedCodexHome = codexHome;
         this.log(
           `Wrote Codex approval config (${effectiveApprovalPreset}) to ${join(codexHome, "config.toml")}`,
         );
@@ -1096,6 +1110,9 @@ export class PTYService {
       ...(codexExecMode ? { codexExecMode: true } : {}),
       ...(codexExecOutputDir ? { codexExecOutputDir } : {}),
       ...(codexExecOutputFile ? { codexExecOutputFile } : {}),
+      // Persist the per-session Codex home so the trajectory capture hook
+      // (W1-T2 / C1 Codex path) can locate rollout JSONLs after task_complete.
+      ...(resolvedCodexHome ? { codexHome: resolvedCodexHome } : {}),
       ...(resolvedModelPrefs ? { modelPrefs: resolvedModelPrefs } : {}),
     };
 
@@ -1285,19 +1302,27 @@ export class PTYService {
   /**
    * Read the spawned sub-agent's structured session log and merge the
    * captured reasoning + tool calls into the parent trajectory step. Wired
-   * into the `task_complete` hook (W1-T1 / closes C1 Claude path).
+   * into the `task_complete` hook.
    *
-   * Today this only handles `claude` agents — Codex and OpenCode get
-   * sibling readers in W1-T2/W1-T3. Failures are logged and swallowed
-   * (this path must never block auto-stop or session teardown).
+   * - `claude`: reads `~/.claude/projects/<encoded>/<uuid>.jsonl` and folds
+   *   it back into the parent (W1-T1 / closes C1 Claude path).
+   * - `codex`: reads the per-session `$CODEX_HOME/sessions/...` rollout
+   *   JSONL plus the `--output-last-message` file, when both exist (W1-T2 /
+   *   closes C1 Codex path). Interactive Codex sessions (no
+   *   `codexExecMode`) are skipped — there's no authoritative completion
+   *   signal to merge on.
+   * - Other adapter types (gemini, aider, opencode, …) are no-ops for now.
+   *
+   * Failures are logged and swallowed (this path must never block
+   * auto-stop or session teardown).
    */
   private async captureSubAgentTrajectoryOnTaskComplete(
     sessionId: string,
-  ): Promise<MergeSessionLogResult | undefined> {
+  ): Promise<MergeSessionLogResult | MergeCodexSessionResult | undefined> {
     const metadata = this.sessionMetadata.get(sessionId);
     const agentType =
       typeof metadata?.agentType === "string" ? metadata.agentType : undefined;
-    if (agentType !== "claude") return undefined;
+    if (agentType !== "claude" && agentType !== "codex") return undefined;
 
     const parentStepId =
       typeof metadata?.[TRAJECTORY_PARENT_STEP_METADATA_KEY] === "string"
@@ -1318,6 +1343,22 @@ export class PTYService {
       return undefined;
     }
 
+    if (agentType === "claude") {
+      return this.captureClaudeCodeTrajectory(sessionId, workdir, parentStepId);
+    }
+    return this.captureCodexTrajectory(
+      sessionId,
+      workdir,
+      parentStepId,
+      metadata,
+    );
+  }
+
+  private async captureClaudeCodeTrajectory(
+    sessionId: string,
+    workdir: string,
+    parentStepId: string,
+  ): Promise<MergeSessionLogResult | undefined> {
     try {
       const capture = await readClaudeCodeSession({
         workspaceDir: workdir,
@@ -1338,7 +1379,7 @@ export class PTYService {
         parentStepId,
         capture,
         ptySessionId: sessionId,
-        agentType,
+        agentType: "claude",
         workspaceDir: workdir,
         logger: {
           warn: (msg) => this.log(msg),
@@ -1355,6 +1396,137 @@ export class PTYService {
       this.log(
         `[session-log-capture] capture failed for ${sessionId}: ${message}`,
       );
+      return undefined;
+    }
+  }
+
+  /**
+   * Codex-side trajectory capture. Only fires for `codex exec` runs — the
+   * interactive Codex TUI has no `--output-last-message` and no
+   * authoritative `task_complete` signal we can merge on. The presence of
+   * `codexExecMode === true` on session metadata is the discriminator.
+   */
+  private async captureCodexTrajectory(
+    sessionId: string,
+    workdir: string,
+    parentStepId: string,
+    metadata: Record<string, unknown> | undefined,
+  ): Promise<MergeCodexSessionResult | undefined> {
+    const mergerLogger = {
+      warn: (msg: string) => this.log(msg),
+      debug: (msg: string) => this.log(msg),
+      info: (msg: string) => this.log(msg),
+    };
+
+    const codexExecMode = metadata?.codexExecMode === true;
+    if (!codexExecMode) {
+      this.log(
+        `[session-log-capture] codex session ${sessionId} is interactive (no codexExecMode); skipping trajectory merge`,
+      );
+      await tagParentTrajectoryWithDegradedCodexCapture({
+        runtime: this.runtime,
+        parentStepId,
+        reason: "codex-interactive-skipped",
+        detail: `sessionId=${sessionId}`,
+        logger: mergerLogger,
+      });
+      return undefined;
+    }
+    const codexHome =
+      typeof metadata?.codexHome === "string" && metadata.codexHome.trim()
+        ? metadata.codexHome.trim()
+        : undefined;
+    if (!codexHome) {
+      this.log(
+        `[session-log-capture] no codexHome recorded for ${sessionId}; cannot locate rollout JSONL`,
+      );
+      await tagParentTrajectoryWithDegradedCodexCapture({
+        runtime: this.runtime,
+        parentStepId,
+        reason: "codex-no-home",
+        detail: `sessionId=${sessionId}`,
+        logger: mergerLogger,
+      });
+      return undefined;
+    }
+    const lastMessagePath =
+      typeof metadata?.codexExecOutputFile === "string" &&
+      metadata.codexExecOutputFile.trim()
+        ? metadata.codexExecOutputFile.trim()
+        : undefined;
+
+    try {
+      const capture = await readCodexSession({
+        workspaceDir: workdir,
+        codexHome,
+        parentStepId,
+        lastMessagePath,
+        logger: mergerLogger,
+      });
+      if (capture.reason === "missing") {
+        this.log(
+          `[session-log-capture] no Codex rollout found for ${sessionId} under ${codexHome}; falling back to stdout-only capture (quality=degraded)`,
+        );
+        await tagParentTrajectoryWithDegradedCodexCapture({
+          runtime: this.runtime,
+          parentStepId,
+          reason: "codex-rollout-missing",
+          detail: `codexHome=${codexHome}`,
+          logger: mergerLogger,
+        });
+        return undefined;
+      }
+      if (capture.reason === "empty") {
+        this.log(
+          `[session-log-capture] empty Codex rollout at ${capture.rolloutPath ?? "<unknown>"}; tagging parent ${parentStepId} as degraded`,
+        );
+        await tagParentTrajectoryWithDegradedCodexCapture({
+          runtime: this.runtime,
+          parentStepId,
+          reason: "codex-rollout-empty",
+          detail: capture.rolloutPath,
+          logger: mergerLogger,
+        });
+        return undefined;
+      }
+      const result = await mergeCodexSessionIntoTrajectory({
+        runtime: this.runtime,
+        parentStepId,
+        capture,
+        ptySessionId: sessionId,
+        workspaceDir: workdir,
+        codexHome,
+        logger: mergerLogger,
+      });
+      this.log(
+        `[session-log-capture] merged ${result.stepsWritten} Codex steps into parent ${parentStepId} (child trajectory ${result.childTrajectoryId ?? "<none>"}, quality=${result.captureQuality})`,
+      );
+      if (result.captureQuality === "degraded") {
+        await tagParentTrajectoryWithDegradedCodexCapture({
+          runtime: this.runtime,
+          parentStepId,
+          reason: "codex-rollout-empty",
+          detail: `skippedReason=${result.skippedReason ?? "unknown"}`,
+          logger: mergerLogger,
+        });
+      }
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.log(
+        `[session-log-capture] Codex capture failed for ${sessionId}: ${message}`,
+      );
+      try {
+        await tagParentTrajectoryWithDegradedCodexCapture({
+          runtime: this.runtime,
+          parentStepId,
+          reason: "codex-rollout-error",
+          detail: message,
+          logger: mergerLogger,
+        });
+      } catch {
+        // Tagging is best-effort; never let it shadow the original error.
+      }
       return undefined;
     }
   }
@@ -1401,6 +1573,7 @@ export class PTYService {
         this.authRecoveryTimers.delete(sessionId);
       }
       this.clearTranscriptCapture(sessionId);
+      this.trajectoryCaptureStarted.delete(sessionId);
     }
   }
 
@@ -1721,11 +1894,6 @@ export class PTYService {
         break;
       case "task_complete":
         this.emitEvent(sessionId, "task_complete", { ...data, source: "hook" });
-        // Capture the Claude Code session log into the parent trajectory.
-        // This is the W1-T1 / C1 closure — without it, the parent only sees
-        // ANSI-stripped stdout. Fire-and-forget; failures must NOT block
-        // the auto-stop path below.
-        void this.captureSubAgentTrajectoryOnTaskComplete(sessionId);
         // Auto-stop the PTY after a short grace period. Without this,
         // subagents sit around firing stall classifications that trigger
         // phantom heartbeats in downstream streamers minutes after the
@@ -2407,6 +2575,20 @@ export class PTYService {
       event === "error"
     ) {
       this.clearCompletionReconcile(sessionId);
+    }
+    if (event === "task_complete") {
+      // Capture the sub-agent's structured session log into the parent
+      // trajectory. This is the W1-T1 / W1-T2 closure for the C1 gap.
+      // Without it, the parent only sees ANSI-stripped stdout. Fire-and-
+      // forget; failures must NOT block downstream listeners.
+      //
+      // `task_complete` fires from three independent paths (hook,
+      // adapter_fast_path, output_reconcile). The set below dedupes so we
+      // only ever merge once per PTY session.
+      if (!this.trajectoryCaptureStarted.has(sessionId)) {
+        this.trajectoryCaptureStarted.add(sessionId);
+        void this.captureSubAgentTrajectoryOnTaskComplete(sessionId);
+      }
     }
     if (event === "stopped" || event === "error") {
       const authRecoveryTimer = this.authRecoveryTimers.get(sessionId);
