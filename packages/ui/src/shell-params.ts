@@ -4,7 +4,6 @@ export type DetachedShellTab =
   | "release"
   | "triggers"
   | "plugins"
-  | "connectors"
   | "cloud";
 
 export type ShellRoute =
@@ -29,7 +28,6 @@ export function parseShellRoute(search: string): ShellRoute {
       tab === "release" ||
       tab === "triggers" ||
       tab === "plugins" ||
-      tab === "connectors" ||
       tab === "cloud"
     ) {
       return { mode: "surface", tab };
