@@ -5,6 +5,7 @@ import type { Prober } from "../contracts.ts";
 import {
   IS_DARWIN,
   mapAVAuthStatus,
+  mapUNAuthStatus,
   platformUnsupportedState,
 } from "./_bridge.ts";
 import { ALL_PROBERS, PROBERS_BY_ID } from "./index.ts";
@@ -76,6 +77,13 @@ describe("permission probers", () => {
     expect(mapAVAuthStatus(1)).toBe("denied");
     expect(mapAVAuthStatus(2)).toBe("granted");
     expect(mapAVAuthStatus(3)).toBe("restricted");
+  });
+
+  it("maps the native dylib notification status contract", () => {
+    expect(mapUNAuthStatus(0)).toBe("not-determined");
+    expect(mapUNAuthStatus(1)).toBe("denied");
+    expect(mapUNAuthStatus(2)).toBe("granted");
+    expect(mapUNAuthStatus(3)).toBe("restricted");
   });
 
   it("keeps AppleScript-backed check() paths read-only", () => {

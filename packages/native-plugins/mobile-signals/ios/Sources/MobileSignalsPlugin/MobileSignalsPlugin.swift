@@ -3,6 +3,7 @@ import BackgroundTasks
 import Capacitor
 import HealthKit
 import UIKit
+import UserNotifications
 
 @objc(MobileSignalsPlugin)
 public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
@@ -170,13 +171,19 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc public override func checkPermissions(_ call: CAPPluginCall) {
-        call.resolve(buildPermissionResult())
+        buildPermissionResult { result in
+            call.resolve(result)
+        }
     }
 
     @objc public override func requestPermissions(_ call: CAPPluginCall) {
         let target = call.getString("target") ?? "all"
         if target == "screenTime" {
             resolvePermissionAfterScreenTimeRequest(call)
+            return
+        }
+        if target == "notifications" {
+            requestNotificationPermissions(call)
             return
         }
 
@@ -204,6 +211,17 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
                     reason: healthReason,
                     requestScreenTime: shouldRequestScreenTime
                 )
+            }
+        }
+    }
+
+    private func requestNotificationPermissions(_ call: CAPPluginCall) {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.buildPermissionResult(reason: error?.localizedDescription) { result in
+                    call.resolve(result)
+                }
             }
         }
     }

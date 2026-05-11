@@ -187,7 +187,7 @@ interface BunFfiSymbols {
     maxTextBytes: bigint | number,
     outErr: unknown,
   ) => number;
-  eliza_inference_free_string: (str: unknown) => void;
+  eliza_inference_free_string: (str: bigint | number) => void;
 }
 
 interface BunFfiLib {
@@ -271,7 +271,9 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
         args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
         returns: T.i32,
       },
-      eliza_inference_free_string: { args: [T.ptr], returns: T.void },
+      // Bun 1.3.x accepts raw pointer values passed back into C as
+      // `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
+      eliza_inference_free_string: { args: [T.usize], returns: T.void },
     });
   } catch (err) {
     throw new VoiceLifecycleError(
@@ -301,7 +303,14 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
   function takeError(outErrPtrBuf: BigUint64Array): string | null {
     const ptrValue = outErrPtrBuf[0];
     if (ptrValue === undefined || ptrValue === 0n) return null;
-    const cstr = new ffi.CString(ptrValue);
+    const ptrNumber = Number(ptrValue);
+    if (!Number.isSafeInteger(ptrNumber)) {
+      throw new VoiceLifecycleError(
+        "kernel-missing",
+        `[ffi-bindings] C diagnostic pointer ${ptrValue.toString()} exceeds JS safe integer range`,
+      );
+    }
+    const cstr = new ffi.CString(ptrNumber);
     const message = cstr.toString();
     lib.symbols.eliza_inference_free_string(ptrValue);
     return message;

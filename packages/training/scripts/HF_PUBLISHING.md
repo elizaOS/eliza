@@ -26,7 +26,7 @@ whole run.
 
 ### Stages
 
-The orchestrator runs six stages in order. Any failure exits non-zero
+The orchestrator runs seven stages in order. Any failure exits non-zero
 with a specific code (see "Exit codes" below):
 
 1. **Layout validation.** Confirms the bundle directory matches
@@ -34,7 +34,15 @@ with a specific code (see "Exit codes" below):
    dflash/, cache/, evals/, licenses/) and that every required license
    blob exists and is non-empty. The frozen voice GGUF, tokenizer, and
    `cache/voice-preset-default.bin` must be present.
-2. **Kernel verification.** Runs `make -C ../../inference/verify
+2. **Release evidence.** Requires `evidence/release.json` and
+   `checksums/SHA256SUMS`. The evidence sidecar must declare final
+   weights, final hashes, final eval outputs, complete licenses, runtime
+   graph-dispatch reports, platform evidence for every supported
+   backend, the exact `elizalabs/eliza-1-<tier>` destination, and
+   size-first repo IDs. The checksum manifest is verified against the
+   actual bytes that will be uploaded. A dry-run fails here the same way
+   a real publish does.
+3. **Kernel verification.** Runs `make -C ../../inference/verify
    reference-test` for the CPU path. For Vulkan and CUDA, the
    orchestrator consumes recorded reports at
    `<bundle>/evals/vulkan_verify.json` and
@@ -43,25 +51,25 @@ with a specific code (see "Exit codes" below):
    recorded on a verified Metal host. Without it, a tier that includes
    Metal in `SUPPORTED_BACKENDS_BY_TIER` fails with
    `EXIT_KERNEL_VERIFY_FAIL`.
-3. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
+4. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
    `apply_gates(results, tier)` from
    `packages/training/benchmarks/eliza1_gates.py`. Refuses to proceed
    unless `passed: true`. Voice gates include RTF, expressive tag
    faithfulness, expressive MOS, and tag leakage so singing can ship as a
    normal declared voice capability. The gate report is written into the
    manifest's `evals` block.
-4. **Manifest build.** Calls `build_manifest(...)` from
+5. **Manifest build.** Calls `build_manifest(...)` from
    `packages/training/scripts/manifest/eliza1_manifest.py`. The manifest
    module's validator independently re-checks the §3 / §6 contract
    (every required kernel declared, every supported backend `pass`,
    every eval flag `passed`). The orchestrator sets `defaultEligible:
    true` only when every required gate is green AND every supported
    backend verified pass; the validator rejects mis-uses of that flag.
-5. **README render.** Renders
+6. **README render.** Renders
    `scripts/publish/templates/README.md.j2` from the manifest data.
    No marketing copy. User-visible text stays Eliza-1-first; upstream
    lineage is recorded only in the manifest's `lineage` block.
-6. **HF push + git tag.** Uploads weights, manifest, README, licenses,
+7. **HF push + git tag.** Uploads weights, manifest, README, licenses,
    and eval blobs to `elizalabs/eliza-1-<tier>` via
    `huggingface_hub.HfApi.create_commit`, then tags the local training
    repo with `eliza-1-<tier>-v<version>`. In `--dry-run` neither side
@@ -83,11 +91,17 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
     aggregate.json        # input to apply_gates(); shape per eliza1_gates.py docstring
     vulkan_verify.json    # recorded report (status, atCommit, report)
     cuda_verify.json      # recorded report (server / desktop / pro tiers)
+    <backend>_dispatch.json # runtimeReady=true graph-dispatch evidence
+    <backend>_platform.json # physical/smoke platform evidence
   licenses/
     LICENSE.text
     LICENSE.voice
     LICENSE.dflash
     LICENSE.eliza-1
+  evidence/
+    release.json          # final release evidence sidecar
+  checksums/
+    SHA256SUMS            # sha256sum-format hashes for every uploaded input artifact
   lineage.json   # optional: per-slot {base, license} overrides
   ram_budget.json # optional: {min, recommended} in MB
   VERSION        # optional: bundle version (default 1.0.0)
@@ -134,6 +148,63 @@ is set; anything else exits `EXIT_KERNEL_VERIFY_FAIL`.
 |  13  | `EXIT_EVAL_GATE_FAIL`        | One or more required-for-tier gates in `eliza1_gates.yaml` failed.      |
 |  14  | `EXIT_MANIFEST_INVALID`      | `build_manifest` rejected the assembled manifest.                       |
 |  15  | `EXIT_HF_PUSH_FAIL`          | Missing `HF_TOKEN`, HF API error, or `git tag` failure.                 |
+|  16  | `EXIT_RELEASE_EVIDENCE_FAIL` | Release evidence sidecar, checksum coverage, runtime dispatch evidence, platform evidence, or finalization proof is invalid. |
+
+### Release evidence sidecar
+
+`evidence/release.json` is the operator-attested evidence bundle for
+HF release candidates. It is not allowed to claim a final release unless
+the evidence is real; do not paste placeholders. Minimum shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "tier": "9b",
+  "repoId": "elizalabs/eliza-1-9b",
+  "releaseState": "upload-candidate",
+  "final": {
+    "weights": true,
+    "hashes": true,
+    "evals": true,
+    "licenses": true,
+    "kernelDispatchReports": true,
+    "platformEvidence": true,
+    "sizeFirstRepoIds": true
+  },
+  "weights": ["text/eliza-1-9b-64k.gguf"],
+  "checksumManifest": "checksums/SHA256SUMS",
+  "evalReports": ["evals/aggregate.json"],
+  "licenseFiles": [
+    "licenses/LICENSE.text",
+    "licenses/LICENSE.voice",
+    "licenses/LICENSE.dflash",
+    "licenses/LICENSE.eliza-1"
+  ],
+  "kernelDispatchReports": {
+    "metal": "evals/metal_dispatch.json",
+    "vulkan": "evals/vulkan_dispatch.json",
+    "cuda": "evals/cuda_dispatch.json",
+    "cpu": "evals/cpu_dispatch.json"
+  },
+  "platformEvidence": {
+    "metal": "evals/metal_platform.json",
+    "vulkan": "evals/vulkan_platform.json",
+    "cuda": "evals/cuda_platform.json",
+    "cpu": "evals/cpu_platform.json"
+  },
+  "hf": {
+    "repoId": "elizalabs/eliza-1-9b",
+    "status": "pending-upload"
+  }
+}
+```
+
+For each backend supported by the tier, the dispatch report must be JSON
+with `status: "pass"` and `runtimeReady: true`. A shader-symbol or
+standalone-fixture report is not enough. Platform evidence must also
+report `status: "pass"`. If `releaseState` is changed to `final`, the
+sidecar must include real `hf.uploadEvidence` with the uploaded repo,
+commit, and URL.
 
 ### Recovering from a partial publish
 

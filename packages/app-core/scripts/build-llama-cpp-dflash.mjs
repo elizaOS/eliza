@@ -678,6 +678,13 @@ function cmakeFlagsForTarget(target, ctx) {
     flags.push('-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80');
   } else if (backend === "rocm") {
     flags[flags.indexOf("-DGGML_HIP=OFF")] = "-DGGML_HIP=ON";
+    // Pin the ROCm fat binary to the device families we intend to support.
+    // Operators can narrow/extend this with ELIZA_DFLASH_CMAKE_FLAGS; those
+    // flags append after this list and win on CMake conflict.
+    //   gfx90a  -> MI250 / CDNA2
+    //   gfx942  -> MI300 / CDNA3
+    //   gfx110* -> RDNA3 desktop/laptop smoke hosts
+    flags.push("-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102");
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
@@ -1838,7 +1845,8 @@ function buildTarget({ target, args, ctx }) {
   }
 
   // For fused targets, prove that BOTH llama_* and omnivoice_* symbol
-  // families landed in the produced shared library. Per
+  // families plus the libelizainference ABI v1 entry points landed in
+  // the produced shared library. Per
   // packages/inference/AGENTS.md §3, missing fusion is a hard error
   // with no fallback.
   let omnivoiceVerification = null;
@@ -1848,7 +1856,8 @@ function buildTarget({ target, args, ctx }) {
       `[dflash-build] omnivoice-fuse symbol-verify: ` +
         `library=${omnivoiceVerification.library} ` +
         `llama=${omnivoiceVerification.llamaSymbolCount} ` +
-        `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount}`,
+        `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount} ` +
+        `abi=${omnivoiceVerification.abiSymbolCount}`,
     );
   }
 

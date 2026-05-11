@@ -12,9 +12,27 @@ interface CapturedHeadscaleCall {
     expiration?: string;
     aclTags?: string[];
   };
+  debitOpts?: {
+    organizationId: string;
+    amount: number;
+    description: string;
+    metadata?: Record<string, unknown>;
+  };
+  refundOpts?: {
+    organizationId: string;
+    amount: number;
+    description: string;
+    metadata?: Record<string, unknown>;
+  };
 }
 
-function installMocks(captured: CapturedHeadscaleCall): void {
+function installMocks(
+  captured: CapturedHeadscaleCall,
+  options: {
+    debitResult?: { success: boolean; newBalance: number; transaction: unknown };
+    createError?: Error;
+  } = {},
+): void {
   mock.module("@/lib/auth/workers-hono-auth", () => ({
     requireUserOrApiKeyWithOrg: async () => ({
       id: USER_ID,
@@ -26,7 +44,14 @@ function installMocks(captured: CapturedHeadscaleCall): void {
 
   mock.module("@/lib/services/credits", () => ({
     creditsService: {
-      deductCredits: async () => ({ success: true }),
+      deductCredits: async (opts: CapturedHeadscaleCall["debitOpts"]) => {
+        captured.debitOpts = opts;
+        return options.debitResult ?? { success: true, newBalance: 9.99, transaction: {} };
+      },
+      refundCredits: async (opts: CapturedHeadscaleCall["refundOpts"]) => {
+        captured.refundOpts = opts;
+        return { transaction: {}, newBalance: 10 };
+      },
     },
   }));
 
@@ -37,6 +62,7 @@ function installMocks(captured: CapturedHeadscaleCall): void {
       }
 
       async createPreAuthKey(opts: CapturedHeadscaleCall["createOpts"]) {
+        if (options.createError) throw options.createError;
         captured.createOpts = opts;
         return {
           id: "1",
@@ -92,6 +118,7 @@ const env = {
   HEADSCALE_USER: "tunnel",
   TUNNEL_PROXY_HOST: "tunnel.elizacloud.ai",
   TUNNEL_TAILNET_DOMAIN: "tunnel.eliza.local",
+  TUNNEL_AUTH_KEY_COST_USD: "0.01",
 };
 
 describe("tunnel auth-key route", () => {
@@ -113,6 +140,28 @@ describe("tunnel auth-key route", () => {
     expect(String(body.magicDnsName)).toEndWith(".tunnel.elizacloud.ai");
     expect(String(body.hostname)).toStartWith("eliza-111111112222-");
     expect(body.tags).toEqual(["tag:eliza-tunnel"]);
+    expect(body.billing).toEqual({
+      model: "on_demand",
+      unit: "tunnel_auth_key",
+      charged: true,
+      amountUsd: 0.01,
+      subscription: false,
+    });
+    expect(captured.debitOpts).toMatchObject({
+      organizationId: ORG_ID,
+      amount: 0.01,
+      description: "API: cloud tunnel provisioning",
+    });
+    expect(captured.debitOpts?.metadata).toMatchObject({
+      type: "tunnel",
+      billing_model: "on_demand",
+      unit: "tunnel_auth_key",
+      service: "headscale",
+      method: "auth-key.create",
+      organization_id: ORG_ID,
+      user_id: USER_ID,
+      tags: ["tag:eliza-tunnel"],
+    });
     expect(captured.clientOpts).toEqual({
       apiUrl: "https://headscale.internal",
       apiKey: "headscale-api-key",
@@ -121,6 +170,50 @@ describe("tunnel auth-key route", () => {
     expect(captured.createOpts?.reusable).toBe(false);
     expect(captured.createOpts?.ephemeral).toBe(true);
     expect(captured.createOpts?.aclTags).toEqual(["tag:eliza-tunnel"]);
+  });
+
+  test("returns 402 and does not mint a key when org credits are insufficient", async () => {
+    const captured: CapturedHeadscaleCall = {};
+    installMocks(captured, {
+      debitResult: { success: false, newBalance: 0, transaction: null },
+    });
+    const app = await loadRoute();
+
+    const res = await app.fetch(request(), env);
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as Record<string, unknown>;
+
+    expect(body.error).toBe("Insufficient credits");
+    expect(body.requiredCredits).toBe(0.01);
+    expect(body.billing).toEqual({
+      model: "on_demand",
+      unit: "tunnel_auth_key",
+      charged: false,
+      amountUsd: 0.01,
+      subscription: false,
+    });
+    expect(captured.createOpts).toBeUndefined();
+  });
+
+  test("refunds the provisioning debit when Headscale key creation fails", async () => {
+    const captured: CapturedHeadscaleCall = {};
+    installMocks(captured, { createError: new Error("headscale unavailable") });
+    const app = await loadRoute();
+
+    const res = await app.fetch(request(), env);
+    expect(res.status).toBe(500);
+
+    expect(captured.debitOpts?.amount).toBe(0.01);
+    expect(captured.refundOpts).toMatchObject({
+      organizationId: ORG_ID,
+      amount: 0.01,
+      description: "Refund: cloud tunnel provisioning failed",
+    });
+    expect(captured.refundOpts?.metadata).toMatchObject({
+      refund_reason: "headscale_preauth_key_failed",
+      type: "tunnel",
+      unit: "tunnel_auth_key",
+    });
   });
 
   test("returns 503 when Headscale secrets are not configured", async () => {
@@ -134,5 +227,6 @@ describe("tunnel auth-key route", () => {
 
     expect(res.status).toBe(503);
     expect(captured.clientOpts).toBeUndefined();
+    expect(captured.debitOpts).toBeUndefined();
   });
 });
