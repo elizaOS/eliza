@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
+import { PutUpdateChannelRequestSchema } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 
 // ---------------------------------------------------------------------------
@@ -69,13 +70,18 @@ export async function handleUpdateRoutes(
 
   // ── PUT /api/update/channel ────────────────────────────────────────────
   if (method === "PUT" && pathname === "/api/update/channel") {
-    const body = (await readJsonBody(req, res)) as { channel?: string } | null;
-    if (!body) return true;
-    const ch = body.channel;
-    if (ch !== "stable" && ch !== "beta" && ch !== "nightly") {
-      error(res, `Invalid channel "${ch}". Must be stable, beta, or nightly.`);
+    const rawCh = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawCh === null) return true;
+    const parsedCh = PutUpdateChannelRequestSchema.safeParse(rawCh);
+    if (!parsedCh.success) {
+      error(
+        res,
+        parsedCh.error.issues[0]?.message ??
+          `Invalid channel. Must be stable, beta, or nightly.`,
+      );
       return true;
     }
+    const ch = parsedCh.data.channel;
     state.config.update = {
       ...state.config.update,
       channel: ch,
