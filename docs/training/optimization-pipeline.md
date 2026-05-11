@@ -3,8 +3,10 @@
 End-to-end recipe for taking a base HuggingFace causal-LM, applying every
 Milady inference optimization (PolarQuant Q4 weights, QJL K-cache
 projection, TurboQuant V-cache, DFlash speculative decoding) on top of
-the `elizaOS/llama.cpp` v0.4.0-milady fork, and publishing the
-resulting GGUF + manifest to an `elizaos/eliza-1-<tier>`
+the `elizaOS/llama.cpp` fork — which ships in-tree as the git submodule at
+`packages/inference/llama.cpp` (`elizaOS/llama.cpp @ v1.0.0-eliza`, commit
+`08032d57`; `git submodule update --init --recursive`, which `bun install`
+runs) — and publishing the resulting GGUF + manifest to an `elizaos/eliza-1-<tier>`
 HuggingFace repo so phones can download it via the existing in-app
 downloader.
 
@@ -74,7 +76,7 @@ stage-polarquant/  (HF ckpt + polarquant_artifacts.safetensors)
 stage-qjl/         (HF ckpt + qjl_config.json)
     ↓  turboquant_apply.py
 stage-turboquant/  (HF ckpt + turboquant.json)
-    ↓  convert_hf_to_gguf.py (elizaOS/llama.cpp v0.4.0-milady)
+    ↓  convert_hf_to_gguf.py (elizaOS/llama.cpp v1.0.0-eliza)
 gguf/<name>-milady-Q4_POLAR.gguf + milady_manifest.json + README.md
     ↓  push_model_to_hf.py --milady-manifest
 HuggingFace: elizaos/eliza-1-<tier>
@@ -118,7 +120,7 @@ Production runs need:
 
 - A GPU with CUDA for the TurboQuant calibration pass and (optionally)
   the QJL CUDA kernel build under `scripts/quantization/qjl/csrc/`.
-- A local checkout of `elizaOS/llama.cpp` at tag `v0.4.0-milady`
+- A local checkout of `elizaOS/llama.cpp` at tag `v1.0.0-eliza` (the in-repo submodule `packages/inference/llama.cpp` already provides this)
   (commit `08032d57e15574f2a7ca19fc3f29510c8673d590`) at
   `$LLAMA_CPP_DIR`. The fork is the only place `convert_hf_to_gguf.py`
   understands `--outtype q4_polar`.
@@ -173,7 +175,7 @@ llama-server \
 
 The `--cache-type-k qjl1_256` and `--cache-type-v tbq3_0` flags only
 exist in the milady-ai fork; the manifest pins
-`min_llama_cpp_tag: v0.4.0-milady` so a runtime that doesn't carry the
+`min_llama_cpp_tag: v1.0.0-eliza` so a runtime that doesn't carry the
 fork can refuse the model up front instead of failing at first
 inference call.
 
@@ -236,7 +238,7 @@ TurboQuant calibration produces a real `skip_layers` profile.
 
 | Component                      | Pin |
 |--------------------------------|-----|
-| `elizaOS/llama.cpp` tag      | `v0.4.0-milady` |
+| `elizaOS/llama.cpp` tag      | `v1.0.0-eliza` |
 | `elizaOS/llama.cpp` commit   | `08032d57e15574f2a7ca19fc3f29510c8673d590` |
 | `elizaOS/llama.cpp` remote   | https://github.com/elizaOS/llama.cpp.git |
 | AOSP build script              | `packages/app-core/scripts/aosp/compile-libllama.mjs` |
