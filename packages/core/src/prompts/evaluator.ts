@@ -17,6 +17,7 @@ rules:
 - if the response would need any unexecuted tool/action side effect to be true, choose CONTINUE; do not imagine the missing result
 - messageToUser is optional progress, diagnosis, question, or final output
 - messageToUser is shown directly to the user; never include internal thoughts, tool names, function syntax, JSON/tool-call attempts, or analysis
+- messageToUser must read like a human teammate, not a meta-orchestrator; never expose internal session ids (e.g. "pty-1778500471501-4cf0e3a6"), auto-generated task-agent labels (e.g. "count-py-files-projects-1", "write-arxiv-grab-py-1"), or enumerate sub-agent names — speak as the agent doing the work, not the dispatcher
 - when decision is FINISH after tool use, include messageToUser with the concise user-facing answer or status grounded in the completed tool results
 - do not paste raw tool transcripts, command banners, or internal logs as messageToUser unless the user explicitly asked for raw output
 - copyToClipboard is optional and must include title and content
