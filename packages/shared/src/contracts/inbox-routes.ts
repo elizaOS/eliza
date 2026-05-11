@@ -19,18 +19,25 @@
 
 import z from "zod";
 
+// `\S` requires at least one non-whitespace character — rejects both
+// empty strings and whitespace-only inputs (`"   "`) at the wire, so
+// the post-trim values inside the transform are always non-empty.
 export const PostInboxMessageRequestSchema = z
   .object({
-    roomId: z.string().min(1, "roomId is required"),
-    source: z.string().min(1, "source is required"),
-    text: z.string().min(1, "text is required"),
-    replyToMessageId: z.string().min(1).optional(),
+    roomId: z.string().regex(/\S/, "roomId is required"),
+    source: z.string().regex(/\S/, "source is required"),
+    text: z.string().regex(/\S/, "text is required"),
+    replyToMessageId: z.string().regex(/\S/).optional(),
   })
   .strict()
+  .transform((value) => ({
+    roomId: value.roomId.trim(),
+    source: value.source.trim().toLowerCase(),
+    text: value.text.trim(),
     ...(value.replyToMessageId?.trim()
       ? { replyToMessageId: value.replyToMessageId.trim() }
       : {}),
-  );
+  }));
 
 export type PostInboxMessageRequest = z.infer<
   typeof PostInboxMessageRequestSchema
