@@ -15,7 +15,16 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
+import { slotCacheFileName } from "../cache-bridge";
 import { conversationRegistry } from "../conversation-registry";
 import { dflashLlamaServer } from "../dflash-server";
 import { LocalInferenceEngine } from "../engine";
@@ -50,11 +59,16 @@ afterAll(async () => {
   if (slotDir) fs.rmSync(slotDir, { recursive: true, force: true });
 });
 
+// The conversation registry is a process-lifetime module singleton — reset
+// around every case so handles leaked by other test files don't perturb the
+// `conversationRegistry.size()` assertions here.
+beforeEach(() => {
+  conversationRegistry.__resetForTests();
+});
+
 afterEach(() => {
   state.corruptRestore = false;
-  for (const handle of conversationRegistry.snapshot()) {
-    conversationRegistry.close(handle.conversationId, handle.modelId);
-  }
+  conversationRegistry.__resetForTests();
 });
 
 describe("cache restart corruption: graceful fallback on bad KV files", () => {
@@ -90,8 +104,11 @@ describe("cache restart corruption: graceful fallback on bad KV files", () => {
       maxTokens: 4,
     });
     await engine.closeConversation(handle1);
-    // The save call wrote a file in slotDir.
-    const savedPath = path.join(slotDir, "corrupt-kv-room.bin");
+    // The save call wrote a file in slotDir (TTL-classed name, W6).
+    const savedPath = path.join(
+      slotDir,
+      slotCacheFileName("corrupt-kv-room", "long"),
+    );
     expect(fs.existsSync(savedPath)).toBe(true);
 
     // Now corrupt the file content AND make the mock return 500 on
