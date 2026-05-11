@@ -23,7 +23,7 @@ import type {
   LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { findCatalogModel } from "./catalog";
+import { type Eliza1TierId, findCatalogModel } from "./catalog";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -45,16 +45,29 @@ import {
 } from "./session-pool";
 import { resolveGrammarForParams } from "./structured-output";
 import {
+  buildLocalEmbeddingRoute,
+  type LocalEmbeddingRoute,
+} from "./voice/embedding";
+import {
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
   VoiceStartupError,
 } from "./voice/engine-bridge";
+import type { VoicePipelineEvents } from "./voice/pipeline";
+import { dflashTextRunner } from "./voice/pipeline-impls";
 import type {
   RejectedTokenRange,
   TextToken,
   TranscriptionAudio,
   VerifierStreamEvent,
 } from "./voice/types";
+
+/**
+ * Default DFlash draft window per round for voice turns. Small (≤8) so a
+ * rollback is cheap (AGENTS.md §4 — "small chunk = low latency cost on
+ * rollback"). Overridable per call via `runVoiceTurn({ maxDraftTokens })`.
+ */
+const DEFAULT_VOICE_MAX_DRAFT_TOKENS = 8;
 
 // Re-exported from backend.ts so consumers can keep importing GenerateArgs
 // from engine.ts without churn. backend.ts owns the canonical shape,
@@ -1016,6 +1029,61 @@ export class LocalInferenceEngine {
 
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
+  }
+
+  /**
+   * Run one fused mic→speech voice turn through the overlapped
+   * `VoicePipeline` (`packages/inference/AGENTS.md` §4): ASR → {DFlash
+   * drafts ∥ target verifies} → phrase chunker → OmniVoice → PCM ring
+   * buffer, with rollback-on-reject and barge-in cancel. The drafter and
+   * verifier are wired against the running DFlash llama-server; the ASR is
+   * the fused ABI's ASR. Requires `startVoice()` + `armVoice()` first.
+   *
+   * Resolves with the turn's exit reason (`done` / `token-cap` /
+   * `cancelled`). A missing ASR region in voice mode surfaces as a
+   * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
+   */
+  async runVoiceTurn(
+    audio: TranscriptionAudio,
+    opts: {
+      maxDraftTokens?: number;
+      maxGeneratedTokens?: number;
+      events?: VoicePipelineEvents;
+    } = {},
+  ): Promise<"done" | "token-cap" | "cancelled"> {
+    const bridge = this.requireVoiceBridge("run a voice turn");
+    return bridge.runVoiceTurn(
+      audio,
+      dflashTextRunner(dflashLlamaServer),
+      {
+        maxDraftTokens: opts.maxDraftTokens ?? DEFAULT_VOICE_MAX_DRAFT_TOKENS,
+        maxGeneratedTokens: opts.maxGeneratedTokens,
+      },
+      opts.events,
+    );
+  }
+
+  /**
+   * Build the local-embedding route for an activated Eliza-1 bundle.
+   * On `0_6b` the embedding model is the text backbone with `--pooling
+   * last` (no separate GGUF); on `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
+   * dedicated 1024-dim Matryoshka `embedding/` region is used. See
+   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_6b` tier is
+   * missing its dedicated region — no fallback to pooled text (which would
+   * regress the dimension contract).
+   */
+  localEmbeddingRoute(args: {
+    bundleRoot: string;
+    tierId: Eliza1TierId;
+    textModelPath?: string;
+  }): LocalEmbeddingRoute {
+    const textModelPath =
+      args.textModelPath ?? this.currentModelPath() ?? "";
+    return buildLocalEmbeddingRoute({
+      bundleRoot: args.bundleRoot,
+      tierId: args.tierId,
+      textModelPath,
+    });
   }
 
   /**
