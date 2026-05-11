@@ -94,7 +94,6 @@ unified across both build scripts. Output paths fixed at
 | `linux-x64-vulkan` | `GGML_VULKAN=ON` + Khronos headers | host clang + glslc | GH `ubuntu-24.04` | + SPIR-V `.spv` |
 | `linux-x64-rocm` | `GGML_HIP=ON` | hipcc | self-hosted (gfx1100) | + `libggml-hip.so` |
 | `darwin-arm64-metal` | `GGML_METAL=ON GGML_METAL_EMBED_LIBRARY=ON` | xcrun | self-hosted (M-series) | + `default.metallib` |
-| `darwin-x64-metal` | as above | xcrun | self-hosted (Intel Mac) | as above |
 | `ios-arm64-metal` | `BUILD_SHARED_LIBS=OFF CMAKE_SYSTEM_NAME=iOS CMAKE_OSX_SYSROOT=iphoneos` | xcrun | self-hosted (M-series) | static `lib*.a` + headers + `.metallib` (consumed by `LlamaCpp.xcframework` patch at `packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch`) |
 | `ios-arm64-simulator-metal` | `CMAKE_OSX_SYSROOT=iphonesimulator` | xcrun | self-hosted (M-series) | as above |
 | `android-arm64-cpu` (musl) | `GGML_NATIVE=OFF -DCMAKE_SYSTEM_PROCESSOR=aarch64` via zig 0.13+ | `zig cc --target=aarch64-linux-musl` | GH `ubuntu-24.04` | `libllama.so`, `libggml*.so`, `libeliza-llama-shim.so`, `llama-server` (musl-linked, see `compile-libllama.mjs:14-30`) |

@@ -47,7 +47,6 @@ Status legend (do not soften):
 |---|-----------------------------------------------|------------------------|----------|-------------------------------------------|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1 | Apple Silicon Mac, M4 Max                     | 9b, 27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED**            | [`README.md` lines 7–10, 308–312](README.md); [`bench_M4Max_2026-05-10.md`](bench_M4Max_2026-05-10.md). 5/5 shaders 8/8 PASS via `MTLDevice.newLibraryWithSource` (Wave-3, Darwin 25.2.0).                                                                                     |
 | 2 | Apple Silicon Mac, M1 / M2 / M3               | 9b, 27b    | metal    | `darwin-arm64-metal`                      | **VERIFIED-ADJACENT**   | Same Apple GPU family, Metal 3 / Family-Apple7+, same 32-thread SIMD-group assumption ([`README.md` line 51, 209–212](README.md)). Untested on M1/M2/M3; should retest before flipping `defaultEligible: true` on the desktop manifest for these chips.                        |
-| 3 | Intel/AMD Mac (x64 + AMD/Intel GPU)           | 9b             | metal    | `darwin-x64-metal`                        | **TARGET-ONLY**         | `cmakeFlagsForTarget` now pins `-DCMAKE_OSX_ARCHITECTURES=x86_64` for this triple and the build prints a COMPILE-ONLY warning. Still no Intel-Mac hardware in lab. AMD Radeon Pro / Intel Iris Metal driver behavior on `simd_sum` over 32-lane TG is **not** verified — do not flip past TARGET-ONLY without an Intel-Mac `metal_verify` diff against the M4 Max reference.  |
 | 4 | iOS arm64 (iPhone 14+)                        | 0_6b, 1_7b | metal    | `ios-arm64-metal`                         | **PARTIALLY-RESOLVED** | `run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()` delegates to `build-llama-cpp-dflash.mjs --target ios-arm64-metal`, then `ios-xcframework/build-xcframework.mjs --verify` fills `LlamaCpp.xcframework`. The Metal EMBED path is now patched to ship the same standalone metallib symbols as desktop. A physical-device XCTest entrypoint now exists at `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` and hard-fails when no real iPhone/iPad is attached. **Still missing:** an actual on-device PASS and runtime-ready capability bits for Turbo/Polar graph dispatch. |
 | 5 | iOS arm64 simulator (Apple Silicon Mac)       | 0_6b, 1_7b | metal    | `ios-arm64-simulator-metal`               | **PARTIALLY-RESOLVED** | Same packaging path as row 4 for the simulator slice. Symbol shipping is not enough for publish eligibility; the remaining blocker is the same graph-dispatch/device-smoke gap. |
 | 6 | Android arm64 (Adreno 6xx+ / Mali-G7x+)       | 0_6b, 1_7b | vulkan   | `android-arm64-vulkan`                    | **COMPILE-ONLY**        | Build target exists, NDK toolchain wired. `applyForkPatches` now folds the QJL TUs into `ggml-base` for `android-*` too (the `libggml-base.so` link was failing on undefined `quantize_qjl1_256` without it), so `android-arm64-vulkan` builds clean (all kernels detected) from a Linux host with `~/Android/Sdk/ndk`. Verified compiled 2026-05-11. Vulkan turbo* shaders verified on Mesa lavapipe + Intel ARL only; **no on-device Adreno/Mali graph-dispatch run** — see `android-vulkan-smoke` make target. Android API floor `android-28`. |
@@ -73,7 +72,7 @@ in this document's status vocabulary:
 | Metal (M4 Max) | VERIFIED | VERIFIED | VERIFIED | VERIFIED | VERIFIED |
 | Vulkan (Intel ARL + lavapipe) | VERIFIED | VERIFIED | VERIFIED | NOT RUN on that ICD | NOT RUN on that ICD |
 | Vulkan (Apple M4 Max via MoltenVK) | VERIFIED | VERIFIED | VERIFIED for `qjl.comp` score only; fallback `qjl_get_rows`/`qjl_mul_mv` compile-only | VERIFIED for `polar.comp` matvec only; fallback `polar_get_rows` compile-only |
-| CUDA / ROCm / Metal-Intel-Mac | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY |
+| CUDA / ROCm | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY | TARGET-ONLY |
 
 ---
 
@@ -177,15 +176,6 @@ in this document's status vocabulary:
    **Residual:** a real Snapdragon X build + run; nothing has run through
    either arm64 triple. Owner: device-lab.
 
-5. **Run the `darwin-x64-metal` build on any Intel-Mac** (a single CI
-   pass on a 2019 MBP, or a friend with a Mac mini Intel) and just diff
-   the `metal_verify` numbers against the M4 Max reference. The triple now
-   pins `-DCMAKE_OSX_ARCHITECTURES=x86_64` and the build prints a
-   COMPILE-ONLY warning, but it's still untested — the threadgroup-of-32
-   == SIMD-group identity holds on every Apple GPU but **not** on AMD/Intel
-   Mac GPUs. This is the cheapest way to find out whether `darwin-x64-metal`
-   is actually shippable for `9b`. Owner: device-lab.
-
 ---
 
 ## 4. `verify/` harness extension roadmap (historical; current status)
@@ -247,13 +237,11 @@ dispatch and real device runs.
   repo. Every other "Vulkan works" claim in the codebase derives from
   this single bench.
 
-- `darwin-x64-metal` being entirely untested — easy to forget Intel
-  Macs exist. Apple still sells refurb 2019 MBPs and many users in 2026
-  are still on them. The Metal Family check
-  ([`README.md` line 51](README.md)) implies Apple Family-Apple7+, but
-  Intel Mac dGPUs are AMD Radeon Pro / Intel Iris — different family
-  numbers, different SIMD-group sizes, different `simd_sum` semantics.
-  Cannot assume the M4 Max result transfers.
+- Intel Macs (`darwin-x64-metal`) are not a supported target — Intel Mac
+  dGPUs are AMD Radeon Pro / Intel Iris, a different GPU family from Apple
+  Silicon with different SIMD-group sizes and `simd_sum` semantics, so the
+  M4 Max Metal result does not transfer. Apple Silicon `darwin-arm64-metal`
+  is the only supported macOS target.
 
 - `windows-x64-cpu` is fully cross-compileable from Linux but no Windows
   host has actually run the produced exe. The `patchGgmlBaseForWindowsQjl`

@@ -187,8 +187,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 | Cell | Status | Notes |
 |---|---|---|
 | `darwin-arm64-cpu` | `□ source-only` | The fork's Apple Silicon CPU path inherits upstream defaults; no Milady-specific bring-up yet (NEON sources work, they just haven't been built on a Mac runner). **Hardware-blocked on this host.** |
-| `darwin-arm64-metal` | `⚠ partial` | W3-G shipped a ready-to-run Apple-Silicon build kit with the .metal sources from W1-D vendored under `ggml/src/ggml-metal/milady-kernels/`. Dispatcher wiring (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) is the next step. **Hardware-blocked on this host.** |
-| `darwin-x64-metal` | `✗ blocked` | Apple deprecated x86_64 Metal toolchains in 2024. Not a target; documented for completeness. |
+| `darwin-arm64-metal` | `⚠ partial` | W3-G shipped a ready-to-run Apple-Silicon build kit with the .metal sources from W1-D vendored under `ggml/src/ggml-metal/milady-kernels/`. Dispatcher wiring (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) is the next step. **Hardware-blocked on this host.** Intel Macs are not a supported target — Apple Silicon only. |
 | `ios-arm64-metal` | `□ source-only` | Same `.metal` sources as `darwin-arm64-metal` plus the `LlamaCpp.xcframework` packaging at `packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch`. Needs Apple Silicon runner. |
 | `ios-arm64-simulator-metal` | `□ source-only` | Same as `ios-arm64-metal` with `CMAKE_OSX_SYSROOT=iphonesimulator`. |
 
@@ -421,8 +420,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **`□ source-only`:** `darwin-arm64-cpu`, `ios-arm64-metal`,
   `ios-arm64-simulator-metal`, `windows-x64-cuda`,
   `windows-x64-vulkan`.
-- **`✗ blocked`:** `darwin-x64-metal`, `linux-arm64-vulkan`,
-  `android-arm64-v8a-vulkan`.
+- **`✗ blocked`:** `linux-arm64-vulkan`, `android-arm64-v8a-vulkan`.
 
 ## What this matrix replaces
 
