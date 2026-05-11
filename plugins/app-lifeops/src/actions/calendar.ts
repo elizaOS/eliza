@@ -557,7 +557,24 @@ export const calendarAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
   name: ACTION_NAME,
-  similes: ["CALENDAR", "SCHEDULE", "MEETING"],
+  similes: [
+    "CALENDAR",
+    "SCHEDULE",
+    "MEETING",
+    // PRD action-catalog aliases. These resolve to CALENDAR subactions via
+    // handler argument routing; see packages/docs/action-prd-map.md.
+    "CALENDAR_LIST_UPCOMING",
+    "CALENDAR_FIND_AVAILABILITY",
+    "CALENDAR_CREATE_EVENT",
+    "CALENDAR_CREATE_RECURRING_BLOCK",
+    "CALENDAR_RESCHEDULE_EVENT",
+    "CALENDAR_CANCEL_EVENT",
+    "CALENDAR_PROPOSE_TIMES",
+    "CALENDAR_PROTECT_WINDOW",
+    "CALENDAR_BUNDLE_MEETINGS",
+    "CALENDAR_ADD_PREP_BUFFER",
+    "CALENDAR_ADD_TRAVEL_BUFFER",
+  ],
   tags: [
     "domain:calendar",
     "capability:read",

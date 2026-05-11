@@ -25,7 +25,6 @@ import {
 } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
-import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import { applyAddressedTo } from "../runtime/addressed-to";
 import { filterByContextGate } from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
@@ -53,6 +52,7 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,

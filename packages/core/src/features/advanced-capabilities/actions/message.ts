@@ -3545,7 +3545,25 @@ function refreshDescriptions(action: Action, runtime: IAgentRuntime): void {
 
 export const messageAction: Action = {
 	name: "MESSAGE",
-	similes: ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
+	similes: [
+		"DM",
+		"DIRECT_MESSAGE",
+		"CHAT",
+		"CHANNEL",
+		"ROOM",
+		// PRD action-catalog aliases. These resolve to MESSAGE subactions via
+		// handler argument routing; see packages/docs/action-prd-map.md.
+		"INBOX_LIST_UNREAD",
+		"INBOX_TRIAGE_PRIORITY",
+		"INBOX_SUMMARIZE_CHANNEL",
+		"MESSAGE_DRAFT_REPLY",
+		"MESSAGE_SEND_APPROVAL_REQUEST",
+		"MESSAGE_SEND_CONFIRMED",
+		"MESSAGE_ARCHIVE_OR_DEFER",
+		"MESSAGE_REPAIR_AFTER_MISS",
+		"FOLLOWUP_CREATE_DRAFT",
+		"FOLLOWUP_SEND_CONFIRMED",
+	],
 	tags: [
 		"domain:messages",
 		"capability:read",
