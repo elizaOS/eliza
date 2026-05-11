@@ -1,6 +1,6 @@
 # LifeOps prompt review — index
 
-Generated: 2026-05-11T17:20:54.493Z
+Generated: 2026-05-11T17:22:58.339Z
 
 Every prompt below has its own Markdown review page. Sorted by token count descending so the heaviest prompts surface first.
 

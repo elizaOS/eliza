@@ -172,6 +172,7 @@ function cosine(a, b) {
 
 function computeCollisions(rows, vectors) {
   const pairs = [];
+  const nearMisses = [];
   for (let i = 0; i < rows.length; i++) {
     for (let j = i + 1; j < rows.length; j++) {
       // Skip pairs that share the same action name + only differ by file —
@@ -180,19 +181,18 @@ function computeCollisions(rows, vectors) {
       if (rows[i].actionName === rows[j].actionName) continue;
       const sim = cosine(vectors[i], vectors[j]);
       if (sim >= COLLISION_THRESHOLD) {
-        pairs.push({
-          a: rows[i],
-          b: rows[j],
-          similarity: sim,
-        });
+        pairs.push({ a: rows[i], b: rows[j], similarity: sim });
+      } else if (sim >= NEAR_MISS_FLOOR) {
+        nearMisses.push({ a: rows[i], b: rows[j], similarity: sim });
       }
     }
   }
   pairs.sort((x, y) => y.similarity - x.similarity);
-  return pairs;
+  nearMisses.sort((x, y) => y.similarity - x.similarity);
+  return { pairs, nearMisses: nearMisses.slice(0, NEAR_MISS_LIMIT) };
 }
 
-function renderMarkdown(pairs, rows) {
+function renderMarkdown({ pairs, nearMisses }, rows) {
   const lines = [];
   lines.push("# Action description collisions");
   lines.push("");
@@ -208,64 +208,85 @@ function renderMarkdown(pairs, rows) {
   if (pairs.length === 0) {
     lines.push("_No collisions at or above the configured threshold._");
     lines.push("");
-    return lines.join("\n");
+  } else {
+    let idx = 1;
+    for (const pair of pairs) {
+      lines.push(...renderPairBlock(idx, pair));
+      idx++;
+    }
   }
-  let idx = 1;
-  for (const pair of pairs) {
+  if (nearMisses.length > 0) {
+    lines.push("---");
+    lines.push("");
     lines.push(
-      `## ${idx}. \`${pair.a.actionName}\` × \`${pair.b.actionName}\` — similarity ${pair.similarity.toFixed(3)}`,
+      `## Near-misses (${NEAR_MISS_FLOOR.toFixed(2)} ≤ similarity < ${COLLISION_THRESHOLD.toFixed(2)})`,
     );
     lines.push("");
-    lines.push(`- A: \`${pair.a.actionName}\` — \`${pair.a.filePath}\``);
-    lines.push(`- B: \`${pair.b.actionName}\` — \`${pair.b.filePath}\``);
+    lines.push(
+      `Top ${nearMisses.length} pairs below the threshold. Useful when default threshold leaves no hits — action descriptions in this codebase are short and TF-IDF cosines rarely cross 0.75.`,
+    );
     lines.push("");
-    lines.push("### A.description");
-    lines.push("```");
-    lines.push(pair.a.text);
-    lines.push("```");
+    lines.push("| # | Similarity | A | B |");
+    lines.push("|---:|---:|---|---|");
+    let idx = 1;
+    for (const pair of nearMisses) {
+      lines.push(
+        `| ${idx} | ${pair.similarity.toFixed(3)} | \`${pair.a.actionName}\` (${pair.a.filePath}) | \`${pair.b.actionName}\` (${pair.b.filePath}) |`,
+      );
+      idx++;
+    }
     lines.push("");
-    lines.push("### B.description");
-    lines.push("```");
-    lines.push(pair.b.text);
-    lines.push("```");
-    lines.push("");
-    idx++;
   }
   return lines.join("\n");
+}
+
+function renderPairBlock(idx, pair) {
+  return [
+    `## ${idx}. \`${pair.a.actionName}\` × \`${pair.b.actionName}\` — similarity ${pair.similarity.toFixed(3)}`,
+    "",
+    `- A: \`${pair.a.actionName}\` — \`${pair.a.filePath}\``,
+    `- B: \`${pair.b.actionName}\` — \`${pair.b.filePath}\``,
+    "",
+    "### A.description",
+    "```",
+    pair.a.text,
+    "```",
+    "",
+    "### B.description",
+    "```",
+    pair.b.text,
+    "```",
+    "",
+  ];
 }
 
 function main() {
   const manifest = loadManifest();
   const rows = gatherActionDescriptions(manifest);
   const { vectors } = buildTfIdf(rows);
-  const pairs = computeCollisions(rows, vectors);
+  const result = computeCollisions(rows, vectors);
   if (!existsSync(AUDIT_DIR)) mkdirSync(AUDIT_DIR, { recursive: true });
-  writeFileSync(MD_OUT, renderMarkdown(pairs, rows));
+  writeFileSync(MD_OUT, renderMarkdown(result, rows));
+  const toPairRecord = (p) => ({
+    similarity: Number(p.similarity.toFixed(4)),
+    a: { actionName: p.a.actionName, id: p.a.id, filePath: p.a.filePath },
+    b: { actionName: p.b.actionName, id: p.b.id, filePath: p.b.filePath },
+  });
   const jsonPayload = {
     schemaVersion: "lifeops-action-collisions-v1",
     generatedAt: new Date().toISOString(),
     threshold: COLLISION_THRESHOLD,
+    nearMissFloor: NEAR_MISS_FLOOR,
     population: rows.length,
-    pairs: pairs.map((p) => ({
-      similarity: Number(p.similarity.toFixed(4)),
-      a: {
-        actionName: p.a.actionName,
-        id: p.a.id,
-        filePath: p.a.filePath,
-      },
-      b: {
-        actionName: p.b.actionName,
-        id: p.b.id,
-        filePath: p.b.filePath,
-      },
-    })),
+    pairs: result.pairs.map(toPairRecord),
+    nearMisses: result.nearMisses.map(toPairRecord),
   };
   writeFileSync(JSON_OUT, `${JSON.stringify(jsonPayload, null, 2)}\n`);
   console.log(
     `[lifeops-action-collisions] wrote ${relative(REPO_ROOT, MD_OUT)} and ${relative(REPO_ROOT, JSON_OUT)}`,
   );
   console.log(
-    `[lifeops-action-collisions] population=${rows.length} pairs>=${COLLISION_THRESHOLD}=${pairs.length}`,
+    `[lifeops-action-collisions] population=${rows.length} pairs>=${COLLISION_THRESHOLD}=${result.pairs.length} nearMisses=${result.nearMisses.length}`,
   );
 }
 
