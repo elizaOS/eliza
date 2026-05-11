@@ -50,7 +50,10 @@ function eliza1Manifest(overrides: {
       asr: [{ path: "asr/asr.gguf", sha256: overrides.shaFor("asr") }],
       vision: [],
       dflash: [
-        { path: "dflash/drafter-0_6b.gguf", sha256: overrides.shaFor("drafter") },
+        {
+          path: "dflash/drafter-0_6b.gguf",
+          sha256: overrides.shaFor("drafter"),
+        },
       ],
       cache: [
         {
@@ -91,11 +94,15 @@ function remotePathOf(url: string | URL | Request): string {
   const pathname = new URL(href).pathname;
   const marker = "/resolve/main/";
   const idx = pathname.indexOf(marker);
-  return idx >= 0 ? decodeURIComponent(pathname.slice(idx + marker.length)) : "";
+  return idx >= 0
+    ? decodeURIComponent(pathname.slice(idx + marker.length))
+    : "";
 }
 
 /** A fetch that serves only the manifest; any weight fetch throws. */
-function installManifestOnlyFetch(manifestBody: string): ReturnType<typeof vi.fn> {
+function installManifestOnlyFetch(
+  manifestBody: string,
+): ReturnType<typeof vi.fn> {
   const spy = vi.fn(async (url: string | URL | Request) => {
     if (remotePathOf(url) === "eliza-1.manifest.json") {
       return new Response(manifestBody, {
@@ -410,9 +417,9 @@ describe("local inference downloader status", () => {
       ([u]) => remotePathOf(u) !== "eliza-1.manifest.json",
     );
     expect(weightFetches).toHaveLength(0);
-    expect(
-      (await listInstalledModels()).some((m) => m.id === model.id),
-    ).toBe(false);
+    expect((await listInstalledModels()).some((m) => m.id === model.id)).toBe(
+      false,
+    );
   });
 
   it("aborts before any weight byte when the RAM budget exceeds the device", async () => {
@@ -442,9 +449,9 @@ describe("local inference downloader status", () => {
     await downloader.start(model.id);
     const job = await failed;
     expect(job.error).toMatch(/needs at least 999999 MB RAM/);
-    expect(
-      (await listInstalledModels()).some((m) => m.id === model.id),
-    ).toBe(false);
+    expect((await listInstalledModels()).some((m) => m.id === model.id)).toBe(
+      false,
+    );
   });
 
   it("runs the verify-on-device hook before the bundle fills a default slot", async () => {
@@ -461,7 +468,9 @@ describe("local inference downloader status", () => {
       drafter: "GGUF drafter",
       cache: "voice preset",
     } as const;
-    const manifest = eliza1Manifest({ shaFor: (k) => sha256(bytes[k as keyof typeof bytes]) });
+    const manifest = eliza1Manifest({
+      shaFor: (k) => sha256(bytes[k as keyof typeof bytes]),
+    });
     installFetchFixture(
       new Map([
         ["eliza-1.manifest.json", manifest],
@@ -487,9 +496,9 @@ describe("local inference downloader status", () => {
 
     expect(verifyCalls).toHaveLength(1);
     expect(verifyCalls[0]?.modelId).toBe(model.id);
-    expect(verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_6b-32k.gguf")).toBe(
-      true,
-    );
+    expect(
+      verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_6b-32k.gguf"),
+    ).toBe(true);
     const installed = await listInstalledModels();
     const main = installed.find((m) => m.id === model.id);
     expect(main?.bundleVerifiedAt).toBeTruthy();
@@ -509,7 +518,9 @@ describe("local inference downloader status", () => {
       drafter: "GGUF drafter",
       cache: "voice preset",
     } as const;
-    const manifest = eliza1Manifest({ shaFor: (k) => sha256(bytes[k as keyof typeof bytes]) });
+    const manifest = eliza1Manifest({
+      shaFor: (k) => sha256(bytes[k as keyof typeof bytes]),
+    });
     installFetchFixture(
       new Map([
         ["eliza-1.manifest.json", manifest],
@@ -539,8 +550,8 @@ describe("local inference downloader status", () => {
     await downloader.start(model.id);
     const job = await failed;
     expect(job.error).toMatch(/barge-in cancel test failed/);
-    expect(
-      (await listInstalledModels()).some((m) => m.id === model.id),
-    ).toBe(false);
+    expect((await listInstalledModels()).some((m) => m.id === model.id)).toBe(
+      false,
+    );
   });
 });

@@ -53,7 +53,14 @@ function resolveEntriesDir(): string {
   // the on-device runtime (where there is no `src/` sibling) keep using
   // `distEntries` as before.
   if (!existsSync(distEntries)) {
-    const sourceFallback = resolve(moduleDir, "..", "..", "src", "registry", "entries");
+    const sourceFallback = resolve(
+      moduleDir,
+      "..",
+      "..",
+      "src",
+      "registry",
+      "entries",
+    );
     if (existsSync(sourceFallback)) {
       return sourceFallback;
     }

@@ -15,8 +15,8 @@ import type {
   Eliza1ManifestSchema,
   Eliza1RamBudgetSchema,
   Eliza1TierEnumSchema,
-  Eliza1VoiceSchema,
   Eliza1VerifiedBackendStatusSchema,
+  Eliza1VoiceSchema,
 } from "./schema";
 
 export type Eliza1Tier = z.infer<typeof Eliza1TierEnumSchema>;
