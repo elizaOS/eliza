@@ -1901,19 +1901,30 @@ function overlayIos() {
         dirty = true;
       }
     }
+    // UIBackgroundModes and BGTaskSchedulerPermittedIdentifiers are MERGED,
+    // not force-set: the template Info.plist already declares the modes the
+    // ElizaTasks plugin needs (`processing`, `remote-notification`) and the
+    // BGTaskScheduler identifiers (`ai.eliza.tasks.refresh`,
+    // `ai.eliza.tasks.processing`). The overlay only guarantees the baseline
+    // `fetch` mode is present and that the ElizaTasks identifiers survive a
+    // regeneration where a downstream embedder forgot to copy them.
     const nextPlist = ensurePlistUrlScheme(
       ensurePlistArrayStrings(
         ensurePlistArrayStrings(
-          replaceOrInsertPlistString(
-            plist,
-            "CFBundleDisplayName",
-            "$(ELIZA_DISPLAY_NAME)",
+          ensurePlistArrayStrings(
+            replaceOrInsertPlistString(
+              plist,
+              "CFBundleDisplayName",
+              "$(ELIZA_DISPLAY_NAME)",
+            ),
+            "NSBonjourServices",
+            IOS_BONJOUR_SERVICES,
           ),
-          "NSBonjourServices",
-          IOS_BONJOUR_SERVICES,
+          "UIBackgroundModes",
+          ["fetch", "processing", "remote-notification"],
         ),
-        "UIBackgroundModes",
-        ["fetch"],
+        "BGTaskSchedulerPermittedIdentifiers",
+        ["ai.eliza.tasks.refresh", "ai.eliza.tasks.processing"],
       ),
       APP.urlScheme,
     );
