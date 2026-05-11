@@ -48,3 +48,10 @@ export * from "./services/steward-sidecar/helpers";
 export * from "./services/steward-sidecar.ts";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
+// UI-side compat surface (`selectLatestRunForApp`, `toneFor*`,
+// `Surface*` primitives, `useApp`, etc.) — kept as its own module so
+// server-only barrels don't pull it in, re-exported here so existing
+// `import { useApp } from "@elizaos/app-core"` consumers (notably
+// eliza/plugins/app-babylon) keep resolving. The implementations live
+// in @elizaos/ui; this is just the bridge.
+export * from "./ui-compat";

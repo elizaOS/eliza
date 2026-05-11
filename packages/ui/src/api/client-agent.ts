@@ -19,6 +19,7 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
 import {
   type AppBlockerInstalledApp,
   type AppBlockerPermissionResult,
@@ -1032,6 +1033,15 @@ ElizaClient.prototype.runTerminalCommand = async function (
 };
 
 ElizaClient.prototype.getOnboardingStatus = async function (this: ElizaClient) {
+  // Prefer the typed Electrobun RPC channel — no port shifts, no schema
+  // drift, no extra HTTP round trip. Falls back to HTTP for non-desktop
+  // targets (Capacitor mobile, cloud builds) where the bridge isn't
+  // mounted. Server contract: see eliza/packages/agent/src/api/onboarding-routes.ts.
+  const viaRpc = await invokeDesktopBridgeRequest<{
+    complete: boolean;
+    cloudProvisioned?: boolean;
+  }>({ rpcMethod: "getOnboardingStatus", ipcChannel: "agent" });
+  if (viaRpc) return viaRpc;
   return this.fetch("/api/onboarding/status");
 };
 
@@ -1143,6 +1153,13 @@ ElizaClient.prototype.pair = async function (this: ElizaClient, code) {
 ElizaClient.prototype.getOnboardingOptions = async function (
   this: ElizaClient,
 ) {
+  // Same pattern as getOnboardingStatus: prefer typed RPC, fall back to
+  // HTTP for non-desktop targets.
+  const viaRpc = await invokeDesktopBridgeRequest<OnboardingOptions>({
+    rpcMethod: "getOnboardingOptions",
+    ipcChannel: "agent",
+  });
+  if (viaRpc) return viaRpc;
   return this.fetch("/api/onboarding/options");
 };
 
