@@ -114,7 +114,10 @@ describe("action structure audit guards", () => {
 		const discriminator = (trustAction.parameters ?? []).find(
 			(parameter) => parameter.name === "action",
 		);
-		expect(discriminator, "TRUST must declare an `action` parameter").toBeDefined();
+		expect(
+			discriminator,
+			"TRUST must declare an `action` parameter",
+		).toBeDefined();
 		const schema = discriminator?.schema as { enum?: string[] } | undefined;
 		expect(schema?.enum).toBeDefined();
 		expect(new Set(schema?.enum ?? [])).toEqual(

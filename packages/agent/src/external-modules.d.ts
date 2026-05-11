@@ -1,5 +1,53 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
+declare module "@elizaos/plugin-capacitor-bridge" {
+  import type { Server } from "node:http";
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface MobileDeviceBridgeStatus {
+    enabled: boolean;
+    connected: boolean;
+    devices: Array<{
+      deviceId: string;
+      capabilities: {
+        platform: "ios" | "android" | "web";
+        deviceModel: string;
+        totalRamGb: number;
+        cpuCores: number;
+        gpu: {
+          backend: "metal" | "vulkan" | "gpu-delegate";
+          available: boolean;
+        } | null;
+      };
+      loadedPath: string | null;
+      connectedSince: string;
+    }>;
+    primaryDeviceId: string | null;
+    pendingRequests: number;
+    modelPath: string | null;
+  }
+
+  export const mobileDeviceBridge: unknown;
+  export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus;
+  export function loadMobileDeviceBridgeModel(
+    modelPath: string,
+    modelId?: string,
+  ): Promise<void>;
+  export function unloadMobileDeviceBridgeModel(): Promise<void>;
+  export function attachMobileDeviceBridgeToServer(
+    server: Server,
+  ): Promise<void>;
+  export function ensureMobileDeviceBridgeInferenceHandlers(
+    runtime: AgentRuntime,
+  ): Promise<boolean>;
+}
+declare module "qrcode-terminal" {
+  export function generate(
+    input: string,
+    options?: { small?: boolean },
+    callback?: (qrcode: string) => void,
+  ): void;
+}
 declare module "telegram" {
   export class TelegramClient {
     constructor(

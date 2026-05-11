@@ -1,20 +1,31 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
-
-import { bookTravelAction } from "./book-travel.js";
-import { healthAction } from "./health.js";
-import { lifeAction } from "./life.js";
-import { moneyAction } from "./money.js";
-import { scheduleAction } from "./schedule.js";
-import { schedulingNegotiationAction } from "./scheduling-negotiation.js";
-import { screenTimeAction } from "./screen-time.js";
 import { createApprovalQueue } from "../lifeops/approval-queue.js";
+import { bookTravelAction } from "./book-travel.js";
+import {
+  HEALTH_PARAMETERS,
+  HEALTH_SIMILES,
+  runHealthHandler,
+} from "./health.js";
+import { schedulingAction as schedulingNegotiationAction } from "./lib/scheduling-handler.js";
+import { lifeAction } from "./life.js";
+import {
+  MONEY_LEGACY_SIMILES,
+  MONEY_PARAMETERS,
+  runMoneyHandler,
+} from "./money.js";
+import { runScheduleHandler } from "./schedule.js";
+import {
+  runScreenTimeHandler,
+  SCREEN_TIME_PARAMETERS,
+  SCREEN_TIME_SIMILES,
+} from "./screen-time.js";
 
 const OWNER_LIFE_ACTIONS = [
   "create",
@@ -113,7 +124,10 @@ function normalizeOwnerActionFromAllowed<TAction extends string>(
     readStringParam(options, "op") ??
     readStringParam(options, "operation");
   if (!raw) return undefined;
-  const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
   return allowed.includes(normalized as TAction)
     ? (normalized as TAction)
     : undefined;
@@ -157,13 +171,12 @@ function makeOwnerLifeAction(args: {
     suppressPostActionContinuation: lifeAction.suppressPostActionContinuation,
     validate: lifeAction.validate,
     parameters: [
-	    {
-	      name: "action",
-	      description:
-	          `Owner item operation: ${allowedActions.join(", ")}.`,
-	      required: false,
-	      schema: { type: "string" as const, enum: [...allowedActions] },
-	    },
+      {
+        name: "action",
+        description: `Owner item operation: ${allowedActions.join(", ")}.`,
+        required: false,
+        schema: { type: "string" as const, enum: [...allowedActions] },
+      },
       {
         name: "kind",
         description:
@@ -185,7 +198,8 @@ function makeOwnerLifeAction(args: {
       },
       {
         name: "target",
-        description: "Existing item id or title for update/delete/complete/skip/snooze/review.",
+        description:
+          "Existing item id or title for update/delete/complete/skip/snooze/review.",
         required: false,
         schema: { type: "string" as const },
       },
@@ -197,14 +211,15 @@ function makeOwnerLifeAction(args: {
       },
       {
         name: "details",
-        description: "Structured schedule, cadence, notes, or other extracted details.",
+        description:
+          "Structured schedule, cadence, notes, or other extracted details.",
         required: false,
         schema: { type: "object" as const, additionalProperties: true },
       },
     ],
-	    handler: async (runtime, message, state, options, callback) => {
-	      const params = readParameters(options);
-	      const action = normalizeOwnerActionFromAllowed(options, allowedActions);
+    handler: async (runtime, message, state, options, callback) => {
+      const params = readParameters(options);
+      const action = normalizeOwnerActionFromAllowed(options, allowedActions);
       const merged = {
         ...params,
         ...(params.kind ? {} : { kind: args.defaultKind }),
@@ -225,7 +240,13 @@ function makeOwnerLifeAction(args: {
 
 export const ownerRemindersAction = makeOwnerLifeAction({
   name: "OWNER_REMINDERS",
-  similes: ["REMINDER", "REMINDERS", "SET_REMINDER", "REMIND_ME", "REMIND_ME_TO"],
+  similes: [
+    "REMINDER",
+    "REMINDERS",
+    "SET_REMINDER",
+    "REMIND_ME",
+    "REMIND_ME_TO",
+  ],
   description:
     "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
   descriptionCompressed:
@@ -277,14 +298,19 @@ const OWNER_ROUTINE_ACTIONS = [
 
 type OwnerRoutineAction = (typeof OWNER_ROUTINE_ACTIONS)[number];
 
-function normalizeOwnerRoutineAction(options: unknown): OwnerRoutineAction | undefined {
+function normalizeOwnerRoutineAction(
+  options: unknown,
+): OwnerRoutineAction | undefined {
   const raw =
     readStringParam(options, "action") ??
     readStringParam(options, "subaction") ??
     readStringParam(options, "op") ??
     readStringParam(options, "operation");
   if (!raw) return undefined;
-  const normalized = raw.trim().toLowerCase().replace(/[-\s]+/g, "_");
+  const normalized = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
   return (OWNER_ROUTINE_ACTIONS as readonly string[]).includes(normalized)
     ? (normalized as OwnerRoutineAction)
     : undefined;
@@ -293,7 +319,14 @@ function normalizeOwnerRoutineAction(options: unknown): OwnerRoutineAction | und
 export const ownerRoutinesAction: Action = {
   ...makeOwnerLifeAction({
     name: "OWNER_ROUTINES",
-    similes: ["HABIT", "HABITS", "ROUTINE", "ROUTINES", "DAILY_TASK", "WEEKLY_TASK"],
+    similes: [
+      "HABIT",
+      "HABITS",
+      "ROUTINE",
+      "ROUTINES",
+      "DAILY_TASK",
+      "WEEKLY_TASK",
+    ],
     description:
       "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
     descriptionCompressed:
@@ -308,13 +341,15 @@ export const ownerRoutinesAction: Action = {
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_ROUTINE_ACTIONS] },
     },
-    ...(makeOwnerLifeAction({
-      name: "OWNER_ROUTINES",
-      similes: [],
-      description: "",
-      descriptionCompressed: "",
-      defaultKind: "definition",
-    }).parameters ?? []).filter((parameter) => parameter.name !== "action"),
+    ...(
+      makeOwnerLifeAction({
+        name: "OWNER_ROUTINES",
+        similes: [],
+        description: "",
+        descriptionCompressed: "",
+        defaultKind: "definition",
+      }).parameters ?? []
+    ).filter((parameter) => parameter.name !== "action"),
   ],
   handler: async (runtime, message, state, options, callback) => {
     const action = normalizeOwnerRoutineAction(options);
@@ -323,8 +358,7 @@ export const ownerRoutinesAction: Action = {
         ...readParameters(options),
         subaction: action === "schedule_inspect" ? "inspect" : "summary",
       };
-      return delegateHandler(
-        scheduleAction,
+      return runScheduleHandler(
         runtime,
         message,
         state,
@@ -351,9 +385,8 @@ export const ownerRoutinesAction: Action = {
 };
 
 export const ownerHealthAction: Action = {
-  ...healthAction,
   name: "OWNER_HEALTH",
-  similes: ["HEALTH", "FITNESS", "WELLNESS", ...(healthAction.similes ?? [])],
+  similes: ["HEALTH", "FITNESS", "WELLNESS", ...HEALTH_SIMILES],
   description:
     "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
   descriptionCompressed:
@@ -363,17 +396,15 @@ export const ownerHealthAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Owner health read action: today, trend, by_metric, or status.",
+      description:
+        "Owner health read action: today, trend, by_metric, or status.",
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_HEALTH_ACTIONS] },
     },
-    ...(healthAction.parameters ?? []).filter(
-      (parameter) => parameter.name !== "subaction",
-    ),
+    ...HEALTH_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
   handler: (runtime, message, state, options, callback) =>
-    delegateHandler(
-      healthAction,
+    runHealthHandler(
       runtime,
       message,
       state,
@@ -383,9 +414,13 @@ export const ownerHealthAction: Action = {
 };
 
 export const ownerScreenTimeAction: Action = {
-  ...screenTimeAction,
   name: "OWNER_SCREENTIME",
-  similes: ["SCREENTIME", "SCREEN_TIME", "ACTIVITY_REPORT", ...(screenTimeAction.similes ?? [])],
+  similes: [
+    "SCREENTIME",
+    "SCREEN_TIME",
+    "ACTIVITY_REPORT",
+    ...SCREEN_TIME_SIMILES,
+  ],
   description:
     "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
   descriptionCompressed:
@@ -397,13 +432,12 @@ export const ownerScreenTimeAction: Action = {
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_SCREENTIME_ACTIONS] },
     },
-    ...(screenTimeAction.parameters ?? []).filter(
+    ...SCREEN_TIME_PARAMETERS.filter(
       (parameter) => parameter.name !== "subaction",
     ),
   ],
   handler: (runtime, message, state, options, callback) =>
-    delegateHandler(
-      screenTimeAction,
+    runScreenTimeHandler(
       runtime,
       message,
       state,
@@ -413,9 +447,8 @@ export const ownerScreenTimeAction: Action = {
 };
 
 export const ownerFinancesAction: Action = {
-  ...moneyAction,
   name: "OWNER_FINANCES",
-  similes: ["MONEY", "FINANCES", "SUBSCRIPTIONS", ...(moneyAction.similes ?? [])],
+  similes: ["MONEY", "FINANCES", "SUBSCRIPTIONS", ...MONEY_LEGACY_SIMILES],
   description:
     "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
   descriptionCompressed:
@@ -427,19 +460,10 @@ export const ownerFinancesAction: Action = {
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_FINANCE_ACTIONS] },
     },
-    ...(moneyAction.parameters ?? []).filter(
-      (parameter) => parameter.name !== "subaction",
-    ),
+    ...MONEY_PARAMETERS.filter((parameter) => parameter.name !== "subaction"),
   ],
-  handler: (runtime, message, state, options, callback) =>
-    delegateHandler(
-      moneyAction,
-      runtime,
-      message,
-      state,
-      mirrorActionToSubaction(options),
-      callback,
-    ),
+  handler: (runtime, message, state, options, _callback) =>
+    runMoneyHandler(runtime, message, state, mirrorActionToSubaction(options)),
 };
 
 const PERSONAL_ASSISTANT_ACTIONS = [
@@ -556,13 +580,23 @@ export const personalAssistantAction: Action = {
       name: "action",
       description: "Assistant workflow to run.",
       required: true,
-      schema: { type: "string" as const, enum: [...PERSONAL_ASSISTANT_ACTIONS] },
+      schema: {
+        type: "string" as const,
+        enum: [...PERSONAL_ASSISTANT_ACTIONS],
+      },
     },
   ],
   handler: async (runtime, message, state, options, callback) => {
     const action = readStringParam(options, "action")?.trim().toLowerCase();
     if (action === "book_travel") {
-      return delegateHandler(bookTravelAction, runtime, message, state, options, callback);
+      return delegateHandler(
+        bookTravelAction,
+        runtime,
+        message,
+        state,
+        options,
+        callback,
+      );
     }
     if (action === "scheduling") {
       return delegateHandler(

@@ -1,7 +1,7 @@
 import { Button } from "@elizaos/ui";
-import { useState } from "react";
 import type {
   CatalogModel,
+  DownloadJob,
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
@@ -11,75 +11,66 @@ import { displayModelName, findInstalled } from "./hub-utils";
 interface FirstRunOfferProps {
   catalog: CatalogModel[];
   installed: InstalledModel[];
+  downloads: DownloadJob[];
   hardware: HardwareProbe;
   onDownload: (modelId: string) => void;
   busy: boolean;
 }
 
-const DISMISS_STORAGE_KEY = "eliza.localInference.firstRunOfferDismissed";
-
 export function FirstRunOffer({
   catalog,
   installed,
+  downloads,
   hardware,
   onDownload,
   busy,
 }: FirstRunOfferProps) {
-  const [dismissed, setDismissed] = useState(
-    () =>
-      typeof window !== "undefined" &&
-      window.localStorage?.getItem(DISMISS_STORAGE_KEY) === "1",
-  );
-
   const elizaOwned = installed.filter((m) => m.source === "eliza-download");
-  if (elizaOwned.length > 0 || dismissed) return null;
+  const activeDownloads = downloads.filter(
+    (job) => job.state === "queued" || job.state === "downloading",
+  );
+  if (elizaOwned.length > 0 && activeDownloads.length === 0) return null;
 
   const recommended = pickRecommended(catalog, installed, hardware);
-  if (!recommended) return null;
-
-  const handleDismiss = () => {
-    setDismissed(true);
-    try {
-      window.localStorage?.setItem(DISMISS_STORAGE_KEY, "1");
-    } catch {
-      // Session-only dismissal is enough when storage is unavailable.
-    }
-  };
+  const defaultDownload =
+    recommended &&
+    activeDownloads.find((job) => job.modelId === recommended.id);
+  const anyActiveDownload = activeDownloads[0] ?? null;
+  const title =
+    elizaOwned.length === 0
+      ? "Local model required"
+      : "Local model download in progress";
+  const detail =
+    elizaOwned.length === 0
+      ? recommended
+        ? `Download the default local model (${displayModelName(recommended)}) to run chat on this device.`
+        : "No local chat model is available on this device."
+      : anyActiveDownload
+        ? `A local model download is still running (${anyActiveDownload.modelId}).`
+        : "A local model download is still running.";
 
   return (
     <div
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-primary/45 bg-primary/10 px-2.5 py-2"
-      title={recommended.blurb}
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-warn/40 bg-warn/10 px-2.5 py-2"
+      role="alert"
+      title={recommended?.blurb}
     >
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="rounded-full border border-primary/40 px-1.5 py-0.5 text-[10px] uppercase leading-none text-primary">
-          Recommended
-        </span>
-        <span className="truncate text-sm font-medium">
-          {displayModelName(recommended)}
-        </span>
-        <span className="text-muted text-xs">
-          {recommended.params} · {recommended.sizeGb.toFixed(1)} GB
-        </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-semibold text-txt">{title}</div>
+        <div className="text-xs text-muted">{detail}</div>
       </div>
-      <div className="flex gap-1.5">
+      {recommended ? (
         <Button
           size="sm"
           className="h-7 rounded-md px-2 text-xs"
           onClick={() => onDownload(recommended.id)}
-          disabled={busy}
+          disabled={busy || Boolean(defaultDownload)}
         >
-          Download {displayModelName(recommended)}
+          {defaultDownload
+            ? "Downloading default model"
+            : "Download default model"}
         </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 rounded-md px-2 text-xs"
-          onClick={handleDismiss}
-        >
-          Not now
-        </Button>
-      </div>
+      ) : null}
     </div>
   );
 }

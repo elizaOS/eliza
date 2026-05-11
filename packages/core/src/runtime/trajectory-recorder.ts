@@ -839,9 +839,7 @@ export interface ToolStageIOCapture {
  * `undefined` after encoding are omitted so the on-disk schema stays
  * minimal for steps that have nothing to capture.
  */
-export function captureToolStageIO(
-	args: ToolStageIOInput,
-): ToolStageIOCapture {
+export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
 	const cap = args.capBytes ?? resolveTrajectoryFieldCapBytes();
 	const out: ToolStageIOCapture = {};
 	const markers: RecordedTruncationMarker[] = [];

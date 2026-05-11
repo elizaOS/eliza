@@ -34,6 +34,10 @@ export interface MobileSafeRuntimeFeatureProbe {
   platform?: MobileSafeRuntimePlatform;
   androidAvfAvailable?: boolean;
   androidMicrodroidAvailable?: boolean;
+  androidIsolatedProcessAvailable?: boolean;
+  iosJavaScriptCoreAvailable?: boolean;
+  iosQuickJsAvailable?: boolean;
+  allowInProcessSafeJsApplet?: boolean;
 }
 
 export interface MobileSafeRuntimeFeatures {
@@ -270,6 +274,24 @@ export function detectMobileSafeRuntimeFeatures(
     readBooleanGlobal(globals.AndroidVirtualization, "available") === true ||
     readBooleanGlobal(globals.AndroidVirtualization, "microdroidAvailable") ===
       true;
+  const androidIsolatedProcessAvailable =
+    probe.androidIsolatedProcessAvailable === true ||
+    env.ELIZA_ANDROID_ISOLATED_PROCESS_AVAILABLE === "1" ||
+    readBooleanGlobal(globals.AndroidIsolatedProcess, "available") === true ||
+    readBooleanGlobal(globals.MobileSafeRuntimeService, "available") === true;
+  const iosJavaScriptCoreAvailable =
+    probe.iosJavaScriptCoreAvailable === true ||
+    env.ELIZA_IOS_JAVASCRIPTCORE_AVAILABLE === "1" ||
+    readBooleanGlobal(globals.CapacitorJsc, "available") === true ||
+    readBooleanGlobal(globals.JavaScriptCoreBoundary, "available") === true;
+  const iosQuickJsAvailable =
+    probe.iosQuickJsAvailable === true ||
+    env.ELIZA_IOS_QUICKJS_AVAILABLE === "1" ||
+    readBooleanGlobal(globals.CapacitorQuickJs, "available") === true ||
+    readBooleanGlobal(globals.QuickJsBoundary, "available") === true;
+  const safeJsAppletAllowed =
+    probe.allowInProcessSafeJsApplet === true ||
+    env.ELIZA_MOBILE_SAFE_JS_APPLET_DEV === "1";
 
   const unavailableProviders: Partial<
     Record<MobileSafeRuntimeProviderKind, string>
@@ -277,7 +299,18 @@ export function detectMobileSafeRuntimeFeatures(
   const availableProviders: MobileSafeRuntimeProviderKind[] = [];
 
   if (platform === "ios") {
-    availableProviders.push("javascriptcore", "quickjs");
+    if (iosJavaScriptCoreAvailable) {
+      availableProviders.push("javascriptcore");
+    } else {
+      unavailableProviders.javascriptcore =
+        "iOS JavaScriptCore boundary is not attached in this app shell";
+    }
+    if (iosQuickJsAvailable) {
+      availableProviders.push("quickjs");
+    } else {
+      unavailableProviders.quickjs =
+        "iOS QuickJS boundary is not attached in this app shell";
+    }
   } else {
     unavailableProviders.javascriptcore =
       "JavaScriptCore host boundary is only available in the iOS app shell";
@@ -292,7 +325,12 @@ export function detectMobileSafeRuntimeFeatures(
       unavailableProviders["android-avf-microdroid"] =
         "Android AVF/Microdroid boundary is not available on this device/build";
     }
-    availableProviders.push("android-isolated-process");
+    if (androidIsolatedProcessAvailable) {
+      availableProviders.push("android-isolated-process");
+    } else {
+      unavailableProviders["android-isolated-process"] =
+        "Android isolated-process boundary is not attached in this app shell";
+    }
   } else {
     unavailableProviders["android-avf-microdroid"] =
       "Android AVF/Microdroid boundary is only available in supported Android app shells";
@@ -307,11 +345,12 @@ export function detectMobileSafeRuntimeFeatures(
       "WebAssembly is not exposed by this host runtime";
   }
 
-  if (typeof globals.Function === "function") {
+  if (safeJsAppletAllowed && typeof globals.Function === "function") {
     availableProviders.push("safe-js-applet");
   } else {
-    unavailableProviders["safe-js-applet"] =
-      "This host runtime does not expose JavaScript evaluation for applet fallback";
+    unavailableProviders["safe-js-applet"] = safeJsAppletAllowed
+      ? "This host runtime does not expose JavaScript evaluation for applet fallback"
+      : "In-process safe-js applet fallback is dev-only and is not a hard sandbox";
   }
 
   return {
@@ -343,14 +382,7 @@ export function createAndroidAvfMicrodroidProvider(
     async execute(input) {
       const response = await boundary.request({
         id: cryptoRequestId(),
-        capability:
-          input.mode === "shell"
-            ? "shell.exec"
-            : input.mode === "compile-app"
-              ? "app.compile"
-              : input.mode === "run-app"
-                ? "app.run"
-                : "app.load",
+        capability: capabilityForExecuteMode(input.mode),
         operation: "execute",
         args: {
           code: input.code,
@@ -445,9 +477,9 @@ export function createIosQuickJsProvider(
   };
 }
 
-export function createInProcessSafeJsAppletProvider(options: {
-  now?: () => number;
-} = {}): MobileSafeRuntimeProvider {
+export function createInProcessSafeJsAppletProvider(
+  options: { now?: () => number } = {},
+): MobileSafeRuntimeProvider {
   return {
     kind: "safe-js-applet",
     displayName: "In-process safe JS applet",
@@ -603,13 +635,16 @@ export async function compileMobileSafeApplet(
     options.manifestPath ?? "/app/mobile-safe-applet.json",
   );
   const manifest = normalizeMobileSafeAppletManifest(
-    options.manifest ?? (await readMobileSafeAppletManifest(options.files, manifestPath)),
+    options.manifest ??
+      (await readMobileSafeAppletManifest(options.files, manifestPath)),
   );
   const appFiles = normalizeMobileSafeAppletFiles(manifest, appRoot);
   const modules: Array<{ path: string; source: string }> = [];
 
   for (const filePath of appFiles) {
-    const source = new TextDecoder().decode(await options.files.readFile(filePath));
+    const source = new TextDecoder().decode(
+      await options.files.readFile(filePath),
+    );
     const compiledSource =
       manifest.moduleFormat === "typescript" || filePath.endsWith(".ts")
         ? stripMobileSafeTypeScript(source)
@@ -641,7 +676,11 @@ export async function compileMobileSafeApplet(
 
   await options.files.mkdir(parentPath(bundlePath));
   await options.files.writeFile(bundlePath, new TextEncoder().encode(bundle));
-  await writeMobileSafeAppletManifest(options.files, compiledManifest, manifestPath);
+  await writeMobileSafeAppletManifest(
+    options.files,
+    compiledManifest,
+    manifestPath,
+  );
 
   return {
     manifestPath,
@@ -659,13 +698,18 @@ export async function loadMobileSafeApplet(options: {
   const manifestPath = normalizeMobileSafePath(
     options.manifestPath ?? "/app/mobile-safe-applet.json",
   );
-  const manifest = await readMobileSafeAppletManifest(options.files, manifestPath);
+  const manifest = await readMobileSafeAppletManifest(
+    options.files,
+    manifestPath,
+  );
   const bundlePath = manifest.compiled?.bundlePath
     ? normalizeMobileSafePath(manifest.compiled.bundlePath)
     : normalizeMobileSafePath(
         `${parentPath(manifestPath)}/.mobile-safe/${manifest.id}.bundle.js`,
       );
-  const bundle = new TextDecoder().decode(await options.files.readFile(bundlePath));
+  const bundle = new TextDecoder().decode(
+    await options.files.readFile(bundlePath),
+  );
   assertMobileSafeAppletSource(bundle, bundlePath);
   return { manifestPath, bundlePath, manifest, bundle };
 }
@@ -704,7 +748,7 @@ export function createAndroidIsolatedProcessProvider(
     async execute(input) {
       const response = await boundary.request({
         id: cryptoRequestId(),
-        capability: "model.inference",
+        capability: capabilityForExecuteMode(input.mode),
         operation: "execute",
         args: {
           code: input.code,
@@ -793,13 +837,18 @@ export function createMobileSafeVirtualFileSystemBroker(
         return { id: request.id, ok: true, result: await files.list(path) };
       case "fs.snapshot":
         if (!files.createSnapshot) {
-          return unsupportedCapability(request, "VFS snapshots are unavailable");
+          return unsupportedCapability(
+            request,
+            "VFS snapshots are unavailable",
+          );
         }
         return {
           id: request.id,
           ok: true,
           result: await files.createSnapshot(
-            typeof request.args.note === "string" ? request.args.note : undefined,
+            typeof request.args.note === "string"
+              ? request.args.note
+              : undefined,
           ),
         };
       case "fs.diff":
@@ -943,7 +992,9 @@ export function createMobileSafeVirtualFileSystemAdapter(
             ...(entry.before
               ? { before: toMobileSafeFileInfo(entry.before) }
               : {}),
-            ...(entry.after ? { after: toMobileSafeFileInfo(entry.after) } : {}),
+            ...(entry.after
+              ? { after: toMobileSafeFileInfo(entry.after) }
+              : {}),
           })) ?? []
       : undefined,
     rollback: vfs.rollback
@@ -987,7 +1038,9 @@ export function createMobileSafeVirtualFileSystemAdapter(
 
 export function selectMobileSafeRuntimeProvider(options: {
   features: MobileSafeRuntimeFeatures;
-  providers: Partial<Record<MobileSafeRuntimeProviderKind, MobileSafeRuntimeProvider>>;
+  providers: Partial<
+    Record<MobileSafeRuntimeProviderKind, MobileSafeRuntimeProvider>
+  >;
   preferredOrder?: MobileSafeRuntimeProviderKind[];
 }): MobileSafeRuntimeProvider {
   const order =
@@ -1029,6 +1082,8 @@ export function normalizeMobileSafePath(path: string): string {
 export class MemoryMobileSafeVirtualFileSystem
   implements MobileSafeVirtualFileSystem
 {
+  readonly quotaBytes?: number;
+  readonly maxFileBytes?: number;
   private readonly files = new Map<
     string,
     { data: Uint8Array; updatedAt: number }
@@ -1044,6 +1099,11 @@ export class MemoryMobileSafeVirtualFileSystem
   >();
   private snapshotCounter = 0;
 
+  constructor(options: { quotaBytes?: number; maxFileBytes?: number } = {}) {
+    this.quotaBytes = options.quotaBytes;
+    this.maxFileBytes = options.maxFileBytes;
+  }
+
   async readFile(path: string): Promise<Uint8Array> {
     const entry = this.files.get(normalizeMobileSafePath(path));
     if (!entry) throw new Error(`File not found: ${path}`);
@@ -1052,7 +1112,28 @@ export class MemoryMobileSafeVirtualFileSystem
 
   async writeFile(path: string, data: Uint8Array): Promise<void> {
     const normalized = normalizeMobileSafePath(path);
-    this.directories.add(parentPath(normalized));
+    if (
+      typeof this.maxFileBytes === "number" &&
+      data.byteLength > this.maxFileBytes
+    ) {
+      throw new Error(
+        `Mobile-safe VFS file exceeds max file size of ${this.maxFileBytes} bytes`,
+      );
+    }
+
+    const existing = this.files.get(normalized)?.data.byteLength ?? 0;
+    const current = await this.usedBytes();
+    const nextUsedBytes = current - existing + data.byteLength;
+    if (
+      typeof this.quotaBytes === "number" &&
+      nextUsedBytes > this.quotaBytes
+    ) {
+      throw new Error(
+        `Mobile-safe VFS quota exceeded: ${nextUsedBytes}/${this.quotaBytes} bytes`,
+      );
+    }
+
+    this.ensureDirectoryPath(parentPath(normalized));
     this.files.set(normalized, {
       data: new Uint8Array(data),
       updatedAt: Date.now(),
@@ -1061,12 +1142,28 @@ export class MemoryMobileSafeVirtualFileSystem
 
   async delete(path: string): Promise<void> {
     const normalized = normalizeMobileSafePath(path);
+    if (normalized === "/") {
+      this.files.clear();
+      this.directories.clear();
+      this.directories.add("/");
+      return;
+    }
     this.files.delete(normalized);
+    for (const filePath of [...this.files.keys()]) {
+      if (filePath.startsWith(`${normalized}/`)) {
+        this.files.delete(filePath);
+      }
+    }
     this.directories.delete(normalized);
+    for (const directory of [...this.directories]) {
+      if (directory.startsWith(`${normalized}/`)) {
+        this.directories.delete(directory);
+      }
+    }
   }
 
   async mkdir(path: string): Promise<void> {
-    this.directories.add(normalizeMobileSafePath(path));
+    this.ensureDirectoryPath(normalizeMobileSafePath(path));
   }
 
   async stat(path: string): Promise<MobileSafeRuntimeFileInfo | null> {
@@ -1158,14 +1255,38 @@ export class MemoryMobileSafeVirtualFileSystem
   }
 
   async quota(): Promise<MobileSafeRuntimeQuota> {
+    return {
+      usedBytes: await this.usedBytes(),
+      fileCount: this.files.size,
+      ...(typeof this.quotaBytes === "number"
+        ? { quotaBytes: this.quotaBytes }
+        : {}),
+      ...(typeof this.maxFileBytes === "number"
+        ? { maxFileBytes: this.maxFileBytes }
+        : {}),
+    };
+  }
+
+  private async usedBytes(): Promise<number> {
     let usedBytes = 0;
     for (const entry of this.files.values()) {
       usedBytes += entry.data.byteLength;
     }
-    return {
-      usedBytes,
-      fileCount: this.files.size,
-    };
+    return usedBytes;
+  }
+
+  private ensureDirectoryPath(path: string): void {
+    const normalized = normalizeMobileSafePath(path);
+    if (normalized === "/") {
+      this.directories.add("/");
+      return;
+    }
+    const parts = normalized.slice(1).split("/");
+    let current = "";
+    for (const part of parts) {
+      current = `${current}/${part}`;
+      this.directories.add(current);
+    }
   }
 }
 
@@ -1575,12 +1696,16 @@ function displayNameForProvider(kind: MobileSafeRuntimeProviderKind): string {
       return "Android AVF/Microdroid";
     case "android-isolated-process":
       return "Android isolated process";
+    case "safe-js-applet":
+      return "In-process safe JS applet";
     case "javascriptcore":
       return "iOS JavaScriptCore";
     case "quickjs":
       return "iOS QuickJS";
     case "wasm":
       return "WebAssembly";
+    default:
+      return kind;
   }
 }
 
@@ -1589,13 +1714,38 @@ function defaultProviderOrderForPlatform(
 ): MobileSafeRuntimeProviderKind[] {
   switch (platform) {
     case "android":
-      return ["android-avf-microdroid", "android-isolated-process", "wasm"];
+      return [
+        "android-avf-microdroid",
+        "android-isolated-process",
+        "safe-js-applet",
+        "wasm",
+      ];
     case "ios":
-      return ["quickjs", "javascriptcore", "wasm"];
+      return ["quickjs", "javascriptcore", "safe-js-applet", "wasm"];
     case "web":
-      return ["wasm"];
+      return ["safe-js-applet", "wasm"];
     default:
-      return ["wasm"];
+      return ["safe-js-applet", "wasm"];
+  }
+}
+
+function capabilityForExecuteMode(
+  mode: MobileSafeRuntimeExecuteInput["mode"],
+): MobileSafeRuntimeCapability {
+  switch (mode) {
+    case "shell":
+      return "shell.exec";
+    case "compile-app":
+      return "app.compile";
+    case "load-app":
+      return "app.load";
+    case "run-app":
+      return "app.run";
+    case "evaluate":
+    case undefined:
+      return "model.inference";
+    default:
+      return mode;
   }
 }
 

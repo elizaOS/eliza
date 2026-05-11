@@ -2,7 +2,6 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
-import { runWithActionRoutingContext } from "./action-routing-context";
 import type {
 	Action,
 	ActionParameters,
@@ -22,6 +21,7 @@ import {
 	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
 	readActionRolePolicy,
 } from "./action-role-policy";
+import { runWithActionRoutingContext } from "./action-routing-context";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";

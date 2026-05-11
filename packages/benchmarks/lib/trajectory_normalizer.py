@@ -122,7 +122,7 @@ def normalize_eliza_jsonl(
                 benchmark_id=benchmark_id,
                 task_id=task_id,
                 step_index=step,
-                timestamp_ms=row.get("timestamp_ms"),
+                timestamp_ms=row.get("timestamp_ms") or row.get("timestamp"),
                 model=row.get("model"),
                 scenarioId=row.get("scenarioId"),
                 batchId=row.get("batchId"),

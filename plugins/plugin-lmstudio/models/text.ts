@@ -396,8 +396,7 @@ function normalizeNativeMessage(message: unknown): ModelMessage {
   if (raw.role === "assistant") {
     return {
       role: "assistant",
-      content:
-        typeof raw.content === "string" || Array.isArray(raw.content) ? raw.content : "",
+      content: typeof raw.content === "string" || Array.isArray(raw.content) ? raw.content : "",
     } as ModelMessage;
   }
   if (raw.role === "tool") {

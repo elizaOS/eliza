@@ -77,14 +77,15 @@ if(MILADY_FUSE_OMNIVOICE)
     target_include_directories(omnivoice-core PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
+        \${CMAKE_CURRENT_SOURCE_DIR}/tools/mtmd
+        \${CMAKE_CURRENT_SOURCE_DIR}/include
         \${CMAKE_CURRENT_BINARY_DIR})
     # Share llama.cpp's ggml. NEVER add a second add_subdirectory(ggml)
     # from the omnivoice tree — see the README's reconciliation
     # strategy for why.
     target_include_directories(omnivoice-core SYSTEM PUBLIC
-        \${CMAKE_CURRENT_SOURCE_DIR}/ggml/include
-        \${CMAKE_CURRENT_SOURCE_DIR}/include)
-    target_link_libraries(omnivoice-core PUBLIC ggml Threads::Threads)
+        \${CMAKE_CURRENT_SOURCE_DIR}/ggml/include)
+    target_link_libraries(omnivoice-core PUBLIC llama mtmd ggml Threads::Threads)
     if(TARGET ggml-base)
         target_link_libraries(omnivoice-core PUBLIC ggml-base)
     endif()
@@ -106,11 +107,12 @@ if(MILADY_FUSE_OMNIVOICE)
     target_include_directories(elizainference PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}/src
         \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
+        \${CMAKE_CURRENT_SOURCE_DIR}/tools/mtmd
         \${CMAKE_CURRENT_SOURCE_DIR}/include
         \${CMAKE_CURRENT_BINARY_DIR})
     target_include_directories(elizainference SYSTEM PUBLIC
         \${CMAKE_CURRENT_SOURCE_DIR}/ggml/include)
-    target_link_libraries(elizainference PUBLIC llama)
+    target_link_libraries(elizainference PUBLIC llama mtmd)
     if(APPLE)
         target_link_options(elizainference PRIVATE
             "LINKER:-reexport_library,$<TARGET_FILE:llama>")
@@ -201,6 +203,33 @@ export function appendCmakeGraft({ llamaCppRoot }) {
     upgraded = upgraded.replace(
       "target_link_libraries(elizainference PUBLIC llama)\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)",
       "target_link_libraries(elizainference PUBLIC llama)\n    if(APPLE)\n        target_link_options(elizainference PRIVATE\n            \"LINKER:-reexport_library,$<TARGET_FILE:llama>\")\n    endif()\n    target_link_libraries(elizainference PUBLIC ggml Threads::Threads)",
+    );
+    upgraded = upgraded.replace(
+      "target_link_libraries(elizainference PUBLIC llama)\n    if(APPLE)",
+      "target_link_libraries(elizainference PUBLIC llama mtmd)\n    if(APPLE)",
+    );
+    upgraded = upgraded.replace(
+      `        \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
+        \${CMAKE_CURRENT_SOURCE_DIR}/include`,
+      `        \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
+        \${CMAKE_CURRENT_SOURCE_DIR}/tools/mtmd
+        \${CMAKE_CURRENT_SOURCE_DIR}/include`,
+    );
+    upgraded = upgraded.replace(
+      `        \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
+        \${CMAKE_CURRENT_BINARY_DIR})`,
+      `        \${CMAKE_CURRENT_SOURCE_DIR}/${OMNIVOICE_GRAFT_SUBDIR}
+        \${CMAKE_CURRENT_SOURCE_DIR}/tools/mtmd
+        \${CMAKE_CURRENT_SOURCE_DIR}/include
+        \${CMAKE_CURRENT_BINARY_DIR})`,
+    );
+    upgraded = upgraded.replace(
+      "target_include_directories(omnivoice-core SYSTEM PUBLIC\n        ${CMAKE_CURRENT_SOURCE_DIR}/ggml/include\n        ${CMAKE_CURRENT_SOURCE_DIR}/include)\n    target_link_libraries(omnivoice-core PUBLIC ggml Threads::Threads)",
+      "target_include_directories(omnivoice-core SYSTEM PUBLIC\n        ${CMAKE_CURRENT_SOURCE_DIR}/ggml/include)\n    target_link_libraries(omnivoice-core PUBLIC llama mtmd ggml Threads::Threads)",
+    );
+    upgraded = upgraded.replace(
+      "target_link_libraries(omnivoice-core PUBLIC ggml Threads::Threads)",
+      "target_link_libraries(omnivoice-core PUBLIC llama mtmd ggml Threads::Threads)",
     );
     if (upgraded !== original) {
       fs.writeFileSync(cmakePath, upgraded, "utf8");

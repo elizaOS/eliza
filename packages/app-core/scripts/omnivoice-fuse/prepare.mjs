@@ -107,23 +107,41 @@ function writeMiladyFfiAdapter({ graftRoot, commit }) {
 
 #include "ffi.h"
 #include "omnivoice.h"
+#include "llama.h"
+#include "mtmd.h"
+#include "mtmd-helper.h"
 
 #include <algorithm>
 #include <cerrno>
+#include <cctype>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <memory>
+#include <mutex>
 #include <new>
 #include <string>
+#include <thread>
 #include <vector>
 
 struct EliInferenceContext {
     std::string bundle_dir;
     std::string tts_model_path;
     std::string codec_model_path;
+    std::string asr_model_path;
+    std::string asr_mmproj_path;
     ov_context * ov = nullptr;
+    llama_model * asr_model = nullptr;
+    llama_context * asr_lctx = nullptr;
+    mtmd_context * asr_mtmd = nullptr;
+    llama_sampler * asr_sampler = nullptr;
+    int asr_sample_rate = 0;
+    int asr_n_batch = 512;
+    std::mutex tts_mutex;
+    std::mutex asr_mutex;
 };
 
 static char * eliza_strdup(const std::string & s) {
@@ -160,6 +178,13 @@ static std::vector<std::string> eliza_find_ggufs(const std::filesystem::path & d
     return out;
 }
 
+static std::string eliza_lower_ascii(std::string value) {
+    std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+        return (char) std::tolower(c);
+    });
+    return value;
+}
+
 static bool eliza_pick_voice_files(
     const std::filesystem::path & bundle_dir,
     std::string & tts_model,
@@ -179,11 +204,155 @@ static bool eliza_pick_voice_files(
     return true;
 }
 
+static bool eliza_pick_asr_files(
+    const std::filesystem::path & bundle_dir,
+    std::string & asr_model,
+    std::string & asr_mmproj) {
+    const auto asr_dir = bundle_dir / "asr";
+    std::error_code ec;
+    const auto canonical_model = asr_dir / "eliza-1-asr.gguf";
+    const auto canonical_mmproj = asr_dir / "eliza-1-asr-mmproj.gguf";
+    if (std::filesystem::is_regular_file(canonical_model, ec) &&
+        std::filesystem::is_regular_file(canonical_mmproj, ec)) {
+        asr_model = canonical_model.string();
+        asr_mmproj = canonical_mmproj.string();
+        return true;
+    }
+
+    std::vector<std::string> asr = eliza_find_ggufs(asr_dir);
+    std::vector<std::string> model_candidates;
+    std::vector<std::string> mmproj_candidates;
+    for (const auto & candidate : asr) {
+        const std::string filename = eliza_lower_ascii(std::filesystem::path(candidate).filename().string());
+        if (filename.find("mmproj") != std::string::npos) {
+            mmproj_candidates.push_back(candidate);
+        } else if (filename.find("tokenizer") == std::string::npos &&
+                   filename.find("support") == std::string::npos &&
+                   filename.find("vocab") == std::string::npos) {
+            model_candidates.push_back(candidate);
+        }
+    }
+    if (asr_model.empty() && model_candidates.size() == 1) {
+        asr_model = model_candidates[0];
+    }
+    if (asr_mmproj.empty() && mmproj_candidates.size() == 1) {
+        asr_mmproj = mmproj_candidates[0];
+    }
+    return !asr_model.empty() && !asr_mmproj.empty();
+}
+
+static std::once_flag eliza_llama_backend_once;
+
+static int eliza_thread_count(bool batch) {
+    unsigned int hw = std::thread::hardware_concurrency();
+    if (hw == 0) hw = 4;
+    const unsigned int cap = batch ? 8 : 4;
+    return (int) std::max(1u, std::min(hw, cap));
+}
+
+static std::vector<float> eliza_resample_linear(
+    const float * pcm,
+    size_t n_samples,
+    int source_rate,
+    int target_rate) {
+    if (source_rate == target_rate || n_samples <= 1) {
+        return std::vector<float>(pcm, pcm + n_samples);
+    }
+    const double scale = (double) target_rate / (double) source_rate;
+    const size_t out_samples = std::max<size_t>(1, (size_t) std::llround((double) n_samples * scale));
+    std::vector<float> out(out_samples);
+    for (size_t i = 0; i < out_samples; ++i) {
+        const double src = (double) i * (double) source_rate / (double) target_rate;
+        const size_t lo = std::min((size_t) std::floor(src), n_samples - 1);
+        const size_t hi = std::min(lo + 1, n_samples - 1);
+        const float t = (float) (src - (double) lo);
+        out[i] = pcm[lo] * (1.0f - t) + pcm[hi] * t;
+    }
+    return out;
+}
+
+static std::string eliza_llama_token_piece(const llama_vocab * vocab, llama_token token) {
+    char small[256];
+    int32_t n = llama_token_to_piece(vocab, token, small, (int32_t) sizeof(small), 0, false);
+    if (n > 0) return std::string(small, (size_t) n);
+    if (n == 0) return "";
+    std::string buf((size_t) -n, '\\0');
+    n = llama_token_to_piece(vocab, token, buf.data(), (int32_t) buf.size(), 0, false);
+    if (n > 0) return std::string(buf.data(), (size_t) n);
+    return "";
+}
+
+static std::string eliza_format_asr_prompt(llama_model * model) {
+    (void) model;
+    // Qwen3-ASR's generation prompt is intentionally minimal: the audio
+    // placeholder is the entire user turn and decoding starts immediately
+    // at the assistant turn. Extra natural-language instructions cause
+    // role-token chatter instead of a clean transcript.
+    return std::string("<|im_start|>user\\n") +
+        mtmd_default_marker() +
+        "<|im_end|>\\n<|im_start|>assistant\\n";
+}
+
+static std::string eliza_trim_ascii(std::string value) {
+    auto is_space = [](unsigned char c) {
+        return c == ' ' || c == '\\n' || c == '\\r' || c == '\\t';
+    };
+    while (!value.empty() && is_space((unsigned char) value.front())) {
+        value.erase(value.begin());
+    }
+    while (!value.empty() && is_space((unsigned char) value.back())) {
+        value.pop_back();
+    }
+    return value;
+}
+
+static std::string eliza_clean_asr_transcript(std::string transcript) {
+    const std::string asr_marker = "<asr_text>";
+    size_t marker = transcript.find(asr_marker);
+    if (marker != std::string::npos) {
+        transcript = transcript.substr(marker + asr_marker.size());
+    }
+    const char * sentinels[] = {
+        "<|im_end|>",
+        "<|endoftext|>",
+        "</s>",
+    };
+    for (const char * sentinel : sentinels) {
+        size_t pos = transcript.find(sentinel);
+        if (pos != std::string::npos) {
+            transcript = transcript.substr(0, pos);
+        }
+    }
+    return eliza_trim_ascii(transcript);
+}
+
+static void eliza_free_asr(EliInferenceContext * ctx) {
+    if (!ctx) return;
+    if (ctx->asr_sampler) {
+        llama_sampler_free(ctx->asr_sampler);
+        ctx->asr_sampler = nullptr;
+    }
+    if (ctx->asr_mtmd) {
+        mtmd_free(ctx->asr_mtmd);
+        ctx->asr_mtmd = nullptr;
+    }
+    if (ctx->asr_lctx) {
+        llama_free(ctx->asr_lctx);
+        ctx->asr_lctx = nullptr;
+    }
+    if (ctx->asr_model) {
+        llama_model_free(ctx->asr_model);
+        ctx->asr_model = nullptr;
+    }
+    ctx->asr_sample_rate = 0;
+}
+
 static int eliza_load_tts(EliInferenceContext * ctx, char ** out_error) {
     if (!ctx) {
         eliza_set_error(out_error, "[libelizainference] load_tts: ctx is NULL");
         return ELIZA_ERR_INVALID_ARG;
     }
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
     if (ctx->ov) return ELIZA_OK;
     if (ctx->tts_model_path.empty()) {
         if (!eliza_pick_voice_files(std::filesystem::path(ctx->bundle_dir), ctx->tts_model_path, ctx->codec_model_path)) {
@@ -204,6 +373,85 @@ static int eliza_load_tts(EliInferenceContext * ctx, char ** out_error) {
         eliza_set_error(out_error, msg);
         return ELIZA_ERR_FFI_FAULT;
     }
+    return ELIZA_OK;
+}
+
+static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
+    if (!ctx) {
+        eliza_set_error(out_error, "[libelizainference] load_asr: ctx is NULL");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    std::lock_guard<std::mutex> lock(ctx->asr_mutex);
+    if (ctx->asr_model && ctx->asr_lctx && ctx->asr_mtmd && ctx->asr_sampler) {
+        return ELIZA_OK;
+    }
+    if (ctx->asr_model_path.empty() || ctx->asr_mmproj_path.empty()) {
+        if (!eliza_pick_asr_files(std::filesystem::path(ctx->bundle_dir), ctx->asr_model_path, ctx->asr_mmproj_path)) {
+            eliza_set_error(out_error, std::string("[libelizainference] ASR requires both a text GGUF and mmproj GGUF under ") + (std::filesystem::path(ctx->bundle_dir) / "asr").string());
+            return ELIZA_ERR_BUNDLE_INVALID;
+        }
+    }
+
+    std::call_once(eliza_llama_backend_once, []() {
+        llama_backend_init();
+    });
+
+    llama_model_params mparams = llama_model_default_params();
+    mparams.n_gpu_layers = 99;
+    mparams.use_mmap = true;
+    ctx->asr_model = llama_model_load_from_file(ctx->asr_model_path.c_str(), mparams);
+    if (!ctx->asr_model) {
+        eliza_free_asr(ctx);
+        eliza_set_error(out_error, std::string("[libelizainference] failed to load ASR model: ") + ctx->asr_model_path);
+        return ELIZA_ERR_BUNDLE_INVALID;
+    }
+
+    llama_context_params cparams = llama_context_default_params();
+    cparams.n_ctx = 8192;
+    cparams.n_batch = (uint32_t) ctx->asr_n_batch;
+    cparams.n_ubatch = (uint32_t) ctx->asr_n_batch;
+    cparams.n_threads = eliza_thread_count(false);
+    cparams.n_threads_batch = eliza_thread_count(true);
+    cparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+    ctx->asr_lctx = llama_init_from_model(ctx->asr_model, cparams);
+    if (!ctx->asr_lctx) {
+        eliza_free_asr(ctx);
+        eliza_set_error(out_error, "[libelizainference] failed to initialize ASR llama context");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    mtmd_context_params aparams = mtmd_context_params_default();
+    aparams.use_gpu = true;
+    aparams.print_timings = false;
+    aparams.n_threads = eliza_thread_count(true);
+    aparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_AUTO;
+    aparams.warmup = true;
+    ctx->asr_mtmd = mtmd_init_from_file(ctx->asr_mmproj_path.c_str(), ctx->asr_model, aparams);
+    if (!ctx->asr_mtmd) {
+        eliza_free_asr(ctx);
+        eliza_set_error(out_error, std::string("[libelizainference] failed to load ASR mmproj: ") + ctx->asr_mmproj_path);
+        return ELIZA_ERR_BUNDLE_INVALID;
+    }
+    if (!mtmd_support_audio(ctx->asr_mtmd)) {
+        eliza_free_asr(ctx);
+        eliza_set_error(out_error, "[libelizainference] ASR mmproj does not report audio support");
+        return ELIZA_ERR_BUNDLE_INVALID;
+    }
+    ctx->asr_sample_rate = mtmd_get_audio_bitrate(ctx->asr_mtmd);
+    if (ctx->asr_sample_rate <= 0) {
+        eliza_free_asr(ctx);
+        eliza_set_error(out_error, "[libelizainference] ASR mmproj returned an invalid audio sample rate");
+        return ELIZA_ERR_BUNDLE_INVALID;
+    }
+
+    llama_sampler_chain_params sparams = llama_sampler_chain_default_params();
+    ctx->asr_sampler = llama_sampler_chain_init(sparams);
+    if (!ctx->asr_sampler) {
+        eliza_free_asr(ctx);
+        eliza_set_error(out_error, "[libelizainference] failed to initialize ASR sampler");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+    llama_sampler_chain_add(ctx->asr_sampler, llama_sampler_init_greedy());
     return ELIZA_OK;
 }
 
@@ -242,7 +490,15 @@ EliInferenceContext * eliza_inference_create(
 
 void eliza_inference_destroy(EliInferenceContext * ctx) {
     if (!ctx) return;
-    ov_free(ctx->ov);
+    {
+        std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+        ov_free(ctx->ov);
+        ctx->ov = nullptr;
+    }
+    {
+        std::lock_guard<std::mutex> lock(ctx->asr_mutex);
+        eliza_free_asr(ctx);
+    }
     delete ctx;
 }
 
@@ -262,8 +518,7 @@ int eliza_inference_mmap_acquire(
         return eliza_load_tts(ctx, out_error);
     }
     if (std::strcmp(region_name, "asr") == 0) {
-        eliza_set_error(out_error, "[libelizainference] ASR is not wired in ABI v1");
-        return ELIZA_ERR_NOT_IMPLEMENTED;
+        return eliza_load_asr(ctx, out_error);
     }
     return ELIZA_OK;
 }
@@ -280,9 +535,16 @@ int eliza_inference_mmap_evict(
         eliza_set_error(out_error, "[libelizainference] mmap_evict: invalid region");
         return ELIZA_ERR_INVALID_ARG;
     }
-    if (std::strcmp(region_name, "tts") == 0 && ctx->ov) {
-        ov_free(ctx->ov);
-        ctx->ov = nullptr;
+    if (std::strcmp(region_name, "tts") == 0) {
+        std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+        if (ctx->ov) {
+            ov_free(ctx->ov);
+            ctx->ov = nullptr;
+        }
+    }
+    if (std::strcmp(region_name, "asr") == 0) {
+        std::lock_guard<std::mutex> lock(ctx->asr_mutex);
+        eliza_free_asr(ctx);
     }
     return ELIZA_OK;
 }
@@ -299,12 +561,14 @@ int eliza_inference_tts_synthesize(
         eliza_set_error(out_error, "[libelizainference] tts_synthesize: invalid arguments");
         return ELIZA_ERR_INVALID_ARG;
     }
-    if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
-        return ELIZA_ERR_INVALID_ARG;
-    }
     if (!text || text_len == 0) {
         eliza_set_error(out_error, "[libelizainference] tts_synthesize: text is required");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->tts_mutex);
+    if (!ctx->ov) {
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
 
@@ -344,14 +608,117 @@ int eliza_inference_asr_transcribe(
     char * out_text,
     size_t max_text_bytes,
     char ** out_error) {
-    (void) ctx;
-    (void) pcm;
-    (void) n_samples;
-    (void) sample_rate_hz;
-    (void) out_text;
-    (void) max_text_bytes;
-    eliza_set_error(out_error, "[libelizainference] ASR is not wired in ABI v1");
-    return ELIZA_ERR_NOT_IMPLEMENTED;
+    if (!ctx || !pcm || !out_text || max_text_bytes == 0 || sample_rate_hz <= 0) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: invalid arguments");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    if (n_samples == 0) {
+        out_text[0] = '\\0';
+        return 0;
+    }
+
+    std::lock_guard<std::mutex> lock(ctx->asr_mutex);
+    if (!ctx->asr_model || !ctx->asr_lctx || !ctx->asr_mtmd || !ctx->asr_sampler) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\\"asr\\\") after arming voice input");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+
+    std::vector<float> audio = eliza_resample_linear(pcm, n_samples, sample_rate_hz, ctx->asr_sample_rate);
+    std::unique_ptr<mtmd_bitmap, decltype(&mtmd_bitmap_free)> bitmap(
+        mtmd_bitmap_init_from_audio(audio.size(), audio.data()),
+        mtmd_bitmap_free);
+    if (!bitmap) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: failed to create audio bitmap");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    std::string prompt = eliza_format_asr_prompt(ctx->asr_model);
+    mtmd_input_text text = { prompt.c_str(), true, true };
+    const mtmd_bitmap * bitmaps[] = { bitmap.get() };
+    std::unique_ptr<mtmd_input_chunks, decltype(&mtmd_input_chunks_free)> chunks(
+        mtmd_input_chunks_init(),
+        mtmd_input_chunks_free);
+    if (!chunks) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: failed to allocate input chunks");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+    int32_t tok_rc = mtmd_tokenize(ctx->asr_mtmd, chunks.get(), &text, bitmaps, 1);
+    if (tok_rc != 0) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: mtmd_tokenize failed rc=" + std::to_string(tok_rc));
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    llama_memory_clear(llama_get_memory(ctx->asr_lctx), true);
+    llama_sampler_reset(ctx->asr_sampler);
+
+    llama_pos n_past = 0;
+    int32_t eval_rc = mtmd_helper_eval_chunks(
+        ctx->asr_mtmd,
+        ctx->asr_lctx,
+        chunks.get(),
+        n_past,
+        0,
+        ctx->asr_n_batch,
+        true,
+        &n_past);
+    if (eval_rc != 0) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: mtmd_helper_eval_chunks failed rc=" + std::to_string(eval_rc));
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    const llama_vocab * vocab = llama_model_get_vocab(ctx->asr_model);
+    std::string transcript;
+    transcript.reserve(std::min<size_t>(max_text_bytes, 256));
+    const int max_decode_tokens = std::min<int>(
+        4096,
+        std::max<int>(
+            192,
+            64 + (int) (((audio.size() + (size_t) ctx->asr_sample_rate - 1) /
+                         (size_t) ctx->asr_sample_rate) * 32)));
+    bool completed = false;
+    for (int i = 0; i < max_decode_tokens; ++i) {
+        llama_token token = llama_sampler_sample(ctx->asr_sampler, ctx->asr_lctx, -1);
+        if (llama_vocab_is_eog(vocab, token)) {
+            completed = true;
+            break;
+        }
+        std::string piece = eliza_llama_token_piece(vocab, token);
+        if (!piece.empty()) {
+            if (transcript.size() + piece.size() + 1 > max_text_bytes) {
+                eliza_set_error(out_error, "[libelizainference] asr_transcribe: output buffer too small");
+                return ELIZA_ERR_INVALID_ARG;
+            }
+            transcript += piece;
+            if (transcript.find("<asr_text>") != std::string::npos &&
+                !eliza_clean_asr_transcript(transcript).empty() &&
+                (piece.find('\\n') != std::string::npos ||
+                 transcript.find("<|im_start|>") != std::string::npos ||
+                 transcript.find("<|im_end|>") != std::string::npos)) {
+                completed = true;
+                break;
+            }
+        }
+        llama_sampler_accept(ctx->asr_sampler, token);
+        llama_batch batch = llama_batch_get_one(&token, 1);
+        int32_t decode_rc = llama_decode(ctx->asr_lctx, batch);
+        if (decode_rc != 0) {
+            eliza_set_error(out_error, "[libelizainference] asr_transcribe: llama_decode failed rc=" + std::to_string(decode_rc));
+            return ELIZA_ERR_FFI_FAULT;
+        }
+    }
+    if (!completed) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: decode reached token cap before EOG; transcript may be truncated");
+        return ELIZA_ERR_FFI_FAULT;
+    }
+
+    transcript = eliza_clean_asr_transcript(transcript);
+    if (transcript.size() + 1 > max_text_bytes) {
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: output buffer too small after transcript normalization");
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    std::memcpy(out_text, transcript.data(), transcript.size());
+    out_text[transcript.size()] = '\\0';
+    return (int) transcript.size();
 }
 
 void eliza_inference_free_string(char * str) {
@@ -414,6 +781,12 @@ function inspectPreparedOmnivoiceSurface({ graftRoot }) {
     "ov_synthesize",
     "ov_audio_free",
     "ov_last_error",
+    "eliza_inference_asr_transcribe",
+    "mtmd_init_from_file",
+    "mtmd_tokenize",
+    "mtmd_helper_eval_chunks",
+    "llama_decode",
+    "llama_sampler_sample",
   ];
   const missingAdapterCalls = adapterRequiredCalls.filter(
     (symbol) => !hasFunctionDeclaration(adapter, symbol),
@@ -557,20 +930,39 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
   }
   codecSource = codecSource.replace(
     codecBackendAnchor,
-    `    // Keep the MaskGIT/LM path on the selected accelerator, but keep the
-    // audio tokenizer / DAC codec on CPU until the merged milady ggml Metal
-    // graph for DAC decode is proven non-stalling. This still uses the same
-    // fused process and shared lifecycle; it only pins this region's scheduler
-    // to the CPU backend rather than launching a second model runtime.
+    `    // Keep the MaskGIT/LM path on the selected accelerator, but pin the
+    // audio tokenizer / DAC codec to CPU on Apple Metal. The merged milady
+    // ggml Metal DAC decode graph has been observed to stall immediately
+    // after "[TTS] Decode"; using CPU here keeps one fused process and one
+    // model lifecycle while avoiding the bad Metal codec scheduler path.
     BackendPair codec_bp = bp;
-    if (bp.cpu_backend) {
+    const char * requested_backend =
+        bp.backend ? ggml_backend_name(bp.backend) : "(null)";
+    const bool requested_metal =
+        requested_backend &&
+        (std::strncmp(requested_backend, "MTL", 3) == 0 ||
+         std::strstr(requested_backend, "Metal") != nullptr);
+    if (requested_metal && bp.cpu_backend) {
         codec_bp.backend = bp.cpu_backend;
         codec_bp.has_gpu = false;
+        ov_log(OV_LOG_INFO,
+               "[PipelineCodec] Metal codec fallback: requested=%s selected=%s reason=merged-ggml-dac-decode-stall",
+               requested_backend, ggml_backend_name(codec_bp.backend));
     }
     pc->bp                 = codec_bp;
     pc->backend            = codec_bp.backend;
     ggml_backend_t backend = codec_bp.backend;
 `,
+  );
+  const codecSchedulerAnchor = "    pc->sched = backend_sched_new(bp, 4096);";
+  if (!codecSource.includes(codecSchedulerAnchor)) {
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch anchor not found: pipeline-codec scheduler backend`,
+    );
+  }
+  codecSource = codecSource.replace(
+    codecSchedulerAnchor,
+    "    pc->sched = backend_sched_new(codec_bp, 4096);",
   );
   fs.writeFileSync(codecPath, codecSource, "utf8");
 
@@ -662,6 +1054,258 @@ function applyPatches({ patchesDir, llamaCppRoot }) {
   return applied;
 }
 
+const QWEN3A_MODEL_CPP = `#include "models.h"
+
+ggml_cgraph * clip_graph_qwen3a::build() {
+    ggml_tensor * inp = build_inp_raw(1);
+
+    {
+        inp = ggml_conv_2d(ctx0, model.conv2d_1_w, inp, 2, 2, 1, 1, 1, 1);
+        inp = ggml_add(ctx0, inp, model.conv2d_1_b);
+        inp = ggml_gelu_erf(ctx0, inp);
+
+        inp = ggml_conv_2d(ctx0, model.conv2d_2_w, inp, 2, 2, 1, 1, 1, 1);
+        inp = ggml_add(ctx0, inp, model.conv2d_2_b);
+        inp = ggml_gelu_erf(ctx0, inp);
+
+        inp = ggml_conv_2d(ctx0, model.conv2d_3_w, inp, 2, 2, 1, 1, 1, 1);
+        inp = ggml_add(ctx0, inp, model.conv2d_3_b);
+        inp = ggml_gelu_erf(ctx0, inp);
+
+        cb(inp, "after_conv_blocks", -1);
+
+        const int64_t n_pos_after_conv = inp->ne[0];
+        const int64_t n_mel_after_conv = inp->ne[1];
+
+        inp = ggml_cont(ctx0, ggml_permute(ctx0, inp, 0, 2, 3, 1));
+        inp = ggml_reshape_2d(ctx0, inp, n_pos_after_conv, n_mel_after_conv * inp->ne[3]);
+        inp = ggml_cont(ctx0, ggml_transpose(ctx0, inp));
+
+        inp = ggml_mul_mat(ctx0, model.conv_out_w, inp);
+        if (model.conv_out_b) {
+            inp = ggml_add(ctx0, inp, model.conv_out_b);
+        }
+        cb(inp, "after_conv_out", -1);
+    }
+
+    auto n_pos = inp->ne[1];
+    ggml_tensor * pos_embd_selected = ggml_view_2d(
+        ctx0, model.position_embeddings,
+        model.position_embeddings->ne[0], n_pos,
+        model.position_embeddings->nb[1], 0);
+
+    ggml_tensor * cur = build_vit(
+        inp,
+        n_pos,
+        NORM_TYPE_NORMAL,
+        hparams.ffn_op,
+        pos_embd_selected,
+        nullptr);
+
+    cb(cur, "after_transformer", -1);
+
+    cur = build_ffn(cur,
+        model.mm_1_w, model.mm_1_b,
+        nullptr, nullptr,
+        model.mm_2_w, model.mm_2_b,
+        FFN_GELU_ERF,
+        -1);
+
+    cb(cur, "projected", -1);
+    ggml_build_forward_expand(gf, cur);
+    return gf;
+}
+`;
+
+function replaceRequired(source, from, to, label) {
+  if (!source.includes(from)) {
+    throw new Error(`[omnivoice-fuse] qwen3a patch anchor not found: ${label}`);
+  }
+  return source.replace(from, to);
+}
+
+function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
+  const touched = [];
+
+  const clipImplPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-impl.h");
+  let clipImpl = fs.readFileSync(clipImplPath, "utf8");
+  if (!clipImpl.includes("PROJECTOR_TYPE_QWEN3A")) {
+    clipImpl = replaceRequired(
+      clipImpl,
+      "    PROJECTOR_TYPE_QWEN2A,\n    PROJECTOR_TYPE_GLMA,",
+      "    PROJECTOR_TYPE_QWEN2A,\n    PROJECTOR_TYPE_QWEN3A,\n    PROJECTOR_TYPE_GLMA,",
+      "clip-impl enum",
+    );
+  }
+  if (!clipImpl.includes('{ PROJECTOR_TYPE_QWEN3A,    "qwen3a"}')) {
+    clipImpl = replaceRequired(
+      clipImpl,
+      '    { PROJECTOR_TYPE_QWEN2A,    "qwen2a"},\n    { PROJECTOR_TYPE_GLMA,      "glma"},',
+      '    { PROJECTOR_TYPE_QWEN2A,    "qwen2a"},\n    { PROJECTOR_TYPE_QWEN3A,    "qwen3a"},\n    { PROJECTOR_TYPE_GLMA,      "glma"},',
+      "clip-impl name map",
+    );
+  }
+  if (!clipImpl.includes("#define TN_CONV2D")) {
+    clipImpl = replaceRequired(
+      clipImpl,
+      '#define TN_CONV1D       "a.conv1d.%d.%s"\n#define TN_MM_AUDIO_MLP',
+      '#define TN_CONV1D       "a.conv1d.%d.%s"\n#define TN_CONV2D       "a.conv2d.%d.%s"\n#define TN_CONV_OUT     "a.conv_out.%s"\n#define TN_MM_AUDIO_MLP',
+      "clip-impl conv2d tensor names",
+    );
+  }
+  if (clipImpl !== fs.readFileSync(clipImplPath, "utf8")) {
+    fs.writeFileSync(clipImplPath, clipImpl, "utf8");
+    touched.push("tools/mtmd/clip-impl.h");
+  }
+
+  const clipModelPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-model.h");
+  let clipModel = fs.readFileSync(clipModelPath, "utf8");
+  if (!clipModel.includes("conv_out_w")) {
+    clipModel = replaceRequired(
+      clipModel,
+      "    ggml_tensor * conv1d_2_w = nullptr;\n    ggml_tensor * conv1d_2_b = nullptr;\n    ggml_tensor * mm_norm_pre_w = nullptr;",
+      "    ggml_tensor * conv1d_2_w = nullptr;\n    ggml_tensor * conv1d_2_b = nullptr;\n    ggml_tensor * conv_out_w = nullptr;\n    ggml_tensor * conv_out_b = nullptr;\n    ggml_tensor * mm_norm_pre_w = nullptr;",
+      "clip-model conv_out fields",
+    );
+  }
+  if (!clipModel.includes("// qwen3a")) {
+    clipModel = replaceRequired(
+      clipModel,
+      "    ggml_tensor * mm_norm_mid_w = nullptr;\n\n    // cogvlm",
+      "    ggml_tensor * mm_norm_mid_w = nullptr;\n\n    // qwen3a\n    ggml_tensor * conv2d_1_w = nullptr;\n    ggml_tensor * conv2d_1_b = nullptr;\n    ggml_tensor * conv2d_2_w = nullptr;\n    ggml_tensor * conv2d_2_b = nullptr;\n    ggml_tensor * conv2d_3_w = nullptr;\n    ggml_tensor * conv2d_3_b = nullptr;\n\n    // cogvlm",
+      "clip-model qwen3a fields",
+    );
+  }
+  if (clipModel !== fs.readFileSync(clipModelPath, "utf8")) {
+    fs.writeFileSync(clipModelPath, clipModel, "utf8");
+    touched.push("tools/mtmd/clip-model.h");
+  }
+
+  const modelsHeaderPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "models.h");
+  let modelsHeader = fs.readFileSync(modelsHeaderPath, "utf8");
+  if (!modelsHeader.includes("clip_graph_qwen3a")) {
+    modelsHeader = replaceRequired(
+      modelsHeader,
+      "struct clip_graph_kimik25 : clip_graph {",
+      "struct clip_graph_qwen3a : clip_graph {\n    clip_graph_qwen3a(clip_ctx * ctx, const clip_image_f32 & img) : clip_graph(ctx, img) {}\n    ggml_cgraph * build() override;\n};\n\nstruct clip_graph_kimik25 : clip_graph {",
+      "models.h qwen3a graph declaration",
+    );
+    fs.writeFileSync(modelsHeaderPath, modelsHeader, "utf8");
+    touched.push("tools/mtmd/models/models.h");
+  }
+
+  const qwen3aPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "qwen3a.cpp");
+  if (!fs.existsSync(qwen3aPath)) {
+    fs.writeFileSync(qwen3aPath, QWEN3A_MODEL_CPP, "utf8");
+    touched.push("tools/mtmd/models/qwen3a.cpp");
+  }
+
+  const mtmdCmakePath = path.join(llamaCppRoot, "tools", "mtmd", "CMakeLists.txt");
+  let mtmdCmake = fs.readFileSync(mtmdCmakePath, "utf8");
+  if (!mtmdCmake.includes("models/qwen3a.cpp")) {
+    mtmdCmake = replaceRequired(
+      mtmdCmake,
+      "            models/qwen3vl.cpp\n            models/siglip.cpp",
+      "            models/qwen3vl.cpp\n            models/qwen3a.cpp\n            models/siglip.cpp",
+      "mtmd CMake qwen3a source",
+    );
+    fs.writeFileSync(mtmdCmakePath, mtmdCmake, "utf8");
+    touched.push("tools/mtmd/CMakeLists.txt");
+  }
+
+  const clipPath = path.join(llamaCppRoot, "tools", "mtmd", "clip.cpp");
+  let clip = fs.readFileSync(clipPath, "utf8");
+  if (!clip.includes("clip_graph_qwen3a")) {
+    clip = replaceRequired(
+      clip,
+      "        case PROJECTOR_TYPE_ULTRAVOX:\n        case PROJECTOR_TYPE_VOXTRAL:\n        case PROJECTOR_TYPE_QWEN2A:",
+      "        case PROJECTOR_TYPE_QWEN3A:\n            {\n                builder = std::make_unique<clip_graph_qwen3a>(ctx, img);\n            } break;\n        case PROJECTOR_TYPE_ULTRAVOX:\n        case PROJECTOR_TYPE_VOXTRAL:\n        case PROJECTOR_TYPE_QWEN2A:",
+      "clip.cpp qwen3a graph dispatch",
+    );
+  }
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA")) {
+    clip = replaceRequired(
+      clip,
+      "                case PROJECTOR_TYPE_QWEN2A:\n                case PROJECTOR_TYPE_GLMA:",
+      "                case PROJECTOR_TYPE_QWEN2A:\n                case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA:",
+      "clip.cpp qwen3a hparams",
+    );
+  }
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w")) {
+    clip = replaceRequired(
+      clip,
+      "            case PROJECTOR_TYPE_VOXTRAL:\n                {",
+      "            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, \"weight\"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, \"bias\"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, \"weight\"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, \"bias\"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, \"weight\"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, \"bias\"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, \"weight\"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, \"bias\"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"weight\"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"bias\"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"weight\"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"bias\"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {",
+      "clip.cpp qwen3a tensor loads",
+    );
+  }
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d")) {
+    clip = replaceRequired(
+      clip,
+      "        case PROJECTOR_TYPE_GLMA:\n            {",
+      "        case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d: each step is floor((n-1)/2)+1\n                int n = img->nx;\n                n = (n - 1) / 2 + 1;\n                n = (n - 1) / 2 + 1;\n                n = (n - 1) / 2 + 1;\n                n_patches = n;\n            } break;\n        case PROJECTOR_TYPE_GLMA:\n            {",
+      "clip.cpp qwen3a output token count",
+    );
+  }
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX")) {
+    clip = replaceRequired(
+      clip,
+      "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX:",
+      "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX:",
+      "clip.cpp qwen3a input setup",
+    );
+  }
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];")) {
+    clip = replaceRequired(
+      clip,
+      "        case PROJECTOR_TYPE_QWEN2A:\n            return ctx->model.mm_fc_w->ne[1];\n        case PROJECTOR_TYPE_GLMA:",
+      "        case PROJECTOR_TYPE_QWEN2A:\n            return ctx->model.mm_fc_w->ne[1];\n        case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];\n        case PROJECTOR_TYPE_GLMA:",
+      "clip.cpp qwen3a mmproj embedding dim",
+    );
+  }
+  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL")) {
+    clip = replaceRequired(
+      clip,
+      "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL:",
+      "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL:",
+      "clip.cpp qwen3a whisper preprocessor flag",
+    );
+  }
+  if (clip !== fs.readFileSync(clipPath, "utf8")) {
+    fs.writeFileSync(clipPath, clip, "utf8");
+    touched.push("tools/mtmd/clip.cpp");
+  }
+
+  const mtmdPath = path.join(llamaCppRoot, "tools", "mtmd", "mtmd.cpp");
+  let mtmd = fs.readFileSync(mtmdPath, "utf8");
+  if (!mtmd.includes("case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:")) {
+    mtmd = replaceRequired(
+      mtmd,
+      "            case PROJECTOR_TYPE_QWEN2A:\n            case PROJECTOR_TYPE_QWEN25O:",
+      "            case PROJECTOR_TYPE_QWEN2A:\n            case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:",
+      "mtmd.cpp qwen3a audio preprocessor",
+    );
+  }
+  if (!mtmd.includes("proj == PROJECTOR_TYPE_QWEN3A")) {
+    mtmd = replaceRequired(
+      mtmd,
+      "        if (proj == PROJECTOR_TYPE_QWEN2A) {",
+      "        if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN3A || proj == PROJECTOR_TYPE_QWEN25O) {",
+      "mtmd.cpp qwen3a audio special tokens",
+    );
+  }
+  if (mtmd !== fs.readFileSync(mtmdPath, "utf8")) {
+    fs.writeFileSync(mtmdPath, mtmd, "utf8");
+    touched.push("tools/mtmd/mtmd.cpp");
+  }
+
+  return {
+    name: "milady-qwen3a-mtmd-backport",
+    status: touched.length > 0 ? "applied" : "already-applied",
+    files: touched,
+  };
+}
+
 /**
  * Main entry. Performs the full prepare phase. All errors propagate.
  */
@@ -748,7 +1392,11 @@ export function prepareOmnivoiceFusion({
 
   // Apply any reconciliation patches keyed to specific drifts.
   const patchesDir = new URL("./patches/", import.meta.url).pathname;
-  const appliedPatches = applyPatches({ patchesDir, llamaCppRoot });
+  const qwen3aBackport = applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot });
+  const appliedPatches = [
+    qwen3aBackport,
+    ...applyPatches({ patchesDir, llamaCppRoot }),
+  ];
 
   // Count source files actually grafted, for the manifest.
   let sourceCount = 0;

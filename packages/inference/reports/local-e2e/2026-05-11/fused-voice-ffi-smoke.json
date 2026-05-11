@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-11T06:35:00Z",
+  "generatedAt": "2026-05-11T10:00:09Z",
   "host": {
     "platform": "darwin",
     "arch": "arm64",
@@ -26,6 +26,11 @@
       "name": "tts",
       "ok": true,
       "mmapAcquireMs": 2146
+    },
+    {
+      "name": "asr",
+      "ok": true,
+      "mmapAcquireMs": 973.482
     }
   ],
   "tts": {
@@ -43,14 +48,24 @@
     }
   },
   "asr": {
-    "ok": false,
-    "code": "kernel-missing",
-    "message": "[libelizainference] ASR is not wired in ABI v1"
+    "ok": true,
+    "input": "/tmp/eliza-asr-hello.wav",
+    "expectedContains": "hello world",
+    "transcript": "Hello world.",
+    "sampleRateHz": 16000,
+    "samples": 13568,
+    "transcribeMs": 219.762,
+    "runtime": {
+      "model": "asr/eliza-1-asr.gguf",
+      "mmproj": "asr/eliza-1-asr-mmproj.gguf",
+      "projector": "qwen3a",
+      "backend": "MTL0"
+    }
   },
-  "result": "partial-pass",
+  "result": "pass",
   "notes": [
     "Real OmniVoice GGUF TTS weights load from the staged Eliza-1 1.7B bundle.",
     "The fused process keeps LM/MaskGIT on Metal and pins the codec/DAC region to CPU to avoid the previously observed Metal decode stall.",
-    "ASR remains fail-closed until an ABI-v1 ASR runtime is implemented."
+    "ASR ABI v1 now loads the bundled Qwen3-ASR GGUF plus qwen3a mmproj through mtmd, transcribes a known PCM16 16 kHz WAV, and returns normalized transcript text."
   ]
 }

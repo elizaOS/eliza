@@ -68,6 +68,16 @@ export function loadElizaConfig(): Record<string, unknown> {
   return {};
 }
 
+export function loadOwnerContactsConfig(): Record<string, unknown> {
+  return {};
+}
+
+export async function loadOwnerContactRoutingHints(): Promise<
+  Record<string, unknown>
+> {
+  return {};
+}
+
 export function saveElizaConfig(): void {}
 
 export function createElizaPlugin(plugin: unknown): unknown {

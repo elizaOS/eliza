@@ -1,15 +1,10 @@
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import {
-  type IPermissionsRegistry,
-  PERMISSIONS_REGISTRY_SERVICE,
-} from "@elizaos/agent";
-import type { FeatureResult } from "@elizaos/shared";
-
-const execFileAsync = promisify(execFile);
+import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";
+const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
 export type NativeAppleReminderLikeKind = "alarm" | "reminder";
 
@@ -72,25 +67,12 @@ export function readNativeAppleReminderMetadata(
   };
 }
 
-type ReminderDateParts = {
-  day: number;
-  month: number;
-  secondsSinceMidnight: number;
-  year: number;
-};
-
-function reminderDateParts(dueAt: string): ReminderDateParts | null {
+function reminderEpochSeconds(dueAt: string): number | null {
   const date = new Date(dueAt);
   if (Number.isNaN(date.getTime())) {
     return null;
   }
-  return {
-    year: date.getFullYear(),
-    month: date.getMonth() + 1,
-    day: date.getDate(),
-    secondsSinceMidnight:
-      date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds(),
-  };
+  return date.getTime() / 1000;
 }
 
 function buildReminderNotes(args: {
@@ -116,121 +98,155 @@ function appleReminderPriority(kind: NativeAppleReminderLikeKind): number {
   return kind === "alarm" ? 1 : 5;
 }
 
-const APPLE_REMINDER_SCRIPT = [
-  "on run argv",
-  "set reminderTitle to item 1 of argv",
-  "set reminderNotes to item 2 of argv",
-  "set dueYear to (item 3 of argv) as integer",
-  "set dueMonth to (item 4 of argv) as integer",
-  "set dueDay to (item 5 of argv) as integer",
-  "set dueSeconds to (item 6 of argv) as integer",
-  "set reminderPriority to (item 7 of argv) as integer",
-  'tell application "Reminders"',
-  "set targetList to default list",
-  "set newReminder to missing value",
-  "tell targetList",
-  "set newReminder to make new reminder with properties {name:reminderTitle}",
-  "end tell",
-  'if reminderNotes is not "" then set body of newReminder to reminderNotes',
-  "if dueYear > 0 then",
-  "set dueDate to current date",
-  "set year of dueDate to dueYear",
-  "set month of dueDate to dueMonth",
-  "set day of dueDate to dueDay",
-  "set time of dueDate to dueSeconds",
-  "set due date of newReminder to dueDate",
-  "set remind me date of newReminder to dueDate",
-  "end if",
-  "if reminderPriority > 0 then set priority of newReminder to reminderPriority",
-  "return id of newReminder",
-  "end tell",
-  "end run",
-];
+type NativeReminderPayload = {
+  error?: string;
+  message?: string;
+  ok: boolean;
+  reminderId?: string | null;
+};
 
-const APPLE_REMINDER_UPDATE_SCRIPT = [
-  "on run argv",
-  "set reminderId to item 1 of argv",
-  "set reminderTitle to item 2 of argv",
-  "set reminderNotes to item 3 of argv",
-  "set dueYear to (item 4 of argv) as integer",
-  "set dueMonth to (item 5 of argv) as integer",
-  "set dueDay to (item 6 of argv) as integer",
-  "set dueSeconds to (item 7 of argv) as integer",
-  "set reminderPriority to (item 8 of argv) as integer",
-  'tell application "Reminders"',
-  "repeat with targetList in lists",
-  "repeat with candidate in reminders of targetList",
-  "if id of candidate is reminderId then",
-  "set name of candidate to reminderTitle",
-  'if reminderNotes is not "" then',
-  "set body of candidate to reminderNotes",
-  "else",
-  'set body of candidate to ""',
-  "end if",
-  "if dueYear > 0 then",
-  "set dueDate to current date",
-  "set year of dueDate to dueYear",
-  "set month of dueDate to dueMonth",
-  "set day of dueDate to dueDay",
-  "set time of dueDate to dueSeconds",
-  "set due date of candidate to dueDate",
-  "set remind me date of candidate to dueDate",
-  "end if",
-  "if reminderPriority > 0 then set priority of candidate to reminderPriority",
-  "return id of candidate",
-  "end if",
-  "end repeat",
-  "end repeat",
-  "end tell",
-  'error "Reminder not found"',
-  "end run",
-];
+type NativeReminderBridge = {
+  create(args: {
+    dueAtSeconds: number;
+    notes: string;
+    priority: number;
+    title: string;
+  }): string | null;
+  delete(reminderId: string): string | null;
+  update(args: {
+    dueAtSeconds: number;
+    notes: string;
+    priority: number;
+    reminderId: string;
+    title: string;
+  }): string | null;
+};
 
-const APPLE_REMINDER_DELETE_SCRIPT = [
-  "on run argv",
-  "set reminderId to item 1 of argv",
-  'tell application "Reminders"',
-  "repeat with targetList in lists",
-  "tell targetList",
-  "set matchingReminders to (every reminder whose id is reminderId)",
-  "if (count of matchingReminders) > 0 then",
-  "delete item 1 of matchingReminders",
-  'return "deleted"',
-  "end if",
-  "end tell",
-  "end repeat",
-  "end tell",
-  'error "Reminder not found"',
-  "end run",
-];
+let nativeReminderBridge: NativeReminderBridge | null | undefined;
+let nativeReminderBridgeOverride: NativeReminderBridge | null | undefined;
 
-async function execAppleReminderScript(
-  scriptLines: string[],
-  args: string[],
-): Promise<string> {
-  const { stdout } = await execFileAsync(
-    "/usr/bin/osascript",
-    scriptLines.flatMap((line) => ["-e", line]).concat(args),
-    { timeout: 30_000 },
-  );
-  return typeof stdout === "string" ? stdout.trim() : "";
+const NATIVE_DYLIB_CANDIDATES = [
+  process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "",
+  "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
+].filter(Boolean);
+
+function cStringBuffer(value: string): Buffer {
+  const bytes = Buffer.from(value, "utf8");
+  const buffer = Buffer.alloc(bytes.byteLength + 1);
+  bytes.copy(buffer);
+  return buffer;
 }
 
-/**
- * macOS surfaces TCC denial via osascript stderr. Two stable signatures
- * appear in the wild:
- *   - "Not authorized to send Apple events to Reminders. (-1743)"
- *   - "execution error: ... (-1743)" (errAEEventNotPermitted)
- *
- * We match on either the english text or the numeric code so that
- * localized macOS installs still degrade through the same path.
- */
-function isPermissionDeniedStderr(stderr: string): boolean {
-  if (!stderr) return false;
-  if (stderr.includes("-1743")) return true;
-  if (/Not authorized to send Apple events/i.test(stderr)) return true;
-  if (/Reminders.*not authorized/i.test(stderr)) return true;
-  return false;
+async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> {
+  if (nativeReminderBridgeOverride !== undefined) {
+    return nativeReminderBridgeOverride;
+  }
+  if (nativeReminderBridge !== undefined) return nativeReminderBridge;
+  nativeReminderBridge = null;
+  if (process.platform !== "darwin") return null;
+
+  for (const candidate of NATIVE_DYLIB_CANDIDATES) {
+    const dylibPath = path.isAbsolute(candidate)
+      ? candidate
+      : path.resolve(import.meta.dir, candidate);
+    if (!existsSync(dylibPath)) continue;
+    try {
+      const { CString, FFIType, dlopen, ptr } = await import("bun:ffi");
+      const lib = dlopen(dylibPath, {
+        createAppleReminderJson: {
+          args: [FFIType.ptr, FFIType.ptr, FFIType.f64, FFIType.i32],
+          returns: FFIType.ptr,
+        },
+        updateAppleReminderJson: {
+          args: [
+            FFIType.ptr,
+            FFIType.ptr,
+            FFIType.ptr,
+            FFIType.f64,
+            FFIType.i32,
+          ],
+          returns: FFIType.ptr,
+        },
+        deleteAppleReminderJson: {
+          args: [FFIType.ptr],
+          returns: FFIType.ptr,
+        },
+        freeNativeCString: { args: [FFIType.ptr], returns: FFIType.void },
+      });
+
+      const takeNativeString = (value: unknown): string | null => {
+        if (!value) return null;
+        try {
+          return new CString(value as never).toString();
+        } finally {
+          lib.symbols.freeNativeCString(value as never);
+        }
+      };
+
+      nativeReminderBridge = {
+        create(args) {
+          const title = cStringBuffer(args.title);
+          const notes = cStringBuffer(args.notes);
+          return takeNativeString(
+            lib.symbols.createAppleReminderJson(
+              ptr(title),
+              ptr(notes),
+              args.dueAtSeconds,
+              args.priority,
+            ),
+          );
+        },
+        update(args) {
+          const reminderId = cStringBuffer(args.reminderId);
+          const title = cStringBuffer(args.title);
+          const notes = cStringBuffer(args.notes);
+          return takeNativeString(
+            lib.symbols.updateAppleReminderJson(
+              ptr(reminderId),
+              ptr(title),
+              ptr(notes),
+              args.dueAtSeconds,
+              args.priority,
+            ),
+          );
+        },
+        delete(reminderId) {
+          const id = cStringBuffer(reminderId);
+          return takeNativeString(lib.symbols.deleteAppleReminderJson(ptr(id)));
+        },
+      };
+      return nativeReminderBridge;
+    } catch {
+      // Try the next dylib candidate.
+    }
+  }
+  return null;
+}
+
+function parseNativeReminderPayload(raw: string | null): NativeReminderPayload {
+  if (!raw) {
+    return {
+      ok: false,
+      error: "native_error",
+      message: "Native Apple Reminders bridge returned no response.",
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<NativeReminderPayload>;
+    return {
+      ok: parsed.ok === true,
+      error: typeof parsed.error === "string" ? parsed.error : undefined,
+      message: typeof parsed.message === "string" ? parsed.message : undefined,
+      reminderId:
+        typeof parsed.reminderId === "string" ? parsed.reminderId : null,
+    };
+  } catch {
+    return {
+      ok: false,
+      error: "native_error",
+      message: "Native Apple Reminders bridge returned invalid JSON.",
+    };
+  }
 }
 
 function getRegistryFromRuntime(
@@ -261,16 +277,6 @@ function buildPermissionFailure(
     permission: "reminders",
     canRequest,
   };
-}
-
-function extractStderr(error: unknown): string {
-  if (typeof error === "object" && error && "stderr" in error) {
-    return String((error as { stderr?: unknown }).stderr ?? "");
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }
 
 export type NativeAppleReminderSuccess = {
@@ -307,8 +313,8 @@ export async function createNativeAppleReminderLikeItem(args: {
     };
   }
 
-  const parts = reminderDateParts(args.dueAt);
-  if (!parts) {
+  const dueAtSeconds = reminderEpochSeconds(args.dueAt);
+  if (dueAtSeconds === null) {
     return {
       ok: false,
       reason: "native_error",
@@ -316,34 +322,40 @@ export async function createNativeAppleReminderLikeItem(args: {
     };
   }
 
-  try {
-    const reminderId = await execAppleReminderScript(APPLE_REMINDER_SCRIPT, [
+  const bridge = await loadNativeReminderBridge();
+  if (!bridge) {
+    return {
+      ok: false,
+      reason: "native_error",
+      message: "Native Apple Reminders bridge is unavailable.",
+    };
+  }
+
+  const payload = parseNativeReminderPayload(
+    bridge.create({
+      dueAtSeconds,
+      notes: buildReminderNotes(args),
+      priority: appleReminderPriority(args.kind),
       title,
-      buildReminderNotes(args),
-      String(parts.year),
-      String(parts.month),
-      String(parts.day),
-      String(parts.secondsSinceMidnight),
-      String(appleReminderPriority(args.kind)),
-    ]);
+    }),
+  );
+  if (payload.ok) {
     return {
       ok: true,
       data: {
         provider: "apple_reminders",
-        reminderId: reminderId || null,
+        reminderId: payload.reminderId || null,
       },
     };
-  } catch (error) {
-    const stderr = extractStderr(error);
-    if (isPermissionDeniedStderr(stderr)) {
-      return buildPermissionFailure(args.runtime, "reminders.create");
-    }
-    return {
-      ok: false,
-      reason: "native_error",
-      message: stderr || "Failed to create native Apple reminder.",
-    };
   }
+  if (payload.error === "permission") {
+    return buildPermissionFailure(args.runtime, "reminders.create");
+  }
+  return {
+    ok: false,
+    reason: "native_error",
+    message: payload.message || "Failed to create native Apple reminder.",
+  };
 }
 
 export async function updateNativeAppleReminderLikeItem(args: {
@@ -381,8 +393,8 @@ export async function updateNativeAppleReminderLikeItem(args: {
     };
   }
 
-  const parts = reminderDateParts(args.dueAt);
-  if (!parts) {
+  const dueAtSeconds = reminderEpochSeconds(args.dueAt);
+  if (dueAtSeconds === null) {
     return {
       ok: false,
       reason: "native_error",
@@ -390,38 +402,41 @@ export async function updateNativeAppleReminderLikeItem(args: {
     };
   }
 
-  try {
-    const nextReminderId = await execAppleReminderScript(
-      APPLE_REMINDER_UPDATE_SCRIPT,
-      [
-        reminderId,
-        title,
-        buildReminderNotes(args),
-        String(parts.year),
-        String(parts.month),
-        String(parts.day),
-        String(parts.secondsSinceMidnight),
-        String(appleReminderPriority(args.kind)),
-      ],
-    );
+  const bridge = await loadNativeReminderBridge();
+  if (!bridge) {
+    return {
+      ok: false,
+      reason: "native_error",
+      message: "Native Apple Reminders bridge is unavailable.",
+    };
+  }
+
+  const payload = parseNativeReminderPayload(
+    bridge.update({
+      dueAtSeconds,
+      notes: buildReminderNotes(args),
+      priority: appleReminderPriority(args.kind),
+      reminderId,
+      title,
+    }),
+  );
+  if (payload.ok) {
     return {
       ok: true,
       data: {
         provider: "apple_reminders",
-        reminderId: nextReminderId || reminderId,
+        reminderId: payload.reminderId || reminderId,
       },
     };
-  } catch (error) {
-    const stderr = extractStderr(error);
-    if (isPermissionDeniedStderr(stderr)) {
-      return buildPermissionFailure(args.runtime, "reminders.update");
-    }
-    return {
-      ok: false,
-      reason: "native_error",
-      message: stderr || "Failed to update native Apple reminder.",
-    };
   }
+  if (payload.error === "permission") {
+    return buildPermissionFailure(args.runtime, "reminders.update");
+  }
+  return {
+    ok: false,
+    reason: "native_error",
+    message: payload.message || "Failed to update native Apple reminder.",
+  };
 }
 
 export async function deleteNativeAppleReminderLikeItem(
@@ -445,30 +460,39 @@ export async function deleteNativeAppleReminderLikeItem(
     };
   }
 
-  try {
-    await execAppleReminderScript(APPLE_REMINDER_DELETE_SCRIPT, [
-      normalizedReminderId,
-    ]);
+  const bridge = await loadNativeReminderBridge();
+  if (!bridge) {
+    return {
+      ok: false,
+      reason: "native_error",
+      message: "Native Apple Reminders bridge is unavailable.",
+    };
+  }
+
+  const payload = parseNativeReminderPayload(
+    bridge.delete(normalizedReminderId),
+  );
+  if (payload.ok) {
     return {
       ok: true,
       data: {
         provider: "apple_reminders",
       },
     };
-  } catch (error) {
-    const stderr = extractStderr(error);
-    if (isPermissionDeniedStderr(stderr)) {
-      return buildPermissionFailure(options?.runtime, "reminders.delete");
-    }
-    return {
-      ok: false,
-      reason: "native_error",
-      message: stderr || "Failed to delete native Apple reminder.",
-    };
   }
+  if (payload.error === "permission") {
+    return buildPermissionFailure(options?.runtime, "reminders.delete");
+  }
+  return {
+    ok: false,
+    reason: "native_error",
+    message: payload.message || "Failed to delete native Apple reminder.",
+  };
 }
 
 // Internal helpers exposed for unit testing.
 export const __testing = {
-  isPermissionDeniedStderr,
+  setNativeReminderBridgeForTest(bridge: NativeReminderBridge | null): void {
+    nativeReminderBridgeOverride = bridge;
+  },
 };

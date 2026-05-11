@@ -273,6 +273,7 @@ export const LIFEOPS_CONNECTOR_PROVIDERS = [
   "signal",
   "whatsapp",
   "imessage",
+  "apple_calendar",
   "strava",
   "fitbit",
   "withings",
@@ -1903,11 +1904,13 @@ export interface LifeOpsCalendarEventAttendee {
   optional: boolean;
 }
 
+export type LifeOpsCalendarProvider = "google" | "apple_calendar";
+
 export interface LifeOpsCalendarEvent {
   id: string;
   externalId: string;
   agentId: string;
-  provider: "google";
+  provider: LifeOpsCalendarProvider;
   side: LifeOpsConnectorSide;
   calendarId: string;
   title: string;
@@ -1952,7 +1955,7 @@ export interface LifeOpsCalendarFeed {
  * hidden from the agent's picture of the user's life.
  */
 export interface LifeOpsCalendarSummary {
-  provider: "google";
+  provider: LifeOpsCalendarProvider;
   side: LifeOpsConnectorSide;
   grantId: string;
   accountEmail: string | null;

@@ -31,6 +31,7 @@
     "pretest": "node scripts/lint-default-packs.mjs",
     "test": "vitest run --config vitest.config.ts",
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/app-lifeops/test/lifeops-app-state.test.ts",
+    "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
     "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/app-lifeops/test/life-smoke.integration.test.ts",
     "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
     "bench:work-threads": "cd ../.. && bun plugins/app-lifeops/scripts/work-thread-benchmark.ts",
@@ -45,6 +46,7 @@
     "@elizaos/agent": "2.0.0-beta.1",
     "@elizaos/app-core": "2.0.0-beta.1",
     "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+    "@elizaos/capacitor-calendar": "2.0.0-beta.1",
     "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/native-activity-tracker": "2.0.0-beta.1",
@@ -90,7 +92,6 @@
         "calendar",
         "health",
         "screentime",
-        "contacts",
         "notes"
       ]
     }

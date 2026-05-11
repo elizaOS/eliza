@@ -4,7 +4,7 @@ Two entitlement files drive the Mac App Store distribution variant:
 
 | File                      | Applied to                                     | Purpose                                               |
 |---------------------------|------------------------------------------------|-------------------------------------------------------|
-| `mas.entitlements`        | Outer `.app` bundle                            | App Sandbox + JIT + network + workspace folder picker |
+| `mas.entitlements`        | Outer `.app` bundle                            | App Sandbox + JIT + network + data/privacy permissions |
 | `mas-child.entitlements`  | Every nested Mach-O, framework, helper bundle  | App Sandbox + `cs.inherit` so children inherit scope  |
 
 The direct (non-store) build variant uses neither — it ships with inline

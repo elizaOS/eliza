@@ -816,6 +816,14 @@ export async function ensureTrajectoriesTable(
         { name: "batch_id", def: "TEXT" },
         { name: "archetype", def: "TEXT" },
         { name: "episode_length", def: "INTEGER" },
+        {
+          name: "total_cache_read_input_tokens",
+          def: "INTEGER NOT NULL DEFAULT 0",
+        },
+        {
+          name: "total_cache_creation_input_tokens",
+          def: "INTEGER NOT NULL DEFAULT 0",
+        },
         { name: "ai_judge_reward", def: "REAL" },
         { name: "ai_judge_reasoning", def: "TEXT" },
       ];
@@ -853,6 +861,8 @@ export async function ensureTrajectoriesTable(
         provider_access_count INTEGER NOT NULL DEFAULT 0,
         total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
         total_completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
         total_reward REAL NOT NULL DEFAULT 0,
         scenario_id TEXT,
         batch_id TEXT,
@@ -883,6 +893,8 @@ export async function ensureTrajectoriesTable(
         provider_access_count INTEGER NOT NULL DEFAULT 0,
         total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
         total_completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
         total_reward REAL NOT NULL DEFAULT 0,
         scenario_id TEXT,
         batch_id TEXT,
@@ -900,6 +912,22 @@ export async function ensureTrajectoriesTable(
       await executeRawSql(
         runtime,
         `ALTER TABLE trajectory_archive ADD COLUMN archive_blob_path TEXT`,
+      );
+    } catch {
+      // ignore when column already exists
+    }
+    try {
+      await executeRawSql(
+        runtime,
+        `ALTER TABLE trajectory_archive ADD COLUMN total_cache_read_input_tokens INTEGER NOT NULL DEFAULT 0`,
+      );
+    } catch {
+      // ignore when column already exists
+    }
+    try {
+      await executeRawSql(
+        runtime,
+        `ALTER TABLE trajectory_archive ADD COLUMN total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0`,
       );
     } catch {
       // ignore when column already exists
@@ -1281,6 +1309,8 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
   providerAccessCount: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
+  totalCacheReadInputTokens: number;
+  totalCacheCreationInputTokens: number;
 } {
   const timestamps = collectTrajectoryTimestamps(trajectory);
   const startTime =
@@ -1291,6 +1321,8 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
   let providerAccessCount = 0;
   let totalPromptTokens = 0;
   let totalCompletionTokens = 0;
+  let totalCacheReadInputTokens = 0;
+  let totalCacheCreationInputTokens = 0;
 
   for (const step of trajectory.steps) {
     llmCallCount += step.llmCalls.length;
@@ -1298,6 +1330,8 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
     for (const call of step.llmCalls) {
       totalPromptTokens += call.promptTokens ?? 0;
       totalCompletionTokens += call.completionTokens ?? 0;
+      totalCacheReadInputTokens += call.cacheReadInputTokens ?? 0;
+      totalCacheCreationInputTokens += call.cacheCreationInputTokens ?? 0;
     }
   }
 
@@ -1308,6 +1342,8 @@ export function summarizeTrajectory(trajectory: PersistedTrajectory): {
     providerAccessCount,
     totalPromptTokens,
     totalCompletionTokens,
+    totalCacheReadInputTokens,
+    totalCacheCreationInputTokens,
   };
 }
 
@@ -1457,6 +1493,8 @@ export async function saveTrajectory(
       providerAccessCount: summary.providerAccessCount,
       totalPromptTokens: summary.totalPromptTokens,
       totalCompletionTokens: summary.totalCompletionTokens,
+      totalCacheReadInputTokens: summary.totalCacheReadInputTokens,
+      totalCacheCreationInputTokens: summary.totalCacheCreationInputTokens,
     }),
   );
 
@@ -1473,6 +1511,8 @@ export async function saveTrajectory(
       provider_access_count,
       total_prompt_tokens,
       total_completion_tokens,
+      total_cache_read_input_tokens,
+      total_cache_creation_input_tokens,
       total_reward,
       scenario_id,
       batch_id,
@@ -1494,6 +1534,8 @@ export async function saveTrajectory(
       ${sqlNumber(summary.providerAccessCount)},
       ${sqlNumber(summary.totalPromptTokens)},
       ${sqlNumber(summary.totalCompletionTokens)},
+      ${sqlNumber(summary.totalCacheReadInputTokens)},
+      ${sqlNumber(summary.totalCacheCreationInputTokens)},
       ${sqlNumber(trajectory.totalReward)},
       ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
       ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
@@ -1515,6 +1557,8 @@ export async function saveTrajectory(
       provider_access_count = EXCLUDED.provider_access_count,
       total_prompt_tokens = EXCLUDED.total_prompt_tokens,
       total_completion_tokens = EXCLUDED.total_completion_tokens,
+      total_cache_read_input_tokens = EXCLUDED.total_cache_read_input_tokens,
+      total_cache_creation_input_tokens = EXCLUDED.total_cache_creation_input_tokens,
       total_reward = EXCLUDED.total_reward,
       scenario_id = EXCLUDED.scenario_id,
       batch_id = EXCLUDED.batch_id,
@@ -1537,6 +1581,8 @@ export async function saveTrajectory(
       provider_access_count,
       total_prompt_tokens,
       total_completion_tokens,
+      total_cache_read_input_tokens,
+      total_cache_creation_input_tokens,
       total_reward,
       scenario_id,
       batch_id,
@@ -1558,6 +1604,8 @@ export async function saveTrajectory(
       ${sqlNumber(summary.providerAccessCount)},
       ${sqlNumber(summary.totalPromptTokens)},
       ${sqlNumber(summary.totalCompletionTokens)},
+      ${sqlNumber(summary.totalCacheReadInputTokens)},
+      ${sqlNumber(summary.totalCacheCreationInputTokens)},
       ${sqlNumber(trajectory.totalReward)},
       ${trajectory.scenarioId ? sqlQuote(trajectory.scenarioId) : "NULL"},
       ${trajectory.batchId ? sqlQuote(trajectory.batchId) : "NULL"},
@@ -1579,6 +1627,8 @@ export async function saveTrajectory(
       provider_access_count = EXCLUDED.provider_access_count,
       total_prompt_tokens = EXCLUDED.total_prompt_tokens,
       total_completion_tokens = EXCLUDED.total_completion_tokens,
+      total_cache_read_input_tokens = EXCLUDED.total_cache_read_input_tokens,
+      total_cache_creation_input_tokens = EXCLUDED.total_cache_creation_input_tokens,
       total_reward = EXCLUDED.total_reward,
       scenario_id = EXCLUDED.scenario_id,
       batch_id = EXCLUDED.batch_id,

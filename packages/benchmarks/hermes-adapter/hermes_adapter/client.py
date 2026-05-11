@@ -92,7 +92,7 @@ class HermesClient:
     # ------------------------------------------------------------------
 
     def health(self) -> dict[str, object]:
-        """Spawn ``<venv> -c "import environments; print('ok')"`` and report.
+        """Spawn ``<venv> -c "import openai; print('ok')"`` and report.
 
         Returns ``{"status": "ready", ...}`` on success or ``{"status": "error", ...}``
         on failure. Never raises.
@@ -101,7 +101,7 @@ class HermesClient:
             return {"status": "error", "error": f"venv python not found at {self.venv_python}"}
         try:
             result = self._run_python_subprocess(
-                ["-c", "import environments; print('ok')"],
+                ["-c", "import openai; print('ok')"],
                 timeout_s=30.0,
             )
         except subprocess.TimeoutExpired as exc:
@@ -260,10 +260,23 @@ class HermesClient:
         payload = self.build_send_message_payload(text, context)
         oai = OpenAI(api_key=payload["api_key"] or None, base_url=str(payload["base_url"]))
         messages: list[dict[str, object]] = []
+        ctx = payload.get("context")
+        raw_messages = ctx.get("messages") if isinstance(ctx, Mapping) else None
+        had_raw_messages = False
+        if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
+            for item in raw_messages:
+                if not isinstance(item, Mapping):
+                    continue
+                role = item.get("role")
+                content = item.get("content")
+                if role in {"system", "user", "assistant", "tool"}:
+                    messages.append({"role": str(role), "content": "" if content is None else str(content)})
+                    had_raw_messages = True
         sys_prompt = payload.get("system_prompt")
-        if isinstance(sys_prompt, str) and sys_prompt:
+        if isinstance(sys_prompt, str) and sys_prompt and not had_raw_messages:
             messages.append({"role": "system", "content": sys_prompt})
-        messages.append({"role": "user", "content": text})
+        if not had_raw_messages:
+            messages.append({"role": "user", "content": text})
         kwargs: dict[str, object] = {"model": str(payload["model"]), "messages": messages}
         tools = payload.get("tools")
         if isinstance(tools, list) and tools:
@@ -271,6 +284,14 @@ class HermesClient:
         completion = oai.chat.completions.create(**kwargs)
         msg = completion.choices[0].message
         tool_calls = getattr(msg, "tool_calls", None) or []
+        parsed_tool_calls = [
+            {
+                "id": getattr(tc, "id", "") or "",
+                "name": getattr(getattr(tc, "function", None), "name", "") or "",
+                "arguments": getattr(getattr(tc, "function", None), "arguments", "") or "",
+            }
+            for tc in tool_calls
+        ]
         actions = [
             getattr(getattr(tc, "function", None), "name", "")
             for tc in tool_calls
@@ -280,7 +301,7 @@ class HermesClient:
             text=str(msg.content or ""),
             thought=getattr(msg, "reasoning_content", None) or None,
             actions=actions,
-            params={},
+            params={"tool_calls": parsed_tool_calls},
         )
 
     @staticmethod
@@ -382,9 +403,22 @@ def _main() -> int:
 
     client = OpenAI(api_key=api_key or None, base_url=base_url or None)
     messages = []
-    if isinstance(system_prompt, str) and system_prompt:
+    context = payload.get("context")
+    raw_messages = context.get("messages") if isinstance(context, dict) else None
+    had_raw_messages = False
+    if isinstance(raw_messages, list):
+        for item in raw_messages:
+            if not isinstance(item, dict):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if role in {"system", "user", "assistant", "tool"}:
+                messages.append({"role": role, "content": "" if content is None else str(content)})
+                had_raw_messages = True
+    if isinstance(system_prompt, str) and system_prompt and not had_raw_messages:
         messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": text})
+    if not had_raw_messages:
+        messages.append({"role": "user", "content": text})
 
     kwargs = {"model": model, "messages": messages}
     if isinstance(tools, list) and tools:
@@ -405,11 +439,14 @@ def _main() -> int:
     if not isinstance(thought, str):
         thought = None
 
+    usage = getattr(completion, "usage", None)
+    usage_payload = usage.model_dump() if hasattr(usage, "model_dump") else {}
+
     result = {
         "text": msg.content or "",
         "thought": thought,
         "actions": [tc["name"] for tc in tool_calls if tc["name"]],
-        "params": {"tool_calls": tool_calls} if tool_calls else {},
+        "params": {"tool_calls": tool_calls, "usage": usage_payload},
     }
     sys.stdout.write(json.dumps(result))
     sys.stdout.write("\n")

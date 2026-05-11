@@ -18,6 +18,20 @@ The workbench API manages the agent's task board and todo list. Tasks represent 
 | DELETE | `/api/workbench/tasks/:id` | Delete a task |
 | GET | `/api/workbench/todos` | List all todos |
 | POST | `/api/workbench/todos` | Create or update a workbench to-do item |
+| POST | `/api/workbench/vfs/projects` | Create or open a VFS project |
+| GET | `/api/workbench/vfs/projects/:id/quota` | Read VFS quota |
+| GET | `/api/workbench/vfs/projects/:id/files` | List VFS files |
+| GET | `/api/workbench/vfs/projects/:id/file` | Read a VFS file |
+| PUT | `/api/workbench/vfs/projects/:id/file` | Write a VFS file |
+| DELETE | `/api/workbench/vfs/projects/:id/file` | Delete a VFS file |
+| GET | `/api/workbench/vfs/projects/:id/snapshots` | List snapshots |
+| POST | `/api/workbench/vfs/projects/:id/snapshots` | Create snapshot |
+| GET | `/api/workbench/vfs/projects/:id/diff` | Diff current files against a snapshot |
+| POST | `/api/workbench/vfs/projects/:id/rollback` | Roll back to snapshot |
+| POST | `/api/workbench/vfs/projects/:id/compile-plugin` | Compile TypeScript/JS from VFS |
+| POST | `/api/workbench/vfs/projects/:id/load-plugin` | Load a VFS plugin into the runtime |
+| GET | `/api/workbench/vfs/plugins` | List loaded VFS plugins |
+| DELETE | `/api/workbench/vfs/projects/:id/plugins/:pluginName` | Unload a VFS plugin |
 
 ---
 
@@ -255,6 +269,125 @@ Create or update a to-do item. When the todo data service plugin is available, t
   }
 }
 ```
+
+## VFS Projects
+
+Workbench VFS projects are isolated virtual filesystems for generated apps,
+applets, and plugins. The VFS enforces traversal rejection, symlink rejection,
+project quota, max-file quota, snapshots, diff, and rollback. It is the local
+storage layer used by mobile-safe applets and by generated TypeScript plugins.
+
+### POST /api/workbench/vfs/projects
+
+Create or open a VFS project.
+
+```json
+{ "projectId": "demo-app" }
+```
+
+Responses expose virtual project metadata only. Host filesystem roots, snapshot
+roots, and compiled plugin disk paths are intentionally redacted from the public
+Workbench API.
+
+### GET/PUT/DELETE /api/workbench/vfs/projects/:id/file
+
+`GET` and `DELETE` take a `path` query parameter. `GET` accepts
+`encoding=utf-8|base64`. `PUT` takes:
+
+```json
+{
+  "path": "src/plugin.ts",
+  "content": "export default { name: 'demo' };",
+  "encoding": "utf-8"
+}
+```
+
+### Snapshots, Diffs, Rollback
+
+Create snapshots before risky generated-code edits:
+
+```json
+{ "note": "before agent edit" }
+```
+
+Diff current files against a snapshot:
+
+```text
+GET /api/workbench/vfs/projects/demo-app/diff?snapshotId=<snapshot-id>
+```
+
+Rollback:
+
+```json
+{ "snapshotId": "<snapshot-id>" }
+```
+
+### Compile And Load Plugins
+
+Generated TypeScript plugins can be compiled and loaded from the VFS:
+
+```json
+{
+  "entry": "src/plugin.ts",
+  "outFile": "dist/plugin.js",
+  "format": "esm",
+  "target": "node20"
+}
+```
+
+```json
+{
+  "entry": "src/plugin.ts",
+  "compileFirst": true
+}
+```
+
+### Promote To Cloud
+
+Use this route when a local Workbench VFS project needs full Claude, Codex, or
+OpenCode execution in an Eliza Cloud coding container.
+
+```text
+POST /api/workbench/vfs/projects/demo-app/promote-to-cloud
+```
+
+```json
+{
+  "snapshotId": "snapshot-id",
+  "name": "Demo app",
+  "description": "Generated app workspace",
+  "preferredAgent": "codex",
+  "workspacePath": "/workspace/demo-app",
+  "branchName": "agent/demo-app"
+}
+```
+
+The agent backend exports the requested snapshot, packages files with
+`encoding=utf-8|base64`, and forwards the bundle to
+`@elizaos/plugin-elizacloud` through the `CLOUD_CONTAINER` service.
+
+**Response** (202)
+
+```json
+{
+  "success": true,
+  "data": {
+    "promotionId": "promotion-id",
+    "status": "accepted",
+    "source": {
+      "sourceKind": "project",
+      "projectId": "demo-app",
+      "snapshotId": "snapshot-id"
+    },
+    "workspacePath": "/workspace/demo-app",
+    "createdAt": "2026-05-11T16:00:00.000Z"
+  }
+}
+```
+
+The route fails closed. If Cloud auth is missing, the `CLOUD_CONTAINER` service
+is unavailable, or the Cloud control-plane endpoint is not deployed, the server
+returns an error such as `503` instead of returning a fake successful stub.
 
 ## Common Error Codes
 

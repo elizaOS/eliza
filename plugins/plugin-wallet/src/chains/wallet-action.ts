@@ -132,10 +132,11 @@ function normalizedGovOp(value: unknown): string | undefined {
 
 function normalizeSubactionValue(value: unknown): WalletSubaction | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
-  if (
-    (WALLET_SUBACTIONS as readonly string[]).includes(normalized as string)
-  ) {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if ((WALLET_SUBACTIONS as readonly string[]).includes(normalized as string)) {
     return normalized as WalletSubaction;
   }
   return undefined;
@@ -147,7 +148,9 @@ function normalizeSubactionValue(value: unknown): WalletSubaction | undefined {
  * Schema-canonical name is `action`. The dispatcher additionally accepts
  * `subaction` (legacy) and other historical aliases for compatibility.
  */
-function resolveSubaction(raw: Record<string, unknown>): WalletSubaction | undefined {
+function resolveSubaction(
+  raw: Record<string, unknown>,
+): WalletSubaction | undefined {
   const discriminator =
     normalizeSubactionValue(raw.action) ??
     normalizeSubactionValue(raw.subaction) ??
@@ -377,7 +380,8 @@ async function runWalletRouter(
           walletActionSucceeded: routed.result.status === "submitted",
           walletActionPrepared: routed.result.status === "prepared",
           walletChain: routed.handler.chain,
-          walletSubaction: routed.result.subaction satisfies WalletRouterSubaction,
+          walletSubaction: routed.result
+            .subaction satisfies WalletRouterSubaction,
         }
       : {
           walletActionError: routed.error,

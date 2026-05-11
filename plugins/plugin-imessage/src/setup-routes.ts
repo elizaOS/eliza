@@ -4,7 +4,7 @@
  * Exposes the @elizaos/plugin-imessage service state through the Plugin
  * routes API so the dashboard (and future CLIs / third-party integrations)
  * can read and write against macOS Messages.app without each client going
- * straight to chat.db or AppleScript.
+ * straight to chat.db or native macOS bridges.
  *
  * Routes served (all under `/api/imessage`):
  *

@@ -674,6 +674,93 @@ describe("installPromptOptimizations telemetry", () => {
     expect(conversationCompaction.didCompact).toBe(true);
   });
 
+  it("carries cache-token usage from MODEL_USED events into trajectory fallback calls", async () => {
+    delete process.env.ELIZA_CONVERSATION_COMPACTOR;
+    const trajectoryCalls: Array<Record<string, unknown>> = [];
+    const runtime = {
+      actions: [],
+      character: { system: "system fallback" },
+      logger: { info: () => {}, warn: () => {} },
+      emitEvent: async (_event: unknown, _params?: unknown) => {},
+      getService: (type: string) =>
+        type === "trajectories"
+          ? {
+              logLlmCall: (call: Record<string, unknown>) => {
+                trajectoryCalls.push(call);
+              },
+            }
+          : null,
+      useModel: async (_type?: unknown, _params?: unknown) => {
+        await (
+          runtime.emitEvent as (
+            event: unknown,
+            params?: unknown,
+          ) => Promise<void>
+        )("MODEL_USED", {
+          source: "cerebras",
+          provider: "cerebras",
+          model: "gpt-oss-120b",
+          tokens: {
+            prompt: 120,
+            completion: 30,
+            total: 150,
+            cacheReadInputTokens: 80,
+            cacheCreationInputTokens: 12,
+          },
+        });
+        return "final response";
+      },
+    };
+    (globalThis as Record<symbol, unknown>)[
+      Symbol.for("elizaos.trajectoryContextManager")
+    ] = { active: () => ({ trajectoryStepId: "cache-step" }) };
+
+    installPromptOptimizations(
+      runtime as never,
+      {
+        models: {
+          providers: {
+            test: {
+              baseUrl: "https://example.test/v1",
+              models: [
+                {
+                  id: "gpt-oss-120b",
+                  name: "gpt-oss-120b",
+                  reasoning: false,
+                  input: ["text"],
+                  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                  contextWindow: 4096,
+                  maxTokens: 256,
+                },
+              ],
+            },
+          },
+        },
+      } as never,
+    );
+
+    const result = await (
+      runtime.useModel as (
+        modelType: string,
+        payload: Record<string, unknown>,
+      ) => Promise<unknown>
+    )("TEXT_LARGE", {
+      model: "gpt-oss-120b",
+      prompt: "hello",
+      maxTokens: 100,
+    });
+
+    expect(result).toBe("final response");
+    expect(trajectoryCalls).toHaveLength(1);
+    expect(trajectoryCalls[0]).toMatchObject({
+      promptTokens: 120,
+      completionTokens: 30,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 12,
+      tokenUsageEstimated: false,
+    });
+  });
+
   it("records and compacts v5 messages-array payloads", async () => {
     process.env.ELIZA_CONVERSATION_COMPACTOR = "naive-summary";
     const trajectoryCalls: Array<Record<string, unknown>> = [];

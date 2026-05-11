@@ -4,7 +4,6 @@ import {
   type DispatchSensitiveRequest,
   defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,
-  type SensitiveRequest,
   type TargetInfo,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";

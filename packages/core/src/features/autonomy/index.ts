@@ -26,8 +26,8 @@ export type { AutonomyConfig, AutonomyStatus } from "./types";
 // mobile agent explodes with `ReferenceError: <name> is not defined`
 // when a consumer dereferences a re-exported binding at runtime.
 import {
-	escalateAction as _bs_1a_escalateAction,
 	sendToAdminAction as _bs_1_sendToAdminAction,
+	escalateAction as _bs_1a_escalateAction,
 } from "./action";
 import {
 	adminChatProvider as _bs_2_adminChatProvider,

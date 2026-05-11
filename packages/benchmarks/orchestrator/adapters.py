@@ -43,8 +43,12 @@ IGNORED_BENCHMARK_DIRS = {
     ".pytest_cache",
     "benchmark_results",
     "eliza-adapter",
+    "hermes-adapter",
+    "openclaw-adapter",
+    "lib",
     "orchestrator",
     "swe-bench-workspace",
+    "tests",
     "viewer",
 }
 
@@ -92,30 +96,22 @@ def _make_registry_adapter(
         workspace_root.resolve(),
     ]
     cwd_value = str(next((candidate for candidate in cwd_candidates if candidate.exists()), workspace_root.resolve()))
-    env_builder = None
-    if benchmark_id in {
-        "agentbench",
-        "gaia",
-        "gaia_orchestrated",
-        "gauntlet",
-        "orchestrator_lifecycle",
-        "realm",
-        "rlm_bench",
-        "social_alpha",
-        "terminal_bench",
-    }:
-        adapter_python_paths = [str((benchmarks_root / "eliza-adapter").resolve())]
-        if benchmark_id == "gauntlet":
-            adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
+    adapter_python_paths = [
+        str((benchmarks_root / "eliza-adapter").resolve()),
+        str((benchmarks_root / "hermes-adapter").resolve()),
+        str((benchmarks_root / "openclaw-adapter").resolve()),
+    ]
+    if benchmark_id == "gauntlet":
+        adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
 
-        def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
-            existing = ctx.env.get("PYTHONPATH", "")
-            pythonpath = (
-                os.pathsep.join([*adapter_python_paths, existing])
-                if existing
-                else os.pathsep.join(adapter_python_paths)
-            )
-            return {"PYTHONPATH": pythonpath}
+    def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+        existing = ctx.env.get("PYTHONPATH", "")
+        pythonpath = (
+            os.pathsep.join([*adapter_python_paths, existing])
+            if existing
+            else os.pathsep.join(adapter_python_paths)
+        )
+        return {"PYTHONPATH": pythonpath}
 
     return BenchmarkAdapter(
         id=benchmark_id,
@@ -449,8 +445,6 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
         and provider_name in bridge_providers
     ):
         handler = "eliza"
-    if handler == "eliza" and provider_name in {"openai", "groq", "openrouter", "cerebras", "vllm"}:
-        handler = "llm"
     args = [
         sys.executable,
         "run_benchmark.py",
@@ -1079,6 +1073,135 @@ def _score_from_framework(path: Path) -> ScoreSummary:
     )
 
 
+def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    method = str(
+        ctx.request.extra_config.get(
+            "method",
+            "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
+        )
+    )
+    args = [
+        sys.executable,
+        "run_cerebras.py",
+        "--method",
+        method,
+        "--model",
+        ctx.request.model,
+        "--output",
+        str(ctx.output_root / "compactbench-results.jsonl"),
+        "--case-count",
+        str(int(ctx.request.extra_config.get("case_count", ctx.request.extra_config.get("max_tasks", 1)))),
+        "--drift-cycles",
+        str(int(ctx.request.extra_config.get("drift_cycles", 1))),
+    ]
+    suite = ctx.request.extra_config.get("suite")
+    if isinstance(suite, str) and suite.strip():
+        args.extend(["--suite", suite.strip()])
+    difficulty = ctx.request.extra_config.get("difficulty")
+    if isinstance(difficulty, str) and difficulty.strip():
+        args.extend(["--difficulty", difficulty.strip()])
+    benchmarks_dir = ctx.request.extra_config.get("benchmarks_dir")
+    if isinstance(benchmarks_dir, str) and benchmarks_dir.strip():
+        args.extend(["--benchmarks-dir", benchmarks_dir.strip()])
+    if ctx.request.extra_config.get("resume") is True:
+        args.append("--resume")
+    if ctx.request.extra_config.get("score") is True:
+        args.append("--score")
+    return args
+
+
+def _score_from_compactbench(path: Path) -> ScoreSummary:
+    import json
+
+    run_end: dict[str, Any] | None = None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            item = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(item, dict) and item.get("event") == "run_end":
+            run_end = item
+    if run_end is None:
+        raise ValueError("compactbench result missing run_end event")
+    raw = run_end.get("overall_score")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_score": raw,
+            "drift_resistance": run_end.get("drift_resistance"),
+            "constraint_retention": run_end.get("constraint_retention"),
+            "contradiction_rate": run_end.get("contradiction_rate"),
+            "compression_ratio": run_end.get("compression_ratio"),
+        },
+    )
+
+
+def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        sys.executable,
+        "-m",
+        "eliza_loca.run_cerebras",
+        "--model",
+        ctx.request.model,
+        "--output-dir",
+        str(ctx.output_root / "loca-output"),
+        "--max-workers",
+        str(int(ctx.request.extra_config.get("max_workers", 1))),
+        "--max-tool-uses",
+        str(int(ctx.request.extra_config.get("max_tool_uses", 10))),
+        "--max-tokens",
+        str(int(ctx.request.extra_config.get("max_tokens", 2048))),
+        "--timeout",
+        str(int(ctx.request.extra_config.get("timeout", 300))),
+        "--allow-empty",
+    ]
+    config = ctx.request.extra_config.get("config")
+    if isinstance(config, str) and config.strip():
+        args.extend(["--config", config.strip()])
+    else:
+        args.extend(["--config", "task-configs/debug.json"])
+    strategy = ctx.request.extra_config.get("strategy")
+    if isinstance(strategy, str) and strategy.strip():
+        args.extend(["--strategy", strategy.strip()])
+    max_steps = ctx.request.extra_config.get("max_steps", ctx.request.extra_config.get("max_tasks"))
+    if isinstance(max_steps, int) and max_steps > 0:
+        args.extend(["--max-steps", str(max_steps)])
+    context_summary = ctx.request.extra_config.get("context_summary")
+    if context_summary is not False:
+        args.append("--context-summary")
+    if ctx.request.extra_config.get("context_awareness") is True:
+        args.append("--context-awareness")
+    return args
+
+
+def _score_from_loca_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    summary = data.get("summary") if isinstance(data, dict) else None
+    if not isinstance(summary, dict):
+        raise ValueError("loca-bench audit missing summary")
+    raw = summary.get("avg_accuracy")
+    score = float(raw) if isinstance(raw, (int, float)) else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "avg_accuracy": raw,
+            "trajectory_count": summary.get("trajectory_count"),
+            "issue_count": summary.get("issue_count"),
+            "total_api_tokens": summary.get("total_api_tokens"),
+            "max_prompt_tokens": summary.get("max_prompt_tokens"),
+        },
+    )
+
+
 def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
     benchmarks_root = workspace_root / "benchmarks"
     benchmark_dirs = sorted(
@@ -1141,6 +1264,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "gaia_orchestrated": "gaia",
         "hyperliquid_bench": "HyperliquidBench",
         "openclaw_bench": "openclaw-benchmark",
+        "lifeops_bench": "lifeops-bench",
+        "mmlu": "standard",
+        "humaneval": "standard",
+        "gsm8k": "standard",
+        "mt_bench": "standard",
     }
     for entry in registry_entries:
         directory = registry_dir_map.get(entry.id, entry.id)
@@ -1259,6 +1387,35 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_framework,
             result_patterns=["framework-results.json", "typescript-*.json", "results/*.json"],
             score_extractor=_score_from_framework,
+        ),
+        _make_extra_adapter(
+            adapter_id="compactbench",
+            directory="compactbench",
+            description="CompactBench conversation-compaction benchmark",
+            cwd=str((benchmarks_root / "compactbench").resolve()),
+            command_builder=_command_compactbench,
+            result_patterns=["compactbench-results.jsonl", "*.jsonl"],
+            score_extractor=_score_from_compactbench,
+            default_extra_config={
+                "case_count": 1,
+                "drift_cycles": 1,
+            },
+            default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="loca_bench",
+            directory="loca-bench",
+            description="LOCA long-context agent benchmark via elizaOS/Cerebras wrapper",
+            cwd=str((benchmarks_root / "loca-bench").resolve()),
+            command_builder=_command_loca_bench,
+            result_patterns=["loca-output/eliza_loca_audit.json", "**/eliza_loca_audit.json"],
+            score_extractor=_score_from_loca_bench,
+            default_extra_config={
+                "max_steps": 1,
+                "max_tool_uses": 5,
+                "context_summary": True,
+            },
+            default_timeout_seconds=7200,
         ),
         _make_extra_adapter(
             adapter_id="rolodex",

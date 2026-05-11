@@ -385,6 +385,34 @@ usable as an ad account. Use a selected provider ad account id for real spend.
 
 `GET /api/v1/advertising/campaigns?appId=<appId>` lists campaigns.
 
+### Upload or map media to an ad platform
+
+`POST /api/v1/advertising/accounts/{id}/media`
+
+Use this when a platform needs its own asset id/hash before a creative can
+deliver. The route reviews the media, downloads or validates the URL as needed,
+and returns `providerAssetId`.
+
+```json
+{
+  "type": "image",
+  "name": "launch-card",
+  "url": "https://cdn.example/asset.png",
+  "mimeType": "image/png"
+}
+```
+
+For TikTok video ads, include a thumbnail when available:
+
+```json
+{
+  "type": "video",
+  "name": "launch-video",
+  "url": "https://cdn.example/asset.mp4",
+  "thumbnailUrl": "https://cdn.example/asset-thumb.png"
+}
+```
+
 ### Add creative
 
 `POST /api/v1/advertising/campaigns/{id}/creatives`
@@ -417,11 +445,18 @@ usable as an ad account. Use a selected provider ad account id for real spend.
 Provider caveats:
 
 - Meta link ads require `pageId` or a server-side `META_DEFAULT_PAGE_ID`.
-- TikTok image/video ads require `media[].providerAssetId` from TikTok's upload
-  API; a public Cloud/R2 URL is not enough for native delivery.
-- Google currently creates responsive search ads from text fields. Generated
-  image/video assets need a future Google asset-upload path before image/video
-  campaign creative can be automated.
+  Image URLs are uploaded to Meta Ad Images and linked by `image_hash`; video
+  URLs are uploaded to Meta Ad Videos and linked by `video_id`.
+- TikTok image/video ads require provider-native `image_id` or `video_id`.
+  Creative creation auto-uploads missing `providerAssetId` values for synced
+  campaigns, or you can call the media upload route first.
+- Google image creatives upload images as Google Ads `ImageAsset` resources.
+  YouTube URLs map to Google Ads `YOUTUBE_VIDEO` assets. Raw video URLs use
+  Google Ads `YouTubeVideoUpload` ingestion and need processing to reach
+  `PROCESSED` before they can be converted into a usable video asset. Creatives
+  with image provider ids create responsive display ads; if a processed YouTube
+  video asset is also present, Cloud attaches it to the display creative.
+  Text-only creatives create responsive search ads.
 - Campaigns and creatives should be created paused/draft first. Starting
   delivery is a separate confirmed action.
 
@@ -435,6 +470,18 @@ Do not start delivery without a confirmed budget, destination URL, ad-account
 ownership, platform policy acceptance, and a user-approved audience/creative.
 Workers should call the parent via `parent-agent` cloud commands for these
 operations so the parent can confirm spend and account context.
+
+Parent-agent command:
+
+```text
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.upload","confirmed":true,"params":{"id":"<adAccountId>","body":{"type":"image","name":"launch-card","url":"https://cdn.example/asset.png"}}}
+```
+
+Cloud content-safety checks review ad campaign copy, creative text, uploadable
+image media, generated promotion images/copy, video prompts, music prompts and
+lyrics, and TTS text before spend or publication. Image moderation is not a
+standalone CSAM classifier because OpenAI's `sexual/minors` moderation category
+is text-only; keep platform policy review and abuse reporting workflows enabled.
 
 ## General Media Generation
 

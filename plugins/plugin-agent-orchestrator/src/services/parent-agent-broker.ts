@@ -475,6 +475,15 @@ const CLOUD_COMMANDS: CloudCommandDefinition[] = [
     risk: "read",
   },
   {
+    command: "advertising.accounts.media.upload",
+    description:
+      "Upload or map a Cloud media URL into an advertising provider asset library.",
+    method: "POST",
+    path: "/api/v1/advertising/accounts/{id}/media",
+    pathParams: ["id"],
+    risk: "mutating",
+  },
+  {
     command: "advertising.campaigns.list",
     description: "List advertising campaigns.",
     method: "GET",

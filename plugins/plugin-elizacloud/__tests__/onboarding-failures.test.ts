@@ -12,15 +12,7 @@
  * regression that bypasses our mocks fails loudly instead of escaping.
  */
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type Mock,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
 // ─── Module mocks ──────────────────────────────────────────────────────────
 //
@@ -71,12 +63,9 @@ vi.mock("../src/cloud/bridge-client.js", () => {
 
 // Imports must come AFTER vi.mock calls. The real `onboarding.ts` will pick
 // up the mocked auth + bridge-client modules.
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { cloudLogin } from "../src/cloud/auth.js";
-import {
-  checkCloudAvailability,
-  runCloudOnboarding,
-} from "../src/onboarding.js";
+import { checkCloudAvailability, runCloudOnboarding } from "../src/onboarding.js";
 
 // `vi.mocked` gives us a properly typed Mock handle without the
 // `as unknown as Mock` escape pattern.
@@ -136,9 +125,7 @@ function makeClack(opts: { confirmReturn?: unknown } = {}): ClackStub {
   const stub: ClackStub = {
     spinner: spinner as Mock,
     log: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-    confirm: vi.fn(async () =>
-      opts.confirmReturn === undefined ? true : opts.confirmReturn,
-    ),
+    confirm: vi.fn(async () => (opts.confirmReturn === undefined ? true : opts.confirmReturn)),
     isCancel: vi.fn(() => false),
     _lastSpinner: lastSpinner,
   };
@@ -186,7 +173,9 @@ function resetBridgeBehavior(): void {
  * AbortSignal); the unused-overload return value is satisfied with a real
  * `setTimeout(noop, 0)` handle so we never hand back a fake number.
  */
-function installSyncSetTimeout(opts: { advanceVirtualTime?: (ms: number) => void } = {}): () => void {
+function installSyncSetTimeout(
+  opts: { advanceVirtualTime?: (ms: number) => void } = {}
+): () => void {
   const realSetTimeout = globalThis.setTimeout;
   const noop = (): void => undefined;
   const spy = vi.spyOn(globalThis, "setTimeout");
@@ -262,7 +251,7 @@ describe("C1 — availability=true happy path", () => {
         asClackModule(clack),
         "agent-c1",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
     } finally {
       restoreSetTimeout();
@@ -288,17 +277,15 @@ describe("C2 — availability=false", () => {
       asClackModule(clack),
       "agent-c2",
       undefined,
-      "https://www.elizacloud.ai",
+      "https://www.elizacloud.ai"
     );
 
     expect(result).toBeNull();
-    expect(clack.log.warn).toHaveBeenCalledWith(
-      expect.stringMatching(/at capacity|run locally/i),
-    );
+    expect(clack.log.warn).toHaveBeenCalledWith(expect.stringMatching(/at capacity|run locally/i));
     expect(clack.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(/run locally/i),
-      }),
+      })
     );
     // No auth attempt when user falls back.
     expect(cloudLogin).not.toHaveBeenCalled();
@@ -355,7 +342,7 @@ describe("C3 — auth success", () => {
         asClackModule(clack),
         "agent-c3",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
 
       expect(result).not.toBeNull();
@@ -382,8 +369,8 @@ describe("C4 — auth timeout", () => {
     // The exact string cloudLogin throws on the 5-minute browser timeout.
     cloudLoginMock.mockRejectedValueOnce(
       new Error(
-        `Cloud login timed out. The browser login was not completed within ${Math.round(AUTH_OVERALL_TIMEOUT_MS / 1000)} seconds.`,
-      ),
+        `Cloud login timed out. The browser login was not completed within ${Math.round(AUTH_OVERALL_TIMEOUT_MS / 1000)} seconds.`
+      )
     );
 
     const clack = makeClack({ confirmReturn: false }); // "run locally"
@@ -392,27 +379,21 @@ describe("C4 — auth timeout", () => {
       asClackModule(clack),
       "agent-c4",
       undefined,
-      "https://www.elizacloud.ai",
+      "https://www.elizacloud.ai"
     );
 
     expect(result).toBeNull();
 
     // The spinner now translates the error category instead of collapsing
     // everything into a generic "Login failed: <msg>".
-    const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map(
-      (c) => String(c[0]),
-    );
-    expect(
-      spinnerStopCalls.some((m) =>
-        /sign-in timed out after 5 minutes/i.test(m),
-      ),
-    ).toBe(true);
+    const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map((c) => String(c[0]));
+    expect(spinnerStopCalls.some((m) => /sign-in timed out after 5 minutes/i.test(m))).toBe(true);
 
     expect(clack.log.warn).toHaveBeenCalled();
     expect(clack.confirm).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(/again|local/i),
-      }),
+      })
     );
   });
 
@@ -422,7 +403,7 @@ describe("C4 — auth timeout", () => {
     // Per cloud/auth.ts: failed session create surfaces as
     // "Failed to create auth session: ..." — that's the network bucket.
     cloudLoginMock.mockRejectedValueOnce(
-      new Error("Failed to create auth session: TypeError: fetch failed"),
+      new Error("Failed to create auth session: TypeError: fetch failed")
     );
 
     const clack = makeClack({ confirmReturn: false });
@@ -431,17 +412,11 @@ describe("C4 — auth timeout", () => {
       asClackModule(clack),
       "agent-c4-net",
       undefined,
-      "https://www.elizacloud.ai",
+      "https://www.elizacloud.ai"
     );
 
-    const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map(
-      (c) => String(c[0]),
-    );
-    expect(
-      spinnerStopCalls.some((m) =>
-        /couldn.?t reach eliza cloud/i.test(m),
-      ),
-    ).toBe(true);
+    const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map((c) => String(c[0]));
+    expect(spinnerStopCalls.some((m) => /couldn.?t reach eliza cloud/i.test(m))).toBe(true);
   });
 
   it("when the user says 'retry' and the retry also times out, returns null", async () => {
@@ -457,7 +432,7 @@ describe("C4 — auth timeout", () => {
       asClackModule(clack),
       "agent-c4-retry",
       undefined,
-      "https://www.elizacloud.ai",
+      "https://www.elizacloud.ai"
     );
 
     expect(result).toBeNull();
@@ -506,7 +481,7 @@ describe("C5 — provisioning happy progression", () => {
         asClackModule(clack),
         "agent-c5",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
       expect(result).not.toBeNull();
       expect(result?.agentId).toBe("agent-id-c5");
@@ -551,7 +526,7 @@ describe("C5 — provisioning happy progression", () => {
         asClackModule(clack),
         "agent-c5b",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
       expect(result?.agentId).toBe("agent-id-c5b");
     } finally {
@@ -609,7 +584,7 @@ describe("C6 — provisioning timeout", () => {
         asClackModule(clack),
         "agent-c6",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
 
       // Timeout is no longer treated as a partial success: the user is
@@ -620,25 +595,17 @@ describe("C6 — provisioning timeout", () => {
       expect(clack.confirm).toHaveBeenCalledWith(
         expect.objectContaining({
           message: expect.stringMatching(/continue with local setup/i),
-        }),
+        })
       );
 
       // The user-facing warning mentions the pending agent.
       const warnCalls = clack.log.warn.mock.calls.map((c) => String(c[0]));
-      expect(
-        warnCalls.some((m) =>
-          /still starting up|eliza cloud connect/i.test(m),
-        ),
-      ).toBe(true);
+      expect(warnCalls.some((m) => /still starting up|eliza cloud connect/i.test(m))).toBe(true);
 
       // At least floor(PROVISION_TIMEOUT_MS / PROVISION_POLL_INTERVAL_MS)
       // polls before bailing.
-      const expectedMinPolls = Math.floor(
-        PROVISION_TIMEOUT_MS / PROVISION_POLL_INTERVAL_MS,
-      );
-      expect(
-        bridgeBehavior.getAgent.mock.calls.length,
-      ).toBeGreaterThanOrEqual(expectedMinPolls);
+      const expectedMinPolls = Math.floor(PROVISION_TIMEOUT_MS / PROVISION_POLL_INTERVAL_MS);
+      expect(bridgeBehavior.getAgent.mock.calls.length).toBeGreaterThanOrEqual(expectedMinPolls);
     } finally {
       restoreSetTimeout();
       nowSpy.mockRestore();
@@ -688,7 +655,7 @@ describe("C6 — provisioning timeout", () => {
         asClackModule(clack),
         "agent-c6b",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
 
       // Auth + pending agent id are preserved so the user can reconnect.
@@ -732,9 +699,7 @@ describe("C2b — auth revoked during provisioning", () => {
     // The bridge client surfaces non-2xx as a plain Error with an
     // "HTTP <status>: <body>" message (see cloud/bridge-client.ts).
     // Reject every poll the same way to verify we stop after the FIRST.
-    bridgeBehavior.getAgent.mockRejectedValue(
-      new Error("HTTP 401: api key revoked"),
-    );
+    bridgeBehavior.getAgent.mockRejectedValue(new Error("HTTP 401: api key revoked"));
 
     const restoreSetTimeout = installSyncSetTimeout();
     // confirmReturn:true → user accepts local fallback after the bail.
@@ -745,7 +710,7 @@ describe("C2b — auth revoked during provisioning", () => {
         asClackModule(clack),
         "agent-c2b",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
 
       // The poll loop bailed and the user accepted the local fallback.
@@ -756,14 +721,10 @@ describe("C2b — auth revoked during provisioning", () => {
 
       // The spinner surfaced an auth-rejection message, not a generic
       // "transient error" or the original "HTTP 401" string.
-      const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map(
-        (c) => String(c[0]),
+      const spinnerStopCalls = clack._lastSpinner.stop.mock.calls.map((c) => String(c[0]));
+      expect(spinnerStopCalls.some((m) => /rejected the API key|sign in again/i.test(m))).toBe(
+        true
       );
-      expect(
-        spinnerStopCalls.some((m) =>
-          /rejected the API key|sign in again/i.test(m),
-        ),
-      ).toBe(true);
     } finally {
       restoreSetTimeout();
     }
@@ -786,9 +747,7 @@ describe("C2b — auth revoked during provisioning", () => {
       createdAt: "2026-05-10T00:00:00Z",
       updatedAt: "2026-05-10T00:00:00Z",
     });
-    bridgeBehavior.getAgent.mockRejectedValue(
-      new Error("HTTP 403: forbidden"),
-    );
+    bridgeBehavior.getAgent.mockRejectedValue(new Error("HTTP 403: forbidden"));
 
     const restoreSetTimeout = installSyncSetTimeout();
     const clack = makeClack({ confirmReturn: true });
@@ -798,7 +757,7 @@ describe("C2b — auth revoked during provisioning", () => {
         asClackModule(clack),
         "agent-c2b-403",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
       expect(bridgeBehavior.getAgent).toHaveBeenCalledTimes(1);
     } finally {
@@ -845,7 +804,7 @@ describe("C2b — auth revoked during provisioning", () => {
         asClackModule(clack),
         "agent-c2b-5xx",
         undefined,
-        "https://www.elizacloud.ai",
+        "https://www.elizacloud.ai"
       );
 
       // Recovered after two transient errors.
@@ -854,11 +813,9 @@ describe("C2b — auth revoked during provisioning", () => {
 
       // Transient errors logged at warn (not debug) per fix #2.
       const warnMessages = warnSpy.mock.calls.map((c) => String(c[0]));
-      expect(
-        warnMessages.some((m) =>
-          /\[cloud-onboarding\].*transient poll error/i.test(m),
-        ),
-      ).toBe(true);
+      expect(warnMessages.some((m) => /\[cloud-onboarding\].*transient poll error/i.test(m))).toBe(
+        true
+      );
     } finally {
       warnSpy.mockRestore();
       restoreSetTimeout();
@@ -888,11 +845,9 @@ describe("C7 — saved-key validation against /models", () => {
     // inside `validateApiKey`. We monkey-patch the prototype `get`
     // method on the imported class so any new instance fails the call.
     const { CloudApiClient } = await import("../src/utils/cloud-api.js");
-    const getSpy = vi
-      .spyOn(CloudApiClient.prototype, "get")
-      .mockImplementation(async () => {
-        throw new Error("HTTP 401: api key revoked");
-      });
+    const getSpy = vi.spyOn(CloudApiClient.prototype, "get").mockImplementation(async () => {
+      throw new Error("HTTP 401: api key revoked");
+    });
     const setApiKeySpy = vi
       .spyOn(CloudApiClient.prototype, "setApiKey")
       .mockImplementation(function (this: unknown, _key: unknown) {
@@ -941,9 +896,7 @@ describe("C7 — saved-key validation against /models", () => {
       // "Could not reach cloud API" (validateApiKey hits the catch first).
       const warnMessages = warnSpy.mock.calls.map((c) => String(c[0]));
       expect(
-        warnMessages.some((m) =>
-          /\[CloudAuth\].*(could not (be validated|reach)|revoked)/i.test(m),
-        ),
+        warnMessages.some((m) => /\[CloudAuth\].*(could not (be validated|reach)|revoked)/i.test(m))
       ).toBe(true);
 
       // The cached key survives — model calls would continue using it.

@@ -6,6 +6,7 @@ import {
 	type SensitiveRequest,
 	type SensitiveRequestDeliveryAdapter,
 } from "@elizaos/core";
+import type { UserResolvable } from "discord.js";
 import { DISCORD_SERVICE_NAME } from "./constants";
 import type { DiscordService } from "./service";
 
@@ -79,7 +80,7 @@ async function deliverViaDiscordDm(
 	const request = args.request as DiscordDispatchRequest;
 	const candidateDiscordUserId =
 		args.channelId ?? request.requesterEntityId ?? request.originUserId;
-	const discordUserId =
+	const discordUserId: string | null =
 		typeof candidateDiscordUserId === "string" ? candidateDiscordUserId : null;
 
 	if (!discordUserId) {
@@ -101,7 +102,9 @@ async function deliverViaDiscordDm(
 	}
 
 	try {
-		const user = await discordService.client.users.fetch(discordUserId);
+		const user = await discordService.client.users.fetch(
+			discordUserId as UserResolvable,
+		);
 		const dmChannel = await user.createDM();
 		await dmChannel.send({ content: buildDmBody(request, runtime) });
 		return {

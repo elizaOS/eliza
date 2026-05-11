@@ -6,7 +6,7 @@ Status as of 2026-05-11 on this workspace:
 - Standalone Vulkan SPIR-V fixtures pass on this Apple Silicon host through MoltenVK, including TurboQuant, QJL, PolarQuant, and Polar+QJL residual.
 - Built-fork Vulkan graph dispatch source wiring now exists for `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` (`turbo3`, `turbo4`, `turbo3_tcq`), and `GGML_OP_ATTN_SCORE_POLAR` (`use_qjl=0/1`), but runtime-ready capability bits stay false until native Vulkan graph smoke passes on physical hardware.
 - `adb devices -l` currently shows only `emulator-5554`; emulator Vulkan is diagnostic only and is not recordable Eliza-1 hardware evidence.
-- `xcrun xctrace list devices` currently shows `Shaw's iPhone (26.3.1)` offline even though `xcrun devicectl list devices` sees the iPhone 15 Pro as paired/available; simulator results are not physical iOS evidence.
+- Physical iOS XCFramework smoke now passes on `Shaw's iPhone (26.3.1)` / iPhone 15 Pro UDID `00008130-001955E91EF8001C`; simulator results remain non-recordable for release bundle evidence.
 - CUDA, ROCm, GH200, and native Windows runners are present and fail closed, but this Mac cannot provide recordable target hardware evidence.
 - No final Eliza-1 release bundles exist yet with final weights, hashes, eval outputs, license manifests, and Hugging Face upload evidence.
 
@@ -201,10 +201,16 @@ node packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs
 
 Current iOS blockers:
 
-- The physical iPhone is visible to CoreDevice as paired/available, but `xctrace` still lists UDID `00008130-001955E91EF8001C` as offline.
-- Retrying with the CoreDevice identifier reached an interactive `Password:` prompt before XCTest output; do not enter credentials inside the runner.
+- XCFramework physical-device smoke is PASS as of 2026-05-11:
+  `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json`
+  reports 3/3 XCTest cases passing without `--skip-voice-abi`.
+- The fixed runner treats CoreDevice `connected` state as connected, and
+  `build-xcframework.mjs` refreshes the runtime ABI shim before packaging so
+  stale shim archives cannot reintroduce the old TTS ABI crash.
+- Remaining iOS blocker: run a real Eliza-1 bundle smoke from the Capacitor app
+  shell with final text + DFlash + TTS + ASR payloads and record first token,
+  first audio, peak RSS, thermal state, and at least one local voice route.
 - Simulator runs do not count as physical iOS evidence.
-- Physical smoke must validate the embedded Metal library, Capacitor bridge load, and at least one real local-inference route from the app shell.
 
 ## Release Bundle Evidence
 

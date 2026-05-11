@@ -1049,9 +1049,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # Route LLM calls through the elizaOS TS benchmark server when the caller
         # asks for the eliza agent; otherwise forward real provider/model labels
         # to the direct OpenAI-compatible runtime instead of silently using mock.
-        agent = extra.get("agent")
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent == "eliza" or provider_name == "eliza":
+        if agent in {"eliza", "hermes", "openclaw"} or provider_name in {
+            "eliza",
+            "cerebras",
+            "openai",
+            "groq",
+            "openrouter",
+            "vllm",
+        }:
             args.extend(["--provider", "eliza"])
         elif provider_name in {"mock", ""}:
             args.extend(["--provider", "mock"])
@@ -1331,7 +1338,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [python, "-m", "elizaos_vending_bench.cli", "run", "--output-dir", str(output_dir)]
         if model.model:
             args.extend(["--model", model.model])
-        if model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
+        provider_name = (model.provider or "").strip().lower()
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"eliza", "hermes", "openclaw"} or provider_name == "cerebras":
+            args.extend(["--provider", "eliza"])
+        elif model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
             args.extend(["--provider", model.provider])
         if model.temperature is not None:
             args.extend(["--temperature", str(model.temperature)])
@@ -2075,10 +2086,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
 
     def _trust_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         handler_raw = extra.get("handler")
-        handler = handler_raw if isinstance(handler_raw, str) and handler_raw.strip() else "oracle"
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if handler == "eliza" and provider_name in {"openai", "groq", "openrouter"}:
-            handler = "llm"
+        if isinstance(handler_raw, str) and handler_raw.strip():
+            handler = handler_raw.strip()
+        elif agent in {"eliza", "hermes", "openclaw"} or provider_name in {"cerebras", "openai", "groq", "openrouter", "vllm"}:
+            handler = "eliza"
+        else:
+            handler = "oracle"
         args = [
             python,
             repo("benchmarks/trust/run_benchmark.py"),
@@ -2485,7 +2500,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ``eliza`` for adapter-backed runs that need an API key. Default
         (no model specified) is ``perfect`` for cheap smoke runs.
         """
-        agent = model.model or "perfect"
+        agent_raw = extra.get("agent") or extra.get("harness")
+        if isinstance(agent_raw, str) and agent_raw.strip():
+            agent = agent_raw.strip()
+        elif model.model in {"perfect", "wrong", "hermes", "openclaw", "cerebras-direct", "eliza"}:
+            agent = str(model.model)
+        elif (model.provider or "").strip().lower() in {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}:
+            agent = "eliza"
+        else:
+            agent = "perfect"
         args = [
             python,
             "-m",

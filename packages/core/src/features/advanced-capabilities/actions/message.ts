@@ -3128,15 +3128,7 @@ async function delegateToTriage(
 	const action = TRIAGE_OP_TO_ACTION[op];
 	const result = await runWithActionRoutingContext(
 		{ actionName: action.name, modelClass: action.modelClass },
-		() =>
-			action.handler(
-				runtime,
-				message,
-				state,
-				options,
-				callback,
-				responses,
-			),
+		() => action.handler(runtime, message, state, options, callback, responses),
 	);
 	const normalized: ActionResult = result ?? {
 		success: true,

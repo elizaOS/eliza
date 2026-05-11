@@ -39,6 +39,8 @@ export interface TrajectorySummaryRecord {
 	providerAccessCount: number;
 	totalPromptTokens: number;
 	totalCompletionTokens: number;
+	totalCacheReadInputTokens?: number;
+	totalCacheCreationInputTokens?: number;
 	scenarioId?: string | null;
 	batchId?: string | null;
 	createdAt: string;
@@ -279,6 +281,9 @@ export interface TrajectoryExportOptions {
 	jsonShape?: TrajectoryJsonShape;
 	includePrompts?: boolean;
 	trajectoryIds?: string[];
+	source?: string;
+	status?: TrajectoryStatus;
+	search?: string;
 	startDate?: string;
 	endDate?: string;
 	scenarioId?: string;

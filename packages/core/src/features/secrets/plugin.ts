@@ -92,10 +92,7 @@ export const secretsManagerPlugin: Plugin = {
 	// can pick a specific operation directly while structured callers can
 	// still target the umbrella with `action=...`. `SECRETS_UPDATE_SETTINGS`
 	// stays separate — it's a settings mutation, not a secret operation.
-	actions: [
-		...promoteSubactionsToActions(secretsAction),
-		updateSettingsAction,
-	],
+	actions: [...promoteSubactionsToActions(secretsAction), updateSettingsAction],
 
 	// Providers for context injection
 	providers: [

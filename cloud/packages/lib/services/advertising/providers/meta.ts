@@ -1,5 +1,6 @@
 import { extractErrorMessage } from "@/lib/utils/error-handling";
 import { logger } from "@/lib/utils/logger";
+import { assertSafeAdMediaUrl, downloadAdMedia, mediaFileName } from "../media-utils";
 import type {
   AdAccountCredentials,
   AdProvider,
@@ -11,6 +12,7 @@ import type {
   CreateCampaignInput,
   CreateCreativeInput,
   UpdateCampaignInput,
+  UploadMediaInput,
 } from "../types";
 
 const GRAPH_API_VERSION = process.env.META_GRAPH_API_VERSION || "v24.0";
@@ -49,6 +51,17 @@ interface CampaignResponse {
   name: string;
   status: string;
   objective: string;
+}
+
+interface MetaAdImagesResponse {
+  images?: Record<
+    string,
+    {
+      hash?: string;
+      url?: string;
+      permalink_url?: string;
+    }
+  >;
 }
 
 function isRetryableError(code: number): boolean {
@@ -497,7 +510,7 @@ export const metaAdsProvider: AdProvider = {
       const instagramActorId =
         input.instagramActorId || process.env.META_DEFAULT_INSTAGRAM_ACTOR_ID;
 
-      // Create ad creative
+      const primaryMedia = input.media[0];
       const linkData: Record<string, unknown> = {
         link: input.destinationUrl,
         message: input.primaryText ?? "",
@@ -505,21 +518,41 @@ export const metaAdsProvider: AdProvider = {
         description: input.description ?? "",
         call_to_action: {
           type: mapCtaToMeta(input.callToAction),
+          value: {
+            link: input.destinationUrl,
+          },
         },
       };
+      if (primaryMedia?.type === "image") {
+        if (primaryMedia.providerAssetId) {
+          linkData.image_hash = primaryMedia.providerAssetId;
+        } else {
+          linkData.picture = primaryMedia.url;
+        }
+      }
+
       const creativeData: Record<string, unknown> = {
         name: input.name,
         object_story_spec: {
           page_id: pageId,
           ...(instagramActorId && { instagram_actor_id: instagramActorId }),
-          link_data: linkData,
+          ...(primaryMedia?.type === "video" && primaryMedia.providerAssetId
+            ? {
+                video_data: {
+                  video_id: primaryMedia.providerAssetId,
+                  title: input.headline ?? input.name,
+                  message: input.primaryText ?? input.description ?? "",
+                  call_to_action: {
+                    type: mapCtaToMeta(input.callToAction),
+                    value: {
+                      link: input.destinationUrl,
+                    },
+                  },
+                },
+              }
+            : { link_data: linkData }),
         },
       };
-
-      // Add image if provided
-      if (input.media.length > 0 && input.media[0].type === "image") {
-        linkData.picture = input.media[0].url;
-      }
 
       const creativeParams = new URLSearchParams({
         access_token: credentials.accessToken,
@@ -566,6 +599,90 @@ export const metaAdsProvider: AdProvider = {
       return {
         success: false,
         error: error instanceof Error ? error.message : "Failed to create creative",
+      };
+    }
+  },
+
+  async uploadMedia(credentials: AdAccountCredentials, accountId: string, input: UploadMediaInput) {
+    try {
+      const actAccountId = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
+      if (input.type === "video") {
+        const safeUrl = await assertSafeAdMediaUrl(input.url);
+        const params = new URLSearchParams({
+          access_token: credentials.accessToken,
+          file_url: safeUrl,
+          name: input.name || mediaFileName({ name: input.name, url: safeUrl }),
+        });
+        const video = await graphApiRequest<{ id: string }>(
+          `/${actAccountId}/advideos?${params}`,
+          credentials.accessToken,
+          { method: "POST" },
+        );
+        if (!video.id) {
+          return { success: false, error: "Meta video upload returned no video id" };
+        }
+        return {
+          success: true,
+          providerAssetId: video.id,
+          providerAssetUrl: safeUrl,
+          metadata: { uploadType: "file_url" },
+        };
+      }
+
+      const downloaded = await downloadAdMedia(input.url, {
+        maxBytes: 12 * 1024 * 1024,
+        allowedContentTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"],
+        fileName: mediaFileName({
+          name: input.name,
+          url: input.url,
+          contentType: input.mimeType,
+          fallbackExtension: "png",
+        }),
+      });
+
+      const form = new FormData();
+      form.set("access_token", credentials.accessToken);
+      form.set("bytes", downloaded.base64);
+      form.set("name", downloaded.fileName);
+
+      const response = await fetch(`${GRAPH_API_BASE}/${actAccountId}/adimages`, {
+        method: "POST",
+        body: form,
+      });
+      const data = (await response.json()) as GraphApiError & MetaAdImagesResponse;
+      if (!response.ok || data.error) {
+        throw new Error(data.error?.message || `Meta image upload failed (${response.status})`);
+      }
+
+      const uploaded = Object.values(data.images ?? {})[0];
+      const hash = uploaded?.hash;
+      if (!hash) {
+        return {
+          success: false,
+          error: "Meta image upload returned no image hash",
+          metadata: { response: data },
+        };
+      }
+
+      return {
+        success: true,
+        providerAssetId: hash,
+        providerAssetUrl: uploaded.url ?? uploaded.permalink_url ?? downloaded.url,
+        metadata: {
+          fileName: downloaded.fileName,
+          contentType: downloaded.contentType,
+          sizeBytes: downloaded.bytes.byteLength,
+        },
+      };
+    } catch (error) {
+      logger.error("[MetaAds] Media upload failed", {
+        accountId,
+        type: input.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Meta media upload failed",
       };
     }
   },

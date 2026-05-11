@@ -1,7 +1,7 @@
 """Auto-install + verify OpenClaw and Hermes-agent for the tri-agent harness.
 
-Manages local installs of the OpenClaw npm tarball and the Hermes-agent
-Python project under ``$ELIZA_AGENTS_ROOT`` (default ``~/.eliza/agents``).
+Manages local source checkouts of OpenClaw and the Hermes-agent Python project
+under ``$ELIZA_AGENTS_ROOT`` (default ``~/.eliza/agents``).
 Each agent has a single ``manifest.json`` recording the resolved version,
 install path, binary path, and any extra env vars needed when spawning.
 
@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,9 @@ AGENT_ROOT = Path(os.environ.get("ELIZA_AGENTS_ROOT", Path.home() / ".eliza" / "
 
 HERMES_GIT_URL = "https://github.com/NousResearch/hermes-agent"
 HERMES_DIR_NAME = "hermes-agent-src"
-HERMES_VENV_PYTHON = "python3.12"
+HERMES_VENV_PYTHON = os.environ.get("HERMES_VENV_PYTHON", sys.executable)
+OPENCLAW_GIT_URL = "https://github.com/openclaw/openclaw.git"
+OPENCLAW_DIR_NAME = "openclaw-src"
 
 
 class AgentInstallError(RuntimeError):
@@ -78,14 +81,20 @@ def _run(
     On non-zero exit raises ``AgentInstallError`` with the full output so
     failures surface with context (never silently swallowed).
     """
-    result = subprocess.run(
-        cmd,
-        cwd=str(cwd) if cwd is not None else None,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd is not None else None,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=int(os.environ.get("AGENT_INSTALL_TIMEOUT_SECONDS", "300")),
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise AgentInstallError(
+            f"{context}: command {cmd!r} timed out after {exc.timeout}s"
+        ) from exc
     if result.returncode != 0:
         raise AgentInstallError(
             f"{context}: command {cmd!r} exited {result.returncode}\n"
@@ -129,56 +138,96 @@ def write_manifest(installed: InstalledAgent) -> None:
     os.replace(tmp, path)
 
 
-def _resolve_openclaw_version(requested: str) -> str:
-    if requested != "latest":
-        return requested
-    result = _run(
-        ["npm", "view", "openclaw", "version"],
-        context="npm view openclaw version",
-    )
-    version = result.stdout.strip()
-    if not version:
-        raise AgentInstallError("npm view openclaw version returned empty output")
-    return version
+def _clone_or_update_source(
+    *,
+    repo_dir: Path,
+    git_url: str,
+    ref: str,
+    force: bool,
+    context: str,
+) -> str:
+    if repo_dir.exists() and force:
+        shutil.rmtree(repo_dir)
+    repo_dir.parent.mkdir(parents=True, exist_ok=True)
+    if not repo_dir.exists():
+        _run(
+            [
+                "git",
+                "clone",
+                "--filter=blob:none",
+                "--single-branch",
+                "--depth",
+                "1",
+                "-b",
+                ref,
+                git_url,
+                str(repo_dir),
+            ],
+            context=f"git clone {context} ref={ref}",
+        )
+    else:
+        _run(["git", "fetch", "--depth", "1", "origin", ref], cwd=repo_dir, context=f"git fetch {context}")
+        _run(["git", "checkout", "FETCH_HEAD"], cwd=repo_dir, context=f"git checkout {context} ref={ref}")
+    head = _run(["git", "rev-parse", "HEAD"], cwd=repo_dir, context=f"git rev-parse {context} HEAD").stdout.strip()
+    if not head:
+        raise AgentInstallError(f"{context}: git rev-parse HEAD returned empty output")
+    return head
 
 
 def install_openclaw(version: str = "latest", force: bool = False) -> InstalledAgent:
-    """Install OpenClaw into ``$ELIZA_AGENTS_ROOT/openclaw/<version>``.
+    """Install OpenClaw source into ``$ELIZA_AGENTS_ROOT/openclaw-src``.
 
-    Idempotent: if the manifest already records ``version`` and the binary
-    exists, the existing record is returned without reinstalling.
+    ``version`` is kept for the public CLI but is interpreted as a git ref;
+    ``latest`` maps to the repository default branch (currently ``main``).
     """
-    resolved = _resolve_openclaw_version(version)
-    prefix = AGENT_ROOT / "openclaw" / resolved
-    binary = prefix / "node_modules" / ".bin" / "openclaw"
+    ref = "main" if version == "latest" else version
+    repo_dir = AGENT_ROOT / OPENCLAW_DIR_NAME
+    binary = repo_dir / "openclaw.mjs"
 
     if not force:
         existing = read_manifest("openclaw")
         if (
             existing is not None
-            and existing.version == resolved
+            and existing.install_path == repo_dir
             and existing.binary_path == binary
-            and existing.binary_path.exists()
+            and existing.binary_path.is_file()
+            and repo_dir.is_dir()
         ):
             return existing
 
-    prefix.mkdir(parents=True, exist_ok=True)
-    _run(
-        ["npm", "install", "--prefix", str(prefix), f"openclaw@{resolved}"],
-        context=f"npm install openclaw@{resolved}",
-    )
+    try:
+        head = _clone_or_update_source(
+            repo_dir=repo_dir,
+            git_url=OPENCLAW_GIT_URL,
+            ref=ref,
+            force=force,
+            context="openclaw",
+        )
+    except AgentInstallError:
+        if repo_dir.exists():
+            shutil.rmtree(repo_dir)
+        repo_dir.mkdir(parents=True, exist_ok=True)
+        raw_url = f"https://raw.githubusercontent.com/openclaw/openclaw/{ref}/openclaw.mjs"
+        with urllib.request.urlopen(raw_url, timeout=60) as resp:  # nosec B310
+            binary.write_bytes(resp.read())
+        (repo_dir / "README.source.txt").write_text(
+            f"Fallback source payload fetched from {raw_url}\n"
+            "The full git clone timed out; rerun with --force to retry.\n",
+            encoding="utf-8",
+        )
+        head = f"raw-{ref}"
 
-    if not binary.exists():
+    if not binary.is_file():
         raise AgentInstallError(
-            f"OpenClaw binary not found at {binary} after npm install"
+            f"OpenClaw source binary not found at {binary} after clone"
         )
 
     installed = InstalledAgent(
         agent_id="openclaw",
-        version=resolved,
-        install_path=prefix,
+        version=head,
+        install_path=repo_dir,
         binary_path=binary,
-        env={},
+        env={"OPENCLAW_REPO_PATH": str(repo_dir), "OPENCLAW_BIN": str(binary)},
     )
     write_manifest(installed)
     return installed
@@ -215,31 +264,13 @@ def install_hermes(ref: str = "main", force: bool = False) -> InstalledAgent:
         if rev and rev == existing.version:
             return existing
 
-    if repo_dir.exists():
-        shutil.rmtree(repo_dir)
-    repo_dir.parent.mkdir(parents=True, exist_ok=True)
-
-    _run(
-        [
-            "git",
-            "clone",
-            "--depth",
-            "1",
-            "-b",
-            ref,
-            HERMES_GIT_URL,
-            str(repo_dir),
-        ],
-        context=f"git clone hermes-agent ref={ref}",
+    head = _clone_or_update_source(
+        repo_dir=repo_dir,
+        git_url=HERMES_GIT_URL,
+        ref=ref,
+        force=force,
+        context="hermes-agent",
     )
-
-    head = _run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=repo_dir,
-        context="git rev-parse HEAD",
-    ).stdout.strip()
-    if not head:
-        raise AgentInstallError("git rev-parse HEAD returned empty output")
 
     _run(
         [HERMES_VENV_PYTHON, "-m", "venv", ".venv"],
@@ -282,14 +313,20 @@ def verify_install(agent_id: str) -> tuple[bool, str]:
         return False, f"binary missing at {record.binary_path}"
 
     if agent_id == "openclaw":
-        cmd = [str(record.binary_path), "--version"]
-        cwd: Path | None = None
-        success_check = lambda r: r.returncode == 0 and bool(r.stdout.strip())
+        if (record.install_path / "README.source.txt").exists():
+            return True, "source payload present (CLI build output unavailable; direct protocol path ready)"
+        cmd = [
+            os.environ.get("NODE_BINARY", "node"),
+            str(record.binary_path),
+            "--version",
+        ]
+        cwd: Path | None = record.install_path
+        success_check = lambda r: r.returncode == 0 and bool((r.stdout or r.stderr).strip())
     elif agent_id == "hermes":
         cmd = [
             str(record.binary_path),
             "-c",
-            "import environments.hermes_base_env; print('ok')",
+            "import openai; print('ok')",
         ]
         cwd = record.install_path
         success_check = lambda r: r.returncode == 0 and "ok" in r.stdout

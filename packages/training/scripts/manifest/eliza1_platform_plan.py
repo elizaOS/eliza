@@ -219,7 +219,9 @@ def missing_files(
 ) -> dict[str, list[str]]:
     missing: dict[str, list[str]] = {}
     for tier, tier_plan in plan.items():
-        root = bundle_root / f"eliza-1-{tier}"
+        plain_root = bundle_root / f"eliza-1-{tier}"
+        bundle_root_candidate = bundle_root / f"eliza-1-{tier}.bundle"
+        root = bundle_root_candidate if bundle_root_candidate.exists() else plain_root
         tier_missing = [
             rel for rel in tier_plan.required_files if not (root / rel).is_file()
         ]

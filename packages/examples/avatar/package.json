@@ -3,10 +3,10 @@
   "version": "2.0.0-beta.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "bun --bun vite",
     "build": "node -e \"console.log('[eliza-vrm-demo] build skipped on Windows: vite cannot resolve three through the bun-cached symlink. Use build:vrm to opt in.')\"",
     "build:vrm": "vite build",
-    "preview": "vite preview",
+    "preview": "bun --bun vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe ."
   },

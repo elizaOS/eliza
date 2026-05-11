@@ -66,7 +66,9 @@ export function detectHostCapabilities(): HostCapabilities {
       longRunning: hasBgRunner,
       childProcess: false,
       net: false,
-      label: hasBgRunner ? 'Mobile (Capacitor + BackgroundRunner)' : 'Mobile (Capacitor, foreground-only)',
+      label: hasBgRunner
+        ? 'Mobile (Capacitor + BackgroundRunner)'
+        : 'Mobile (Capacitor, foreground-only)',
     };
   }
 

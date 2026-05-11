@@ -1,5 +1,4 @@
 import Foundation
-import BackgroundTasks
 import Capacitor
 import HealthKit
 import UIKit
@@ -19,14 +18,6 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "scheduleBackgroundRefresh", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "cancelBackgroundRefresh", returnType: CAPPluginReturnPromise),
     ]
-
-    // Background task identifier — must be listed in the host app's Info.plist
-    // under `BGTaskSchedulerPermittedIdentifiers`. When it is not listed,
-    // registration fails silently (see `registerBackgroundTaskIfAvailable`)
-    // and the plugin still works with foreground-only HealthKit polling.
-    private static let backgroundRefreshIdentifier = "ai.eliza.mobile-signals.sleep-refresh"
-    private static let backgroundRefreshInterval: TimeInterval = 30 * 60
-    private var backgroundTaskRegistered = false
 
     private struct HealthCapture {
         let source: String
@@ -51,97 +42,20 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
 
     public override func load() {
         UIDevice.current.isBatteryMonitoringEnabled = true
-        registerBackgroundTaskIfAvailable()
-    }
-
-    private func registerBackgroundTaskIfAvailable() {
-        if #available(iOS 13.0, *) {
-            guard !backgroundTaskRegistered else { return }
-            let identifier = Self.backgroundRefreshIdentifier
-            let registered = BGTaskScheduler.shared.register(
-                forTaskWithIdentifier: identifier,
-                using: nil
-            ) { [weak self] task in
-                guard let self = self, let refreshTask = task as? BGAppRefreshTask else {
-                    task.setTaskCompleted(success: false)
-                    return
-                }
-                self.handleBackgroundRefresh(task: refreshTask)
-            }
-            backgroundTaskRegistered = registered
-            if !registered {
-                FileHandle.standardError.write(
-                    "[mobile-signals] BGTaskScheduler registration declined. Add `\(identifier)` to Info.plist BGTaskSchedulerPermittedIdentifiers to enable background HealthKit polling.\n"
-                        .data(using: .utf8) ?? Data()
-                )
-            }
-        }
-    }
-
-    @available(iOS 13.0, *)
-    private func handleBackgroundRefresh(task: BGAppRefreshTask) {
-        let expirationHandler = { [weak task] in
-            guard let task = task else { return }
-            task.setTaskCompleted(success: false)
-        }
-        task.expirationHandler = expirationHandler
-        buildHealthSnapshot(reason: "background-refresh") { [weak self] healthSnapshot in
-            self?.notifyListeners("signal", data: healthSnapshot)
-            self?.scheduleNextBackgroundRefresh()
-            task.setTaskCompleted(success: true)
-        }
-    }
-
-    @available(iOS 13.0, *)
-    private func scheduleNextBackgroundRefresh() {
-        guard backgroundTaskRegistered else { return }
-        let request = BGAppRefreshTaskRequest(
-            identifier: Self.backgroundRefreshIdentifier
-        )
-        request.earliestBeginDate = Date(timeIntervalSinceNow: Self.backgroundRefreshInterval)
-        do {
-            try BGTaskScheduler.shared.submit(request)
-        } catch {
-            FileHandle.standardError.write(
-                "[mobile-signals] Failed to schedule background refresh: \(error.localizedDescription)\n"
-                    .data(using: .utf8) ?? Data()
-            )
-        }
     }
 
     @objc func scheduleBackgroundRefresh(_ call: CAPPluginCall) {
-        if #available(iOS 13.0, *) {
-            if !backgroundTaskRegistered {
-                call.resolve([
-                    "scheduled": false,
-                    "reason": "BGTaskSchedulerPermittedIdentifiers missing \(Self.backgroundRefreshIdentifier)",
-                ])
-                return
-            }
-            scheduleNextBackgroundRefresh()
-            call.resolve([
-                "scheduled": true,
-                "identifier": Self.backgroundRefreshIdentifier,
-                "earliestBeginInSeconds": Int(Self.backgroundRefreshInterval),
-            ])
-        } else {
-            call.resolve([
-                "scheduled": false,
-                "reason": "BackgroundTasks requires iOS 13.0 or later.",
-            ])
-        }
+        call.resolve([
+            "scheduled": false,
+            "reason": "iOS mobile signals use foreground monitoring; background scheduled work is routed through the eliza-tasks BackgroundRunner.",
+        ])
     }
 
     @objc func cancelBackgroundRefresh(_ call: CAPPluginCall) {
-        if #available(iOS 13.0, *) {
-            BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: Self.backgroundRefreshIdentifier)
-            call.resolve(["cancelled": true])
-        } else {
-            call.resolve([
-                "cancelled": false,
-                "reason": "BackgroundTasks requires iOS 13.0 or later.",
-            ])
-        }
+        call.resolve([
+            "cancelled": false,
+            "reason": "iOS mobile signals do not register a BGTaskScheduler background refresh task.",
+        ])
     }
 
     deinit {

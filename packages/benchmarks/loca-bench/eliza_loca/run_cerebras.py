@@ -127,7 +127,7 @@ def build_env(args: argparse.Namespace) -> dict[str, str]:
 def build_command(args: argparse.Namespace) -> list[str]:
     validate_context_mode(args)
     command: list[str] = [
-        sys.executable,
+        resolve_python_executable(),
         "-m",
         "loca.cli.main",
         "run",
@@ -173,6 +173,24 @@ def build_command(args: argparse.Namespace) -> list[str]:
     if args.reasoning_effort:
         command.extend(["--reasoning-effort", args.reasoning_effort])
     return command
+
+
+def resolve_python_executable() -> str:
+    """Use LOCA's local venv for the subprocess when available.
+
+    The wrapper itself is often invoked by system Python from repo-level
+    scripts/tests. The vendored LOCA CLI depends on packages such as ``fire``;
+    those are installed in ``loca-bench/.venv`` during setup, not necessarily in
+    the caller's interpreter.
+    """
+
+    override = os.environ.get("LOCA_PYTHON")
+    if override:
+        return override
+    venv_python = LOCA_ROOT / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        return str(venv_python)
+    return sys.executable
 
 
 def validate_context_mode(args: argparse.Namespace) -> None:

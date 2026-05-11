@@ -1,6 +1,7 @@
 // TikTok Marketing API integration - https://business-api.tiktok.com/marketing_api/docs
 
 import { logger } from "@/lib/utils/logger";
+import { assertSafeAdMediaUrl, mediaFileName } from "../media-utils";
 import type {
   AdAccountCredentials,
   AdProvider,
@@ -12,6 +13,7 @@ import type {
   CreateCampaignInput,
   CreateCreativeInput,
   UpdateCampaignInput,
+  UploadMediaInput,
 } from "../types";
 
 const TIKTOK_ADS_API_VERSION = "v1.3";
@@ -114,6 +116,14 @@ function splitTikTokCampaignId(
 
 function tiktokScheduleTime(date: Date): string {
   return date.toISOString().replace("T", " ").slice(0, 19);
+}
+
+function firstString(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return undefined;
 }
 
 export const tiktokAdsProvider: AdProvider = {
@@ -404,6 +414,9 @@ export const tiktokAdsProvider: AdProvider = {
                 ? { image_ids: [primaryMedia.providerAssetId] }
                 : {}),
               ...(primaryMedia?.type === "video" ? { video_id: primaryMedia.providerAssetId } : {}),
+              ...(primaryMedia?.type === "video" && input.media[1]?.providerAssetId
+                ? { image_ids: [input.media[1].providerAssetId] }
+                : {}),
             },
           ],
         }),
@@ -414,6 +427,79 @@ export const tiktokAdsProvider: AdProvider = {
       success: true,
       externalCreativeId: adData.ad_id,
     };
+  },
+
+  async uploadMedia(credentials: AdAccountCredentials, accountId: string, input: UploadMediaInput) {
+    try {
+      const safeUrl = await assertSafeAdMediaUrl(input.url);
+      const fileName = mediaFileName({
+        name: input.name,
+        url: safeUrl,
+        contentType: input.mimeType,
+        fallbackExtension: input.type === "video" ? "mp4" : "png",
+      });
+      const endpoint = input.type === "video" ? "/file/video/ad/upload/" : "/file/image/ad/upload/";
+      const body =
+        input.type === "video"
+          ? {
+              advertiser_id: accountId,
+              file_name: fileName,
+              upload_type: "UPLOAD_BY_URL",
+              video_url: safeUrl,
+            }
+          : {
+              advertiser_id: accountId,
+              file_name: fileName,
+              upload_type: "UPLOAD_BY_URL",
+              image_url: safeUrl,
+            };
+
+      const data = await tiktokAdsRequest<Record<string, unknown>>(
+        endpoint,
+        credentials.accessToken,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
+
+      const providerAssetId =
+        firstString(
+          data.id,
+          data.image_id,
+          data.video_id,
+          Array.isArray(data.image_ids) ? data.image_ids[0] : undefined,
+          Array.isArray(data.video_ids) ? data.video_ids[0] : undefined,
+        ) ??
+        (Array.isArray(data)
+          ? firstString((data[0] as Record<string, unknown> | undefined)?.id)
+          : undefined);
+
+      if (!providerAssetId) {
+        return {
+          success: false,
+          error: "TikTok media upload returned no provider asset id",
+          metadata: { response: data },
+        };
+      }
+
+      return {
+        success: true,
+        providerAssetId,
+        providerAssetUrl: safeUrl,
+        metadata: { fileName, uploadType: "UPLOAD_BY_URL", response: data },
+      };
+    } catch (error) {
+      logger.error("[TikTokAds] Media upload failed", {
+        accountId,
+        type: input.type,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "TikTok media upload failed",
+      };
+    }
   },
 
   async getCampaignMetrics(

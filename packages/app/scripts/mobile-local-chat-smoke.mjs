@@ -20,10 +20,34 @@ const platform = argValue("--platform") ?? "ios";
 const apiBase = argValue("--api-base");
 const authTokenArg = argValue("--auth-token");
 const requireInstalled = process.argv.includes("--require-installed");
-const live = process.argv.includes("--live") || Boolean(apiBase);
+const exerciseAppCoreApi = process.argv.includes("--live") || Boolean(apiBase);
 const androidSelectLocal = process.argv.includes("--android-select-local");
 const androidBackground = process.argv.includes("--android-background");
 const ANDROID_HEALTH_ATTEMPTS = 240;
+
+function printHelp() {
+  console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.mjs [options]
+
+Options:
+  --platform ios|android|both       Simulator platform to launch (default: ios)
+  --require-installed              Fail when the selected app/simulator is unavailable
+  --live                           Exercise the app-core local-agent HTTP API on Android
+  --api-base URL                   Exercise an already-reachable app-core HTTP API
+  --auth-token TOKEN               Bearer token for protected app-core API routes
+  --android-select-local           Tap through Android first-run Local runtime selection
+  --android-background             Background Android and POST /api/background/run-due-tasks
+  --help                           Print this help
+
+Notes:
+  --live validates the running app-core/local-agent API. It is not a remote
+  service test. The chat step verifies conversation routes and local-inference
+  hub readiness/download state; it does not require a completed model reply.`);
+}
+
+if (process.argv.includes("--help")) {
+  printHelp();
+  process.exit(0);
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -230,6 +254,30 @@ function readAndroidLocalAgentToken(context) {
   );
 }
 
+function removeAndroidForward(context, localPort) {
+  tryExec(
+    context.adb,
+    ["-s", context.serial, "forward", "--remove", localPort],
+    { allowFailure: true },
+  );
+}
+
+function cleanupAndroidAgentForwards(context, reason) {
+  if (!context?.installed) return;
+  const forwardedPorts = context.localAgentForward
+    ? [context.localAgentForward]
+    : [];
+  for (const localPort of forwardedPorts) {
+    removeAndroidForward(context, localPort);
+  }
+  context.localAgentForward = null;
+  if (forwardedPorts.length > 0) {
+    console.log(
+      `[local-chat-smoke] Removed Android adb forward(s) for tcp:31337 (${reason}): ${forwardedPorts.join(", ")}.`,
+    );
+  }
+}
+
 async function selectAndroidLocalRuntime(context) {
   if (!context?.installed) return;
   if (readAndroidLocalAgentToken(context)) return;
@@ -262,6 +310,7 @@ async function waitForAndroidApi(context) {
           ["-s", context.serial, "forward", "tcp:0", "tcp:31337"],
           "Failed to forward Android local-agent port.",
         );
+        context.localAgentForward = `tcp:${forwardedPort.trim()}`;
         forwardedApiBase = `http://127.0.0.1:${forwardedPort.trim()}`;
         console.log(
           `[local-chat-smoke] Android local-agent forwarded to ${forwardedApiBase}.`,
@@ -292,6 +341,17 @@ async function waitForAndroidApi(context) {
           message.includes("Unauthorized")
         ) {
           tokenRejectedAttempts += 1;
+          const refreshedToken =
+            authTokenArg ?? readAndroidLocalAgentToken(context);
+          if (refreshedToken && refreshedToken !== token) {
+            token = refreshedToken;
+            tokenRejectedAttempts = 0;
+            if (attempt % 10 === 0) {
+              console.warn(
+                "[local-chat-smoke] Android local-agent token changed during startup; retrying with the refreshed token.",
+              );
+            }
+          }
           if (tokenRejectedAttempts >= 3) {
             throw new Error(
               "Android local-agent token was rejected by the protected /api/status route. " +
@@ -353,9 +413,41 @@ async function verifyAndroidBackgroundApi(context, baseUrl, authToken) {
     );
   }
   console.log("[local-chat-smoke] Android background health:", health);
+
+  const runDue = await requestJsonResponse(
+    "POST",
+    "/api/background/run-due-tasks",
+    {
+      source: "mobile-local-chat-smoke",
+      platform: "android",
+      firedAt: new Date().toISOString(),
+    },
+    baseUrl,
+    authToken,
+  );
+  if (runDue.response.status === 404) {
+    throw new Error(
+      "Android background run-due-tasks route is not present in the installed app-core build. " +
+        "Rebuild and reinstall the Android app before running --android-background.",
+    );
+  }
+  if (!runDue.response.ok) {
+    throw new Error(
+      `POST /api/background/run-due-tasks failed while Android app was backgrounded: ${runDue.response.status} ${runDue.text}`,
+    );
+  }
+  if (runDue.data?.ok !== true) {
+    throw new Error(
+      `Android background run-due-tasks returned an unexpected body: ${JSON.stringify(runDue.data)}`,
+    );
+  }
+  console.log(
+    "[local-chat-smoke] Android background run-due-tasks:",
+    runDue.data,
+  );
 }
 
-async function requestJson(
+async function requestJsonResponse(
   method,
   pathname,
   body,
@@ -372,14 +464,44 @@ async function requestJson(
     body: body ? JSON.stringify(body) : undefined,
   });
   const text = await response.text();
-  const data = text ? JSON.parse(text) : {};
+  let data = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+  }
+  return { response, data, text };
+}
+
+async function requestJson(
+  method,
+  pathname,
+  body,
+  baseUrl = apiBase,
+  authToken = authTokenArg,
+) {
+  const { response, data, text } = await requestJsonResponse(
+    method,
+    pathname,
+    body,
+    baseUrl,
+    authToken,
+  );
   if (!response.ok) {
     throw new Error(`${method} ${pathname} failed: ${response.status} ${text}`);
   }
   return data;
 }
 
-async function runLiveApiSmoke(baseUrl = apiBase, authToken = authTokenArg) {
+async function runLocalInferenceApiSmoke(
+  baseUrl = apiBase,
+  authToken = authTokenArg,
+) {
+  console.log(
+    `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference hub).`,
+  );
   await requestJson("GET", "/api/health", undefined, baseUrl, authToken);
   const created = await requestJson(
     "POST",
@@ -453,47 +575,51 @@ async function runLiveApiSmoke(baseUrl = apiBase, authToken = authTokenArg) {
 
 async function main() {
   let androidContext = null;
-  if (platform === "ios" || platform === "both") {
-    launchIosSimulatorApp();
-  }
-  if (platform === "android" || platform === "both") {
-    androidContext = launchAndroidEmulatorApp();
-    if (androidSelectLocal) {
-      await selectAndroidLocalRuntime(androidContext);
+  try {
+    if (platform === "ios" || platform === "both") {
+      launchIosSimulatorApp();
     }
-  }
-
-  if (apiBase) {
-    await runLiveApiSmoke();
-    return;
-  }
-
-  if (live && (platform === "android" || platform === "both")) {
-    const androidApi = await waitForAndroidApi(androidContext);
-    if (androidApi) {
-      if (androidBackground) {
-        await verifyAndroidBackgroundApi(
-          androidContext,
-          androidApi.apiBase,
-          androidApi.token,
-        );
+    if (platform === "android" || platform === "both") {
+      androidContext = launchAndroidEmulatorApp();
+      if (androidSelectLocal) {
+        await selectAndroidLocalRuntime(androidContext);
       }
-      await runLiveApiSmoke(androidApi.apiBase, androidApi.token);
     }
-  }
 
-  run(
-    "bunx",
-    [
-      "vitest",
-      "run",
-      "--config",
-      "vitest.config.ts",
-      "src/api/ios-local-agent-kernel.local-inference.test.ts",
-      "src/onboarding/auto-download-recommended.test.ts",
-    ],
-    { cwd: path.join(repoRoot, "packages/ui") },
-  );
+    if (apiBase) {
+      await runLocalInferenceApiSmoke(apiBase, authTokenArg);
+      return;
+    }
+
+    if (exerciseAppCoreApi && (platform === "android" || platform === "both")) {
+      const androidApi = await waitForAndroidApi(androidContext);
+      if (androidApi) {
+        if (androidBackground) {
+          await verifyAndroidBackgroundApi(
+            androidContext,
+            androidApi.apiBase,
+            androidApi.token,
+          );
+        }
+        await runLocalInferenceApiSmoke(androidApi.apiBase, androidApi.token);
+      }
+    }
+
+    run(
+      "bunx",
+      [
+        "vitest",
+        "run",
+        "--config",
+        "vitest.config.ts",
+        "src/api/ios-local-agent-kernel.local-inference.test.ts",
+        "src/onboarding/auto-download-recommended.test.ts",
+      ],
+      { cwd: path.join(repoRoot, "packages/ui") },
+    );
+  } finally {
+    cleanupAndroidAgentForwards(androidContext, "shutdown");
+  }
 }
 
 main().catch((error) => {

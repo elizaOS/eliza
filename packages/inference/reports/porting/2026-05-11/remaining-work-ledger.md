@@ -33,9 +33,9 @@ with the status below.
 | CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh --report <path>` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh --report <path>` additionally requires arm64 Linux + Hopper/compute-capability-9.x. Skip modes exit non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
-| iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols package into a verified XCFramework for physical-device and simulator slices. Current physical-device XCTest is blocked, so no new hardware PASS is claimed. | `node packages/app-core/scripts/ios-xcframework/build-xcframework.mjs --output /tmp/eliza-ios-xcframework-verify-shawwalters/LlamaCpp.xcframework --verify` passes kernel-symbol, runtime-symbol, and structure audits. Current report `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json` is `status: failed`, with `xctrace` listing UDID `00008130-001955E91EF8001C` offline while CoreDevice sees the same iPhone 15 Pro as paired/available; a CoreDevice retry reached an interactive `Password:` prompt before XCTest output. |
-| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS assets, and completes real TTS synthesis in one fused process. ASR and merged HTTP routes remain open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs, keeps LM/MaskGIT on Metal, pins codec/DAC to CPU, and writes 31,680 samples for `hello` in 2.009s after TTS mmap. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json`. |
-| Eliza-1 bundles | A real non-text 1.7B voice/ASR/VAD side bundle is staged locally and uploaded to an accessible HF staging repo; final `elizalabs` release namespace remains blocked by permissions. | `stage_eliza1_bundle_assets.py --tier 1_7b` staged OmniVoice Q4_K_M base/tokenizer GGUFs, upstream GGUF ASR, Silero VAD, a default voice preset, lineage, licenses, and evidence under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle`. Upload to `elizaos/eliza-1-assets` completed and Hub siblings include `1_7b/{tts,asr,vad,cache,evidence,licenses,lineage}`. Creating/uploading under `elizalabs/eliza-1-assets` failed with HF 403 for the current token. |
+| iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols package into a verified XCFramework for physical-device and simulator slices. Physical-device XCTest is now PASS; weight-backed Capacitor bundle smoke remains open. | `build-xcframework.mjs --verify` passes kernel-symbol, runtime-symbol, and structure audits. `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json` is `status: passed` on iPhone 15 Pro UDID `00008130-001955E91EF8001C`, with 3/3 XCTest cases passing and `--skip-voice-abi=false`. The old failure was a stale shim archive carrying an earlier TTS ABI shape; `build-xcframework.mjs` now refreshes the runtime shim before packaging. |
+| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. The merged HTTP route remains open. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR acquires in 973.482 ms and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in 219.762 ms after ASR is resident. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json`. |
+| Eliza-1 bundles | Non-text assets are staged for all five tiers and current upstream source text/DFlash/vision candidates are acquired under `source/`. No final release bundle is publishable yet. | `stage_eliza1_bundle_assets.py --link-mode hardlink` staged OmniVoice, ASR+mmproj, VAD, voice preset, lineage, licenses, and evidence for `0_6b`, `1_7b`, `9b`, `27b`, and `27b-256k` under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`. `stage_eliza1_source_weights.py` acquired source GGUFs: Qwen3 0.6B/1.7B Q8_0, Qwen3.5 9B Q4_K_M, Qwen3.6 27B Q4_K_M, Qwen3.5 9B DFlash test drafter, Qwen3.6 27B DFlash Q8_0, and 9B/27B mmproj sources. They are source-only; final Eliza-1 text/drafter weights, eval pass records, checksums, release licenses, and `elizalabs` upload evidence remain missing. |
 
 ## P0 Blockers
 
@@ -44,15 +44,14 @@ with the status below.
    Metal graph dispatch is now runtime-ready for QJL, Turbo3, Turbo4,
    Turbo3-TCQ, and PolarQuant on Apple Silicon. The iOS XCFramework now
    passes both kernel-symbol and runtime-symbol audits. The current
-   physical-device XCTest rerun is blocked by device/offline credential state,
-   so the remaining iOS publish blockers are physical XCTest plus a
-   weight-backed Eliza-1 bundle smoke.
+   physical-device XCTest now passes. The remaining iOS publish blocker is a
+   weight-backed Eliza-1 bundle smoke from the Capacitor app shell.
 
    Acceptance:
    - `build-xcframework.mjs --verify` passes both kernel-symbol and
      runtime-symbol audits for the iOS arm64 and simulator slices. **Done.**
    - `run-physical-device-smoke.mjs` passes on a connected iPhone/iPad without
-     skipping the voice ABI check. **Blocked by current device state.**
+     skipping the voice ABI check. **Done on iPhone 15 Pro / iOS 26.3.1.**
    - A full Eliza-1 bundle smoke loads real text + voice assets on iOS and
      records first token, first audio, peak RSS, and thermal state.
 
@@ -89,7 +88,9 @@ with the status below.
    Acceptance:
    - `libelizainference` exports ABI v1 symbols and passes FFI smoke tests
      under Bun/Electrobun. ABI compatibility smoke, real macOS dylib ABI
-     smoke, and real GGUF-backed TTS synthesis are covered.
+     smoke, real GGUF-backed TTS synthesis, and real GGUF-backed ASR
+     transcription are covered. **Done on macOS Metal for the local 1.7B
+     bundle.**
    - Voice mode starts without IPC to a second model process.
    - Voice-off mode does not mmap or page TTS/ASR/voice-preset regions.
    - The fused HTTP server is not product-ready until the compatibility
@@ -112,9 +113,11 @@ The lowest-duplication design is lazy regional loading from one bundle:
   `libelizainference` may be loaded lazily, but voice regions remain unmapped.
 - **Voice on:** acquire `tts` and `asr` regions for default-eligible local voice
   bundles; preload `voice-preset-default.bin`; start phrase chunking and PCM
-  ring buffer. Local transcription must hard-fail instead of silently calling
-  cloud or another model until ABI-v1 ASR is implemented. Rejected DFlash ranges
-  cancel pending TTS chunks before they reach the audio sink.
+  ring buffer. Local transcription now routes through ABI-v1 ASR when the bundle
+  has canonical `asr/eliza-1-asr.gguf` and `asr/eliza-1-asr-mmproj.gguf`;
+  missing or ambiguous ASR assets still hard-fail instead of silently calling
+  cloud or another model. Rejected DFlash ranges cancel pending TTS chunks before
+  they reach the audio sink.
 - **Shared, not duplicated:** one tokenizer service where compatible, one
   scheduler, one memory budget, one telemetry stream, one lifecycle. KV cache
   memory is not shared between text and voice models unless the architecture
@@ -151,11 +154,11 @@ The lowest-duplication design is lazy regional loading from one bundle:
 
 | Platform class | Next required action |
 | --- | --- |
-| Apple Silicon Mac | Run fused Metal smoke against a full Eliza-1 bundle after graph-dispatch smoke. |
+| Apple Silicon Mac | Fused Metal voice smoke now passes against the staged Eliza-1 1.7B bundle for real GGUF-backed TTS + ASR through `libelizainference.dylib`. Remaining action is built-fork graph-dispatch smoke plus full text+DFlash+voice latency/RSS/thermal gates. |
 | Intel/AMD Mac | Build `darwin-x64-metal` and run the standalone + built-fork smoke suite on real hardware. |
-| iPhone/iPad | XCFramework symbol/structure audit passes for physical-device and simulator slices. Current physical XCTest is blocked because the requested UDID is offline to `xctrace` and the CoreDevice retry prompts for credentials. Next required action is a non-interactive physical XCTest pass, then a real Eliza-1 bundle smoke that measures first token, first audio latency, peak RSS, and thermal state. The current iOS ABI bridge is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired. |
-| Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. |
-| Android Mali | Standalone Pixel 6a / Mali-G78 fixture validation passes for all six kernels. Remaining action is built-fork/app graph-dispatch evidence plus thermal/RSS. |
+| iPhone/iPad | XCFramework symbol/structure audit passes for physical-device and simulator slices, and physical XCTest now passes 3/3 on iPhone 15 Pro. Next required action is a real Eliza-1 bundle smoke from the Capacitor app shell that measures first token, first audio latency, peak RSS, and thermal state. The current iOS ABI bridge is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired. |
+| Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan fixtures via `adb`, attach graph-dispatch evidence for `GGML_OP_ATTN_SCORE_QJL`, collect thermal/RSS. Re-check at `2026-05-11T10:07:06Z`: local `adb` only lists `emulator-5554`, so no physical Adreno evidence is claimed. |
+| Android Mali | Standalone Pixel 6a / Mali-G78 fixture validation passes for all six kernels. Remaining action is built-fork/app graph-dispatch evidence plus thermal/RSS. Re-check at `2026-05-11T10:07:06Z`: local `adb` only lists `emulator-5554`, so no new physical-device run was possible. |
 | Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |
 | Linux x64 Vulkan | Run `make -C packages/inference/verify vulkan-native-smoke` on Intel/AMD/NVIDIA, not only MoltenVK. |
 | Linux x64 ROCm | Build and run on MI300/MI250/RDNA; HIP parity is unproven. |

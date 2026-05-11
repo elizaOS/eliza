@@ -15,9 +15,11 @@ const tmpRoot = fs.mkdtempSync(
 const shouldKeepTemp = process.env.ELIZAOS_SMOKE_KEEP_TEMP === "1";
 const shouldInstallGeneratedFullstack =
   process.env.ELIZAOS_SMOKE_FULLSTACK_INSTALL === "1";
+const shouldSmokeEject = process.env.ELIZAOS_SMOKE_EJECT === "1";
 const shouldUseRemoteUpstream =
   process.env.ELIZAOS_SMOKE_REMOTE_UPSTREAM === "1";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+const bunCommand = process.platform === "win32" ? "bun.exe" : "bun";
 const elizaosBinName = process.platform === "win32" ? "elizaos.cmd" : "elizaos";
 const localUpstreamRepo = path.resolve(packageDir, "..", "..");
 const cliEnv =
@@ -45,6 +47,38 @@ function run(command, args, options = {}) {
     env: options.env,
     stdio: ["ignore", "pipe", "pipe"],
   });
+}
+
+function commandExists(command) {
+  try {
+    execFileSync(process.platform === "win32" ? "where" : "which", [command]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function packCliPackage() {
+  if (commandExists(npmCommand)) {
+    return run(npmCommand, ["pack", packageDir, "--pack-destination", tmpRoot]);
+  }
+
+  if (!commandExists(bunCommand)) {
+    throw new Error("Neither npm nor bun is available for packaged smoke test");
+  }
+
+  return run(bunCommand, ["pm", "pack", "--destination", tmpRoot, "--quiet"], {
+    cwd: packageDir,
+  });
+}
+
+function installCliPackage(smokeDir, tarballPath) {
+  if (commandExists(npmCommand)) {
+    run(npmCommand, ["install", tarballPath], { cwd: smokeDir });
+    return;
+  }
+
+  run(bunCommand, ["add", tarballPath], { cwd: smokeDir });
 }
 
 function getTarballName(output) {
@@ -87,21 +121,18 @@ function main() {
   try {
     run("bun", ["run", "build"], { cwd: packageDir });
 
-    const packOutput = run(npmCommand, [
-      "pack",
-      packageDir,
-      "--pack-destination",
-      tmpRoot,
-    ]);
+    const packOutput = packCliPackage();
     const tarballName = getTarballName(packOutput);
-    const tarballPath = path.join(tmpRoot, tarballName);
+    const tarballPath = path.isAbsolute(tarballName)
+      ? tarballName
+      : path.join(tmpRoot, tarballName);
     const smokeDir = path.join(tmpRoot, "smoke");
     fs.mkdirSync(smokeDir, { recursive: true });
     fs.writeFileSync(
       path.join(smokeDir, "package.json"),
       `${JSON.stringify({ name: "elizaos-packaged-smoke", private: true }, null, 2)}\n`,
     );
-    run(npmCommand, ["install", tarballPath], { cwd: smokeDir });
+    installCliPackage(smokeDir, tarballPath);
 
     runCli(smokeDir, smokeDir, ["info"]);
 
@@ -138,7 +169,17 @@ function main() {
     assertPathExists(path.join(projectDir, "package.json"));
     assertPathExists(path.join(projectDir, ".elizaos", "template.json"));
     assertPathExists(path.join(projectDir, "apps", "app", "package.json"));
-    assertPathExists(path.join(projectDir, "eliza"));
+    assertPathMissing(path.join(projectDir, "eliza"));
+    const packageModeOutput = run(
+      "node",
+      ["scripts/eliza-source-mode.mjs", "packages"],
+      { cwd: projectDir },
+    );
+    if (!packageModeOutput.includes("beta")) {
+      throw new Error(
+        `Expected generated package mode to default to beta. Output:\n${packageModeOutput}`,
+      );
+    }
     if (shouldInstallGeneratedFullstack) {
       run("bun", ["install"], { cwd: projectDir, env: fullstackInstallEnv });
       run("bun", ["run", "typecheck"], {
@@ -152,19 +193,21 @@ function main() {
     }
     runCli(smokeDir, projectDir, ["upgrade", "--check"]);
 
-    runCli(smokeDir, workspaceDir, [
-      "create",
-      "deferred-project",
-      "--template",
-      "project",
-      "--yes",
-      "--skip-upstream",
-    ]);
-    const deferredDir = path.join(workspaceDir, "deferred-project");
-    assertPathMissing(path.join(deferredDir, "eliza"));
-    runCli(smokeDir, deferredDir, ["upgrade"]);
-    assertPathExists(path.join(deferredDir, "eliza"));
-    assertPathExists(path.join(deferredDir, ".gitmodules"));
+    if (shouldSmokeEject) {
+      const currentBranch = run("git", ["branch", "--show-current"], {
+        cwd: localUpstreamRepo,
+      }).trim();
+      run("node", ["scripts/eliza-source-mode.mjs", "local"], {
+        cwd: projectDir,
+        env: {
+          ...fullstackInstallEnv,
+          ELIZA_BRANCH: currentBranch || "develop",
+          ELIZA_GIT_URL: localUpstreamRepo,
+        },
+      });
+      assertPathExists(path.join(projectDir, "eliza", "package.json"));
+      assertPathExists(path.join(projectDir, ".elizaos", "source-mode"));
+    }
 
     passed = true;
     console.log("elizaos packaged smoke test passed");

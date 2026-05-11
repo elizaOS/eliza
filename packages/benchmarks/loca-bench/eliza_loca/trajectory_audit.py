@@ -224,7 +224,7 @@ def _audit_trajectory(
 
     provider_payload = trajectory.get("provider_payload", {})
     usage_tracking = provider_payload.get("usage_tracking", [])
-    if not usage_tracking:
+    if not usage_tracking and not provider_payload.get("error"):
         issues.append({"path": label, "issue": "missing_usage_tracking"})
     for usage in usage_tracking if isinstance(usage_tracking, list) else []:
         token_totals["prompt_tokens"] += int(usage.get("prompt_tokens", 0) or 0)

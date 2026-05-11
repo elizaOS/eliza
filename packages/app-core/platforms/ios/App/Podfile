@@ -31,6 +31,7 @@ def capacitor_pods
   pod 'CapacitorPushNotifications', :path => node_package_path('@capacitor/push-notifications')
   pod 'ElizaosCapacitorAgent', :path => node_package_path('@elizaos/capacitor-agent')
   pod 'ElizaosCapacitorCamera', :path => node_package_path('@elizaos/capacitor-camera')
+  pod 'ElizaosCapacitorCalendar', :path => node_package_path('@elizaos/capacitor-calendar')
   pod 'ElizaosCapacitorCanvas', :path => node_package_path('@elizaos/capacitor-canvas')
   pod 'ElizaosCapacitorGateway', :path => node_package_path('@elizaos/capacitor-gateway')
   pod 'ElizaosCapacitorLocation', :path => node_package_path('@elizaos/capacitor-location')

@@ -1011,7 +1011,7 @@ function parseCalendarEvent(
     id: toText(row.id),
     externalId: toText(row.external_event_id),
     agentId: toText(row.agent_id),
-    provider: "google",
+    provider: toText(row.provider, "google") as LifeOpsCalendarEvent["provider"],
     side: toText(row.side, "owner") as LifeOpsCalendarEvent["side"],
     calendarId: toText(row.calendar_id),
     connectorAccountId: row.connector_account_id
@@ -1034,6 +1034,7 @@ function parseCalendarEvent(
     metadata: parseJsonRecord(row.metadata_json),
     syncedAt: toText(row.synced_at),
     updatedAt: toText(row.updated_at),
+    grantId: row.grant_id ? toText(row.grant_id) : undefined,
   };
 }
 

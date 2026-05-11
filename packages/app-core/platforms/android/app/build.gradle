@@ -98,6 +98,15 @@ android {
     }
 }
 
+repositories {
+    flatDir {
+        dirs '../../node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../node_modules/@capacitor-community/background-runner/android/src/main/libs',
+             '../../../../app/node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../../../app/node_modules/@capacitor-community/background-runner/android/src/main/libs'
+    }
+}
+
 dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"

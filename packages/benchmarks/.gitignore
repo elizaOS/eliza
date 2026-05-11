@@ -43,27 +43,34 @@ Thumbs.db
 # Generated Benchmark Run Outputs
 # =============================================================
 
-# Any directory starting with "benchmark_results" (everywhere)
+# Any directory starting with "benchmark_results" (everywhere). The only
+# committed source of truth is the idempotent latest snapshot set.
 **/benchmark_results*/
-
-# Keep the curated top-level benchmark_results/
 !/benchmark_results/
-!/benchmark_results/**
+/benchmark_results/*
+!/benchmark_results/latest/
+!/benchmark_results/latest/**
 
 # Trajectory exports
 **/trajectories/
 **/*.art.jsonl
 **/*.grpo.groups.json
 
-# Re-allow trajectories inside curated benchmark_results
-!/benchmark_results/**/trajectories/
-!/benchmark_results/**/trajectories/**
+# Orchestrator run groups and DB files are regenerated locally.
+/benchmark_results/rg_*/
+/benchmark_results/orchestrator.sqlite*
+/benchmark_results/viewer_data.json
 
 # Test output
 **/test_output/
 
 # Benchmark caches
 **/.benchmark_cache/
+
+# Local source checkouts for external harnesses
+**/openclaw-src/
+**/hermes-agent-src/
+.agents/
 
 # --- Ad-hoc run output directories (all benchmarks) ---
 **/canonical_*/
@@ -98,4 +105,3 @@ framework/results/*.json
 
 # SWE-bench cloned task workspaces (nested git repos; local checkout only)
 swe-bench-workspace/
-benchmark_results

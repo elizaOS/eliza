@@ -174,8 +174,7 @@ export async function setSecretHandler(
 				(result?.level as ExtractedSecrets["level"]),
 		};
 	} catch (error) {
-		const errorMessage =
-			error instanceof Error ? error.message : String(error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
 		logger.error(`[SECRETS:set] Failed to extract secrets: ${errorMessage}`);
 		if (callback) {
 			await callback({

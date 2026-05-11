@@ -33,7 +33,10 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  * either from a cloud provider or from the upcoming `llama-cpp-capacitor`
  * JNI binding (separate task).
  */
-export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
+export const MOBILE_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-sql",
+  "@elizaos/plugin-background-runner",
+];
 
 /**
  * ElizaOS-only overlay app plugins. Used when the runtime is the custom

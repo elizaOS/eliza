@@ -28,9 +28,9 @@
  */
 
 import { LOCAL_MODEL_PROVIDERS } from "../constants/secrets";
+import type { ActionModelClass } from "../types/components";
 import type { ModelHandler } from "../types/model";
 import { ModelType } from "../types/model";
-import type { ActionModelClass } from "../types/components";
 
 /**
  * One step in a fallback chain.
@@ -109,7 +109,10 @@ export const ACTION_MODEL_STRATEGIES: Readonly<
 		],
 	},
 	TEXT_SMALL: {
-		chain: [{ modelType: ModelType.TEXT_SMALL }, { modelType: ModelType.TEXT_LARGE }],
+		chain: [
+			{ modelType: ModelType.TEXT_SMALL },
+			{ modelType: ModelType.TEXT_LARGE },
+		],
 	},
 	TEXT_LARGE: {
 		chain: [{ modelType: ModelType.TEXT_LARGE }],

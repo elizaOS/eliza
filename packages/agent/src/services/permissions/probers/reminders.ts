@@ -1,27 +1,32 @@
 /**
  * Reminders prober.
  *
- * LifeOps currently talks to Reminders.app through AppleScript, so the
- * effective permission is Apple Events from this runtime to Reminders.app.
- * We read that TCC row for check() and reserve osascript for request(),
- * where a prompt is expected.
- *
- * INTEGRATION TODO: ship a small Swift FFI that calls
- * `EKEventStore.authorizationStatus(for: .reminder)` directly if/when the
- * implementation moves from AppleScript to EventKit.
+ * LifeOps creates/updates/deletes Apple Reminders through EventKit, so the
+ * canonical permission is the native Reminders privacy grant, not Automation.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
 import {
   buildState,
+  getNativeDylib,
   IS_DARWIN,
+  mapNativePrivacyAuthStatus,
+  openPrivacyPane,
   platformUnsupportedState,
-  queryAppleEventsTccStatus,
-  runOsascript,
+  queryTccStatus,
+  resolveBundleId,
 } from "./_bridge.js";
 
 const ID = "reminders" as const;
-const REMINDERS_BUNDLE_ID = "com.apple.reminders";
+const TCC_SERVICE = "kTCCServiceReminders";
+
+function stateFromNative(value: number): PermissionState {
+  const status = mapNativePrivacyAuthStatus(value);
+  return buildState(ID, status, {
+    canRequest: status === "not-determined" || value === 4,
+    restrictedReason: status === "restricted" ? "os_policy" : undefined,
+  });
+}
 
 export const remindersProber: Prober = {
   id: ID,
@@ -29,7 +34,10 @@ export const remindersProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
 
-    const tcc = await queryAppleEventsTccStatus(REMINDERS_BUNDLE_ID);
+    const lib = await getNativeDylib();
+    if (lib) return stateFromNative(lib.checkRemindersPermission());
+
+    const tcc = await queryTccStatus(TCC_SERVICE, resolveBundleId());
     if (tcc === "granted")
       return buildState(ID, "granted", { canRequest: false });
     if (tcc === "denied")
@@ -39,10 +47,14 @@ export const remindersProber: Prober = {
 
   async request({ reason: _reason }): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
-    // Trigger the OS prompt by issuing a benign read against Reminders.
-    // `count of lists` is read-only; macOS will surface the consent
-    // dialog the first time the runtime calls this.
-    await runOsascript('tell application "Reminders" to count of lists');
+
+    const lib = await getNativeDylib();
+    if (lib) {
+      const state = stateFromNative(lib.requestRemindersPermission());
+      return { ...state, lastRequested: Date.now() };
+    }
+
+    await openPrivacyPane("Reminders");
     const state = await remindersProber.check();
     return { ...state, lastRequested: Date.now() };
   },

@@ -8,11 +8,10 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { AddressInfo } from "node:net";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { detectLMStudio } from "../utils/detect";
 import { lmStudioPlugin } from "../plugin";
+import { detectLMStudio } from "../utils/detect";
 
 interface MockServerHandle {
   server: Server;

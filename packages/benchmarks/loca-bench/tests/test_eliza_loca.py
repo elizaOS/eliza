@@ -140,6 +140,18 @@ def test_cerebras_wrapper_passes_max_steps_when_set() -> None:
     assert command[command.index("--max-steps") + 1] == "17"
 
 
+def test_filesystem_mcp_config_cd_into_allowed_directory(tmp_path) -> None:
+    pytest.importorskip("fastmcp")
+    from gem.tools.mcp_server.filesystem.helper import get_filesystem_stdio_config
+
+    config = get_filesystem_stdio_config(allowed_directory=str(tmp_path))
+    args = config["filesystem"]["args"]
+
+    assert config["filesystem"]["cwd"] == str(tmp_path)
+    assert args[:1] == ["-c"]
+    assert f"cd {tmp_path}" in args[1]
+
+
 def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     root = tmp_path / "run"
     task_dir = root / "tasks" / "DemoTask" / "state0"
@@ -191,6 +203,52 @@ def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     assert audit["context_events"]["summary"] == 1
     assert audit["token_totals"]["total_tokens"] == 120
     assert audit["previews"]
+
+
+def test_trajectory_audit_accepts_provider_error_without_usage(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [
+                {"role": "user", "content": "do task"},
+                {"role": "assistant", "content": "Error: provider failed"},
+            ],
+            "full_messages_history": [
+                {"role": "user", "content": "do task"},
+                {"role": "assistant", "content": "Error: provider failed"},
+            ],
+        },
+        "events": {"reset": [], "summary": [], "trim": [], "thinking_reset": []},
+        "metrics": {"accuracy": 0.0, "total_steps": 1, "status": "error"},
+        "provider_payload": {
+            "usage_tracking": [],
+            "error": "Error: provider failed",
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(
+        json.dumps({"status": "error", "accuracy": 0.0, "steps": 1}),
+        encoding="utf-8",
+    )
+    (task_dir / "token_stats.json").write_text(
+        json.dumps({"usage_tracking": []}),
+        encoding="utf-8",
+    )
+    (root / "results.json").write_text(
+        json.dumps({"metadata": {"total_tasks": 1}, "summary": {"total_error": 1}}),
+        encoding="utf-8",
+    )
+    (root / "all_trajectories.json").write_text(
+        json.dumps({"DemoTask": {"state0": trajectory}}),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    assert audit["summary"]["issue_count"] == 0
 
 
 def test_trajectory_audit_counts_summary_skip_events(tmp_path) -> None:

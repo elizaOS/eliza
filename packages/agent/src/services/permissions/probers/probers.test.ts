@@ -5,6 +5,7 @@ import type { Prober } from "../contracts.ts";
 import {
   IS_DARWIN,
   mapAVAuthStatus,
+  mapNativePrivacyAuthStatus,
   mapUNAuthStatus,
   platformUnsupportedState,
 } from "./_bridge.ts";
@@ -86,14 +87,16 @@ describe("permission probers", () => {
     expect(mapUNAuthStatus(3)).toBe("restricted");
   });
 
+  it("maps the native EventKit/Contacts status contract", () => {
+    expect(mapNativePrivacyAuthStatus(0)).toBe("not-determined");
+    expect(mapNativePrivacyAuthStatus(1)).toBe("denied");
+    expect(mapNativePrivacyAuthStatus(2)).toBe("granted");
+    expect(mapNativePrivacyAuthStatus(3)).toBe("restricted");
+    expect(mapNativePrivacyAuthStatus(4)).toBe("restricted");
+  });
+
   it("keeps AppleScript-backed check() paths read-only", () => {
-    const files = [
-      "automation.ts",
-      "calendar.ts",
-      "contacts.ts",
-      "notes.ts",
-      "reminders.ts",
-    ];
+    const files = ["automation.ts", "notes.ts"];
     for (const file of files) {
       const source = readFileSync(new URL(file, import.meta.url), "utf8");
       const checkStart = source.indexOf("async check()");
@@ -107,6 +110,26 @@ describe("permission probers", () => {
       ).not.toContain("runOsascript");
       expect(source, `${file} should use TCC reads`).toContain(
         "queryAppleEventsTccStatus",
+      );
+    }
+  });
+
+  it("keeps native Apple data probers off Automation", () => {
+    const files = ["calendar.ts", "contacts.ts", "reminders.ts"];
+    for (const file of files) {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8");
+      const checkStart = source.indexOf("async check()");
+      const requestStart = source.indexOf("async request", checkStart);
+      expect(checkStart, `${file} has check()`).toBeGreaterThanOrEqual(0);
+      expect(requestStart, `${file} has request()`).toBeGreaterThan(checkStart);
+      expect(source, `${file} should use native probes`).toContain(
+        "getNativeDylib",
+      );
+      expect(source, `${file} must not probe Apple Events`).not.toContain(
+        "queryAppleEventsTccStatus",
+      );
+      expect(source, `${file} must not prompt via osascript`).not.toContain(
+        "runOsascript",
       );
     }
   });

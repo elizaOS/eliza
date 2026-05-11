@@ -36,9 +36,9 @@
  *   a coordinated change.
  */
 
-import { createRequire } from "node:module";
 import fs from "node:fs";
 import type http from "node:http";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { ensureRouteAuthorized } from "./auth.ts";
@@ -75,6 +75,7 @@ function loadDatabaseSync(): DatabaseSyncCtor | null {
   }
   return DatabaseSyncCached;
 }
+
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { sendJson, sendJsonError } from "./response";
 
@@ -229,10 +230,7 @@ export function openBenchmarkResultsReader(
       return rows.map(rowToDto);
     },
     getLatest({ modelId, benchmark }): BenchmarkRunDTO | null {
-      const rows = latestStmt.all(
-        modelId,
-        benchmark,
-      ) as unknown as DbRunRow[];
+      const rows = latestStmt.all(modelId, benchmark) as unknown as DbRunRow[];
       if (rows.length === 0) return null;
       return rowToDto(rows[0]);
     },
@@ -396,8 +394,7 @@ function handleCompare(
   const dbReady = reader.ready;
   reader.close();
 
-  const delta =
-    aRun !== null && bRun !== null ? aRun.score - bRun.score : null;
+  const delta = aRun !== null && bRun !== null ? aRun.score - bRun.score : null;
 
   const body: BenchmarkCompareResponse = {
     schema: ELIZA_BENCHMARK_COMPARE_SCHEMA,

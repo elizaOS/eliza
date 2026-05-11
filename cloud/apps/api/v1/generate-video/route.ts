@@ -1,7 +1,7 @@
 import { createFalClient } from "@fal-ai/client";
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import { ApiError, failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
@@ -12,6 +12,7 @@ import {
   getSupportedVideoModelDefinition,
   SUPPORTED_VIDEO_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@/lib/services/content-safety";
 import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { logger } from "@/lib/utils/logger";
@@ -164,6 +165,18 @@ app.post("/", async (c) => {
       return jsonError(c, 503, "Fal video generation is not configured", "internal_error");
     }
 
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "media_generation_prompt",
+      organizationId: user.organization_id,
+      userId: user.id,
+      text: [
+        `Video prompt: ${request.prompt}`,
+        request.referenceUrl ? `Reference URL: ${request.referenceUrl}` : undefined,
+      ],
+      imageUrls: request.referenceUrl ? [request.referenceUrl] : undefined,
+      metadata: { type: "video", model: request.model },
+    });
+
     const defaults = getDefaultVideoBillingDimensions(request.model);
     const durationSeconds = request.durationSeconds ?? defaults.durationSeconds;
     const dimensions = {
@@ -209,6 +222,14 @@ app.post("/", async (c) => {
       },
     });
     const normalized = normalizeFalResult(result, requestId);
+    if (normalized.hasNsfwConcepts?.some(Boolean)) {
+      throw new ApiError(400, "validation_error", "Generated video failed safety review", {
+        surface: "media_generation_output",
+        provider: definition.provider,
+        model: request.model,
+        issues: ["provider_nsfw_signal"],
+      });
+    }
 
     await reservation.reconcile(cost.totalCost);
 

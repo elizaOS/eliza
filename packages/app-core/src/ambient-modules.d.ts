@@ -49,6 +49,14 @@ declare module "@elizaos/plugin-groq" {
 declare module "@elizaos/plugin-edge-tts";
 declare module "@elizaos/signal-native";
 
+declare module "qrcode-terminal" {
+  export function generate(
+    input: string,
+    options?: { small?: boolean },
+    callback?: (qrcode: string) => void,
+  ): void;
+}
+
 declare module "three/examples/jsm/libs/meshopt_decoder.module.js" {
   export const MeshoptDecoder: {
     supported: boolean;
