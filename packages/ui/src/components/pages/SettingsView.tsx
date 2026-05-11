@@ -1068,7 +1068,9 @@ export function SettingsView({
       {visibleSectionIds.has("secrets") && (
         <SettingsSection
           id="secrets"
-          title={t("settings.sections.secrets.label", { defaultValue: "Vault" })}
+          title={t("settings.sections.secrets.label", {
+            defaultValue: "Vault",
+          })}
           ref={registerContentItem("secrets")}
         >
           <SecretsManagerSection />

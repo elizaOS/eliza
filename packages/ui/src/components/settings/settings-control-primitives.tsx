@@ -50,8 +50,11 @@ export interface UseSettingsSaveResult {
 export function useSettingsSave(
   options: UseSettingsSaveOptions,
 ): UseSettingsSaveResult {
-  const { onSave, successMs = 2500, errorFallback = "Failed to save." } =
-    options;
+  const {
+    onSave,
+    successMs = 2500,
+    errorFallback = "Failed to save.",
+  } = options;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
