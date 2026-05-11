@@ -68,6 +68,20 @@
     "three": "^0.184.0"
   },
   "optionalDependencies": {
+    "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+    "@elizaos/capacitor-camera": "2.0.0-beta.1",
+    "@elizaos/capacitor-canvas": "2.0.0-beta.1",
+    "@elizaos/capacitor-contacts": "2.0.0-beta.1",
+    "@elizaos/capacitor-gateway": "2.0.0-beta.1",
+    "@elizaos/capacitor-location": "2.0.0-beta.1",
+    "@elizaos/capacitor-messages": "2.0.0-beta.1",
+    "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
+    "@elizaos/capacitor-phone": "2.0.0-beta.1",
+    "@elizaos/capacitor-screencapture": "2.0.0-beta.1",
+    "@elizaos/capacitor-swabble": "2.0.0-beta.1",
+    "@elizaos/capacitor-system": "2.0.0-beta.1",
+    "@elizaos/capacitor-talkmode": "2.0.0-beta.1",
+    "@elizaos/capacitor-websiteblocker": "2.0.0-beta.1",
     "node-llama-cpp": "3.18.1",
     "onnxruntime-node": "1.24.3",
     "sharp": "^0.34.5"

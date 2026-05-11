@@ -115,7 +115,9 @@ export type ScenarioSeedStep =
   | {
       type: string;
       name?: string;
-      apply?: (ctx: ScenarioContext) => ScenarioCheckResult;
+      apply?: (
+        ctx: ScenarioContext,
+      ) => ScenarioCheckResult | Promise<ScenarioCheckResult>;
       by?: string;
       connector?: string;
       provider?: string;

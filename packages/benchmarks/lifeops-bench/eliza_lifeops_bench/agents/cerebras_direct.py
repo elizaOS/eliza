@@ -1,6 +1,6 @@
 """Cerebras-direct adapter for LifeOpsBench.
 
-Wraps :class:`CerebrasClient` (Wave 1E) into an :class:`OpenAICompatAgent`.
+Wraps :class:`CerebrasClient` into an :class:`OpenAICompatAgent`.
 Cerebras's chat-completions endpoint speaks native OpenAI tool-calling, so
 this adapter is effectively just a constructor + the shared scaffolding —
 all the heavy lifting (message translation, cost accounting) lives in

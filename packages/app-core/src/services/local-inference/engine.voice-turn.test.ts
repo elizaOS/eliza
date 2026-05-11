@@ -124,7 +124,9 @@ describe("EngineVoiceBridge.runVoiceTurn (wired pipeline)", () => {
     });
     // Inject a fused FFI so the transcriber path is the real
     // `FfiStreamingTranscriber` (asrAvailable + ffi present).
-    (bridge as unknown as { ffi: unknown }).ffi = fakeFfi("hi there", { asrStreamSupported: true });
+    (bridge as unknown as { ffi: unknown }).ffi = fakeFfi("hi there", {
+      asrStreamSupported: true,
+    });
     (
       bridge as unknown as { ffiContextRef: { ensure(): bigint } | null }
     ).ffiContextRef = { ensure: () => 1n };
@@ -179,7 +181,9 @@ describe("EngineVoiceBridge.runVoiceTurn (wired pipeline)", () => {
       backendOverride: new StubBackend(),
       lifecycleLoaders: loadersOk(),
     });
-    (bridge as unknown as { ffi: unknown }).ffi = fakeFfi("a b c d e f", { asrStreamSupported: true });
+    (bridge as unknown as { ffi: unknown }).ffi = fakeFfi("a b c d e f", {
+      asrStreamSupported: true,
+    });
     (
       bridge as unknown as { ffiContextRef: { ensure(): bigint } | null }
     ).ffiContextRef = { ensure: () => 1n };

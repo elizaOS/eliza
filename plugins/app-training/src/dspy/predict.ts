@@ -19,8 +19,11 @@ import type {
 } from "./lm-adapter.js";
 import type { Signature, SignatureSpec } from "./signature.js";
 
-export interface PredictOpts {
-	signature: Signature;
+export interface PredictOpts<
+	I extends Record<string, unknown> = Record<string, unknown>,
+	O extends Record<string, unknown> = Record<string, unknown>,
+> {
+	signature: Signature<I, O>;
 	lm: LanguageModelAdapter;
 	demonstrations?: Example[];
 	temperature?: number;
@@ -46,9 +49,9 @@ export class Predict<
 	I extends Record<string, unknown> = Record<string, unknown>,
 	O extends Record<string, unknown> = Record<string, unknown>,
 > {
-	constructor(private readonly opts: PredictOpts) {}
+	constructor(private readonly opts: PredictOpts<I, O>) {}
 
-	get signature(): Signature {
+	get signature(): Signature<I, O> {
 		return this.opts.signature;
 	}
 
@@ -73,7 +76,11 @@ export class Predict<
 			temperature: this.opts.temperature ?? 0,
 			maxTokens: this.opts.maxTokens,
 		});
-		const output = this.opts.signature.parse(result.text) as O;
+		// `signature.parse` is the LM-response boundary: it throws
+		// `SignatureParseError` on malformed output. No silent fallback — the
+		// optimizer scoring loop catches the throw and scores 0 (documented
+		// behavior in `dspy-bootstrap-fewshot.ts` / `dspy-copro.ts` / `dspy-mipro.ts`).
+		const output = this.opts.signature.parse(result.text);
 		return {
 			output,
 			usage: result.usage,

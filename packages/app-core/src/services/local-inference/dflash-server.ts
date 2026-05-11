@@ -412,9 +412,7 @@ export interface DflashBinaryCapabilities {
   omnivoice?: unknown;
 }
 
-function readCapabilitiesAt(
-  capsPath: string,
-): DflashBinaryCapabilities | null {
+function readCapabilitiesAt(capsPath: string): DflashBinaryCapabilities | null {
   let raw: string;
   try {
     raw = fs.readFileSync(capsPath, "utf8");
@@ -1602,9 +1600,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         );
       }
       const buf = await res.arrayBuffer();
-      const sampleRate = Number(
-        res.headers.get("X-Sample-Rate") ?? "24000",
-      );
+      const sampleRate = Number(res.headers.get("X-Sample-Rate") ?? "24000");
       // The fused route emits little-endian f32 mono PCM for
       // `response_format: "pcm"`. Copy into an aligned Float32Array.
       const aligned = new ArrayBuffer(buf.byteLength);
