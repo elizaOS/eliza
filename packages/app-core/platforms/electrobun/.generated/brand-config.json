@@ -1,8 +1,8 @@
 {
-	"appName": "Eliza",
-	"appId": "app.eliza",
-	"namespace": "eliza",
-	"urlScheme": "elizaos",
-	"configDirName": "Eliza",
+	"appName": "Milady",
+	"appId": "ai.milady.milady",
+	"namespace": "milady",
+	"urlScheme": "milady",
+	"configDirName": "Milady",
 	"appDescription": "Open framework for autonomous agents"
 }
