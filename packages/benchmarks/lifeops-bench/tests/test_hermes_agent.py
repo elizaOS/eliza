@@ -1,4 +1,4 @@
-"""Tests for the Hermes adapter (Wave 2E).
+"""Tests for the Hermes adapter.
 
 Mocked end-to-end via :class:`httpx.MockTransport` — no real network
 unless ``LIFEOPS_BENCH_LIVE=1`` is set.
