@@ -505,15 +505,7 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         return prefill + tail;
       }
       const tail = await session.prompt(promptText, promptOpts);
-      const text = prefill + tail;
-      if (text.length > 0) {
-        await args.onVerifierEvent?.({
-          kind: "accept",
-          tokens: [{ index: 0, text }],
-        });
-        await args.onTextChunk?.(text);
-      }
-      return text;
+      return prefill + tail;
     };
     const job = this.generationQueue.then(run, run);
     this.generationQueue = job.catch(() => {

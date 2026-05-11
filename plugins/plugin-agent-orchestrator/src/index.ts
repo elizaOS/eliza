@@ -13,6 +13,7 @@ import {
   isLocalCodeExecutionAllowed,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+
 // Register coding-agent HTTP routes with the runtime route registry.
 // Re-exporting the registration sentinel (rather than a side-effect-only
 // `import "./register-routes.js"`) keeps Bun.build's node-target

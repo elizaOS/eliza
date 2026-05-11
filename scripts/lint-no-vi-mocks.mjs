@@ -11,9 +11,9 @@
  *   as Mock   as MockedFunction
  *
  * Whitelist (never scanned):
- *   test/mocks/**
- *   **/node_modules/**
- *   **/dist/**
+ *   test/mocks (any subpath)
+ *   node_modules (any depth)
+ *   dist (any depth)
  *
  * Exit 1 if any violations found; exit 0 otherwise.
  *
