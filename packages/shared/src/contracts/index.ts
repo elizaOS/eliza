@@ -23,3 +23,4 @@ export * from "./service-routing.js";
 export * from "./skills-routes.js";
 export * from "./verification.js";
 export * from "./wallet.js";
+export * from "./wallet-routes.js";
