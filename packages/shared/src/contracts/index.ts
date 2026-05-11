@@ -8,6 +8,7 @@ export * from "./apps-runs-routes.js";
 export * from "./awareness.js";
 export * from "./cloud-topology.js";
 export * from "./config.js";
+export * from "./connector-routes.js";
 export * from "./content-pack.js";
 export * from "./drop.js";
 export * from "./feature-result.js";

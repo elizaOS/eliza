@@ -1,7 +1,10 @@
 import type http from "node:http";
 import { logger } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { normalizeOnboardingProviderId } from "@elizaos/shared";
+import {
+  normalizeOnboardingProviderId,
+  PostProviderSwitchRequestSchema,
+} from "@elizaos/shared";
 import type { SecretsManager } from "@elizaos/vault";
 import type { ElizaConfig } from "../config/config.ts";
 import {
@@ -64,21 +67,19 @@ export async function handleProviderSwitchRoutes(
   const { req, res, method, pathname, state, json, error, readJsonBody } = ctx;
 
   if (method === "POST" && pathname === "/api/provider/switch") {
-    const body = await readJsonBody<{
-      provider: string;
-      apiKey?: string;
-      primaryModel?: string;
-      useLocalEmbeddings?: boolean;
-    }>(req, res);
-    if (!body) return true;
-    if (!body.provider || typeof body.provider !== "string") {
-      error(res, "Missing provider", 400);
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostProviderSwitchRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
+      error(
+        res,
+        parsed.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
-    const useLocalEmbeddings =
-      typeof body.useLocalEmbeddings === "boolean"
-        ? body.useLocalEmbeddings
-        : undefined;
+    const body = parsed.data;
+    const useLocalEmbeddings = body.useLocalEmbeddings;
 
     const normalizedProvider = normalizeOnboardingProviderId(body.provider);
     if (!normalizedProvider) {
@@ -86,12 +87,7 @@ export async function handleProviderSwitchRoutes(
       return true;
     }
 
-    const trimmedApiKey =
-      typeof body.apiKey === "string" ? body.apiKey.trim() : undefined;
-    if (trimmedApiKey && trimmedApiKey.length > 512) {
-      error(res, "API key is too long", 400);
-      return true;
-    }
+    const trimmedApiKey = body.apiKey;
 
     try {
       let connection:
@@ -112,10 +108,7 @@ export async function handleProviderSwitchRoutes(
         connection = createProviderSwitchConnection({
           provider: normalizedProvider,
           apiKey: trimmedApiKey,
-          primaryModel:
-            typeof body.primaryModel === "string"
-              ? body.primaryModel.trim()
-              : undefined,
+          primaryModel: body.primaryModel,
         });
       }
 
@@ -127,10 +120,7 @@ export async function handleProviderSwitchRoutes(
       const intent: ProviderSwitchIntent = {
         kind: "provider-switch",
         provider: normalizedProvider,
-        primaryModel:
-          typeof body.primaryModel === "string"
-            ? body.primaryModel.trim()
-            : undefined,
+        primaryModel: body.primaryModel,
       };
       const idempotencyKey = readIdempotencyKey(req.headers);
 
