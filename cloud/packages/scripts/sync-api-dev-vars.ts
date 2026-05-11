@@ -148,6 +148,7 @@ for (const key of [
   "INTERNAL_SECRET",
   "GATEWAY_INTERNAL_SECRET",
   "AGENT_SERVER_SHARED_SECRET",
+  "ELIZA_APP_JWT_SECRET",
   "ELIZA_API_TOKEN",
 ]) {
   ensureLocalSharedSecret(key);
