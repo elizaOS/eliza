@@ -96,12 +96,14 @@ describe("runParentAgentBroker", () => {
     const result = await runParentAgentBroker({
       runtime: createRuntime(),
       sessionId: "session-1",
-      args: { mode: "list-cloud-commands", query: "music" },
+      args: { mode: "list-cloud-commands", query: "media" },
     });
 
     expect(result.success).toBe(true);
     expect(result.text).toContain("media.music.generate");
     expect(result.text).toContain("/api/v1/generate-music");
+    expect(result.text).toContain("advertising.accounts.media.upload");
+    expect(result.text).toContain("/api/v1/advertising/accounts/{id}/media");
   });
 
   it("runs read-only Cloud commands through the configured Cloud API", async () => {

@@ -117,7 +117,7 @@ function selectRoute(
 	options?: HandlerOptions | Record<string, unknown>,
 ): SkillRoute | null {
 	const opts = readOptions(options);
-	const requested = normalizeOp(opts.op ?? opts.subaction);
+	const requested = normalizeOp(opts.action);
 	if (requested) {
 		const route = ROUTES.find((candidate) => candidate.op === requested);
 		if (route) return route;
@@ -150,7 +150,7 @@ export const skillAction: Action = {
 	roleGate: { minRole: "USER" },
 	parameters: [
 		{
-			name: "subaction",
+			name: "action",
 			description:
 				"Operation to perform. One of: search, details, sync, toggle, install, uninstall. Inferred from message text when omitted.",
 			required: false,

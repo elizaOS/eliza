@@ -46,6 +46,7 @@ const ROOM_CONTEXTS = ["messaging", "contacts", "settings"] as const;
 type ParticipantState = "FOLLOWED" | "MUTED" | null;
 
 type RoomOpParams = {
+	action?: RoomOp | string;
 	op?: RoomOp | string;
 	roomId?: string;
 	platform?: string;
@@ -244,7 +245,7 @@ async function validateRoomOpAvailability(
 	}
 
 	const params = readRoomOpParams(options);
-	const op = forcedOp ?? normalizeOp(params.op);
+	const op = forcedOp ?? normalizeOp(params.action) ?? normalizeOp(params.op);
 	if (!op) {
 		return true;
 	}
@@ -495,12 +496,12 @@ export const roomOpAction: Action = {
 		"ROOM",
 	],
 	description:
-		"Mute, unmute, follow, or unfollow a room. Defaults to the current room; targets a specific connector chat when `platform` and `chatName` (or `roomId`) are supplied. `op: mute` with `durationMinutes` returns a scheduling hint for an automatic unmute.",
+		"Mute, unmute, follow, or unfollow a room. Defaults to the current room; targets a specific connector chat when `platform` and `chatName` (or `roomId`) are supplied. `action: mute` with `durationMinutes` returns a scheduling hint for an automatic unmute.",
 	descriptionCompressed:
-		"room subscription state: op=mute|unmute|follow|unfollow + optional roomId|platform+chatName + durationMinutes (mute auto-unmute hint)",
+		"room subscription state: action=mute|unmute|follow|unfollow + optional roomId|platform+chatName + durationMinutes (mute auto-unmute hint)",
 	parameters: [
 		{
-			name: "subaction",
+			name: "action",
 			description:
 				"Operation: mute | unmute | follow | unfollow. Inferred from message text when omitted.",
 			required: false,
@@ -613,7 +614,9 @@ export const roomOpAction: Action = {
 		const params = readRoomOpParams(options);
 
 		const op =
-			normalizeOp(params.op) ?? inferOpFromText(getMessageText(message));
+			normalizeOp(params.action) ??
+			normalizeOp(params.op) ??
+			inferOpFromText(getMessageText(message));
 		if (!op) {
 			return {
 				text: "Specify op: mute, unmute, follow, or unfollow.",

@@ -36,6 +36,7 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
 } from "./runner.js";
 import { createInMemoryScheduledTaskLogStore } from "./state-log.js";
@@ -68,6 +69,7 @@ function makeRunner(): {
     } as GlobalPauseView,
     activity: { hasSignalSince: () => false },
     subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
     newTaskId: () => {
       counter += 1;
       return `task_${counter}`;

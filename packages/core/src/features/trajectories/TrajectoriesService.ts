@@ -89,6 +89,8 @@ export interface TrajectoryListItem {
 	llmCallCount: number;
 	totalPromptTokens: number;
 	totalCompletionTokens: number;
+	totalCacheReadInputTokens?: number;
+	totalCacheCreationInputTokens?: number;
 	totalReward: number;
 	scenarioId: string | null;
 	batchId: string | null;
@@ -101,6 +103,8 @@ export interface TrajectoryStats {
 	totalLlmCalls: number;
 	totalPromptTokens: number;
 	totalCompletionTokens: number;
+	totalCacheReadInputTokens: number;
+	totalCacheCreationInputTokens: number;
 	averageDurationMs: number;
 	averageReward: number;
 	bySource: Record<string, number>;
@@ -111,6 +115,9 @@ export interface TrajectoryStats {
 export interface TrajectoryZipExportOptions {
 	includePrompts?: boolean;
 	trajectoryIds?: string[];
+	source?: string;
+	status?: "active" | "completed" | "error" | "timeout";
+	search?: string;
 	startDate?: string;
 	endDate?: string;
 	scenarioId?: string;
@@ -849,6 +856,8 @@ export class TrajectoriesService extends Service {
 			["reward_components_json", "JSONB NOT NULL DEFAULT '{}'"],
 			["metrics_json", "JSONB NOT NULL DEFAULT '{}'"],
 			["metadata_json", "JSONB NOT NULL DEFAULT '{}'"],
+			["total_cache_read_input_tokens", "INTEGER NOT NULL DEFAULT 0"],
+			["total_cache_creation_input_tokens", "INTEGER NOT NULL DEFAULT 0"],
 			["is_training_data", "BOOLEAN NOT NULL DEFAULT FALSE"],
 			["is_evaluation", "BOOLEAN NOT NULL DEFAULT FALSE"],
 			["used_in_training", "BOOLEAN NOT NULL DEFAULT FALSE"],
@@ -907,6 +916,8 @@ export class TrajectoriesService extends Service {
         provider_access_count INTEGER NOT NULL DEFAULT 0,
         total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
         total_completion_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_read_input_tokens INTEGER NOT NULL DEFAULT 0,
+        total_cache_creation_input_tokens INTEGER NOT NULL DEFAULT 0,
         total_reward REAL NOT NULL DEFAULT 0,
         scenario_id TEXT,
         episode_id TEXT,
@@ -1038,11 +1049,15 @@ export class TrajectoriesService extends Service {
 		providerAccessCount: number;
 		totalPromptTokens: number;
 		totalCompletionTokens: number;
+		totalCacheReadInputTokens: number;
+		totalCacheCreationInputTokens: number;
 	} {
 		let llmCallCount = 0;
 		let providerAccessCount = 0;
 		let totalPromptTokens = 0;
 		let totalCompletionTokens = 0;
+		let totalCacheReadInputTokens = 0;
+		let totalCacheCreationInputTokens = 0;
 		for (const step of steps) {
 			const llmCalls = Array.isArray(step.llmCalls) ? step.llmCalls : [];
 			const providerAccesses = Array.isArray(step.providerAccesses)
@@ -1053,6 +1068,8 @@ export class TrajectoriesService extends Service {
 			for (const call of llmCalls) {
 				totalPromptTokens += call.promptTokens ?? 0;
 				totalCompletionTokens += call.completionTokens ?? 0;
+				totalCacheReadInputTokens += call.cacheReadInputTokens ?? 0;
+				totalCacheCreationInputTokens += call.cacheCreationInputTokens ?? 0;
 			}
 		}
 		return {
@@ -1061,6 +1078,8 @@ export class TrajectoriesService extends Service {
 			providerAccessCount,
 			totalPromptTokens,
 			totalCompletionTokens,
+			totalCacheReadInputTokens,
+			totalCacheCreationInputTokens,
 		};
 	}
 
@@ -1224,6 +1243,8 @@ export class TrajectoriesService extends Service {
           provider_access_count = ${totals.providerAccessCount},
           total_prompt_tokens = ${totals.totalPromptTokens},
           total_completion_tokens = ${totals.totalCompletionTokens},
+          total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
+          total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
           total_reward = ${trajectory.totalReward},
           steps_json = ${sqlLiteral(trajectory.steps)},
           reward_components_json = ${sqlLiteral(trajectory.rewardComponents)},
@@ -1244,6 +1265,8 @@ export class TrajectoriesService extends Service {
           provider_access_count = ${totals.providerAccessCount},
           total_prompt_tokens = ${totals.totalPromptTokens},
           total_completion_tokens = ${totals.totalCompletionTokens},
+          total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
+          total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
           total_reward = ${trajectory.totalReward},
           steps_json = ${sqlLiteral(trajectory.steps)},
           metadata = ${sqlLiteral(trajectory.metadata)},
@@ -1375,6 +1398,8 @@ export class TrajectoriesService extends Service {
 					provider_access_count = ${totals.providerAccessCount},
 					total_prompt_tokens = ${totals.totalPromptTokens},
 					total_completion_tokens = ${totals.totalCompletionTokens},
+					total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
+					total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
 					updated_at = ${sqlLiteral(updatedAtIso)}
 				WHERE id = ${sqlLiteral(trajectoryId)}
 			`);
@@ -1520,6 +1545,8 @@ export class TrajectoriesService extends Service {
 						provider_access_count = ${totals.providerAccessCount},
 						total_prompt_tokens = ${totals.totalPromptTokens},
 						total_completion_tokens = ${totals.totalCompletionTokens},
+						total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
+						total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
 						updated_at = ${sqlLiteral(updatedAtIso)}
 					WHERE id = ${sqlLiteral(trajectoryId)}
 				`);
@@ -1775,6 +1802,8 @@ export class TrajectoriesService extends Service {
 					provider_access_count = ${totals.providerAccessCount},
 					total_prompt_tokens = ${totals.totalPromptTokens},
 					total_completion_tokens = ${totals.totalCompletionTokens},
+					total_cache_read_input_tokens = ${totals.totalCacheReadInputTokens},
+					total_cache_creation_input_tokens = ${totals.totalCacheCreationInputTokens},
 					total_reward = ${trajectory.totalReward},
 					reward_components_json = ${sqlLiteral(trajectory.rewardComponents)},
 					updated_at = ${sqlLiteral(updatedAtIso)}
@@ -1926,6 +1955,7 @@ export class TrajectoriesService extends Service {
       SELECT
         id, agent_id, source, status, start_time, end_time, duration_ms,
         step_count, llm_call_count, total_prompt_tokens, total_completion_tokens,
+        total_cache_read_input_tokens, total_cache_creation_input_tokens,
         total_reward, scenario_id, batch_id, created_at
       FROM trajectories
       ${whereClause}
@@ -1953,6 +1983,10 @@ export class TrajectoriesService extends Service {
 				totalPromptTokens: asNumber(pickCell(row, "total_prompt_tokens")) ?? 0,
 				totalCompletionTokens:
 					asNumber(pickCell(row, "total_completion_tokens")) ?? 0,
+				totalCacheReadInputTokens:
+					asNumber(pickCell(row, "total_cache_read_input_tokens")) ?? 0,
+				totalCacheCreationInputTokens:
+					asNumber(pickCell(row, "total_cache_creation_input_tokens")) ?? 0,
 				totalReward: asNumber(pickCell(row, "total_reward")) ?? 0,
 				scenarioId: asString(pickCell(row, "scenario_id")),
 				batchId: asString(pickCell(row, "batch_id")),
@@ -1989,6 +2023,8 @@ export class TrajectoriesService extends Service {
 				totalLlmCalls: 0,
 				totalPromptTokens: 0,
 				totalCompletionTokens: 0,
+				totalCacheReadInputTokens: 0,
+				totalCacheCreationInputTokens: 0,
 				averageDurationMs: 0,
 				averageReward: 0,
 				bySource: {},
@@ -2005,6 +2041,8 @@ export class TrajectoriesService extends Service {
         COALESCE(sum(llm_call_count), 0)::int AS total_llm_calls,
         COALESCE(sum(total_prompt_tokens), 0)::int AS total_prompt_tokens,
         COALESCE(sum(total_completion_tokens), 0)::int AS total_completion_tokens,
+        COALESCE(sum(total_cache_read_input_tokens), 0)::int AS total_cache_read_input_tokens,
+        COALESCE(sum(total_cache_creation_input_tokens), 0)::int AS total_cache_creation_input_tokens,
         COALESCE(avg(duration_ms), 0)::int AS avg_duration_ms,
         COALESCE(avg(total_reward), 0)::real AS avg_reward
       FROM trajectories
@@ -2059,6 +2097,10 @@ export class TrajectoriesService extends Service {
 			totalPromptTokens: asNumber(pickCell(stats, "total_prompt_tokens")) ?? 0,
 			totalCompletionTokens:
 				asNumber(pickCell(stats, "total_completion_tokens")) ?? 0,
+			totalCacheReadInputTokens:
+				asNumber(pickCell(stats, "total_cache_read_input_tokens")) ?? 0,
+			totalCacheCreationInputTokens:
+				asNumber(pickCell(stats, "total_cache_creation_input_tokens")) ?? 0,
 			averageDurationMs: asNumber(pickCell(stats, "avg_duration_ms")) ?? 0,
 			averageReward: asNumber(pickCell(stats, "avg_reward")) ?? 0,
 			bySource,
@@ -2133,6 +2175,8 @@ export class TrajectoriesService extends Service {
 		providerAccessCount: number;
 		totalPromptTokens: number;
 		totalCompletionTokens: number;
+		totalCacheReadInputTokens: number;
+		totalCacheCreationInputTokens: number;
 		metadata: Record<string, JsonValue | undefined>;
 		createdAt: string;
 		updatedAt: string;
@@ -2157,6 +2201,8 @@ export class TrajectoriesService extends Service {
 		let providerAccessCount = 0;
 		let totalPromptTokens = 0;
 		let totalCompletionTokens = 0;
+		let totalCacheReadInputTokens = 0;
+		let totalCacheCreationInputTokens = 0;
 
 		for (const step of trajectory.steps) {
 			providerAccessCount += step.providerAccesses.length;
@@ -2164,6 +2210,8 @@ export class TrajectoriesService extends Service {
 			for (const call of step.llmCalls) {
 				totalPromptTokens += call.promptTokens ?? 0;
 				totalCompletionTokens += call.completionTokens ?? 0;
+				totalCacheReadInputTokens += call.cacheReadInputTokens ?? 0;
+				totalCacheCreationInputTokens += call.cacheCreationInputTokens ?? 0;
 			}
 		}
 
@@ -2196,6 +2244,8 @@ export class TrajectoriesService extends Service {
 			providerAccessCount,
 			totalPromptTokens,
 			totalCompletionTokens,
+			totalCacheReadInputTokens,
+			totalCacheCreationInputTokens,
 			metadata,
 			createdAt: new Date(trajectory.startTime).toISOString(),
 			updatedAt: new Date(updatedAtMs).toISOString(),
@@ -2214,6 +2264,9 @@ export class TrajectoriesService extends Service {
 		if (targetIds.length === 0) {
 			const list = await this.listTrajectories({
 				limit: 500,
+				source: options.source,
+				status: options.status,
+				search: options.search,
 				startDate: options.startDate,
 				endDate: options.endDate,
 				scenarioId: options.scenarioId,
@@ -2293,6 +2346,12 @@ export class TrajectoriesService extends Service {
 			const ids = options.trajectoryIds.map(sqlLiteral).join(", ");
 			whereClauses.push(`id IN (${ids})`);
 		}
+		if (options.status) {
+			whereClauses.push(`status = ${sqlLiteral(options.status)}`);
+		}
+		if (options.source) {
+			whereClauses.push(`source = ${sqlLiteral(options.source)}`);
+		}
 		if (options.startDate) {
 			whereClauses.push(
 				`created_at >= ${sqlLiteral(options.startDate)}::timestamptz`,
@@ -2308,6 +2367,19 @@ export class TrajectoriesService extends Service {
 		}
 		if (options.batchId) {
 			whereClauses.push(`batch_id = ${sqlLiteral(options.batchId)}`);
+		}
+		if (options.search) {
+			const escaped = options.search.replace(/[\\'%_]/g, (ch) => {
+				if (ch === "'") return "''";
+				if (ch === "\\") return "\\\\";
+				return `\\${ch}`;
+			});
+			whereClauses.push(`(
+				id ILIKE '%${escaped}%' OR
+				agent_id ILIKE '%${escaped}%' OR
+				source ILIKE '%${escaped}%' OR
+				scenario_id ILIKE '%${escaped}%'
+			)`);
 		}
 
 		const whereClause =

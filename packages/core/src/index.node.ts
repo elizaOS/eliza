@@ -9,13 +9,14 @@
 export * from "./actions";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-export * from "./app-registry";
 export * from "./app-core-runtime-hooks";
+export * from "./app-registry";
 // Export all core modules
 export * from "./app-route-plugin-registry";
+export * from "./boot-env";
 export * from "./browser-capture-hooks";
 export * from "./browser-workspace-hooks";
-export * from "./boot-env";
+export * from "./build-variant";
 // Export configuration and plugin modules - will be removed once cli cleanup
 export * from "./character";
 // Export character utilities
@@ -67,7 +68,6 @@ export * from "./features/advanced-memory";
 // Export capabilities and plugin creation
 export * from "./features/basic-capabilities/index";
 export * from "./features/documents/index";
-export * from "./mobile-device-bridge-hooks";
 export type {
 	DraftRecord,
 	DraftRequest,
@@ -140,12 +140,12 @@ export * from "./markdown";
 // Export media utilities
 export * from "./media";
 export * from "./memory";
+export * from "./mobile-device-bridge-hooks";
 // Export network utilities (SSRF protection, secure fetch)
 export * from "./network";
 export { getOptimizationRootDir } from "./optimization-root-dir";
 export * from "./plugin";
 export * from "./plugins";
-
 export * from "./prompts";
 // Export onboarding providers
 export * from "./providers/onboarding-progress";
@@ -195,6 +195,7 @@ export * from "./runtime/trajectory-recorder";
 export * from "./runtime-composition";
 export * from "./runtime-env";
 export * from "./runtime-route-context";
+export * from "./sandbox-policy";
 // Export character schemas
 export * from "./schemas/character";
 // Export base table schemas (abstract SchemaTable definitions + buildBaseTables factory)
@@ -205,6 +206,7 @@ export * from "./secrets";
 // Export security utilities
 export * from "./security";
 export * from "./sensitive-request-policy";
+export * from "./sensitive-requests";
 export * from "./services";
 export * from "./services/agentEvent";
 export * from "./services/approval";
@@ -231,8 +233,8 @@ export {
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
 export * from "./services/tool-policy";
-export * from "./services/triggerScheduling";
 export * from "./services/trajectories";
+export * from "./services/triggerScheduling";
 // Export sessions utilities
 export * from "./sessions";
 export * from "./settings";
@@ -284,7 +286,7 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/prompt-compression";
 // Export Node-specific utilities
 export * from "./utils/server-health";
-// Eliza state-dir resolution (ELIZA_STATE_DIR → ~/.eliza)
+// Eliza state-dir resolution (MILADY_STATE_DIR → ELIZA_STATE_DIR → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";

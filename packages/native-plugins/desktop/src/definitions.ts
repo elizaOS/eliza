@@ -139,6 +139,55 @@ export interface PowerMonitorState {
   idleTime: number;
 }
 
+/**
+ * System permission probing surface — exposed by the Desktop plugin so
+ * the renderer can ask "is this permission granted?" / "request this
+ * permission" without triggering implicit OS dialogs.
+ *
+ * The id set mirrors the canonical PermissionId from
+ * `@elizaos/shared/contracts/permissions`. Defined inline here to keep the
+ * Capacitor plugin package free of cross-package type imports.
+ */
+export type DesktopPermissionId =
+  | "screen-recording"
+  | "accessibility"
+  | "reminders"
+  | "calendar"
+  | "health"
+  | "screentime"
+  | "contacts"
+  | "notes"
+  | "microphone"
+  | "camera"
+  | "location"
+  | "shell"
+  | "website-blocking"
+  | "notifications"
+  | "full-disk"
+  | "automation";
+
+export type DesktopPermissionStatus =
+  | "granted"
+  | "denied"
+  | "not-determined"
+  | "restricted"
+  | "not-applicable";
+
+export type DesktopPermissionRestrictedReason =
+  | "entitlement_required"
+  | "platform_unsupported"
+  | "os_policy";
+
+export interface DesktopPermissionState {
+  id: DesktopPermissionId;
+  status: DesktopPermissionStatus;
+  restrictedReason?: DesktopPermissionRestrictedReason;
+  lastChecked: number;
+  lastRequested?: number;
+  canRequest: boolean;
+  platform: "darwin" | "win32" | "linux";
+}
+
 export interface DesktopPlugin {
   // System Tray
   createTray(options: TrayOptions): Promise<void>;
@@ -245,6 +294,18 @@ export interface DesktopPlugin {
   openExternal(options: { url: string }): Promise<void>;
   showItemInFolder(options: { path: string }): Promise<void>;
   beep(): Promise<void>;
+
+  // System Permissions — explicit check/request paths that don't trigger
+  // implicit OS dialogs. Implemented in the host runtime by delegating to
+  // the prober registry; see
+  // `packages/agent/src/services/permissions/probers/`.
+  checkPermission(options: {
+    id: DesktopPermissionId;
+  }): Promise<DesktopPermissionState>;
+  requestPermission(options: {
+    id: DesktopPermissionId;
+    reason: string;
+  }): Promise<DesktopPermissionState>;
 
   // Events
   addListener(

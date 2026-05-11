@@ -72,15 +72,15 @@ const float ELIZA_TURBO_MID_3BIT[7] = {
     -0.154259f, -0.091775f, -0.043589f, 0.0f, 0.043589f, 0.091775f, 0.154259f,
 };
 const float ELIZA_TURBO_CENTROIDS_4BIT[16] = {
-    -0.241556f, -0.182907f, -0.143047f, -0.111065f,
-    -0.083317f, -0.058069f, -0.034311f, -0.011353f,
-     0.011353f,  0.034311f,  0.058069f,  0.083317f,
-     0.111065f,  0.143047f,  0.182907f,  0.241556f,
+    -2.7321365f, -2.0685055f, -1.6175243f, -1.2557391f,
+    -0.9419147f, -0.6564307f, -0.3878412f, -0.1283243f,
+     0.1283243f,  0.3878412f,  0.6564307f,  0.9419147f,
+     1.2557391f,  1.6175243f,  2.0685055f,  2.7321365f,
 };
 const float ELIZA_TURBO_MID_4BIT[15] = {
-    -0.212232f, -0.162977f, -0.127056f, -0.097191f, -0.070693f,
-    -0.046190f, -0.022832f,  0.000000f,  0.022832f,  0.046190f,
-     0.070693f,  0.097191f,  0.127056f,  0.162977f,  0.212232f,
+    -2.4003210f, -1.8430149f, -1.4366317f, -1.0988269f, -0.7991727f,
+    -0.5221360f, -0.2580828f,  0.0000000f,  0.2580828f,  0.5221360f,
+     0.7991727f,  1.0988269f,  1.4366317f,  1.8430149f,  2.4003210f,
 };
 
 /* From ggml-metal/turbo-wht.h — seed=42 sign vectors. */
@@ -199,6 +199,37 @@ void eliza_turbo_rotate_forward(float x[128]) {
 
 /* ---------- nearest centroid helpers ---------- */
 
+static const int8_t ELIZA_TBQ_SIGNS_32[32] = {
+     1, -1,  1,  1, -1,  1, -1, -1,
+     1,  1, -1,  1, -1, -1,  1, -1,
+    -1,  1,  1, -1,  1, -1, -1,  1,
+     1, -1,  1, -1, -1,  1, -1,  1,
+};
+
+static void tbq_hadamard32(float x[32]) {
+    for (int len = 1; len < 32; len <<= 1) {
+        for (int i = 0; i < 32; i += 2 * len) {
+            for (int j = 0; j < len; ++j) {
+                const float a = x[i + j];
+                const float b = x[i + j + len];
+                x[i + j]       = a + b;
+                x[i + j + len] = a - b;
+            }
+        }
+    }
+    const float norm = 0.1767766952966369f;
+    for (int i = 0; i < 32; ++i) {
+        x[i] *= norm;
+    }
+}
+
+static void tbq_precondition_block32(const float * src, float dst[32]) {
+    for (int i = 0; i < 32; ++i) {
+        dst[i] = src[i] * (float) ELIZA_TBQ_SIGNS_32[i];
+    }
+    tbq_hadamard32(dst);
+}
+
 static uint8_t nearest_3bit(float v) {
     if      (v < ELIZA_TURBO_MID_3BIT[0]) return 0;
     else if (v < ELIZA_TURBO_MID_3BIT[1]) return 1;
@@ -262,41 +293,48 @@ void eliza_dequantize_turbo3_group(const eliza_block_turbo3_0 src[4], float dst[
     }
 }
 
-/* ---------- TURBO4: one 128-element block ---------- */
+/* ---------- TURBO4: 4 blocks form one 128-element attention row ---------- */
 
-void eliza_quantize_turbo4_block(const float src[128], eliza_block_turbo4_0 * dst) {
-    float norm_sq = 0.0f;
-    for (int j = 0; j < 128; j++) norm_sq += src[j] * src[j];
-    float norm = sqrtf(norm_sq);
-    float inv_norm = norm > 1e-10f ? 1.0f / norm : 0.0f;
-    float x[128];
-    for (int j = 0; j < 128; j++) x[j] = src[j] * inv_norm;
-    eliza_turbo_rotate_forward(x);
+void eliza_quantize_turbo4_block(const float src[128], eliza_block_turbo4_0 dst[4]) {
+    for (int b = 0; b < 4; b++) {
+        float rotated[32];
+        tbq_precondition_block32(src + b * ELIZA_QK_TURBO4, rotated);
 
-    for (int j = 0; j < 128; j += 2) {
-        uint8_t i0 = nearest_4bit(x[j]);
-        uint8_t i1 = nearest_4bit(x[j + 1]);
-        dst->qs[j / 2] = (uint8_t)((i1 << 4) | (i0 & 0xF));
+        float sumsq = 0.0f;
+        for (int j = 0; j < ELIZA_QK_TURBO4; ++j) {
+            sumsq += rotated[j] * rotated[j];
+        }
+
+        const float d = sqrtf(sumsq / ELIZA_QK_TURBO4);
+        dst[b].norm = eliza_fp32_to_fp16(d);
+        memset(dst[b].qs, 0, sizeof(dst[b].qs));
+
+        if (d == 0.0f) {
+            continue;
+        }
+
+        const float id = 1.0f / d;
+        for (int j = 0; j < ELIZA_QK_TURBO4; ++j) {
+            uint8_t idx = nearest_4bit(rotated[j] * id);
+            int byte = j & 15;
+            if (j < 16) {
+                dst[b].qs[byte] = (uint8_t)((dst[b].qs[byte] & 0xF0) | (idx & 0x0F));
+            } else {
+                dst[b].qs[byte] = (uint8_t)((dst[b].qs[byte] & 0x0F) | ((idx & 0x0F) << 4));
+            }
+        }
     }
-
-    float recon_sq = 0.0f;
-    for (int j = 0; j < 128; j++) {
-        uint8_t idx = (j & 1) ? (uint8_t)(dst->qs[j / 2] >> 4)
-                              : (uint8_t)(dst->qs[j / 2] & 0xF);
-        float r = ELIZA_TURBO_CENTROIDS_4BIT[idx];
-        recon_sq += r * r;
-    }
-    float recon_norm = sqrtf(recon_sq);
-    float corrected = (recon_norm > 1e-10f) ? norm / recon_norm : norm;
-    dst->norm = eliza_fp32_to_fp16(corrected);
 }
 
-void eliza_dequantize_turbo4_block(const eliza_block_turbo4_0 * src, float dst[128]) {
-    float n = eliza_fp16_to_fp32(src->norm);
-    for (int j = 0; j < 128; j++) {
-        uint8_t idx = (j & 1) ? (uint8_t)(src->qs[j / 2] >> 4)
-                              : (uint8_t)(src->qs[j / 2] & 0xF);
-        dst[j] = ELIZA_TURBO_CENTROIDS_4BIT[idx] * n;
+void eliza_dequantize_turbo4_block(const eliza_block_turbo4_0 src[4], float dst[128]) {
+    for (int b = 0; b < 4; b++) {
+        float n = eliza_fp16_to_fp32(src[b].norm);
+        for (int j = 0; j < ELIZA_QK_TURBO4; j++) {
+            int byte = j & 15;
+            uint8_t packed = src[b].qs[byte];
+            uint8_t idx = j < 16 ? (uint8_t)(packed & 0x0F) : (uint8_t)(packed >> 4);
+            dst[b * ELIZA_QK_TURBO4 + j] = ELIZA_TURBO_CENTROIDS_4BIT[idx] * n;
+        }
     }
 }
 
@@ -428,7 +466,7 @@ float eliza_dot_q_turbo3(const float q[128], const eliza_block_turbo3_0 k[4]) {
     return (float)s;
 }
 
-float eliza_dot_q_turbo4(const float q[128], const eliza_block_turbo4_0 * k) {
+float eliza_dot_q_turbo4(const float q[128], const eliza_block_turbo4_0 k[4]) {
     float k_full[128];
     eliza_dequantize_turbo4_block(k, k_full);
     double s = 0.0;

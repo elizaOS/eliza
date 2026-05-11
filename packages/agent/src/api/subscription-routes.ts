@@ -4,9 +4,18 @@ import type {
   LinkedAccountHealth,
   LinkedAccountUsage,
 } from "@elizaos/shared";
+import {
+  PostSubscriptionAnthropicExchangeRequestSchema,
+  PostSubscriptionAnthropicSetupTokenRequestSchema,
+  PostSubscriptionOpenAIExchangeRequestSchema,
+} from "@elizaos/shared";
 import type { AnthropicFlow } from "../auth/anthropic.ts";
 import type { CodexFlow } from "../auth/openai-codex.ts";
-import type { OAuthCredentials } from "../auth/types.ts";
+import {
+  isSubscriptionProvider,
+  type OAuthCredentials,
+  type SubscriptionProvider,
+} from "../auth/types.ts";
 import type { ElizaConfig } from "../config/types.eliza.ts";
 
 type AuthModule = typeof import("../auth/index.ts");
@@ -105,12 +114,19 @@ export async function handleSubscriptionRoutes(
     method === "POST" &&
     pathname === "/api/subscription/anthropic/exchange"
   ) {
-    const body = await readJsonBody<{ code: string }>(req, res);
-    if (!body) return true;
-    if (!body.code) {
-      error(res, "Missing code", 400);
+    const rawAxe = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawAxe === null) return true;
+    const parsedAxe =
+      PostSubscriptionAnthropicExchangeRequestSchema.safeParse(rawAxe);
+    if (!parsedAxe.success) {
+      error(
+        res,
+        parsedAxe.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedAxe.data;
     try {
       const { saveCredentials, applySubscriptionCredentials } =
         await loadSubscriptionAuth();
@@ -137,13 +153,19 @@ export async function handleSubscriptionRoutes(
     method === "POST" &&
     pathname === "/api/subscription/anthropic/setup-token"
   ) {
-    const body = await readJsonBody<{ token: string }>(req, res);
-    if (!body) return true;
-    const trimmedToken = body.token?.trim();
-    if (!trimmedToken?.startsWith("sk-ant-")) {
-      error(res, "Invalid token format — expected sk-ant-oat01-...", 400);
+    const rawTok = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawTok === null) return true;
+    const parsedTok =
+      PostSubscriptionAnthropicSetupTokenRequestSchema.safeParse(rawTok);
+    if (!parsedTok.success) {
+      error(
+        res,
+        parsedTok.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const trimmedToken = parsedTok.data.token;
     try {
       // Store the setup token in config for task-agent discovery but do
       // NOT inject it into process.env.ANTHROPIC_API_KEY.  Anthropic's
@@ -210,11 +232,19 @@ export async function handleSubscriptionRoutes(
   }
 
   if (method === "POST" && pathname === "/api/subscription/openai/exchange") {
-    const body = await readJsonBody<{
-      code?: string;
-      waitForCallback?: boolean;
-    }>(req, res);
-    if (!body) return true;
+    const rawOaeb = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawOaeb === null) return true;
+    const parsedOaeb =
+      PostSubscriptionOpenAIExchangeRequestSchema.safeParse(rawOaeb);
+    if (!parsedOaeb.success) {
+      error(
+        res,
+        parsedOaeb.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedOaeb.data;
     try {
       const { saveCredentials, applySubscriptionCredentials } =
         await loadSubscriptionAuth();
@@ -269,7 +299,7 @@ export async function handleSubscriptionRoutes(
 
   if (method === "DELETE" && pathname.startsWith("/api/subscription/")) {
     const provider = pathname.split("/").pop();
-    if (provider === "anthropic-subscription" || provider === "openai-codex") {
+    if (isSubscriptionProvider(provider)) {
       try {
         const { deleteProviderCredentials } = await loadSubscriptionAuth();
         deleteProviderCredentials(provider);
@@ -278,13 +308,22 @@ export async function handleSubscriptionRoutes(
           delete (state.config.env as Record<string, unknown>)
             .__anthropicSubscriptionToken;
         }
-        if (state.config.agents?.defaults?.subscriptionProvider === provider) {
-          delete state.config.agents.defaults.subscriptionProvider;
+        const deletedProviderId =
+          subscriptionSelectionIdForStoredProvider(provider);
+        const defaults = state.config.agents?.defaults;
+        const defaultSubscription = defaults?.subscriptionProvider;
+        if (
+          defaults &&
+          (defaultSubscription === provider ||
+            defaultSubscription === deletedProviderId)
+        ) {
+          delete defaults.subscriptionProvider;
         }
         const llmBackend = state.config.serviceRouting?.llmText?.backend;
-        const deletedProviderId =
-          provider === "openai-codex" ? "openai-subscription" : provider;
-        if (llmBackend === deletedProviderId && state.config.serviceRouting) {
+        if (
+          (llmBackend === deletedProviderId || llmBackend === provider) &&
+          state.config.serviceRouting
+        ) {
           delete state.config.serviceRouting.llmText;
           if (Object.keys(state.config.serviceRouting).length === 0) {
             delete state.config.serviceRouting;
@@ -303,6 +342,25 @@ export async function handleSubscriptionRoutes(
   }
 
   return false;
+}
+
+function subscriptionSelectionIdForStoredProvider(
+  provider: SubscriptionProvider,
+): string {
+  switch (provider) {
+    case "openai-codex":
+      return "openai-subscription";
+    case "gemini-cli":
+      return "gemini-subscription";
+    case "zai-coding":
+      return "zai-coding-subscription";
+    case "kimi-coding":
+      return "kimi-coding-subscription";
+    case "deepseek-coding":
+      return "deepseek-coding-subscription";
+    case "anthropic-subscription":
+      return "anthropic-subscription";
+  }
 }
 
 /**

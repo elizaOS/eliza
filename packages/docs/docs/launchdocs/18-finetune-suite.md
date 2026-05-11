@@ -16,7 +16,7 @@ The repo has a real `@elizaos/app-training` package with three distinct surfaces
 
 1. A route/UI service layer that exposes `/api/training/*` endpoints but is mostly in-memory/stubbed for datasets, jobs, and models.
 2. A newer auto-training orchestration path that can read completed trajectories, privacy-filter them, export per-task JSONL datasets, and dispatch to a backend.
-3. Backend adapters for `native`, `atropos`, `tinker`, and `vertex`, where only `native` is locally executable without external infrastructure, and even that is prompt optimization rather than model weight fine-tuning.
+3. Backend adapters for `native`, `tinker`, and `vertex`, where only `native` is locally executable without external infrastructure, and even that is prompt optimization rather than model weight fine-tuning.
 
 Launch-readiness assessment: this is not launch-ready as a fine-tuned model suite. It is launchable only as an experimental data export and prompt-optimization harness. The repository does not currently demonstrate end-to-end fine-tuning, evaluation against held-out trajectories, model publishing, Ollama import, activation, rollback, or production-safe default behavior for tuned model use.
 
@@ -66,7 +66,6 @@ Launch-readiness assessment: this is not launch-ready as a fine-tuned model suit
 - `plugins/app-training/src/backends/native.ts:1` describes native as prompt optimization, not model fine-tuning. It parses JSONL rows and runs prompt optimizers.
 - `plugins/app-training/src/backends/native.ts:172` creates an adapter over `runtime.useModel`, scores variants, and returns optimized prompt artifacts.
 - `plugins/app-training/src/core/training-orchestrator.ts:230` dispatches native and persists optimized prompt artifacts only if `optimized_prompt` service is available.
-- `plugins/app-training/src/backends/atropos.ts:45` validates and stages a dataset, but without `ATROPOS_BIN` it prints next steps and returns `invoked: false`.
 - `plugins/app-training/src/backends/tinker.ts:33` lazily imports `@thinking-machines/tinker`; if missing or unconfigured, it returns `invoked: false`.
 - `plugins/app-training/src/core/training-orchestrator.ts:217` explicitly refuses Vertex dispatch from threshold/cron paths because project/bucket config is not available there.
 - `plugins/app-training/src/core/vertex-tuning.ts:280` can upload local JSONL to GCS and create a Vertex tuning job, but this was not validated live.
@@ -74,7 +73,7 @@ Launch-readiness assessment: this is not launch-ready as a fine-tuned model suit
 
 ### CLI exists but is not a production trainer
 
-- `plugins/app-training/src/cli/train.ts:36` exposes `--backend {atropos|tinker|vertex|native}`.
+- `plugins/app-training/src/cli/train.ts:36` exposes `--backend {tinker|vertex|native}`.
 - Vertex waits for job completion at `plugins/app-training/src/cli/train.ts:177`, so it is a long-running/live cloud command.
 - Native CLI uses a deterministic stub adapter at `plugins/app-training/src/cli/train.ts:211`; it is explicitly described as a smoke test path, not production LLM optimization.
 
@@ -111,7 +110,6 @@ I also validated by inspection that `plugins/app-training/package.json` has only
 ## What I could not validate
 
 - No live Vertex tuning job was run; that would require GCP credentials, GCS bucket access, network calls, and long polling.
-- No Atropos training run was launched; no configured `ATROPOS_BIN` was discovered or invoked.
 - No Tinker job was launched; the SDK/API key/project path is external and optional.
 - No long-running training, weight export, model upload, model registry publishing, Ollama import, activation, or rollback was performed.
 - The live e2e test in `plugins/app-training/test/training-api.live.e2e.test.ts` is gated on `ELIZA_LIVE_TEST=1`; I did not run it.
@@ -138,7 +136,6 @@ I also validated by inspection that `plugins/app-training/package.json` has only
 ### P2
 
 - The route layer and orchestrator layer are not unified. Operators may use `/api/training/jobs` and think they launched training, while the real orchestration path is under `/api/training/auto/*` and trigger services.
-- Atropos integration only stages JSONL unless an external CLI is configured; no command schema compatibility or result ingestion is tested.
 - Tinker integration assumes an optional SDK shape with `createJob`; no dependency or contract test exists.
 - Native optimized prompts persist only if `optimized_prompt` service exists; otherwise a run can be marked succeeded/skipped with no usable artifact.
 - `triggerTraining` pulls recent trajectories by count only; there is no split management, dedupe, holdout set, quality label, consent filter, or contamination guard.
@@ -160,13 +157,13 @@ I also validated by inspection that `plugins/app-training/package.json` has only
 - Add a strict dry-run endpoint that reports exact dataset counts, output paths, backend, and why training would or would not start.
 - Rename native UI/CLI language from "fine-tune" to "prompt optimization" where appropriate.
 - Add a package-level typecheck script or document the intended monorepo command for `app-training`.
-- Add fake-contract tests for Atropos/Tinker dispatcher payloads and result handling.
+- Add fake-contract tests for Tinker dispatcher payloads and result handling.
 
 ## Human work needed
 
 - Decide whether launch requires actual tuned model weights or whether prompt optimization is acceptable for v1.
 - Select target base models per task and confirm provider support, cost, limits, data retention, and terms.
-- Provision GCP/Vertex, Atropos, or Tinker credentials and run a small supervised tuning job on a non-sensitive, approved dataset.
+- Provision GCP/Vertex or Tinker credentials and run a small supervised tuning job on a non-sensitive, approved dataset.
 - Define dataset consent policy and retention rules for user trajectories, including whether metadata/tool observations may be exported.
 - Define model registry/publishing target, naming/versioning, owner scope, rollback, and activation approval workflow.
 - Approve quality gates: minimum held-out eval score, regression thresholds, safety/privacy checks, and manual review requirements.

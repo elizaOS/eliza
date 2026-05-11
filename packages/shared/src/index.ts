@@ -31,6 +31,7 @@ export * from "./config/plugin-auto-enable.js";
 export * from "./config/plugin-manifest.js";
 export * from "./config/plugin-ui-spec.js";
 export * from "./config/runtime-mode.js";
+export * from "./config/runtime-mode.js";
 export * from "./config/runtime-overrides.js";
 export * from "./config/schema.js";
 export * from "./config/types.eliza.js";
@@ -185,7 +186,6 @@ export type {
   WorkflowConfig,
   X402Config,
 } from "./config/types.js";
-export * from "./config/runtime-mode.js";
 export * from "./config/ui-spec.js";
 export * from "./config/wechat-config.js";
 export * from "./config/zod-schema.agent-runtime.js";
@@ -251,6 +251,7 @@ export * from "./utils/name-tokens.js";
 export * from "./utils/namespace-defaults.js";
 export * from "./utils/number-parsing.js";
 export * from "./utils/owner-name.js";
+export * from "./utils/permission-deep-links.js";
 export * from "./utils/rate-limiter.js";
 export * from "./utils/serialise.js";
 export * from "./utils/sql-compat.js";

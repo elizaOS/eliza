@@ -16,18 +16,24 @@
  * does not depend on a real GGUF on disk.
  */
 
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
-import { VoiceStartupError } from "./voice/engine-bridge";
 import {
-  VoiceLifecycleError,
+  defaultLifecycleLoaders,
   type MmapRegionHandle,
   type RefCountedResource,
+  VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./voice";
+import { VoiceStartupError } from "./voice/engine-bridge";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+  ElizaInferenceRegion,
+} from "./voice/ffi-bindings";
 import type {
   AudioChunk,
   OmniVoiceBackend,
@@ -36,6 +42,7 @@ import type {
   SpeakerPreset,
   TextToken,
 } from "./voice/types";
+import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
 /**
  * TTS backend whose synthesis only completes when `release()` is
@@ -70,21 +77,119 @@ class DeferredBackend implements OmniVoiceBackend {
   }
 }
 
+class CountingBackend implements OmniVoiceBackend {
+  calls = 0;
+  texts: string[] = [];
+
+  async synthesize(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onKernelTick?: () => void;
+  }): Promise<AudioChunk> {
+    this.calls++;
+    this.texts.push(args.phrase.text);
+    args.onKernelTick?.();
+    return {
+      phraseId: args.phrase.id,
+      fromIndex: args.phrase.fromIndex,
+      toIndex: args.phrase.toIndex,
+      pcm: new Float32Array([0.25, -0.25]),
+      sampleRate: 24000,
+    };
+  }
+}
+
 function tok(index: number, text: string): TextToken {
   return { index, text };
 }
 
-function writePresetBundle(root: string): void {
+function writePresetBundle(
+  root: string,
+  phrases: Array<{ text: string; sampleRate: number; pcm: Float32Array }> = [],
+): void {
   mkdirSync(path.join(root, "cache"), { recursive: true });
   // 16 floats — enough for the speaker preset cache to parse without
   // truncating to zero. Real presets are O(KB-MB); shape only matters
-  // for the integration test.
-  const preset = new Float32Array(16);
-  for (let i = 0; i < preset.length; i++) preset[i] = (i + 1) / 100;
+  // for the integration test. Wrap in the v1 binary format the parser
+  // now requires (see voice-preset-format.ts).
+  const embedding = new Float32Array(16);
+  for (let i = 0; i < embedding.length; i++) embedding[i] = (i + 1) / 100;
+  const bytes = writeVoicePresetFile({ embedding, phrases });
   writeFileSync(
     path.join(root, "cache", "voice-preset-default.bin"),
-    Buffer.from(preset.buffer),
+    Buffer.from(bytes),
   );
+}
+
+function lifecycleLoadersOk(): VoiceLifecycleLoaders {
+  const tts: MmapRegionHandle = {
+    id: "tts-ok",
+    path: "/tmp/tts-ok",
+    sizeBytes: 1024,
+    async evictPages() {},
+    async release() {},
+  };
+  const asr: MmapRegionHandle = {
+    id: "asr-ok",
+    path: "/tmp/asr-ok",
+    sizeBytes: 1024,
+    async evictPages() {},
+    async release() {},
+  };
+  const caches: RefCountedResource = {
+    id: "caches-ok",
+    async release() {},
+  };
+  const nodes: RefCountedResource = {
+    id: "nodes-ok",
+    async release() {},
+  };
+  return {
+    loadTtsRegion: async () => tts,
+    loadAsrRegion: async () => asr,
+    loadVoiceCaches: async () => caches,
+    loadVoiceSchedulerNodes: async () => nodes,
+  };
+}
+
+function fakeFfi(calls: string[]): ElizaInferenceFfi {
+  return {
+    libraryPath: "/tmp/libelizainference-test.dylib",
+    libraryAbiVersion: "1",
+    create: () => 1n,
+    destroy(ctx: ElizaInferenceContextHandle) {
+      calls.push(`destroy:${ctx.toString()}`);
+    },
+    mmapAcquire(_ctx, region: ElizaInferenceRegion) {
+      calls.push(`acquire:${region}`);
+    },
+    mmapEvict(_ctx, region: ElizaInferenceRegion) {
+      calls.push(`evict:${region}`);
+    },
+    ttsSynthesize() {
+      throw new Error("not used by this test");
+    },
+    asrTranscribe() {
+      throw new Error("not used by this test");
+    },
+    close() {
+      calls.push("close");
+    },
+  };
+}
+
+function fakeFfiWithAsrAcquireError(
+  calls: string[],
+  error: VoiceLifecycleError,
+): ElizaInferenceFfi {
+  return {
+    ...fakeFfi(calls),
+    mmapAcquire(_ctx, region: ElizaInferenceRegion) {
+      calls.push(`acquire:${region}`);
+      if (region === "asr") throw error;
+    },
+  };
 }
 
 describe("LocalInferenceEngine voice surface", () => {
@@ -122,11 +227,19 @@ describe("LocalInferenceEngine voice surface", () => {
   it("(b) refuses to start when the FFI library is missing", () => {
     writePresetBundle(bundleRoot);
     const engine = new LocalInferenceEngine();
+    const previousManagedLookup = process.env.ELIZA_INFERENCE_MANAGED_LOOKUP;
+    process.env.ELIZA_INFERENCE_MANAGED_LOOKUP = "0";
     let thrown: unknown;
     try {
       engine.startVoice({ bundleRoot, useFfiBackend: true });
     } catch (err) {
       thrown = err;
+    } finally {
+      if (previousManagedLookup === undefined) {
+        delete process.env.ELIZA_INFERENCE_MANAGED_LOOKUP;
+      } else {
+        process.env.ELIZA_INFERENCE_MANAGED_LOOKUP = previousManagedLookup;
+      }
     }
     expect(thrown).toBeInstanceOf(VoiceStartupError);
     if (thrown instanceof VoiceStartupError) {
@@ -148,6 +261,94 @@ describe("LocalInferenceEngine voice surface", () => {
     if (thrown instanceof VoiceStartupError) {
       expect(thrown.code).toBe("missing-speaker-preset");
     }
+  });
+
+  it("seeds the phrase cache from the speaker preset bundle", async () => {
+    writePresetBundle(bundleRoot, [
+      {
+        text: "sure.",
+        sampleRate: 24000,
+        pcm: new Float32Array([0.5, 0.5, 0.5]),
+      },
+    ]);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+
+    await engine.pushAcceptedTokens([tok(0, "Sure"), tok(1, ".")]);
+    await engine.voice()?.settle();
+
+    expect(backend.calls).toBe(0);
+    expect(audio).toHaveLength(1);
+    expect(Array.from(audio[0].pcm)).toEqual([0.5, 0.5, 0.5]);
+  });
+
+  it("requires an armed voice lifecycle for direct TEXT_TO_SPEECH synthesis", async () => {
+    const engine = new LocalInferenceEngine();
+    await expect(engine.synthesizeSpeech("hello")).rejects.toMatchObject({
+      code: "not-started",
+    });
+
+    writePresetBundle(bundleRoot);
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await expect(engine.synthesizeSpeech("hello")).rejects.toMatchObject({
+      code: "illegal-transition",
+    });
+  });
+
+  it("direct TEXT_TO_SPEECH returns WAV bytes and does not block singing text", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+
+    const wav = await engine.synthesizeSpeech("[singing] la la la.");
+
+    expect(backend.calls).toBe(1);
+    expect(backend.texts).toEqual(["[singing] la la la."]);
+    expect(String.fromCharCode(...wav.subarray(0, 4))).toBe("RIFF");
+    expect(String.fromCharCode(...wav.subarray(8, 12))).toBe("WAVE");
+    await engine.stopVoice();
+  });
+
+  it("direct TRANSCRIPTION requires voice and surfaces missing ASR backend clearly", async () => {
+    const engine = new LocalInferenceEngine();
+    const audio = { pcm: new Float32Array([0]), sampleRate: 24000 };
+    await expect(engine.transcribePcm(audio)).rejects.toMatchObject({
+      code: "not-started",
+    });
+
+    writePresetBundle(bundleRoot);
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+    await expect(engine.transcribePcm(audio)).rejects.toMatchObject({
+      code: "missing-fused-build",
+    });
+    await engine.stopVoice();
   });
 
   it("(c) DFlash rejection events flow into the rollback queue with the correct range", async () => {
@@ -200,9 +401,9 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(rollbackEvents[0].range).toEqual({ fromIndex: 4, toIndex: 5 });
 
     // First phrase must NOT be rolled back — its token range is disjoint.
-    expect(
-      rollbackEvents.some((e) => e.phraseId === phrases[0].id),
-    ).toBe(false);
+    expect(rollbackEvents.some((e) => e.phraseId === phrases[0].id)).toBe(
+      false,
+    );
 
     backend.releaseAll();
     await engine.stopVoice();
@@ -262,6 +463,97 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(tts.evictCalls).toBe(1);
     expect(asr.evictCalls).toBe(1);
     expect(bridge.lifecycle.current().kind).toBe("voice-off");
+  });
+
+  it("(e) default loaders keep voice assets unmapped until arm, then acquire/evict through FFI", async () => {
+    writePresetBundle(bundleRoot);
+    mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
+    mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+    writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
+    writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
+
+    const calls: string[] = [];
+    const engine = new LocalInferenceEngine();
+    const bridge = engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: defaultLifecycleLoaders(bundleRoot, fakeFfi(calls), 1n),
+    });
+
+    // Voice-off mode must not map TTS/ASR pages or duplicate model
+    // parameters. Creating the bridge only loads the tiny preset +
+    // scheduler scaffolding.
+    expect(bridge.lifecycle.current().kind).toBe("voice-off");
+    expect(calls).toEqual([]);
+
+    await engine.armVoice();
+    expect(bridge.lifecycle.current().kind).toBe("voice-on");
+    expect(calls).toEqual(["acquire:tts", "acquire:asr"]);
+
+    await engine.stopVoice();
+    expect(calls).toEqual([
+      "acquire:tts",
+      "acquire:asr",
+      "evict:tts",
+      "evict:asr",
+    ]);
+    expect(bridge.lifecycle.current().kind).toBe("voice-off");
+  });
+
+  it("(e) default loaders refuse to arm when ASR assets are missing", async () => {
+    writePresetBundle(bundleRoot);
+    mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
+    writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
+
+    const calls: string[] = [];
+    const engine = new LocalInferenceEngine();
+    const bridge = engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: defaultLifecycleLoaders(bundleRoot, fakeFfi(calls), 1n),
+    });
+
+    expect(bridge.asrAvailable).toBe(false);
+
+    await expect(engine.armVoice()).rejects.toMatchObject({
+      code: "mmap-fail",
+    });
+    expect(calls).toEqual(["acquire:tts", "evict:tts"]);
+    expect(bridge.lifecycle.current().kind).toBe("voice-error");
+  });
+
+  it("(e) default loaders acquire the real ASR region and preserve fused ABI errors", async () => {
+    writePresetBundle(bundleRoot);
+    mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
+    mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+    writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
+    writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
+
+    const calls: string[] = [];
+    const fusedError = new VoiceLifecycleError(
+      "kernel-missing",
+      "[ffi-bindings] eliza_inference_mmap_acquire(asr) rc=-1: ASR runtime not implemented",
+    );
+    const engine = new LocalInferenceEngine();
+    const bridge = engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: defaultLifecycleLoaders(
+        bundleRoot,
+        fakeFfiWithAsrAcquireError(calls, fusedError),
+        1n,
+      ),
+    });
+
+    await expect(engine.armVoice()).rejects.toBe(fusedError);
+    expect(calls).toEqual(["acquire:tts", "acquire:asr", "evict:tts"]);
+    expect(bridge.lifecycle.current()).toMatchObject({
+      kind: "voice-error",
+      error: fusedError,
+    });
   });
 
   it("(e) RAM-pressure during arm surfaces VoiceLifecycleError — no silent fallback", async () => {
@@ -345,4 +637,3 @@ describe("LocalInferenceEngine voice surface", () => {
     await engine.stopVoice();
   });
 });
-

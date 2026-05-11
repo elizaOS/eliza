@@ -23,6 +23,16 @@ Eliza Cloud has multiple payment surfaces. Do not collapse them into one.
 All paid or externally visible operations should go through the parent
 confirmation flow when a worker is operating through agent orchestration.
 
+When a payment starts from a chat/channel, include callback channel metadata on
+the request:
+
+```json
+{ "callback_channel": { "roomId": "room-id", "agentId": "agent-id" } }
+```
+
+Cloud uses that metadata to send success/failure events back to the room where
+the payment was initiated.
+
 ## Create An App
 
 `POST /api/v1/apps`
@@ -97,6 +107,8 @@ SDK wrapper: `cloud.routes.postApiV1AppsByIdCharges({ pathParams: { id }, json }
   "cancel_url": "https://myapp.com/payment/cancel",
   "callback_url": "https://myapp.com/api/payment-callback",
   "callback_secret": "replace-with-strong-shared-secret",
+  "callback_channel": { "roomId": "room-id", "agentId": "agent-id" },
+  "callback_metadata": { "orderId": "order_123" },
   "lifetime_seconds": 604800,
   "metadata": { "feature": "premium_research" }
 }
@@ -144,6 +156,7 @@ SDK wrapper: `cloud.routes.postApiV1X402Requests({ json })`.
   "description": "Run one private competitor analysis",
   "appId": "app_uuid",
   "callbackUrl": "https://myapp.com/api/x402-callback",
+  "callback_channel": { "roomId": "room-id", "agentId": "agent-id" },
   "expiresInSeconds": 3600,
   "metadata": { "jobId": "analysis_123" }
 }
@@ -170,6 +183,17 @@ The service adds platform/service fees to the amount charged. Treat
 `amountUsd` as the creator-requested amount and show the returned payment
 metadata to the payer instead of hand-calculating totals in the worker.
 
+Default hosted facilitator/status base is `https://x402.elizacloud.ai`. Keep
+`x402.elizaos.ai` only as a legacy compatibility hostname.
+
+High-level SDK helpers are available on `ElizaCloudClient`:
+
+- `getX402Supported()`
+- `createX402PaymentRequest(...)`
+- `listX402PaymentRequests()`
+- `getX402PaymentRequest(id)`
+- `settleX402PaymentRequest(id, paymentPayload)`
+
 ## Direct Credit Checkouts
 
 Direct credit checkout is useful for account top-ups, not exact creator charge
@@ -189,6 +213,74 @@ logic.
 
 Use app charge requests when the agent needs a durable app-specific pay link
 with metadata and callbacks.
+
+High-level SDK helpers are available on `ElizaCloudClient`:
+
+- `createCreditsCheckout(...)`
+- `getAppCreditsBalance(appId)`
+- `createAppCreditsCheckout(...)`
+- `verifyAppCreditsCheckout(sessionId)`
+- `createAppCharge(appId, ...)`
+- `listAppCharges(appId)`
+- `getAppCharge(appId, chargeId)`
+- `createAppChargeCheckout(appId, chargeId, ...)`
+
+## Local Plugin Billing Proxy
+
+When code is running behind `@elizaos/plugin-elizacloud`, prefer local aliases
+so browser/app code never handles Cloud credentials directly:
+
+| Local route | Cloud route |
+| --- | --- |
+| `/api/cloud/billing/credits/*` | `/api/v1/credits/*` |
+| `/api/cloud/billing/app-credits/*` | `/api/v1/app-credits/*` |
+| `/api/cloud/billing/x402/*` | `/api/v1/x402/*` |
+| `/api/cloud/billing/apps/{appId}/charges/*` | `/api/v1/apps/{appId}/charges/*` |
+| `/api/cloud/billing/apps/{appId}/earnings/*` | `/api/v1/apps/{appId}/earnings/*` |
+| `/api/cloud/billing/apps/{appId}/monetization` | `/api/v1/apps/{appId}/monetization` |
+| `/api/cloud/billing/affiliates/*` | `/api/v1/affiliates/*` |
+| `/api/cloud/billing/redemptions/*` | `/api/v1/redemptions/*` |
+
+The proxy forwards the logged-in Cloud API key/service key, preserves
+`PAYMENT-REQUIRED` and `PAYMENT-RESPONSE` headers, and keeps the older summary,
+checkout, and crypto quote routes working.
+
+## Affiliate Codes And Payout Redemptions
+
+Affiliate codes are account-level:
+
+- `GET /api/v1/affiliates`
+- `POST /api/v1/affiliates`
+- `PUT /api/v1/affiliates`
+- `POST /api/v1/affiliates/link`
+
+Payout requests use redemptions:
+
+- `GET /api/v1/redemptions/balance`
+- `GET /api/v1/redemptions/quote?network=base&pointsAmount=500`
+- `GET /api/v1/redemptions/status`
+- `POST /api/v1/redemptions`
+- `GET /api/v1/redemptions`
+
+```json
+{
+  "appId": "app_uuid",
+  "pointsAmount": 500,
+  "network": "base",
+  "payoutAddress": "0x0000000000000000000000000000000000000001",
+  "idempotencyKey": "withdrawal-request-001"
+}
+```
+
+Supported payout networks are `base`, `bsc`/`bnb`, `ethereum`, and `solana`.
+The quote fixes the USD value at request time; admin review and settlement send
+the equivalent elizaOS token amount for that fixed USD value.
+
+High-level SDK helpers are available on `ElizaCloudClient`:
+
+- `getAffiliateCode()`, `createAffiliateCode(...)`, `updateAffiliateCode(...)`, `linkAffiliateCode(...)`
+- `getAppEarnings(appId)`, `getAppEarningsHistory(appId)`, `withdrawAppEarnings(appId, ...)`
+- `getRedemptionBalance()`, `getRedemptionQuote(...)`, `getRedemptionStatus()`, `createRedemption(...)`, `listRedemptions(...)`
 
 ## Promotion Assets
 
@@ -293,6 +385,34 @@ usable as an ad account. Use a selected provider ad account id for real spend.
 
 `GET /api/v1/advertising/campaigns?appId=<appId>` lists campaigns.
 
+### Upload or map media to an ad platform
+
+`POST /api/v1/advertising/accounts/{id}/media`
+
+Use this when a platform needs its own asset id/hash before a creative can
+deliver. The route reviews the media, downloads or validates the URL as needed,
+and returns `providerAssetId`.
+
+```json
+{
+  "type": "image",
+  "name": "launch-card",
+  "url": "https://cdn.example/asset.png",
+  "mimeType": "image/png"
+}
+```
+
+For TikTok video ads, include a thumbnail when available:
+
+```json
+{
+  "type": "video",
+  "name": "launch-video",
+  "url": "https://cdn.example/asset.mp4",
+  "thumbnailUrl": "https://cdn.example/asset-thumb.png"
+}
+```
+
 ### Add creative
 
 `POST /api/v1/advertising/campaigns/{id}/creatives`
@@ -325,11 +445,18 @@ usable as an ad account. Use a selected provider ad account id for real spend.
 Provider caveats:
 
 - Meta link ads require `pageId` or a server-side `META_DEFAULT_PAGE_ID`.
-- TikTok image/video ads require `media[].providerAssetId` from TikTok's upload
-  API; a public Cloud/R2 URL is not enough for native delivery.
-- Google currently creates responsive search ads from text fields. Generated
-  image/video assets need a future Google asset-upload path before image/video
-  campaign creative can be automated.
+  Image URLs are uploaded to Meta Ad Images and linked by `image_hash`; video
+  URLs are uploaded to Meta Ad Videos and linked by `video_id`.
+- TikTok image/video ads require provider-native `image_id` or `video_id`.
+  Creative creation auto-uploads missing `providerAssetId` values for synced
+  campaigns, or you can call the media upload route first.
+- Google image creatives upload images as Google Ads `ImageAsset` resources.
+  YouTube URLs map to Google Ads `YOUTUBE_VIDEO` assets. Raw video URLs use
+  Google Ads `YouTubeVideoUpload` ingestion and need processing to reach
+  `PROCESSED` before they can be converted into a usable video asset. Creatives
+  with image provider ids create responsive display ads; if a processed YouTube
+  video asset is also present, Cloud attaches it to the display creative.
+  Text-only creatives create responsive search ads.
 - Campaigns and creatives should be created paused/draft first. Starting
   delivery is a separate confirmed action.
 
@@ -343,6 +470,18 @@ Do not start delivery without a confirmed budget, destination URL, ad-account
 ownership, platform policy acceptance, and a user-approved audience/creative.
 Workers should call the parent via `parent-agent` cloud commands for these
 operations so the parent can confirm spend and account context.
+
+Parent-agent command:
+
+```text
+USE_SKILL parent-agent {"mode":"cloud-command","command":"advertising.accounts.media.upload","confirmed":true,"params":{"id":"<adAccountId>","body":{"type":"image","name":"launch-card","url":"https://cdn.example/asset.png"}}}
+```
+
+Cloud content-safety checks review ad campaign copy, creative text, uploadable
+image media, generated promotion images/copy, video prompts, music prompts and
+lyrics, and TTS text before spend or publication. Image moderation is not a
+standalone CSAM classifier because OpenAI's `sexual/minors` moderation category
+is text-only; keep platform policy review and abuse reporting workflows enabled.
 
 ## General Media Generation
 

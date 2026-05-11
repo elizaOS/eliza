@@ -8,6 +8,7 @@ on:
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/core/**"
+      - "packages/native-plugins/**"
       - "packages/shared/**"
       - "plugins/plugin-sql/**"
       - ".github/workflows/mobile-build-smoke.yml"
@@ -44,6 +45,26 @@ jobs:
           run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Generate protobuf types
+        # Restores the step that was on the last green Mobile Build Smoke
+        # run (52ab686a, 2026-05-09). Without these generated types in
+        # `packages/core/src/types/generated/`, `@elizaos/core`'s build
+        # fails downstream, which cascades into `@elizaos/shared` and
+        # vite config resolution.
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build Vite config package deps
+        # vite.config.ts imports dist-only workspace packages
+        # (`@elizaos/shared` and `@elizaos/ui/config/app-config`), and the
+        # app aliases plugin-browser source which imports `@elizaos/vault`.
+        # Build those package chains before Vite evaluates/bundles the app.
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
 
       - name: Build iOS simulator app
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
@@ -157,6 +178,26 @@ jobs:
           run-postinstall: "true"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Generate protobuf types
+        # Restores the step that was on the last green Mobile Build Smoke
+        # run (52ab686a, 2026-05-09). Without these generated types in
+        # `packages/core/src/types/generated/`, `@elizaos/core`'s build
+        # fails downstream, which cascades into `@elizaos/shared` and
+        # vite config resolution.
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build Vite config package deps
+        # vite.config.ts imports dist-only workspace packages
+        # (`@elizaos/shared` and `@elizaos/ui/config/app-config`), and the
+        # app aliases plugin-browser source which imports `@elizaos/vault`.
+        # Build those package chains before Vite evaluates/bundles the app.
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
 
       - name: Accept Android SDK licenses
         run: yes | sdkmanager --licenses >/dev/null 2>&1 || true

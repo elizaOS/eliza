@@ -11,6 +11,10 @@ export {
   type CloudRouteState,
   handleCloudRoute,
 } from "./routes/cloud-routes-autonomous";
+export {
+  handleCloudCodingContainerRoute,
+  type CloudCodingContainerRouteState,
+} from "./routes/cloud-coding-container-routes";
 export type { CloudConfigLike } from "./routes/cloud-routes-autonomous";
 export { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
 export { runCloudOnboarding, type CloudOnboardingResult } from "./onboarding";

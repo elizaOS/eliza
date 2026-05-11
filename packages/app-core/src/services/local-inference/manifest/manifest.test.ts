@@ -11,14 +11,23 @@ const SHA = "0".repeat(64);
 
 function passingBackends() {
   return {
-    metal: { status: "pass" as const, atCommit: "abc1234", report: "metal.txt" },
-    vulkan: { status: "pass" as const, atCommit: "abc1234", report: "vulkan.txt" },
+    metal: {
+      status: "pass" as const,
+      atCommit: "abc1234",
+      report: "metal.txt",
+    },
+    vulkan: {
+      status: "pass" as const,
+      atCommit: "abc1234",
+      report: "vulkan.txt",
+    },
     cuda: { status: "pass" as const, atCommit: "abc1234", report: "cuda.txt" },
+    rocm: { status: "pass" as const, atCommit: "abc1234", report: "rocm.txt" },
     cpu: { status: "pass" as const, atCommit: "abc1234", report: "cpu.txt" },
   };
 }
 
-function baseManifest(tier: Eliza1Tier = "desktop-9b"): Eliza1Manifest {
+function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
   return {
     id: `eliza-1-${tier}`,
     tier,
@@ -28,23 +37,31 @@ function baseManifest(tier: Eliza1Tier = "desktop-9b"): Eliza1Manifest {
       text: { base: "eliza-1-text-backbone", license: "apache-2.0" },
       voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
       drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
+      asr: { base: "eliza-1-asr", license: "apache-2.0" },
+      vision: { base: "eliza-1-vision", license: "apache-2.0" },
+      vad: { base: "eliza-1-vad", license: "apache-2.0" },
     },
     files: {
-      text: [{ path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA }],
+      text: [
+        { path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA },
+      ],
       voice: [{ path: "tts/omnivoice-1.7b.gguf", sha256: SHA }],
       asr: [{ path: "asr/asr.gguf", sha256: SHA }],
       vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
       dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
       cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
+      vad: [{ path: "vad/eliza-1-vad.onnx", sha256: SHA }],
     },
     kernels: {
       required: [...REQUIRED_KERNELS_BY_TIER[tier]],
-      optional: ["turbo3_tcq"],
+      optional: [],
       verifiedBackends: passingBackends(),
     },
     evals: {
       textEval: { score: 0.71, passed: true },
       voiceRtf: { rtf: 0.42, passed: true },
+      asrWer: { wer: 0.05, passed: true },
+      vadLatencyMs: { median: 16, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -64,13 +81,32 @@ describe("validateManifest — valid input", () => {
     const result = validateManifest(baseManifest());
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.manifest.tier).toBe("desktop-9b");
+      expect(result.manifest.tier).toBe("9b");
       expect(result.manifest.defaultEligible).toBe(true);
     }
   });
 
+  it("accepts optional component lineage, files, evals, and voice capabilities", () => {
+    const m = baseManifest();
+    m.lineage.embedding = { base: "eliza-1-embedding", license: "apache-2.0" };
+    m.lineage.wakeword = { base: "eliza-1-wakeword", license: "apache-2.0" };
+    m.files.embedding = [{ path: "embedding/eliza-1-embed.gguf", sha256: SHA }];
+    m.files.wakeword = [{ path: "wakeword/eliza-1.onnx", sha256: SHA }];
+    m.voice = { capabilities: ["tts", "emotion-tags"] };
+    m.evals.embedMteb = { score: 0.62, passed: true };
+    m.evals.expressive = {
+      tagFaithfulness: 0.9,
+      mosExpressive: 4.1,
+      tagLeakage: 0.01,
+      passed: true,
+    };
+
+    const result = validateManifest(m);
+    expect(result.ok).toBe(true);
+  });
+
   it("accepts every tier with that tier's required kernel set", () => {
-    for (const tier of ["lite-0_6b", "mobile-1_7b", "desktop-9b", "pro-27b", "server-h200"] as const) {
+    for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k"] as const) {
       const m = baseManifest(tier);
       const result = validateManifest(m);
       const detail = result.ok ? "" : ` errors=${result.errors.join(", ")}`;
@@ -122,7 +158,7 @@ describe("validateManifest — schema-level rejections", () => {
 
 describe("validateManifest — contract rejections", () => {
   it("rejects a manifest missing a required kernel for its tier", () => {
-    const m = baseManifest("desktop-9b");
+    const m = baseManifest("9b");
     m.kernels.required = ["turboquant_q4", "qjl", "polarquant"]; // missing dflash
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
@@ -137,12 +173,10 @@ describe("validateManifest — contract rejections", () => {
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(
-        result.errors.some((e) => e.includes("textEval")),
-      ).toBe(true);
-      expect(
-        result.errors.some((e) => e.includes("defaultEligible")),
-      ).toBe(true);
+      expect(result.errors.some((e) => e.includes("textEval"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("defaultEligible"))).toBe(
+        true,
+      );
     }
   });
 
@@ -160,8 +194,48 @@ describe("validateManifest — contract rejections", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("rejects component files without matching lineage and eval gates", () => {
+    const m = baseManifest();
+    m.lineage.asr = undefined;
+    m.evals.asrWer = undefined;
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("lineage.asr"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("evals.asrWer"))).toBe(true);
+    }
+  });
+
+  it("rejects defaultEligible=true when ASR or VAD are absent", () => {
+    const m = baseManifest();
+    m.files.asr = [];
+    m.files.vad = [];
+    m.lineage.asr = undefined;
+    m.lineage.vad = undefined;
+    m.evals.asrWer = undefined;
+    m.evals.vadLatencyMs = undefined;
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("files.asr"))).toBe(true);
+      expect(result.errors.some((e) => e.includes("files.vad"))).toBe(true);
+    }
+  });
+
+  it("rejects expressive voice capabilities without expressive eval", () => {
+    const m = baseManifest();
+    m.voice = { capabilities: ["tts", "singing"] };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("evals.expressive"))).toBe(
+        true,
+      );
+    }
+  });
+
   it("rejects defaultEligible=true when a supported backend did not pass", () => {
-    const m = baseManifest("desktop-9b");
+    const m = baseManifest("9b");
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",
@@ -174,22 +248,41 @@ describe("validateManifest — contract rejections", () => {
     }
   });
 
-  it("does not require cuda for tiers that don't ship on cuda", () => {
-    const m = baseManifest("lite-0_6b");
-    // lite tier doesn't ship on cuda; cuda fail should not block.
+  it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
+    const m = baseManifest("0_6b");
+    // 0.6B tier doesn't ship on cuda/rocm; failures there should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",
       report: "cuda.txt",
     };
+    m.kernels.verifiedBackends.rocm = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "rocm.txt",
+    };
     const result = validateManifest(m);
     expect(result.ok).toBe(true);
   });
 
+  it("requires rocm for desktop and server tiers", () => {
+    const m = baseManifest("9b");
+    m.kernels.verifiedBackends.rocm = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "rocm.txt",
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("rocm"))).toBe(true);
+    }
+  });
+
   it("requires turbo3_tcq when text ctx > 64k", () => {
-    const m = baseManifest("desktop-9b");
+    const m = baseManifest("9b");
     m.files.text[0].ctx = 131072;
-    m.kernels.optional = []; // remove turbo3_tcq
+    m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
     const result = validateManifest(m);
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -197,10 +290,23 @@ describe("validateManifest — contract rejections", () => {
     }
   });
 
-  it("accepts turbo3_tcq in required when ctx > 64k", () => {
-    const m = baseManifest("desktop-9b");
+  it("rejects turbo3_tcq as optional-only when ctx > 64k", () => {
+    const m = baseManifest("9b");
     m.files.text[0].ctx = 131072;
-    m.kernels.required = [...m.kernels.required, "turbo3_tcq"];
+    m.kernels.required = m.kernels.required.filter((k) => k !== "turbo3_tcq");
+    m.kernels.optional = ["turbo3_tcq"];
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("kernels.required"))).toBe(
+        true,
+      );
+    }
+  });
+
+  it("accepts turbo3_tcq in required when ctx > 64k", () => {
+    const m = baseManifest("9b");
+    m.files.text[0].ctx = 131072;
     m.kernels.optional = [];
     const result = validateManifest(m);
     expect(result.ok).toBe(true);
@@ -214,32 +320,34 @@ describe("canSetAsDefault", () => {
   };
 
   it("returns true for a default-eligible bundle on a supported backend", () => {
-    expect(canSetAsDefault(baseManifest("desktop-9b"), device)).toBe(true);
+    expect(canSetAsDefault(baseManifest("9b"), device)).toBe(true);
   });
 
   it("returns false when the manifest's defaultEligible is false", () => {
-    const m = baseManifest("desktop-9b");
+    const m = baseManifest("9b");
     m.defaultEligible = false;
     expect(canSetAsDefault(m, device)).toBe(false);
   });
 
   it("returns false when device RAM is below the manifest minimum", () => {
-    const m = baseManifest("desktop-9b");
+    const m = baseManifest("9b");
     expect(canSetAsDefault(m, { ...device, ramMb: 4_000 })).toBe(false);
   });
 
   it("returns false when the device shares no passing backend with the tier", () => {
-    const m = baseManifest("server-h200"); // server tier supports cuda/vulkan/cpu
-    // device only has metal — overlap with server tier is none, except cpu.
-    // server tier *does* support cpu, so this passes; tighten to just an
-    // unrelated backend to verify the exclusion path.
-    expect(canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 })).toBe(
-      false,
-    );
+    const m = baseManifest("27b-256k");
+    m.kernels.verifiedBackends.metal = {
+      status: "fail",
+      atCommit: "abc1234",
+      report: "metal.txt",
+    };
+    expect(
+      canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 }),
+    ).toBe(false);
   });
 
   it("returns false when the manifest fails contract checks even if defaultEligible=true", () => {
-    const m = baseManifest("desktop-9b");
+    const m = baseManifest("9b");
     m.kernels.required = ["turboquant_q4"]; // missing qjl/polarquant/dflash
     expect(canSetAsDefault(m, device)).toBe(false);
   });

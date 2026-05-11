@@ -24,6 +24,10 @@ import type { AgentCredentials, ApprovalPreset } from "coding-agent-adapters";
 import { buildOpencodeSpawnConfig } from "../services/agent-credentials.js";
 import type { AgentSelectionStrategy } from "../services/agent-selection.js";
 import { readConfigEnvKey } from "../services/config-env.js";
+import {
+  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
+  PARENT_AGENT_BROKER_SLUG,
+} from "../services/parent-agent-broker.js";
 import type { PTYService } from "../services/pty-service.js";
 import { getCoordinator } from "../services/pty-service.js";
 import {
@@ -46,10 +50,6 @@ import {
   LIFEOPS_CONTEXT_BROKER_SLUG,
   withLifeOpsContextBrokerRecommendation,
 } from "../services/skill-lifeops-context-broker.js";
-import {
-  PARENT_AGENT_BROKER_MANIFEST_ENTRY,
-  PARENT_AGENT_BROKER_SLUG,
-} from "../services/parent-agent-broker.js";
 import {
   buildSkillsManifest,
   type SkillsManifestResult,

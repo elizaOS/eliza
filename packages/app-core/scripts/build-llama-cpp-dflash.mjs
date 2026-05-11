@@ -40,24 +40,28 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
+import {
+  appendCmakeGraft,
+  fusedCmakeBuildTargets,
+  fusedExtraCmakeFlags,
+} from "./omnivoice-fuse/cmake-graft.mjs";
 // Source-level omnivoice.cpp fusion (text + TTS sharing one llama.cpp
 // build, one ggml pin, one kernel set). Helpers live alongside this
 // script under omnivoice-fuse/; see omnivoice-fuse/README.md for the
 // GGML pin reconciliation strategy.
 import {
-  prepareOmnivoiceFusion,
-  OMNIVOICE_REF,
   OMNIVOICE_GGML_REF,
+  OMNIVOICE_REF,
+  prepareOmnivoiceFusion,
 } from "./omnivoice-fuse/prepare.mjs";
-import {
-  appendCmakeGraft,
-  fusedExtraCmakeFlags,
-  fusedCmakeBuildTargets,
-} from "./omnivoice-fuse/cmake-graft.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
-import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
-import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 
 // milady-ai/llama.cpp @ v0.4.0-milady (commit 08032d57) — the unified fork
 // that composes TBQ + QJL + Q4_POLAR + Metal kernels + DFlash spec-decode
@@ -68,10 +72,32 @@ const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/milady-ai/llama.cpp.git";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v0.4.0-milady";
+const LEGACY_DFLASH_DRAFTER_REMOTE =
+  process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REMOTE ||
+  "https://github.com/spiritbuun/buun-llama-cpp.git";
+const LEGACY_DFLASH_DRAFTER_REF =
+  process.env.ELIZA_DFLASH_LEGACY_DRAFTER_REF ||
+  "6575873e9c4872709d374d854b583cfaa270caff";
 // Minimum commit on milady/integration that contains the DFlash CLI
 // surface (--spec-type dflash, --draft-min-prob, Prometheus counters).
 // Also satisfied by the W4-B v0.4.0-milady CUDA kernel additions.
 const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
+const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "inference",
+  "verify",
+  "metal-runtime-dispatch-evidence.json",
+);
+const VULKAN_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "inference",
+  "verify",
+  "vulkan-runtime-dispatch-evidence.json",
+);
 
 const SUPPORTED_TARGETS = [
   "linux-x64-cpu",
@@ -96,6 +122,11 @@ const SUPPORTED_TARGETS = [
   "ios-arm64-simulator-metal",
   "windows-x64-cpu",
   "windows-x64-cuda",
+  // windows-x64-vulkan: generic-GPU path on x64 Windows. NVIDIA/AMD/Intel
+  // ARC all expose Vulkan 1.3+ here. Cross-builds from a Linux/Darwin host
+  // via mingw + Khronos Vulkan-Headers — same shape as windows-x64-cpu but
+  // with the existing Vulkan-headers prep step.
+  "windows-x64-vulkan",
   // Windows arm64 (Snapdragon X Elite / Copilot+ PC, 2024+). Adreno X1
   // GPU is Vulkan 1.3; the 12-core ARM CPU runs the NEON paths in
   // qjl-cpu/polarquant-cpu. Both targets require an MSVC arm64
@@ -111,9 +142,11 @@ const SUPPORTED_TARGETS = [
   // for the GGML pin reconciliation strategy. The non-fused targets
   // above remain unchanged; fused is purely additive.
   "linux-x64-cpu-fused",
+  "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "darwin-x64-metal-fused",
+  "windows-x64-cuda-fused",
 ];
 
 // Targets that opt into omnivoice fusion. Membership in this set is
@@ -121,18 +154,18 @@ const SUPPORTED_TARGETS = [
 // shortcuts, no implicit upgrades from a non-fused target.
 const FUSED_TARGETS = new Set([
   "linux-x64-cpu-fused",
+  "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "darwin-x64-metal-fused",
+  "windows-x64-cuda-fused",
 ]);
 
 // Strip the "-fused" suffix when one is present, returning the base
 // triple parseTarget() / cmakeFlagsForTarget() already understand.
 // Calling this on a non-fused triple is a no-op.
 function baseTargetTriple(target) {
-  return target.endsWith("-fused")
-    ? target.slice(0, -"-fused".length)
-    : target;
+  return target.endsWith("-fused") ? target.slice(0, -"-fused".length) : target;
 }
 
 function isFusedTarget(target) {
@@ -143,6 +176,11 @@ function stateDir() {
   return (
     process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza")
   );
+}
+
+function envFlag(name) {
+  const value = process.env[name]?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function run(cmd, args, opts = {}) {
@@ -499,10 +537,13 @@ target_include_directories(ggml-base PRIVATE ggml-cpu ggml-cpu/qjl ggml-cpu/qjl/
 //
 // Fetch stable tagged checkouts of both Khronos header repos into the cache
 // and return both include paths so callers can add them via -isystem.
-const VULKAN_HEADERS_REPO = "https://github.com/KhronosGroup/Vulkan-Headers.git";
-const VULKAN_HEADERS_REF = process.env.ELIZA_DFLASH_VULKAN_HEADERS_REF || "v1.3.295";
+const VULKAN_HEADERS_REPO =
+  "https://github.com/KhronosGroup/Vulkan-Headers.git";
+const VULKAN_HEADERS_REF =
+  process.env.ELIZA_DFLASH_VULKAN_HEADERS_REF || "v1.3.295";
 const SPIRV_HEADERS_REPO = "https://github.com/KhronosGroup/SPIRV-Headers.git";
-const SPIRV_HEADERS_REF = process.env.ELIZA_DFLASH_SPIRV_HEADERS_REF || "vulkan-sdk-1.3.296.0";
+const SPIRV_HEADERS_REF =
+  process.env.ELIZA_DFLASH_SPIRV_HEADERS_REF || "vulkan-sdk-1.3.296.0";
 
 function fetchHeadersRepo({ name, repo, ref, sentinelRel }) {
   const cacheRoot = path.join(os.homedir(), ".cache", "eliza-dflash", name);
@@ -532,7 +573,10 @@ function fetchHeadersRepo({ name, repo, ref, sentinelRel }) {
 function prepareVulkanHeaders() {
   let vulkanInclude;
   const explicitVulkan = process.env.ELIZA_DFLASH_VULKAN_HEADERS_DIR?.trim();
-  if (explicitVulkan && fs.existsSync(path.join(explicitVulkan, "vulkan", "vulkan.hpp"))) {
+  if (
+    explicitVulkan &&
+    fs.existsSync(path.join(explicitVulkan, "vulkan", "vulkan.hpp"))
+  ) {
     vulkanInclude = explicitVulkan;
   } else {
     vulkanInclude = fetchHeadersRepo({
@@ -638,8 +682,8 @@ function cmakeFlagsForTarget(target, ctx) {
     // EMBED_LIBRARY behavior:
     //
     //   * iOS (later in this function) sets it to ON unconditionally —
-    //     the static-archive build needs the metallib data baked into
-    //     the framework via .incbin.
+    //     the static-archive build needs compiled metallib bytes baked
+    //     into the framework via .incbin.
     //   * Darwin desktop (this branch) sets it OFF so the metallib is
     //     compiled at build time into a sidecar default.metallib that
     //     ships next to llama-server. The kernel-patches/metal-kernels
@@ -648,13 +692,10 @@ function cmakeFlagsForTarget(target, ctx) {
     //     is compiled into its own .air and merged into default.metallib
     //     alongside ggml-metal.air.
     //
-    //     The EMBED path is incompatible with the standalones because
-    //     it concatenates ggml-metal.metal + ggml-common.h into a single
-    //     compilation unit, and the standalones redefine block_qjl1_256
-    //     and block_q4_polar (same byte layout, different field names)
-    //     plus QK_POLAR / QK_QJL / QJL_RESIDUAL_BYTES already in
-    //     ggml-common.h. Wiring them through the EMBED path requires a
-    //     dup-strip pass that is filed as a separate follow-up.
+    //     The EMBED path is patched by kernel-patches/metal-kernels.mjs
+    //     to embed a compiled default.metallib instead of concatenated
+    //     source. That keeps the standalone shader TUs separate and
+    //     avoids duplicate block_* / constant declarations.
     flags.push("-DGGML_METAL_EMBED_LIBRARY=OFF");
   } else if (backend === "cuda") {
     flags[flags.indexOf("-DGGML_CUDA=OFF")] = "-DGGML_CUDA=ON";
@@ -669,9 +710,18 @@ function cmakeFlagsForTarget(target, ctx) {
     // Operators that target an older card (sm_75 Turing, sm_70 Volta) can
     // override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=...
     // which appends after this list and wins.
-    flags.push('-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80');
+    flags.push("-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80");
   } else if (backend === "rocm") {
     flags[flags.indexOf("-DGGML_HIP=OFF")] = "-DGGML_HIP=ON";
+    // Pin the ROCm fat binary to the device families we intend to support.
+    // Operators can narrow/extend this with ELIZA_DFLASH_CMAKE_FLAGS; those
+    // flags append after this list and win on CMake conflict.
+    //   gfx90a  -> MI250 / CDNA2
+    //   gfx942  -> MI300 / CDNA3
+    //   gfx110* -> RDNA3 desktop/laptop smoke hosts
+    flags.push(
+      "-DCMAKE_HIP_ARCHITECTURES=gfx90a;gfx942;gfx1100;gfx1101;gfx1102",
+    );
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
     if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
@@ -775,10 +825,7 @@ function cmakeFlagsForTarget(target, ctx) {
       // qjl-cpu/polarquant-cpu's NEON paths cover the dot-product
       // primitive; OpenMP is still off because the mingw/clang arm64
       // cross-toolchain doesn't ship libomp without extra setup.
-      flags.push(
-        "-DGGML_OPENMP=OFF",
-        "-DBUILD_SHARED_LIBS=ON",
-      );
+      flags.push("-DGGML_OPENMP=OFF", "-DBUILD_SHARED_LIBS=ON");
     }
     // Statically link backends into llama-server.exe. With the default
     // (BACKEND_DL=ON) MSVC builds, the dynamic loader looks for a generic
@@ -817,16 +864,11 @@ function cmakeFlagsForTarget(target, ctx) {
     } else {
       flags.push("-DCMAKE_OSX_SYSROOT=iphoneos");
     }
-    // iOS static-archive build needs the metallib data baked in via .incbin
-    // since there is no place on-device to ship a sidecar default.metallib.
-    // Override the OFF default that the metal backend block set above.
-    // NOTE: at v0.4.0-milady the iOS path is a deferred gap — the EMBED
-    // pipeline concatenates ggml-metal.metal with ggml-common.h via sed,
-    // and our standalone shaders' redefinitions of block_qjl1_256 /
-    // block_q4_polar collide. The iOS metallib will not yet contain the
-    // milady kernels until kernel-patches/metal-kernels.mjs grows an
-    // EMBED-path patcher that strips the duplicate decls. requiredKernels-
-    // Missing() will catch and refuse the iOS artifact accordingly.
+    // iOS static-archive build needs compiled metallib data baked in via
+    // .incbin since there is no sidecar default.metallib next to a console
+    // binary. The Metal patcher rewrites the EMBED_LIBRARY CMake branch to
+    // compile ggml-metal.metal + the milady standalones into one metallib
+    // before embedding it.
     const embedIdx = flags.indexOf("-DGGML_METAL_EMBED_LIBRARY=OFF");
     if (embedIdx !== -1) {
       flags[embedIdx] = "-DGGML_METAL_EMBED_LIBRARY=ON";
@@ -926,14 +968,14 @@ function targetCompatibility(target, ctx) {
 // uses `arm64` (darwin-arm64-metal, windows-arm64-vulkan, android-arm64-*).
 function nodeArchToTripleArch(platform) {
   if (process.arch === "x64") return "x64";
-  if (process.arch === "arm64") return platform === "linux" ? "aarch64" : "arm64";
+  if (process.arch === "arm64")
+    return platform === "linux" ? "aarch64" : "arm64";
   return process.arch;
 }
 
 function defaultTarget() {
   const backend = detectBackend();
-  const platform =
-    process.platform === "win32" ? "windows" : process.platform;
+  const platform = process.platform === "win32" ? "windows" : process.platform;
   const arch = nodeArchToTripleArch(platform);
   return `${platform}-${arch}-${backend}`;
 }
@@ -1010,6 +1052,13 @@ function parseArgs(argv) {
           "  --out-dir <path>       Override the output directory (single target).",
           "  --cache-dir <path>     Override the source checkout cache.",
           "  --jobs N | -j N        Parallel build jobs.",
+          "",
+          "Environment:",
+          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=0",
+          "                         For darwin-arm64-metal only, opt out of the",
+          "                         automatic spiritbuun/buun-llama-cpp runtime",
+          "                         bridge that can load general.architecture=dflash-draft.",
+          "                         Bridge CAPABILITIES.json is diagnostic and publishable=false.",
         ].join("\n"),
       );
       process.exit(0);
@@ -1027,6 +1076,12 @@ function ensureCheckout(cacheDir, ref) {
   if (fs.existsSync(path.join(cacheDir, ".git"))) {
     run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
     run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
+    // This checkout is a generated build cache owned by this script. Always
+    // reset tracked and untracked source edits before applying our patch set
+    // so stale kernel-patch artifacts from prior builds cannot leak into a
+    // new artifact.
+    run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: cacheDir });
+    run("git", ["clean", "-fd"], { cwd: cacheDir });
   } else {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
@@ -1071,33 +1126,29 @@ function ensureCheckout(cacheDir, ref) {
 //
 // What still doesn't fully ship at v0.4.0-milady (deferred dispatch wiring):
 //
-//   * ggml-metal-ops.cpp / ggml-metal-device.m have NO dispatch sites for
-//     the milady quant types (TBQ3_0, TBQ4_0, TBQ3_TCQ, QJL1_256, Q4_POLAR).
-//     CUDA has them; Metal does not. After this patch the kernel symbols
-//     (kernel_turbo3_dot, kernel_attn_score_qjl1_256, kernel_mul_mv_q4_polar_f32,
-//     etc.) are present in default.metallib and `nm`/`strings` will see
-//     them, but the runtime cannot yet select them via GGML_TYPE_*. That
-//     wiring is a separate fork-internals patch and is the next agent's
-//     mission.
+//   * ggml-metal-ops.cpp / ggml-metal-device.m have smoke-tested dispatch
+//     sites for GGML_OP_ATTN_SCORE_QJL, GGML_OP_ATTN_SCORE_TBQ
+//     (TBQ3_0/TBQ4_0/TBQ3_TCQ), and GGML_OP_ATTN_SCORE_POLAR. Runtime-ready
+//     Metal capability bits are still evidence-gated through
+//     packages/inference/verify/metal-runtime-dispatch-evidence.json so a
+//     future fork regression cannot be hidden by symbols in default.metallib.
 //
-//   * The EMBED_LIBRARY=ON branch (used by iOS targets) is not yet patched.
-//     iOS builds compile a single concatenated .metal via .incbin and would
-//     require stripping the duplicate decls (block_qjl1_256, block_q4_polar,
-//     QK_QJL, QK_POLAR, QJL_RESIDUAL_BYTES already in ggml-common.h). That
-//     is a separate patch tracked in kernel-patches/metal-kernels.mjs's
-//     module comment.
+//   * The EMBED_LIBRARY=ON branch (used by iOS targets) is also patched:
+//     it compiles ggml-metal.metal + the milady standalones as separate
+//     .air files, merges them into one default.metallib, and embeds those
+//     compiled bytes. That avoids duplicate source declarations while
+//     shipping the same five kernel symbols as the desktop sidecar.
 //
 //   * Vulkan: the 8 standalone .comp files are staged into
 //     ggml/src/ggml-vulkan/vulkan-shaders/ (picked up by file(GLOB)),
 //     vulkan-shaders-gen.cpp registers them via 8 string_to_spv() calls,
-//     and ggml-vulkan.cpp now declares + creates 8 milady_* pipelines so the
-//     SPV blobs are linked into libggml-vulkan.so. Symbol audit (`nm
-//     libggml-vulkan.so | grep milady_`) passes; op-level dispatch routing
-//     for GGML_OP_ATTN_SCORE_QJL and the milady GGML_TYPE_* values is the
-//     remaining gap and is the next agent's mission. Until it lands, the
-//     ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1 env var still applies — the
-//     help-text probe in probeKernels() can't yet see qjl/polar via CLI
-//     flags because the runtime can't select them.
+//     ggml-vulkan.cpp declares + creates 8 milady_* pipelines, and the
+//     patcher wires GGML_OP_ATTN_SCORE_QJL/TBQ/POLAR graph dispatch for the
+//     single-batch contiguous shapes covered by vulkan_dispatch_smoke.cpp.
+//     Incomplete Vulkan artifacts remain publish-blocking: probeKernels()
+//     requires runtime-dispatch evidence from a numeric built-fork graph
+//     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
+//     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
@@ -1120,10 +1171,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // safe to apply to iOS static-archive builds. Idempotent via the
   // existing `# MILADY-WINDOWS-QJL-IN-GGML-BASE` sentinel inside
   // patchGgmlBaseForWindowsQjl().
-  if (
-    target &&
-    (target.startsWith("darwin-") || target.startsWith("ios-"))
-  ) {
+  if (target && (target.startsWith("darwin-") || target.startsWith("ios-"))) {
     patchGgmlBaseForWindowsQjl(cacheDir);
   }
 }
@@ -1153,6 +1201,307 @@ function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
   }
 }
 
+function useLegacyDflashDrafterRuntime(target) {
+  const { platform, arch, backend, fused } = parseTarget(target);
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME;
+  const enabled =
+    explicit === undefined
+      ? true
+      : envFlag("ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME");
+  return (
+    enabled &&
+    platform === "darwin" &&
+    arch === "arm64" &&
+    backend === "metal" &&
+    !fused
+  );
+}
+
+function legacyDflashDrafterSourceDir() {
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_SOURCE_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-dflash",
+    "buun-llama-cpp-drafter-runtime",
+  );
+}
+
+function legacyDflashDrafterBuildDir(sourceDir) {
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_BUILD_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(sourceDir, "build", "metal");
+}
+
+function legacyDflashDrafterBinDir() {
+  const explicit = process.env.ELIZA_DFLASH_LEGACY_DRAFTER_BIN_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-dflash",
+    "buun-llama-cpp",
+    "build",
+    "metal",
+    "bin",
+  );
+}
+
+function hasLegacyDflashDrafterBinaries(binDir) {
+  return [
+    "llama-server",
+    "llama-cli",
+    "llama-speculative-simple",
+  ].every((name) => fs.existsSync(path.join(binDir, name)));
+}
+
+function sourceContainsDflashDraft(root) {
+  const archPath = path.join(root, "src", "llama-arch.cpp");
+  const specPath = path.join(root, "common", "speculative.cpp");
+  return (
+    fs.existsSync(path.join(root, "src", "models", "dflash_draft.cpp")) &&
+    fs.existsSync(archPath) &&
+    fs.existsSync(specPath) &&
+    fs.readFileSync(archPath, "utf8").includes('"dflash-draft"') &&
+    fs
+      .readFileSync(specPath, "utf8")
+      .includes("common_speculative_state_dflash")
+  );
+}
+
+function ensureLegacyDflashDrafterCheckout(sourceDir) {
+  if (fs.existsSync(path.join(sourceDir, ".git"))) {
+    run("git", ["fetch", "--depth", "1", "origin", LEGACY_DFLASH_DRAFTER_REF], {
+      cwd: sourceDir,
+    });
+    run("git", ["checkout", "--detach", "FETCH_HEAD"], { cwd: sourceDir });
+  } else {
+    fs.mkdirSync(path.dirname(sourceDir), { recursive: true });
+    run("git", [
+      "clone",
+      "--filter=blob:none",
+      LEGACY_DFLASH_DRAFTER_REMOTE,
+      sourceDir,
+    ]);
+    run("git", ["fetch", "--depth", "1", "origin", LEGACY_DFLASH_DRAFTER_REF], {
+      cwd: sourceDir,
+    });
+    run("git", ["checkout", "--detach", "FETCH_HEAD"], { cwd: sourceDir });
+  }
+
+  if (!sourceContainsDflashDraft(sourceDir)) {
+    throw new Error(
+      `[dflash-build] ${LEGACY_DFLASH_DRAFTER_REMOTE}@${LEGACY_DFLASH_DRAFTER_REF} ` +
+        `did not expose the dflash-draft architecture needed by the local drafter GGUF`,
+    );
+  }
+  return sourceDir;
+}
+
+function resolveLegacyDflashDrafterBuiltBinDir(buildDir) {
+  const candidates = [
+    path.join(buildDir, "bin", "Release"),
+    path.join(buildDir, "bin", "Debug"),
+    path.join(buildDir, "bin"),
+  ];
+  return candidates.find(hasLegacyDflashDrafterBinaries) ?? null;
+}
+
+function buildLegacyDflashDrafterRuntime({ args }) {
+  const sourceDir = ensureLegacyDflashDrafterCheckout(
+    legacyDflashDrafterSourceDir(),
+  );
+  const buildDir = legacyDflashDrafterBuildDir(sourceDir);
+  fs.mkdirSync(buildDir, { recursive: true });
+  run(
+    "cmake",
+    [
+      "-S",
+      sourceDir,
+      "-B",
+      buildDir,
+      "-DCMAKE_BUILD_TYPE=Release",
+      "-DLLAMA_BUILD_TESTS=OFF",
+      "-DLLAMA_BUILD_EXAMPLES=ON",
+      "-DLLAMA_BUILD_SERVER=ON",
+      "-DGGML_METAL=ON",
+      "-DGGML_METAL_EMBED_LIBRARY=ON",
+    ],
+    { cwd: sourceDir },
+  );
+  run(
+    "cmake",
+    [
+      "--build",
+      buildDir,
+      "--target",
+      "llama-server",
+      "llama-cli",
+      "llama-speculative-simple",
+      "-j",
+      String(args.jobs),
+    ],
+    { cwd: sourceDir },
+  );
+  const binDir = resolveLegacyDflashDrafterBuiltBinDir(buildDir);
+  if (!binDir) {
+    throw new Error(
+      `[dflash-build] legacy DFlash drafter runtime build did not produce ` +
+        `llama-server, llama-cli, and llama-speculative-simple under ${buildDir}`,
+    );
+  }
+  return {
+    sourceDir,
+    buildDir,
+    binDir,
+    commit: run("git", ["rev-parse", "HEAD"], {
+      cwd: sourceDir,
+      capture: true,
+    }),
+  };
+}
+
+function ensureLegacyDflashDrafterRuntime({ args }) {
+  const binDir = legacyDflashDrafterBinDir();
+  if (hasLegacyDflashDrafterBinaries(binDir)) {
+    const sourceDir = fs.existsSync(
+      path.join(path.resolve(binDir, "..", "..", ".."), ".git"),
+    )
+      ? path.resolve(binDir, "..", "..", "..")
+      : null;
+    return {
+      binDir,
+      sourceDir,
+      buildDir: path.resolve(binDir, ".."),
+      commit: sourceDir
+        ? run("git", ["rev-parse", "HEAD"], {
+            cwd: sourceDir,
+            capture: true,
+          })
+        : "",
+      reusedPrebuilt: true,
+    };
+  }
+  return { ...buildLegacyDflashDrafterRuntime({ args }), reusedPrebuilt: false };
+}
+
+function writeLegacyDflashDrafterCapabilities({
+  outDir,
+  target,
+  runtime,
+  installedBaseNames,
+}) {
+  const { platform, arch, backend } = parseTarget(target);
+  const kernels = {
+    dflash: true,
+    turbo3: false,
+    turbo4: false,
+    turbo3_tcq: false,
+    qjl_full: false,
+    polarquant: false,
+    lookahead: true,
+    ngramDraft: true,
+  };
+  const capabilities = {
+    target,
+    platform,
+    arch,
+    backend,
+    fused: false,
+    builtAt: new Date().toISOString(),
+    fork: "spiritbuun/buun-llama-cpp",
+    forkRemote: LEGACY_DFLASH_DRAFTER_REMOTE,
+    forkRef: LEGACY_DFLASH_DRAFTER_REF,
+    forkCommit: runtime.commit || null,
+    kernels,
+    publishable: false,
+    missingRequiredKernels: requiredKernelsMissing(target, kernels),
+    smokeOnlyIncompleteAllowed: true,
+    shippedKernels: null,
+    runtimeDispatch: {
+      sourceOfTruth:
+        "temporary Darwin Metal drafter runtime for loading general.architecture=dflash-draft",
+      status: "dflash-draft-loader-only",
+      requiredSmoke:
+        "GGML_METAL_NO_RESIDENCY=1 node packages/inference/verify/dflash_drafter_runtime_smoke.mjs --allow-devices --ngl 99 --ngld 99 --spec-type dflash --temp 0 --tree-budget 0",
+      blocker:
+        "Milady v0.4.0 DFlash CLI surface does not register the dflash-draft model architecture.",
+      notes:
+        "The local repaired drafter also requires tokenizer.ggml.merges copied from the target GGUF.",
+    },
+    binaries: installedBaseNames,
+    dflashDrafterRuntime: {
+      sourceBinDir: runtime.binDir,
+      sourceDir: runtime.sourceDir,
+      buildDir: runtime.buildDir,
+      reusedPrebuilt: Boolean(runtime.reusedPrebuilt),
+      installedAt: new Date().toISOString(),
+      nonPublishableReason:
+        "runtime-repair path for local DFlash drafter verification only; not a full Eliza-1 kernel bundle",
+    },
+  };
+  fs.writeFileSync(
+    path.join(outDir, "CAPABILITIES.json"),
+    `${JSON.stringify(capabilities, null, 2)}\n`,
+  );
+  return capabilities;
+}
+
+function installLegacyDflashDrafterRuntime({ target, outDir, args }) {
+  const runtime = ensureLegacyDflashDrafterRuntime({ args });
+  const executableBaseNames = [
+    "llama-server",
+    "llama-cli",
+    "llama-speculative-simple",
+  ];
+  const installedNames = [];
+  const installedBaseNames = [];
+
+  fs.mkdirSync(outDir, { recursive: true });
+  for (const name of fs.readdirSync(runtime.binDir)) {
+    const base = name.replace(/\.(exe)$/i, "");
+    if (
+      executableBaseNames.includes(base) ||
+      isRuntimeLibrary(name) ||
+      name === "default.metallib"
+    ) {
+      const dst = path.join(outDir, name);
+      fs.rmSync(dst, { force: true });
+      fs.cpSync(path.join(runtime.binDir, name), dst, {
+        force: true,
+        verbatimSymlinks: true,
+      });
+      installedNames.push(name);
+      if (executableBaseNames.includes(base)) {
+        fs.chmodSync(dst, 0o755);
+        installedBaseNames.push(base);
+      }
+    }
+  }
+
+  const missing = executableBaseNames.filter(
+    (name) => !fs.existsSync(path.join(outDir, name)),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `[dflash-build] legacy DFlash drafter runtime install missing: ${missing.join(", ")}`,
+    );
+  }
+
+  makeDarwinInstallSelfContained(outDir, installedNames, runtime.binDir);
+  const capabilities = writeLegacyDflashDrafterCapabilities({
+    outDir,
+    target,
+    runtime,
+    installedBaseNames,
+  });
+  console.log(
+    `[dflash-build] installed non-publishable DFlash drafter runtime -> ${outDir}`,
+  );
+  return capabilities;
+}
+
 // Probe a freshly-built llama-server for kernel availability.
 //
 // For host targets, run `llama-server --help` and grep for kernel-specific
@@ -1160,7 +1509,7 @@ function makeDarwinInstallSelfContained(outDir, names, buildBinDir) {
 // binary cannot run on the host; introspect the build directory for compiled
 // object files instead (e.g. ggml-cuda/turbo3.cu.o,
 // ggml-metal/turbo3.metal.air, etc.).
-function probeKernels(target, buildDir, outDir) {
+function probeKernels(target, buildDir, outDir, cacheDir = null) {
   const { platform, backend } = parseTarget(target);
   const canRunOnHost = canRunTargetOnHost(target);
   const kernels = {
@@ -1204,11 +1553,11 @@ function probeKernels(target, buildDir, outDir) {
       kernels.qjl_full = /qjl[_-]?full|qjl|qjl1_256/.test(lc);
       kernels.polarquant = /polar(?:quant)?|q4[_-]?polar/.test(lc);
       // For Metal targets, also inspect default.metallib for kernel symbols.
-      // This is the source of truth for "the kernel is shipped" — the help
-      // text only proves the GGML_TYPE_* enum is registered. Symbol presence
-      // proves the Metal compile actually produced .air for our standalones.
-      // Reachability via dispatch is a separate concern documented in
-      // packages/inference/README.md (Wave-6 audit).
+      // This proves "the kernel is shipped", not that the kernel is reachable
+      // from llama.cpp graph execution. The published `kernels` capability
+      // map below intentionally stays dispatch-ready only; symbol-only
+      // kernels are recorded in logs/README, not allowed to satisfy the
+      // Eliza-1 runtime contract.
       if (backend === "metal") {
         const metallibPath = path.join(outDir, "default.metallib");
         if (fs.existsSync(metallibPath)) {
@@ -1273,6 +1622,67 @@ function probeKernels(target, buildDir, outDir) {
       kernels.dflash = true;
     }
   }
+
+  // Honesty gate: Metal/Vulkan standalone shaders can compile and be present
+  // as symbols/pipelines while still being unreachable or semantically wrong
+  // through generic llama.cpp ops. Do not let symbol presence satisfy
+  // AGENTS.md §3. Metal runtime capabilities require both a shipped symbol and
+  // packages/inference/verify/metal-runtime-dispatch-evidence.json evidence
+  // from a numeric built-fork graph smoke. Any capability whose evidence is
+  // absent or blocked remains false.
+  if (backend === "metal") {
+    const shipped = probeMetalShippedKernelSymbols(buildDir, outDir).symbols;
+    const evidence = readMetalRuntimeDispatchEvidence();
+    kernels.turbo3 = metalCapabilityRuntimeReady("turbo3", shipped, evidence);
+    kernels.turbo4 = metalCapabilityRuntimeReady("turbo4", shipped, evidence);
+    kernels.turbo3_tcq = metalCapabilityRuntimeReady(
+      "turbo3_tcq",
+      shipped,
+      evidence,
+    );
+    kernels.qjl_full = metalCapabilityRuntimeReady(
+      "qjl_full",
+      shipped,
+      evidence,
+    );
+    kernels.polarquant = metalCapabilityRuntimeReady(
+      "polarquant",
+      shipped,
+      evidence,
+    );
+  } else if (backend === "vulkan") {
+    const shipped = probeVulkanShippedKernelSymbols(
+      buildDir,
+      outDir,
+      cacheDir,
+    ).symbols;
+    const evidence = readVulkanRuntimeDispatchEvidence();
+    kernels.turbo3 = vulkanCapabilityRuntimeReady(
+      "turbo3",
+      shipped,
+      evidence,
+    );
+    kernels.turbo4 = vulkanCapabilityRuntimeReady(
+      "turbo4",
+      shipped,
+      evidence,
+    );
+    kernels.turbo3_tcq = vulkanCapabilityRuntimeReady(
+      "turbo3_tcq",
+      shipped,
+      evidence,
+    );
+    kernels.qjl_full = vulkanCapabilityRuntimeReady(
+      "qjl_full",
+      shipped,
+      evidence,
+    );
+    kernels.polarquant = vulkanCapabilityRuntimeReady(
+      "polarquant",
+      shipped,
+      evidence,
+    );
+  }
   return kernels;
 }
 
@@ -1312,48 +1722,421 @@ function collectFilesUnder(root, pattern) {
   return out;
 }
 
+function buildIosRuntimeSymbolShim({ target, outDir }) {
+  const { isSimulator } = parseTarget(target);
+  const sdk = isSimulator ? "iphonesimulator" : "iphoneos";
+  const source = path.join(
+    __dirname,
+    "ios-xcframework",
+    "runtime-symbol-shim.c",
+  );
+  if (!fs.existsSync(source)) {
+    throw new Error(`[dflash-build] iOS runtime symbol shim missing: ${source}`);
+  }
+
+  const sdkPath = run("xcrun", ["--sdk", sdk, "--show-sdk-path"], {
+    capture: true,
+  });
+  const obj = path.join(outDir, "eliza-ios-runtime-shim.o");
+  const archive = path.join(outDir, "libeliza-ios-runtime-shim.a");
+  const minVersionFlag = isSimulator
+    ? "-mios-simulator-version-min=14.0"
+    : "-miphoneos-version-min=14.0";
+
+  run("xcrun", [
+    "--sdk",
+    sdk,
+    "clang",
+    "-std=c11",
+    "-arch",
+    "arm64",
+    "-isysroot",
+    sdkPath,
+    minVersionFlag,
+    "-fvisibility=default",
+    "-c",
+    source,
+    "-o",
+    obj,
+  ]);
+  run("xcrun", ["--sdk", sdk, "ar", "rcs", archive, obj]);
+  run("xcrun", ["--sdk", sdk, "ranlib", archive]);
+  fs.rmSync(obj, { force: true });
+  return archive;
+}
+
 // Per AGENTS.md §3, every Eliza-1 bundle MUST run dflash + turbo3 + turbo4 +
-// qjl + polar. probeKernels() returns the per-target detection map; this gate
-// translates that into a hard failure when a required kernel is absent.
+// turbo3_tcq + qjl + polar. probeKernels() returns the per-target detection
+// map; this gate translates that into a hard failure when a required kernel is
+// absent.
 //
 // Returns the list of missing-but-required kernels. An empty list means the
 // target satisfies the contract.
 function requiredKernelsMissing(target, kernels) {
-  const { backend } = parseTarget(target);
   // Required for every shipped backend.
-  const required = ["dflash", "turbo3", "turbo4", "qjl_full", "polarquant"];
-  // Vulkan host detection currently relies on `--help` strings (CLI flags).
-  // Metal kernel-presence after this patch is verified via the metallib
-  // (see kernel-patches/metal-kernels.mjs); the help-text probe still works
-  // because the fork's CLI lists the quant types regardless of backend.
-  if (backend === "vulkan") {
-    // After kernel-patches/vulkan-dispatch-patches/, the 8 milady SPV blobs
-    // and pipeline_milady_* slots are linked into libggml-vulkan.so. What is
-    // still missing is op-level dispatch routing (GGML_OP_ATTN_SCORE_QJL and
-    // milady GGML_TYPE_* case branches) — without it, llama-server --help
-    // still won't show qjl/polar/turbo as user-visible cache types. Allow
-    // the build to proceed when the operator explicitly acknowledges the
-    // routing gap; CAPABILITIES.json then records `kernels.qjl_full=false`
-    // so the runtime layer can refuse to load Eliza-1 bundles on this
-    // binary. Once op routing lands, drop this branch.
-    if (process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN === "1") {
-      return [];
+  const required = [
+    "dflash",
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl_full",
+    "polarquant",
+  ];
+  return required.filter((k) => !kernels[k]);
+}
+
+function probeMetalShippedKernelSymbols(buildDir, outDir) {
+  const shipped = {
+    turbo3: false,
+    turbo4: false,
+    turbo3_tcq: false,
+    qjl_full: false,
+    polarquant: false,
+  };
+  const metallibs = [
+    ...collectFilesUnder(buildDir, /\.metallib$/),
+    ...collectFilesUnder(outDir, /\.metallib$/),
+  ];
+  for (const metallibPath of metallibs) {
+    const bytes = fs.readFileSync(metallibPath);
+    const has = (sym) => bytes.indexOf(sym) !== -1;
+    if (has("kernel_turbo3_dot")) shipped.turbo3 = true;
+    if (has("kernel_turbo4_dot")) shipped.turbo4 = true;
+    if (has("kernel_turbo3_tcq_dot")) shipped.turbo3_tcq = true;
+    if (
+      has("kernel_attn_score_qjl1_256") ||
+      has("kernel_get_rows_qjl1_256") ||
+      has("kernel_mul_mv_qjl1_256_f32")
+    ) {
+      shipped.qjl_full = true;
+    }
+    if (has("kernel_get_rows_q4_polar") || has("kernel_mul_mv_q4_polar_f32")) {
+      shipped.polarquant = true;
     }
   }
-  return required.filter((k) => !kernels[k]);
+  return { metallibs, symbols: shipped };
+}
+
+function readMetalRuntimeDispatchEvidence() {
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(METAL_RUNTIME_DISPATCH_EVIDENCE, "utf8"),
+    );
+    return { path: METAL_RUNTIME_DISPATCH_EVIDENCE, data };
+  } catch (err) {
+    return {
+      path: METAL_RUNTIME_DISPATCH_EVIDENCE,
+      data: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function metalEvidenceForCapability(capabilityKey, evidence) {
+  const kernels = evidence?.data?.kernels;
+  if (!kernels || typeof kernels !== "object") return null;
+  return (
+    Object.values(kernels).find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        entry.runtimeCapabilityKey === capabilityKey,
+    ) ?? null
+  );
+}
+
+function metalEvidenceRuntimeReady(capabilityKey, evidence) {
+  const entry = metalEvidenceForCapability(capabilityKey, evidence);
+  return Boolean(
+    entry?.runtimeReady === true && entry?.status === "runtime-ready",
+  );
+}
+
+function metalCapabilityRuntimeReady(capabilityKey, shipped, evidence) {
+  return Boolean(
+    shipped?.[capabilityKey] &&
+      metalEvidenceRuntimeReady(capabilityKey, evidence),
+  );
+}
+
+function metalRuntimeDispatchKernelStatus(capabilityKey, shipped, evidence) {
+  const entry = metalEvidenceForCapability(capabilityKey, evidence);
+  const symbolShipped = Boolean(shipped?.[capabilityKey]);
+  const runtimeReady = metalCapabilityRuntimeReady(
+    capabilityKey,
+    shipped,
+    evidence,
+  );
+  const status = runtimeReady
+    ? "runtime-ready"
+    : symbolShipped
+      ? (entry?.status ?? "symbol-shipped")
+      : "missing-symbol";
+  const detail = {
+    status,
+    runtimeReady,
+  };
+  if (entry?.graphOp) detail.graphOp = entry.graphOp;
+  if (entry?.smokeTarget) detail.smokeTarget = entry.smokeTarget;
+  if (entry?.smokeCommand) detail.smokeCommand = entry.smokeCommand;
+  if (typeof entry?.maxDiff === "number") detail.maxDiff = entry.maxDiff;
+  if (entry?.evidenceDate) detail.evidenceDate = entry.evidenceDate;
+  if (entry?.blocker) detail.blocker = entry.blocker;
+  if (entry?.requiredSmoke) detail.requiredSmoke = entry.requiredSmoke;
+  if (entry?.notes) detail.notes = entry.notes;
+  return detail;
+}
+
+function metalRuntimeDispatchStatus(shippedKernels) {
+  const shipped = shippedKernels?.symbols ?? {};
+  const evidence = readMetalRuntimeDispatchEvidence();
+  return {
+    sourceOfTruth:
+      "dispatch-ready requires a built-fork GGML graph smoke, not just symbols in default.metallib",
+    evidencePath: evidence.path,
+    evidenceLoaded: Boolean(evidence.data),
+    evidenceError: evidence.error ?? null,
+    kernels: {
+      turbo3: metalRuntimeDispatchKernelStatus("turbo3", shipped, evidence),
+      turbo4: metalRuntimeDispatchKernelStatus("turbo4", shipped, evidence),
+      turbo3_tcq: metalRuntimeDispatchKernelStatus(
+        "turbo3_tcq",
+        shipped,
+        evidence,
+      ),
+      qjl_full: metalRuntimeDispatchKernelStatus("qjl_full", shipped, evidence),
+      polarquant: metalRuntimeDispatchKernelStatus(
+        "polarquant",
+        shipped,
+        evidence,
+      ),
+    },
+  };
+}
+
+function readVulkanRuntimeDispatchEvidence() {
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(VULKAN_RUNTIME_DISPATCH_EVIDENCE, "utf8"),
+    );
+    return { path: VULKAN_RUNTIME_DISPATCH_EVIDENCE, data };
+  } catch (err) {
+    return {
+      path: VULKAN_RUNTIME_DISPATCH_EVIDENCE,
+      data: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function vulkanEvidenceForCapability(capabilityKey, evidence) {
+  const kernels = evidence?.data?.kernels;
+  if (!kernels || typeof kernels !== "object") return null;
+  return (
+    Object.values(kernels).find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        entry.runtimeCapabilityKey === capabilityKey,
+    ) ?? null
+  );
+}
+
+function vulkanEvidenceRuntimeReady(capabilityKey, evidence) {
+  const entry = vulkanEvidenceForCapability(capabilityKey, evidence);
+  return Boolean(
+    entry?.runtimeReady === true && entry?.status === "runtime-ready",
+  );
+}
+
+function vulkanCapabilityRuntimeReady(capabilityKey, shipped, evidence) {
+  return Boolean(
+    shipped?.[capabilityKey] &&
+      vulkanEvidenceRuntimeReady(capabilityKey, evidence),
+  );
+}
+
+function vulkanRuntimeDispatchKernelStatus(
+  capabilityKey,
+  shipped,
+  sourceFiles,
+  evidence,
+  requiredSmoke,
+) {
+  const entry = vulkanEvidenceForCapability(capabilityKey, evidence);
+  const symbolShipped = Boolean(shipped?.[capabilityKey]);
+  const runtimeReady = vulkanCapabilityRuntimeReady(
+    capabilityKey,
+    shipped,
+    evidence,
+  );
+  const status = runtimeReady
+    ? "runtime-ready"
+    : symbolShipped
+      ? (entry?.status ?? "source-patched-pending-smoke")
+      : "missing-symbol";
+  const detail = {
+    status,
+    runtimeReady,
+    sourceStaged: Boolean(sourceFiles?.[capabilityKey]),
+    requiredSmoke,
+  };
+  if (entry?.graphOp) detail.graphOp = entry.graphOp;
+  if (entry?.smokeTarget) detail.smokeTarget = entry.smokeTarget;
+  if (entry?.smokeCommand) detail.smokeCommand = entry.smokeCommand;
+  if (typeof entry?.maxDiff === "number") detail.maxDiff = entry.maxDiff;
+  if (entry?.evidenceDate) detail.evidenceDate = entry.evidenceDate;
+  if (entry?.blocker) detail.blocker = entry.blocker;
+  if (entry?.notes) detail.notes = entry.notes;
+  if (Array.isArray(entry?.graphRoutes)) detail.graphRoutes = entry.graphRoutes;
+  return detail;
+}
+
+function readIfExists(filePath) {
+  try {
+    return fs.readFileSync(filePath, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir) {
+  const shaderNames = {
+    turbo3: "turbo3",
+    turbo4: "turbo4",
+    turbo3_tcq: "turbo3_tcq",
+    qjl_full: "qjl",
+    polarquant: "polar",
+  };
+  const sourceDir = cacheDir
+    ? path.join(cacheDir, "ggml", "src", "ggml-vulkan", "vulkan-shaders")
+    : null;
+  const sourceFiles = {};
+  const symbols = {};
+  for (const [capability, shader] of Object.entries(shaderNames)) {
+    const sourcePath = sourceDir
+      ? path.join(sourceDir, `${shader}.comp`)
+      : null;
+    sourceFiles[capability] =
+      Boolean(sourcePath && fs.existsSync(sourcePath)) &&
+      readIfExists(sourcePath).includes("MILADY-VK-DISPATCH-PATCH-V1");
+    symbols[capability] = false;
+  }
+
+  const patchTargets = cacheDir
+    ? [
+        path.join(
+          cacheDir,
+          "ggml",
+          "src",
+          "ggml-vulkan",
+          "vulkan-shaders",
+          "vulkan-shaders-gen.cpp",
+        ),
+        path.join(cacheDir, "ggml", "src", "ggml-vulkan", "ggml-vulkan.cpp"),
+      ]
+    : [];
+  const patchSentinels = patchTargets.map((targetPath) => ({
+    target: targetPath,
+    present:
+      fs.existsSync(targetPath) &&
+      readIfExists(targetPath).includes("MILADY-VK-DISPATCH-PATCH-V1"),
+  }));
+
+  const artifactFiles = [
+    ...collectFilesUnder(buildDir, /\.(hpp|h|cpp|o|obj|spv|a|so|dylib|dll)$/),
+    ...collectFilesUnder(outDir, /\.(hpp|h|cpp|o|obj|spv|a|so|dylib|dll)$/),
+  ];
+  const artifactText = artifactFiles
+    .map((file) => {
+      try {
+        return fs.readFileSync(file).toString("latin1");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+
+  for (const [capability, shader] of Object.entries(shaderNames)) {
+    const generatedSymbol = `milady_${shader}`;
+    symbols[capability] =
+      sourceFiles[capability] ||
+      artifactText.includes(`${generatedSymbol}_data`) ||
+      artifactText.includes(`${generatedSymbol}_len`) ||
+      artifactText.includes(`pipeline_milady_${shader}`) ||
+      artifactFiles.some((file) => path.basename(file).includes(shader));
+  }
+
+  return {
+    sourceDir,
+    sourceFiles,
+    patchSentinels,
+    artifactFiles: artifactFiles.map((file) => path.relative(buildDir, file)),
+    symbols,
+  };
+}
+
+function vulkanRuntimeDispatchStatus(shippedKernels) {
+  const shipped = shippedKernels?.symbols ?? {};
+  const sourceFiles = shippedKernels?.sourceFiles ?? {};
+  const evidence = readVulkanRuntimeDispatchEvidence();
+  const mk = (key, shader) =>
+    vulkanRuntimeDispatchKernelStatus(
+      key,
+      shipped,
+      sourceFiles,
+      evidence,
+      `vulkan-dispatch-smoke must route ${shader} through ggml-vulkan graph execution and match the fixture/reference`,
+    );
+  return {
+    sourceOfTruth:
+      "dispatch-ready requires a built-fork GGML Vulkan graph smoke, not SPIR-V files or pipeline slots",
+    evidencePath: evidence.path,
+    evidenceLoaded: Boolean(evidence.data),
+    evidenceError: evidence.error ?? null,
+    smokeTargets: {
+      nativeLinux: "make -C packages/inference/verify vulkan-native-smoke",
+      androidDevice: "make -C packages/inference/verify android-vulkan-smoke",
+      builtForkGraph: "make -C packages/inference/verify vulkan-dispatch-smoke",
+    },
+    kernels: {
+      turbo3: mk("turbo3", "milady_turbo3"),
+      turbo4: mk("turbo4", "milady_turbo4"),
+      turbo3_tcq: mk("turbo3_tcq", "milady_turbo3_tcq"),
+      qjl_full: mk("qjl_full", "GGML_OP_ATTN_SCORE_QJL / milady_qjl"),
+      polarquant: mk("polarquant", "Q4_POLAR / milady_polar"),
+    },
+  };
 }
 
 function writeCapabilities({
   outDir,
   target,
   buildDir,
+  cacheDir,
   forkCommit,
   binaries,
   omnivoice = null,
 }) {
   const { platform, arch, backend, fused } = parseTarget(target);
-  const kernels = probeKernels(target, buildDir, outDir);
+  const kernels = probeKernels(target, buildDir, outDir, cacheDir);
   const missing = requiredKernelsMissing(target, kernels);
+  const shippedKernels =
+    backend === "metal"
+      ? probeMetalShippedKernelSymbols(buildDir, outDir)
+      : backend === "vulkan"
+        ? probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir)
+        : null;
+  const runtimeDispatch =
+    backend === "metal"
+      ? metalRuntimeDispatchStatus(shippedKernels)
+      : backend === "vulkan"
+        ? vulkanRuntimeDispatchStatus(shippedKernels)
+        : null;
+  const allowUnverifiedVulkanBuild =
+    backend === "vulkan" &&
+    (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
+      process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
   const capabilities = {
     target,
     platform,
@@ -1364,6 +2147,11 @@ function writeCapabilities({
     fork: "milady-ai/llama.cpp",
     forkCommit,
     kernels,
+    publishable: missing.length === 0,
+    missingRequiredKernels: missing,
+    smokeOnlyIncompleteAllowed: missing.length > 0 && allowUnverifiedVulkanBuild,
+    shippedKernels,
+    runtimeDispatch,
     binaries,
     omnivoice,
   };
@@ -1372,10 +2160,17 @@ function writeCapabilities({
     `${JSON.stringify(capabilities, null, 2)}\n`,
   );
   if (missing.length > 0) {
+    if (allowUnverifiedVulkanBuild) {
+      console.warn(
+        `[dflash-build] target=${target} built with unverified Vulkan runtime kernels: ${missing.join(", ")}. ` +
+          `This is allowed only for the graph-dispatch smoke bootstrap; CAPABILITIES.json is diagnostic, publishable=false, and must not be published until vulkan-runtime-dispatch-evidence.json is generated and the target is rebuilt without the unverified-build env override.`,
+      );
+      return capabilities;
+    }
     throw new Error(
       `[dflash-build] target=${target} missing required kernels: ${missing.join(", ")}. ` +
         `AGENTS.md §3 forbids shipping an Eliza-1 binary without the full ` +
-        `dflash + turbo3 + turbo4 + qjl + polar kernel set. CAPABILITIES.json ` +
+        `dflash + turbo3 + turbo4 + turbo3_tcq + qjl + polar kernel set. CAPABILITIES.json ` +
         `was written for diagnostic purposes only — the artifact is incomplete ` +
         `and must not be published. Inspect the build log for the failed ` +
         `patch hook or absent dispatch site, fix the root cause, and rebuild.`,
@@ -1389,11 +2184,44 @@ function targetOutDir(target, override) {
   return path.join(stateDir(), "local-inference", "bin", "dflash", target);
 }
 
+function cmakeBuildTargetsFor(target) {
+  const { platform, backend, fused } = parseTarget(target);
+  const isIos = platform === "ios";
+  const targets = isIos
+    ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
+    : fused
+      ? fusedCmakeBuildTargets()
+      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+
+  // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
+  // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
+  // builds ONLY the listed targets and skips everything in ALL. Without
+  // ggml-metal-lib in the explicit target list the metallib never gets
+  // assembled and the Wave-5 milady-shipped/*.air merge step never fires.
+  if (backend === "metal" && !isIos) {
+    targets.push("ggml-metal-lib");
+  }
+
+  return targets;
+}
+
 // Build a single target. Returns the resulting CAPABILITIES.json object.
 function buildTarget({ target, args, ctx }) {
   const { platform, backend, fused } = parseTarget(target);
   const outDir = targetOutDir(target, args.outDirOverride);
   const buildDir = path.join(args.cacheDir, "build", target);
+  if (useLegacyDflashDrafterRuntime(target)) {
+    if (args.dryRun) {
+      console.log(
+        `[dflash-build] (dry-run) target=${target} legacy-dflash-drafter-runtime=true`,
+      );
+      console.log(
+        `  install ${legacyDflashDrafterBinDir()} -> ${outDir}`,
+      );
+      return null;
+    }
+    return installLegacyDflashDrafterRuntime({ target, outDir, args });
+  }
   const flags = cmakeFlagsForTarget(target, ctx);
 
   // Fused targets graft omnivoice.cpp's `src/` + `tools/` into the
@@ -1403,9 +2231,7 @@ function buildTarget({ target, args, ctx }) {
   let omnivoiceInfo = null;
   if (fused) {
     if (args.dryRun) {
-      console.log(
-        `[dflash-build] (dry-run) target=${target} fused=true`,
-      );
+      console.log(`[dflash-build] (dry-run) target=${target} fused=true`);
       console.log(
         `  prepareOmnivoiceFusion ref=${OMNIVOICE_REF} llamaCppRoot=${args.cacheDir}`,
       );
@@ -1446,11 +2272,10 @@ function buildTarget({ target, args, ctx }) {
     console.log(
       `  cmake -B ${buildDir} ${flags.join(" ")}`.replace(/ +/g, " "),
     );
-    const dryTargets = fused
-      ? fusedCmakeBuildTargets()
-      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+    const dryTargets = cmakeBuildTargetsFor(target);
+    const isDryRunMultiConfig = platform === "windows" || platform === "ios";
     console.log(
-      `  cmake --build ${buildDir} --target ${dryTargets.join(" ")} -j ${args.jobs}`,
+      `  cmake --build ${buildDir}${isDryRunMultiConfig ? " --config Release" : ""} --target ${dryTargets.join(" ")} -j ${args.jobs}`,
     );
     console.log(`  install -> ${outDir}`);
     return null;
@@ -1467,23 +2292,7 @@ function buildTarget({ target, args, ctx }) {
   // Fused targets additionally build omnivoice-core, libelizainference,
   // and the stub fused server.
   const isIos = platform === "ios";
-  const cmakeBuildTargets = isIos
-    ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
-    : fused
-      ? fusedCmakeBuildTargets()
-      : ["llama-server", "llama-cli", "llama-speculative-simple"];
-
-  // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
-  // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
-  // builds ONLY the listed targets and skips everything in ALL. Without
-  // ggml-metal-lib in the explicit target list the metallib never gets
-  // assembled and the Wave-5 milady-shipped/*.air merge step never fires —
-  // even though llama-server links and runs. Add it for darwin Metal builds
-  // (iOS uses EMBED_LIBRARY=ON which bakes the metallib into the static
-  // archive directly via .incbin, no separate target needed).
-  if (backend === "metal" && !isIos) {
-    cmakeBuildTargets.push("ggml-metal-lib");
-  }
+  const cmakeBuildTargets = cmakeBuildTargetsFor(target);
 
   // MSVC + Xcode are multi-config generators — cmake --build needs an
   // explicit --config flag, otherwise it defaults to Debug and the install
@@ -1518,6 +2327,10 @@ function buildTarget({ target, args, ctx }) {
       installedNames.push(name);
       installedBaseNames.push(name.replace(/^lib|\.a$/g, ""));
     }
+    const shimArchive = buildIosRuntimeSymbolShim({ target, outDir });
+    const shimName = path.basename(shimArchive);
+    installedNames.push(shimName);
+    installedBaseNames.push(shimName.replace(/^lib|\.a$/g, ""));
     // Stage the headers needed by cap-bridge.cpp / the public llama.cpp API
     // so the xcframework patch can include them under
     // LlamaCpp.framework/Headers/. Mirrors what packages/app-core/patches/
@@ -1619,7 +2432,8 @@ function buildTarget({ target, args, ctx }) {
   }
 
   // For fused targets, prove that BOTH llama_* and omnivoice_* symbol
-  // families landed in the produced shared library. Per
+  // families plus the libelizainference ABI v1 entry points landed in
+  // the produced shared library. Per
   // packages/inference/AGENTS.md §3, missing fusion is a hard error
   // with no fallback.
   let omnivoiceVerification = null;
@@ -1629,7 +2443,8 @@ function buildTarget({ target, args, ctx }) {
       `[dflash-build] omnivoice-fuse symbol-verify: ` +
         `library=${omnivoiceVerification.library} ` +
         `llama=${omnivoiceVerification.llamaSymbolCount} ` +
-        `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount}`,
+        `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount} ` +
+        `abi=${omnivoiceVerification.abiSymbolCount}`,
     );
   }
 
@@ -1637,6 +2452,7 @@ function buildTarget({ target, args, ctx }) {
     outDir,
     target,
     buildDir,
+    cacheDir: args.cacheDir,
     forkCommit: ctx.forkCommit,
     binaries: installedBaseNames,
     omnivoice:
@@ -1653,12 +2469,12 @@ function buildTarget({ target, args, ctx }) {
         : null,
   });
   console.log(
-    `[dflash-build] installed ${target} binaries to ${outDir} (kernels: ${Object.entries(
-      capabilities.kernels,
-    )
-      .filter(([, v]) => v)
-      .map(([k]) => k)
-      .join(", ") || "none"})`,
+    `[dflash-build] installed ${target} binaries to ${outDir} (kernels: ${
+      Object.entries(capabilities.kernels)
+        .filter(([, v]) => v)
+        .map(([k]) => k)
+        .join(", ") || "none"
+    })`,
   );
   return capabilities;
 }
@@ -1727,8 +2543,24 @@ function build(args) {
     }
   }
 
+  const legacyDrafterRuntimeOnly = targets.every((target) =>
+    useLegacyDflashDrafterRuntime(target),
+  );
+
   if (!args.dryRun) {
-    ctx.forkCommit = ensureCheckout(args.cacheDir, args.ref);
+    if (args.targets && args.targets.length > 0 && !args.all) {
+      for (const target of targets) {
+        const compat = targetCompatibility(target, ctx);
+        if (!compat.ok) {
+          throw new Error(
+            `target ${target} is not buildable: ${compat.reason}`,
+          );
+        }
+      }
+    }
+    ctx.forkCommit = legacyDrafterRuntimeOnly
+      ? ""
+      : ensureCheckout(args.cacheDir, args.ref);
   } else if (fs.existsSync(path.join(args.cacheDir, ".git"))) {
     ctx.forkCommit = run("git", ["rev-parse", "HEAD"], {
       cwd: args.cacheDir,
@@ -1742,9 +2574,7 @@ function build(args) {
   for (const target of targets) {
     const compat = targetCompatibility(target, ctx);
     if (!compat.ok) {
-      console.log(
-        `[dflash-build] skip target=${target}: ${compat.reason}`,
-      );
+      console.log(`[dflash-build] skip target=${target}: ${compat.reason}`);
       skipped.push({ target, reason: compat.reason });
       if (args.targets && args.targets.length > 0 && !args.all) {
         // Explicit single --target should fail loudly rather than silently skip.
@@ -1799,8 +2629,16 @@ function build(args) {
 try {
   build(parseArgs(process.argv.slice(2)));
 } catch (err) {
+  const detail =
+    process.env.ELIZA_DFLASH_DEBUG_STACK === "1" &&
+    err instanceof Error &&
+    err.stack
+      ? err.stack
+      : err instanceof Error
+        ? err.message
+        : String(err);
   console.error(
-    `[dflash-build] ${err instanceof Error ? err.message : String(err)}`,
+    `[dflash-build] ${detail}`,
   );
   process.exit(1);
 }

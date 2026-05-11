@@ -74,13 +74,20 @@ export interface ElizaInferenceFfi {
   /** Destroy a previously-created context. Idempotent on already-freed handles. */
   destroy(ctx: ElizaInferenceContextHandle): void;
   /** Map / re-page weights for a region. */
-  mmapAcquire(ctx: ElizaInferenceContextHandle, region: ElizaInferenceRegion): void;
+  mmapAcquire(
+    ctx: ElizaInferenceContextHandle,
+    region: ElizaInferenceRegion,
+  ): void;
   /**
-   * Hint the kernel that a region's pages are no longer needed
-   * (madvise MADV_DONTNEED / VirtualUnlock). Does not close the file
-   * descriptor — a subsequent `mmapAcquire` re-pages without an open().
+   * Release or evict a voice-only region after the lifecycle leaves
+   * voice-on. Implementations may madvise mapped pages or unload the
+   * ASR/TTS runtime state entirely; callers must treat the region as
+   * unavailable until the next `mmapAcquire`.
    */
-  mmapEvict(ctx: ElizaInferenceContextHandle, region: ElizaInferenceRegion): void;
+  mmapEvict(
+    ctx: ElizaInferenceContextHandle,
+    region: ElizaInferenceRegion,
+  ): void;
   /**
    * Synchronous TTS forward. Caller provides the output buffer; library
    * fills up to its capacity and returns the number of samples written.
@@ -150,38 +157,38 @@ export function loadElizaInferenceFfi(dylibPath: string): ElizaInferenceFfi {
 /* ---------------------------------------------------------------- */
 
 interface BunFfiSymbols {
-  eliza_inference_abi_version: { (): unknown };
-  eliza_inference_create: { (bundleDir: unknown, outErr: unknown): bigint };
-  eliza_inference_destroy: { (ctx: bigint): void };
-  eliza_inference_mmap_acquire: {
-    (ctx: bigint, region: unknown, outErr: unknown): number;
-  };
-  eliza_inference_mmap_evict: {
-    (ctx: bigint, region: unknown, outErr: unknown): number;
-  };
-  eliza_inference_tts_synthesize: {
-    (
-      ctx: bigint,
-      text: unknown,
-      textLen: bigint | number,
-      speaker: unknown,
-      outPcm: unknown,
-      maxSamples: bigint | number,
-      outErr: unknown,
-    ): number;
-  };
-  eliza_inference_asr_transcribe: {
-    (
-      ctx: bigint,
-      pcm: unknown,
-      nSamples: bigint | number,
-      sampleRateHz: number,
-      outText: unknown,
-      maxTextBytes: bigint | number,
-      outErr: unknown,
-    ): number;
-  };
-  eliza_inference_free_string: { (str: unknown): void };
+  eliza_inference_abi_version: () => unknown;
+  eliza_inference_create: (bundleDir: unknown, outErr: unknown) => unknown;
+  eliza_inference_destroy: (ctx: bigint) => void;
+  eliza_inference_mmap_acquire: (
+    ctx: bigint,
+    region: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_mmap_evict: (
+    ctx: bigint,
+    region: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_tts_synthesize: (
+    ctx: bigint,
+    text: unknown,
+    textLen: bigint | number,
+    speaker: unknown,
+    outPcm: unknown,
+    maxSamples: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_asr_transcribe: (
+    ctx: bigint,
+    pcm: unknown,
+    nSamples: bigint | number,
+    sampleRateHz: number,
+    outText: unknown,
+    maxTextBytes: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_free_string: (str: bigint | number) => void;
 }
 
 interface BunFfiLib {
@@ -225,34 +232,56 @@ function loadBunFfiModule(): BunFfiModule {
 }
 
 function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
-  const ffi = loadBunFfiModule();
+  let ffi: BunFfiModule;
+  try {
+    ffi = loadBunFfiModule();
+  } catch (err) {
+    throw new VoiceLifecycleError(
+      "kernel-missing",
+      `[ffi-bindings] Cannot load bun:ffi while opening ${dylibPath}: ${formatFfiError(err)}`,
+    );
+  }
   const T = ffi.FFIType;
 
-  const lib = ffi.dlopen(dylibPath, {
-    eliza_inference_abi_version: { args: [], returns: T.cstring },
-    eliza_inference_create: {
-      args: [T.cstring, T.ptr],
-      returns: T.ptr,
-    },
-    eliza_inference_destroy: { args: [T.ptr], returns: T.void },
-    eliza_inference_mmap_acquire: {
-      args: [T.ptr, T.cstring, T.ptr],
-      returns: T.i32,
-    },
-    eliza_inference_mmap_evict: {
-      args: [T.ptr, T.cstring, T.ptr],
-      returns: T.i32,
-    },
-    eliza_inference_tts_synthesize: {
-      args: [T.ptr, T.cstring, T.usize, T.cstring, T.ptr, T.usize, T.ptr],
-      returns: T.i32,
-    },
-    eliza_inference_asr_transcribe: {
-      args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
-      returns: T.i32,
-    },
-    eliza_inference_free_string: { args: [T.ptr], returns: T.void },
-  });
+  // All `char *` arguments are typed as T.ptr — Bun's `T.cstring` is a
+  // RETURN-only type for "library hands back a NUL-terminated string".
+  // For inputs we encode UTF-8 to a NUL-terminated Buffer on the JS
+  // side and pass `ffi.ptr(buffer)`.
+  let lib: BunFfiLib;
+  try {
+    lib = ffi.dlopen(dylibPath, {
+      eliza_inference_abi_version: { args: [], returns: T.cstring },
+      eliza_inference_create: {
+        args: [T.ptr, T.ptr],
+        returns: T.ptr,
+      },
+      eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+      eliza_inference_mmap_acquire: {
+        args: [T.ptr, T.ptr, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_mmap_evict: {
+        args: [T.ptr, T.ptr, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_tts_synthesize: {
+        args: [T.ptr, T.ptr, T.usize, T.ptr, T.ptr, T.usize, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_asr_transcribe: {
+        args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
+        returns: T.i32,
+      },
+      // Bun 1.3.x accepts raw pointer values passed back into C as
+      // `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
+      eliza_inference_free_string: { args: [T.usize], returns: T.void },
+    });
+  } catch (err) {
+    throw new VoiceLifecycleError(
+      "kernel-missing",
+      `[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(err)}`,
+    );
+  }
 
   // ABI version check — refuse to run if the loaded library is not v1.
   const reported = readCString(lib.symbols.eliza_inference_abi_version(), ffi);
@@ -275,15 +304,40 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
   function takeError(outErrPtrBuf: BigUint64Array): string | null {
     const ptrValue = outErrPtrBuf[0];
     if (ptrValue === undefined || ptrValue === 0n) return null;
-    const cstr = new ffi.CString(Number(ptrValue));
+    const ptrNumber = Number(ptrValue);
+    if (!Number.isSafeInteger(ptrNumber)) {
+      throw new VoiceLifecycleError(
+        "kernel-missing",
+        `[ffi-bindings] C diagnostic pointer ${ptrValue.toString()} exceeds JS safe integer range`,
+      );
+    }
+    const cstr = new ffi.CString(ptrNumber);
     const message = cstr.toString();
-    lib.symbols.eliza_inference_free_string(Number(ptrValue));
+    lib.symbols.eliza_inference_free_string(ptrValue);
     return message;
   }
 
   function makeOutErr(): { buf: BigUint64Array; ptr: unknown } {
     const buf = new BigUint64Array(1);
     return { buf, ptr: ffi.ptr(buf) };
+  }
+
+  /**
+   * Encode a JS string to a NUL-terminated UTF-8 buffer and return a
+   * `T.ptr`-compatible pointer suitable for `const char *` arguments.
+   * Returns null when the input is null — the C ABI accepts NULL for
+   * optional arguments like `speaker_preset_id`.
+   */
+  function cstr(value: string | null): {
+    ptr: unknown;
+    bytes: number;
+    buffer: Buffer | null;
+  } {
+    if (value === null) return { ptr: null, bytes: 0, buffer: null };
+    const bytes = Buffer.from(value, "utf8");
+    const buf = Buffer.alloc(bytes.byteLength + 1);
+    bytes.copy(buf);
+    return { ptr: ffi.ptr(buf), bytes: bytes.byteLength, buffer: buf };
   }
 
   function failureCode(rc: number): VoiceLifecycleError["code"] {
@@ -295,20 +349,25 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
     return "kernel-missing";
   }
 
+  function isNullPointer(value: unknown): boolean {
+    return value === null || value === undefined || value === 0n || value === 0;
+  }
+
   return {
     libraryPath: dylibPath,
     libraryAbiVersion: reported,
 
     create(bundleDir: string): ElizaInferenceContextHandle {
       const err = makeOutErr();
-      const handle = lib.symbols.eliza_inference_create(bundleDir, err.ptr);
-      if (handle === 0n) {
+      const bundleArg = cstr(bundleDir);
+      const handle = lib.symbols.eliza_inference_create(bundleArg.ptr, err.ptr);
+      if (isNullPointer(handle)) {
         const message =
           takeError(err.buf) ??
           "[ffi-bindings] eliza_inference_create returned NULL with no diagnostic";
         throw new VoiceLifecycleError("kernel-missing", message);
       }
-      return handle;
+      return handle as ElizaInferenceContextHandle;
     },
 
     destroy(ctx: ElizaInferenceContextHandle): void {
@@ -317,7 +376,12 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     mmapAcquire(ctx, region) {
       const err = makeOutErr();
-      const rc = lib.symbols.eliza_inference_mmap_acquire(ctx, region, err.ptr);
+      const regionArg = cstr(region);
+      const rc = lib.symbols.eliza_inference_mmap_acquire(
+        ctx,
+        regionArg.ptr,
+        err.ptr,
+      );
       if (rc !== ELIZA_OK) {
         const message =
           takeError(err.buf) ??
@@ -328,7 +392,12 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     mmapEvict(ctx, region) {
       const err = makeOutErr();
-      const rc = lib.symbols.eliza_inference_mmap_evict(ctx, region, err.ptr);
+      const regionArg = cstr(region);
+      const rc = lib.symbols.eliza_inference_mmap_evict(
+        ctx,
+        regionArg.ptr,
+        err.ptr,
+      );
       if (rc !== ELIZA_OK) {
         const message =
           takeError(err.buf) ??
@@ -339,12 +408,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
     ttsSynthesize({ ctx, text, speakerPresetId, out }) {
       const err = makeOutErr();
-      const textBytes = Buffer.from(text, "utf8");
+      const textArg = cstr(text);
+      const speakerArg = cstr(speakerPresetId);
       const rc = lib.symbols.eliza_inference_tts_synthesize(
         ctx,
-        text,
-        BigInt(textBytes.byteLength),
-        speakerPresetId,
+        textArg.ptr,
+        BigInt(textArg.bytes),
+        speakerArg.ptr,
         ffi.ptr(out),
         BigInt(out.length),
         err.ptr,
@@ -388,6 +458,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
       lib.close();
     },
   };
+}
+
+function formatFfiError(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  return String(err);
 }
 
 /**

@@ -240,7 +240,7 @@ export const lifeOpsProvider: Provider = {
   description:
     "Owner and agent only. Provides owner operations overview plus live calendar and Gmail context. Route todos to OWNER_TODOS, reminders to OWNER_REMINDERS, alarms to OWNER_ALARMS, habits/routines to OWNER_ROUTINES, goals to OWNER_GOALS, owner health reads to OWNER_HEALTH, screen-time reads to OWNER_SCREENTIME, owner finance/subscription work to OWNER_FINANCES, all owner calendar/scheduling/availability work to CALENDAR, all owner inbox/email/draft/reply/message-management work to MESSAGE with the appropriate action, stable owner facts through automatic profile extraction, contact/entity facts to ENTITY or CONTACT, travel booking and scheduling workflows to PERSONAL_ASSISTANT, X/Twitter DMs to MESSAGE with source=x, X/Twitter feed/search to POST with source=x, website and app blocking to BLOCK with target=website or target=app, browser-companion management to MANAGE_BROWSER_BRIDGE, browser tab control to BROWSER, credential lookup/autofill to CREDENTIALS, and pending approval decisions to RESOLVE_REQUEST. Morning/night self-review briefings run as scheduled tasks rather than as a planner-visible action. Available in private owner conversations, including Discord.",
   descriptionCompressed:
-    "LifeOps overview, upcoming calendar, email triage. Owner only.",
+    "Owner operations overview, upcoming calendar, email triage. Owner only.",
   dynamic: true,
   position: 12,
   contexts: [
@@ -516,6 +516,19 @@ export const lifeOpsProvider: Provider = {
             }
           }
         }
+
+        if (calendarLines.length === 0 && audience === "owner") {
+          try {
+            nextEventContext =
+              await service.getNextCalendarEventContext(INTERNAL_URL);
+            calendarLines.push(...summarizeNextEvent(nextEventContext));
+          } catch (cause) {
+            logger.debug(
+              { err: cause },
+              "[LifeOpsProvider] native calendar context unavailable — omitting calendar context",
+            );
+          }
+        }
       } catch (cause) {
         logger.debug(
           { err: cause },
@@ -547,6 +560,7 @@ export const lifeOpsProvider: Provider = {
           "Use OWNER_SCREENTIME for quantitative device/app/website usage questions. Examples: 'how much screen time have I used today?', 'break down my screen time by app this week', 'what websites did I spend the most time on?'. If the owner is only reflecting or venting like 'I spend too much time on my phone', stay in chat instead of calling OWNER_SCREENTIME.",
           "Use BLOCK for phone app and website blocking requests. Pass target=app for phone apps and target=website for websites. Examples: 'block all games on my phone until 6pm', 'block Slack while I focus on deep work', 'block reddit.com until after my workout'.",
           "Use OWNER_FINANCES for subscription audits, recurring membership reviews, cancellation requests, and cancellation-status checks. Examples: 'audit my subscriptions', 'cancel my Google Play subscription', 'what happened with that subscription cancellation?', 'cancel this subscription even if it needs sign-in first'. Use MESSAGE action=manage for email newsletter unsubscribe requests.",
+          "Use PERSONAL_ASSISTANT action=sign_document for document-signature flows that must be drafted or queued before an appointment, including NDA or DocuSign requests.",
           "Route all meeting-time proposals, availability checks, durable scheduling rules, and explicit multi-turn scheduling negotiations through CALENDAR.",
           "Stable owner-only profile details and reusable travel-preference checklists are extracted automatically by evaluators. Do not use a planner action for goals, todos, reminders, temporary plans, or live task state.",
           "Use MESSAGE action=read_channel/search with source=x for X/Twitter DMs. Use POST action=read/search with source=x for X/Twitter timeline, mentions, and topic search. Do not route X reads/search to a platform-specific X action.",

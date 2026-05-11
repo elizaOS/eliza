@@ -13,9 +13,9 @@ canonical entry point is the publish orchestrator:
 
 ```bash
 python -m scripts.publish.orchestrator \
-    --tier desktop-9b \
-    --bundle-dir ./bundles/desktop-9b \
-    --metal-verification ./reports/desktop-9b/metal_verify.json \
+    --tier 9b \
+    --bundle-dir ./bundles/9b \
+    --metal-verification ./reports/9b/metal_verify.json \
     --dry-run
 ```
 
@@ -26,39 +26,52 @@ whole run.
 
 ### Stages
 
-The orchestrator runs six stages in order. Any failure exits non-zero
+The orchestrator runs seven stages in order. Any failure exits non-zero
 with a specific code (see "Exit codes" below):
 
 1. **Layout validation.** Confirms the bundle directory matches
    `packages/inference/AGENTS.md` §2 (text/, tts/, asr/, vision/,
    dflash/, cache/, evals/, licenses/) and that every required license
-   blob exists and is non-empty.
-2. **Kernel verification.** Runs `make -C ../../inference/verify
-   reference-test` for the CPU path. For Vulkan and CUDA, the
+   blob exists and is non-empty. The frozen voice GGUF, tokenizer, and
+   `cache/voice-preset-default.bin` must be present.
+2. **Release evidence.** Requires `evidence/release.json` and
+   `checksums/SHA256SUMS`. The evidence sidecar must declare final
+   weights, final hashes, final eval outputs, complete licenses, runtime
+   graph-dispatch reports, platform evidence for every supported
+   backend, the exact `elizalabs/eliza-1-<tier>` destination, and
+   size-first repo IDs. The checksum manifest is verified against the
+   actual bytes that will be uploaded. A dry-run fails here the same way
+   a real publish does.
+3. **Kernel verification.** Runs `make -C ../../inference/verify
+   reference-test` for the CPU path. For Vulkan, CUDA, and ROCm, the
    orchestrator consumes recorded reports at
    `<bundle>/evals/vulkan_verify.json` and
-   `<bundle>/evals/cuda_verify.json`. **Metal is hardware-only**: pass
-   `--metal-verification PATH` pointing at a `metal_verify.json`
-   recorded on a verified Metal host. Without it, a tier that includes
-   Metal in `SUPPORTED_BACKENDS_BY_TIER` fails with
+   `<bundle>/evals/cuda_verify.json` /
+   `<bundle>/evals/rocm_verify.json` when the tier supports those
+   backends. **Metal is hardware-only**: pass `--metal-verification
+   PATH` pointing at a `metal_verify.json` recorded on a verified Metal
+   host. Without it, a tier that includes Metal in
+   `SUPPORTED_BACKENDS_BY_TIER` fails with
    `EXIT_KERNEL_VERIFY_FAIL`.
-3. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
+4. **Eval gates.** Loads `<bundle>/evals/aggregate.json` and applies
    `apply_gates(results, tier)` from
    `packages/training/benchmarks/eliza1_gates.py`. Refuses to proceed
-   unless `passed: true`. The gate report is written into the manifest's
-   `evals` block.
-4. **Manifest build.** Calls `build_manifest(...)` from
+   unless `passed: true`. Voice gates include RTF, expressive tag
+   faithfulness, expressive MOS, and tag leakage so singing can ship as a
+   normal declared voice capability. The gate report is written into the
+   manifest's `evals` block.
+5. **Manifest build.** Calls `build_manifest(...)` from
    `packages/training/scripts/manifest/eliza1_manifest.py`. The manifest
    module's validator independently re-checks the §3 / §6 contract
    (every required kernel declared, every supported backend `pass`,
    every eval flag `passed`). The orchestrator sets `defaultEligible:
    true` only when every required gate is green AND every supported
    backend verified pass; the validator rejects mis-uses of that flag.
-5. **README render.** Renders
+6. **README render.** Renders
    `scripts/publish/templates/README.md.j2` from the manifest data.
-   No marketing copy. No user-visible Qwen/Llama strings — the upstream
-   lineage is recorded in the manifest's `lineage` block.
-6. **HF push + git tag.** Uploads weights, manifest, README, licenses,
+   No marketing copy. User-visible text stays Eliza-1-first; upstream
+   lineage is recorded only in the manifest's `lineage` block.
+7. **HF push + git tag.** Uploads weights, manifest, README, licenses,
    and eval blobs to `elizalabs/eliza-1-<tier>` via
    `huggingface_hub.HfApi.create_commit`, then tags the local training
    repo with `eliza-1-<tier>-v<version>`. In `--dry-run` neither side
@@ -72,27 +85,39 @@ Per `packages/inference/AGENTS.md` §2 the bundle root must look like:
 <bundle>/
   text/      <one or more *.gguf, named eliza-1-<tier>-<ctx>.gguf>
   tts/       <omnivoice-*.gguf and tokenizer>
-  asr/       <asr.gguf or native package>
+  asr/       <eliza-1-asr.gguf and eliza-1-asr-mmproj.gguf>
+  vad/       <silero-vad-int8.onnx> # sidecar, intentionally not GGUF
   vision/    <mmproj-<tier>.gguf where applicable>
   dflash/    <drafter-<tier>.gguf and target-meta.json>
-  cache/     <voice-preset-default.bin>
+  cache/     <voice-preset-default.bin containing the default speaker preset + phrase cache seed>
   evals/
     aggregate.json        # input to apply_gates(); shape per eliza1_gates.py docstring
     vulkan_verify.json    # recorded report (status, atCommit, report)
     cuda_verify.json      # recorded report (server / desktop / pro tiers)
+    rocm_verify.json      # recorded report (desktop / pro / server tiers)
+    <backend>_dispatch.json # runtimeReady=true graph-dispatch evidence
+    <backend>_platform.json # physical/smoke platform evidence
   licenses/
     LICENSE.text
     LICENSE.voice
+    LICENSE.asr           # required when asr/ ships
+    LICENSE.vad           # required when vad/ ships
+    LICENSE.vision        # required when vision/ ships
     LICENSE.dflash
     LICENSE.eliza-1
+  evidence/
+    release.json          # final release evidence sidecar
+  checksums/
+    SHA256SUMS            # sha256sum-format hashes for every uploaded input artifact
   lineage.json   # optional: per-slot {base, license} overrides
   ram_budget.json # optional: {min, recommended} in MB
   VERSION        # optional: bundle version (default 1.0.0)
 ```
 
 The text variants encode their context length in the filename (e.g.
-`eliza-1-desktop-9b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
-automatically force `turbo3_tcq` into `kernels.optional`.
+`eliza-1-9b-64k.gguf` → `ctx=65536`). Variants with `ctx > 64k`
+automatically force `turbo3_tcq` into `kernels.required`; desktop/pro/server
+tiers require it even for the 64k default.
 
 ### Recording Metal verification on a hardware host
 
@@ -103,7 +128,7 @@ make metal
 ./metal_verify > metal_verify.txt
 
 # Then write a JSON record the orchestrator can consume:
-cat > /path/to/desktop-9b/evals/metal_verify.json <<EOF
+cat > /path/to/9b/evals/metal_verify.json <<EOF
 {
   "backend": "metal",
   "status": "pass",
@@ -130,6 +155,83 @@ is set; anything else exits `EXIT_KERNEL_VERIFY_FAIL`.
 |  13  | `EXIT_EVAL_GATE_FAIL`        | One or more required-for-tier gates in `eliza1_gates.yaml` failed.      |
 |  14  | `EXIT_MANIFEST_INVALID`      | `build_manifest` rejected the assembled manifest.                       |
 |  15  | `EXIT_HF_PUSH_FAIL`          | Missing `HF_TOKEN`, HF API error, or `git tag` failure.                 |
+|  16  | `EXIT_RELEASE_EVIDENCE_FAIL` | Release evidence sidecar, checksum coverage, runtime dispatch evidence, platform evidence, or finalization proof is invalid. |
+
+### Release evidence sidecar
+
+`evidence/release.json` is the operator-attested evidence bundle for
+HF release candidates. It is not allowed to claim a final release unless
+the evidence is real; do not paste placeholders. Minimum shape:
+
+```json
+{
+  "schemaVersion": 1,
+  "tier": "9b",
+  "repoId": "elizalabs/eliza-1-9b",
+  "releaseState": "upload-candidate",
+  "final": {
+    "weights": true,
+    "hashes": true,
+    "evals": true,
+    "licenses": true,
+    "kernelDispatchReports": true,
+    "platformEvidence": true,
+    "sizeFirstRepoIds": true
+  },
+  "weights": [
+    "text/eliza-1-9b-64k.gguf",
+    "tts/omnivoice-base-Q8_0.gguf",
+    "tts/omnivoice-tokenizer-Q8_0.gguf",
+    "asr/eliza-1-asr.gguf",
+    "asr/eliza-1-asr-mmproj.gguf",
+    "vad/silero-vad-int8.onnx",
+    "vision/mmproj-9b.gguf",
+    "dflash/drafter-9b.gguf"
+  ],
+  "checksumManifest": "checksums/SHA256SUMS",
+  "evalReports": ["evals/aggregate.json"],
+  "licenseFiles": [
+    "licenses/LICENSE.text",
+    "licenses/LICENSE.voice",
+    "licenses/LICENSE.dflash",
+    "licenses/LICENSE.eliza-1",
+    "licenses/LICENSE.asr",
+    "licenses/LICENSE.vision",
+    "licenses/LICENSE.vad"
+  ],
+  "kernelDispatchReports": {
+    "metal": "evals/metal_dispatch.json",
+    "vulkan": "evals/vulkan_dispatch.json",
+    "cuda": "evals/cuda_dispatch.json",
+    "rocm": "evals/rocm_dispatch.json",
+    "cpu": "evals/cpu_dispatch.json"
+  },
+  "platformEvidence": {
+    "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
+    "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
+    "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
+    "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
+    "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
+    "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+    "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
+    "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+    "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
+    "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
+    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
+  },
+  "hf": {
+    "repoId": "elizalabs/eliza-1-9b",
+    "status": "pending-upload"
+  }
+}
+```
+
+For each backend supported by the tier, the dispatch report must be JSON
+with `status: "pass"` and `runtimeReady: true`. A shader-symbol or
+standalone-fixture report is not enough. Platform evidence must also
+report `status: "pass"`. If `releaseState` is changed to `final`, the
+sidecar must include real `hf.uploadEvidence` with the uploaded repo,
+commit, and URL.
 
 ### Recovering from a partial publish
 
@@ -172,10 +274,10 @@ is intentionally absent.
 
 | Local path                                   | HF repo                              | Type    | Status  |
 |----------------------------------------------|--------------------------------------|---------|---------|
-| `data/final/{train_final,val,test}.jsonl`    | `elizaos/eliza-1-training`           | dataset | PENDING |
-| `data/normalized/scambench.jsonl` + synth    | `elizaos/eliza-1-scambench`          | dataset | PENDING |
-| `data/synthesized/{actions,prompts}/*.jsonl` | `elizaos/eliza-1-synthesized`        | dataset | PENDING |
-| `scripts/`, `pyproject.toml`, docs           | `elizaos/eliza-1-pipeline`           | model   | PENDING |
+| `data/final/{train_final,val,test}.jsonl`    | `elizalabs/eliza-1-training`           | dataset | PENDING |
+| `data/normalized/scambench.jsonl` + synth    | `elizalabs/eliza-1-scambench`          | dataset | PENDING |
+| `data/synthesized/{actions,prompts}/*.jsonl` | `elizalabs/eliza-1-synthesized`        | dataset | PENDING |
+| `scripts/`, `pyproject.toml`, docs           | `elizalabs/eliza-1-pipeline`           | model   | PENDING |
 | (pointer only — uses upstream)               | `mlabonne/harmless_alpaca`           | dataset | upstream |
 
 Update the Status column to `published` once each repo lands.
@@ -200,11 +302,11 @@ cd training
 
 # Always preview first.
 uv run python scripts/publish_dataset_to_hf.py \
-    --dataset training --repo-id elizaos/eliza-1-training --dry-run
+    --dataset training --repo-id elizalabs/eliza-1-training --dry-run
 
 # Real upload.
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset training --repo-id elizaos/eliza-1-training
+    --dataset training --repo-id elizalabs/eliza-1-training
 ```
 
 Expected payload: ~12.4 GB (4 files: train ~11.7 GB, val ~456 MB, test ~201
@@ -216,10 +318,10 @@ whose SHA-256 matches the existing remote LFS blob are skipped on re-runs.
 
 ```bash
 uv run python scripts/publish_dataset_to_hf.py \
-    --dataset scambench --repo-id elizaos/eliza-1-scambench --dry-run
+    --dataset scambench --repo-id elizalabs/eliza-1-scambench --dry-run
 
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset scambench --repo-id elizaos/eliza-1-scambench
+    --dataset scambench --repo-id elizalabs/eliza-1-scambench
 ```
 
 Payload: ~152 MB normalized + ~12 MB synthesized.
@@ -228,10 +330,10 @@ Payload: ~152 MB normalized + ~12 MB synthesized.
 
 ```bash
 uv run python scripts/publish_dataset_to_hf.py \
-    --dataset synthesized --repo-id elizaos/eliza-1-synthesized --dry-run
+    --dataset synthesized --repo-id elizalabs/eliza-1-synthesized --dry-run
 
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset synthesized --repo-id elizaos/eliza-1-synthesized
+    --dataset synthesized --repo-id elizalabs/eliza-1-synthesized
 ```
 
 Payload: a few MB of action examples + action pairs + core prompts.
@@ -243,17 +345,17 @@ This dataset just hosts a README pointing at upstream
 
 ```bash
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset abliteration --repo-id elizaos/eliza-1-abliteration
+    --dataset abliteration --repo-id elizalabs/eliza-1-abliteration
 ```
 
 ## Publish the pipeline
 
 ```bash
 uv run python scripts/publish_pipeline_to_hf.py \
-    --repo-id elizaos/eliza-1-pipeline --dry-run
+    --repo-id elizalabs/eliza-1-pipeline --dry-run
 
 HF_TOKEN=hf_xxx uv run python scripts/publish_pipeline_to_hf.py \
-    --repo-id elizaos/eliza-1-pipeline
+    --repo-id elizalabs/eliza-1-pipeline
 ```
 
 Payload: ~5-10 MB (scripts + docs only — no data, no checkpoints, no
@@ -267,7 +369,7 @@ from your local machine:
 ```bash
 # Option A: use the existing provision-and-train flow with HF bootstrap.
 bash scripts/train_vast.sh provision-and-train \
-    --registry-key qwen3.5-9b --epochs 1 --bootstrap hf
+    --registry-key eliza-1-9b --epochs 1 --bootstrap hf
 
 # Option B: take it step by step.
 bash scripts/train_vast.sh provision
@@ -279,8 +381,8 @@ Override the source repos:
 
 ```bash
 bash scripts/train_vast.sh bootstrap-from-hf \
-    --pipeline-repo elizaos/eliza-1-pipeline \
-    --data-repo elizaos/eliza-1-training
+    --pipeline-repo elizalabs/eliza-1-pipeline \
+    --data-repo elizalabs/eliza-1-training
 ```
 
 The remote box installs `uv` and `huggingface_hub[cli]` if missing,
@@ -301,41 +403,40 @@ powered off after `bootstrap-from-hf` returns.
 
 ---
 
-## milady-ai org — fused-kernel optimized models
+## elizaos org — fused-kernel optimized models
 
-The `elizaos/eliza-1-*` repos above ship the *base* Milady fine-tunes in
-stock GGUF / fp8 / polarquant flavors (one optimization at a time). The
-`milady-ai/*` org is the home for the **fused-kernel** GGUFs that
-combine all of the milady stack's tricks in a single file:
+The `elizalabs/eliza-1-*` repos ship the Eliza-1 device-tier bundles. Each
+published GGUF should be the fused-kernel artifact the local runtimes
+actually install:
 
 - **Q4_POLAR** weight quantization (4-bit, Hadamard-rotated, ~38% of bf16)
 - **QJL1_256** 1-bit JL-transform K-cache (~7.5x KV-K reduction realized)
 - **TBQ V-cache** (`tbq3_0` / `tbq4_0`, ~3-4x KV-V reduction)
-- **DFlash** speculative decoding pairing with a milady-trained drafter
+- **DFlash** speculative decoding pairing with an Eliza-1 drafter
 - llama-server kernels from `milady-ai/llama.cpp` (fork of ggml-org/llama.cpp)
 
-These are the models the on-device Milady runtime wants to load: a single
+These are the models the on-device Eliza runtime wants to load: a single
 GGUF that exercises every kernel the build-llama-cpp-dflash.mjs pipeline
-ships (TBQ, QJL, Q4_POLAR, DFlash). The `elizaos/eliza-1-*-gguf-q4_k_m`
-repos remain available for operators who want a stock llama.cpp build
-without the kernel patches.
+ships (TBQ, QJL, Q4_POLAR, DFlash). Stock-format variants can live under
+the same repo's `text/` directory only when the manifest makes their role
+explicit.
 
 ### Org
 
-- **URL:** https://huggingface.co/milady-ai
-- **Owner:** Milady core team. Add new members via HF org settings.
+- **URL:** https://huggingface.co/elizaos
+- **Owner:** Eliza core team. Add new members via HF org settings.
 - **Visibility:** repos are public by default once the GGUF is real. Use
   `--no-public` on `publish_milady_model.py` to create a private repo
   for staging.
 
 ### One-time org setup
 
-Anyone with org-admin rights at https://huggingface.co/milady-ai does
+Anyone with org-admin rights at https://huggingface.co/elizaos does
 this once:
 
-1. Sign in to HuggingFace with the `milady-ai` admin account.
+1. Sign in to HuggingFace with the `elizaos` admin account.
 2. Visit https://huggingface.co/organizations/new and create the
-   `milady-ai` org with a readable display name ("Milady AI").
+   `elizaos` org if it does not already exist.
 3. Invite the publishing service account so CI can push.
 
 If the org doesn't exist yet, `publish_milady_model.py` errors out
@@ -343,15 +444,15 @@ explicitly with the URL above — it does not silently create the org.
 
 ### Token requirements
 
-Push tokens need **write access scoped to the `milady-ai` org**:
+Push tokens need **write access scoped to the `elizaos` org**:
 
 ```bash
 # 1. Visit https://huggingface.co/settings/tokens
 # 2. Create a "Fine-grained" token with:
 #    - Repo: read+write
-#    - Org: milady-ai (selected)
-#    - Token name: e.g. milady-ai-publisher
-# 3. Export it locally OR set it as a GitHub secret named MILADY_HF_TOKEN.
+#    - Org: elizaos (selected)
+#    - Token name: e.g. eliza-1-publisher
+# 3. Export it locally OR set it as a GitHub secret named ELIZA_HF_TOKEN.
 export HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxxx
 ```
 
@@ -363,43 +464,43 @@ public for public repos.
 
 | Role                     | Repo                                                  |
 |--------------------------|-------------------------------------------------------|
-| Inference target (full)  | `milady-ai/<base>-milady-optimized`                   |
-| Drafter for that target  | `milady-ai/<base>-milady-drafter`                     |
+| Inference target (full)  | `elizalabs/eliza-1-<tier>`                              |
+| Drafter for that target  | hidden companion file in the same `elizalabs/eliza-1-<tier>` repo |
 | Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
 
-`<base>` follows the catalog id minus any quant suffix: `qwen3.5-4b`,
-`qwen3.5-9b`, `qwen3.6-27b`, `bonsai-8b-1bit`, `eliza-1-2b`,
-`eliza-1-9b`, `eliza-1-27b`. `<base>-milady-optimized` is always the
-target the user installs; `<base>-milady-drafter` is hidden from the
-catalog and only downloaded as a companion (matching the `runtimeRole:
-"dflash-drafter"` pattern in `catalog.ts`).
+`<tier>` follows the catalog ids: `0_6b`, `1_7b`,
+`9b`, `27b`, and `27b-256k`. The target the user installs
+is visible; the drafter is hidden from the catalog and only downloaded
+as a companion (matching the `runtimeRole: "dflash-drafter"` pattern in
+`catalog.ts`).
 
 **Why two repos per pair instead of one with two GGUFs?** HuggingFace
 caches the resolve URL per file, the existing downloader keys by
 `(hfRepo, ggufFile)`, and the catalog already encodes companion ids.
-Splitting target and drafter keeps each catalog entry pointing at one
-file in one repo, which is what the downloader already supports.
+Keeping target and drafter in the same Eliza-1 repo keeps one ownership
+boundary per device tier while preserving the downloader's explicit
+`(hfRepo, ggufFile)` key.
 
 ### Drafter pairing manifest
 
-Every `milady-ai/<base>-milady-optimized` repo ships a `manifest.json`
-alongside its GGUF that records which drafter and which optimization
-stack the file expects. Schema:
+Every `elizalabs/eliza-1-<tier>` repo ships a `manifest.json` alongside
+its GGUFs that records which drafter and which optimization stack the
+file expects. Schema:
 
 ```json
 {
   "version": 1,
-  "kind": "milady-optimized",
-  "modelId": "qwen3.5-4b",
+  "kind": "eliza-1-optimized",
+  "modelId": "eliza-1-1_7b",
   "base": {
-    "name": "qwen3.5-4b",
-    "displayName": "Qwen3.5 4B",
-    "params": "4B",
-    "tokenizerFamily": "qwen3",
-    "contextLength": 131072
+    "name": "eliza-1-1_7b",
+    "displayName": "Eliza-1 Mobile 1.7B",
+    "params": "1.7B",
+    "tokenizerFamily": "eliza1",
+    "contextLength": 32768
   },
   "gguf": {
-    "file": "qwen3.5-4b-milady-optimized.gguf",
+    "file": "text/eliza-1-1_7b-q4_k_m.gguf",
     "sha256": "<64-hex>",
     "sizeBytes": 0,
     "quant": "Q4_POLAR + QJL1_256 K + TBQ V"
@@ -413,22 +514,22 @@ stack the file expects. Schema:
     "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
   },
   "drafter": {
-    "repo": "milady-ai/qwen3.5-4b-milady-drafter",
-    "file": "qwen3.5-4b-milady-drafter.gguf",
+    "repo": "elizalabs/eliza-1-1_7b",
+    "file": "text/eliza-1-1_7b-drafter.gguf",
     "params": "0.6B",
-    "tokenizerFamily": "qwen3"
+    "tokenizerFamily": "eliza1"
   },
   "pipeline": {
     "publishedAt": "2026-05-10T00:00:00Z",
-    "trainedFrom": "elizaos/eliza-1-9b",
-    "trainingPipeline": "elizaos/eliza-1-pipeline",
+    "trainedFrom": "elizalabs/eliza-1-9b",
+    "trainingPipeline": "elizalabs/eliza-1-pipeline",
     "buildScript": "packages/training/scripts/publish_milady_model.py"
   }
 }
 ```
 
 The drafter repo ships the inverse — a `manifest.json` whose
-`"kind": "milady-drafter"` block points back at the target repo so the
+`"kind": "eliza-1-drafter"` block points back at the target repo so the
 catalog sync script can walk either side and reconstruct pairings.
 
 ### Publishing flow
@@ -437,8 +538,8 @@ catalog sync script can walk either side and reconstruct pairings.
 # Dry-run — refuses to push anything, prints the manifest and what
 # would upload. No HF_TOKEN required.
 uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/qwen3.5-4b-milady-optimized \
-    --repo-id milady-ai/qwen3.5-4b-milady-optimized \
+    --model-dir /path/to/eliza-1-1_7b \
+    --repo-id elizalabs/eliza-1-1_7b \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -447,8 +548,8 @@ uv run python scripts/publish_milady_model.py \
 # + size; subsequent runs skip re-upload when the sha matches the
 # existing remote LFS pointer.
 HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \
-    --model-dir /path/to/qwen3.5-4b-milady-optimized \
-    --repo-id milady-ai/qwen3.5-4b-milady-optimized
+    --model-dir /path/to/eliza-1-1_7b \
+    --repo-id elizalabs/eliza-1-1_7b
 ```
 
 After a publish run, refresh the local-inference catalog so the phone
@@ -456,7 +557,7 @@ sees the new URLs:
 
 ```bash
 uv run python scripts/sync_catalog_from_hf.py \
-    --org milady-ai \
+    --org elizaos \
     --out reports/porting/$(date -u +%Y-%m-%d)/catalog-diff.json
 ```
 
@@ -471,7 +572,7 @@ class the iOS / Android runtimes use, points its state directory at a
 temp dir, and reports time + bytes/sec. Run it from the repo root:
 
 ```bash
-node scripts/verify-phone-download.mjs --model-id qwen3.5-4b-milady-optimized
+node scripts/verify-phone-download.mjs --model-id eliza-1-1_7b
 ```
 
 This is the gate W5-Catalog uses to decide whether to land a catalog

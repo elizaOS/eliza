@@ -31,9 +31,9 @@ function makeOverlayApp(name: string, androidOnly: boolean): OverlayApp {
 describe("overlay-app-registry AOSP gating", () => {
   beforeEach(() => {
     // Wipe the cross-module registry so tests don't leak state into one another.
-    (
-      globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> }
-    )[OVERLAY_REGISTRY_KEY] = new Map();
+    (globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> })[
+      OVERLAY_REGISTRY_KEY
+    ] = new Map();
     registerOverlayApp(makeOverlayApp("@elizaos/app-phone", true));
     registerOverlayApp(makeOverlayApp("@elizaos/app-contacts", true));
     registerOverlayApp(makeOverlayApp("@elizaos/app-wifi", true));
@@ -41,9 +41,9 @@ describe("overlay-app-registry AOSP gating", () => {
   });
 
   afterEach(() => {
-    (
-      globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> }
-    )[OVERLAY_REGISTRY_KEY] = new Map();
+    (globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> })[
+      OVERLAY_REGISTRY_KEY
+    ] = new Map();
   });
 
   it("hides androidOnly apps on stock Android (no AOSP marker)", () => {
@@ -111,9 +111,9 @@ describe("overlay-app-registry AOSP gating", () => {
     expect(
       isAospAndroid({ platform: "android", userAgent: STOCK_ANDROID_UA }),
     ).toBe(false);
-    expect(
-      isAospAndroid({ platform: "ios", userAgent: ELIZAOS_AOSP_UA }),
-    ).toBe(false);
+    expect(isAospAndroid({ platform: "ios", userAgent: ELIZAOS_AOSP_UA })).toBe(
+      false,
+    );
     expect(
       isAospAndroid({ platform: "web", userAgent: DESKTOP_LINUX_UA }),
     ).toBe(false);

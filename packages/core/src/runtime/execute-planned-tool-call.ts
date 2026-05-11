@@ -17,6 +17,11 @@ import { EventType } from "../types/events";
 import type { ToolCall } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
+import {
+	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
+	readActionRolePolicy,
+} from "./action-role-policy";
+import { runWithActionRoutingContext } from "./action-routing-context";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
 import { parseJsonObject } from "./json-output";
 import type { PlannerToolCall } from "./planner-loop";
@@ -212,13 +217,17 @@ export async function executePlannedToolCall(
 
 	let resultForEvent: ActionResult;
 	try {
-		const result = await action.handler(
-			runtime,
-			executorCtx.message,
-			executorCtx.state,
-			handlerOptions,
-			executorCtx.callback,
-			executorCtx.responses,
+		const result = await runWithActionRoutingContext(
+			{ actionName: action.name, modelClass: action.modelClass },
+			() =>
+				action.handler(
+					runtime,
+					executorCtx.message,
+					executorCtx.state,
+					handlerOptions,
+					executorCtx.callback,
+					executorCtx.responses,
+				),
 		);
 		resultForEvent = normalizeActionResult(action.name, result);
 	} catch (error) {
@@ -352,10 +361,19 @@ function actionResultToStreamingResult(
 	} as ToolCall["result"];
 }
 
+export const _resetActionRolePolicyCacheForTests = _resetCacheForTests;
+
 function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
+	const policyRole = readActionRolePolicy()[action.name];
+	if (policyRole) {
+		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
+			? undefined
+			: `Action ${action.name} is not allowed for the current role`;
+	}
+
 	const contextGate = action.contextGate ?? {
 		contexts: action.contexts,
 		roleGate: action.roleGate,

@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import { PerpetualMarketService, hyperliquidActions } from "./actions/perpetual-market";
 import { handleHyperliquidRoute } from "./routes";
 
 function toHttpIncomingMessage(req: RouteRequest): http.IncomingMessage {
@@ -102,6 +103,9 @@ const hyperliquidRoutes: Route[] = [
 
 export const hyperliquidPlugin: Plugin = {
   name: "@elizaos/app-hyperliquid",
-  description: "Native Hyperliquid read/status dashboard routes for elizaOS",
+  description:
+    "Native Hyperliquid perpetual market status, market, position, and trading-readiness routes/actions for elizaOS",
+  actions: hyperliquidActions,
+  services: [PerpetualMarketService],
   routes: hyperliquidRoutes,
 };

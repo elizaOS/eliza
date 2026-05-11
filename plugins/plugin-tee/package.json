@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-tee",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/node/index.js",
   "module": "dist/node/index.js",
@@ -33,7 +33,7 @@
   ],
   "sideEffects": false,
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@phala/dstack-sdk": "^0.5.7",
     "@solana/web3.js": "1.98.4",
     "viem": "^2.48.8"

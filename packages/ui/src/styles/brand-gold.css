@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=JetBrains+Mono:wght@400;500;600&display=swap");
-
 :root {
   --font-sans: "DM Sans", "Helvetica Neue", Arial, sans-serif;
   --font-mono: "JetBrains Mono", "Cascadia Code", "Courier New", monospace;
@@ -466,6 +464,129 @@
   border-color: rgba(240, 185, 11, 0.28);
   background: rgba(240, 185, 11, 0.12);
   color: var(--highlight-gold);
+}
+
+/* Memory viewer type badges — color tokens for the memory type taxonomy
+ * (messages, memories, facts, documents). Surfaces avoid hardcoded rgba/rgb
+ * literals at the component layer.
+ */
+:root {
+  --memory-type-messages-bg: rgba(99, 102, 241, 0.15);
+  --memory-type-messages-fg: rgb(99, 102, 241);
+  --memory-type-memories-bg: rgba(168, 85, 247, 0.15);
+  --memory-type-memories-fg: rgb(168, 85, 247);
+  --memory-type-facts-bg: rgba(34, 197, 94, 0.15);
+  --memory-type-facts-fg: rgb(34, 197, 94);
+  --memory-type-documents-bg: rgba(245, 158, 11, 0.15);
+  --memory-type-documents-fg: rgb(245, 158, 11);
+  --memory-type-unknown-bg: rgba(156, 163, 175, 0.15);
+  --memory-type-unknown-fg: rgb(156, 163, 175);
+}
+
+.memory-type-badge-messages {
+  background-color: var(--memory-type-messages-bg);
+  color: var(--memory-type-messages-fg);
+}
+.memory-type-badge-memories {
+  background-color: var(--memory-type-memories-bg);
+  color: var(--memory-type-memories-fg);
+}
+.memory-type-badge-facts {
+  background-color: var(--memory-type-facts-bg);
+  color: var(--memory-type-facts-fg);
+}
+.memory-type-badge-documents {
+  background-color: var(--memory-type-documents-bg);
+  color: var(--memory-type-documents-fg);
+}
+.memory-type-badge-unknown {
+  background-color: var(--memory-type-unknown-bg);
+  color: var(--memory-type-unknown-fg);
+}
+
+.memory-type-dot-messages {
+  background-color: var(--memory-type-messages-fg);
+}
+.memory-type-dot-memories {
+  background-color: var(--memory-type-memories-fg);
+}
+.memory-type-dot-facts {
+  background-color: var(--memory-type-facts-fg);
+}
+.memory-type-dot-documents {
+  background-color: var(--memory-type-documents-fg);
+}
+.memory-type-dot-unknown {
+  background-color: var(--memory-type-unknown-fg);
+}
+
+/* Logs viewer toolbar buttons — shared glassy outline-button surface used
+ * for the "Clear filters" and "Refresh" controls. Keeps the rgba shadow
+ * literals out of the component layer so the JSX can reference a single
+ * design token.
+ */
+:root {
+  --logs-toolbar-button-bg: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 84%, transparent),
+    color-mix(in srgb, var(--bg) 95%, transparent)
+  );
+  --logs-toolbar-button-bg-hover: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--card) 90%, transparent),
+    color-mix(in srgb, var(--bg) 97%, transparent)
+  );
+  --logs-toolbar-button-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    0 14px 20px -18px rgba(15, 23, 42, 0.14);
+  --logs-toolbar-button-shadow-hover:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 16px 22px -18px rgba(15, 23, 42, 0.16);
+  --logs-toolbar-button-shadow-dark:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 16px 24px -20px rgba(0, 0, 0, 0.24);
+}
+
+.logs-toolbar-button {
+  min-height: 2.5rem;
+  border-radius: 1rem;
+  padding-left: 0.75rem;
+  padding-right: 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid color-mix(in srgb, var(--border) 32%, transparent);
+  background: var(--logs-toolbar-button-bg);
+  color: var(--muted-strong);
+  box-shadow: var(--logs-toolbar-button-shadow);
+  backdrop-filter: blur(12px);
+  transition:
+    border-color 200ms,
+    background-color 200ms,
+    color 200ms,
+    transform 200ms,
+    box-shadow 200ms;
+}
+
+.logs-toolbar-button:hover {
+  border-color: color-mix(in srgb, var(--border) 46%, transparent);
+  background: var(--logs-toolbar-button-bg-hover);
+  color: var(--text);
+  box-shadow: var(--logs-toolbar-button-shadow-hover);
+}
+
+.logs-toolbar-button:active {
+  transform: scale(0.95);
+}
+
+.logs-toolbar-button:disabled:hover {
+  border-color: color-mix(in srgb, var(--border) 32%, transparent);
+  background: var(--logs-toolbar-button-bg);
+  color: var(--muted-strong);
+}
+
+[data-theme="dark"] .logs-toolbar-button,
+.dark .logs-toolbar-button {
+  box-shadow: var(--logs-toolbar-button-shadow-dark);
 }
 
 /* Component-level theme overrides removed — use theme variables directly. */

@@ -1,14 +1,66 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
+import { listInstalledModels } from "./registry";
+import type { DownloadJob } from "./types";
 
 const originalEnv = { ...process.env };
+const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
 });
+
+function sha256(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function installFetchFixture(files: Map<string, string>): void {
+  globalThis.fetch = vi.fn(async (url: string | URL | Request) => {
+    const href =
+      typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+    const pathname = new URL(href).pathname;
+    const marker = "/resolve/main/";
+    const markerIndex = pathname.indexOf(marker);
+    const remotePath =
+      markerIndex >= 0
+        ? decodeURIComponent(pathname.slice(markerIndex + marker.length))
+        : "";
+    const body = files.get(remotePath);
+    if (body === undefined) {
+      return new Response(`missing ${remotePath}`, { status: 404 });
+    }
+    return new Response(body, {
+      status: 200,
+      headers: { "content-length": String(Buffer.byteLength(body)) },
+    });
+  }) as unknown as typeof fetch;
+}
+
+function waitForTerminal(
+  downloader: Downloader,
+  modelId: string,
+): Promise<DownloadJob> {
+  return new Promise((resolve, reject) => {
+    const unsubscribe = downloader.subscribe((event) => {
+      if (event.job.modelId !== modelId) return;
+      if (event.type === "completed") {
+        unsubscribe();
+        resolve(event.job);
+      }
+      if (event.type === "failed") {
+        unsubscribe();
+        reject(new Error(event.job.error ?? "download failed"));
+      }
+    });
+  });
+}
 
 describe("local inference downloader status", () => {
   it("loads persisted terminal failures into snapshots", () => {
@@ -23,7 +75,7 @@ describe("local inference downloader status", () => {
         jobs: [
           {
             jobId: "job-1",
-            modelId: "eliza-1-mobile-1_7b",
+            modelId: "eliza-1-1_7b",
             state: "failed",
             received: 64,
             total: 128,
@@ -40,8 +92,179 @@ describe("local inference downloader status", () => {
 
     const [job] = new Downloader().snapshot();
 
-    expect(job?.modelId).toBe("eliza-1-mobile-1_7b");
+    expect(job?.modelId).toBe("eliza-1-1_7b");
     expect(job?.state).toBe("failed");
     expect(job?.error).toBe("network reset");
+  });
+
+  it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    const model = findCatalogModel("eliza-1-0_6b");
+    expect(model).toBeDefined();
+    if (!model) throw new Error("missing test catalog model");
+
+    const text = "GGUF text model";
+    const voice = "GGUF voice model";
+    const asr = "GGUF ASR model";
+    const vad = "VAD model";
+    const drafter = "GGUF drafter model";
+    const cache = "voice preset";
+    const manifest = JSON.stringify({
+      id: "eliza-1-0_6b",
+      tier: "0_6b",
+      version: "1.0.0",
+      publishedAt: "2026-05-11T00:00:00.000Z",
+      lineage: {
+        text: { base: "eliza-1-text", license: "test" },
+        voice: { base: "eliza-1-voice", license: "test" },
+        asr: { base: "eliza-1-asr", license: "test" },
+        vad: { base: "eliza-1-vad", license: "test" },
+        drafter: { base: "eliza-1-drafter", license: "test" },
+      },
+      defaultEligible: true,
+      files: {
+        text: [
+          {
+            path: "text/eliza-1-0_6b-32k.gguf",
+            sha256: sha256(text),
+            ctx: 32768,
+          },
+        ],
+        voice: [{ path: "tts/voice.gguf", sha256: sha256(voice) }],
+        asr: [{ path: "asr/asr.gguf", sha256: sha256(asr) }],
+        vision: [],
+        dflash: [
+          {
+            path: "dflash/drafter-0_6b.gguf",
+            sha256: sha256(drafter),
+          },
+        ],
+        cache: [
+          {
+            path: "cache/voice-preset-default.bin",
+            sha256: sha256(cache),
+          },
+        ],
+        vad: [{ path: "vad/eliza-1-vad.onnx", sha256: sha256(vad) }],
+      },
+      kernels: {
+        required: ["turboquant_q3", "qjl", "polarquant", "dflash"],
+        optional: [],
+        verifiedBackends: {
+          metal: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-metal",
+          },
+          vulkan: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-vulkan",
+          },
+          cuda: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-cuda",
+          },
+          rocm: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-rocm",
+          },
+          cpu: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-cpu",
+          },
+        },
+      },
+      evals: {
+        textEval: { score: 1, passed: true },
+        voiceRtf: { rtf: 0.5, passed: true },
+        asrWer: { wer: 0.05, passed: true },
+        vadLatencyMs: { median: 16, passed: true },
+        e2eLoopOk: true,
+        thirtyTurnOk: true,
+      },
+      ramBudgetMb: { min: 2048, recommended: 4096 },
+    });
+    installFetchFixture(
+      new Map([
+        ["eliza-1.manifest.json", manifest],
+        ["text/eliza-1-0_6b-32k.gguf", text],
+        ["tts/voice.gguf", voice],
+        ["asr/asr.gguf", asr],
+        ["vad/eliza-1-vad.onnx", vad],
+        ["dflash/drafter-0_6b.gguf", drafter],
+        ["cache/voice-preset-default.bin", cache],
+      ]),
+    );
+
+    const downloader = new Downloader();
+    const completed = waitForTerminal(downloader, model.id);
+    await downloader.start(model.id);
+    const job = await completed;
+    const installed = await listInstalledModels();
+    const main = installed.find((entry) => entry.id === model.id);
+    const companion = installed.find(
+      (entry) => entry.id === "eliza-1-0_6b-drafter",
+    );
+    expect(main).toBeDefined();
+    expect(companion).toBeDefined();
+    const bundleRoot = main?.bundleRoot;
+    expect(bundleRoot).toBeDefined();
+    if (!main || !companion || !bundleRoot) {
+      throw new Error("bundle install did not register expected files");
+    }
+
+    expect(job.state).toBe("completed");
+    expect(main.path.endsWith("text/eliza-1-0_6b-32k.gguf")).toBe(true);
+    expect(bundleRoot).toBe(
+      path.join(root, "local-inference", "models", "eliza-1-0_6b.bundle"),
+    );
+    expect(main.manifestPath).toBe(
+      path.join(bundleRoot, "eliza-1.manifest.json"),
+    );
+    expect(main.bundleVersion).toBe("1.0.0");
+    expect(main.bundleSizeBytes).toBeGreaterThan(main.sizeBytes);
+    expect(fs.existsSync(path.join(bundleRoot, "tts/voice.gguf"))).toBe(true);
+    expect(fs.existsSync(path.join(bundleRoot, "asr/asr.gguf"))).toBe(true);
+    expect(fs.existsSync(path.join(bundleRoot, "vad/eliza-1-vad.onnx"))).toBe(
+      true,
+    );
+    expect(companion.runtimeRole).toBe("dflash-drafter");
+    expect(companion.companionFor).toBe(model.id);
+    expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
+    expect(companion.bundleRoot).toBe(bundleRoot);
+  });
+
+  it("restarts single-file partial downloads when a server ignores Range", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    const model = findCatalogModel("eliza-1-0_6b-drafter");
+    expect(model).toBeDefined();
+    if (!model) throw new Error("missing test catalog model");
+
+    const body = "complete drafter";
+    installFetchFixture(new Map([["dflash/drafter-0_6b.gguf", body]]));
+
+    const downloadsDir = path.join(root, "local-inference", "downloads");
+    fs.mkdirSync(downloadsDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(downloadsDir, "eliza-1-0_6b-drafter.part"),
+      "stale partial",
+    );
+
+    const downloader = new Downloader();
+    const completed = waitForTerminal(downloader, model.id);
+    await downloader.start(model.id);
+    await completed;
+
+    const installed = await listInstalledModels();
+    const entry = installed.find((m) => m.id === model.id);
+    expect(entry).toBeDefined();
+    if (!entry) throw new Error("missing installed drafter");
+    expect(fs.readFileSync(entry.path, "utf8")).toBe(body);
   });
 });

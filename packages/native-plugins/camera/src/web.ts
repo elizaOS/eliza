@@ -197,6 +197,12 @@ export class CameraWeb extends WebPlugin {
       audio: false,
     };
 
+    // PERMISSIONS_MIGRATION: this getUserMedia() call triggers the OS
+    // camera-permission dialog implicitly. New flow probes via
+    // `cameraProber` from
+    // `packages/agent/src/services/permissions/probers/camera.ts` first,
+    // then asks the user, only then opens the stream. Will be retired by
+    // the chat-surface migration agent.
     this.mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
     this.previewElement = options.element;
 

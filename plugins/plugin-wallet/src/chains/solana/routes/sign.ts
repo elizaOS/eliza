@@ -15,12 +15,7 @@
 
 import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  Connection,
-  type SendOptions,
-  Transaction,
-  VersionedTransaction,
-} from "@solana/web3.js";
+import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 import type { SolanaService } from "../service";
@@ -41,10 +36,7 @@ function setCorsHeaders(req: RouteRequest, res: RouteResponse): void {
   r.setHeader?.("Access-Control-Allow-Origin", origin);
   r.setHeader?.("Vary", "Origin");
   r.setHeader?.("Access-Control-Allow-Methods", "POST, OPTIONS");
-  r.setHeader?.(
-    "Access-Control-Allow-Headers",
-    "Authorization, Content-Type, X-Wallet-Sign-Token",
-  );
+  r.setHeader?.("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Wallet-Sign-Token");
   r.setHeader?.("Access-Control-Allow-Credentials", "true");
   r.setHeader?.("Access-Control-Max-Age", "600");
 }
@@ -71,11 +63,7 @@ function readBearer(req: RouteRequest): string | null {
   return null;
 }
 
-function authorize(
-  req: RouteRequest,
-  res: RouteResponse,
-  runtime: IAgentRuntime,
-): boolean {
+function authorize(req: RouteRequest, res: RouteResponse, runtime: IAgentRuntime): boolean {
   setCorsHeaders(req, res);
   if ((req as unknown as { method?: string }).method === "OPTIONS") {
     res.status(204).json({});
@@ -83,9 +71,7 @@ function authorize(
   }
   const expected = readSignToken(runtime);
   if (!expected) {
-    res
-      .status(503)
-      .json({ error: "WALLET_BROWSER_SIGN_TOKEN not configured" });
+    res.status(503).json({ error: "WALLET_BROWSER_SIGN_TOKEN not configured" });
     return false;
   }
   const got = readBearer(req);
@@ -119,9 +105,7 @@ function serializeTransaction(tx: Transaction | VersionedTransaction): Uint8Arra
   if (tx instanceof VersionedTransaction) {
     return tx.serialize();
   }
-  return new Uint8Array(
-    tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
-  );
+  return new Uint8Array(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
 }
 
 const pubkeyHandler: RouteHandler = async (req, res, runtime) => {
@@ -175,9 +159,7 @@ const signAllTransactionsHandler: RouteHandler = async (req, res, runtime) => {
     }
     const backend = await resolveWalletBackend(runtime);
     const signer = backend.getSolanaSigner();
-    const txs = (body.transactionsBase64 as string[]).map((b64) =>
-      decodeTransaction(b64),
-    );
+    const txs = (body.transactionsBase64 as string[]).map((b64) => decodeTransaction(b64));
     const signed = await signer.signAllTransactions(txs);
     res.status(200).json({
       signedBase64s: signed.map((tx) => encodeBase64(serializeTransaction(tx))),
@@ -244,10 +226,7 @@ const signAndSendHandler: RouteHandler = async (req, res, runtime) => {
         ? (body.sendOptions as SendOptions)
         : { skipPreflight: false, maxRetries: 3 };
 
-    const signature = await conn.sendRawTransaction(
-      serializeTransaction(signed),
-      sendOptions,
-    );
+    const signature = await conn.sendRawTransaction(serializeTransaction(signed), sendOptions);
     res.status(200).json({
       signature,
       publicKey: signer.publicKey.toBase58(),

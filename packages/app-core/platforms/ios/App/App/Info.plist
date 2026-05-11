@@ -93,14 +93,21 @@
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>ai.eliza.mobile-signals.sleep-refresh</string>
+		<string>eliza-tasks</string>
 	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
+		<string>processing</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>This app uses your camera to capture photos and video when you ask it to.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>This app reads and updates your calendar only when you ask it to manage LifeOps scheduling.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>This app reads and updates your calendar only when you ask it to manage LifeOps scheduling.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>This app needs full calendar access for LifeOps scheduling and does not use write-only calendar access.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app discovers and connects to your elizaOS gateway on the local network.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

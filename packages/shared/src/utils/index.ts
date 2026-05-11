@@ -7,4 +7,5 @@ export * from "./eliza-globals.js";
 export * from "./env.js";
 export * from "./format.js";
 export * from "./number-parsing.js";
+export * from "./permission-deep-links.js";
 export * from "./tts-debug.js";

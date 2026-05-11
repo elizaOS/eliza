@@ -4,6 +4,7 @@ export * from "./automation-terminal-bridge.ts";
 export * from "./escalation-trigger.ts";
 export * from "./local-models.ts";
 export * from "./media-provider.ts";
+export * from "./pending-permissions-provider.ts";
 export * from "./role-backfill.ts";
 export * from "./self-status.ts";
 export * from "./session-bridge.ts";

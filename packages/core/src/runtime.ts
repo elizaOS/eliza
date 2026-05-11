@@ -22,6 +22,16 @@ import {
 	nativeRuntimeFeaturePluginNames,
 	resolveNativeRuntimeFeatureFromPluginName,
 } from "./plugins/native-features";
+import {
+	executeChainWithFallback,
+	maybeReroute,
+	resolveChain,
+} from "./runtime/action-model-routing";
+import {
+	getActionRoutingContext,
+	runWithActionRoutingContext,
+	runWithoutActionRoutingContext,
+} from "./runtime/action-routing-context";
 import { ContextRegistry } from "./runtime/context-registry";
 import { DEFAULT_CONTEXT_DEFINITIONS } from "./runtime/default-contexts";
 import type { ResponseHandlerEvaluator } from "./runtime/response-handler-evaluators";
@@ -2805,13 +2815,17 @@ export class AgentRuntime implements IAgentRuntime {
 			let success = true;
 			let errorMsg: string | undefined;
 			try {
-				await action.handler(
-					this,
-					message,
-					composedState,
-					{ mode },
-					options?.callback,
-					options?.responses,
+				await runWithActionRoutingContext(
+					{ actionName: action.name, modelClass: action.modelClass },
+					() =>
+						action.handler(
+							this,
+							message,
+							composedState,
+							{ mode },
+							options?.callback,
+							options?.responses,
+						),
 				);
 			} catch (err) {
 				success = false;
@@ -4090,6 +4104,68 @@ export class AgentRuntime implements IAgentRuntime {
 		params: ModelParamsMap[T],
 		provider?: string,
 	): Promise<R> {
+		// Per-action model routing seam (closes A5 / W1-R2). If the call
+		// originates inside an action handler that declared a `modelClass`, and
+		// the requested model type is a text-generation model, we resolve
+		// through a strategy chain instead of the default per-provider path.
+		// The chain implements cost-aware ascending fallback: LOCAL → SMALL → LARGE.
+		// Lookup the strategy ourselves rather than recursing on the requested
+		// modelType so the routing decision is made once at the entry point,
+		// not on every nested call.
+		const actionRoutingCtx = getActionRoutingContext();
+		if (actionRoutingCtx?.modelClass !== undefined && provider === undefined) {
+			const strategy = maybeReroute(
+				actionRoutingCtx.modelClass,
+				String(modelType),
+			);
+			if (strategy) {
+				const resolvedChain = resolveChain(strategy, (key) =>
+					this.models.get(key),
+				);
+				if (resolvedChain.length > 0) {
+					this.logger.debug(
+						{
+							src: "agent",
+							agentId: this.agentId,
+							action: actionRoutingCtx.actionName,
+							modelClass: actionRoutingCtx.modelClass,
+							requestedModelType: String(modelType),
+							chain: resolvedChain.map((r) => ({
+								modelType: r.modelType,
+								provider: r.provider,
+							})),
+						},
+						"Per-action model routing applied",
+					);
+					// Execute the chain. Each step recurses into useModel with the
+					// resolved modelType + provider hint, but the action routing
+					// context is cleared so the inner call uses the default path.
+					return executeChainWithFallback(
+						resolvedChain,
+						strategy.confidenceThreshold,
+						async (resolved) =>
+							runWithoutActionRoutingContext(() =>
+								this.useModel<T, R>(
+									resolved.modelType as T,
+									params,
+									resolved.provider,
+								),
+							),
+					);
+				}
+				this.logger.debug(
+					{
+						src: "agent",
+						agentId: this.agentId,
+						action: actionRoutingCtx.actionName,
+						modelClass: actionRoutingCtx.modelClass,
+						requestedModelType: String(modelType),
+					},
+					"Per-action model routing requested but no handlers in chain — falling back to default",
+				);
+			}
+		}
+
 		let requestedModelKey = String(modelType);
 
 		// Apply LLM mode override for text generation models

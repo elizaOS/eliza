@@ -138,7 +138,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["mock", "eliza", "openai", "groq", "openrouter"],
+        choices=["mock", "eliza", "openai", "groq", "openrouter", "cerebras"],
         default="mock",
         help=(
             "Agent provider to use: local mock, eliza TS benchmark bridge, "
@@ -229,11 +229,13 @@ class OpenAICompatibleRuntime:
             "openai": os.environ.get("OPENAI_BASE_URL"),
             "groq": os.environ.get("GROQ_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
             "openrouter": os.environ.get("OPENROUTER_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
+            "cerebras": os.environ.get("CEREBRAS_BASE_URL") or os.environ.get("OPENAI_BASE_URL"),
         }.get(provider)
         provider_default = {
             "openai": "https://api.openai.com/v1",
             "groq": "https://api.groq.com/openai/v1",
             "openrouter": "https://openrouter.ai/api/v1",
+            "cerebras": "https://api.cerebras.ai/v1",
         }[provider]
         self.base_url = (base_url or env_base_url or provider_default).rstrip("/")
 
@@ -341,11 +343,12 @@ async def run_benchmark(
 
         runtime_provider = provider.strip().lower()
         direct_runtime = None
-        if runtime_provider in {"openai", "groq", "openrouter"}:
+        if runtime_provider in {"openai", "groq", "openrouter", "cerebras"}:
             key_var = {
                 "openai": "OPENAI_API_KEY",
                 "groq": "GROQ_API_KEY",
                 "openrouter": "OPENROUTER_API_KEY",
+                "cerebras": "CEREBRAS_API_KEY",
             }[runtime_provider]
             api_key = os.environ.get(key_var, "")
             if not api_key:
@@ -354,6 +357,7 @@ async def run_benchmark(
                 "openai": "openai/gpt-oss-120b",
                 "groq": "openai/gpt-oss-120b",
                 "openrouter": "openai/gpt-oss-120b",
+                "cerebras": "gpt-oss-120b",
             }[runtime_provider]
             direct_runtime = OpenAICompatibleRuntime(
                 provider=runtime_provider,
@@ -373,6 +377,7 @@ async def run_benchmark(
             # The bridge agent forwards every multi-turn LLM call to the TS bench
             # server; MINTRunner reuses runner.executor and runner.feedback_generator.
             from eliza_adapter.mint import ElizaMINTAgent
+            from eliza_adapter.client import ElizaClient
             from eliza_adapter.server_manager import ElizaServerManager
 
             provider_name = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
@@ -381,11 +386,13 @@ async def run_benchmark(
                     provider_name = "groq"
                 elif os.environ.get("OPENROUTER_API_KEY"):
                     provider_name = "openrouter"
+                elif os.environ.get("CEREBRAS_API_KEY"):
+                    provider_name = "cerebras"
                 elif os.environ.get("OPENAI_API_KEY"):
                     provider_name = "openai"
             model_name = (model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
             if not model_name:
-                model_name = "openai/gpt-oss-120b"
+                model_name = "gpt-oss-120b" if provider_name == "cerebras" else "openai/gpt-oss-120b"
             if provider_name:
                 os.environ["BENCHMARK_MODEL_PROVIDER"] = provider_name
             os.environ["BENCHMARK_MODEL_NAME"] = model_name
@@ -395,12 +402,24 @@ async def run_benchmark(
             os.environ["GROQ_SMALL_MODEL"] = model_name
             os.environ["OPENROUTER_LARGE_MODEL"] = model_name
             os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+            os.environ["CEREBRAS_LARGE_MODEL"] = model_name
+            os.environ["CEREBRAS_SMALL_MODEL"] = model_name
+            os.environ["CEREBRAS_MODEL"] = model_name
 
-            bridge_manager = ElizaServerManager()
-            bridge_manager.start()
+            harness = (
+                os.environ.get("ELIZA_BENCH_HARNESS")
+                or os.environ.get("BENCHMARK_HARNESS")
+                or "eliza"
+            ).strip().lower()
+            if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
+                bridge_manager = ElizaServerManager()
+                bridge_manager.start()
+                client = bridge_manager.client
+            else:
+                client = ElizaClient()
 
             runner.agent = ElizaMINTAgent(
-                client=bridge_manager.client,
+                client=client,
                 tool_executor=runner.executor,
                 feedback_generator=runner.feedback_generator,
                 temperature=config.temperature,

@@ -24,11 +24,6 @@ import { experiencePatternEvaluator } from "./experience/evaluators/experience-i
 import { experienceProvider } from "./experience/providers/experienceProvider.ts";
 import { characterAction } from "./personality/actions/character.ts";
 import { userPersonalityProvider } from "./personality/providers/user-personality.ts";
-import { completeTodoAction } from "./todos/actions/complete-todo.ts";
-import { createTodoAction } from "./todos/actions/create-todo.ts";
-import { deleteTodoAction } from "./todos/actions/delete-todo.ts";
-import { editTodoAction } from "./todos/actions/edit-todo.ts";
-import { listTodosAction } from "./todos/actions/list-todos.ts";
 import { todosProvider } from "./todos/providers/todos.ts";
 
 // Re-export action, provider, and post-message-action modules
@@ -97,14 +92,6 @@ export const advancedActions = [
 	withCanonicalActionDocs(searchExperiencesAction),
 	...promoteSubactionsToActions(messageAction),
 	...promoteSubactionsToActions(postAction),
-	// Todo leaf actions — the TODO umbrella is provided by @elizaos/plugin-todos;
-	// these leaves stay here for advanced-capabilities consumers that want
-	// direct-dispatch actions without depending on the plugin.
-	createTodoAction,
-	completeTodoAction,
-	listTodosAction,
-	editTodoAction,
-	deleteTodoAction,
 	// Personality actions
 	...promoteSubactionsToActions(characterAction),
 ];

@@ -4,7 +4,10 @@ import path from "node:path";
 import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
 
 const EXPLICIT_WORKSPACE_DIR_KEYS = ["ELIZA_WORKSPACE_DIR"] as const;
-const EXPLICIT_STATE_DIR_KEYS = ["ELIZA_STATE_DIR"] as const;
+const EXPLICIT_STATE_DIR_KEYS = [
+  "MILADY_STATE_DIR",
+  "ELIZA_STATE_DIR",
+] as const;
 const PROJECT_WORKSPACE_MARKERS = [
   "AGENTS.md",
   "CLAUDE.md",

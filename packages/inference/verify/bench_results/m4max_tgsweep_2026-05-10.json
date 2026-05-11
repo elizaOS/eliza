@@ -7,16 +7,16 @@
   "note": "QJL and Polar both reduce via simd_sum and assume one Apple SIMD-group (32 lanes) per threadgroup. Sizes that succeed at dispatch but exceed 32 lanes will silently under-reduce — this sweep records dispatch success/failure and timing only.",
   "sweeps": [
     { "kernel": "qjl", "results": [
-      { "tg": 32, "status": "ok", "gpu_med_us": 338.6875, "gpu_p99_us": 1687.6487 },
-      { "tg": 64, "status": "ok", "gpu_med_us": 324.8125, "gpu_p99_us": 1192.9833 },
-      { "tg": 128, "status": "ok", "gpu_med_us": 562.5000, "gpu_p99_us": 1445.6663 },
-      { "tg": 256, "status": "ok", "gpu_med_us": 709.0000, "gpu_p99_us": 1319.9775 }
+      { "tg": 32, "status": "ok", "gpu_med_us": 228.0208, "gpu_p99_us": 310.0825 },
+      { "tg": 64, "status": "ok", "gpu_med_us": 232.6042, "gpu_p99_us": 348.3988 },
+      { "tg": 128, "status": "ok", "gpu_med_us": 376.4583, "gpu_p99_us": 554.2183 },
+      { "tg": 256, "status": "ok", "gpu_med_us": 489.8750, "gpu_p99_us": 661.5688 }
     ] },
     { "kernel": "polar", "results": [
-      { "tg": 32, "status": "ok", "gpu_med_us": 878.5208, "gpu_p99_us": 2208.2933 },
-      { "tg": 64, "status": "ok", "gpu_med_us": 1033.5833, "gpu_p99_us": 2077.7600 },
-      { "tg": 128, "status": "ok", "gpu_med_us": 2415.4583, "gpu_p99_us": 3276.9021 },
-      { "tg": 256, "status": "ok", "gpu_med_us": 7749.6250, "gpu_p99_us": 8365.8650 }
+      { "tg": 32, "status": "ok", "gpu_med_us": 343.7500, "gpu_p99_us": 406.9325 },
+      { "tg": 64, "status": "ok", "gpu_med_us": 662.2083, "gpu_p99_us": 763.9621 },
+      { "tg": 128, "status": "ok", "gpu_med_us": 1305.7083, "gpu_p99_us": 1459.3325 },
+      { "tg": 256, "status": "ok", "gpu_med_us": 2655.4167, "gpu_p99_us": 2760.9187 }
     ] }
   ]
 }

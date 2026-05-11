@@ -10,23 +10,31 @@ import {
 
 import { failureToActionResult, readStringParam } from "../lib/format.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
-import { editAction } from "./edit.js";
-import { globAction } from "./glob.js";
-import { grepAction } from "./grep.js";
-import { lsAction } from "./ls.js";
-import { readAction } from "./read.js";
-import { writeAction } from "./write.js";
+import { editFileHandler } from "./edit.js";
+import { globHandler } from "./glob.js";
+import { grepHandler } from "./grep.js";
+import { lsHandler } from "./ls.js";
+import { readFileHandler } from "./read.js";
+import { writeFileHandler } from "./write.js";
 
 const FILE_OPERATIONS = ["read", "write", "edit", "grep", "glob", "ls"] as const;
 type FileOperation = (typeof FILE_OPERATIONS)[number];
 
-const FILE_ACTIONS: Record<FileOperation, Action> = {
-  read: readAction,
-  write: writeAction,
-  edit: editAction,
-  grep: grepAction,
-  glob: globAction,
-  ls: lsAction,
+type FileHandler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback: HandlerCallback | undefined,
+) => Promise<ActionResult>;
+
+const FILE_ACTIONS: Record<FileOperation, FileHandler> = {
+  read: readFileHandler,
+  write: writeFileHandler,
+  edit: editFileHandler,
+  grep: grepHandler,
+  glob: globHandler,
+  ls: lsHandler,
 };
 
 const FILE_OPERATION_ALIASES: Record<string, FileOperation> = {
@@ -222,7 +230,8 @@ export const fileAction: Action = {
         message: "FILE requires action=read/write/edit/grep/glob/ls",
       });
     }
-    const result = await FILE_ACTIONS[operation].handler(
+    const handler = FILE_ACTIONS[operation];
+    const result = await handler(
       runtime,
       message,
       state,

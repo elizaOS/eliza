@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-whatsapp",
   "description": "WhatsApp plugin for ElizaOS (Cloud API + Baileys QR auth)",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -49,7 +49,7 @@
     "qrcode-terminal": "^0.12.0"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

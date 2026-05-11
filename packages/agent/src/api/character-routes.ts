@@ -1,6 +1,7 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { RouteRequestContext } from "@elizaos/shared";
+import { PostCharacterGenerateRequestSchema } from "@elizaos/shared";
 import {
   buildCharacterHistorySnapshot,
   listCharacterHistory,
@@ -500,17 +501,18 @@ export async function handleCharacterRoutes(
   }
 
   if (method === "POST" && pathname === "/api/character/generate") {
-    const body = await readJsonBody<{
-      field: CharacterGenerateField;
-      context: CharacterGenerateContext;
-      mode?: CharacterGenerateMode;
-    }>(req, res);
-    if (!body) return true;
-
-    if (!body.field || !body.context) {
-      error(res, "field and context are required", 400);
+    const rawGen = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawGen === null) return true;
+    const parsedGen = PostCharacterGenerateRequestSchema.safeParse(rawGen);
+    if (!parsedGen.success) {
+      error(
+        res,
+        parsedGen.error.issues[0]?.message ?? "field and context are required",
+        400,
+      );
       return true;
     }
+    const body = parsedGen.data;
 
     const runtime = state.runtime;
     if (!runtime) {

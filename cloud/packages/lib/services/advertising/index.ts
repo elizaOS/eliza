@@ -10,6 +10,7 @@ import {
 import { creditsService } from "@/lib/services/credits";
 import { secretsService } from "@/lib/services/secrets";
 import { logger } from "@/lib/utils/logger";
+import { type ContentSafetyReview, contentSafetyService } from "../content-safety";
 import { googleAdsProvider } from "./providers/google";
 import { metaAdsProvider } from "./providers/meta";
 import { tiktokAdsProvider } from "./providers/tiktok";
@@ -17,12 +18,15 @@ import type {
   AdAccountCredentials,
   AdPlatform,
   AdProvider,
+  AdProviderMediaUploadResult,
   CampaignMetrics,
   ConnectAccountInput,
   CreateCampaignInput,
   CreateCreativeInput,
+  CreativeMedia,
   UpdateCampaignInput,
   UpdateCreativeInput,
+  UploadMediaInput,
 } from "./types";
 import { AD_CREDIT_RATES, calculateSpendCredits } from "./types";
 
@@ -41,6 +45,66 @@ class AdvertisingService {
     return Object.entries(providers)
       .filter(([_, p]) => p !== null)
       .map(([platform]) => platform as AdPlatform);
+  }
+
+  private campaignSafetyText(input: CreateCampaignInput | UpdateCampaignInput): string[] {
+    const text = [
+      "name" in input ? `Campaign name: ${input.name}` : undefined,
+      "objective" in input && input.objective ? `Objective: ${input.objective}` : undefined,
+    ];
+    if (input.targeting) {
+      text.push(`Targeting: ${JSON.stringify(input.targeting)}`);
+    }
+    return text.filter((value): value is string => Boolean(value));
+  }
+
+  private creativeSafetyText(input: {
+    name?: string | null;
+    headline?: string | null;
+    primaryText?: string | null;
+    description?: string | null;
+    callToAction?: string | null;
+    destinationUrl?: string | null;
+  }): string[] {
+    return [
+      "name" in input ? `Creative name: ${input.name}` : undefined,
+      input.headline ? `Headline: ${input.headline}` : undefined,
+      input.primaryText ? `Primary text: ${input.primaryText}` : undefined,
+      input.description ? `Description: ${input.description}` : undefined,
+      input.callToAction ? `Call to action: ${input.callToAction}` : undefined,
+      input.destinationUrl ? `Destination URL: ${input.destinationUrl}` : undefined,
+    ].filter((value): value is string => Boolean(value));
+  }
+
+  private creativeSafetyImageUrls(
+    media:
+      | Array<{
+          url?: string | null;
+          type?: string | null;
+          thumbnailUrl?: string | null;
+          thumbnail_url?: string | null;
+        }>
+      | undefined,
+  ): string[] {
+    return (media ?? []).flatMap((item) => {
+      const urls: string[] = [];
+      if (item.type === "image" && item.url) urls.push(item.url);
+      const thumbnailUrl = item.thumbnailUrl ?? item.thumbnail_url;
+      if (thumbnailUrl) urls.push(thumbnailUrl);
+      return urls;
+    });
+  }
+
+  private contentSafetyMetadata(review: ContentSafetyReview) {
+    const metadata: NonNullable<AdCreative["metadata"]>["content_safety"] = {
+      provider: review.provider,
+      flagged: review.flagged,
+      flaggedCategories: review.flaggedCategories,
+      issues: review.issues,
+    };
+    if (review.model) metadata.model = review.model;
+    if (review.moderationId) metadata.moderationId = review.moderationId;
+    return metadata;
   }
 
   getProvider(platform: AdPlatform): AdProvider {
@@ -215,6 +279,112 @@ class AdvertisingService {
     return await provider.listAdAccounts({ accessToken });
   }
 
+  async uploadMedia(
+    organizationId: string,
+    adAccountId: string,
+    input: UploadMediaInput,
+  ): Promise<AdProviderMediaUploadResult> {
+    const account = await adAccountsRepository.findById(adAccountId);
+    if (!account || account.organization_id !== organizationId) {
+      throw new Error("Ad account not found");
+    }
+
+    const provider = this.getProvider(account.platform);
+    if (!provider.uploadMedia) {
+      throw new Error(`Advertising platform ${account.platform} does not support media upload`);
+    }
+
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "advertising_creative",
+      organizationId,
+      text: [
+        input.name ? `Media name: ${input.name}` : undefined,
+        `Media type: ${input.type}`,
+        `Media URL: ${input.url}`,
+      ],
+      imageUrls:
+        input.type === "image"
+          ? [input.url]
+          : input.thumbnailUrl
+            ? [input.thumbnailUrl]
+            : undefined,
+      metadata: { platform: account.platform, adAccountId },
+    });
+
+    const credentials = await this.getCredentials(account);
+    const result = await provider.uploadMedia(credentials, account.external_account_id, input);
+    if (!result.success) {
+      throw new Error(result.error || "Failed to upload media to advertising platform");
+    }
+    return result;
+  }
+
+  private async prepareCreativeMediaForProvider(
+    organizationId: string,
+    account: AdAccount,
+    provider: AdProvider,
+    credentials: AdAccountCredentials,
+    input: CreateCreativeInput,
+  ): Promise<CreativeMedia[]> {
+    if (!provider.uploadMedia || input.media.length === 0) {
+      return input.media;
+    }
+
+    const prepared: CreativeMedia[] = [];
+    for (const media of input.media) {
+      if (media.providerAssetId) {
+        prepared.push(media);
+      } else {
+        const upload = await this.uploadMedia(organizationId, account.id, {
+          name: `${input.name}-${media.order}`,
+          type: media.type,
+          url: media.url,
+          thumbnailUrl: media.thumbnailUrl,
+        });
+        if (!upload.providerAssetId) {
+          throw new Error("Advertising media upload returned no provider asset id");
+        }
+        prepared.push({
+          ...media,
+          providerAssetId: upload.providerAssetId,
+          thumbnailUrl: media.thumbnailUrl ?? upload.providerAssetUrl,
+        });
+      }
+
+      if (
+        (account.platform === "tiktok" || account.platform === "google") &&
+        media.type === "video" &&
+        media.thumbnailUrl &&
+        !input.media.some((candidate) => candidate.type === "image")
+      ) {
+        const thumbnailUpload = await provider.uploadMedia(
+          credentials,
+          account.external_account_id,
+          {
+            name: `${input.name}-thumbnail`,
+            type: "image",
+            url: media.thumbnailUrl,
+          },
+        );
+        if (!thumbnailUpload.success || !thumbnailUpload.providerAssetId) {
+          throw new Error(
+            thumbnailUpload.error || `Failed to upload ${account.platform} video thumbnail`,
+          );
+        }
+        prepared.push({
+          id: crypto.randomUUID(),
+          source: media.source,
+          url: media.thumbnailUrl,
+          providerAssetId: thumbnailUpload.providerAssetId,
+          type: "image",
+          order: media.order + 1,
+        });
+      }
+    }
+
+    return prepared;
+  }
+
   // ============================================
   // Campaign Operations
   // ============================================
@@ -248,6 +418,14 @@ class AdvertisingService {
     if (!account || account.organization_id !== input.organizationId) {
       throw new Error("Ad account not found");
     }
+
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "advertising_campaign",
+      organizationId: input.organizationId,
+      appId: input.appId,
+      text: this.campaignSafetyText(input),
+      metadata: { platform: account.platform, adAccountId: input.adAccountId },
+    });
 
     // Charge credits for campaign creation
     const deduction = await creditsService.deductCredits({
@@ -286,6 +464,20 @@ class AdvertisingService {
       throw new Error("Insufficient credits for campaign budget");
     }
     if (!budgetDeduction.transaction) {
+      await Promise.all([
+        creditsService.refundCredits({
+          organizationId: input.organizationId,
+          amount: AD_CREDIT_RATES.createCampaign,
+          description: "Refund: Campaign creation failed while recording campaign charge",
+          metadata: {},
+        }),
+        creditsService.refundCredits({
+          organizationId: input.organizationId,
+          amount: budgetCredits,
+          description: "Refund: Campaign budget allocation transaction was not recorded",
+          metadata: {},
+        }),
+      ]);
       throw new Error("Failed to record budget deduction transaction");
     }
 
@@ -299,43 +491,82 @@ class AdvertisingService {
       // Refund all credits
       await creditsService.refundCredits({
         organizationId: input.organizationId,
-        amount: 0.5 + budgetCredits,
+        amount: AD_CREDIT_RATES.createCampaign + budgetCredits,
         description: `Refund: Campaign creation failed - ${result.error}`,
         metadata: {},
       });
       throw new Error(result.error || "Failed to create campaign on platform");
     }
 
-    // Create campaign record
-    const campaign = await adCampaignsRepository.create({
-      organization_id: input.organizationId,
-      ad_account_id: input.adAccountId,
-      external_campaign_id: result.externalCampaignId,
-      name: input.name,
-      platform: account.platform,
-      objective: input.objective,
-      status: "pending",
-      budget_type: input.budgetType,
-      budget_amount: String(input.budgetAmount),
-      budget_currency: input.budgetCurrency || "USD",
-      credits_allocated: String(budgetCredits),
-      start_date: input.startDate,
-      end_date: input.endDate,
-      targeting: input.targeting || {},
-      app_id: input.appId,
-    });
+    let campaign: AdCampaign | null = null;
+    try {
+      // Create campaign record
+      campaign = await adCampaignsRepository.create({
+        organization_id: input.organizationId,
+        ad_account_id: input.adAccountId,
+        external_campaign_id: result.externalCampaignId,
+        name: input.name,
+        platform: account.platform,
+        objective: input.objective,
+        status: "pending",
+        budget_type: input.budgetType,
+        budget_amount: String(input.budgetAmount),
+        budget_currency: input.budgetCurrency || "USD",
+        credits_allocated: String(budgetCredits),
+        start_date: input.startDate,
+        end_date: input.endDate,
+        targeting: input.targeting || {},
+        app_id: input.appId,
+      });
 
-    // Record budget allocation transaction
-    await adTransactionsRepository.create({
-      organization_id: input.organizationId,
-      campaign_id: campaign.id,
-      credit_transaction_id: budgetDeduction.transaction.id,
-      type: "budget_allocation",
-      amount: String(input.budgetAmount),
-      currency: input.budgetCurrency || "USD",
-      credits_amount: String(budgetCredits),
-      description: `Budget allocated for campaign: ${input.name}`,
-    });
+      // Record budget allocation transaction
+      await adTransactionsRepository.create({
+        organization_id: input.organizationId,
+        campaign_id: campaign.id,
+        credit_transaction_id: budgetDeduction.transaction.id,
+        type: "budget_allocation",
+        amount: String(input.budgetAmount),
+        currency: input.budgetCurrency || "USD",
+        credits_amount: String(budgetCredits),
+        description: `Budget allocated for campaign: ${input.name}`,
+      });
+    } catch (error) {
+      logger.error("[Advertising] Local campaign persistence failed after provider create", {
+        organizationId: input.organizationId,
+        externalCampaignId: result.externalCampaignId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+
+      if (result.externalCampaignId) {
+        await provider
+          .deleteCampaign(credentials, result.externalCampaignId)
+          .catch((deleteError) => {
+            logger.error("[Advertising] Failed to compensate provider campaign create", {
+              externalCampaignId: result.externalCampaignId,
+              error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+            });
+          });
+      }
+      if (campaign) {
+        await adCampaignsRepository.delete(campaign.id).catch((deleteError) => {
+          logger.error("[Advertising] Failed to remove partially persisted campaign", {
+            campaignId: campaign?.id,
+            error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+          });
+        });
+      }
+      await creditsService.refundCredits({
+        organizationId: input.organizationId,
+        amount: AD_CREDIT_RATES.createCampaign + budgetCredits,
+        description: "Refund: Campaign creation failed after platform sync",
+        metadata: { externalCampaignId: result.externalCampaignId },
+      });
+      throw error;
+    }
+
+    if (!campaign) {
+      throw new Error("Campaign creation failed before local campaign was persisted");
+    }
 
     logger.info("[Advertising] Campaign created", {
       campaignId: campaign.id,
@@ -564,6 +795,15 @@ class AdvertisingService {
       throw new Error("Campaign not found");
     }
 
+    const safetyReview = await contentSafetyService.assertSafeForPublicUse({
+      surface: "advertising_creative",
+      organizationId,
+      campaignId: input.campaignId,
+      text: this.creativeSafetyText(input),
+      imageUrls: this.creativeSafetyImageUrls(input.media),
+      metadata: { creativeType: input.type },
+    });
+
     // Charge credits for creative creation
     const deduction = await creditsService.deductCredits({
       organizationId,
@@ -576,38 +816,67 @@ class AdvertisingService {
       throw new Error("Insufficient credits to create creative");
     }
 
+    let preparedInput = input;
+    let account: AdAccount | undefined;
+    let credentials: AdAccountCredentials | undefined;
+    let provider: AdProvider | undefined;
+    if (campaign.external_campaign_id) {
+      account = await adAccountsRepository.findById(campaign.ad_account_id);
+      if (account) {
+        try {
+          credentials = await this.getCredentials(account);
+          provider = this.getProvider(account.platform);
+          const preparedMedia = await this.prepareCreativeMediaForProvider(
+            organizationId,
+            account,
+            provider,
+            credentials,
+            input,
+          );
+          preparedInput = { ...input, media: preparedMedia };
+        } catch (error) {
+          await creditsService.refundCredits({
+            organizationId,
+            amount: AD_CREDIT_RATES.createCreative,
+            description: `Refund: Creative media upload failed - ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+            metadata: { campaignId: input.campaignId, creativeName: input.name },
+          });
+          throw error;
+        }
+      }
+    }
+
     // Create creative record
     const creative = await adCreativesRepository.create({
-      campaign_id: input.campaignId,
-      name: input.name,
-      type: input.type,
-      headline: input.headline,
-      primary_text: input.primaryText,
-      description: input.description,
-      call_to_action: input.callToAction,
-      destination_url: input.destinationUrl,
-      media: input.media,
+      campaign_id: preparedInput.campaignId,
+      name: preparedInput.name,
+      type: preparedInput.type,
+      headline: preparedInput.headline,
+      primary_text: preparedInput.primaryText,
+      description: preparedInput.description,
+      call_to_action: preparedInput.callToAction,
+      destination_url: preparedInput.destinationUrl,
+      media: preparedInput.media,
       metadata: {
-        facebook_page_id: input.pageId,
-        instagram_account_id: input.instagramActorId,
-        tiktok_identity_id: input.tiktokIdentityId,
-        tiktok_identity_type: input.tiktokIdentityType,
+        facebook_page_id: preparedInput.pageId,
+        instagram_account_id: preparedInput.instagramActorId,
+        tiktok_identity_id: preparedInput.tiktokIdentityId,
+        tiktok_identity_type: preparedInput.tiktokIdentityType,
+        content_safety: this.contentSafetyMetadata(safetyReview),
       },
       status: "draft",
     });
 
     // Sync with platform if campaign is synced
     if (campaign.external_campaign_id) {
-      const account = await adAccountsRepository.findById(campaign.ad_account_id);
-      if (account) {
-        const credentials = await this.getCredentials(account);
-        const provider = this.getProvider(account.platform);
-
+      if (account && credentials && provider) {
         const result = await provider.createCreative(
           credentials,
           account.external_account_id,
           campaign.external_campaign_id,
-          input,
+          preparedInput,
         );
 
         if (result.success && result.externalCreativeId) {
@@ -658,6 +927,23 @@ class AdvertisingService {
       throw new Error("Campaign not found");
     }
 
+    const safetyReview = await contentSafetyService.assertSafeForPublicUse({
+      surface: "advertising_creative",
+      organizationId,
+      campaignId: creative.campaign_id,
+      creativeId,
+      text: this.creativeSafetyText({
+        name: input.name ?? creative.name,
+        headline: input.headline ?? creative.headline ?? undefined,
+        primaryText: input.primaryText ?? creative.primary_text ?? undefined,
+        description: input.description ?? creative.description ?? undefined,
+        callToAction: input.callToAction ?? creative.call_to_action ?? undefined,
+        destinationUrl: input.destinationUrl ?? creative.destination_url ?? undefined,
+      }),
+      imageUrls: this.creativeSafetyImageUrls(input.media ?? creative.media),
+      metadata: { creativeType: input.name ?? creative.name },
+    });
+
     const updated = await adCreativesRepository.update(creativeId, {
       name: input.name,
       headline: input.headline,
@@ -666,6 +952,10 @@ class AdvertisingService {
       call_to_action: input.callToAction,
       destination_url: input.destinationUrl,
       media: input.media,
+      metadata: {
+        ...(creative.metadata ?? {}),
+        content_safety: this.contentSafetyMetadata(safetyReview),
+      },
     });
 
     logger.info("[Advertising] Creative updated", { creativeId });

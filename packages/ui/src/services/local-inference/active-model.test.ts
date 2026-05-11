@@ -21,19 +21,13 @@ function makeInstalledModel(id: string, filePath: string): InstalledModel {
 
 describe("resolveLocalInferenceLoadArgs", () => {
   it("threads catalog contextLength into loader args when no override is given", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-desktop-9b",
-      "/tmp/eliza-1-desktop-9b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target);
     expect(args.contextSize).toBe(65536);
   });
 
   it("per-load contextSize override beats catalog contextLength default", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-desktop-9b",
-      "/tmp/eliza-1-desktop-9b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       contextSize: 32768,
     });
@@ -41,10 +35,7 @@ describe("resolveLocalInferenceLoadArgs", () => {
   });
 
   it("per-load gpuLayers/flashAttention/mmap/mlock overrides flow into args", async () => {
-    const target = makeInstalledModel(
-      "eliza-1-mobile-1_7b",
-      "/tmp/eliza-1-mobile-1_7b.gguf",
-    );
+    const target = makeInstalledModel("eliza-1-1_7b", "/tmp/eliza-1-1_7b.gguf");
     const args = await resolveLocalInferenceLoadArgs(target, {
       gpuLayers: 16,
       flashAttention: true,
@@ -55,6 +46,14 @@ describe("resolveLocalInferenceLoadArgs", () => {
     expect(args.flashAttention).toBe(true);
     expect(args.mmap).toBe(false);
     expect(args.mlock).toBe(true);
+  });
+
+  it("preserves kvOffload overrides for backend load resolution", async () => {
+    const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
+    const args = await resolveLocalInferenceLoadArgs(target, {
+      kvOffload: { gpuLayers: 10 },
+    });
+    expect(args.kvOffload).toEqual({ gpuLayers: 10 });
   });
 });
 
@@ -86,7 +85,7 @@ describe("validateLocalInferenceLoadArgs", () => {
   it("accepts fork KV cache types when allowFork is true (AOSP path)", () => {
     expect(() =>
       validateLocalInferenceLoadArgs(
-        { cacheTypeK: "tbq4_0", cacheTypeV: "tbq3_0" },
+        { cacheTypeK: "q4_polar", cacheTypeV: "tbq3_0" },
         { allowFork: true },
       ),
     ).not.toThrow();
@@ -136,6 +135,7 @@ describe("KV cache type classifiers", () => {
     expect(isForkOnlyKvCacheType("tbq4_0")).toBe(true);
     expect(isForkOnlyKvCacheType("tbq3_0")).toBe(true);
     expect(isForkOnlyKvCacheType("qjl1_256")).toBe(true);
+    expect(isForkOnlyKvCacheType("q4_polar")).toBe(true);
     expect(isForkOnlyKvCacheType("f16")).toBe(false);
     expect(isForkOnlyKvCacheType(undefined)).toBe(false);
   });
@@ -144,6 +144,7 @@ describe("KV cache type classifiers", () => {
     expect(isStockKvCacheType("f16")).toBe(true);
     expect(isStockKvCacheType("q8_0")).toBe(true);
     expect(isStockKvCacheType("bf16")).toBe(true);
+    expect(isStockKvCacheType("q4_polar")).toBe(false);
     expect(isStockKvCacheType("tbq4_0")).toBe(false);
     expect(isStockKvCacheType(undefined)).toBe(false);
   });

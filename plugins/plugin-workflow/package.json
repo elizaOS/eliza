@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-workflow",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "ElizaOS plugin for generating and running workflows in-process",
   "type": "module",
   "main": "dist/index.js",
@@ -58,12 +58,12 @@
   },
   "homepage": "https://github.com/elizaos-plugins/plugin-workflow#readme",
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@electric-sql/pglite": "^0.2.17",
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
     "@types/bun": "^1.3.8",
     "@types/node": "^25.1.0",
     "bun-types": "^1.3.8",
@@ -80,7 +80,7 @@
     "node": ">=24.0.0"
   },
   "dependencies": {
-    "@elizaos/workflows": "workspace:*",
+    "@elizaos/workflows": "2.0.0-beta.1",
     "drizzle-orm": "^0.45.1",
     "quickjs-emscripten": "0.32.0"
   }

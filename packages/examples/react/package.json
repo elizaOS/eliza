@@ -4,11 +4,11 @@
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-pglite-assets.mjs",
-    "dev": "vite",
+    "dev": "bun --bun vite",
     "prebuild": "node scripts/copy-pglite-assets.mjs",
-    "build": "tsc && vite build",
+    "build": "tsc && bun --bun vite build",
     "prepreview": "node scripts/copy-pglite-assets.mjs",
-    "preview": "vite preview",
+    "preview": "bun --bun vite preview",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"

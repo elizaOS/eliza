@@ -1,9 +1,8 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { Plugin } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, resolveStateDir } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
   type AppLaunchPreparation,
@@ -107,9 +106,7 @@ function sanitiseInstalledPackageDirName(packageName: string): string {
  * Matches `packages/app-core/src/services/plugin-installer.ts::pluginsBaseDir`.
  */
 function installedPluginsBaseDir(): string {
-  const stateDir = process.env.ELIZA_STATE_DIR?.trim();
-  const base = stateDir || path.join(os.homedir(), ".eliza");
-  return path.join(base, "plugins", "installed");
+  return path.join(resolveStateDir(), "plugins", "installed");
 }
 
 /**

@@ -31,12 +31,14 @@ function fakeStructured(state: {
   facts?: string[];
   decisions?: string[];
   pending_actions?: string[];
+  forbidden_behaviors?: string[];
   entities?: Record<string, string>;
 }): CompactorModelCall {
   const payload = JSON.stringify({
     facts: state.facts ?? [],
     decisions: state.decisions ?? [],
     pending_actions: state.pending_actions ?? [],
+    forbidden_behaviors: state.forbidden_behaviors ?? [],
     entities: state.entities ?? {},
   });
   return async () => payload;
@@ -47,6 +49,7 @@ function fakeHybrid(payload: {
     facts?: string[];
     decisions?: string[];
     pending_actions?: string[];
+    forbidden_behaviors?: string[];
     entities?: Record<string, string>;
   };
   ledger?: Array<{ index: number; note: string }>;
@@ -56,6 +59,7 @@ function fakeHybrid(payload: {
       facts: payload.state?.facts ?? [],
       decisions: payload.state?.decisions ?? [],
       pending_actions: payload.state?.pending_actions ?? [],
+      forbidden_behaviors: payload.state?.forbidden_behaviors ?? [],
       entities: payload.state?.entities ?? {},
     },
     ledger: payload.ledger ?? [],
@@ -123,6 +127,7 @@ function makeRoundTripHybrid(): CompactorModelCall {
         facts: allFacts,
         decisions: [],
         pending_actions: [],
+        forbidden_behaviors: [],
         entities: allEntities,
       },
       ledger: allLedger,
@@ -271,6 +276,21 @@ describe("findSafeCompactionBoundary", () => {
     const boundary = findSafeCompactionBoundary(msgs, 3);
     expect(boundary).toBeLessThanOrEqual(2);
   });
+
+  it("does not pull unrelated older assistant across an intervening user for orphaned tool results", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "assistant", content: "old unrelated assistant" },
+      { role: "user", content: "intervening user turn" },
+      { role: "tool", content: "orphan result", toolCallId: "missing" },
+      { role: "assistant", content: "done" },
+      { role: "user", content: "next" },
+    ];
+    // tail=3 -> boundary=3, so the orphaned tool result is in the tail.
+    // The nearest previous non-tool turn is a user, so boundary should not
+    // walk past it to preserve an unrelated assistant.
+    expect(findSafeCompactionBoundary(msgs, 3)).toBe(3);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -399,6 +419,181 @@ describe("structuredStateCompactor", () => {
     expect(calls).toBeGreaterThanOrEqual(2);
     expect(out.stats.extra?.recursed).toBe(true);
   });
+
+  it("deterministically preserves typed tool results as durable facts", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "please look up turn 5" },
+        {
+          role: "assistant",
+          content: "Calling lookup_stock for turn 5.",
+          toolCalls: [
+            {
+              id: "tool_5_call",
+              name: "lookup_stock",
+              arguments: { turn: 5 },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "[tool_result:lookup_stock] 3BC34F-663",
+          toolCallId: "tool_5_call",
+          toolName: "lookup_stock",
+        },
+        { role: "assistant", content: "noted" },
+        { role: "user", content: "continue" },
+      ],
+    };
+    const out = await structuredStateCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeStructured({}), preserveTailMessages: 2 }),
+    );
+    expect(out.replacementMessages[0].content).toContain(
+      "Tool result at turn 5 from lookup_stock: 3BC34F-663",
+    );
+  });
+});
+
+describe("CompactBench deterministic state fragments", () => {
+  function compactBenchTranscript(userContent: string): CompactorTranscript {
+    return {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: userContent },
+        { role: "assistant", content: "acknowledged" },
+        { role: "user", content: "continue" },
+      ],
+    };
+  }
+
+  it("structured-state preserves buried forbidden behavior and primary entity even when the model omits them", async () => {
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(
+        "Let's plan the launch checklist with Ramon Ramirez.\n" +
+          "Critical: never schedule Friday deploy. That is a hard rule.",
+      ),
+      buildOptions({
+        callModel: fakeStructured({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("Forbidden behaviors:");
+    expect(content).toContain("schedule Friday deploy");
+    expect(content).toContain("primary_subject: Ramon Ramirez");
+    expect(content).toContain("Ramon Ramirez: primary_subject");
+    expect(
+      (out.stats.extra?.state as { forbidden_behaviors?: string[] })
+        .forbidden_behaviors,
+    ).toContain("schedule Friday deploy");
+  });
+
+  it("hybrid-ledger preserves buried forbidden behavior and primary entity even when the model omits them", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "Starting the onboarding runbook with Priya Shah.\n" +
+          "Only one: never skip identity verification. Hard line.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("skip identity verification");
+    expect(content).toContain("primary_subject: Priya Shah");
+    expect(content).toContain("Priya Shah: primary_subject");
+  });
+
+  it("captures latest decision overrides and marks the superseded option forbidden", async () => {
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(
+        "For Mira's deployment plan, let's ship Friday.\n" +
+          "Actually, wait - scratch that. Instead, let's wait for audit signoff. Ignore the earlier instruction.",
+      ),
+      buildOptions({
+        callModel: fakeStructured({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("latest decision: wait for audit signoff");
+    expect(content).toContain("ship Friday");
+    expect(content).toContain("Mira: primary_subject");
+  });
+
+  it("captures entity assignment pairs in both facts and entity map", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "On the vendor review, Ava Chen will compile invoices, and Bo Li will reconcile credits.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("Ava Chen owns: compile invoices");
+    expect(content).toContain("Bo Li owns: reconcile credits");
+    expect(content).toContain("Ava Chen: owner_of: compile invoices");
+    expect(content).toContain("Bo Li: owner_of: reconcile credits");
+  });
+
+  it("hybrid-ledger carries CompactBench previous-artifact sections across cycles", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "continue the project" },
+      ],
+      metadata: {
+        priorLedger:
+          "# immutable_facts\n" +
+          "- primary_subject: Ramon Ramirez\n\n" +
+          "# locked_decisions\n" +
+          "- use audit gate\n\n" +
+          "# forbidden_behaviors\n" +
+          "- skip identity verification\n\n" +
+          "# entity_map\n" +
+          "- Ramon Ramirez: primary_subject",
+      },
+    };
+    const out = await hybridLedgerCompactor.compact(
+      transcript,
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 0,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("primary_subject: Ramon Ramirez");
+    expect(content).toContain("use audit gate");
+    expect(content).toContain("skip identity verification");
+    expect(content).toContain("Ramon Ramirez: primary_subject");
+  });
+
+  it("extracts common durable user facts without relying on the model", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "Ship to: 6701 Cedar St, Bend. That's the new office.\n" +
+          "The contract effective date is 2024-04-10. Make a note.\n" +
+          "My sister's birthday is 03/05. Don't let me forget.\n" +
+          'The book my friend recommended is called "The Silver Compass". Hold onto that.\n' +
+          "My flight is DL1237 on Tuesday - please remember.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({}),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    expect(content).toContain("office shipping address: 6701 Cedar St, Bend");
+    expect(content).toContain("contract effective date: 2024-04-10");
+    expect(content).toContain("My sister's birthday: 03/05");
+    expect(content).toContain("recommended book: The Silver Compass");
+    expect(content).toContain("flight number: DL1237");
+  });
 });
 
 describe("hierarchicalSummaryCompactor", () => {
@@ -472,6 +667,41 @@ describe("hybridLedgerCompactor", () => {
     expect(out.replacementMessages[0].content).toContain("user said hi");
     expect(out.replacementMessages[0].content).toContain("user: shaw");
     expect(out.stats.extra?.ledgerEntries).toBe(2);
+  });
+
+  it("deterministically preserves typed tool results even when model omits them", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [
+        { role: "system", content: "sys" },
+        { role: "user", content: "please look up turn 5" },
+        {
+          role: "assistant",
+          content: "Calling lookup_stock for turn 5.",
+          toolCalls: [
+            {
+              id: "tool_5_call",
+              name: "lookup_stock",
+              arguments: { turn: 5 },
+            },
+          ],
+        },
+        {
+          role: "tool",
+          content: "[tool_result:lookup_stock] 3BC34F-663",
+          toolCallId: "tool_5_call",
+          toolName: "lookup_stock",
+        },
+        { role: "assistant", content: "noted" },
+        { role: "user", content: "continue" },
+      ],
+    };
+    const out = await hybridLedgerCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeHybrid({}), preserveTailMessages: 2 }),
+    );
+    expect(out.replacementMessages[0].content).toContain(
+      "Tool result at turn 5 from lookup_stock: 3BC34F-663",
+    );
   });
 });
 
@@ -575,5 +805,346 @@ describe("multi-cycle drift", () => {
     const out3 = await hybridLedgerCompactor.compact(t3, opts);
     const ledger3 = out3.stats.extra?.renderedLedger as string;
     expect(ledger3).toContain("BANANA-42");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug-hunt regressions (deep review).
+// ---------------------------------------------------------------------------
+
+describe("findSafeCompactionBoundary — edge cases", () => {
+  it("handles empty messages without throwing or returning negatives", () => {
+    expect(findSafeCompactionBoundary([], 6)).toBe(0);
+  });
+
+  it("handles preserveTailMessages > total cleanly", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+    ];
+    // tail=100, total=3 → boundary = -97 → clamped to systemOffset = 1.
+    const boundary = findSafeCompactionBoundary(msgs, 100);
+    expect(boundary).toBe(1);
+    // splitTranscript would yield region = slice(1,1) = [] which is correct.
+  });
+
+  it("handles preserveTailMessages = 0 (compact everything but system)", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+    ];
+    expect(findSafeCompactionBoundary(msgs, 0)).toBe(3);
+  });
+
+  it("handles negative preserveTailMessages by treating as 0", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u" },
+      { role: "assistant", content: "a" },
+    ];
+    // Math.max(0, -5) = 0 → boundary = total = 3.
+    expect(findSafeCompactionBoundary(msgs, -5)).toBe(3);
+  });
+
+  it("does not split assistant message that has BOTH content and toolCalls", () => {
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u0" },
+      { role: "assistant", content: "a0" },
+      { role: "user", content: "u1" },
+      {
+        role: "assistant",
+        content: "thinking out loud and then calling",
+        toolCalls: [{ id: "mix", name: "search", arguments: { q: "x" } }],
+      },
+      { role: "tool", content: "result", toolCallId: "mix" },
+      { role: "assistant", content: "done" },
+      { role: "user", content: "u2" },
+    ];
+    const boundary = findSafeCompactionBoundary(msgs, 4);
+    // Producer @4, consumer @5. tail=4 → boundary=4. The assistant @4 must be
+    // either fully in compact or fully in tail along with its tool result @5.
+    const producerSide = 4 < boundary ? "compact" : "tail";
+    const consumerSide = 5 < boundary ? "compact" : "tail";
+    expect(producerSide).toBe(consumerSide);
+  });
+
+  it("tool message with EMPTY toolCallId still triggers orphan walk-back", () => {
+    // toolCallId is empty string — older indexer skipped it. The orphan loop
+    // should still pull the preceding assistant in.
+    const msgs: CompactorMessage[] = [
+      { role: "system", content: "sys" },
+      { role: "user", content: "u0" },
+      { role: "assistant", content: "a-producer" },
+      { role: "tool", content: "r", toolCallId: "", toolName: "f" },
+      { role: "assistant", content: "a-after" },
+      { role: "user", content: "u" },
+    ];
+    const boundary = findSafeCompactionBoundary(msgs, 3);
+    // tool consumer @3 in tail (boundary=3). Preceding assistant @2 must come
+    // along — boundary should be <= 2.
+    expect(boundary).toBeLessThanOrEqual(2);
+  });
+
+  it(
+    "unmatched producer (assistant called tool, tool result missing) " +
+      "does not push boundary",
+    () => {
+      const msgs: CompactorMessage[] = [
+        { role: "system", content: "sys" },
+        { role: "user", content: "u0" },
+        {
+          role: "assistant",
+          content: "called",
+          toolCalls: [{ id: "lost", name: "f", arguments: {} }],
+        },
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "moved on" },
+        { role: "user", content: "u2" },
+        { role: "assistant", content: "still going" },
+        { role: "user", content: "u3" },
+      ];
+      // No tool consumer for "lost" — boundary must just be total - tail.
+      expect(findSafeCompactionBoundary(msgs, 3)).toBe(5);
+    },
+  );
+});
+
+// ---------------------------------------------------------------------------
+// safeParseStructured / safeParseHybrid robustness
+// (exposed indirectly via the compactor entry points).
+// ---------------------------------------------------------------------------
+
+describe("structured-state parsing tolerance", () => {
+  it(
+    "extracts JSON when model wraps it in <reasoning>...</reasoning> with " +
+      "stray braces in the reasoning",
+    async () => {
+      // The reasoning prose contains a `{` that is NOT JSON. The parser used
+      // firstBrace..lastBrace which produces invalid JSON when prose has its
+      // own braces — this regressed silently to an empty state.
+      const callModel: CompactorModelCall = async () =>
+        "<reasoning>I considered {alt plans} and chose this one.</reasoning>\n" +
+        '{"facts":["chosen plan"],"decisions":[],"pending_actions":[],"entities":{}}';
+      const out = await structuredStateCompactor.compact(
+        buildTranscript(20),
+        buildOptions({ callModel }),
+      );
+      expect(out.replacementMessages[0].content).toContain("chosen plan");
+    },
+  );
+
+  it("extracts JSON when there is trailing prose AFTER the JSON object", async () => {
+    const callModel: CompactorModelCall = async () =>
+      '{"facts":["alpha"],"decisions":[],"pending_actions":[],"entities":{}}\n\nNote: extra prose appended {by mistake}.';
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    expect(out.replacementMessages[0].content).toContain("alpha");
+  });
+
+  it("extracts JSON from a fenced ```json block followed by extra prose", async () => {
+    const callModel: CompactorModelCall = async () =>
+      '```json\n{"facts":["fenced fact"],"decisions":[],"pending_actions":[],"entities":{}}\n```\n\nDone.';
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    expect(out.replacementMessages[0].content).toContain("fenced fact");
+  });
+
+  it("does not crash on completely unparseable model output", async () => {
+    const callModel: CompactorModelCall = async () => "I cannot do that, Dave.";
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    // Empty state — but valid replacement structure.
+    expect(out.replacementMessages).toHaveLength(1);
+    expect(out.replacementMessages[0].role).toBe("system");
+  });
+
+  it("does not crash when callModel returns the empty string", async () => {
+    const callModel: CompactorModelCall = async () => "";
+    const out = await structuredStateCompactor.compact(
+      buildTranscript(20),
+      buildOptions({ callModel }),
+    );
+    expect(out.replacementMessages).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// hybrid-ledger ledger-cap behavior
+// ---------------------------------------------------------------------------
+
+describe("hybrid-ledger cap semantics", () => {
+  it(
+    "when the model returns >10 entries, the cap keeps the MOST RECENT " +
+      "entries (chronologically last), not the oldest",
+    async () => {
+      // Model returns 15 chronologically-ordered entries. The hard cap dropped
+      // the most recently-acquired entries, which is the wrong half to drop
+      // for multi-cycle drift carryover (newest events are usually the most
+      // load-bearing for "what just happened").
+      const ledger = Array.from({ length: 15 }, (_, i) => ({
+        index: i,
+        note: `event-${i}`,
+      }));
+      const callModel = fakeHybrid({ ledger });
+      const out = await hybridLedgerCompactor.compact(
+        buildTranscript(20),
+        buildOptions({ callModel }),
+      );
+      const rendered = out.stats.extra?.renderedLedger as string;
+      // The newest entry must survive the cap.
+      expect(rendered).toContain("event-14");
+      // The oldest, beyond the cap window, should be dropped.
+      expect(rendered).not.toContain("event-0:");
+    },
+  );
+
+  it("priorLedger metadata of non-string type is handled safely", async () => {
+    const callModel = fakeHybrid({
+      state: { facts: ["x"] },
+      ledger: [{ index: 0, note: "e" }],
+    });
+    // Pass a number — old code did `as string` then template-string-coerced.
+    const transcript: CompactorTranscript = {
+      messages: buildTranscript(20).messages,
+      // biome-ignore lint/suspicious/noExplicitAny: deliberate wrong-type input
+      metadata: { priorLedger: 12345 as any },
+    };
+    const out = await hybridLedgerCompactor.compact(
+      transcript,
+      buildOptions({ callModel }),
+    );
+    // Should not crash, should still produce an artifact.
+    expect(out.replacementMessages).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Determinism + degenerate inputs
+// ---------------------------------------------------------------------------
+
+describe("compactor degenerate inputs", () => {
+  it("transcript with only a system message yields an empty replacement", async () => {
+    const transcript: CompactorTranscript = {
+      messages: [{ role: "system", content: "sys" }],
+    };
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    expect(out.replacementMessages).toHaveLength(0);
+    // System prompt is preserved separately by the runtime; the artifact
+    // must NOT include it.
+    expect(out.replacementMessages.some((m) => m.role === "system")).toBe(
+      false,
+    );
+  });
+
+  it("artifact replacementMessages MUST NOT include the system prefix", async () => {
+    // Even when there IS work to compact, the runtime concatenates
+    // [systemPrefix, replacement, preservedTail] itself. Including the system
+    // message in replacementMessages would double it.
+    const out = await naiveSummaryCompactor.compact(
+      buildTranscript(50),
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    // The system summary message from naive is role="assistant", not system.
+    expect(out.replacementMessages.every((m) => m.role !== "system")).toBe(
+      true,
+    );
+  });
+
+  it("artifact replacementMessages MUST NOT include the preserved tail", async () => {
+    const transcript = buildTranscript(50);
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive(), preserveTailMessages: 6 }),
+    );
+    // Tail is the last 6 messages of the input. None of them should appear
+    // verbatim in replacementMessages.
+    const tailContents = transcript.messages.slice(-6).map((m) => m.content);
+    for (const content of tailContents) {
+      for (const r of out.replacementMessages) {
+        expect(r.content).not.toBe(content);
+      }
+    }
+  });
+
+  it("hierarchical-summary handles a single-message region without crashing", async () => {
+    let leafCalls = 0;
+    let rollupCalls = 0;
+    const callModel: CompactorModelCall = async ({ systemPrompt }) => {
+      if (systemPrompt.includes("aggregator")) {
+        rollupCalls += 1;
+        return "rolled";
+      }
+      leafCalls += 1;
+      return "leaf";
+    };
+    // 7 messages + 1 system = 8 total, tail=6 → region of 1 message.
+    const out = await hierarchicalSummaryCompactor.compact(
+      buildTranscript(7),
+      buildOptions({ callModel }),
+    );
+    expect(leafCalls).toBe(1);
+    expect(rollupCalls).toBe(0); // single chunk, no rollup needed
+    expect(out.replacementMessages).toHaveLength(1);
+  });
+
+  it("is deterministic given the same deterministic callModel", async () => {
+    const callModel = fakeStructured({
+      facts: ["a", "b", "c"],
+      entities: { x: "1", y: "2", z: "3" },
+    });
+    const t = buildTranscript(20);
+    const o1 = await structuredStateCompactor.compact(
+      t,
+      buildOptions({ callModel }),
+    );
+    const o2 = await structuredStateCompactor.compact(
+      t,
+      buildOptions({ callModel }),
+    );
+    expect(o1.replacementMessages[0].content).toBe(
+      o2.replacementMessages[0].content,
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Stats sanity
+// ---------------------------------------------------------------------------
+
+describe("CompactionArtifact.stats", () => {
+  it("compactedTokens reflects [system + replacement + tail], not just replacement", async () => {
+    const transcript = buildTranscript(50);
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    // compactedTokens must be > 0 because system + tail alone are non-empty.
+    expect(out.stats.compactedTokens).toBeGreaterThan(0);
+  });
+
+  it("originalTokens equals countTranscriptTokens of the input", async () => {
+    const transcript = buildTranscript(20);
+    const out = await naiveSummaryCompactor.compact(
+      transcript,
+      buildOptions({ callModel: fakeNaive() }),
+    );
+    // Compute expected via the same heuristic.
+    let expected = 0;
+    for (const m of transcript.messages) {
+      expected += approxCountTokens(m.content);
+    }
+    expect(out.stats.originalTokens).toBe(expected);
   });
 });

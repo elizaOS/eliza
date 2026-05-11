@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv vulkan-qjl-polar metal metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -29,6 +29,9 @@ $(QJL_POLAR_OBJ): $(QJL_POLAR_SRC) qjl_polar_ref.h
 reference-test: gen_fixture
 	@echo "[kernels/verify] reference vs reference (fixture sanity)..."
 	./gen_fixture --self-test
+
+kernel-contract:
+	node check_kernel_contract.mjs
 
 gen_fixture: gen_fixture.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference $< $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o $@
@@ -48,16 +51,30 @@ SYSTEM_LIBVULKAN := $(firstword \
     $(wildcard /usr/lib64/libvulkan.so.1) \
     $(wildcard /usr/lib/libvulkan.so.1))
 
+# Homebrew Vulkan SDK on macOS (vulkan-headers + vulkan-loader + molten-vk).
+# Detected by the loader dylib + headers under /opt/homebrew.
+HOMEBREW_VULKAN_HEADERS := $(wildcard /opt/homebrew/include/vulkan/vulkan.h)
+HOMEBREW_VULKAN_LIB     := $(wildcard /opt/homebrew/opt/vulkan-loader/lib/libvulkan.dylib)
+
 vulkan: vulkan_verify
 vulkan_verify: vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 ifdef VULKAN_SDK
 	$(CXX) $(CXXFLAGS) -I$(VULKAN_SDK)/include -I../reference -I. \
 		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		-L$(VULKAN_SDK)/lib -lvulkan -lm -o vulkan_verify
+else ifneq ($(strip $(HOMEBREW_VULKAN_HEADERS)$(HOMEBREW_VULKAN_LIB)),)
+	$(CXX) $(CXXFLAGS) -I/opt/homebrew/include -I../reference -I. \
+		vulkan_verify.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) \
+		-L/opt/homebrew/opt/vulkan-loader/lib -lvulkan -lm -o vulkan_verify
+	@echo "[vulkan_verify] Built against Homebrew vulkan-loader (macOS / MoltenVK)."
+	@echo "[vulkan_verify] Run with:"
+	@echo "  export VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json"
+	@echo "  export DYLD_LIBRARY_PATH=/opt/homebrew/opt/vulkan-loader/lib:/opt/homebrew/opt/molten-vk/lib"
 else
 ifeq ($(wildcard $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)/vulkan/vulkan.hpp),)
-	@echo "Vulkan harness needs either:"
+	@echo "Vulkan harness needs one of:"
 	@echo "  - VULKAN_SDK pointing at LunarG, or"
+	@echo "  - macOS: brew install molten-vk vulkan-headers vulkan-loader, or"
 	@echo "  - Fetched Khronos headers at $(ELIZA_DFLASH_VULKAN_HEADERS_DIR)"
 	@echo "    (run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan' to fetch them)"
 	@false
@@ -81,6 +98,41 @@ vulkan-qjl-polar: vulkan_verify vulkan-spirv
 	./vulkan_verify ../vulkan/qjl.spv fixtures/qjl.json
 	@echo "[kernels/verify] running vulkan_verify on Polar fixture..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
+	@echo "[kernels/verify] running vulkan_verify on Polar+QJL-residual fixture..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+
+# Full Vulkan correctness gate for the default-on kernel set. Runs all five
+# score kernels plus the Polar residual fixture so the optional residual branch
+# is not left to source review only.
+vulkan-verify: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan turbo3..."
+	./vulkan_verify ../vulkan/turbo3.spv fixtures/turbo3.json
+	@echo "[kernels/verify] vulkan turbo4..."
+	./vulkan_verify ../vulkan/turbo4.spv fixtures/turbo4.json
+	@echo "[kernels/verify] vulkan turbo3_tcq..."
+	./vulkan_verify ../vulkan/turbo3_tcq.spv fixtures/turbo3_tcq.json
+	@echo "[kernels/verify] vulkan qjl..."
+	./vulkan_verify ../vulkan/qjl.spv fixtures/qjl.json
+	@echo "[kernels/verify] vulkan polar..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar + QJL residual..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+
+# Native Linux end-to-end smoke for the Vulkan backend. This first runs the
+# standalone fixture verifier, then builds the patched fork target and runs the
+# graph-dispatch smoke below. It writes hardware-results evidence, rejects
+# software ICDs unless ELIZA_ALLOW_SOFTWARE_VULKAN=1 is set, and refuses stale
+# or symbol-only artifacts.
+vulkan-native-smoke:
+	./linux_vulkan_smoke.sh
+
+# Android on-device standalone Vulkan smoke. Cross-compiles vulkan_verify with
+# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all six
+# fixture checks on the physical device. Standalone fixture success is only
+# evidence; the script exits non-zero until Android graph-dispatch evidence is
+# supplied through ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE.
+android-vulkan-smoke:
+	./android_vulkan_smoke.sh
 
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
@@ -90,6 +142,38 @@ metal_verify: metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 		metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		-framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 		-lm -o metal_verify
+
+# Full Metal correctness gate for the default-on kernel set. The single-block
+# kernels are the compatibility entrypoints; Polar is checked both with and
+# without its QJL residual branch.
+metal-verify: metal_verify reference-test
+	@echo "[kernels/verify] metal turbo3..."
+	./metal_verify ../metal/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json
+	@echo "[kernels/verify] metal turbo4..."
+	./metal_verify ../metal/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json
+	@echo "[kernels/verify] metal turbo3_tcq..."
+	./metal_verify ../metal/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json
+	@echo "[kernels/verify] metal qjl..."
+	./metal_verify ../metal/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json
+	@echo "[kernels/verify] metal polar..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json
+	@echo "[kernels/verify] metal polar + QJL residual..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar_qjl.json
+
+# Additive check for the long-context multi-block Metal entrypoints. These
+# are separate symbols from the compatibility entrypoints and need direct
+# harness coverage whenever their dispatch shape changes.
+metal-verify-multiblock: metal_verify reference-test
+	@for n in 2 3 4 8; do \
+	  echo "[kernels/verify] metal turbo3 multi $$n..." && \
+	  ./metal_verify ../metal/turbo3.metal kernel_turbo3_dot_multi fixtures/turbo3.json --multi $$n && \
+	  echo "[kernels/verify] metal turbo4 multi $$n..." && \
+	  ./metal_verify ../metal/turbo4.metal kernel_turbo4_dot_multi fixtures/turbo4.json --multi $$n && \
+	  echo "[kernels/verify] metal turbo3_tcq multi $$n..." && \
+	  ./metal_verify ../metal/turbo3_tcq.metal kernel_turbo3_tcq_dot_multi fixtures/turbo3_tcq.json --multi $$n && \
+	  echo "[kernels/verify] metal qjl multi $$n..." && \
+	  ./metal_verify ../metal/qjl.metal kernel_attn_score_qjl1_256_multi fixtures/qjl.json --multi $$n || exit 1; \
+	done
 
 # Metal performance harness (macOS only). Sibling of metal_verify; measures
 # end-to-end GPU latency, CPU wait, and bandwidth utilisation per kernel at
@@ -306,8 +390,192 @@ else
 	@echo "[cuda-verify] turbo3_tcq ..." ; ./cuda_verify fixtures/turbo3_tcq.json
 	@echo "[cuda-verify] qjl ..."        ; ./cuda_verify fixtures/qjl.json
 	@echo "[cuda-verify] polar ..."      ; ./cuda_verify fixtures/polar.json
+	@echo "[cuda-verify] polar + QJL residual ..." ; ./cuda_verify fixtures/polar_qjl.json
 endif
 
+# Hardware runners. These intentionally fail without matching physical
+# hardware and a model-backed graph smoke (ELIZA_DFLASH_SMOKE_MODEL).
+cuda-hardware:
+	./cuda_runner.sh
+
+rocm-hardware:
+	./rocm_runner.sh
+
+gh200-hardware:
+	./gh200_runner.sh
+
+windows-hardware:
+	@echo "Run on a native Windows host:"
+	@echo "  pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\\\models\\\\eliza-1-smoke.gguf"
+
+# Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
+# and the fork's in-tree shaders. Both ship the same kernel symbols and decode
+# math (the standalones add perf-only divergence; see PATCH_AUDIT_2026-05-10.md
+# §"Standalone-vs-fork shader drift"). The reference runs of metal_verify /
+# vulkan_verify validated the standalones; this target re-runs the same harness
+# against the fork's in-tree variants so we can confirm 8/8 PASS still holds
+# before signing off a bundle.
+#
+# The fork is the milady-ai/llama.cpp checkout the build script clones into
+# ~/.cache/eliza-dflash/milady-llama-cpp. If the cache dir is absent, this
+# target prints a clear "fork not present, please run build first" message
+# rather than failing cryptically.
+ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/milady-shipped
+ELIZA_DFLASH_FORK_VULKAN_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
+
+verify-fork:
+ifeq ($(wildcard $(ELIZA_DFLASH_LLAMA_DIR)/.git),)
+	@echo "[verify-fork] fork not present at $(ELIZA_DFLASH_LLAMA_DIR)"
+	@echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal'"
+	@echo "[verify-fork] (or any other target) first to clone it, then re-run this target."
+	@false
+else
+	@if which xcrun >/dev/null 2>&1; then \
+	  if [ ! -d "$(ELIZA_DFLASH_FORK_METAL_DIR)" ]; then \
+	    echo "[verify-fork] fork present but $(ELIZA_DFLASH_FORK_METAL_DIR) missing — fork layout drift."; \
+	    echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal --dry-run' to stage/describe the shipped kernel patch."; \
+	    exit 1; \
+	  fi; \
+	  $(MAKE) metal_verify >/dev/null && \
+	  echo "[verify-fork] metal/turbo3   (patched shipped: turbo3.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json     && \
+	  echo "[verify-fork] metal/turbo4   (patched shipped: turbo4.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json     && \
+	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
+	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
+	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
+	  echo "[verify-fork] metal: 5/5 patched shipped shaders verified against the same fixtures as the standalones"; \
+	else \
+	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
+	fi
+	@if [ -d "$(ELIZA_DFLASH_FORK_VULKAN_DIR)" ] && ls $(ELIZA_DFLASH_FORK_VULKAN_DIR)/turbo3.comp >/dev/null 2>&1; then \
+	  if [ -z "$(GLSLC)" ]; then \
+	    echo "[verify-fork] vulkan: glslc not found — cannot compile fork .comp -> .spv; skipping"; \
+	  elif $(MAKE) vulkan_verify >/dev/null 2>&1 && [ -x ./vulkan_verify ]; then \
+	    mkdir -p bench_results/fork-spv; \
+	    echo "[verify-fork] vulkan: compiling fork .comp -> .spv with $(GLSLC)"; \
+	    for f in turbo3 turbo4 turbo3_tcq qjl polar; do \
+	      $(GLSLC) --target-env=vulkan1.1 --target-spv=spv1.3 -fshader-stage=compute \
+	        $(ELIZA_DFLASH_FORK_VULKAN_DIR)/$$f.comp -o bench_results/fork-spv/$$f.spv || exit 1; \
+	      echo "[verify-fork] vulkan/$$f (fork: vulkan-shaders/$$f.comp)"; \
+	      ./vulkan_verify bench_results/fork-spv/$$f.spv fixtures/$$f.json || exit 1; \
+	    done; \
+	    echo "[verify-fork] vulkan/polar + QJL residual (fork: vulkan-shaders/polar.comp)"; \
+	    ./vulkan_verify bench_results/fork-spv/polar.spv fixtures/polar_qjl.json || exit 1; \
+	    echo "[verify-fork] vulkan: 5/5 fork shaders + polar residual verified against standalone fixtures"; \
+	  else \
+	    echo "[verify-fork] vulkan_verify not buildable on this host — skipping Vulkan fork verification"; \
+	  fi; \
+	else \
+	  echo "[verify-fork] $(ELIZA_DFLASH_FORK_VULKAN_DIR) not staged with milady shaders (run a *-vulkan build target first); skipping Vulkan fork verification"; \
+	fi
+	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
+endif
+
+# GGML_OP_ATTN_SCORE_QJL Metal dispatch smoke test. Links against the BUILT
+# libggml-metal.dylib / libggml-base.dylib in the fork's
+# build/darwin-arm64-metal/bin tree, so it exercises the actual fork dispatch
+# pipeline (not the JIT). Prerequisite:
+# `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
+# darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
+# milady kernels in default.metallib.
+ELIZA_DFLASH_METAL_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
+ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
+ELIZA_STATE_DIR ?= $(HOME)/.eliza
+ELIZA_DFLASH_TARGET ?= linux-x64-vulkan
+ifneq ($(strip $(ELIZA_DFLASH_TARGET_OUT_DIR)),)
+ELIZA_DFLASH_VULKAN_OUT_DIR ?= $(ELIZA_DFLASH_TARGET_OUT_DIR)
+else
+ELIZA_DFLASH_VULKAN_OUT_DIR ?= $(ELIZA_STATE_DIR)/local-inference/bin/dflash/$(ELIZA_DFLASH_TARGET)
+endif
+ELIZA_DFLASH_VULKAN_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/$(ELIZA_DFLASH_TARGET)
+ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_DIR)/bin
+ifndef ELIZA_DFLASH_VULKAN_BIN_DIR
+ifneq ($(strip $(wildcard $(ELIZA_DFLASH_VULKAN_OUT_DIR)/libggml-vulkan.so)$(wildcard $(ELIZA_DFLASH_VULKAN_OUT_DIR)/libggml-vulkan.dylib)),)
+ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_OUT_DIR)
+else
+ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)
+endif
+endif
+
+dispatch-smoke: dispatch_smoke
+	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./dispatch_smoke
+
+dispatch-smoke-implemented: dispatch_smoke
+	@echo "[dispatch-smoke] running implemented routes against $(ELIZA_DFLASH_METAL_BIN_DIR)"
+	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./dispatch_smoke
+
+dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
+	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
+	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
+	    echo "[dispatch-smoke] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
+	    echo "[dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal' first."; \
+	    exit 1; \
+	fi
+	clang++ $(CXXFLAGS) -ObjC++ -fobjc-arc \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I../reference -I. \
+	    dispatch_smoke.mm \
+	    $(REF_OBJ) $(QJL_POLAR_OBJ) \
+	    -L$(ELIZA_DFLASH_METAL_BIN_DIR) -lggml-base -lggml-metal -lggml-cpu -lggml \
+	    -framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
+	    -Wl,-rpath,$(ELIZA_DFLASH_METAL_BIN_DIR) \
+	    -lm -o dispatch_smoke
+
+vulkan-dispatch-smoke: vulkan_dispatch_smoke
+	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
+	    echo "[vulkan-dispatch-smoke] native Linux required for recordable Vulkan graph dispatch evidence."; \
+	    echo "[vulkan-dispatch-smoke] macOS/MoltenVK can validate standalone SPIR-V only; it cannot flip runtime-ready Vulkan capability bits."; \
+	    echo "[vulkan-dispatch-smoke] run './linux_vulkan_smoke.sh' on physical Linux Vulkan hardware or use './android_vulkan_smoke.sh' with Android graph evidence."; \
+	    exit 2; \
+	fi
+	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
+	@echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"
+	@echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"
+	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
+	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
+	    exit 1; \
+	fi
+	LD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
+	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
+	  ./vulkan_dispatch_smoke
+
+vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
+	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
+	    echo "[vulkan-dispatch-smoke] native Linux required for recordable Vulkan graph dispatch evidence."; \
+	    echo "[vulkan-dispatch-smoke] macOS/MoltenVK can validate standalone SPIR-V only; it cannot flip runtime-ready Vulkan capability bits."; \
+	    echo "[vulkan-dispatch-smoke] run './linux_vulkan_smoke.sh' on physical Linux Vulkan hardware or use './android_vulkan_smoke.sh' with Android graph evidence."; \
+	    exit 2; \
+	fi
+	@if [ ! -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml.h" ] || [ ! -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-backend.h" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing ggml headers under $(ELIZA_DFLASH_LLAMA_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' first, or override ELIZA_DFLASH_LLAMA_DIR."; \
+	    exit 1; \
+	fi
+	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
+	    echo "[vulkan-dispatch-smoke] if using explicit prebuilt artifacts, set ELIZA_DFLASH_VULKAN_BIN_DIR=/path/to/the/bin-dir-containing-libggml-vulkan.so."; \
+	    exit 1; \
+	fi
+	$(CXX) $(CXXFLAGS) \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include \
+	    -I$(ELIZA_DFLASH_LLAMA_DIR)/ggml/src \
+	    -I../reference -I. \
+	    vulkan_dispatch_smoke.cpp \
+	    $(REF_OBJ) $(QJL_POLAR_OBJ) \
+	    -L$(ELIZA_DFLASH_VULKAN_BIN_DIR) -lggml-base -lggml-vulkan -lggml-cpu -lggml \
+	    -Wl,-rpath,$(ELIZA_DFLASH_VULKAN_BIN_DIR) \
+	    -lm -o vulkan_dispatch_smoke
+
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
 	rm -f ../vulkan/*.spv

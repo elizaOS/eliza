@@ -439,7 +439,7 @@ export const resolveRequestAction: Action & {
   validate: async () => true,
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "One of: approve, reject.",
       required: false,
       schema: { type: "string" as const, enum: ["approve", "reject"] },

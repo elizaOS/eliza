@@ -73,15 +73,7 @@ process.env.ALLOW_NO_DATABASE = "true";
 // Now import runtime (after env is set)
 // ---------------------------------------------------------------------------
 
-import type {
-  Action,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  Memory,
-  State,
-  UUID,
-} from "@elizaos/core";
+import type { Action, Memory, State, UUID } from "@elizaos/core";
 import {
   AgentRuntime,
   InMemoryDatabaseAdapter,
@@ -89,6 +81,9 @@ import {
 } from "@elizaos/core";
 
 const { openaiPlugin } = await import("../plugins/plugin-openai/index.ts");
+const { installPromptOptimizations } = await import(
+  "../packages/agent/src/runtime/prompt-optimization.ts"
+);
 
 // ---------------------------------------------------------------------------
 // Scenario loading
@@ -124,11 +119,13 @@ function parseArgs(): {
   scenarioName: string | null;
   messageText: string | null;
   model: string;
+  longCompactionSmoke: boolean;
 } {
   const args = process.argv.slice(2);
   let scenarioName: string | null = null;
   let messageText: string | null = null;
   let model = CEREBRAS_MODEL;
+  let longCompactionSmoke = false;
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--scenario" && args[i + 1]) {
@@ -140,13 +137,15 @@ function parseArgs(): {
     } else if (args[i] === "--model" && args[i + 1]) {
       i += 1;
       model = args[i] ?? model;
+    } else if (args[i] === "--long-compaction-smoke") {
+      longCompactionSmoke = true;
     } else if (!args[i].startsWith("--")) {
       // positional message
       messageText = args[i] ?? null;
     }
   }
 
-  return { scenarioName, messageText, model };
+  return { scenarioName, messageText, model, longCompactionSmoke };
 }
 
 // ---------------------------------------------------------------------------
@@ -400,7 +399,10 @@ function buildMockActions(): Action[] {
       const params = options.parameters as Record<string, unknown>;
       const to = (params?.to as string) ?? "unknown@example.com";
       const subject = (params?.subject as string) ?? "(no subject)";
-      printStage("TOOL", `EMAIL_DRAFT called: to="${to}", subject="${subject}"`);
+      printStage(
+        "TOOL",
+        `EMAIL_DRAFT called: to="${to}", subject="${subject}"`,
+      );
       return {
         success: true,
         text: `Email draft created: to=${to}, subject="${subject}".`,
@@ -528,6 +530,60 @@ const DIM = "\x1b[2m";
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+function buildPromptOptimizationConfig(model: string) {
+  const forcedContextWindow = readPositiveIntEnv(
+    "ELIZA_CEREBRAS_CONTEXT_WINDOW_TOKENS",
+  );
+  const forcedMaxTokens =
+    readPositiveIntEnv("ELIZA_CEREBRAS_MAX_OUTPUT_TOKENS") ?? 1024;
+  if (!forcedContextWindow) return undefined;
+  return {
+    agents: {
+      defaults: {
+        contextTokens: forcedContextWindow,
+        model: {
+          primary: model,
+          large: model,
+          small: model,
+        },
+      },
+    },
+    models: {
+      providers: {
+        cerebras: {
+          baseUrl: CEREBRAS_BASE_URL,
+          apiKey: CEREBRAS_API_KEY,
+          models: [
+            {
+              id: model,
+              name: model,
+              reasoning: true,
+              input: ["text"],
+              cost: {
+                input: 0,
+                output: 0,
+                cacheRead: 0,
+                cacheWrite: 0,
+              },
+              contextWindow: forcedContextWindow,
+              maxTokens: forcedMaxTokens,
+            },
+          ],
+        },
+      },
+      large: model,
+      small: model,
+    },
+  };
+}
+
 function printBanner(text: string): void {
   const bar = "─".repeat(60);
   console.log(`\n${BOLD}${bar}${RESET}`);
@@ -545,6 +601,134 @@ function printStage(kind: string, detail: string): void {
           ? GREEN
           : CYAN;
   console.log(`${color}[${kind}]${RESET} ${detail}`);
+}
+
+function collectPromptOptimizationRecords(value: unknown): unknown[] {
+  const out: unknown[] = [];
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== "object") return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    const metadata = record.providerMetadata;
+    if (
+      metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata) &&
+      "promptOptimization" in metadata
+    ) {
+      out.push((metadata as Record<string, unknown>).promptOptimization);
+    }
+    const providerOptions = record.providerOptions;
+    if (
+      providerOptions &&
+      typeof providerOptions === "object" &&
+      !Array.isArray(providerOptions)
+    ) {
+      const eliza = (providerOptions as Record<string, unknown>).eliza;
+      if (eliza && typeof eliza === "object" && !Array.isArray(eliza)) {
+        const promptOptimization = (eliza as Record<string, unknown>)
+          .promptOptimization;
+        if (promptOptimization) out.push(promptOptimization);
+      }
+    }
+    for (const child of Object.values(record)) visit(child);
+  };
+  visit(value);
+  return out;
+}
+
+function stringifyModelResult(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.text === "string") return record.text;
+    const responseContent = record.responseContent;
+    if (
+      responseContent &&
+      typeof responseContent === "object" &&
+      !Array.isArray(responseContent) &&
+      typeof (responseContent as Record<string, unknown>).text === "string"
+    ) {
+      return String((responseContent as Record<string, unknown>).text);
+    }
+    if (typeof record.response === "string") return record.response;
+  }
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+async function runLongCompactionSmoke(
+  runtime: InstanceType<typeof AgentRuntime>,
+  model: string,
+): Promise<void> {
+  printBanner("Long Message-Array Compaction Smoke");
+  const payload: Record<string, unknown> = {
+    model,
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are a concise recall assistant. Answer with the requested value only.",
+      },
+      ...Array.from({ length: 36 }, (_, i) => ({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content:
+          i === 2
+            ? `Important: the anchor code is ANCHOR-7781. ${"context ".repeat(60)}`
+            : `Historical turn ${i}. ${"filler context ".repeat(60)}`,
+      })),
+      {
+        role: "user",
+        content: "What is the anchor code?",
+      },
+    ],
+    maxTokens: 128,
+    providerOptions: {},
+  };
+
+  const result = await runtime.useModel("RESPONSE_HANDLER", payload);
+  const resultText = stringifyModelResult(result);
+  const providerOptions = payload.providerOptions as
+    | { eliza?: { promptOptimization?: Record<string, unknown> } }
+    | undefined;
+  const telemetry = providerOptions?.eliza?.promptOptimization;
+  console.log(`${GREEN}[LONG-SMOKE]${RESET} response: ${resultText}`);
+  console.log(
+    `${GREEN}[LONG-SMOKE]${RESET} anchorRecall: ${
+      resultText.includes("ANCHOR-7781") ? "PASS" : "CHECK"
+    }`,
+  );
+  if (telemetry) {
+    const compaction = telemetry.conversationCompaction as
+      | Record<string, unknown>
+      | undefined;
+    console.log(
+      `${GREEN}[LONG-SMOKE]${RESET} promptOptimization: original=${String(
+        telemetry.originalPromptTokens,
+      )} final=${String(telemetry.finalPromptTokens)} budget=${String(
+        telemetry.budgetTokens,
+      )}`,
+    );
+    if (compaction) {
+      console.log(
+        `${GREEN}[LONG-SMOKE]${RESET} conversationCompaction: strategy=${String(
+          compaction.strategy,
+        )} didCompact=${String(compaction.didCompact)} original=${String(
+          compaction.originalTokens,
+        )} compacted=${String(compaction.compactedTokens)}`,
+      );
+    }
+  } else {
+    console.log(
+      `${YELLOW}[LONG-SMOKE]${RESET} No promptOptimization telemetry on payload`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -607,6 +791,7 @@ async function buildRuntime(
   });
 
   await runtime.initialize({ allowNoDatabase: true, skipMigrations: true });
+  installPromptOptimizations(runtime, buildPromptOptimizationConfig(model));
   runtime.contexts.tryRegister({
     id: "broken_action",
     label: "Broken Action",
@@ -677,11 +862,19 @@ async function runScenario(
 
   const startMs = Date.now();
 
-  const { model } = parseArgs();
+  const { model, longCompactionSmoke } = parseArgs();
   console.log(`${CYAN}[SETUP]${RESET} Using model: ${model}`);
   console.log(
     `${CYAN}[SETUP]${RESET} Trajectory dir: ${path.resolve(TRAJECTORY_DIR)}`,
   );
+  console.log(
+    `${CYAN}[SETUP]${RESET} Conversation compactor: ${process.env.ELIZA_CONVERSATION_COMPACTOR ?? "(off)"}`,
+  );
+  if (process.env.ELIZA_CEREBRAS_CONTEXT_WINDOW_TOKENS) {
+    console.log(
+      `${CYAN}[SETUP]${RESET} Forced context window: ${process.env.ELIZA_CEREBRAS_CONTEXT_WINDOW_TOKENS} tokens`,
+    );
+  }
 
   const runtime = await buildRuntime(model);
   console.log(
@@ -778,6 +971,25 @@ async function runScenario(
       console.log(`  metrics:`);
       for (const [k, v] of Object.entries(t.metrics)) {
         console.log(`    ${k}: ${v}`);
+      }
+    }
+
+    const promptOptimizationRecords =
+      collectPromptOptimizationRecords(trajectory);
+    if (promptOptimizationRecords.length > 0) {
+      console.log(
+        `  promptOptimization records: ${promptOptimizationRecords.length}`,
+      );
+      const latest = promptOptimizationRecords.at(-1) as
+        | Record<string, unknown>
+        | undefined;
+      const compaction = latest?.conversationCompaction as
+        | Record<string, unknown>
+        | undefined;
+      if (compaction) {
+        console.log(
+          `    conversationCompaction: strategy=${String(compaction.strategy)} didCompact=${String(compaction.didCompact)} original=${String(compaction.originalTokens)} compacted=${String(compaction.compactedTokens)}`,
+        );
       }
     }
 
@@ -905,6 +1117,17 @@ async function runScenario(
       "DONE",
       `Scenario '${scenarioLabel}' completed in ${durationMs}ms`,
     );
+  }
+
+  if (longCompactionSmoke) {
+    try {
+      await runLongCompactionSmoke(runtime, model);
+    } catch (smokeError) {
+      printStage(
+        "ERROR",
+        `Long compaction smoke failed: ${(smokeError as Error).message}`,
+      );
+    }
   }
 
   try {

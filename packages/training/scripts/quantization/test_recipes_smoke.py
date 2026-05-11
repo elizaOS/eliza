@@ -207,15 +207,16 @@ def test_push_model_resolves_repo_id_with_quant_suffix():
     sys.path.insert(0, str(_HERE.parent))
     from push_model_to_hf import resolve_repo_id
 
-    assert resolve_repo_id("qwen3.5-2b", None, "default", None) == "elizaos/eliza-1-2b"
+    assert resolve_repo_id("qwen3.5-2b", None, "default", None) == "elizalabs/eliza-1-2b"
+    assert resolve_repo_id("eliza-1-2b", None, "default", None) == "elizalabs/eliza-1-2b"
     assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", None) == (
-        "elizaos/eliza-1-2b-polarquant"
+        "elizalabs/eliza-1-2b-polarquant"
     )
     assert resolve_repo_id("qwen3.6-27b", "gguf-q4_k_m", "default", None) == (
-        "elizaos/eliza-1-27b-gguf-q4_k_m"
+        "elizalabs/eliza-1-27b-gguf-q4_k_m"
     )
     assert resolve_repo_id("qwen3.5-2b", None, "abliterated", None) == (
-        "elizaos/eliza-1-2b-uncensored"
+        "elizalabs/eliza-1-2b-uncensored"
     )
     assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", "custom/foo") == "custom/foo"
 
@@ -232,7 +233,7 @@ def test_push_model_card_inference_blocks_reference_real_imports():
         cfg = PushConfig(
             registry_key="qwen3.5-2b",
             checkpoint=Path("/tmp/_unused"),
-            repo_id=f"elizaos/eliza-1-2b-{quant}",
+            repo_id=f"elizalabs/eliza-1-2b-{quant}",
             quant=quant,
             variant="default",
             public=False,
@@ -480,7 +481,7 @@ def test_qjl_block_layout_packing_matches_c_ref():
     c_norm_bf16 = c_block.norm_bf16
 
     # --- Python path mirroring the recipe's bit-packing convention ---
-    sketch = key @ prj                                   # (proj_dim,)
+    sketch = np.sum(key[:, None] * prj, axis=0, dtype=np.float32)  # (proj_dim,)
     bits = (sketch > 0).astype(np.uint8)                 # (proj_dim,)
     # LSB-first packing within each byte, matches qjl_quantize_row_ref.
     py_qs = bytearray(proj_dim // 8)

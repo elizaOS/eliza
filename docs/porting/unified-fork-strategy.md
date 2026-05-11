@@ -121,7 +121,7 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
 | **TBQ3_TCQ** (trellis-coded) | ☐ ref C only | ▲ Viterbi encoder needs warp-shuffle port | ☐ `vulkan/turbo3_tcq.comp` (decode-only) | ☐ `metal/turbo3_tcq.metal` (decode-only) | ☐ same | ☐ ref C → NEON encoder | ☐ | W1-D | `metal_verify ... turbo3_tcq fixtures/turbo3_tcq.json` |
 | **QJL1_256** (K-side KV) | ☐ vendored patch series `qjl/0001..0004` (`block_qjl1_256` + `GGML_OP_ATTN_SCORE_QJL`); CPU AVX2/NEON exists in `packages/native-plugins/qjl-cpu/` | ☐ port from `packages/training/scripts/quantization/qjl/csrc/` | ☐ port to `.comp` | ☐ `metal/qjl.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_QJL=1`) | ☐ same | ☐ NEON path validated 100/100 host parity, needs arm64 hardware | ☐ | W1-A (CPU), Agent-D (Metal) | `qjl_bench --parity` (host) + `metal_verify ... qjl fixtures/qjl.json` |
 | **Q4_POLAR** (weight-side) | ☐ vendored patch series `polarquant/0001..0004` (scalar ref); NEON/AVX2 = next-session work | ☐ port from `polarquant/csrc/` (training-side, codes-only) | ☐ port to `.comp` | ☐ `metal/polar.metal` exists (opt-in via `ELIZA_DFLASH_PATCH_METAL_POLAR=1`) | ☐ same | ☐ scalar landed, NEON/AVX2 next session | ☐ | W1-B, Agent-D | `polar_roundtrip` + `polar_dot` + `metal_verify ... polar fixtures/polar.json` + Wikitext-2 PPL Δ ≤ +0.05 |
-| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` on the unified fork (`milady-ai/llama.cpp @ v0.2.0-milady`) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Bonsai-8B target + Qwen3-0.6B drafter (matched-vocab; see `dflash-drafter-strategy.md`) | n/a | unified fork (Wave-3 agent A); W1-G (drafter pairing) | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `llamacpp:n_drafted_total > 0` and `_accepted_total / _total > 0.5` |
+| **DFlash spec-decode** | ✓ via `llama-server --spec-type dflash` on the unified fork (`milady-ai/llama.cpp @ v0.2.0-milady`) | ✓ same | ✓ same | ✓ same | ✗ no networking sandbox | ✓ cross-compiled `llama-server` shipped per ABI; `aosp-dflash-adapter.ts` wires it. Drafter pair: Eliza-1 target + Eliza-1 drafter from the same tokenizer family (see `dflash-drafter-strategy.md`) | n/a | unified fork (Wave-3 agent A); Eliza-1 catalog/publish path | `aosp-dflash-adapter.ts` health → 5-prompt round-trip with `llamacpp:n_drafted_total > 0` and `_accepted_total / _total > 0.5` |
 | **Head quantization** (per-attn-head bit budget; recommended new addition — see §E) | ☐ port from KIVI/KVQuant ref (per-channel K, per-token V, mixed-precision scoring per head) | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | ☐ same | new branch `milady/head-quant` | Wikitext-2 PPL Δ vs flat-bit baseline; per-head sensitivity profile written to GGUF metadata |
 | **KV paging / split-by-layer offload** (recommended new addition — see §E) | ☐ extend slot-save-path + `n_keep` to a per-layer CPU↔disk pager | n/a | n/a | n/a | n/a | ☐ disk-paged KV is the >128k context unlock on phones | n/a | new branch `milady/kv-paging` | 256k context PPL on a 1B model with no OOM and tok/s ≥ baseline + 20% |
 | **BitNet b1.58** (recommended add — see §E) | ☐ port `bitnet.cpp` ternary kernels onto our base; ggml type `TL1`/`TL2` | ☐ CUDA via bitnet.cpp's `bitnet_kernels.cu` | ☐ Vulkan TBD | ☐ MSL TBD | ☐ same | ☐ NEON ternary unpack | ☐ | new branch `milady/bitnet` | bitnet-b1.58-2B-4T inference matches HF reference |
@@ -170,14 +170,12 @@ kernel landed correctly. Status legend: `✓` shipped on the unified fork,
    needs warp-shuffle min-reduction. ~5-7 days. Pure quality win — TCQ
    decoder is already shipped, just an asymmetric encode/decode split
    today.
-6. **Drafter quality work.** Current AOSP DFlash pair is Bonsai-8B target
-   + Qwen3-0.6B drafter (matched vocab). Acceptance rate is the
-   throughput multiplier and hasn't been measured on phone hardware. Add
-   `n_drafted/n_accepted` to the benchmark harness; tune `--draft-min`,
-   `--draft-max`, `--spec-replace`. Likely 1.5-2.5× speedup left on the
-   table (dependent on phone — recent benchmarks show speculative decode
-   is *slower* than baseline on RTX 3090 + Qwen3.6-35B-A3B but +30-119%
-   on Apple/AMD-Strix; phone Adreno is unmeasured).
+6. **Eliza-1 drafter quality work.** Current AOSP DFlash validation
+   should use an Eliza-1 target plus an Eliza-1 drafter with the same
+   tokenizer family. Acceptance rate is the throughput multiplier and
+   has not been measured on phone hardware. Add `n_drafted/n_accepted`
+   to the benchmark harness; tune `--draft-min`, `--draft-max`,
+   `--spec-replace` per Eliza-1 tier and target device.
 7. **HQQ.** Calibration-free 4-bit, integrates in Transformers/vLLM
    today, no llama.cpp upstream. Skip until upstream lands or until a
    model we want is HQQ-only.
@@ -369,8 +367,8 @@ script edit.
   options surface, stock `GgmlType` enum).
 - `packages/inference/README.md` (current Metal/Vulkan port status,
   `metal_verify`/`vulkan_verify` harness, fixture protocol).
-- `docs/porting/dflash-drafter-strategy.md` (matched-vocab drafter
-  decision; SmolLM2-360M → Qwen3-0.6B).
+- `docs/porting/dflash-drafter-strategy.md` (Eliza-1 matched-tokenizer
+  target/drafter decision).
 - `docs/porting/on-device-quantization-porting-plan.md` (per-technique
   status, AOSP bundle verification commands).
 - `docs/porting/benchmark-harness.md` (the harness `bench-real-agent`

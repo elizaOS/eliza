@@ -18,7 +18,10 @@ from ..types import Action, Domain, FirstQuestionFallback, Scenario, ScenarioMod
 from ._personas import (
     PERSONA_ALEX_ENG,
     PERSONA_DEV_FREELANCER,
+<<<<<<< HEAD
     PERSONA_KAI_STUDENT,
+=======
+>>>>>>> 914a397b2eaff4835f3909100a5e192af92e44ee
     PERSONA_LIN_OPS,
     PERSONA_MAYA_PARENT,
     PERSONA_NORA_CONSULTANT,

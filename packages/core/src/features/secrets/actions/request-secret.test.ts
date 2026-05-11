@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { ChannelType } from "../../../types/primitives";
-import { requestSecretAction } from "./request-secret";
+import { secretsAction } from "./manage-secret";
+import { requestSecretHandler } from "./request-secret";
 
 function createRuntime(settings: Record<string, unknown> = {}) {
 	return {
@@ -19,9 +20,9 @@ function createRuntime(settings: Record<string, unknown> = {}) {
 	};
 }
 
-describe("REQUEST_SECRET", () => {
+describe("SECRETS action=request", () => {
 	test("validates in public channels so it can route users to private entry", async () => {
-		const ok = await requestSecretAction.validate?.(
+		const ok = await secretsAction.validate?.(
 			createRuntime() as never,
 			{
 				entityId: "user-1",
@@ -32,7 +33,9 @@ describe("REQUEST_SECRET", () => {
 				},
 			} as never,
 			undefined,
-			{ parameters: { key: "OPENAI_API_KEY" } } as never,
+			{
+				parameters: { action: "request", key: "OPENAI_API_KEY" },
+			} as never,
 		);
 
 		expect(ok).toBe(true);
@@ -40,7 +43,7 @@ describe("REQUEST_SECRET", () => {
 
 	test("does not ask for secret values in public chat", async () => {
 		const callbacks: unknown[] = [];
-		const result = await requestSecretAction.handler(
+		const result = await requestSecretHandler(
 			createRuntime() as never,
 			{
 				entityId: "user-1",

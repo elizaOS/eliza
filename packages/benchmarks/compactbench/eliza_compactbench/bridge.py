@@ -81,7 +81,13 @@ def run_ts_compactor(
         "transcript": transcript,
         "options": options or {},
     }
-    payload_bytes = json.dumps(payload).encode("utf-8")
+    # ensure_ascii=False keeps Unicode intact across the pipe — TS JSON.parse
+    # handles UTF-8 directly, and escaping bloats the payload for non-ASCII
+    # transcripts. allow_nan=False rejects NaN/Infinity, which JSON.parse
+    # cannot consume.
+    payload_bytes = json.dumps(payload, ensure_ascii=False, allow_nan=False).encode(
+        "utf-8"
+    )
 
     env = dict(os.environ)
     # Bun should resolve TS paths relative to repo root.
@@ -105,7 +111,20 @@ def run_ts_compactor(
     stdout = completed.stdout.decode("utf-8", errors="replace").strip()
     stderr = completed.stderr.decode("utf-8", errors="replace").strip()
 
+    # The TS shim emits a structured `{"error": "..."}` envelope on stdout
+    # when it catches an exception, then exits 1. Try to recover that
+    # structured message even on non-zero exit so callers see the real
+    # cause, not just stderr noise.
+    parsed: Any | None = None
+    if stdout:
+        parsed = _parse_last_json_object(stdout)
+
     if completed.returncode != 0:
+        if isinstance(parsed, dict) and "error" in parsed:
+            raise BridgeError(
+                f"TS compactor '{strategy}' reported an error: {parsed['error']}\n"
+                f"stderr:\n{stderr or '(empty)'}"
+            )
         raise BridgeError(
             f"TS compactor '{strategy}' exited with code {completed.returncode}.\n"
             f"stderr:\n{stderr or '(empty)'}\n"
@@ -117,23 +136,57 @@ def run_ts_compactor(
             f"TS compactor '{strategy}' produced no stdout.\nstderr:\n{stderr or '(empty)'}"
         )
 
-    try:
-        result = json.loads(stdout)
-    except json.JSONDecodeError as exc:
+    if parsed is None:
         raise BridgeError(
             f"TS compactor '{strategy}' returned non-JSON stdout:\n{stdout}\n\n"
             f"stderr:\n{stderr or '(empty)'}"
-        ) from exc
+        )
 
-    if isinstance(result, dict) and "error" in result:
+    if isinstance(parsed, dict) and "error" in parsed:
         raise BridgeError(
-            f"TS compactor '{strategy}' reported an error: {result['error']}\n"
+            f"TS compactor '{strategy}' reported an error: {parsed['error']}\n"
             f"stderr:\n{stderr or '(empty)'}"
         )
 
-    if not isinstance(result, dict):
+    if not isinstance(parsed, dict):
         raise BridgeError(
-            f"TS compactor '{strategy}' returned non-object JSON: {result!r}"
+            f"TS compactor '{strategy}' returned non-object JSON: {parsed!r}"
         )
 
-    return result
+    return parsed
+
+
+def _parse_last_json_object(stdout: str) -> Any | None:
+    """Best-effort extraction of the trailing JSON object from stdout.
+
+    Bun, npm postinstall scripts, or stray ``console.log`` calls in the TS
+    bridge can prepend lines to stdout. Try a strict whole-string parse
+    first; on failure, scan from the end for the last balanced ``{...}``
+    block and parse that.
+    """
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        pass
+
+    # Walk backwards looking for the last '}' and the matching '{'. JSON
+    # strings can contain braces, so use json.loads on candidate slices to
+    # validate. This is O(n) for well-formed output, O(n^2) worst-case for
+    # pathological input, but stdout is bounded.
+    last_close = stdout.rfind("}")
+    while last_close != -1:
+        depth = 0
+        for i in range(last_close, -1, -1):
+            ch = stdout[i]
+            if ch == "}":
+                depth += 1
+            elif ch == "{":
+                depth -= 1
+                if depth == 0:
+                    candidate = stdout[i : last_close + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
+        last_close = stdout.rfind("}", 0, last_close)
+    return None

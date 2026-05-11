@@ -7,8 +7,8 @@
  * (`BROWSER_BRIDGE_INSTALL`, `BROWSER_BRIDGE_REVEAL_FOLDER`,
  * `BROWSER_BRIDGE_OPEN_MANAGER`, `BROWSER_BRIDGE_REFRESH`) — folded into one
  * because each one took zero parameters and only differed in which packaging
- * helper it called. One action with a `subaction` parameter is the right
- * agent surface; the LLM picks the subaction.
+ * helper it called. One action with an `action` parameter is the right agent
+ * surface; the LLM picks the child action.
  *
  * Calls directly into the local packaging helpers (the same code path the
  * route layer uses) rather than going back through HTTP, so the action runs
@@ -345,6 +345,7 @@ function hasBrowserBridgeIntent(
 }
 
 type ManageBrowserBridgeParameters = {
+  action?: BrowserBridgeSubaction;
   subaction?: BrowserBridgeSubaction;
 };
 
@@ -562,7 +563,7 @@ export const manageBrowserBridgeAction: Action = {
     "BROWSER_BRIDGE_REFRESH",
   ],
   description:
-    "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Subactions: refresh (show settings/status/connection state), install (build and reveal the extension for setup), reveal_folder (open the built extension folder), open_manager (open chrome://extensions only when the owner explicitly asks). The subaction parameter is inferred from message text when omitted; show/settings/status maps to refresh and 'open chrome extensions' maps to open_manager. Prefer the browser-bridge provider for passive companion status and use this action's refresh subaction only for an explicit live refresh.",
+    "Owner-only management of the Agent Browser Bridge companion extension that connects Eliza to the user's Chrome and Safari browsers. Actions: refresh (show settings/status/connection state), install (build and reveal the extension for setup), reveal_folder (open the built extension folder), open_manager (open chrome://extensions only when the owner explicitly asks). The action parameter is inferred from message text when omitted; show/settings/status maps to refresh and 'open chrome extensions' maps to open_manager. Prefer the browser-bridge provider for passive companion status and use this action's refresh child action only for an explicit live refresh.",
   descriptionCompressed:
     "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
   validate: async (
@@ -581,6 +582,7 @@ export const manageBrowserBridgeAction: Action = {
     const params = (options as { parameters?: ManageBrowserBridgeParameters })
       ?.parameters;
     const subaction =
+      normalizeSubaction(params?.action) ??
       normalizeSubaction(params?.subaction) ??
       inferSubactionFromMessage(
         typeof message.content?.text === "string" ? message.content.text : "",
@@ -621,9 +623,18 @@ export const manageBrowserBridgeAction: Action = {
   },
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Bridge management op. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or extension-manager requests. install builds/reveals/opens setup; reveal_folder opens the build folder. Inferred from message text if omitted.",
+        "Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or extension-manager requests. install builds/reveals/opens setup; reveal_folder opens the build folder. Inferred from message text if omitted.",
+      required: false,
+      schema: {
+        type: "string" as const,
+        enum: [...BROWSER_BRIDGE_SUBACTIONS],
+      },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
       required: false,
       schema: {
         type: "string" as const,
@@ -643,7 +654,7 @@ export const manageBrowserBridgeAction: Action = {
           text: "Refreshing the browser bridge status.",
           actions: ["MANAGE_BROWSER_BRIDGE"],
           thought:
-            "Show/status request maps to MANAGE_BROWSER_BRIDGE subaction=refresh.",
+            "Show/status request maps to MANAGE_BROWSER_BRIDGE action=refresh.",
         },
       },
     ],
@@ -658,7 +669,7 @@ export const manageBrowserBridgeAction: Action = {
           text: "Building and revealing the bridge extension.",
           actions: ["MANAGE_BROWSER_BRIDGE"],
           thought:
-            "Setup intent maps to MANAGE_BROWSER_BRIDGE subaction=install.",
+            "Setup intent maps to MANAGE_BROWSER_BRIDGE action=install.",
         },
       },
     ],
@@ -673,7 +684,7 @@ export const manageBrowserBridgeAction: Action = {
           text: "Opening the extension manager.",
           actions: ["MANAGE_BROWSER_BRIDGE"],
           thought:
-            "Explicit chrome://extensions request maps to MANAGE_BROWSER_BRIDGE subaction=open_manager.",
+            "Explicit chrome://extensions request maps to MANAGE_BROWSER_BRIDGE action=open_manager.",
         },
       },
     ],

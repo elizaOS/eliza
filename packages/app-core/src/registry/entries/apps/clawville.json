@@ -2,7 +2,7 @@
   "id": "clawville",
   "name": "ClawVille",
   "description": "Sea-themed agent world with skill-learning buildings, NPC chat, and Solana wallet identity.",
-  "npmName": "@clawville/app-clawville",
+  "npmName": "@elizaos/app-clawville",
   "source": "bundled",
   "tags": [],
   "config": {},

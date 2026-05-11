@@ -56,6 +56,7 @@ type ConnectorSubaction = (typeof VALID_SUBACTIONS)[number];
 
 type ConnectorActionParams = {
   connector?: ConnectorKind;
+  action?: ConnectorSubaction;
   subaction?: ConnectorSubaction;
   side?: "owner" | "agent";
   mode?: "local" | "cloud_managed" | "remote";
@@ -1450,11 +1451,15 @@ export const connectorAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage external service connections (Google, Telegram, Discord, Slack, etc.). " +
-    `Subactions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs an active probe against the upstream API.",
+    "Manage **account** state for installed connectors: connect (log in), " +
+    "disconnect (log out), verify, status, list active accounts. " +
+    `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
+    "Targets external service accounts (Google, Telegram, Discord, Slack, etc.). " +
+    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs " +
+    "an active probe against the upstream API. " +
+    "For **plugin** install/uninstall/configure, use the `PLUGIN` action instead.",
   descriptionCompressed:
-    "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
+    "account-level connector lifecycle: connect(log in)|disconnect(log out)|verify|status|list; registry-driven kinds; for plugin install/uninstall use PLUGIN",
   contexts: [
     "connectors",
     "settings",
@@ -1477,6 +1482,9 @@ export const connectorAction: Action & {
     options?: HandlerOptions,
   ): Promise<ActionResult> => {
     const merged = mergeParams(message, options);
+    if (merged.action === undefined && merged.subaction !== undefined) {
+      merged.action = merged.subaction;
+    }
     const params = (await extractActionParamsViaLlm<ConnectorActionParams>({
       runtime,
       message,
@@ -1485,16 +1493,16 @@ export const connectorAction: Action & {
       actionDescription: connectorAction.description ?? "",
       paramSchema: connectorAction.parameters ?? [],
       existingParams: merged,
-      requiredFields: ["subaction"],
+      requiredFields: ["action"],
     })) as ConnectorActionParams;
-    const subaction = normalizeSubaction(params.subaction);
+    const subaction = normalizeSubaction(params.action ?? params.subaction);
     if (!subaction) {
       return {
         success: false,
-        text: `[${ACTION_NAME}] missing subaction; choose one of ${VALID_SUBACTIONS.join(" | ")}.`,
+        text: `[${ACTION_NAME}] missing action; choose one of ${VALID_SUBACTIONS.join(" | ")}.`,
         data: {
           actionName: ACTION_NAME,
-          error: "MISSING_SUBACTION",
+          error: "MISSING_ACTION",
           validSubactions: [...VALID_SUBACTIONS],
         },
       };
@@ -1585,9 +1593,9 @@ export const connectorAction: Action & {
       schema: { type: "string" as const },
     },
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred — when omitted, the handler runs an LLM extraction over the conversation to recover it.",
+        "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
       required: false,
       schema: { type: "string" as const, enum: [...VALID_SUBACTIONS] },
     },

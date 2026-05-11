@@ -16,7 +16,10 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import ByteArrayOutputStream;
+import app.eliza.BuildConfig;
+import app.eliza.R;
+
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -136,10 +139,16 @@ public class ElizaAgentService extends Service {
     // include `Authorization: Bearer <token>`. The agent enforces the
     // token via ELIZA_REQUIRE_LOCAL_AUTH=1.
     private static volatile String currentLocalAgentToken;
+    private static volatile String currentTerminalRunToken;
 
     /** Called by the Capacitor agent plugin Android binding. */
     public static String localAgentToken() {
         return currentLocalAgentToken;
+    }
+
+    /** Called by trusted in-app code that needs to route shell requests. */
+    public static String terminalRunToken() {
+        return currentTerminalRunToken;
     }
 
     // ── Lifecycle ────────────────────────────────────────────────────────
@@ -590,10 +599,8 @@ public class ElizaAgentService extends Service {
 
     /**
      * Like copyAssetIfMissing, but silently no-ops when the source asset is
-     * absent. Used for PGlite + plugin-manifest payload that Phase D
-     * generates only when the real agent bundle is built; with the spike
-     * placeholder bundle the assets are simply not present and the agent
-     * runs without them.
+     * absent. Used for optional PGlite + plugin-manifest payloads; minimal
+     * mobile bundles can run without those embedded database extensions.
      */
     private void copyAssetIfPresent(AssetManager assets, String assetPath, File target) throws IOException {
         try (InputStream probe = assets.open(assetPath)) {
@@ -723,7 +730,9 @@ public class ElizaAgentService extends Service {
             // Android. ELIZA_REQUIRE_LOCAL_AUTH on the server side flips
             // that heuristic off so every request needs the bearer token.
             String token = generateLocalAgentToken();
+            String terminalToken = generateLocalAgentToken();
             currentLocalAgentToken = token;
+            currentTerminalRunToken = terminalToken;
             try {
                 writeLocalAgentTokenFile(token);
             } catch (IOException error) {
@@ -759,24 +768,48 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
+            agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
             // Android loopback is shared across apps. Require the per-boot
             // bearer token; the Capacitor Agent plugin exposes it to the
             // WebView before local-agent API calls are retried.
             agentEnv.put("ELIZA_REQUIRE_LOCAL_AUTH", "1");
             agentEnv.put("ELIZA_API_TOKEN", token);
+            agentEnv.put("ELIZA_TERMINAL_RUN_TOKEN", terminalToken);
             // The Capacitor APK always hosts @elizaos/capacitor-llama in the
             // WebView, so the runtime should always be ready to broker
             // inference over the device-bridge WSS at /api/local-inference/
             // device-bridge. The WebView dials it over loopback once the
             // user picks the local runtime mode in onboarding.
             agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+            // Skip the auto-download of recommended GGUF models that
+            // mobile-device-bridge-bootstrap kicks off at registration
+            // time. On Android the bun process cannot reach the network
+            // without specific SELinux carve-outs and the download fail
+            // cascades into a mid-init crash with no stderr captured
+            // (agent.log empty, no exit code). The WebView side handles
+            // model selection + persistence; the bun process only needs
+            // the bridge handlers registered, not pre-warmed.
+            agentEnv.put("ELIZA_DISABLE_MODEL_AUTO_DOWNLOAD", "1");
             // AOSP builds ship libllama.so under agent/{abi}/ and load it
             // directly into the bun process via bun:ffi (see
             // eliza/packages/agent/src/runtime/aosp-llama-adapter.ts). The
             // gradle BuildConfig.AOSP_BUILD field is wired by sub-task 2B;
             // the Capacitor APK keeps its DeviceBridge loopback path.
-            if (BuildConfig.AOSP_BUILD) {
+            //
+            // Also gate on `isBrandedDevice()` so the same APK can be
+            // installed on stock Android (Capacitor sideload) without the
+            // bun process auto-loading libllama.so. The aosp-llama-adapter
+            // tries to auto-download a 1.7B GGUF from huggingface on first
+            // run and bun-on-untrusted_app cannot reach the network without
+            // configuration; the download fail then cascades into a
+            // mid-init crash (no stderr, no exit code, agent.log empty).
+            // The branded-device check uses `ro.elizaos.product` /
+            // `ro.miladyos.product` system props that are only set by
+            // AOSP product makefiles — stock Android leaves them empty
+            // and falls through to the DeviceBridge path.
+            if (BuildConfig.AOSP_BUILD && isBrandedDevice()) {
+                agentEnv.put("ELIZA_AOSP_BUILD", "1");
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 // CPU-only inference of a 12k-token prompt on cuttlefish
                 // x86_64 / Eliza-1 lands well past the 180 s default
@@ -836,7 +869,41 @@ public class ElizaAgentService extends Service {
                 }
             }
             agentEnv.put("HOME", getFilesDir().getAbsolutePath());
-            agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
+            if (!env.containsKey("TMPDIR")) {
+                agentEnv.put("TMPDIR", getCacheDir().getAbsolutePath());
+            }
+            agentEnv.put("SHELL", "/system/bin/sh");
+            agentEnv.put("CODING_TOOLS_SHELL", "/system/bin/sh");
+            agentEnv.put("SHELL_ALLOWED_DIRECTORY", agentStateDir().getAbsolutePath());
+            agentEnv.put("CODING_TOOLS_WORKSPACE_ROOTS", agentStateDir().getAbsolutePath());
+            String inheritedPath = env.get("PATH");
+            StringBuilder pathBuilder = new StringBuilder();
+            pathBuilder.append(abiDir.getAbsolutePath()).append("/bin");
+            pathBuilder.append(":").append(abiDir.getAbsolutePath());
+            pathBuilder.append(":").append(new File(root, "tools/bin").getAbsolutePath());
+            pathBuilder.append(":").append(new File(root, "bin").getAbsolutePath());
+            pathBuilder.append(":/system/bin:/system/xbin:/vendor/bin:/apex/com.android.runtime/bin");
+            if (inheritedPath != null && !inheritedPath.trim().isEmpty()) {
+                pathBuilder.append(":").append(inheritedPath);
+            }
+            agentEnv.put("PATH", pathBuilder.toString());
+
+            // ── No-terminal env hints for bun's stdio probe ───────────────
+            // Untrusted-app SELinux policy denies `ioctl(TIOCGWINSZ)` on
+            // both app_data_file and the Java-pipe fifo with `permissive=0`.
+            // Bun's stdio init calls `ioctl(stdout, TIOCGWINSZ)` to detect
+            // terminal width; on EACCES it has historically returned mid-
+            // init without writing any diagnostic, leaving agent.log empty
+            // and the watchdog probing a non-existent listener. The env
+            // hints below put bun on its non-terminal path so it does not
+            // bother probing — TERM=dumb gates the terminfo lookups,
+            // NO_COLOR=1 + FORCE_COLOR=0 disable the ANSI emitter, and
+            // CI=1 routes through bun's CI-mode logger (no progress bars,
+            // no spinners, no width detection).
+            agentEnv.put("TERM", "dumb");
+            agentEnv.put("NO_COLOR", "1");
+            agentEnv.put("FORCE_COLOR", "0");
+            agentEnv.put("CI", "1");
 
             // ── Android seccomp compatibility (SIGSYS / code 159 fix) ──────
             //
@@ -988,13 +1055,45 @@ public class ElizaAgentService extends Service {
 
             env.putAll(agentEnv);
 
-            // Merge stderr into stdout so a single pump captures both streams
-            // and one failure mode — bun crashing mid-write before the buffered
-            // stderr line is flushed — can't lose the diagnostic. The previous
-            // BufferedReader.readLine() pump silently dropped any partial line
-            // that wasn't terminated with a newline, which is exactly what
-            // happens when a panic interrupts a Logger call mid-string.
-            pb.redirectErrorStream(true);
+            // ── Stdio redirection (TIOCGWINSZ SELinux workaround) ─────────
+            // On Android `untrusted_app`, SELinux denies
+            // `ioctl(fd, TIOCGWINSZ)` (cmd 0x5413) on every non-tty class
+            // accessible to the app with `permissive=0`:
+            //   - `pipe:[...]` (Java ProcessBuilder PIPE) → fifo_file ioctl
+            //   - `/data/data/<pkg>/files/agent/agent.log` → app_data_file ioctl
+            // The denial returns EACCES; bun's stdio init (or musl's
+            // `__init_libc` terminal-width probe) treats the EACCES as a
+            // hard failure and exits within ~100ms before any line is
+            // flushed, leaving agent.log at 0 bytes and the watchdog
+            // probing nothing. The one fd class that *does* allow ioctl
+            // for untrusted_app is `null_device:chr_file` (rw_file_perms
+            // grants ioctl, no xperm whitelist restriction). Verified
+            // empirically: same ProcessBuilder spawn from `runas_app`
+            // context (more permissive) reaches `/api/health 200`;
+            // identical spawn from `untrusted_app` (service context)
+            // dies silently on the file ioctl.
+            //
+            // Workaround: redirect all three fds to /dev/null so every
+            // TIOCGWINSZ returns ENOTTY (kernel-level, no SELinux check
+            // needed). We sacrifice stdout/stderr capture for liveness;
+            // the agent runtime still writes structured logs to
+            // `<stateDir>/logs/agent.log` via its own pino transport,
+            // and Android's logcat captures every line emitted via
+            // `Log.i(TAG, …)` from the Java side. For local debug
+            // sessions that need raw bun stdio, set `ELIZA_LOG_STDOUT=1`
+            // in the parent service env — that opts into the legacy
+            // file-redirect path (which only works on rooted devices
+            // or via `adb shell run-as`).
+            File devNull = new File("/dev/null");
+            pb.redirectInput(ProcessBuilder.Redirect.from(devNull));
+            if ("1".equals(System.getenv("ELIZA_LOG_STDOUT"))) {
+                pb.redirectErrorStream(true);
+                File logFile = new File(root, AGENT_LOG_NAME);
+                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
+            } else {
+                pb.redirectErrorStream(true);
+                pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
+            }
 
             Process started;
             try {
@@ -1008,14 +1107,48 @@ public class ElizaAgentService extends Service {
             }
 
             agentProcess = started;
-            File logFile = new File(root, AGENT_LOG_NAME);
-            stdoutPump = startStreamPump(started.getInputStream(), logFile, "out");
-            // stderrPump intentionally null — redirectErrorStream(true) merges
-            // both streams into getInputStream() so one pump captures everything.
+            // stdoutPump/stderrPump no longer needed — bun writes straight
+            // to agent.log on disk via the OS-level redirect above.
+            stdoutPump = null;
             stderrPump = null;
             currentStatus = "running";
             updateNotification();
-            Log.i(TAG, "Agent process started (pid=" + safePid(started) + ").");
+            final long startedAtMs = System.currentTimeMillis();
+            final long pidForLog = safePid(started);
+            Log.i(TAG, "Agent process started (pid=" + pidForLog + ").");
+            // Immediate-exit watcher: bun on `untrusted_app` has been
+            // observed dying within ~50ms with no stderr / no tombstone /
+            // no audit hint past the standard musl init probe denials.
+            // The 10-minute watchdog tick is far too slow to surface a
+            // useful exit code. This thread blocks on `process.waitFor()`
+            // and logs the exit value the moment the kernel reaps the
+            // child, then hands off to the existing watchdog restart
+            // path via scheduleRestart().
+            final Process watched = started;
+            Thread exitWatcher = new Thread(() -> {
+                int code;
+                try {
+                    code = watched.waitFor();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                long aliveMs = System.currentTimeMillis() - startedAtMs;
+                Log.w(TAG, "Agent process exited early (pid=" + pidForLog
+                        + " code=" + code + " alive=" + aliveMs + "ms).");
+                boolean stillThisProcess;
+                synchronized (processLock) {
+                    stillThisProcess = (agentProcess == watched);
+                    if (stillThisProcess) {
+                        agentProcess = null;
+                    }
+                }
+                if (stillThisProcess && !shuttingDown) {
+                    scheduleRestart();
+                }
+            }, "ElizaAgent-exit-watcher");
+            exitWatcher.setDaemon(true);
+            exitWatcher.start();
         }
     }
 
@@ -1030,6 +1163,8 @@ public class ElizaAgentService extends Service {
             agentProcess = null;
             stdoutPump = null;
             stderrPump = null;
+            currentLocalAgentToken = null;
+            currentTerminalRunToken = null;
         }
         if (toStop == null) {
             return;

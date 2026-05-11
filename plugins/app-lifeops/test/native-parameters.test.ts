@@ -1,4 +1,9 @@
-import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
+import {
+  listSubactionsFromParameters,
+  type HandlerOptions,
+  type IAgentRuntime,
+  type Memory,
+} from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
 import { resolveRequestAction } from "../src/actions/resolve-request.js";
@@ -114,7 +119,7 @@ describe("LifeOps native options.parameters migration", () => {
     expect(runtime.useModel).not.toHaveBeenCalled();
   });
 
-  it("CALENDAR exposes concrete contexts and is a flat-subaction umbrella (no nested subActions/subPlanner)", () => {
+  it("CALENDAR exposes concrete contexts and is a flat action-valued umbrella (no nested subActions/subPlanner)", () => {
     expect(calendarAction.contexts).toEqual([
       "general",
       "calendar",
@@ -124,16 +129,18 @@ describe("LifeOps native options.parameters migration", () => {
       "web",
     ]);
     // The legacy 2-layer `subActions` + `subPlanner` dispatch was removed in
-    // favor of a flat subaction enum + `promoteSubactionsToActions` virtuals
+    // favor of a flat action enum + `promoteSubactionsToActions` virtuals
     // (CALENDAR_FEED, CALENDAR_CREATE_EVENT, CALENDAR_PROPOSE_TIMES, etc.).
     expect(calendarAction.subActions).toBeUndefined();
     expect(calendarAction.subPlanner).toBeUndefined();
-    const subactionParam = (calendarAction.parameters ?? []).find(
-      (p) => p.name === "subaction",
+    expect(
+      (calendarAction.parameters ?? []).find((p) => p.name === "subaction"),
+    ).toBeUndefined();
+    const actionParam = (calendarAction.parameters ?? []).find(
+      (p) => p.name === "action",
     );
-    expect(subactionParam).toBeDefined();
-    const enumVerbs = (subactionParam?.schema as { enum?: readonly string[] })
-      .enum;
+    expect(actionParam).toBeDefined();
+    const enumVerbs = listSubactionsFromParameters(calendarAction.parameters);
     expect(enumVerbs).toContain("feed");
     expect(enumVerbs).toContain("create_event");
     expect(enumVerbs).toContain("propose_times");

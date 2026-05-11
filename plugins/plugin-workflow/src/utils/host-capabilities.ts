@@ -45,24 +45,40 @@ export function detectHostCapabilities(): HostCapabilities {
   }
 
   // Capacitor (iOS / Android). Capacitor exposes a global on the window/globalThis.
+  // `longRunning` is conditional on a registered BackgroundRunner plugin: without
+  // it, the JS context suspends within seconds of backgrounding (iOS WKWebView
+  // aggressively) and any `requiresLongRunning` node (scheduleTrigger, etc.)
+  // is dead the moment the user leaves the app. With it, the OS may wake the
+  // runner JS context periodically (≥15 min on both platforms) and the engine
+  // can argue it has cross-suspend continuity. We detect by probing for the
+  // plugin instance rather than trusting a build-time flag.
   const capacitor: unknown = Reflect.get(globalThis, 'Capacitor');
   if (capacitor && typeof capacitor === 'object') {
+    const plugins: unknown = Reflect.get(capacitor as object, 'Plugins');
+    const bgRunner: unknown =
+      plugins && typeof plugins === 'object'
+        ? Reflect.get(plugins as object, 'BackgroundRunner')
+        : undefined;
+    const hasBgRunner = typeof bgRunner === 'object' && bgRunner !== null;
     return {
       fs: false,
       inbound: false, // No public HTTP without plugin-tunnel
-      longRunning: true, // App stays alive while running; bg runner handles wake-ups
+      longRunning: hasBgRunner,
       childProcess: false,
       net: false,
-      label: 'Mobile (Capacitor)',
+      label: hasBgRunner
+        ? 'Mobile (Capacitor + BackgroundRunner)'
+        : 'Mobile (Capacitor, foreground-only)',
     };
   }
 
-  // Browser without Capacitor — pure web.
+  // Browser without Capacitor — pure web. Browser tabs can be backgrounded
+  // and discarded; treat as short-lived for scheduling purposes.
   if (typeof window !== 'undefined' && typeof process === 'undefined') {
     return {
       fs: false,
       inbound: false,
-      longRunning: true,
+      longRunning: false,
       childProcess: false,
       net: false,
       label: 'Browser',

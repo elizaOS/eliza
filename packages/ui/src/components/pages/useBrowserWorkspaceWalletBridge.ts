@@ -12,17 +12,27 @@
  */
 
 import { type RefObject, useCallback, useEffect, useRef } from "react";
-import { type BrowserWorkspaceTab, client } from "../../api";
+import type { BrowserWorkspaceTab } from "../../api";
 import {
   BROWSER_WALLET_READY_TYPE,
   BROWSER_WALLET_RESPONSE_TYPE,
   type BrowserWorkspaceWalletRequest,
   type BrowserWorkspaceWalletResponse,
   type BrowserWorkspaceWalletState,
+  DEFAULT_BROWSER_WORKSPACE_EVM_CHAIN_ID,
+  formatBrowserWorkspaceEvmChainId,
+  getUnsupportedBrowserWorkspaceEvmChainError,
+  isBrowserWorkspaceEvmChainSupported,
   isBrowserWorkspaceWalletRequest,
+  parseBrowserWorkspaceEvmChainId,
 } from "./browser-workspace-wallet";
 
-const DEFAULT_CHAIN_ID = 1;
+const IFRAME_WALLET_SIGNING_DISABLED_ERROR =
+  "Browser wallet signing and transactions are disabled in embedded iframe tabs until wallet consent is available. Open this site in the desktop browser workspace to approve wallet actions.";
+const IFRAME_WALLET_CONNECTION_DISABLED_ERROR =
+  "Browser wallet account access is disabled in embedded iframe tabs until wallet consent is available. Open this site in the desktop browser workspace to connect a wallet.";
+const TYPED_DATA_UNSUPPORTED_ERROR =
+  "Typed-data signing is not supported by the Eliza browser wallet.";
 
 // ── Pure helpers ──────────────────────────────────────────────────────
 
@@ -58,25 +68,25 @@ export function resolveBrowserWorkspaceMessageOrigin(
   }
 }
 
-function formatChainId(chainId: number): string {
-  return `0x${chainId.toString(16)}`;
-}
-
-function parseChainId(value: unknown): number | null {
-  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
-    return value;
-  }
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = trimmed.startsWith("0x")
-    ? Number.parseInt(trimmed.slice(2), 16)
-    : Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function resolveAccounts(state: BrowserWorkspaceWalletState): string[] {
-  return state.evmAddress ? [state.evmAddress] : [];
+export function redactBrowserWorkspaceIframeWalletState(
+  state: BrowserWorkspaceWalletState,
+): BrowserWorkspaceWalletState {
+  return {
+    ...state,
+    address: null,
+    connected: false,
+    evmAddress: null,
+    evmConnected: false,
+    messageSigningAvailable: false,
+    transactionSigningAvailable: false,
+    chainSwitchingAvailable: false,
+    signingAvailable: false,
+    solanaAddress: null,
+    solanaConnected: false,
+    solanaMessageSigningAvailable: false,
+    solanaTransactionSigningAvailable: false,
+    reason: IFRAME_WALLET_CONNECTION_DISABLED_ERROR,
+  };
 }
 
 export function normalizeBrowserWorkspaceTxRequest(
@@ -93,7 +103,8 @@ export function normalizeBrowserWorkspaceTxRequest(
   const raw = Array.isArray(params) && params.length > 0 ? params[0] : params;
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Record<string, unknown>;
-  const chainId = parseChainId(value.chainId) ?? fallbackChainId;
+  const chainId =
+    parseBrowserWorkspaceEvmChainId(value.chainId) ?? fallbackChainId;
   const to = typeof value.to === "string" ? value.to.trim() : "";
   // `value` is optional — ERC-20 / contract calls legitimately omit it.
   const amount =
@@ -114,27 +125,15 @@ export function normalizeBrowserWorkspaceTxRequest(
   };
 }
 
-function resolveMessageToSign(
-  params: unknown,
-  address: string | null,
-): string | null {
-  if (typeof params === "string") return params;
-  if (!Array.isArray(params) || params.length === 0) return null;
-  const [first, second] = params;
-  if (typeof first === "string" && typeof second === "string" && address) {
-    if (first.toLowerCase() === address.toLowerCase()) return second;
-    if (second.toLowerCase() === address.toLowerCase()) return first;
-  }
-  return typeof first === "string" ? first : null;
-}
-
 // ── Request dispatch ──────────────────────────────────────────────────
 
 type HandlerResult =
   | { ok: true; result: unknown }
   | { ok: false; error: string };
 
-interface HandlerContext {
+export type BrowserWorkspaceWalletHandlerResult = HandlerResult;
+
+export interface BrowserWorkspaceWalletHandlerContext {
   sourceTab: BrowserWorkspaceTab;
   walletState: BrowserWorkspaceWalletState;
   tabChainId: number;
@@ -147,146 +146,70 @@ interface HandlerContext {
   walletStateRef: RefObject<BrowserWorkspaceWalletState>;
 }
 
-async function dispatch(
+export async function dispatchBrowserWorkspaceWalletRequest(
   request: BrowserWorkspaceWalletRequest,
-  ctx: HandlerContext,
+  ctx: BrowserWorkspaceWalletHandlerContext,
 ): Promise<HandlerResult> {
   const { walletState } = ctx;
 
   switch (request.method) {
     case "getState":
-      return { ok: true, result: walletState };
+      return {
+        ok: true,
+        result: redactBrowserWorkspaceIframeWalletState(walletState),
+      };
 
     case "requestAccounts":
-      return { ok: true, result: { accounts: resolveAccounts(walletState) } };
+      return { ok: false, error: IFRAME_WALLET_CONNECTION_DISABLED_ERROR };
 
     case "eth_accounts":
+      return { ok: true, result: [] };
+
     case "eth_requestAccounts":
-      return { ok: true, result: resolveAccounts(walletState) };
+      return { ok: false, error: IFRAME_WALLET_CONNECTION_DISABLED_ERROR };
 
     case "eth_chainId":
-      return { ok: true, result: formatChainId(ctx.tabChainId) };
+      return {
+        ok: true,
+        result: formatBrowserWorkspaceEvmChainId(ctx.tabChainId),
+      };
 
     case "solana_connect":
-      if (!walletState.solanaConnected || !walletState.solanaAddress) {
-        return { ok: false, error: "Solana wallet is unavailable." };
-      }
-      return { ok: true, result: { address: walletState.solanaAddress } };
+      return { ok: false, error: IFRAME_WALLET_CONNECTION_DISABLED_ERROR };
 
     case "solana_signMessage":
-      return handleSolanaSignMessage(request.params, walletState);
+      return { ok: false, error: IFRAME_WALLET_SIGNING_DISABLED_ERROR };
 
     case "solana_signTransaction":
-      return handleSolanaSendTransaction(request.params, walletState, false);
+      return { ok: false, error: IFRAME_WALLET_SIGNING_DISABLED_ERROR };
 
     case "solana_signAndSendTransaction":
-      return handleSolanaSendTransaction(request.params, walletState, true);
+      return { ok: false, error: IFRAME_WALLET_SIGNING_DISABLED_ERROR };
 
     case "wallet_switchEthereumChain":
       return handleSwitchChain(request.params, ctx);
 
     case "personal_sign":
     case "eth_sign":
-      return handleEthSign(request.params, walletState);
+      return { ok: false, error: IFRAME_WALLET_SIGNING_DISABLED_ERROR };
+
+    case "eth_signTypedData":
+    case "eth_signTypedData_v3":
+    case "eth_signTypedData_v4":
+      return { ok: false, error: TYPED_DATA_UNSUPPORTED_ERROR };
 
     case "sendTransaction":
     case "eth_sendTransaction":
-      return handleSendTransaction(request, ctx);
+      return { ok: false, error: IFRAME_WALLET_SIGNING_DISABLED_ERROR };
 
     default:
       return { ok: false, error: "Unsupported browser wallet request." };
   }
 }
 
-async function handleSolanaSendTransaction(
-  params: unknown,
-  walletState: BrowserWorkspaceWalletState,
-  broadcast: boolean,
-): Promise<HandlerResult> {
-  if (!walletState.solanaTransactionSigningAvailable) {
-    return {
-      ok: false,
-      error:
-        walletState.reason ||
-        "Solana browser wallet transaction signing is unavailable.",
-    };
-  }
-  const p =
-    params && typeof params === "object"
-      ? (params as {
-          transactionBase64?: unknown;
-          cluster?: unknown;
-          description?: unknown;
-        })
-      : null;
-  const transactionBase64 =
-    typeof p?.transactionBase64 === "string" ? p.transactionBase64 : null;
-  if (!transactionBase64) {
-    return {
-      ok: false,
-      error:
-        "Solana browser wallet transaction signing requires transactionBase64.",
-    };
-  }
-  const cluster =
-    p?.cluster === "devnet" ||
-    p?.cluster === "testnet" ||
-    p?.cluster === "mainnet"
-      ? p.cluster
-      : undefined;
-  const description =
-    typeof p?.description === "string" ? p.description : undefined;
-  try {
-    const result = await client.sendBrowserSolanaTransaction({
-      transactionBase64,
-      broadcast,
-      ...(cluster ? { cluster } : {}),
-      ...(description ? { description } : {}),
-    });
-    return { ok: true, result };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
-
-async function handleSolanaSignMessage(
-  params: unknown,
-  walletState: BrowserWorkspaceWalletState,
-): Promise<HandlerResult> {
-  if (!walletState.solanaMessageSigningAvailable) {
-    return {
-      ok: false,
-      error:
-        walletState.reason || "Solana browser wallet signing is unavailable.",
-    };
-  }
-  const p =
-    params && typeof params === "object"
-      ? (params as { message?: unknown; messageBase64?: unknown })
-      : null;
-  const message = typeof p?.message === "string" ? p.message : undefined;
-  const messageBase64 =
-    typeof p?.messageBase64 === "string" ? p.messageBase64 : undefined;
-  if (!message && !messageBase64) {
-    return {
-      ok: false,
-      error: "Solana browser wallet signing requires message or messageBase64.",
-    };
-  }
-  try {
-    const result = await client.signBrowserSolanaMessage({
-      ...(message ? { message } : {}),
-      ...(messageBase64 ? { messageBase64 } : {}),
-    });
-    return { ok: true, result };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
-
 function handleSwitchChain(
   params: unknown,
-  ctx: HandlerContext,
+  ctx: BrowserWorkspaceWalletHandlerContext,
 ): HandlerResult {
   if (!ctx.walletState.chainSwitchingAvailable) {
     return {
@@ -299,11 +222,17 @@ function handleSwitchChain(
   const rawChainId = Array.isArray(params)
     ? (params[0] as { chainId?: unknown } | undefined)?.chainId
     : (params as { chainId?: unknown } | undefined)?.chainId;
-  const nextChainId = parseChainId(rawChainId);
+  const nextChainId = parseBrowserWorkspaceEvmChainId(rawChainId);
   if (!nextChainId) {
     return {
       ok: false,
       error: "wallet_switchEthereumChain requires a valid chainId.",
+    };
+  }
+  if (!isBrowserWorkspaceEvmChainSupported(nextChainId)) {
+    return {
+      ok: false,
+      error: getUnsupportedBrowserWorkspaceEvmChainError(nextChainId),
     };
   }
   ctx.setTabChainId(nextChainId);
@@ -311,80 +240,6 @@ function handleSwitchChain(
   // up-to-date wallet state after the chain switch.
   ctx.postWalletReady(ctx.sourceTab, ctx.walletStateRef.current);
   return { ok: true, result: null };
-}
-
-async function handleEthSign(
-  params: unknown,
-  walletState: BrowserWorkspaceWalletState,
-): Promise<HandlerResult> {
-  if (!walletState.messageSigningAvailable) {
-    return {
-      ok: false,
-      error:
-        walletState.mode === "steward"
-          ? "Browser message signing requires a local wallet key."
-          : walletState.reason ||
-            "Browser wallet message signing is unavailable.",
-    };
-  }
-  const message = resolveMessageToSign(params, walletState.address);
-  if (!message) {
-    return {
-      ok: false,
-      error: "Browser wallet signing requires a message payload.",
-    };
-  }
-  try {
-    const result = await client.signBrowserWalletMessage(message);
-    // personal_sign / eth_sign expect the signature string directly.
-    return { ok: true, result: result.signature };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
-
-async function handleSendTransaction(
-  request: BrowserWorkspaceWalletRequest,
-  ctx: HandlerContext,
-): Promise<HandlerResult> {
-  if (!ctx.walletState.transactionSigningAvailable) {
-    return {
-      ok: false,
-      error:
-        ctx.walletState.reason ||
-        "Browser wallet transaction signing is unavailable.",
-    };
-  }
-  const transaction = normalizeBrowserWorkspaceTxRequest(
-    request.params,
-    ctx.tabChainId,
-  );
-  if (!transaction) {
-    return {
-      ok: false,
-      error: "Browser wallet sendTransaction requires to, value, and chainId.",
-    };
-  }
-  try {
-    const result = await client.sendBrowserWalletTransaction(transaction);
-    const nextState = await ctx.loadWalletState();
-    ctx.postWalletReady(ctx.sourceTab, nextState);
-    // eth_sendTransaction expects the tx hash string; `sendTransaction`
-    // (Eliza flavor) returns the full result.
-    return {
-      ok: true,
-      result:
-        request.method === "eth_sendTransaction"
-          ? (result.txHash ?? result.txId ?? null)
-          : result,
-    };
-  } catch (error) {
-    return { ok: false, error: errorMessage(error) };
-  }
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────
@@ -419,7 +274,10 @@ export function useBrowserWorkspaceWalletBridge({
       const targetOrigin = resolveTargetOrigin(tab.url);
       if (!iframeWindow || !targetOrigin) return;
       iframeWindow.postMessage(
-        { type: BROWSER_WALLET_READY_TYPE, state },
+        {
+          type: BROWSER_WALLET_READY_TYPE,
+          state: redactBrowserWorkspaceIframeWalletState(state),
+        },
         targetOrigin,
       );
     },
@@ -469,18 +327,22 @@ export function useBrowserWorkspaceWalletBridge({
       };
 
       void (async () => {
-        const ctx: HandlerContext = {
+        const ctx: BrowserWorkspaceWalletHandlerContext = {
           sourceTab,
           walletState: walletStateRef.current,
           tabChainId:
-            chainIdByTabRef.current.get(sourceTab.id) ?? DEFAULT_CHAIN_ID,
+            chainIdByTabRef.current.get(sourceTab.id) ??
+            DEFAULT_BROWSER_WORKSPACE_EVM_CHAIN_ID,
           setTabChainId: (chainId) =>
             chainIdByTabRef.current.set(sourceTab.id, chainId),
           loadWalletState,
           postWalletReady: postBrowserWalletReady,
           walletStateRef,
         };
-        const result = await dispatch(request, ctx);
+        const result = await dispatchBrowserWorkspaceWalletRequest(
+          request,
+          ctx,
+        );
         respond({
           type: BROWSER_WALLET_RESPONSE_TYPE,
           requestId: request.requestId,

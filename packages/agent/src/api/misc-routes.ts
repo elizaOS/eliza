@@ -2,22 +2,31 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import {
   type AgentRuntime,
+  buildStoreVariantBlockedMessage,
   composePrompt,
   customActionGenerateTemplate,
+  isLocalCodeExecutionAllowed,
   ModelType,
 } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
-import { asRecord } from "@elizaos/shared";
+import {
+  PostAgentEventRequestSchema,
+  PostCustomActionGenerateRequestSchema,
+  PostCustomActionRequestSchema,
+  PostCustomActionTestRequestSchema,
+  PostEmoteRequestSchema,
+  PostIngestShareRequestSchema,
+  PostTerminalRunRequestSchema,
+  PutCustomActionRequestSchema,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import type {
-  CustomActionDef,
-  CustomActionHandler,
-} from "../config/types.eliza.ts";
+import type { CustomActionDef } from "../config/types.eliza.ts";
 import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
+import { runShell } from "../services/shell-execution-router.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
@@ -40,6 +49,25 @@ type TerminalRunRequestBody = {
   clientId?: unknown;
   terminalToken?: string;
 };
+
+function resolveTerminalShellCommand(): {
+  command: string;
+  argsFor: (command: string) => string[];
+} {
+  if (process.platform === "win32") {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      argsFor: (command) => ["/d", "/s", "/c", command],
+    };
+  }
+  return {
+    command:
+      process.env.CODING_TOOLS_SHELL ||
+      process.env.SHELL ||
+      (process.env.ELIZA_PLATFORM === "android" ? "/system/bin/sh" : "/bin/sh"),
+    argsFor: (command) => ["-c", command],
+  };
+}
 
 type CompanionEmote = {
   id: string;
@@ -83,33 +111,6 @@ function toTerminalRunRequestBody(
     terminalToken:
       typeof body.terminalToken === "string" ? body.terminalToken : undefined,
   };
-}
-
-function isCustomActionHandler(value: unknown): value is CustomActionHandler {
-  const handler = asRecord(value);
-  if (!handler || typeof handler.type !== "string") {
-    return false;
-  }
-
-  if (handler.type === "http") {
-    return (
-      typeof handler.method === "string" &&
-      typeof handler.url === "string" &&
-      (handler.headers === undefined || asRecord(handler.headers) !== null) &&
-      (handler.bodyTemplate === undefined ||
-        typeof handler.bodyTemplate === "string")
-    );
-  }
-
-  if (handler.type === "shell") {
-    return typeof handler.command === "string";
-  }
-
-  if (handler.type === "code") {
-    return typeof handler.code === "string";
-  }
-
-  return false;
 }
 
 export interface MiscRouteContext {
@@ -187,26 +188,31 @@ export async function handleMiscRoutes(
 
   // ── POST /api/ingest/share ───────────────────────────────────────────
   if (method === "POST" && pathname === "/api/ingest/share") {
-    const body = await readJsonBody<{
-      source?: string;
-      title?: string;
-      url?: string;
-      text?: string;
-    }>(req, res);
-    if (!body) return true;
+    const rawShare = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawShare === null) return true;
+    const parsedShare = PostIngestShareRequestSchema.safeParse(rawShare);
+    if (!parsedShare.success) {
+      error(
+        res,
+        parsedShare.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedShare.data;
 
     const item = {
       id: crypto.randomUUID(),
-      source: (body.source as string) ?? "unknown",
-      title: body.title as string | undefined,
-      url: body.url as string | undefined,
-      text: body.text as string | undefined,
+      source: body.source ?? "unknown",
+      title: body.title,
+      url: body.url,
+      text: body.text,
       suggestedPrompt: body.title
         ? `What do you think about "${body.title}"?`
         : body.url
           ? `Can you analyze this: ${body.url}`
           : body.text
-            ? `What are your thoughts on: ${(body.text as string).slice(0, 100)}`
+            ? `What are your thoughts on: ${body.text.slice(0, 100)}`
             : "What do you think about this shared content?",
       receivedAt: Date.now(),
     };
@@ -237,8 +243,18 @@ export async function handleMiscRoutes(
 
   // ── POST /api/emote ─────────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/emote") {
-    const body = await readJsonBody<{ emoteId?: string }>(req, res);
-    if (!body) return true;
+    const rawEmote = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawEmote === null) return true;
+    const parsedEmote = PostEmoteRequestSchema.safeParse(rawEmote);
+    if (!parsedEmote.success) {
+      error(
+        res,
+        parsedEmote.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedEmote.data;
     const emotes = await loadCompanionEmotes();
     const emote = body.emoteId ? emotes.byId.get(body.emoteId) : undefined;
     if (!emote) {
@@ -258,15 +274,18 @@ export async function handleMiscRoutes(
 
   // ── POST /api/agent/event ──────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/agent/event") {
-    const body = await readJsonBody<{
-      stream?: string;
-      data?: Record<string, unknown>;
-      roomId?: string;
-    }>(req, res);
-    if (!body?.stream) {
-      error(res, "Missing 'stream' field");
+    const rawEvent = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawEvent === null) return true;
+    const parsedEvent = PostAgentEventRequestSchema.safeParse(rawEvent);
+    if (!parsedEvent.success) {
+      error(
+        res,
+        parsedEvent.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const body = parsedEvent.data;
     if (!ctx.AGENT_EVENT_ALLOWED_STREAMS.has(body.stream)) {
       error(
         res,
@@ -299,18 +318,28 @@ export async function handleMiscRoutes(
 
   // ── POST /api/terminal/run ──────────────────────────────────────────
   if (method === "POST" && pathname === "/api/terminal/run") {
+    if (!isLocalCodeExecutionAllowed()) {
+      error(res, buildStoreVariantBlockedMessage("Terminal commands"), 403);
+      return true;
+    }
+
     if (state.shellEnabled === false) {
       error(res, "Shell access is disabled", 403);
       return true;
     }
 
-    const body = await readJsonBody<{
-      command?: string;
-      clientId?: unknown;
-      terminalToken?: string;
-      captureOutput?: boolean;
-    }>(req, res);
-    if (!body) return true;
+    const rawTerm = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawTerm === null) return true;
+    const parsedTerm = PostTerminalRunRequestSchema.safeParse(rawTerm);
+    if (!parsedTerm.success) {
+      error(
+        res,
+        parsedTerm.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedTerm.data;
 
     const terminalRejection = ctx.resolveTerminalRunRejection(req, body);
     if (terminalRejection) {
@@ -318,7 +347,7 @@ export async function handleMiscRoutes(
       return true;
     }
 
-    const command = typeof body.command === "string" ? body.command.trim() : "";
+    const command = body.command.trim();
     if (!command) {
       error(res, "Missing or empty command");
       return true;
@@ -378,7 +407,6 @@ export async function handleMiscRoutes(
       json(res, { ok: true });
     }
 
-    const { spawn } = await import("node:child_process");
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     emitTerminalEvent({
@@ -387,12 +415,6 @@ export async function handleMiscRoutes(
       event: "start",
       command,
       maxDurationMs,
-    });
-
-    const proc = spawn(command, {
-      shell: true,
-      cwd: process.cwd(),
-      env: { ...process.env, FORCE_COLOR: "0" },
     });
 
     ctx.setActiveTerminalRunCount(1);
@@ -430,78 +452,76 @@ export async function handleMiscRoutes(
     };
 
     const timeoutHandle = setTimeout(() => {
-      if (proc.killed) return;
       timedOut = true;
-      proc.kill("SIGTERM");
       emitTerminalEvent({
         type: "terminal-output",
         runId,
         event: "timeout",
         maxDurationMs,
       });
-
-      setTimeout(() => {
-        if (!proc.killed) proc.kill("SIGKILL");
-      }, 3000);
     }, maxDurationMs);
 
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8");
-      stdout = appendOutput(stdout, text);
+    const appendAndEmit = (stream: "stdout" | "stderr", text: string) => {
+      if (stream === "stdout") stdout = appendOutput(stdout, text);
+      else stderr = appendOutput(stderr, text);
       emitTerminalEvent({
         type: "terminal-output",
         runId,
-        event: "stdout",
+        event: stream,
         data: text,
       });
-    });
+    };
 
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8");
-      stderr = appendOutput(stderr, text);
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "stderr",
-        data: text,
-      });
-    });
-
-    proc.on("close", (code: number | null) => {
-      finalize();
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "exit",
-        code: code ?? 1,
-      });
-      if (captureOutput) {
-        json(res, {
-          ok: true,
+    const shell = resolveTerminalShellCommand();
+    runShell(
+      {
+        command: shell.command,
+        args: shell.argsFor(command),
+        cwd: process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
+        env: { FORCE_COLOR: "0" },
+        timeoutMs: maxDurationMs,
+        onStdout: (text) => appendAndEmit("stdout", text),
+        onStderr: (text) => appendAndEmit("stderr", text),
+        toolName: "terminal.run",
+      },
+      null,
+    )
+      .then((result) => {
+        finalize();
+        emitTerminalEvent({
+          type: "terminal-output",
           runId,
-          command,
-          exitCode: code ?? 1,
-          stdout,
-          stderr,
-          timedOut,
-          truncated,
-          maxDurationMs,
+          event: "exit",
+          code: result.exitCode,
         });
-      }
-    });
-
-    proc.on("error", (err: Error) => {
-      finalize();
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "error",
-        data: err.message,
+        if (captureOutput) {
+          json(res, {
+            ok: true,
+            runId,
+            command,
+            exitCode: result.exitCode,
+            stdout,
+            stderr,
+            timedOut: timedOut || result.exitCode === 124,
+            truncated,
+            maxDurationMs,
+            sandbox: result.sandbox,
+            durationMs: result.durationMs,
+          });
+        }
+      })
+      .catch((err: Error) => {
+        finalize();
+        emitTerminalEvent({
+          type: "terminal-output",
+          runId,
+          event: "error",
+          data: err.message,
+        });
+        if (captureOutput) {
+          error(res, err.message, 500);
+        }
       });
-      if (captureOutput) {
-        error(res, err.message, 500);
-      }
-    });
 
     return true;
   }
@@ -515,83 +535,43 @@ export async function handleMiscRoutes(
   }
 
   if (method === "POST" && pathname === "/api/custom-actions") {
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
-
-    const name = typeof body.name === "string" ? body.name.trim() : "";
-    const description =
-      typeof body.description === "string" ? body.description.trim() : "";
-
-    if (!name || !description) {
-      error(res, "name and description are required", 400);
-      return true;
-    }
-
-    const handler = body.handler as CustomActionDef["handler"] | undefined;
-    const validHandlerTypes = new Set(["http", "shell", "code"]);
-    if (!handler?.type || !validHandlerTypes.has(handler.type)) {
+    const rawAction = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawAction === null) return true;
+    const parsedAction = PostCustomActionRequestSchema.safeParse(rawAction);
+    if (!parsedAction.success) {
       error(
         res,
-        "handler with valid type (http, shell, code) is required",
+        parsedAction.error.issues[0]?.message ?? "Invalid request body",
         400,
       );
       return true;
     }
+    const body = parsedAction.data;
 
-    if (handler.type === "shell" || handler.type === "code") {
+    if (body.handler.type === "shell" || body.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
-        toTerminalRunRequestBody(body),
+        toTerminalRunRequestBody(rawAction),
       );
       if (terminalRejection) {
         error(
           res,
-          `Creating ${handler.type} actions requires terminal authorization. ${terminalRejection.reason}`,
+          `Creating ${body.handler.type} actions requires terminal authorization. ${terminalRejection.reason}`,
           terminalRejection.status,
         );
         return true;
       }
     }
 
-    if (
-      handler.type === "http" &&
-      (typeof handler.url !== "string" || !handler.url.trim())
-    ) {
-      error(res, "HTTP handler requires a url", 400);
-      return true;
-    }
-    if (
-      handler.type === "shell" &&
-      (typeof handler.command !== "string" || !handler.command.trim())
-    ) {
-      error(res, "Shell handler requires a command", 400);
-      return true;
-    }
-    if (
-      handler.type === "code" &&
-      (typeof handler.code !== "string" || !handler.code.trim())
-    ) {
-      error(res, "Code handler requires code", 400);
-      return true;
-    }
-
     const now = new Date().toISOString();
     const actionDef: CustomActionDef = {
       id: crypto.randomUUID(),
-      name: name.toUpperCase().replace(/\s+/g, "_"),
-      description,
-      similes: Array.isArray(body.similes)
-        ? body.similes.filter((s): s is string => typeof s === "string")
-        : [],
-      parameters: Array.isArray(body.parameters)
-        ? (body.parameters as Array<{
-            name: string;
-            description: string;
-            required: boolean;
-          }>)
-        : [],
-      handler,
-      enabled: body.enabled !== false,
+      name: body.name.toUpperCase().replace(/\s+/g, "_"),
+      description: body.description,
+      similes: body.similes,
+      parameters: body.parameters,
+      handler: body.handler,
+      enabled: body.enabled,
       createdAt: now,
       updatedAt: now,
     };
@@ -611,14 +591,18 @@ export async function handleMiscRoutes(
 
   // Generate a custom action definition from a natural language prompt
   if (method === "POST" && pathname === "/api/custom-actions/generate") {
-    const body = await readJsonBody<{ prompt?: string }>(req, res);
-    if (!body) return true;
-
-    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-    if (!prompt) {
-      error(res, "prompt is required", 400);
+    const rawGen = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawGen === null) return true;
+    const parsedGen = PostCustomActionGenerateRequestSchema.safeParse(rawGen);
+    if (!parsedGen.success) {
+      error(
+        res,
+        parsedGen.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const prompt = parsedGen.data.prompt;
 
     const runtime = state.runtime;
     if (!runtime) {
@@ -663,11 +647,18 @@ export async function handleMiscRoutes(
 
   if (method === "POST" && customActionTestMatch) {
     const actionId = decodeURIComponent(customActionTestMatch[1]);
-    const body = await readJsonBody<{ params?: Record<string, string> }>(
-      req,
-      res,
-    );
-    if (!body) return true;
+    const rawTest = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawTest === null) return true;
+    const parsedTest = PostCustomActionTestRequestSchema.safeParse(rawTest);
+    if (!parsedTest.success) {
+      error(
+        res,
+        parsedTest.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedTest.data;
 
     const config = loadElizaConfig();
     const def = (config.customActions ?? []).find((a) => a.id === actionId);
@@ -679,7 +670,7 @@ export async function handleMiscRoutes(
     if (def.handler.type === "shell" || def.handler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
-        toTerminalRunRequestBody(body),
+        toTerminalRunRequestBody(rawTest),
       );
       if (terminalRejection) {
         error(
@@ -714,8 +705,18 @@ export async function handleMiscRoutes(
 
   if (method === "PUT" && customActionMatch) {
     const actionId = decodeURIComponent(customActionMatch[1]);
-    const body = await readJsonBody<Record<string, unknown>>(req, res);
-    if (!body) return true;
+    const rawUpdate = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawUpdate === null) return true;
+    const parsedUpdate = PutCustomActionRequestSchema.safeParse(rawUpdate);
+    if (!parsedUpdate.success) {
+      error(
+        res,
+        parsedUpdate.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedUpdate.data;
 
     const config = loadElizaConfig();
     const actions = config.customActions ?? [];
@@ -726,26 +727,12 @@ export async function handleMiscRoutes(
     }
 
     const existing = actions[idx];
-
-    let newHandler = existing.handler;
-    if (body.handler != null) {
-      const h = asRecord(body.handler);
-      const hValidTypes = new Set(["http", "shell", "code"]);
-      if (!h?.type || !hValidTypes.has(String(h.type))) {
-        error(res, "handler.type must be http, shell, or code", 400);
-        return true;
-      }
-      if (!isCustomActionHandler(h)) {
-        error(res, "handler payload is invalid", 400);
-        return true;
-      }
-      newHandler = h;
-    }
+    const newHandler = body.handler ?? existing.handler;
 
     if (newHandler.type === "shell" || newHandler.type === "code") {
       const terminalRejection = ctx.resolveTerminalRunRejection(
         req,
-        toTerminalRunRequestBody(body),
+        toTerminalRunRequestBody(rawUpdate),
       );
       if (terminalRejection) {
         error(
@@ -759,23 +746,16 @@ export async function handleMiscRoutes(
 
     const updated: CustomActionDef = {
       ...existing,
-      name:
-        typeof body.name === "string"
-          ? body.name.trim().toUpperCase().replace(/\s+/g, "_")
-          : existing.name,
-      description:
-        typeof body.description === "string"
-          ? body.description.trim()
-          : existing.description,
-      similes: Array.isArray(body.similes)
-        ? body.similes.filter((s): s is string => typeof s === "string")
-        : existing.similes,
-      parameters: Array.isArray(body.parameters)
-        ? (body.parameters as CustomActionDef["parameters"])
-        : existing.parameters,
+      name: body.name
+        ? body.name.trim().toUpperCase().replace(/\s+/g, "_")
+        : existing.name,
+      description: body.description?.trim()
+        ? body.description.trim()
+        : existing.description,
+      similes: body.similes ?? existing.similes,
+      parameters: body.parameters ?? existing.parameters,
       handler: newHandler,
-      enabled:
-        typeof body.enabled === "boolean" ? body.enabled : existing.enabled,
+      enabled: body.enabled ?? existing.enabled,
       updatedAt: new Date().toISOString(),
     };
 

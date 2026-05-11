@@ -29,6 +29,13 @@ export interface LoadedVfsPlugin {
   loadedAt: number;
 }
 
+export interface LoadedVfsPluginView {
+  pluginName: string;
+  vfsPath: string;
+  projectId: string | null;
+  loadedAt: number;
+}
+
 const loadedPlugins = new Map<string, LoadedVfsPlugin>();
 
 /**
@@ -125,6 +132,18 @@ export async function unloadPluginFromVfs(
 /** Read-only view of plugins currently tracked as loaded from VFS. */
 export function getLoadedVfsPlugins(): readonly LoadedVfsPlugin[] {
   return [...loadedPlugins.values()];
+}
+
+/** Public API view that does not expose host filesystem paths. */
+export function getLoadedVfsPluginViews(): readonly LoadedVfsPluginView[] {
+  return [...loadedPlugins.values()].map(
+    ({ pluginName, vfsPath, projectId, loadedAt }) => ({
+      pluginName,
+      vfsPath,
+      projectId,
+      loadedAt,
+    }),
+  );
 }
 
 /** Test helper — clears the in-memory tracking map. */

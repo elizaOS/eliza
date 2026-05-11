@@ -1,4 +1,7 @@
 // DRAFT: COMPILE-VERIFIED on Linux. Sister kernel to polar.comp.
+// Wave-4-D: match polar.comp's threadgroup-cooperative residual add and
+// Hadamard butterfly so get_rows fallback has the same parallel shape as the
+// dot-product path.
 // Ports `kernel_get_rows_q4_polar` from metal/polar.metal — decode one
 // PolarQuant block to fp32 head_dim vector.
 //
@@ -69,6 +72,30 @@ float fp16_to_fp32(uint h16) {
 }
 
 shared float buf[128];
+shared float qjl_signs_tg[128];
+
+void polar_hadamard_inplace_tg32(uint tid) {
+    for (uint h = 1u; h < QK_POLAR; h <<= 1) {
+        uint p0 = tid;
+        uint p1 = tid + 32u;
+        uint twoh = h << 1;
+        uint b0 = (p0 / h) * twoh;
+        uint o0 = p0 - (p0 / h) * h;
+        uint b1 = (p1 / h) * twoh;
+        uint o1 = p1 - (p1 / h) * h;
+        uint j0 = b0 + o0;
+        uint j1 = b1 + o1;
+        float a0 = buf[j0];
+        float c0 = buf[j0 + h];
+        float a1 = buf[j1];
+        float c1 = buf[j1 + h];
+        buf[j0]     = a0 + c0;
+        buf[j0 + h] = a0 - c0;
+        buf[j1]     = a1 + c1;
+        buf[j1 + h] = a1 - c1;
+        barrier();
+    }
+}
 
 void main() {
     uint tid = gl_LocalInvocationID.x;
@@ -82,39 +109,33 @@ void main() {
     }
     barrier();
 
-    if (push.use_qjl != 0u && tid == 0u) {
-        uint  bit    = read_byte(2u + 64u) & 1u;
-        float sign_v = bit != 0u ? 1.0 : -1.0;
-        float mag    = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
-        uint  state  = 42u;
-        for (uint i = 0u; i < QK_POLAR; ++i) {
-            state ^= state << 13;
-            state ^= state >> 17;
-            state ^= state << 5;
-            float s = (state & 1u) != 0u ? 1.0 : -1.0;
-            buf[i] += sign_v * mag * s;
-        }
-    }
-    barrier();
-
-    if (tid == 0u) {
-        for (uint h = 1u; h < QK_POLAR; h <<= 1) {
-            for (uint i = 0u; i < QK_POLAR; i += (h << 1)) {
-                for (uint j = i; j < i + h; ++j) {
-                    float a = buf[j];
-                    float bv = buf[j + h];
-                    buf[j]     = a + bv;
-                    buf[j + h] = a - bv;
-                }
+    if (push.use_qjl != 0u) {
+        if (tid == 0u) {
+            uint  bit    = read_byte(2u + 64u) & 1u;
+            float sign_v = bit != 0u ? 1.0 : -1.0;
+            float mag    = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
+            float scaled = sign_v * mag;
+            uint  state  = 42u;
+            for (uint i = 0u; i < QK_POLAR; ++i) {
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+                float s = (state & 1u) != 0u ? 1.0 : -1.0;
+                qjl_signs_tg[i] = scaled * s;
             }
         }
-        for (uint i = 0u; i < QK_POLAR; ++i) buf[i] *= POLAR_INV_QK;
+        barrier();
+        for (uint i = tid; i < QK_POLAR; i += 32u) {
+            buf[i] += qjl_signs_tg[i];
+        }
+        barrier();
     }
-    barrier();
+
+    polar_hadamard_inplace_tg32(tid);
 
     uint norm16 = read_u16(0u);
-    float l2 = fp16_to_fp32(norm16);
+    float scale = fp16_to_fp32(norm16) * POLAR_INV_QK;
     for (uint i = tid; i < QK_POLAR; i += 32u) {
-        out_buf[i] = buf[i] * l2;
+        out_buf[i] = buf[i] * scale;
     }
 }

@@ -93,7 +93,7 @@ export {
 export {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
-  NoopScheduledTaskDispatcher,
+  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
   type ScheduledTaskRunnerDeps,

@@ -2342,10 +2342,16 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       };
     }
 
-    public async readLifeOpsAttentionContext(): Promise<ReminderActivityProfileSnapshot | null> {
+    public async readLifeOpsAttentionContext(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<ReminderActivityProfileSnapshot | null> {
       try {
+        const now = args?.now ?? new Date();
         const schedule = await this.refreshEffectiveScheduleState({
-          timezone: resolveDefaultTimeZone(),
+          timezone:
+            normalizeOptionalString(args?.timezone) ?? resolveDefaultTimeZone(),
+          now,
         });
         const tasks = await this.runtime.getTasks({
           agentIds: [this.runtime.agentId],
@@ -2383,9 +2389,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                 : schedule
                   ? "schedule_state"
                   : "unknown",
-          capturedAt: new Date().toISOString(),
+          capturedAt: now.toISOString(),
           sourceFreshnessMs:
-            lastSeenAt !== null ? Math.max(0, Date.now() - lastSeenAt) : null,
+            lastSeenAt !== null ? Math.max(0, now.getTime() - lastSeenAt) : null,
           sourceConfidence: schedule?.stateConfidence ?? null,
           privacyMode: "unknown",
           socialContext: "unknown",
@@ -2457,8 +2463,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       }
     }
 
-    public async readReminderActivityProfileSnapshot(): Promise<ReminderActivityProfileSnapshot | null> {
-      return this.readLifeOpsAttentionContext();
+    public async readReminderActivityProfileSnapshot(args?: {
+      timezone?: string | null;
+      now?: Date;
+    }): Promise<ReminderActivityProfileSnapshot | null> {
+      return this.readLifeOpsAttentionContext(args);
     }
 
     /**
@@ -2642,7 +2651,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
     }): Promise<Record<string, unknown>> {
       try {
         const [activityProfile, policies] = await Promise.all([
-          this.readReminderActivityProfileSnapshot(),
+          this.readReminderActivityProfileSnapshot({ now: args.now }),
           this.repository.listChannelPolicies(this.agentId()),
         ]);
         const candidates = await this.resolveOwnerContactRouteCandidates({
@@ -4965,7 +4974,10 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           this.agentId(),
         );
         const activityProfile =
-          await this.readReminderActivityProfileSnapshot();
+          await this.readReminderActivityProfileSnapshot({
+            now,
+            timezone: ownerTimezone,
+          });
 
         const dueAttempts: LifeOpsReminderAttempt[] = [];
         dueAttempts.push(

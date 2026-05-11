@@ -31,6 +31,7 @@ import {
 	type IAgentRuntime,
 	logger,
 	ModelType,
+	resolveStateDir,
 	type TextEmbeddingParams,
 } from "@elizaos/core";
 
@@ -555,13 +556,6 @@ function readTimeoutMs(envKey: string, fallback: number): number {
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function resolveStateDir(): string {
-	const explicit = process.env.ELIZA_STATE_DIR?.trim();
-	if (explicit) return explicit;
-	const home = process.env.HOME ?? process.cwd();
-	return path.join(home, ".eliza");
-}
-
 function modelsDir(): string {
 	return path.join(resolveStateDir(), "local-inference", "models");
 }
@@ -729,19 +723,19 @@ const RECOMMENDED_MODELS: Record<
 > = {
 	TEXT_SMALL: {
 		id: "eliza-1-lite-0_6b",
-		hfRepo: "elizalabs/eliza-1-lite-0_6b",
+		hfRepo: "elizaos/eliza-1-lite-0_6b",
 		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
 		localFile: "eliza-1-lite-0_6b-32k.gguf",
 	},
 	TEXT_LARGE: {
 		id: "eliza-1-mobile-1_7b",
-		hfRepo: "elizalabs/eliza-1-mobile-1_7b",
+		hfRepo: "elizaos/eliza-1-mobile-1_7b",
 		ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
 		localFile: "eliza-1-mobile-1_7b-32k.gguf",
 	},
 	TEXT_EMBEDDING: {
 		id: "eliza-1-lite-0_6b",
-		hfRepo: "elizalabs/eliza-1-lite-0_6b",
+		hfRepo: "elizaos/eliza-1-lite-0_6b",
 		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
 		localFile: "eliza-1-lite-0_6b-32k.gguf",
 	},

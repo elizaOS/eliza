@@ -1,5 +1,5 @@
 /**
- * Thin shim around `@capacitor-community/background-runner`.
+ * Thin shim around `@capacitor/background-runner`.
  *
  * Why a shim and not a direct import:
  *  - The Capacitor plugin is an OPTIONAL peer. Server / desktop / web builds
@@ -9,7 +9,7 @@
  *    that registers itself against `window`. Probing for it via dynamic
  *    `import()` keeps the dependency truly optional.
  *
- * The runtime contract for `@capacitor-community/background-runner@2.x`:
+ * The runtime contract for `@capacitor/background-runner`:
  *  - `BackgroundRunner.dispatchEvent({ label, event, details })` — fires a
  *    JS handler registered by the host app under
  *    `runners/<label>.js`. The native side wakes the JS context, runs the
@@ -55,13 +55,22 @@ export async function resolveCapacitorEnvironment(): Promise<CapacitorEnvironmen
     return { isCapacitor: false, runner: null };
   }
 
-  const mod = (await tryImport('@capacitor-community/background-runner')) as {
+  const mod = (await resolveBackgroundRunnerModule()) as {
     BackgroundRunner?: BackgroundRunnerLike;
   } | null;
   if (mod?.BackgroundRunner == null) {
     return { isCapacitor: true, runner: null };
   }
   return { isCapacitor: true, runner: mod.BackgroundRunner };
+}
+
+async function resolveBackgroundRunnerModule(): Promise<unknown> {
+  return (
+    (await tryImport('@capacitor/background-runner')) ??
+    // Some host apps keep this legacy specifier as a package alias to the
+    // official `@capacitor/background-runner` package.
+    (await tryImport('@capacitor-community/background-runner'))
+  );
 }
 
 /**

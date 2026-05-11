@@ -6,7 +6,7 @@ End-to-end checklist to bring the customer-tunnel stack online. Railway owns the
 
 - `headscale.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the headscale service.
 - `tunnel.elizacloud.ai` AND `*.tunnel.elizacloud.ai` → CNAME/ALIAS → Railway public domain for the tunnel-proxy service.
-- Delegate `_acme-challenge.tunnel.elizacloud.ai` to Cloudflare (or whichever DNS provider matches the Caddy `dns` directive in `services/tunnel-proxy/Caddyfile`).
+- Railway terminates public TLS for the tunnel-proxy custom domains; the proxy then uses `tsnet` to reach private tailnet hosts.
 
 ## 2. Headscale Railway service
 
@@ -49,9 +49,11 @@ Required env vars on the proxy service:
 |---|---|
 | `HEADSCALE_PUBLIC_URL` | `https://headscale.elizacloud.ai` |
 | `TUNNEL_PROXY_TS_AUTHKEY` | (from step 3) |
-| `CLOUD_API_URL` | `https://www.elizacloud.ai` |
-| `CLOUD_INTERNAL_TOKEN` | random 64-byte token, also set on the API Worker |
-| `CF_API_TOKEN` | Cloudflare token with `Zone:DNS:Edit` on the elizacloud.ai zone (for ACME wildcard) |
+| `TUNNEL_PROXY_HOST` | `tunnel.elizacloud.ai` |
+| `TUNNEL_TAILNET_DOMAIN` | `tunnel.eliza.local` |
+| `TUNNEL_HOSTNAME_SIGNING_SECRET` | shared HMAC secret also set as a Worker secret |
+
+Mount a Railway volume at `/var/lib/tunnel-proxy` so the `tsnet` node identity persists across restarts.
 
 ## 5. API Worker secrets
 
@@ -61,9 +63,10 @@ On the cloud-api Worker (Cloudflare):
 wrangler secret put HEADSCALE_API_KEY          # from step 2
 wrangler secret put CLOUD_INTERNAL_TOKEN       # same value as the proxy
 wrangler secret put HEADSCALE_INTERNAL_TOKEN   # same value as CLOUD_INTERNAL_TOKEN
+wrangler secret put TUNNEL_HOSTNAME_SIGNING_SECRET
 ```
 
-`HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, and `TUNNEL_TAILNET_DOMAIN` are non-secret Worker vars in `apps/api/wrangler.toml`.
+`HEADSCALE_PUBLIC_URL`, `HEADSCALE_API_URL`, `HEADSCALE_USER`, `TUNNEL_PROXY_HOST`, `TUNNEL_TAILNET_DOMAIN`, and `TUNNEL_AUTH_KEY_COST_USD` are non-secret Worker vars in `apps/api/wrangler.toml`. The tunnel cost is a small on-demand org-credit debit per successful auth-key provisioning, not a subscription. Do not set `TUNNEL_ALLOW_UNSIGNED_HOSTNAMES` in production.
 
 ## 6. Worker deploy
 
@@ -76,7 +79,7 @@ bun run deploy:api -- --env production
 
 ## 7. Smoke test
 
-From a machine with the tailscale CLI installed and `@elizaos/plugin-elizacloud` enabled with `ELIZAOS_CLOUD_API_KEY` set:
+From a machine with the tailscale CLI installed and `@elizaos/plugin-tailscale` enabled with `ELIZAOS_CLOUD_API_KEY` set:
 
 ```
 # In an agent prompt:
@@ -86,7 +89,7 @@ From a machine with the tailscale CLI installed and `@elizaos/plugin-elizacloud`
 You should see:
 - The agent host appear under `headscale nodes list`
 - A 200 response from `https://<sessionId>.tunnel.elizacloud.ai`
-- A debit row in `credit_transactions` after ~1 minute (the per-minute cron tick)
+- An immediate debit row in `credit_transactions` with `metadata.type = "tunnel"` and `metadata.billing_model = "on_demand"`
 
 ## 8. Verify ACL isolation
 

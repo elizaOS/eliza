@@ -100,10 +100,11 @@ describe("live routing regressions", () => {
 		).toEqual(["CALENDAR"]);
 	});
 
-	it("routes invented atomic planner action names through registered parents", () => {
+	it("routes invented atomic planner action names through current registered parents", () => {
 		const runtime = {
 			actions: [
-				{ name: "LIFE" },
+				{ name: "OWNER_TODOS" },
+				{ name: "OWNER_GOALS" },
 				{ name: "MESSAGE" },
 				{ name: "POST" },
 				{ name: "COMPUTER_USE" },
@@ -113,15 +114,15 @@ describe("live routing regressions", () => {
 
 		expect(
 			resolvePlannerActionName(runtime, undefined, "TASKS_ADD_TODO"),
-		).toEqual(["LIFE"]);
+		).toEqual(["OWNER_TODOS"]);
 		expect(resolvePlannerActionName(runtime, undefined, "todo_create")).toEqual(
-			["LIFE"],
+			["OWNER_TODOS"],
 		);
 		expect(
 			resolvePlannerActionName(runtime, undefined, "todos_create"),
-		).toEqual(["LIFE"]);
+		).toEqual(["OWNER_TODOS"]);
 		expect(resolvePlannerActionName(runtime, undefined, "task_list")).toEqual([
-			"LIFE",
+			"OWNER_TODOS",
 		]);
 		expect(
 			resolvePlannerActionName(runtime, undefined, "DISCORD_POST_MESSAGE"),
@@ -136,10 +137,13 @@ describe("live routing regressions", () => {
 			resolvePlannerActionName(runtime, undefined, "EMAIL_FETCH_UNREAD"),
 		).toEqual(["MESSAGE"]);
 		expect(
+			resolvePlannerActionName(runtime, undefined, "fetch_unread_emails"),
+		).toEqual(["MESSAGE"]);
+		expect(
 			resolvePlannerActionName(runtime, undefined, "SUMMARIZE_UNREAD_EMAILS"),
 		).toEqual(["MESSAGE"]);
 		expect(resolvePlannerActionName(runtime, undefined, "SET_GOAL")).toEqual([
-			"LIFE",
+			"OWNER_GOALS",
 		]);
 		expect(resolvePlannerActionName(runtime, undefined, "DESKTOP")).toEqual([
 			"COMPUTER_USE",

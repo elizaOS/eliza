@@ -135,6 +135,7 @@ const FORK_ONLY_KV_CACHE_TYPES = new Set([
   "turbo3_tcq",
   "qjl1_256",
   "qjl1_512",
+  "q4_polar",
 ]);
 
 const STOCK_KV_CACHE_TYPES = new Set([

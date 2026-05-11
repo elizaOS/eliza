@@ -46,6 +46,7 @@ import {
   type ContactsMap,
   deleteContact,
   type FullContact,
+  getLastContactsFailure,
   listAllContacts,
   loadContacts,
   type NewContactInput,
@@ -457,12 +458,17 @@ export class IMessageService extends Service implements IIMessageService {
   private chatDbPath: string = DEFAULT_CHAT_DB_PATH;
   /**
    * Cached handle → display name map from the user's Apple Contacts.
-   * Populated once on service start via AppleScript against Contacts.app
-   * and used to rewrite raw phone numbers and email addresses into real
-   * contact names in Memory metadata. Empty map means either the user
-   * hasn't authorized Contacts access yet or the address book is empty.
+   * Populated lazily on first inbound message through CNContactStore, NOT at
+   * service start. Loading at boot would create a settings-level Contacts
+   * dependency at app launch, even though the user may never receive an
+   * inbound iMessage. We defer the read until the first message that actually
+   * needs handle→name resolution. Empty map means either the user hasn't
+   * authorized Contacts access yet, the address book is empty, or no inbound
+   * message has triggered the lazy load yet.
    */
   private contacts: ContactsMap = new Map();
+  /** Whether the lazy contact load has been attempted this session. */
+  private contactsLoadAttempted = false;
 
   /**
    * Start the iMessage service.
@@ -512,11 +518,10 @@ export class IMessageService extends Service implements IIMessageService {
       );
     }
 
-    // Load the Apple Contacts map so we can turn raw phone numbers and
-    // email addresses into real names when building Memory objects for
-    // inbound messages. Failure here is non-fatal — the service proceeds
-    // with anonymous handles and logs its own warning.
-    service.contacts = await loadContacts();
+    // NOTE: We intentionally do NOT call loadContacts() here. App launch must
+    // not create Contacts permission pressure implicitly; the read is deferred
+    // to the first inbound message that actually needs name resolution (see
+    // ensureContactsLoaded() below). Outbound-only users never hit this path.
 
     // Start polling only when chat.db is available. When the database cannot
     // be opened, the service is intentionally send-only until the next start.
@@ -997,7 +1002,7 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   /**
-   * Get the cached Apple Contacts map loaded at service start.
+   * Get the cached Apple Contacts map, if lazy loading has happened.
    *
    * Keys are normalized handles (phones in digits-only + optional leading `+`,
    * emails lowercased). Values carry the contact's display name.
@@ -1014,19 +1019,55 @@ export class IMessageService extends Service implements IIMessageService {
   }
 
   /**
-   * List every contact in the user's address book as a full record with
-   * id, name, and all phones/emails. Delegates to contacts-reader's
-   * `listAllContacts` which goes through Contacts.app's AppleScript
-   * dump. Returns `[]` on failure (permission denied, etc.).
+   * Lazy-load the Apple Contacts map on first call. Subsequent calls
+   * are no-ops. We split this out from `start()` so Contacts permission
+   * pressure only appears when the runtime actually needs handle→name
+   * resolution, instead of at app launch. Failure is non-fatal; the cached
+   * map stays empty and the service falls back to raw handles.
    */
-  async listAllContacts(): Promise<FullContact[]> {
-    return listAllContacts();
+  private async ensureContactsLoaded(): Promise<void> {
+    if (this.contactsLoadAttempted) {
+      return;
+    }
+    this.contactsLoadAttempted = true;
+    try {
+      this.contacts = await loadContacts();
+      this.recordContactsPermissionBlock("contacts.resolve");
+    } catch (err) {
+      logger.warn(
+        `[imessage] Lazy contact load failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  private recordContactsPermissionBlock(action: string): void {
+    if (getLastContactsFailure() !== "permission") return;
+    const registry = this.runtime?.getService?.("eliza_permissions_registry") as
+      | {
+          recordBlock?: (id: string, feature: { action: string; app: string }) => void;
+        }
+      | null
+      | undefined;
+    registry?.recordBlock?.("contacts", { app: "imessage", action });
   }
 
   /**
-   * Create a new contact in Contacts.app. Requires Contacts WRITE
-   * permission (macOS prompts on first call). Returns the new person's
-   * id on success, or null on failure.
+   * List every contact in the user's address book as a full record with
+   * id, name, and all phones/emails. Delegates to contacts-reader's
+   * `listAllContacts` which uses CNContactStore. Returns `[]` on failure
+   * (permission denied, etc.).
+   */
+  async listAllContacts(): Promise<FullContact[]> {
+    const contacts = await listAllContacts();
+    if (contacts.length === 0) {
+      this.recordContactsPermissionBlock("contacts.list");
+    }
+    return contacts;
+  }
+
+  /**
+   * Create a new Apple Contacts record. Requires the Contacts privacy grant.
+   * Returns the new person's id on success, or null on failure.
    *
    * After a successful create we refresh the cached handle→name map so
    * inbound messages from the new contact resolve to their name on the
@@ -1036,6 +1077,8 @@ export class IMessageService extends Service implements IIMessageService {
     const id = await addContact(input);
     if (id) {
       this.contacts = await loadContacts();
+    } else {
+      this.recordContactsPermissionBlock("contacts.create");
     }
     return id;
   }
@@ -1049,18 +1092,22 @@ export class IMessageService extends Service implements IIMessageService {
     const ok = await updateContact(personId, patch);
     if (ok) {
       this.contacts = await loadContacts();
+    } else {
+      this.recordContactsPermissionBlock("contacts.update");
     }
     return ok;
   }
 
   /**
-   * Delete a contact by Contacts.app id. Returns true on success,
-   * false on failure. Refreshes the cached map on success.
+   * Delete a contact by Apple Contacts id. Returns true on success, false on
+   * failure. Refreshes the cached map on success.
    */
   async deleteContact(personId: string): Promise<boolean> {
     const ok = await deleteContact(personId);
     if (ok) {
       this.contacts = await loadContacts();
+    } else {
+      this.recordContactsPermissionBlock("contacts.delete");
     }
     return ok;
   }
@@ -1415,9 +1462,12 @@ export class IMessageService extends Service implements IIMessageService {
 
     const channelType: ChannelType = row.chatType === "group" ? ChannelType.GROUP : ChannelType.DM;
 
-    // Resolve the sender handle against the Apple Contacts map loaded at
-    // service start. On a miss we fall back to the raw handle, so the
+    // Resolve the sender handle against the Apple Contacts map. The map
+    // is loaded lazily on first inbound message — see ensureContactsLoaded
+    // for the rationale (deferring the macOS Contacts TCC dialog away from
+    // app launch). On a miss we fall back to the raw handle, so the
     // conversation still works — it just looks uglier in logs and state.
+    await this.ensureContactsLoaded();
     const resolvedContact = this.contacts.get(normalizeContactHandle(row.handle)) ?? null;
     const resolvedName = resolvedContact?.name ?? null;
 

@@ -16,11 +16,10 @@
  *     different quantizations — separate caches, shared scheduler).
  *
  * This module owns reference counts on each shared resource and is the
- * single arbiter of when an mmap region can be released back to the OS
- * via the `madvise` path documented in `lifecycle.ts`. It does NOT do
- * any I/O itself — the actual mmap + page-eviction syscalls live behind
- * the `MmapRegionHandle` interface so platform-specific bindings can
- * implement them.
+ * single arbiter of when a voice-only region can be released. It does
+ * NOT do any I/O itself — the actual mmap, madvise, or full model-unload
+ * behavior lives behind the `MmapRegionHandle` interface so platform
+ * bindings can choose the right memory policy.
  */
 
 /** Minimal structural logger — keeps this module free of upstream deps. */
@@ -53,13 +52,13 @@ export interface MmapRegionHandle extends RefCountedResource {
   /** Byte size of the mapped region. */
   readonly sizeBytes: number;
   /**
-   * Hint the kernel that the pages are no longer needed. Backed by:
+   * Release memory pressure for this region. Backends may implement this
+   * as a page hint or as a full voice-runtime unload. Common mappings:
    *   - POSIX (Linux/Android/macOS-bg): `madvise(addr, len, MADV_DONTNEED)`
    *   - macOS (foreground / iOS):        `madvise(addr, len, MADV_FREE_REUSABLE)`
    *   - Windows:                         `VirtualUnlock` + `OfferVirtualMemory`
    *
-   * On the JS side this is a no-op until the FFI binding ships. The
-   * lifecycle test mocks this to assert the call happened.
+   * The lifecycle test mocks this to assert the call happened.
    */
   evictPages(): Promise<void>;
 }
@@ -104,7 +103,10 @@ interface RegistryEntry<T extends RefCountedResource> {
  * the lifecycle state machine can observe completion.
  */
 export class SharedResourceRegistry {
-  private readonly entries = new Map<string, RegistryEntry<RefCountedResource>>();
+  private readonly entries = new Map<
+    string,
+    RegistryEntry<RefCountedResource>
+  >();
   private readonly log?: Logger;
 
   constructor(opts: { logger?: Logger } = {}) {

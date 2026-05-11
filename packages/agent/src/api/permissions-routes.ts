@@ -1,5 +1,17 @@
 import type { AgentRuntime, RouteRequestContext } from "@elizaos/core";
-import type { PermissionState, SystemPermissionId } from "@elizaos/shared";
+import type {
+  IPermissionsRegistry,
+  PermissionId,
+  PermissionState,
+} from "@elizaos/shared";
+import {
+  getMacPermissionDeepLink,
+  isPermissionId,
+  PERMISSION_IDS,
+  PutPermissionsShellRequestSchema,
+  PutPermissionsStateRequestSchema,
+} from "@elizaos/shared";
+import { PERMISSIONS_REGISTRY_SERVICE } from "../services/permissions-registry.ts";
 import type { AutonomousConfigLike } from "../types/config-like.ts";
 
 interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
@@ -12,16 +24,6 @@ interface PermissionAutonomousConfigLike extends AutonomousConfigLike {
 }
 
 const WEBSITE_BLOCKING_PERMISSION_ID = "website-blocking";
-
-const ALL_PERMISSION_IDS: readonly SystemPermissionId[] = [
-  "accessibility",
-  "screen-recording",
-  "microphone",
-  "camera",
-  "shell",
-  "website-blocking",
-  "location",
-];
 
 type SelfControlApi = {
   getSelfControlPermissionState: () => Promise<PermissionState>;
@@ -54,6 +56,19 @@ function currentPlatform(): "darwin" | "win32" | "linux" {
   return p === "darwin" || p === "win32" || p === "linux" ? p : "linux";
 }
 
+function getPermissionRegistry(
+  runtime: AgentRuntime | null,
+): IPermissionsRegistry | null {
+  const service = runtime?.getService(PERMISSIONS_REGISTRY_SERVICE);
+  return service &&
+    typeof service === "object" &&
+    "get" in service &&
+    "check" in service &&
+    "request" in service
+    ? (service as unknown as IPermissionsRegistry)
+    : null;
+}
+
 function unavailableWebsiteBlockingPermission(): PermissionState {
   return {
     id: WEBSITE_BLOCKING_PERMISSION_ID,
@@ -65,7 +80,7 @@ function unavailableWebsiteBlockingPermission(): PermissionState {
   };
 }
 
-function unavailableSystemPermission(id: SystemPermissionId): PermissionState {
+function unavailableSystemPermission(id: PermissionId): PermissionState {
   return {
     id,
     status: "not-applicable",
@@ -76,19 +91,93 @@ function unavailableSystemPermission(id: SystemPermissionId): PermissionState {
   };
 }
 
-function buildPermissionsPayload(
+async function openSystemPermissionSettings(
+  id: PermissionId,
+): Promise<boolean> {
+  const platform = currentPlatform();
+  let argv: string[] | null = null;
+
+  if (platform === "darwin") {
+    argv = ["open", getMacPermissionDeepLink(id)];
+  } else if (platform === "win32") {
+    const settingsMap: Partial<Record<PermissionId, string>> = {
+      microphone: "ms-settings:privacy-microphone",
+      camera: "ms-settings:privacy-webcam",
+      location: "ms-settings:privacy-location",
+      notifications: "ms-settings:notifications",
+    };
+    const uri = settingsMap[id];
+    if (uri) argv = ["cmd", "/c", "start", "", uri];
+  } else {
+    const settingsMap: Partial<Record<PermissionId, string>> = {
+      microphone: "privacy",
+      camera: "privacy",
+      location: "privacy",
+      notifications: "notifications",
+    };
+    const panel = settingsMap[id];
+    if (panel) argv = ["sh", "-lc", `gnome-control-center ${panel}`];
+  }
+
+  if (!argv) return false;
+  try {
+    const { spawn } = await import("node:child_process");
+    const proc = spawn(argv[0], argv.slice(1), {
+      detached: true,
+      stdio: "ignore",
+    });
+    proc.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function buildPermissionsPayload(
   state: PermissionRouteState,
   websiteBlockingPermission: PermissionState,
-): Record<SystemPermissionId, PermissionState> & {
-  _platform: NodeJS.Platform;
-  _shellEnabled: boolean;
-} {
+  refresh = false,
+): Promise<
+  Record<PermissionId, PermissionState> & {
+    _platform: NodeJS.Platform;
+    _shellEnabled: boolean;
+  }
+> {
   const permissionStates = state.permissionStates ?? {};
   const shellEnabled = state.shellEnabled ?? true;
-  const permissions = {} as Record<SystemPermissionId, PermissionState>;
+  const registry = getPermissionRegistry(state.runtime);
+  const permissions = {} as Record<PermissionId, PermissionState>;
 
-  for (const id of ALL_PERMISSION_IDS) {
-    permissions[id] = permissionStates[id] ?? unavailableSystemPermission(id);
+  await Promise.all(
+    PERMISSION_IDS.map(async (id) => {
+      if (id === WEBSITE_BLOCKING_PERMISSION_ID) {
+        permissions[id] = websiteBlockingPermission;
+        return;
+      }
+
+      const persisted = permissionStates[id];
+      if (!refresh && persisted) {
+        permissions[id] = persisted;
+        return;
+      }
+
+      if (registry) {
+        try {
+          permissions[id] = refresh
+            ? await registry.check(id)
+            : registry.get(id);
+          return;
+        } catch {
+          // Fall through to persisted/unavailable state.
+        }
+      }
+
+      permissions[id] = persisted ?? unavailableSystemPermission(id);
+    }),
+  );
+
+  if (!permissions.shell) {
+    permissions.shell = unavailableSystemPermission("shell");
   }
 
   permissions.shell = {
@@ -145,7 +234,7 @@ export async function handlePermissionRoutes(
 
   if (method === "GET" && pathname === "/api/permissions") {
     const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
-    json(res, buildPermissionsPayload(state, websiteBlockingPermission));
+    json(res, await buildPermissionsPayload(state, websiteBlockingPermission));
     return true;
   }
 
@@ -174,7 +263,7 @@ export async function handlePermissionRoutes(
 
   if (method === "GET" && pathname.startsWith("/api/permissions/")) {
     const permId = pathname.slice("/api/permissions/".length);
-    if (!permId || permId.includes("/")) {
+    if (!permId || permId.includes("/") || !isPermissionId(permId)) {
       error(res, "Invalid permission ID", 400);
       return true;
     }
@@ -182,25 +271,30 @@ export async function handlePermissionRoutes(
       json(res, await getWebsiteBlockingPermissionState());
       return true;
     }
-    const permStates = state.permissionStates ?? {};
-    const permState = permStates[permId];
-    if (!permState) {
-      json(res, {
-        id: permId,
-        status: "not-applicable",
-        lastChecked: Date.now(),
-        canRequest: false,
-        platform: currentPlatform(),
-      });
+    const permState = state.permissionStates?.[permId];
+    if (permState) {
+      json(res, permState);
       return true;
     }
-    json(res, permState);
+    const registry = getPermissionRegistry(state.runtime);
+    if (registry) {
+      try {
+        json(res, registry.get(permId));
+        return true;
+      } catch {
+        // Fall through to persisted/unavailable state.
+      }
+    }
+    json(res, unavailableSystemPermission(permId));
     return true;
   }
 
   if (method === "POST" && pathname === "/api/permissions/refresh") {
     const websiteBlockingPermission = await getWebsiteBlockingPermissionState();
-    json(res, buildPermissionsPayload(state, websiteBlockingPermission));
+    json(
+      res,
+      await buildPermissionsPayload(state, websiteBlockingPermission, true),
+    );
     return true;
   }
 
@@ -209,6 +303,10 @@ export async function handlePermissionRoutes(
     pathname.match(/^\/api\/permissions\/[^/]+\/request$/)
   ) {
     const permId = pathname.split("/")[3];
+    if (!isPermissionId(permId)) {
+      error(res, "Invalid permission ID", 400);
+      return true;
+    }
     if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
       const selfControl = await loadSelfControlApi();
       json(
@@ -219,10 +317,22 @@ export async function handlePermissionRoutes(
       );
       return true;
     }
-    json(res, {
-      message: `Permission request for ${permId}`,
-      action: `ipc:permissions:request:${permId}`,
-    });
+    const registry = getPermissionRegistry(state.runtime);
+    if (registry) {
+      try {
+        json(
+          res,
+          await registry.request(permId, {
+            reason: "Requested from permissions API.",
+            feature: { app: "settings", action: `request.${permId}` },
+          }),
+        );
+        return true;
+      } catch {
+        // Fall through to bridge hint for runtimes without a prober.
+      }
+    }
+    json(res, unavailableSystemPermission(permId));
     return true;
   }
 
@@ -231,6 +341,10 @@ export async function handlePermissionRoutes(
     pathname.match(/^\/api\/permissions\/[^/]+\/open-settings$/)
   ) {
     const permId = pathname.split("/")[3];
+    if (!isPermissionId(permId)) {
+      error(res, "Invalid permission ID", 400);
+      return true;
+    }
     if (permId === WEBSITE_BLOCKING_PERMISSION_ID) {
       try {
         const selfControl = await loadSelfControlApi();
@@ -253,17 +367,29 @@ export async function handlePermissionRoutes(
       }
       return true;
     }
+    const opened = await openSystemPermissionSettings(permId);
     json(res, {
-      message: `Opening settings for ${permId}`,
-      action: `ipc:permissions:openSettings:${permId}`,
+      opened,
+      id: permId,
+      permission:
+        state.permissionStates?.[permId] ?? unavailableSystemPermission(permId),
     });
     return true;
   }
 
   if (method === "PUT" && pathname === "/api/permissions/shell") {
-    const body = await readJsonBody<{ enabled?: boolean }>(req, res);
-    if (!body) return true;
-    const enabled = body.enabled === true;
+    const rawShell = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawShell === null) return true;
+    const parsedShell = PutPermissionsShellRequestSchema.safeParse(rawShell);
+    if (!parsedShell.success) {
+      error(
+        res,
+        parsedShell.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const enabled = parsedShell.data.enabled === true;
     state.shellEnabled = enabled;
 
     if (!state.permissionStates) {
@@ -297,14 +423,25 @@ export async function handlePermissionRoutes(
   }
 
   if (method === "PUT" && pathname === "/api/permissions/state") {
-    const body = await readJsonBody<{
-      permissions?: Record<string, PermissionState>;
-      startup?: boolean;
-    }>(req, res);
-    if (!body) return true;
+    const rawPermState = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPermState === null) return true;
+    const parsedPermState =
+      PutPermissionsStateRequestSchema.safeParse(rawPermState);
+    if (!parsedPermState.success) {
+      error(
+        res,
+        parsedPermState.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedPermState.data;
 
     if (body.permissions && typeof body.permissions === "object") {
-      state.permissionStates = body.permissions;
+      state.permissionStates = body.permissions as unknown as Record<
+        string,
+        PermissionState
+      >;
 
       let configChanged = false;
       state.config.plugins = state.config.plugins || {};

@@ -101,7 +101,6 @@ const appsAndPluginsSourceTestFiles = [
     "eliza/plugins/app-shopify/src",
     "eliza/plugins/app-steward/src",
     "packages/plugin-wechat/src",
-    "eliza/plugins/plugin-music-player/src",
   ),
   ...[
     "eliza/plugins/plugin-discord/__tests__/smoke.test.ts",

@@ -59,7 +59,7 @@ def _import_bench_helpers():
 
 def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="eliza-format benchmark")
-    p.add_argument("--provider", default="hf", choices=("hf", "vllm", "openai", "groq", "openrouter", "mock"))
+    p.add_argument("--provider", default="hf", choices=("hf", "vllm", "openai", "groq", "openrouter", "cerebras", "mock"))
     p.add_argument("--model", required=True)
     p.add_argument("--base-url", default=None, help="OpenAI-compat base URL (vllm/openai)")
     p.add_argument("--api-key-env", default="OPENAI_API_KEY", help="Env var holding the API key")
@@ -161,12 +161,17 @@ def _run_api(args: argparse.Namespace) -> int:
                 base_url = "https://openrouter.ai/api/v1"
                 if api_key_env == "OPENAI_API_KEY":
                     api_key_env = "OPENROUTER_API_KEY"
+            elif args.provider == "cerebras":
+                base_url = "https://api.cerebras.ai/v1"
+                if api_key_env == "OPENAI_API_KEY":
+                    api_key_env = "CEREBRAS_API_KEY"
             else:
                 raise SystemExit("--base-url is required for vllm provider")
-        elif api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter"}:
+        elif api_key_env == "OPENAI_API_KEY" and args.provider in {"groq", "openrouter", "cerebras"}:
             api_key_env = {
                 "groq": "GROQ_API_KEY",
                 "openrouter": "OPENROUTER_API_KEY",
+                "cerebras": "CEREBRAS_API_KEY",
             }[args.provider]
         api_key = os.environ.get(api_key_env) or os.environ.get(args.api_key_env, "EMPTY")
         client = OpenAI(base_url=base_url, api_key=api_key)

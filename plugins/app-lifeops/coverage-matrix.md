@@ -24,7 +24,7 @@ Source references:
 
 | Journey ID | Journey Name | Domain | Spine | Test File | PRD / Scenario Anchors | Status |
 |---|---|---|---|---|---|---|
-| 1 | Onboarding & first-run setup | Onboarding & first-run setup | ScheduledTask | `test/first-run-defaults.e2e.test.ts` | `GAP §3.6 FirstRunService`, `IMPL §3.3` | covered |
+| 1 | Onboarding & first-run setup | Onboarding & first-run setup | ScheduledTask | `test/first-run-config-validation.test.ts` | `GAP §3.6 FirstRunService`, `IMPL §3.3` | covered |
 | 2 | Core data model & overview surface | Core data model & overview surface | ScheduledTask | `test/spine-and-first-run.integration.test.ts` | `GAP §3.1 ScheduledTask spine` | covered |
 | 3 | Habits | Habits | ScheduledTask | `test/scheduled-task-end-to-end.e2e.test.ts` | `GAP §3.1`, `UX §3` | covered |
 | 4 | Routines & multi-step daily flows | Routines & multi-step daily flows | ScheduledTask | `test/assistant-user-journeys.morning-brief.e2e.test.ts` | Suite B (`ea.inbox.daily-brief-cross-channel`) | covered |
@@ -37,7 +37,7 @@ Source references:
 | 11 | Follow-up repair (relationships) | Follow-up repair (relationships) | ScheduledTask | `test/assistant-user-journeys.followup-repair.e2e.test.ts` | Suite C (`ea.followup.bump-unanswered-decision`) | covered |
 | 12 | Documents, signatures, portals | Documents, signatures, portals | ScheduledTask | `test/signature-deadline.e2e.test.ts` | Suite E (`ea.docs.signature-before-appointment`) | covered |
 | 13 | Self-control / app & website blockers | Self-control / app & website blockers | enforcer-registry | `test/selfcontrol-chat.live.e2e.test.ts` | `UX §13`, `GAP §3.16 BlockerRegistry` | covered |
-| 14 | Group chat handoff | Group chat handoff | HandoffStore | `test/handoff.e2e.test.ts` | `GAP §3.14`, `JOURNEY_GAME_THROUGH §J13` | covered |
+| 14 | Group chat handoff | Group chat handoff | HandoffStore | `test/group-chat-handoff.e2e.test.ts` | `GAP §3.14`, `JOURNEY_GAME_THROUGH §J13` | covered |
 | 15 | Multi-channel & cross-channel search | Multi-channel & cross-channel search | ChannelRegistry | `test/cross-channel-search.integration.test.ts` | `GAP §3.5 ChannelRegistry`, `UX §15` | covered |
 | 16 | Activity signals & screen context | Activity signals & screen context | ActivitySignalBus | `test/plugin-health-anchor.integration.test.ts` | `GAP §3.2 ActivitySignalBus`, `UX §16` | covered |
 | 17 | Approval queues & action gating | Approval queues & action gating | ApprovalQueue | `test/approval-queue.integration.test.ts` | `UX §17`, `GAP §3.10 ApprovalQueue` | covered |

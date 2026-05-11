@@ -5,10 +5,11 @@
  * Shared implementation ported forward to Electrobun; no runtime-specific APIs required.
  */
 
+import { ALL_PROBERS } from "@elizaos/agent/services/permissions/probers/index";
+import { getMacPermissionDeepLink } from "@elizaos/shared";
 import type { SendToWebview } from "../types.js";
 import type {
 	AllPermissionsState,
-	PermissionCheckResult,
 	PermissionState,
 	SystemPermissionId,
 } from "./permissions-shared";
@@ -17,26 +18,74 @@ import {
 	SYSTEM_PERMISSIONS,
 } from "./permissions-shared";
 
-// Platform modules are loaded on demand so that the darwin module (which uses
-// bun:ffi) is never imported on Linux/Windows, and vice versa. This is
-// required for tests to run correctly on non-macOS CI environments.
-type PlatformModule = typeof import("./permissions-darwin");
+const platform = process.platform as "darwin" | "win32" | "linux";
+const DEFAULT_CACHE_TIMEOUT_MS = 30000;
+const PROBERS_BY_ID = new Map(ALL_PROBERS.map((p) => [p.id, p]));
 
-async function getPlatformModule(): Promise<PlatformModule | null> {
-	switch (process.platform) {
-		case "darwin":
-			return await import("./permissions-darwin");
-		case "win32":
-			return (await import("./permissions-win32")) as PlatformModule;
-		case "linux":
-			return (await import("./permissions-linux")) as PlatformModule;
-		default:
-			return null;
+function buildPermissionState(
+	id: SystemPermissionId,
+	status: PermissionState["status"],
+	options: Partial<Omit<PermissionState, "id" | "status">> = {},
+): PermissionState {
+	return {
+		id,
+		status,
+		lastChecked: options.lastChecked ?? Date.now(),
+		canRequest: options.canRequest ?? status === "not-determined",
+		platform,
+		...(options.restrictedReason
+			? { restrictedReason: options.restrictedReason }
+			: {}),
+		...(options.lastRequested ? { lastRequested: options.lastRequested } : {}),
+		...(options.lastBlockedFeature
+			? { lastBlockedFeature: options.lastBlockedFeature }
+			: {}),
+		...(options.reason ? { reason: options.reason } : {}),
+	};
+}
+
+async function spawnDetached(argv: string[]): Promise<void> {
+	try {
+		const proc = Bun.spawn(argv, {
+			stdout: "ignore",
+			stderr: "ignore",
+		});
+		if (typeof proc.unref === "function") proc.unref();
+	} catch {
+		// Opening settings is best-effort.
 	}
 }
 
-const platform = process.platform as "darwin" | "win32" | "linux";
-const DEFAULT_CACHE_TIMEOUT_MS = 30000;
+async function openPermissionSettings(id: SystemPermissionId): Promise<void> {
+	if (platform === "darwin") {
+		await spawnDetached(["open", getMacPermissionDeepLink(id)]);
+		return;
+	}
+
+	if (platform === "win32") {
+		const settingsMap: Partial<Record<SystemPermissionId, string>> = {
+			microphone: "ms-settings:privacy-microphone",
+			camera: "ms-settings:privacy-webcam",
+			location: "ms-settings:privacy-location",
+			notifications: "ms-settings:notifications",
+		};
+		const uri = settingsMap[id];
+		if (uri) await spawnDetached(["cmd", "/c", "start", "", uri]);
+		return;
+	}
+
+	if (platform === "linux") {
+		const settingsMap: Partial<Record<SystemPermissionId, string>> = {
+			microphone: "privacy",
+			camera: "privacy",
+			location: "privacy",
+			notifications: "notifications",
+		};
+		const panel = settingsMap[id];
+		if (panel)
+			await spawnDetached(["sh", "-lc", `gnome-control-center ${panel}`]);
+	}
+}
 
 export class PermissionManager {
 	private sendToWebview: SendToWebview | null = null;
@@ -74,23 +123,18 @@ export class PermissionManager {
 		forceRefresh = false,
 	): Promise<PermissionState> {
 		if (!isPermissionApplicable(id, platform)) {
-			const state: PermissionState = {
-				id,
-				status: "not-applicable",
-				lastChecked: Date.now(),
+			const state = buildPermissionState(id, "not-applicable", {
 				canRequest: false,
-			};
+				restrictedReason: "platform_unsupported",
+			});
 			this.cache.set(id, state);
 			return state;
 		}
 
 		if (id === "shell" && !this.shellEnabled) {
-			const state: PermissionState = {
-				id,
-				status: "denied",
-				lastChecked: Date.now(),
+			const state = buildPermissionState(id, "denied", {
 				canRequest: false,
-			};
+			});
 			this.cache.set(id, state);
 			return state;
 		}
@@ -100,17 +144,15 @@ export class PermissionManager {
 			if (cached) return cached;
 		}
 
-		const mod = await getPlatformModule();
-		const result: PermissionCheckResult = mod
-			? await mod.checkPermission(id)
-			: { status: "not-applicable", canRequest: false };
-
-		const state: PermissionState = {
-			id,
-			status: result.status,
-			lastChecked: Date.now(),
-			canRequest: result.canRequest,
-		};
+		const prober = PROBERS_BY_ID.get(id);
+		const state =
+			prober !== undefined
+				? await prober.check()
+				: buildPermissionState(id, "not-applicable", {
+						canRequest: false,
+						restrictedReason: "platform_unsupported",
+						reason: "No permission prober is registered for this permission.",
+					});
 		this.cache.set(id, state);
 		return state;
 	}
@@ -129,33 +171,41 @@ export class PermissionManager {
 
 	async requestPermission(id: SystemPermissionId): Promise<PermissionState> {
 		if (!isPermissionApplicable(id, platform)) {
-			return {
-				id,
-				status: "not-applicable",
-				lastChecked: Date.now(),
+			return buildPermissionState(id, "not-applicable", {
 				canRequest: false,
-			};
+				restrictedReason: "platform_unsupported",
+			});
 		}
 
-		const mod = await getPlatformModule();
-		const result: PermissionCheckResult = mod
-			? await mod.requestPermission(id)
-			: { status: "not-applicable", canRequest: false };
+		if (id === "shell") {
+			const state = buildPermissionState(
+				id,
+				this.shellEnabled ? "granted" : "denied",
+				{
+					canRequest: false,
+					lastRequested: Date.now(),
+				},
+			);
+			this.cache.set(id, state);
+			return state;
+		}
 
-		const state: PermissionState = {
-			id,
-			status: result.status,
-			lastChecked: Date.now(),
-			canRequest: result.canRequest,
-		};
+		const prober = PROBERS_BY_ID.get(id);
+		const state =
+			prober !== undefined
+				? await prober.request({ reason: "Requested from desktop settings." })
+				: buildPermissionState(id, "not-applicable", {
+						canRequest: false,
+						restrictedReason: "platform_unsupported",
+						reason: "No permission prober is registered for this permission.",
+					});
 		this.cache.set(id, state);
 		this.sendToWebview?.("permissionsChanged", { id });
 		return state;
 	}
 
 	async openSettings(id: SystemPermissionId): Promise<void> {
-		const mod = await getPlatformModule();
-		await mod?.openPrivacySettings(id);
+		await openPermissionSettings(id);
 	}
 
 	async checkFeaturePermissions(

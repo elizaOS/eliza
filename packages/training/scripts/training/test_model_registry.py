@@ -9,6 +9,7 @@ from scripts.training.model_registry import REGISTRY, Tier, by_tier, get, summar
 
 # The published eliza-1 series — three sizes that ship to HuggingFace.
 ELIZA_1_KEYS = ("qwen3.5-2b", "qwen3.5-9b", "qwen3.6-27b")
+ELIZA_1_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-9b", "eliza-1-27b")
 # Smoke-only entries that exercise the pipeline end-to-end on consumer
 # hardware but are NOT published. `eliza_short_name` and `eliza_repo_id`
 # are intentionally empty for these.
@@ -40,8 +41,8 @@ def test_smoke_entries_have_no_publish_metadata() -> None:
 def test_eliza_repo_id_matches_size(short: str, size: str) -> None:
     e = get(short)
     assert e.eliza_short_name == f"eliza-1-{size}"
-    assert e.eliza_repo_id == f"elizaos/eliza-1-{size}"
-    assert e.abliteration_repo_id == f"elizaos/eliza-1-{size}-uncensored"
+    assert e.eliza_repo_id == f"elizalabs/eliza-1-{size}"
+    assert e.abliteration_repo_id == f"elizalabs/eliza-1-{size}-uncensored"
 
 
 def test_tier_assignments() -> None:
@@ -61,6 +62,9 @@ def test_by_tier_returns_each_tier_once_for_eliza_1() -> None:
 def test_lookup_by_hf_id_or_short_name() -> None:
     assert get("Qwen/Qwen3.5-2B").short_name == "qwen3.5-2b"
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
+    assert get("eliza-1-2b").short_name == "qwen3.5-2b"
+    assert get("eliza-1-9b").short_name == "qwen3.5-9b"
+    assert get("eliza-1-27b").short_name == "qwen3.6-27b"
 
 
 def test_unknown_model_raises_keyerror() -> None:
@@ -83,7 +87,33 @@ def test_27b_fits_on_48gb_quantized_at_144k() -> None:
     assert e.infer_mem_gb_quantized < 48.0
 
 
+def test_27b_default_seq_len_leaves_real_headroom() -> None:
+    """Gap M35: 27B default seq_len at 147k left ~1% headroom on the 2× B6000
+    (192 GB) cluster and ~6% on 2× H200 — one activation spike OOMed the run.
+    Default must stay at or below 64k so the registry default is safe on every
+    documented 27B target. Override per run via `--max-seq-len`."""
+    e = get("qwen3.6-27b")
+    assert e.seq_len <= 65536, (
+        f"qwen3.6-27b seq_len={e.seq_len} > 64k — drift back toward the "
+        "unsafe 147k default; keep registry default conservative and bump "
+        "via `--max-seq-len` per run instead."
+    )
+
+
+def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
+    """M35 only lowered the 27B default. 2B and 9B defaults must stay where
+    they are — those tiers have plenty of headroom at the documented budgets."""
+    assert get("qwen3.5-2b").seq_len == 8192
+    assert get("qwen3.5-9b").seq_len == 16384
+
+
+def test_smoke_entry_seq_len_unchanged_by_m35() -> None:
+    """The 0.6B smoke-only entry runs on a single consumer GPU — its 2k
+    default is independent of the 27B headroom problem."""
+    assert get("qwen3-0.6b").seq_len == 2048
+
+
 def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
-    for key in ELIZA_1_KEYS:
-        assert key in table
+    for public_name in ELIZA_1_PUBLIC_NAMES:
+        assert public_name in table

@@ -1,5 +1,5 @@
 /**
- * `TASKS` umbrella action.
+ * `SCHEDULED_TASKS` umbrella action.
  *
  * Wave-3 W3-C: collapses the standalone follow-up + reminder verbs into one
  * user-visible umbrella that wraps `ScheduledTaskRunner`. The runner is the
@@ -555,7 +555,7 @@ const examples: ActionExample[][] = [
       name: "{{agentName}}",
       content: {
         text: "Listing scheduled tasks of kind=followup.",
-        action: "TASKS",
+        action: "SCHEDULED_TASKS",
       },
     },
   ],
@@ -568,7 +568,7 @@ const examples: ActionExample[][] = [
       name: "{{agentName}}",
       content: {
         text: "Snoozing the active reminder for 30 minutes.",
-        action: "TASKS",
+        action: "SCHEDULED_TASKS",
       },
     },
   ],
@@ -581,7 +581,7 @@ const examples: ActionExample[][] = [
       name: "{{agentName}}",
       content: {
         text: "Marking the check-in as completed.",
-        action: "TASKS",
+        action: "SCHEDULED_TASKS",
       },
     },
   ],
@@ -590,10 +590,10 @@ const examples: ActionExample[][] = [
 export const scheduledTaskAction: Action & {
   suppressPostActionContinuation?: boolean;
 } = {
-  name: "TASKS",
+  name: "SCHEDULED_TASKS",
   similes: [
+    "TASKS",
     "SCHEDULED_TASK",
-    "SCHEDULED_TASKS",
     "REMINDER_TASK",
     "SCHEDULED_REMINDER",
     "SCHEDULED_FOLLOWUP",
@@ -602,7 +602,7 @@ export const scheduledTaskAction: Action & {
     "TASK_ACKNOWLEDGE",
     "TASK_DISMISS",
     // W3-C drift D-2: collapse the 7 transitional ENTITY follow-up operations
-    // onto TASKS. ENTITY keeps the same simile names registered for one
+    // onto SCHEDULED_TASKS. ENTITY keeps the same simile names registered for one
     // release; the canonical execution surface is here.
     "ADD_FOLLOW_UP",
     "COMPLETE_FOLLOW_UP",
@@ -626,7 +626,7 @@ export const scheduledTaskAction: Action & {
   descriptionCompressed:
     "scheduled tasks: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
   routingHint:
-    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "what follow-ups today", "complete the check-in", "show task history") -> TASKS; per-occurrence LifeOps verbs (complete/skip/snooze a definition\'s next occurrence) stay on LIFE',
+    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "what follow-ups today", "complete the check-in", "show task history") -> SCHEDULED_TASKS; per-occurrence owner reminder verbs (complete/skip/snooze a definition\'s next occurrence) stay on OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
   contexts: ["tasks", "reminders", "followups", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -873,7 +873,7 @@ export const scheduledTaskAction: Action & {
       await callback?.({
         text: result.text,
         source: "action",
-        action: "TASKS",
+        action: "SCHEDULED_TASKS",
       });
     }
     return result;

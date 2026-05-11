@@ -191,7 +191,7 @@ const GAME_OF_LIFE_SUB_ACTIONS = [
   "WANDER",
 ] as const;
 
-const _moveTowardFoodAction: Action = {
+const moveTowardFoodAction: Action = {
   name: "MOVE_TOWARD_FOOD",
   description: "Move toward the nearest visible food",
   contexts: [...GAME_CONTEXTS],
@@ -266,7 +266,7 @@ const _moveTowardFoodAction: Action = {
   examples: [],
 };
 
-const _eatAction: Action = {
+const eatAction: Action = {
   name: "EAT",
   description: "Eat food at current position",
   contexts: [...GAME_CONTEXTS],
@@ -310,7 +310,7 @@ const _eatAction: Action = {
   examples: [],
 };
 
-const _fleeAction: Action = {
+const fleeAction: Action = {
   name: "FLEE",
   description: "Run away from nearby aggressive agents",
   contexts: [...GAME_CONTEXTS],
@@ -389,7 +389,7 @@ const _fleeAction: Action = {
   examples: [],
 };
 
-const _attackAction: Action = {
+const attackAction: Action = {
   name: "ATTACK",
   description: "Attack a nearby weaker agent to steal energy",
   contexts: [...GAME_CONTEXTS],
@@ -470,7 +470,7 @@ const _attackAction: Action = {
   examples: [],
 };
 
-const _reproduceAction: Action = {
+const reproduceAction: Action = {
   name: "REPRODUCE",
   description: "Create offspring when energy is high enough",
   contexts: [...GAME_CONTEXTS],
@@ -538,7 +538,7 @@ const _reproduceAction: Action = {
   examples: [],
 };
 
-const _wanderAction: Action = {
+const wanderAction: Action = {
   name: "WANDER",
   description: "Move in a random direction when nothing else to do",
   contexts: [...GAME_CONTEXTS],
@@ -763,7 +763,18 @@ const gameOfLifePlugin: Plugin = {
   name: "game-of-life-agent",
   description: "Actions for Game of Life agents",
 
-  actions: [gameOfLifeAction],
+  // Register the umbrella + its sub-actions. resolveSubActions() in
+  // sub-planner.ts looks each sub-action up by name in runtime.actions, so
+  // the leaves MUST be registered or sub-planner dispatch will throw.
+  actions: [
+    gameOfLifeAction,
+    moveTowardFoodAction,
+    eatAction,
+    fleeAction,
+    attackAction,
+    reproduceAction,
+    wanderAction,
+  ],
 
   models: {
     [ModelType.TEXT_SMALL]: decisionModelHandler,

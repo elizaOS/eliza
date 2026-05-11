@@ -20,6 +20,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 
 export interface GitHubCredentials {
   /** The PAT itself. Never sent back to the UI after save. */
@@ -38,16 +39,6 @@ export interface GitHubCredentials {
 
 /** Subset of {@link GitHubCredentials} that is safe to send to the UI. */
 export type GitHubCredentialMetadata = Omit<GitHubCredentials, "token">;
-
-function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR?.trim();
-  if (explicit) return path.resolve(explicit);
-  const home =
-    process.env.HOME?.trim() ||
-    process.env.USERPROFILE?.trim() ||
-    process.cwd();
-  return path.join(home, ".eliza");
-}
 
 /** Resolve the on-disk path for the credential file. */
 export function getCredentialFilePath(): string {

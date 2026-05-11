@@ -15,6 +15,7 @@ import {
   getSupportedImageModelDefinition,
   SUPPORTED_IMAGE_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@/lib/services/content-safety";
 import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
@@ -163,6 +164,16 @@ app.post("/", async (c) => {
       return jsonError(c, 503, getAiProviderConfigurationError(), "internal_error");
     }
 
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "media_generation_prompt",
+      organizationId: user.organization_id,
+      userId: user.id,
+      text: request.prompt,
+      imageUrls: request.sourceImage ? [request.sourceImage] : undefined,
+      allowDataImages: true,
+      metadata: { type: "image", model: request.model },
+    });
+
     const cost = await calculateImageGenerationCostFromCatalog({
       model: request.model,
       provider: definition.provider,
@@ -207,6 +218,24 @@ app.post("/", async (c) => {
           source: "generate-image",
         },
       });
+
+      try {
+        await contentSafetyService.assertSafeForPublicUse({
+          surface: "media_generation_output",
+          organizationId: user.organization_id,
+          userId: user.id,
+          imageUrls: [url],
+          metadata: { type: "image", model: request.model },
+        });
+      } catch (error) {
+        await c.env.BLOB.delete(storedKey).catch((deleteError) => {
+          logger.error("[GenerateImage] Failed to delete blocked image output", {
+            key: storedKey,
+            error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+          });
+        });
+        throw error;
+      }
 
       images.push({
         image: generated.dataUrl,

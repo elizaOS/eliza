@@ -27,6 +27,8 @@ import {
 const PARENT_TRAJECTORY_STEP_ENV_KEY = "MILADY_PARENT_TRAJECTORY_STEP_ID";
 
 interface TodoActionParameters {
+  action?: unknown;
+  subaction?: unknown;
   op?: unknown;
   id?: unknown;
   content?: unknown;
@@ -232,6 +234,7 @@ async function opWrite({
     success: true,
     text,
     data: {
+      action: "write" as const,
       op: "write" as const,
       entityId: scope.entityId,
       todos: result.after,
@@ -252,7 +255,7 @@ async function opCreate({
 }: OpHandlerArgs): Promise<ActionResult> {
   const content = readString(params.content);
   if (!content) {
-    return failure("missing_param", "content is required for op=create");
+    return failure("missing_param", "content is required for action=create");
   }
   const status = readStatus(params.status) ?? "pending";
   const activeForm = readString(params.activeForm);
@@ -274,7 +277,12 @@ async function opCreate({
   return {
     success: true,
     text,
-    data: { op: "create" as const, entityId: scope.entityId, todo },
+    data: {
+      action: "create" as const,
+      op: "create" as const,
+      entityId: scope.entityId,
+      todo,
+    },
   };
 }
 
@@ -286,7 +294,7 @@ async function opUpdate({
 }: OpHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
   if (!id) {
-    return failure("missing_param", "id is required for op=update");
+    return failure("missing_param", "id is required for action=update");
   }
   const existing = await service.get(id);
   if (!existing || existing.entityId !== scope.entityId) {
@@ -302,7 +310,10 @@ async function opUpdate({
   const parentTodoId = readString(params.parentTodoId);
   if (parentTodoId !== undefined) patch.parentTodoId = parentTodoId;
   if (Object.keys(patch).length === 0) {
-    return failure("missing_param", "at least one field is required for op=update");
+    return failure(
+      "missing_param",
+      "at least one field is required for action=update",
+    );
   }
   const todo = await service.update(id, patch);
   if (!todo) {
@@ -313,7 +324,12 @@ async function opUpdate({
   return {
     success: true,
     text,
-    data: { op: "update" as const, entityId: scope.entityId, todo },
+    data: {
+      action: "update" as const,
+      op: "update" as const,
+      entityId: scope.entityId,
+      todo,
+    },
   };
 }
 
@@ -325,7 +341,7 @@ async function opSetStatus(
   const { service, scope, params, callback } = args;
   const id = readString(params.id);
   if (!id) {
-    return failure("missing_param", `id is required for op=${verb}`);
+    return failure("missing_param", `id is required for action=${verb}`);
   }
   const existing = await service.get(id);
   if (!existing || existing.entityId !== scope.entityId) {
@@ -340,7 +356,7 @@ async function opSetStatus(
   return {
     success: true,
     text,
-    data: { op: verb, entityId: scope.entityId, todo },
+    data: { action: verb, op: verb, entityId: scope.entityId, todo },
   };
 }
 
@@ -352,7 +368,7 @@ async function opDelete({
 }: OpHandlerArgs): Promise<ActionResult> {
   const id = readString(params.id);
   if (!id) {
-    return failure("missing_param", "id is required for op=delete");
+    return failure("missing_param", "id is required for action=delete");
   }
   const existing = await service.get(id);
   if (!existing || existing.entityId !== scope.entityId) {
@@ -367,7 +383,12 @@ async function opDelete({
   return {
     success: true,
     text,
-    data: { op: "delete" as const, entityId: scope.entityId, id },
+    data: {
+      action: "delete" as const,
+      op: "delete" as const,
+      entityId: scope.entityId,
+      id,
+    },
   };
 }
 
@@ -391,7 +412,12 @@ async function opList({
   return {
     success: true,
     text,
-    data: { op: "list" as const, entityId: scope.entityId, todos },
+    data: {
+      action: "list" as const,
+      op: "list" as const,
+      entityId: scope.entityId,
+      todos,
+    },
   };
 }
 
@@ -411,10 +437,20 @@ async function opClear({
   return {
     success: true,
     text,
-    data: { op: "clear" as const, entityId: scope.entityId, count },
+    data: {
+      action: "clear" as const,
+      op: "clear" as const,
+      entityId: scope.entityId,
+      count,
+    },
   };
 }
 
+// Canonical planner-facing todo surface. Backed by the per-user @elizaos/core
+// TodosService store (filesystem under TODOS_BASE_PATH). The owner-store
+// equivalent — backed by app-lifeops definitions — is OWNER_TODOS in
+// plugins/app-lifeops/src/actions/owner-surfaces.ts. The two surfaces target
+// different stores and must not be merged.
 export const todoAction: Action = {
   name: "TODO",
   contexts: [...TODOS_CONTEXTS],
@@ -453,16 +489,22 @@ export const todoAction: Action = {
     "CLEAR_TODOS",
   ],
   description:
-    "Manage the user's todo list. Subactions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
+    "Manage the user's todo list. Actions: write (replace the list with `todos:[{id?, content, status, activeForm?}]`), create (add one), update (change by id), complete, cancel, delete, list, clear. Todos are user-scoped (entityId), persistent, and shared across rooms for the same user.",
   descriptionCompressed:
     "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description:
-        "Operation: write, create, update, complete, cancel, delete, list, clear.",
+        "Action: write, create, update, complete, cancel, delete, list, clear.",
       required: true,
       schema: { type: "string" as const, enum: [...TODO_OPS] },
+    },
+    {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      required: false,
+      schema: { type: "string" as const },
     },
     {
       name: "id",
@@ -497,7 +539,7 @@ export const todoAction: Action = {
     {
       name: "todos",
       description:
-        "Array of {id?, content, status, activeForm?} for op=write. Replaces the user's list for this conversation.",
+        "Array of {id?, content, status, activeForm?} for action=write. Replaces the user's list for this conversation.",
       required: false,
       schema: {
         type: "array" as const,
@@ -515,13 +557,13 @@ export const todoAction: Action = {
     },
     {
       name: "includeCompleted",
-      description: "Include completed/cancelled todos in op=list output.",
+      description: "Include completed/cancelled todos in action=list output.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "limit",
-      description: "Max rows to return for op=list.",
+      description: "Max rows to return for action=list.",
       required: false,
       schema: { type: "number" as const },
     },
@@ -535,11 +577,11 @@ export const todoAction: Action = {
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
     const params = (options?.parameters ?? {}) as TodoActionParameters;
-    const op = readOp(params.op);
+    const op = readOp(params.action ?? params.subaction ?? params.op);
     if (!op) {
       return failure(
         "missing_param",
-        `op is required (one of: ${TODO_OPS.join(", ")})`,
+        `action is required (one of: ${TODO_OPS.join(", ")})`,
       );
     }
     const scope = readScope(runtime, message);
@@ -579,7 +621,7 @@ export const todoAction: Action = {
           text: "Adding the todo.",
           actions: ["TODO"],
           thought:
-            "Single-todo creation maps to TODO subaction=create with content set.",
+            "Single-todo creation maps to TODO action=create with content set.",
         },
       },
     ],
@@ -594,7 +636,7 @@ export const todoAction: Action = {
           text: "Listing your pending todos.",
           actions: ["TODO"],
           thought:
-            "List query maps to TODO subaction=list with includeCompleted=false.",
+            "List query maps to TODO action=list with includeCompleted=false.",
         },
       },
     ],
@@ -609,7 +651,7 @@ export const todoAction: Action = {
           text: "Cancelling that todo.",
           actions: ["TODO"],
           thought:
-            "Cancel intent on a specific id maps to TODO subaction=cancel with id=abc-123.",
+            "Cancel intent on a specific id maps to TODO action=cancel with id=abc-123.",
         },
       },
     ],

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-defense-of-the-agents",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "description": "Eliza app integration for Defense of the Agents.",
   "main": "./dist/index.js",
@@ -31,10 +31,10 @@
     "strategy"
   ],
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
-    "@elizaos/core": "workspace:*",
-    "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*"
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1"
   },
   "elizaos": {
     "kind": "app",

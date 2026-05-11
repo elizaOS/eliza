@@ -126,7 +126,11 @@ export class LocalTailscaleService extends Service implements ITunnelService {
     );
 
     if (this.useFunnel) {
-      const result = await runCommand("tailscale", ["funnel", String(port)]);
+      const result = await runCommand("tailscale", [
+        "funnel",
+        "--bg",
+        String(port),
+      ]);
       if (result.code !== 0) {
         throw new Error(
           `tailscale funnel exited with code ${result.code}: ${result.stderr.trim()}`,
@@ -171,10 +175,21 @@ export class LocalTailscaleService extends Service implements ITunnelService {
     this.isShuttingDown = true;
     elizaLogger.info("[LocalTailscaleService] stopping tunnel");
 
-    if (this.useFunnel) {
-      await runCommand("tailscale", ["funnel", "reset"]);
-    } else {
-      await runCommand("tailscale", ["serve", "reset"]);
+    const args = this.useFunnel ? ["funnel", "reset"] : ["serve", "reset"];
+    let result: SpawnResult;
+    try {
+      result = await runCommand("tailscale", args);
+    } catch (error) {
+      this.isShuttingDown = false;
+      throw new Error(
+        `tailscale ${args[0]} reset failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    if (result.code !== 0) {
+      this.isShuttingDown = false;
+      throw new Error(
+        `tailscale ${args[0]} reset failed with code ${result.code}: ${result.stderr.trim()}`,
+      );
     }
 
     this.cleanup();

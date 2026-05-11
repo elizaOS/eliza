@@ -11,13 +11,12 @@
  */
 
 import type {
-  Action,
-  ActionExample,
+  ActionParameter,
   ActionResult,
+  HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  State,
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { LifeOpsHealthSummaryResponse } from "../contracts/index.js";
@@ -273,44 +272,89 @@ function latestConnectorSummaryForDate(
   );
 }
 
-export const healthAction: Action = {
-  name: "HEALTH",
-  similes: [
-    "FITNESS",
-    "WELLNESS",
-    "SLEEP",
-    "STEPS",
-    "HEART_RATE",
-    "WORKOUT",
-    "EXERCISE",
-    "CALORIES",
-    "ACTIVITY_METRICS",
-  ],
-  description:
-    "Read health and fitness telemetry from HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura: sleep, steps, heart rate, workouts, calories, distance. Subactions: today, trend, by_metric, status. Read-only — never writes.",
-  descriptionCompressed:
-    "read health/fitness telemetry; subactions today|trend|by_metric|status; metrics steps|heart-rate|sleep|calories|distance|workouts; read-only",
-  routingHint:
-    "health/wearable reads (\"step count\", \"sleep last night\", heart rate, workouts) -> HEALTH; never answer from provider summaries or REPLY",
-  // See `12-real-root-cause.md` — "general" widening so HEALTH stays
-  // retrievable when the messageHandler routes wearable / sleep / steps
-  // questions through the conversational frame.
-  tags: [
-    "domain:health",
-    "capability:read",
-    "surface:remote-api",
-    "cost:cheap",
-  ],
-  contexts: ["general", "health", "tasks", "calendar"],
-  roleGate: { minRole: "OWNER" },
-  validate: async () => true,
-  handler: async (
-    runtime: IAgentRuntime,
-    message: Memory,
-    state,
-    options,
-    callback,
-  ): Promise<ActionResult> => {
+/**
+ * Public similes preserved on the OWNER_HEALTH umbrella for cached planner
+ * output / lifeops provider routing hints.
+ */
+export const HEALTH_SIMILES: readonly string[] = [
+  "FITNESS",
+  "WELLNESS",
+  "SLEEP",
+  "STEPS",
+  "HEART_RATE",
+  "WORKOUT",
+  "EXERCISE",
+  "CALORIES",
+  "ACTIVITY_METRICS",
+];
+
+/**
+ * Parameter schema for the HEALTH backend — the OWNER_HEALTH umbrella
+ * surfaces this as its public param list (after replacing `subaction` with
+ * a canonical `action` discriminator).
+ */
+export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
+  {
+    name: "subaction",
+    description:
+      "Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
+    descriptionCompressed:
+      "health query: today | trend | by_metric | status",
+    schema: {
+      type: "string" as const,
+      enum: [...HEALTH_SUBACTIONS],
+    },
+    examples: ["today", "trend", "by_metric", "status"],
+  },
+  {
+    name: "intent",
+    description:
+      "Free-form user intent used to infer subaction when not explicitly set.",
+    descriptionCompressed: "free-form intent infer subaction",
+    schema: { type: "string" as const },
+  },
+  {
+    name: "metric",
+    description:
+      "Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
+    descriptionCompressed:
+      "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes",
+    schema: {
+      type: "string" as const,
+      enum: [...HEALTH_METRICS],
+    },
+    examples: ["steps", "sleep_hours", "heart_rate"],
+  },
+  {
+    name: "date",
+    description: "YYYY-MM-DD for single-day queries.",
+    descriptionCompressed: "YYYY-MM-DD single-day",
+    schema: { type: "string" as const },
+    examples: ["2026-05-10"],
+  },
+  {
+    name: "days",
+    description: "Window size for trend and by_metric queries.",
+    descriptionCompressed: "window days trend|by_metric",
+    schema: { type: "number" as const, minimum: 1, maximum: 365 },
+    examples: [1, 7, 30],
+  },
+];
+
+/**
+ * Handler function backing the OWNER_HEALTH umbrella.
+ *
+ * Folded out of the legacy `HEALTH` action surface — Audit F. The umbrella
+ * in `./owner-surfaces.ts` is the only caller; no `HEALTH`-named action is
+ * registered.
+ */
+export async function runHealthHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: unknown,
+  options: HandlerOptions | undefined,
+  callback?: HandlerCallback,
+): Promise<ActionResult> {
     const intent = getMessageText(message).trim();
 
     const respond = async <
@@ -646,93 +690,4 @@ export const healthAction: Action = {
       },
       data: { subaction: "today", date, summary },
     });
-  },
-  parameters: [
-    {
-      name: "subaction",
-      description:
-        "Which health query to run: today (default daily summary), trend (multi-day), by_metric (single metric), status (backend connectivity).",
-      descriptionCompressed:
-        "health query: today | trend | by_metric | status",
-      schema: {
-        type: "string" as const,
-        enum: [...HEALTH_SUBACTIONS],
-      },
-      examples: ["today", "trend", "by_metric", "status"],
-    },
-    {
-      name: "intent",
-      description:
-        "Free-form user intent used to infer subaction when not explicitly set.",
-      descriptionCompressed: "free-form intent infer subaction",
-      schema: { type: "string" as const },
-    },
-    {
-      name: "metric",
-      description:
-        "Metric for by_metric queries: steps, active_minutes, sleep_hours, heart_rate, calories, distance_meters.",
-      descriptionCompressed:
-        "by_metric: steps|heart_rate|sleep_hours|calories|distance_meters|active_minutes",
-      schema: {
-        type: "string" as const,
-        enum: [...HEALTH_METRICS],
-      },
-      examples: ["steps", "sleep_hours", "heart_rate"],
-    },
-    {
-      name: "date",
-      description: "YYYY-MM-DD for single-day queries.",
-      descriptionCompressed: "YYYY-MM-DD single-day",
-      schema: { type: "string" as const },
-      examples: ["2026-05-10"],
-    },
-    {
-      name: "days",
-      description: "Window size for trend and by_metric queries.",
-      descriptionCompressed: "window days trend|by_metric",
-      schema: { type: "number" as const, minimum: 1, maximum: 365 },
-      examples: [1, 7, 30],
-    },
-  ],
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "How many steps did I take today?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Health summary for 2026-04-16 (healthkit):\n- Steps: 8,420 ...",
-          action: "HEALTH",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Show me my fitness trend this week." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Health trend (last 7 days): ...",
-          action: "HEALTH",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Is my health integration connected?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Health backend available: healthkit.",
-          action: "HEALTH",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+}

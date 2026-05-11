@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import http from "node:http";
+import type { BrowserWorkspaceEventType } from "./native/browser-workspace";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { findFirstAvailableLoopbackPort } from "./native/loopback-port";
 
@@ -41,6 +42,19 @@ type BrowserWorkspaceNavigateBody = {
 type BrowserWorkspaceEvalBody = {
 	script?: string;
 };
+
+const BROWSER_WORKSPACE_EVENT_TYPES = new Set<BrowserWorkspaceEventType>([
+	"open",
+	"navigate",
+	"show",
+	"hide",
+	"close",
+	"eval.start",
+	"eval.end",
+	"eval.error",
+	"snapshot.success",
+	"snapshot.miss",
+]);
 
 function isLoopback(addr: string | undefined): boolean {
 	return addr === "127.0.0.1" || addr === "::1" || addr === "::ffff:127.0.0.1";
@@ -101,6 +115,23 @@ function normalizeTabId(raw: string): string {
 	return decodeURIComponent(raw).trim();
 }
 
+function readIntegerSearchParam(url: URL, key: string): number | undefined {
+	const raw = url.searchParams.get(key)?.trim();
+	if (!raw) return undefined;
+	const parsed = Number.parseInt(raw, 10);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function readBrowserWorkspaceEventType(
+	url: URL,
+): BrowserWorkspaceEventType | undefined {
+	const raw = url.searchParams.get("type")?.trim();
+	if (!raw) return undefined;
+	return BROWSER_WORKSPACE_EVENT_TYPES.has(raw as BrowserWorkspaceEventType)
+		? (raw as BrowserWorkspaceEventType)
+		: undefined;
+}
+
 export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 	const requestedPort =
 		Number.parseInt(
@@ -143,6 +174,17 @@ export async function startBrowserWorkspaceBridgeServer(): Promise<() => void> {
 
 			if (pathname === "/tabs" && method === "GET") {
 				json(res, 200, await manager.listTabs());
+				return;
+			}
+
+			if (pathname === "/events" && method === "GET") {
+				const eventLog = await manager.listEvents({
+					after: readIntegerSearchParam(url, "after"),
+					limit: readIntegerSearchParam(url, "limit"),
+					tabId: url.searchParams.get("tabId") ?? undefined,
+					type: readBrowserWorkspaceEventType(url),
+				});
+				json(res, 200, { ...eventLog });
 				return;
 			}
 

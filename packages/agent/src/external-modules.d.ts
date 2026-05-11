@@ -1,5 +1,53 @@
 declare module "@elizaos/plugin-agent-orchestrator";
 declare module "@elizaos/plugin-agent-skills";
+declare module "@elizaos/plugin-capacitor-bridge" {
+  import type { Server } from "node:http";
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface MobileDeviceBridgeStatus {
+    enabled: boolean;
+    connected: boolean;
+    devices: Array<{
+      deviceId: string;
+      capabilities: {
+        platform: "ios" | "android" | "web";
+        deviceModel: string;
+        totalRamGb: number;
+        cpuCores: number;
+        gpu: {
+          backend: "metal" | "vulkan" | "gpu-delegate";
+          available: boolean;
+        } | null;
+      };
+      loadedPath: string | null;
+      connectedSince: string;
+    }>;
+    primaryDeviceId: string | null;
+    pendingRequests: number;
+    modelPath: string | null;
+  }
+
+  export const mobileDeviceBridge: unknown;
+  export function getMobileDeviceBridgeStatus(): MobileDeviceBridgeStatus;
+  export function loadMobileDeviceBridgeModel(
+    modelPath: string,
+    modelId?: string,
+  ): Promise<void>;
+  export function unloadMobileDeviceBridgeModel(): Promise<void>;
+  export function attachMobileDeviceBridgeToServer(
+    server: Server,
+  ): Promise<void>;
+  export function ensureMobileDeviceBridgeInferenceHandlers(
+    runtime: AgentRuntime,
+  ): Promise<boolean>;
+}
+declare module "qrcode-terminal" {
+  export function generate(
+    input: string,
+    options?: { small?: boolean },
+    callback?: (qrcode: string) => void,
+  ): void;
+}
 declare module "telegram" {
   export class TelegramClient {
     constructor(
@@ -122,13 +170,17 @@ declare module "@elizaos/plugin-elizacloud" {
   export class CloudManager {
     constructor(...args: unknown[]);
     init(): Promise<void>;
-    connect(agentId: string): Promise<{ agentName?: string; [key: string]: unknown }>;
+    connect(
+      agentId: string,
+    ): Promise<{ agentName?: string; [key: string]: unknown }>;
     disconnect(): Promise<void>;
     [key: string]: unknown;
   }
 
   export function normalizeCloudSiteUrl(value?: string): string;
-  export function normalizeCloudSecret(value: string | null | undefined): string | null;
+  export function normalizeCloudSecret(
+    value: string | null | undefined,
+  ): string | null;
   export function validateCloudBaseUrl(value: string): string | null;
   export function resolveCloudApiBaseUrl(...args: unknown[]): string;
   export function resolveCloudApiKey(...args: unknown[]): string | null;
@@ -138,9 +190,7 @@ declare module "@elizaos/plugin-elizacloud" {
   export function getCloudSecret(...args: unknown[]): string | undefined;
   export function getOrCreateClientAddressKey(): Promise<{ address: string }>;
   export function isCloudProvisionedContainer(...args: unknown[]): boolean;
-  export function provisionCloudWalletsBestEffort(
-    ...args: unknown[]
-  ): Promise<{
+  export function provisionCloudWalletsBestEffort(...args: unknown[]): Promise<{
     descriptors: Partial<Record<"evm" | "solana", CloudWalletDescriptor>>;
     failures: Array<{ chain: "evm" | "solana"; error: unknown }>;
     warnings: string[];
@@ -333,11 +383,11 @@ declare module "@elizaos/plugin-openai";
 declare module "@elizaos/plugin-shell";
 declare module "@elizaos/plugin-x402" {
   import type {
+    IAgentRuntime,
     PaymentEnabledRoute,
     Route,
     RouteRequest,
     RouteResponse,
-    IAgentRuntime,
   } from "@elizaos/core";
 
   export interface X402StartupValidationResult {

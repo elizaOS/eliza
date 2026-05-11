@@ -92,6 +92,14 @@ export const adCreatives = pgTable(
         // Review feedback
         rejection_reason?: string;
         review_feedback?: string;
+        content_safety?: {
+          provider: "openai";
+          model?: string;
+          moderationId?: string;
+          flagged: boolean;
+          flaggedCategories: string[];
+          issues: string[];
+        };
         // Performance
         relevance_score?: number;
         quality_ranking?: string;

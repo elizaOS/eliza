@@ -1,5 +1,4 @@
 import {
-  getAppBlockerPlugin,
   type AppBlockerPermissionResult,
   type AppBlockerPluginLike,
   type AppBlockerStatus,
@@ -8,10 +7,30 @@ import {
   type InstalledApp,
   type SelectAppsResult,
   type UnblockAppsResult,
-} from "@elizaos/ui";
+} from "./types.js";
+import { Capacitor } from "@capacitor/core";
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;
+
+type GlobalWithCapacitor = typeof globalThis & {
+  Capacitor?: { Plugins?: Record<string, unknown> };
+};
+
+function getCapacitorPlugins(): Record<string, unknown> {
+  const capacitor = Capacitor as { Plugins?: Record<string, unknown> };
+  if (capacitor.Plugins) {
+    return capacitor.Plugins;
+  }
+  return (globalThis as GlobalWithCapacitor).Capacitor?.Plugins ?? {};
+}
+
+function getAppBlockerPlugin(): AppBlockerPluginLike {
+  const plugins = getCapacitorPlugins();
+  return (plugins.ElizaAppBlocker ??
+    plugins.AppBlocker ??
+    {}) as AppBlockerPluginLike;
+}
 
 function getPlugin(): AppBlockerPluginLike {
   const plugin = getAppBlockerPlugin();

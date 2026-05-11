@@ -4,8 +4,8 @@
  * Exposes the @elizaos/plugin-imessage service state through Eliza's
  * HTTP API so downstream UI layers (the dashboard, a future CLI, third-
  * party integrations) can read and write against the macOS Messages.app
- * world without each client having to go straight to chat.db or to
- * AppleScript.
+ * world without each client having to go straight to chat.db or native
+ * macOS bridges.
  *
  * Routes served (all under `/api/imessage`):
  *
@@ -25,10 +25,8 @@
  * informative empty state.
  *
  * Write endpoints (POST/PATCH/DELETE on contacts) touch the real macOS
- * Contacts.app and will trigger a one-time TCC permission prompt the
- * first time they fire. That prompt targets whichever process ran the
- * osascript child; in Eliza's case that's `bun`/`node`. Once granted
- * the permission is persistent across restarts.
+ * Contacts store through CNContactStore and require the Contacts privacy
+ * grant. Once granted, the permission is persistent across restarts.
  */
 
 import type http from "node:http";
@@ -165,7 +163,7 @@ function resolveService(state: IMessageRouteState): IMessageServiceLike | null {
 /**
  * Extract the `:id` segment from a contact path like
  * `/api/imessage/contacts/ABCD-EFGH-...`. Returns null if the path
- * doesn't match. The id is URL-decoded since Contacts.app ids are
+ * doesn't match. The id is URL-decoded since Apple Contacts ids are
  * GUID-style and safe, but callers could URL-encode for paranoia.
  */
 function parseContactId(pathname: string): string | null {

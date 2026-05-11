@@ -19,7 +19,7 @@ type ReadingSubaction = "start" | "followup" | "deepen";
 
 interface ReadingOpParams {
   type?: unknown;
-  subaction?: unknown;
+  action?: unknown;
   question?: unknown;
   context?: unknown;
 }
@@ -454,11 +454,12 @@ async function finalizeReading(
 }
 
 export const readingOpAction: Action = {
-  name: "READING",
+  name: "MYSTICISM_READING",
   contexts: ["knowledge", "general"],
   contextGate: { anyOf: ["knowledge", "general"] },
   roleGate: { minRole: "USER" },
   similes: [
+    "READING",
     "TAROT_READING",
     "READ_TAROT",
     "DRAW_CARDS",
@@ -483,9 +484,9 @@ export const readingOpAction: Action = {
     "ELABORATE_READING",
   ],
   description:
-    "Mystical reading router. Set type to tarot, astrology, or iching, and subaction to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
+    "Mystical reading router. Set type to tarot, astrology, or iching, and action to start (begin a new reading), followup (reveal the next element), or deepen (more interpretation for the most-recent element).",
   descriptionCompressed:
-    "Mystical readings: tarot, astrology, iching; subactions: start, followup, deepen.",
+    "Mystical readings: tarot, astrology, iching; actions: start, followup, deepen.",
 
   parameters: [
     {
@@ -495,8 +496,8 @@ export const readingOpAction: Action = {
       schema: { type: "string" as const, enum: ["tarot", "astrology", "iching"] },
     },
     {
-      name: "subaction",
-      description: "Subaction: start, followup, or deepen.",
+      name: "action",
+      description: "Action: start, followup, or deepen.",
       required: true,
       schema: {
         type: "string" as const,
@@ -538,7 +539,7 @@ export const readingOpAction: Action = {
     }
 
     const typeRaw = readParam(options, "type");
-    const subRaw = readParam(options, "subaction");
+    const subRaw = readParam(options, "action");
     if (!isReadingType(typeRaw)) {
       return {
         success: false,
@@ -548,7 +549,7 @@ export const readingOpAction: Action = {
     if (!isSubaction(subRaw)) {
       return {
         success: false,
-        text: `READING_OP requires subaction in {start, followup, deepen}, got ${String(subRaw)}`,
+        text: `READING_OP requires action in {start, followup, deepen}, got ${String(subRaw)}`,
       };
     }
 
@@ -575,7 +576,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'd be happy to do a tarot reading. Let me shuffle the cards...",
-          actions: ["READING"],
+          actions: ["MYSTICISM_READING"],
         },
       },
     ],
@@ -588,7 +589,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let us consult the ancient oracle. I'll cast the coins for your hexagram...",
-          actions: ["READING"],
+          actions: ["MYSTICISM_READING"],
         },
       },
     ],
@@ -601,7 +602,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "I'd love to explore your natal chart. First, I'll need your birth details...",
-          actions: ["READING"],
+          actions: ["MYSTICISM_READING"],
         },
       },
     ],
@@ -614,7 +615,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me reveal the next element of your reading...",
-          actions: ["READING"],
+          actions: ["MYSTICISM_READING"],
         },
       },
     ],
@@ -627,7 +628,7 @@ export const readingOpAction: Action = {
         name: "{{agentName}}",
         content: {
           text: "Let me look more deeply at that element of your reading...",
-          actions: ["READING"],
+          actions: ["MYSTICISM_READING"],
         },
       },
     ],

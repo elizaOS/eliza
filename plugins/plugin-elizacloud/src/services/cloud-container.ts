@@ -15,6 +15,12 @@ import type {
   ContainerListResponse,
   CreateContainerRequest,
   CreateContainerResponse,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
 } from "../types/cloud";
 import { DEFAULT_CLOUD_CONFIG } from "../types/cloud";
 import type { CloudApiClient } from "../utils/cloud-api";
@@ -277,6 +283,75 @@ export class CloudContainerService extends Service {
     return client.get<ContainerHealthResponse>(`/containers/${containerId}/health`);
   }
 
+  // ─── Coding Containers / VFS Promotion ────────────────────────────────
+
+  async promoteVfsToCloudContainer(
+    request: PromoteVfsToCloudContainerRequest,
+  ): Promise<PromoteVfsToCloudContainerResponse> {
+    if (!this.isAuthenticated()) {
+      throw cloudCodingUnavailable("Cloud auth is not connected");
+    }
+
+    try {
+      return await this.getClient().post<PromoteVfsToCloudContainerResponse>(
+        "/coding-containers/promotions",
+        request,
+      );
+    } catch (error) {
+      if (isMissingCloudCodingEndpoint(error)) {
+        throw cloudCodingUnavailable(
+          "Eliza Cloud coding-container promotion endpoint is not deployed yet",
+        );
+      }
+      throw error;
+    }
+  }
+
+  async requestCodingAgentContainer(
+    request: RequestCodingAgentContainerRequest,
+  ): Promise<RequestCodingAgentContainerResponse> {
+    if (!this.isAuthenticated()) {
+      throw cloudCodingUnavailable("Cloud auth is not connected");
+    }
+
+    try {
+      return await this.getClient().post<RequestCodingAgentContainerResponse>(
+        "/coding-containers",
+        request,
+      );
+    } catch (error) {
+      if (isMissingCloudCodingEndpoint(error)) {
+        throw cloudCodingUnavailable(
+          "Eliza Cloud coding-container endpoint is not deployed yet",
+        );
+      }
+      throw error;
+    }
+  }
+
+  async syncCodingContainerChanges(
+    containerId: string,
+    request: SyncCloudCodingContainerRequest,
+  ): Promise<SyncCloudCodingContainerResponse> {
+    if (!this.isAuthenticated()) {
+      throw cloudCodingUnavailable("Cloud auth is not connected");
+    }
+
+    try {
+      return await this.getClient().post<SyncCloudCodingContainerResponse>(
+        `/coding-containers/${encodeURIComponent(containerId)}/sync`,
+        request,
+      );
+    } catch (error) {
+      if (isMissingCloudCodingEndpoint(error)) {
+        throw cloudCodingUnavailable(
+          "Eliza Cloud coding-container sync endpoint is not deployed yet",
+        );
+      }
+      throw error;
+    }
+  }
+
   // ─── Accessors ─────────────────────────────────────────────────────────
 
   getTrackedContainers(): CloudContainer[] {
@@ -294,4 +369,22 @@ export class CloudContainerService extends Service {
   getContainerUrl(containerId: string): string | null {
     return this.tracked.get(containerId)?.container.load_balancer_url ?? null;
   }
+
+  private isAuthenticated(): boolean {
+    return this.authService?.isAuthenticated?.() === true;
+  }
+}
+
+function isMissingCloudCodingEndpoint(error: unknown): boolean {
+  const statusCode =
+    typeof (error as { statusCode?: unknown })?.statusCode === "number"
+      ? (error as { statusCode: number }).statusCode
+      : undefined;
+  return statusCode === 404 || statusCode === 501;
+}
+
+function cloudCodingUnavailable(message: string): Error & { statusCode: number } {
+  const error = new Error(message) as Error & { statusCode: number };
+  error.statusCode = 503;
+  return error;
 }

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-music",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -20,8 +20,8 @@
     "dist"
   ],
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-sql": "2.0.0-beta.1",
     "@vookav2/play-dl": "^1.9.9",
     "buffer": "^6.0.3",
     "ffmpeg-static": "^5.3.0",

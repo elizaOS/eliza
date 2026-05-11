@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import CapacitorBackgroundRunner
 import UserNotifications
 
 @UIApplicationMain
@@ -9,12 +10,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        BackgroundRunnerPlugin.registerBackgroundTask()
+        BackgroundRunnerPlugin.handleApplicationDidFinishLaunching(launchOptions: launchOptions)
 
         // APNs registration is gated on a build-time Info.plist flag
-        // (ELIZA_APNS_ENABLED=1). When the flag is absent the app boots
-        // without requesting push permission — required because APNs
-        // registration needs provisioning-profile entitlements that aren't
-        // enabled on the default signing identity.
+        // (ELIZA_APNS_ENABLED=1). Registration does not request alert
+        // authorization; visible notification prompts are handled by the
+        // canonical permission flow when the user activates that feature.
         let apnsEnabled = Bundle.main.object(forInfoDictionaryKey: "ELIZA_APNS_ENABLED") as? String == "1"
         if apnsEnabled {
             registerForPushNotifications(application: application)
@@ -31,20 +33,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     private func registerForPushNotifications(application: UIApplication) {
-        UNUserNotificationCenter.current().requestAuthorization(
-            options: [.alert, .sound, .badge]
-        ) { granted, error in
-            if let error = error {
-                NSLog("[ElizaCompanion] APNs authorization error: %@", error.localizedDescription)
-                return
-            }
-            guard granted else {
-                NSLog("[ElizaCompanion] APNs authorization denied")
-                return
-            }
-            DispatchQueue.main.async {
-                application.registerForRemoteNotifications()
-            }
+        DispatchQueue.main.async {
+            application.registerForRemoteNotifications()
         }
     }
 

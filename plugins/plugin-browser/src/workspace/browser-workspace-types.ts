@@ -203,6 +203,34 @@ export interface BrowserWorkspaceSnapshot {
   tabs: BrowserWorkspaceTab[];
 }
 
+export type BrowserWorkspaceEventType =
+  | "open"
+  | "navigate"
+  | "show"
+  | "hide"
+  | "close"
+  | "eval.start"
+  | "eval.end"
+  | "eval.error"
+  | "snapshot.success"
+  | "snapshot.miss";
+
+export interface BrowserWorkspaceEvent {
+  seq: number;
+  timestamp: string;
+  type: BrowserWorkspaceEventType;
+  tabId: string | null;
+  url?: string;
+  title?: string;
+  payload?: Record<string, unknown>;
+}
+
+export interface BrowserWorkspaceEventLogSnapshot {
+  events: BrowserWorkspaceEvent[];
+  latestSequence: number;
+  limit: number;
+}
+
 export interface BrowserWorkspaceBridgeConfig {
   baseUrl: string;
   token: string | null;

@@ -2,7 +2,7 @@
  * Provider registry.
  *
  * Treats every inference source the same way — cloud subscription, cloud
- * API, local llama.cpp engine, paired-device bridge, Capacitor on-device
+ * API, Eliza-1 local runtime, paired-device bridge, Capacitor on-device
  * — each is a `ProviderDefinition` with an `id`, a human label, a set of
  * supported model slots, and a pluggable `getEnableState()` that inspects
  * whatever underlying gate controls it (API key presence, subscription
@@ -30,6 +30,10 @@ export type ProviderId =
   | "capacitor-llama"
   | "anthropic-subscription"
   | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding"
   | "anthropic"
   | "openai"
   | "deepseek"
@@ -82,15 +86,18 @@ export function getRegisteredSlotsForProvider(providerId: string): string[] {
 
 const LOCAL_PROVIDER: ProviderDefinition = {
   id: "eliza-local-inference",
-  label: "Local llama.cpp",
+  label: "Eliza-1 local runtime",
   kind: "local",
   description:
-    "On-device inference using node-llama-cpp, with DFlash llama-server acceleration when the managed binary and drafter companion are installed. The plugin-local-embedding companion serves the TEXT_EMBEDDING slot from the same node-llama-cpp runtime.",
+    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves TEXT_EMBEDDING; the voice bridge registers TEXT_TO_SPEECH by default and TRANSCRIPTION only when an ASR-capable local runtime is explicitly enabled.",
   // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
   // registers its own model handler against the runtime. We advertise the
   // slot here so the providers panel reports it as supported by the local
   // path; actual handler-presence is reflected in `registeredSlots` via
   // `getRegisteredSlotsForProvider`.
+  // The shared `AgentModelSlot` type does not include voice model types yet,
+  // so TEXT_TO_SPEECH / TRANSCRIPTION support is reported through
+  // `registeredSlots` rather than this UI-facing slot list.
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     // Enabled when at least one model file lives under our root and the
@@ -107,7 +114,10 @@ const LOCAL_PROVIDER: ProviderDefinition = {
         return { enabled: false, reason: "No local model installed" };
       const dflash = getDflashRuntimeStatus();
       return dflash.enabled
-        ? { enabled: true, reason: "GGUF model installed; DFlash available" }
+        ? {
+            enabled: true,
+            reason: "Eliza-1 model installed; local acceleration available",
+          }
         : { enabled: true, reason: "GGUF model installed" };
     } catch {
       return { enabled: false, reason: "No local model installed" };
@@ -152,10 +162,10 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 
 const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
   id: "capacitor-llama",
-  label: "On-device llama.cpp (mobile)",
+  label: "eliza-1-1_7b runtime",
   kind: "local",
   description:
-    "Runs llama.cpp natively on iOS or Android via Capacitor. Only available in mobile builds.",
+    "Runs Eliza-1 natively on iOS or Android via Capacitor. Only available in mobile builds.",
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
   async getEnableState(): Promise<ProviderEnableState> {
     const cap = (globalThis as Record<string, unknown>).Capacitor as
@@ -269,6 +279,56 @@ const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
   configureHref: "#ai-model",
 };
 
+const GEMINI_CLI_PROVIDER: ProviderDefinition = {
+  id: "gemini-cli",
+  label: "Gemini CLI subscription",
+  kind: "cloud-subscription",
+  description: "Gemini CLI task-agent access through linked accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("gemini-cli");
+  },
+  configureHref: "#ai-model",
+};
+
+const ZAI_CODING_PROVIDER: ProviderDefinition = {
+  id: "zai-coding",
+  label: "z.ai Coding Plan",
+  kind: "cloud-subscription",
+  description:
+    "GLM coding-plan access through linked z.ai Coding Plan accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("zai-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const KIMI_CODING_PROVIDER: ProviderDefinition = {
+  id: "kimi-coding",
+  label: "Kimi Code",
+  kind: "cloud-subscription",
+  description: "Kimi coding-plan access through linked Kimi Code accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("kimi-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const DEEPSEEK_CODING_PROVIDER: ProviderDefinition = {
+  id: "deepseek-coding",
+  label: "DeepSeek Coding Plan",
+  kind: "cloud-subscription",
+  description:
+    "Unavailable until DeepSeek exposes a first-party coding subscription flow that can be integrated without API-key substitution.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("deepseek-coding");
+  },
+  configureHref: "#ai-model",
+};
+
 const GOOGLE_PROVIDER: ProviderDefinition = {
   id: "google",
   label: "Google (Gemini)",
@@ -348,6 +408,10 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
   CAPACITOR_LLAMA_PROVIDER,
   ANTHROPIC_SUBSCRIPTION_PROVIDER,
   OPENAI_CODEX_PROVIDER,
+  GEMINI_CLI_PROVIDER,
+  ZAI_CODING_PROVIDER,
+  KIMI_CODING_PROVIDER,
+  DEEPSEEK_CODING_PROVIDER,
   ELIZACLOUD_PROVIDER,
   ANTHROPIC_PROVIDER,
   OPENAI_PROVIDER,
@@ -377,18 +441,32 @@ function apiKeyOrLinkedAccountState(
   };
 }
 
-function subscriptionEnableState(providerId: ProviderId): ProviderEnableState {
-  if (
-    providerId !== "anthropic-subscription" &&
-    providerId !== "openai-codex"
-  ) {
-    return { enabled: false, reason: "Unsupported subscription" };
+type SubscriptionProviderStatusId =
+  | "anthropic-subscription"
+  | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding";
+
+function subscriptionEnableState(
+  providerId: SubscriptionProviderStatusId,
+): ProviderEnableState {
+  if (providerId === "deepseek-coding") {
+    return {
+      enabled: false,
+      reason: "Unavailable: no first-party coding subscription integration",
+    };
   }
   const accounts = getDefaultAccountPool()
     .list(providerId)
     .filter((account) => account.enabled && account.health === "ok");
   if (accounts.length === 0) {
-    return { enabled: false, reason: "No linked account" };
+    const reason =
+      providerId === "gemini-cli"
+        ? "No linked account; run gemini auth login"
+        : "No linked account";
+    return { enabled: false, reason };
   }
   return {
     enabled: true,

@@ -13,13 +13,16 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { creditsService } from "@/lib/services/credits";
 import { HeadscaleClient } from "@/lib/services/headscale-client";
+import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOMER_TUNNEL_TAG = "tag:eliza-tunnel";
 const DEFAULT_EXPIRY_SECONDS = 60 * 60;
 const MIN_EXPIRY_SECONDS = 60;
 const MAX_EXPIRY_SECONDS = 24 * 60 * 60;
-const TUNNEL_AUTH_KEY_COST = 0;
+const DEFAULT_TUNNEL_AUTH_KEY_COST_USD = 0.01;
+const MAX_TUNNEL_AUTH_KEY_COST_USD = 1;
+const TUNNEL_BILLING_UNIT = "tunnel_auth_key";
 
 const authKeyRequestSchema = z
   .object({
@@ -48,6 +51,12 @@ app.post("/", async (c) => {
     const headscaleUser = readEnv(c.env.HEADSCALE_USER) ?? "tunnel";
     const tunnelProxyHost = readEnv(c.env.TUNNEL_PROXY_HOST);
     const tailnetDomain = readEnv(c.env.TUNNEL_TAILNET_DOMAIN) ?? "tunnel.eliza.local";
+    const hostnameSigningSecret = readTrimmedEnv(c.env.TUNNEL_HOSTNAME_SIGNING_SECRET);
+    const allowUnsignedHostnames = readBoolean(c.env.TUNNEL_ALLOW_UNSIGNED_HOSTNAMES);
+    const tunnelAuthKeyCostUsd = readUsdAmount(
+      c.env.TUNNEL_AUTH_KEY_COST_USD,
+      DEFAULT_TUNNEL_AUTH_KEY_COST_USD,
+    );
 
     if (!headscaleApiUrl || !headscalePublicUrl || !headscaleApiKey) {
       return c.json(
@@ -58,47 +67,85 @@ app.post("/", async (c) => {
         503,
       );
     }
+    if (tunnelProxyHost && !hostnameSigningSecret && !allowUnsignedHostnames) {
+      return c.json(
+        {
+          error:
+            "Tunnel hostname signing is not configured. Set TUNNEL_HOSTNAME_SIGNING_SECRET.",
+        },
+        503,
+      );
+    }
 
-    if (TUNNEL_AUTH_KEY_COST > 0) {
+    const expirySeconds = parsed.data.expirySeconds ?? DEFAULT_EXPIRY_SECONDS;
+    const expiresAtMs = Date.now() + expirySeconds * 1000;
+    const expiresAtUnixSeconds = Math.floor(expiresAtMs / 1000);
+    const expiration = new Date(expiresAtMs).toISOString();
+    const hostname = await makeTunnelHostname(
+      user.organization_id,
+      hostnameSigningSecret,
+      expiresAtUnixSeconds,
+    );
+    const publicHost = tunnelProxyHost
+      ? `${hostname}.${tunnelProxyHost}`
+      : `${hostname}.${tailnetDomain}`;
+    const billingMetadata = {
+      type: "tunnel",
+      billing_model: "on_demand",
+      unit: TUNNEL_BILLING_UNIT,
+      service: "headscale",
+      method: "auth-key.create",
+      organization_id: user.organization_id,
+      user_id: user.id,
+      hostname,
+      public_host: publicHost,
+      expires_at: expiration,
+      requested_expiry_seconds: expirySeconds,
+      tags: [CUSTOMER_TUNNEL_TAG],
+    };
+
+    let charged = false;
+    if (tunnelAuthKeyCostUsd > 0) {
       const debit = await creditsService.deductCredits({
         organizationId: user.organization_id,
-        amount: TUNNEL_AUTH_KEY_COST,
-        description: "API: tunnel auth-key",
-        metadata: {
-          type: "tunnel",
-          service: "headscale",
-          method: "auth-key.create",
-        },
+        amount: tunnelAuthKeyCostUsd,
+        description: "API: cloud tunnel provisioning",
+        metadata: billingMetadata,
       });
       if (!debit.success) {
         return c.json(
           {
             error: "Insufficient credits",
+            requiredCredits: tunnelAuthKeyCostUsd,
+            currentBalance: debit.newBalance,
             topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
+            billing: tunnelBilling(tunnelAuthKeyCostUsd, false),
           },
           402,
         );
       }
+      charged = true;
     }
-
-    const expirySeconds = parsed.data.expirySeconds ?? DEFAULT_EXPIRY_SECONDS;
-    const expiration = new Date(Date.now() + expirySeconds * 1000).toISOString();
-    const hostname = makeTunnelHostname(user.organization_id);
-    const publicHost = tunnelProxyHost
-      ? `${hostname}.${tunnelProxyHost}`
-      : `${hostname}.${tailnetDomain}`;
 
     const client = new HeadscaleClient({
       apiUrl: headscaleApiUrl,
       apiKey: headscaleApiKey,
       user: headscaleUser,
     });
-    const preAuthKey = await client.createPreAuthKey({
-      reusable: false,
-      ephemeral: true,
-      expiration,
-      aclTags: [CUSTOMER_TUNNEL_TAG],
-    });
+    let preAuthKey: Awaited<ReturnType<HeadscaleClient["createPreAuthKey"]>>;
+    try {
+      preAuthKey = await client.createPreAuthKey({
+        reusable: false,
+        ephemeral: true,
+        expiration,
+        aclTags: [CUSTOMER_TUNNEL_TAG],
+      });
+    } catch (error) {
+      if (charged) {
+        await refundTunnelCharge(user.organization_id, tunnelAuthKeyCostUsd, billingMetadata);
+      }
+      throw error;
+    }
 
     return c.json({
       authKey: preAuthKey.key,
@@ -108,6 +155,7 @@ app.post("/", async (c) => {
       magicDnsName: publicHost,
       expiresAt: preAuthKey.expiration || expiration,
       tags: [CUSTOMER_TUNNEL_TAG],
+      billing: tunnelBilling(tunnelAuthKeyCostUsd, charged),
     });
   } catch (error) {
     return failureResponse(c, error);
@@ -120,14 +168,98 @@ function readEnv(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed.replace(/\/+$/, "") : null;
 }
 
-function makeTunnelHostname(organizationId: string): string {
+function readTrimmedEnv(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+async function makeTunnelHostname(
+  organizationId: string,
+  signingSecret: string | null,
+  expiresAtUnixSeconds: number,
+): Promise<string> {
   const orgPart =
     organizationId
       .toLowerCase()
       .replace(/[^a-z0-9]/g, "")
-      .slice(0, 12) || "org";
-  const randomPart = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
-  return `eliza-${orgPart}-${randomPart}`;
+      .slice(0, 10) || "org";
+  const randomPart = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  const unsignedHostname = `eliza-${orgPart}-${randomPart}`;
+  if (!signingSecret) return unsignedHostname;
+  const signedPayload = `${unsignedHostname}-${expiresAtUnixSeconds.toString(36)}`;
+  return `${signedPayload}-${await tunnelHostnameSignature(signedPayload, signingSecret)}`;
+}
+
+function readUsdAmount(value: unknown, fallback: number): number {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return fallback;
+  }
+  const parsed = typeof value === "number" ? value : Number.parseFloat(value.trim());
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 0 ||
+    parsed > MAX_TUNNEL_AUTH_KEY_COST_USD
+  ) {
+    return fallback;
+  }
+  return Math.round(parsed * 1_000_000) / 1_000_000;
+}
+
+function readBoolean(value: unknown): boolean {
+  if (typeof value !== "string" && typeof value !== "boolean") return false;
+  const normalized = String(value).trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(normalized);
+}
+
+function tunnelBilling(amountUsd: number, charged: boolean) {
+  return {
+    model: "on_demand",
+    unit: TUNNEL_BILLING_UNIT,
+    charged,
+    amountUsd,
+    subscription: false,
+  };
+}
+
+async function refundTunnelCharge(
+  organizationId: string,
+  amount: number,
+  metadata: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await creditsService.refundCredits({
+      organizationId,
+      amount,
+      description: "Refund: cloud tunnel provisioning failed",
+      metadata: {
+        ...metadata,
+        refund_reason: "headscale_preauth_key_failed",
+      },
+    });
+  } catch (refundError) {
+    logger.error("[TunnelAuthKey] Failed to refund provisioning charge", {
+      organizationId,
+      amount,
+      error: refundError instanceof Error ? refundError.message : String(refundError),
+    });
+  }
+}
+
+async function tunnelHostnameSignature(hostname: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(hostname));
+  return bytesToHex(new Uint8Array(signature)).slice(0, 16);
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 export default app;

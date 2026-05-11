@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-mysticism",
   "description": "Mystical divination engines for ElizaOS — Tarot, I Ching, and Astrology readings",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -33,7 +33,7 @@
     "package.json"
   ],
   "peerDependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

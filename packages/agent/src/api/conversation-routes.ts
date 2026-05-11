@@ -33,6 +33,12 @@ import {
   resolveDiscordUserProfile,
   resolveStoredDiscordEntityProfile,
 } from "@elizaos/plugin-discord";
+import {
+  PatchConversationRequestSchema,
+  PostConversationCleanupEmptyRequestSchema,
+  PostConversationRequestSchema,
+  PostConversationTruncateRequestSchema,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import type { ChatGenerationResult, LogEntry } from "./chat-routes.ts";
@@ -65,7 +71,7 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
-import type { ConversationMeta, ConversationMetadata } from "./server-types.ts";
+import type { ConversationMeta } from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
@@ -786,13 +792,18 @@ export async function handleConversationRoutes(
 
   // ── POST /api/conversations ─────────────────────────────────────────
   if (method === "POST" && pathname === "/api/conversations") {
-    const body = await readJsonBody<{
-      title?: string;
-      includeGreeting?: boolean;
-      lang?: string;
-      metadata?: ConversationMetadata;
-    }>(req, res);
-    if (!body) return true;
+    const rawConv = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawConv === null) return true;
+    const parsedConv = PostConversationRequestSchema.safeParse(rawConv);
+    if (!parsedConv.success) {
+      error(
+        res,
+        parsedConv.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedConv.data;
     await waitForConversationRestore(state);
     const id = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -1077,18 +1088,19 @@ export async function handleConversationRoutes(
       return true;
     }
 
-    const body = await readJsonBody<{
-      messageId?: string;
-      inclusive?: boolean;
-    }>(req, res);
-    if (!body) return true;
-
-    const messageId =
-      typeof body.messageId === "string" ? body.messageId.trim() : "";
-    if (!messageId) {
-      error(res, "messageId is required", 400);
+    const rawTrunc = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawTrunc === null) return true;
+    const parsedTrunc =
+      PostConversationTruncateRequestSchema.safeParse(rawTrunc);
+    if (!parsedTrunc.success) {
+      error(
+        res,
+        parsedTrunc.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
       return true;
     }
+    const { messageId, inclusive } = parsedTrunc.data;
 
     const runtime = state.runtime;
     if (!runtime) {
@@ -1102,7 +1114,7 @@ export async function handleConversationRoutes(
         conv,
         messageId,
         {
-          inclusive: body.inclusive === true,
+          inclusive: inclusive === true,
         },
       );
       conv.updatedAt = new Date().toISOString();
@@ -1612,12 +1624,18 @@ export async function handleConversationRoutes(
       error(res, "Conversation not found", 404);
       return true;
     }
-    const body = await readJsonBody<{
-      title?: string;
-      generate?: boolean;
-      metadata?: ConversationMetadata | null;
-    }>(req, res);
-    if (!body) return true;
+    const rawPatch = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawPatch === null) return true;
+    const parsedPatch = PatchConversationRequestSchema.safeParse(rawPatch);
+    if (!parsedPatch.success) {
+      error(
+        res,
+        parsedPatch.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
+    const body = parsedPatch.data;
 
     if (body.generate) {
       if (!state.runtime) {
@@ -1686,16 +1704,25 @@ export async function handleConversationRoutes(
 
   // ── POST /api/conversations/cleanup-empty ───────────────────────────
   if (method === "POST" && pathname === "/api/conversations/cleanup-empty") {
-    const body = await readJsonBody<{ keepId?: string }>(req, res);
-    if (!body) return true;
+    const rawCleanup = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawCleanup === null) return true;
+    const parsedCleanup =
+      PostConversationCleanupEmptyRequestSchema.safeParse(rawCleanup);
+    if (!parsedCleanup.success) {
+      error(
+        res,
+        parsedCleanup.error.issues[0]?.message ?? "Invalid request body",
+        400,
+      );
+      return true;
+    }
     await waitForConversationRestore(state);
     const runtime = state.runtime;
     if (!runtime) {
       json(res, { deleted: [] });
       return true;
     }
-    const keepId =
-      typeof body.keepId === "string" ? body.keepId.trim() : undefined;
+    const keepId = parsedCleanup.data.keepId;
     const agentId = runtime.agentId;
     const deleted: string[] = [];
     for (const conv of Array.from(state.conversations.values())) {

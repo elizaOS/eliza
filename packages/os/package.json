@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/distro-android-os",
-  "version": "2.0.0-beta.0",
+  "version": "2.0.0-beta.1",
   "description": "AOSP vendor trees and distro-android assets for elizaOS (not a publishable JS package).",
   "private": true
 }

@@ -4,7 +4,10 @@ import type {
   IAgentRuntime,
   ReadJsonBodyOptions,
 } from "@elizaos/core";
-import { credTypesForConnector } from "@elizaos/shared";
+import {
+  credTypesForConnector,
+  PostConnectorRequestSchema,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { CONNECTOR_ENV_MAP } from "../config/env-vars.ts";
 import type { ConnectorConfig } from "../config/types.eliza.ts";
@@ -176,27 +179,18 @@ export async function handleConnectorRoutes(
 
   // ── POST /api/connectors ─────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/connectors") {
-    const body = await readJsonBody(req, res);
-    if (!body) return true;
-    const name = (body as Record<string, unknown>).name;
-    const config = (body as Record<string, unknown>).config;
-    if (!name || typeof name !== "string" || !(name as string).trim()) {
-      error(res, "Missing connector name", 400);
-      return true;
-    }
-    const connectorName = (name as string).trim();
-    if (isBlockedObjectKey(connectorName)) {
+    const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
+    if (rawBody === null) return true;
+    const parsed = PostConnectorRequestSchema.safeParse(rawBody);
+    if (!parsed.success) {
       error(
         res,
-        'Invalid connector name: "__proto__", "constructor", and "prototype" are reserved',
+        parsed.error.issues[0]?.message ?? "Invalid request body",
         400,
       );
       return true;
     }
-    if (!config || typeof config !== "object") {
-      error(res, "Missing connector config", 400);
-      return true;
-    }
+    const { name: connectorName, config } = parsed.data;
     if (!state.config.connectors) state.config.connectors = {};
     state.config.connectors[connectorName] = cloneWithoutBlockedObjectKeys(
       config,

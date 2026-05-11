@@ -38,30 +38,32 @@ describe("shouldForwardToRemoteTarget", () => {
   });
 
   test("does not forward unrelated paths", () => {
-    expect(shouldForwardToRemoteTarget("/api/agent/reset", "POST")).toBe(
-      false,
-    );
+    expect(shouldForwardToRemoteTarget("/api/agent/reset", "POST")).toBe(false);
   });
 });
 
 describe("buildForwardHeaders", () => {
   test("preserves array-valued headers via append (RFC 7230 multi-value)", () => {
+    // `set-cookie` is the canonical multi-valued request/response header
+    // — Node parses it as `string[]` whenever a peer sends multiple
+    // values. Anything iterating over `req.headers` and assuming string
+    // values silently drops every entry beyond the first. Forward all
+    // values via `headers.append`.
     const headers = buildForwardHeaders(
       {
-        cookie: ["session=abc", "remember=1"],
+        "set-cookie": ["session=abc", "remember=1"],
         accept: "application/json",
       },
       "target.local:31337",
       null,
     );
 
-    // `Headers.getSetCookie` is the only API that preserves array shape;
-    // for general headers RFC 7230 says comma-join is equivalent. We
-    // assert the comma-joined value contains both array entries.
-    const cookie = headers.get("cookie");
-    expect(cookie).not.toBeNull();
-    expect(cookie).toContain("session=abc");
-    expect(cookie).toContain("remember=1");
+    // `Headers.getSetCookie` is the only API that preserves the array
+    // shape for `set-cookie`; for general headers RFC 7230 says
+    // comma-join is equivalent. We assert both array entries survive.
+    const cookies = headers.getSetCookie();
+    expect(cookies).toContain("session=abc");
+    expect(cookies).toContain("remember=1");
   });
 
   test("strips hop-by-hop headers", () => {

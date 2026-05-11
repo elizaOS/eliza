@@ -234,6 +234,13 @@ const stewardRoutes: Route[] = [
     rawPath: true,
     handler: stewardRouteHandler(handleWalletBrowserCompatRoutes),
   },
+  // POST /api/wallet/browser-solana-transaction
+  {
+    type: "POST",
+    path: "/api/wallet/browser-solana-transaction",
+    rawPath: true,
+    handler: stewardRouteHandler(handleWalletBrowserCompatRoutes),
+  },
 
   // ── steward-compat-routes (steward wallet management) ──────────────
 

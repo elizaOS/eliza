@@ -1,0 +1,223 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "loca-bench"
+dynamic = ["version"]
+description = 'LOCA-bench: Benchmarking Language Agents Under Controllable and Extreme Context Growth'
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+keywords = ["language-agents", "long-context", "benchmarking", "llm", "context-management"]
+authors = [
+  { name = "LOCA-bench Contributors" },
+]
+maintainers = [
+  { name = "LOCA-bench Contributors" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy",
+]
+dependencies = [
+  # Core dependencies
+  "nltk==3.9.1",
+  "math-verify[antlr4_13_2]",
+  "reasoning-gym==0.1.23",
+  "msgspec==0.19.0",
+  "pylatexenc",
+  "transformers",
+  "datasets",
+  # CLI and utilities
+  "fire",
+  "typer[all]>=0.9.0",
+  "python-dotenv",
+  "tiktoken",
+  "uv",
+  # Data processing
+  "pandas",
+  "numpy",
+  "cryptography",
+  "openpyxl",
+  "pillow",
+  "reportlab",
+   "ruff",
+  "black",
+  "mypy>=1.0.0",
+  "fastmcp>=2.0.0",
+  "pyyaml>=6.0.0",
+  "pydantic-core",
+  "excel-mcp-server",
+]
+
+[project.optional-dependencies]
+# Search functionality
+search = [
+  "mosec",
+  "aiohttp",
+  "bs4",
+  "chardet",
+  "google-api-python-client",
+  "torch",
+  "torchvision",
+  "torchaudio",
+  "pyserini",
+]
+
+# WebShop environment (disabled - conflicts with fastmcp/excel-mcp-server via typer)
+# Install separately if needed: pip install spacy==3.7.2 beautifulsoup4==4.11.1 ...
+# webshop = [
+#   "beautifulsoup4==4.11.1",
+#   "cleantext==1.1.4",
+#   "Flask==2.1.2",
+#   "pyserini==0.17.0",
+#   "PyYAML==6.0.2",
+#   "rank_bm25==0.2.2",
+#   "requests==2.27.1",
+#   "rich==12.4.4",
+#   "selenium==4.2.0",
+#   "spacy==3.7.2",
+#   "thefuzz==0.19.0",
+#   "pydantic==2.10.6",
+#   "Werkzeug==2.1.0",
+# ]
+
+[project.urls]
+Homepage = "https://github.com/hkust-nlp/LOCA-bench"
+Documentation = "https://github.com/hkust-nlp/LOCA-bench"
+Issues = "https://github.com/hkust-nlp/LOCA-bench/issues"
+Source = "https://github.com/hkust-nlp/LOCA-bench"
+
+[project.license]
+text = "MIT"
+
+[project.scripts]
+loca = "loca.cli.main:app"
+
+[tool.hatch.version]
+path = "gem/__about__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gem", "mcp_convert", "loca", "inference", "eliza_loca"]
+
+[tool.hatch.envs.types]
+extra-dependencies = ["mypy>=1.0.0"]
+[tool.hatch.envs.types.scripts]
+check = "mypy --install-types --non-interactive {args:gem tests}"
+
+[tool.coverage.run]
+source_pkgs = ["gem", "tests"]
+branch = true
+parallel = true
+omit = ["gem/__about__.py"]
+
+[tool.coverage.paths]
+gem = ["gem", "*/gem/gem"]
+tests = ["tests", "*/gem/tests"]
+
+[tool.coverage.report]
+exclude_lines = ["no cov", "if __name__ == .__main__.:", "if TYPE_CHECKING:"]
+
+[tool.pylint.master]
+load-plugins = "pylint.extensions.docparams,pylint.extensions.docstyle,pylint.extensions.no_self_use"
+default-docstring-type = "google"
+ignore-paths = ["gem/__about__.py"]
+
+[tool.pylint.format]
+max-line-length = 88
+indent-after-paren = 4
+indent-string = "    "
+
+[tool.pylint.imports]
+known-third-party = "wandb"
+
+[tool.pylint.reports]
+output-format = "colorized"
+reports = "no"
+score = "yes"
+max-args = 7
+
+[tool.pylint.messages_control]
+disable = [
+  "W0201",
+  "W0108",
+  "W0212",
+  "W1514",
+  "R0902",
+  "R0903",
+  "R0913",
+  "R0914",
+  "R0915",
+  "R1719",
+  "R1732",
+  "R0801",
+  "C0103",
+  "C3001",
+  "C0116",
+  "W0106",
+  "R0912",
+  "R1702",
+  "W0640",
+  "W1203",
+  "R0402",
+  "C0199",
+  "R6301",
+  "C0301",
+  "W0105",
+  "C0115",
+  "W0621",
+  "C0415",
+  "W0621",
+  "E0401",
+]
+
+[tool.yapf]
+based_on_style = "yapf"
+spaces_before_comment = 4
+dedent_closing_brackets = true
+column_limit = 88
+continuation_indent_width = 4
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+indent = 4
+line_length = 88
+known_third_party = "wandb"
+
+[tool.mypy]
+files = "gem/**/*.py"
+allow_redefinition = true
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+pretty = true
+show_error_codes = true
+show_error_context = true
+show_traceback = true
+strict_equality = true
+strict_optional = true
+warn_no_return = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_configs = true
+
+[tool.pydocstyle]
+ignore = [
+  "D100",
+  "D102",
+  "D104",
+  "D105",
+  "D107",
+  "D203",
+  "D213",
+  "D401",
+  "D402",
+]

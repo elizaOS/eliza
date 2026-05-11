@@ -14,34 +14,18 @@ import * as os from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type {
+  IPermissionsRegistry,
   PermissionId,
   PermissionState,
+  Prober,
 } from "@elizaos/shared";
+
+export type { IPermissionsRegistry, Prober } from "@elizaos/shared";
 
 export const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
 
 const PENDING_BLOCK_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PERSIST_DEBOUNCE_MS = 500;
-
-export interface Prober {
-  id: PermissionId;
-  check(): Promise<PermissionState>;
-  request(opts: { reason: string }): Promise<PermissionState>;
-}
-
-export interface IPermissionsRegistry {
-  get(id: PermissionId): PermissionState;
-  check(id: PermissionId): Promise<PermissionState>;
-  request(
-    id: PermissionId,
-    opts: { reason: string; feature: { app: string; action: string } },
-  ): Promise<PermissionState>;
-  recordBlock(id: PermissionId, feature: { app: string; action: string }): void;
-  list(): PermissionState[];
-  pending(): PermissionState[];
-  subscribe(cb: (state: PermissionState[]) => void): () => void;
-  registerProber(prober: Prober): void;
-}
 
 function currentPlatform(): "darwin" | "win32" | "linux" {
   const p = process.platform;
@@ -60,7 +44,7 @@ function defaultStateFor(id: PermissionId): PermissionState {
 
 function resolveStateDir(): string {
   const explicit = process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
-  if (explicit && explicit.trim()) return explicit;
+  if (explicit?.trim()) return explicit;
   return path.join(os.homedir(), ".milady");
 }
 
@@ -117,6 +101,10 @@ export class PermissionRegistry
   static async start(runtime: IAgentRuntime): Promise<PermissionRegistry> {
     const instance = new PermissionRegistry(runtime);
     instance.hydrate();
+    const { registerAllProbers } = await import(
+      "./permissions/register-probers.js"
+    );
+    registerAllProbers(instance);
     return instance;
   }
 
@@ -213,7 +201,8 @@ export class PermissionRegistry
     const cutoff = Date.now() - PENDING_BLOCK_WINDOW_MS;
     return this.list().filter((s) => {
       if (s.status === "not-determined") return true;
-      if (s.lastBlockedFeature && s.lastBlockedFeature.at >= cutoff) return true;
+      if (s.lastBlockedFeature && s.lastBlockedFeature.at >= cutoff)
+        return true;
       return false;
     });
   }

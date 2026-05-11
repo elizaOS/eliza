@@ -22,9 +22,12 @@
 import fs from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
+import {
+	computeCallCostUsd,
+	PRICE_TABLE_ID,
+} from "../features/trajectories/pricing";
 import type { EvaluationResult } from "../types/components";
 import type { ChatMessage, ToolChoice } from "../types/model";
-import { computeCallCostUsd } from "./cost-table";
 
 // ---------------------------------------------------------------------------
 // Schema (mirrors PLAN.md §18.1)
@@ -67,7 +70,33 @@ export interface RecordedModelCall {
 	toolCalls?: RecordedToolCall[];
 	usage?: RecordedUsage;
 	finishReason?: string;
+	/**
+	 * USD cost of this LLM call computed from the price table identified by
+	 * `priceTableId`. Local-inference providers (Ollama / LM Studio /
+	 * llama.cpp) record a real `0` — not "missing". The recorder emits a
+	 * warning log when a hosted-provider model has no price entry; the
+	 * field defaults to `0` in that case so cost roll-ups stay numeric.
+	 */
 	costUsd?: number;
+	/**
+	 * Snapshot identifier of the price table used to compute `costUsd`.
+	 * Closes M40 / W1-X1. Bumped whenever any rate in the canonical
+	 * pricing table at `features/trajectories/pricing.ts` changes.
+	 */
+	priceTableId?: string;
+}
+
+/**
+ * Marker emitted when one of `input`, `output`, or `error` exceeds the
+ * configured byte cap. The original payload is replaced with a string
+ * preview followed by an annotation; the metadata block here surfaces the
+ * original size so reviewers and downstream training pipelines can decide
+ * how to treat the truncation.
+ */
+export interface RecordedTruncationMarker {
+	field: "input" | "output" | "error";
+	originalBytes: number;
+	capBytes: number;
 }
 
 export interface RecordedToolStage {
@@ -77,6 +106,30 @@ export interface RecordedToolStage {
 	success: boolean;
 	durationMs: number;
 	error?: string;
+	/**
+	 * Captured action-handler input (the resolved params passed into the
+	 * action). Encoded as JSON when possible. Capped at
+	 * `MILADY_TRAJECTORY_FIELD_CAP_BYTES` (default 64KB); oversize values
+	 * are truncated and a marker is added to `truncated[]`.
+	 */
+	input?: string;
+	/**
+	 * Captured action-handler output (the full result the action returned,
+	 * not just the planner-shaped summary). Same encoding and cap as
+	 * `input`.
+	 */
+	output?: string;
+	/**
+	 * Captured action-handler error text. Same cap as `input`/`output`.
+	 * Mirrors `error` for free-text reads; structured `error` above is kept
+	 * for backwards compatibility with existing readers.
+	 */
+	errorText?: string;
+	/**
+	 * Per-field truncation markers. Present only when at least one of
+	 * `input`, `output`, or `errorText` was truncated by the byte cap.
+	 */
+	truncated?: RecordedTruncationMarker[];
 }
 
 /**
@@ -688,20 +741,165 @@ function cloneForRecord<T>(value: T): T {
 	return sanitizeForRecord(value) as T;
 }
 
+// ---------------------------------------------------------------------------
+// Field cap / truncation (M12 — action exec input/output/error capture)
+// ---------------------------------------------------------------------------
+
+const DEFAULT_FIELD_CAP_BYTES = 64 * 1024;
+const TRUNCATION_SUFFIX = "...[truncated]";
+
 /**
- * Annotate a stage with `costUsd` if the model has known pricing and the
- * stage didn't already set it. The `model.modelName` is the lookup key.
+ * Resolve the per-field byte cap for `input` / `output` / `errorText`. The
+ * recorder uses this for action-step capture (M12). Override with
+ * `MILADY_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
+ * rejected as invalid and the default is used.
+ */
+export function resolveTrajectoryFieldCapBytes(): number {
+	const raw = process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES?.trim();
+	if (!raw) return DEFAULT_FIELD_CAP_BYTES;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed < 1024) {
+		return DEFAULT_FIELD_CAP_BYTES;
+	}
+	return parsed;
+}
+
+/**
+ * Encode an arbitrary value to a JSON string for trajectory persistence.
+ * Strings pass through unchanged; everything else is sanitized (handles
+ * Error, Date, bigint, circular refs) and serialized.
+ */
+export function encodeTrajectoryFieldValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (value === undefined || value === null) return "";
+	try {
+		return JSON.stringify(sanitizeForRecord(value));
+	} catch {
+		return String(value);
+	}
+}
+
+/**
+ * Truncate `value` to at most `capBytes` UTF-8 bytes. Returns the original
+ * string and `null` marker when no truncation is needed, or the truncated
+ * preview plus a structured marker when the cap was exceeded.
+ *
+ * The marker is the caller's responsibility to attach to the stage (see
+ * `captureToolStageIO`).
+ */
+export function applyTrajectoryFieldCap(
+	field: RecordedTruncationMarker["field"],
+	value: string,
+	capBytes: number,
+): { value: string; marker: RecordedTruncationMarker | null } {
+	const byteLength = Buffer.byteLength(value, "utf8");
+	if (byteLength <= capBytes) {
+		return { value, marker: null };
+	}
+	const suffixBytes = Buffer.byteLength(TRUNCATION_SUFFIX, "utf8");
+	const sliceBudget = Math.max(0, capBytes - suffixBytes);
+	const buffer = Buffer.from(value, "utf8");
+	let preview = buffer.subarray(0, sliceBudget).toString("utf8");
+	// `toString("utf8")` discards trailing partial code points, but the
+	// resulting string can still encode to slightly more bytes than the
+	// slice budget after concatenation. Trim defensively until it fits.
+	while (
+		Buffer.byteLength(preview, "utf8") + suffixBytes > capBytes &&
+		preview.length > 0
+	) {
+		preview = preview.slice(0, -1);
+	}
+	return {
+		value: `${preview}${TRUNCATION_SUFFIX}`,
+		marker: {
+			field,
+			originalBytes: byteLength,
+			capBytes,
+		},
+	};
+}
+
+export interface ToolStageIOInput {
+	input?: unknown;
+	output?: unknown;
+	error?: unknown;
+	capBytes?: number;
+}
+
+export interface ToolStageIOCapture {
+	input?: string;
+	output?: string;
+	errorText?: string;
+	truncated?: RecordedTruncationMarker[];
+}
+
+/**
+ * Encode + cap action input/output/error for a tool stage. The result is
+ * suitable for assignment into a `RecordedToolStage`. Fields that are
+ * `undefined` after encoding are omitted so the on-disk schema stays
+ * minimal for steps that have nothing to capture.
+ */
+export function captureToolStageIO(args: ToolStageIOInput): ToolStageIOCapture {
+	const cap = args.capBytes ?? resolveTrajectoryFieldCapBytes();
+	const out: ToolStageIOCapture = {};
+	const markers: RecordedTruncationMarker[] = [];
+
+	if (args.input !== undefined) {
+		const encoded = encodeTrajectoryFieldValue(args.input);
+		const { value, marker } = applyTrajectoryFieldCap("input", encoded, cap);
+		out.input = value;
+		if (marker) markers.push(marker);
+	}
+	if (args.output !== undefined) {
+		const encoded = encodeTrajectoryFieldValue(args.output);
+		const { value, marker } = applyTrajectoryFieldCap("output", encoded, cap);
+		out.output = value;
+		if (marker) markers.push(marker);
+	}
+	if (args.error !== undefined) {
+		const encoded = encodeTrajectoryFieldValue(args.error);
+		const { value, marker } = applyTrajectoryFieldCap("error", encoded, cap);
+		out.errorText = value;
+		if (marker) markers.push(marker);
+	}
+
+	if (markers.length > 0) {
+		out.truncated = markers;
+	}
+	return out;
+}
+
+/**
+ * Annotate a stage with `costUsd` and `priceTableId` if the model has
+ * known pricing and the stage didn't already set it. The `model.modelName`
+ * is the lookup key; `model.provider` is used to suppress the
+ * missing-model warning for local-tier inference (Ollama, LM Studio,
+ * llama.cpp).
  *
  * Recorder hooks call `computeCallCostUsd` themselves when they have the
- * data; this function is a fallback for callers that hand off raw stages.
+ * data; this function is the fallback for callers that hand off raw
+ * stages. Passing a logger lets the canonical pricing module emit a
+ * structured warning when a hosted-provider model has no price entry.
  */
-export function annotateStageCost(stage: RecordedStage): void {
+export function annotateStageCost(
+	stage: RecordedStage,
+	logger?: RecorderLogger,
+): void {
 	if (!stage.model) return;
-	if (typeof stage.model.costUsd === "number") return;
-	const cost = computeCallCostUsd(stage.model.modelName, stage.model.usage);
-	if (cost > 0) {
-		stage.model.costUsd = cost;
+	if (typeof stage.model.costUsd === "number") {
+		// Caller already attached a cost — only tag the table id so consumers
+		// know which snapshot it was computed against.
+		if (!stage.model.priceTableId) {
+			stage.model.priceTableId = PRICE_TABLE_ID;
+		}
+		return;
 	}
+	const cost = computeCallCostUsd(stage.model.modelName, stage.model.usage, {
+		provider: stage.model.provider,
+		logger,
+	});
+	stage.model.costUsd = cost;
+	stage.model.priceTableId = PRICE_TABLE_ID;
 }
 
 // ---------------------------------------------------------------------------
@@ -790,7 +988,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		}
 
 		const recordedStage = cloneForRecord(stage);
-		annotateStageCost(recordedStage);
+		annotateStageCost(recordedStage, this.logger);
 		trajectory.stages.push(recordedStage);
 		applyMetricsForStage(trajectory.metrics, recordedStage);
 

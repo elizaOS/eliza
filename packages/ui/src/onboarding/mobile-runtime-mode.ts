@@ -65,6 +65,11 @@ export function readPersistedMobileRuntimeMode(): MobileRuntimeMode | null {
   }
 }
 
+export function isElizaCloudRuntimeLocked(): boolean {
+  const mode = readPersistedMobileRuntimeMode();
+  return mode === "cloud" || mode === "cloud-hybrid";
+}
+
 async function persistNativeMobileRuntimeMode(
   mode: MobileRuntimeMode | null,
 ): Promise<void> {

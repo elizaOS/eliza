@@ -46,6 +46,32 @@ const child = spawn(resolveNodeCmd(), ["--import", "tsx", ...args], {
   stdio: "inherit",
 });
 
+const SIGNAL_EXIT_CODE = {
+  SIGHUP: 129,
+  SIGINT: 130,
+  SIGTERM: 143,
+};
+
+let forwardedSignal = null;
+let forceKillTimer = null;
+
+function forwardSignal(signal) {
+  forwardedSignal = signal;
+  if (child.exitCode == null && child.signalCode == null) {
+    child.kill(signal);
+    forceKillTimer = setTimeout(() => {
+      if (child.exitCode == null && child.signalCode == null) {
+        child.kill("SIGKILL");
+      }
+    }, 10_000);
+    forceKillTimer.unref?.();
+  }
+}
+
+for (const signal of Object.keys(SIGNAL_EXIT_CODE)) {
+  process.once(signal, () => forwardSignal(signal));
+}
+
 child.on("error", (error) => {
   console.error(
     `[run-node-tsx] Failed to spawn Node: ${error instanceof Error ? error.message : String(error)}`,
@@ -54,9 +80,15 @@ child.on("error", (error) => {
 });
 
 child.on("exit", (code, signal) => {
+  if (forceKillTimer) {
+    clearTimeout(forceKillTimer);
+    forceKillTimer = null;
+  }
   if (signal) {
-    process.kill(process.pid, signal);
-    return;
+    process.exit(SIGNAL_EXIT_CODE[signal] ?? 1);
+  }
+  if (forwardedSignal) {
+    process.exit(SIGNAL_EXIT_CODE[forwardedSignal] ?? 1);
   }
   process.exit(code ?? 1);
 });

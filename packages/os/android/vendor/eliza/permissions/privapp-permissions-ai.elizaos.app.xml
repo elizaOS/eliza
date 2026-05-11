@@ -27,5 +27,7 @@
           and the appop stays in default mode, breaking PACKAGE_USAGE_STATS.
         -->
         <permission name="android.permission.MANAGE_APP_OPS_MODES" />
+        <!-- Required for AOSP/system builds that expose AVF/Microdroid. -->
+        <permission name="android.permission.MANAGE_VIRTUAL_MACHINE" />
     </privapp-permissions>
 </permissions>

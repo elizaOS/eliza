@@ -36,11 +36,14 @@ import os
 import time
 from pathlib import Path
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from transformers.cache_utils import DynamicCache
+import pytest
 
-from turboquant import TurboQuantCache
+torch = pytest.importorskip("torch")
+transformers = pytest.importorskip("transformers")
+AutoModelForCausalLM = transformers.AutoModelForCausalLM
+AutoTokenizer = transformers.AutoTokenizer
+DynamicCache = pytest.importorskip("transformers.cache_utils").DynamicCache
+TurboQuantCache = pytest.importorskip("turboquant").TurboQuantCache
 
 logging.basicConfig(
     level=logging.INFO,

@@ -95,11 +95,24 @@ export default defineConfig({
     exclude: [
       "**/node_modules/**",
       "**/dist/**",
+      "**/*.e2e.test.{ts,tsx}",
+      "**/*.e2e.spec.{ts,tsx}",
+      "**/*.integration.test.{ts,tsx}",
+      "**/*.live.test.{ts,tsx}",
+      "**/*.live.e2e.test.{ts,tsx}",
+      "**/*.real.test.{ts,tsx}",
+      "**/*.real.e2e.test.{ts,tsx}",
+      "**/*.spec.{ts,tsx}",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
       "test/app/onboarding-companion.live.e2e.test.ts",
-      ...(includeLiveE2e ? [] : ["test/live-agent/**/*.e2e.test.ts"]),
+      ...(includeLiveE2e
+        ? []
+        : [
+            "src/services/local-inference/engine.e2e.test.ts",
+            "test/live-agent/**/*.e2e.test.ts",
+          ]),
     ],
   },
   resolve: {

@@ -71,10 +71,13 @@ import {
 	getStartupDiagnosticsSnapshot,
 } from "./agent";
 import {
+	createSecurityScopedBookmark,
 	isAppActive,
 	isKeyWindow,
 	makeKeyAndOrderFront,
 	orderOut,
+	startAccessingSecurityScopedBookmark,
+	stopAccessingSecurityScopedBookmarks,
 } from "./mac-window-effects";
 import {
 	linuxSysfsOnBattery,
@@ -2010,6 +2013,65 @@ X-GNOME-Autostart-enabled=true
 		});
 		const canceled = filePaths.length === 0 || filePaths[0] === "";
 		return { canceled, filePaths: canceled ? [] : filePaths };
+	}
+
+	/**
+	 * Pick a workspace folder for store-distributed builds. Maps to a directory-only
+	 * NSOpenPanel on macOS (via Electrobun's openFileDialog).
+	 *
+	 * The `bookmark` field is the OS-specific persistence handle: on macOS, a
+	 * base64 NSURLBookmarkCreationOptions.WithSecurityScope blob the caller
+	 * stores and re-resolves on next launch. Non-macOS platforms return null
+	 * because portals / AppContainer do not use NSURL bookmarks.
+	 */
+	async pickWorkspaceFolder(options: {
+		defaultPath?: string;
+		promptTitle?: string;
+	}): Promise<{ canceled: boolean; path: string; bookmark: string | null }> {
+		const filePaths = await Utils.openFileDialog({
+			startingFolder: options.defaultPath,
+			canChooseFiles: false,
+			canChooseDirectory: true,
+			allowsMultipleSelection: false,
+		});
+		const canceled = filePaths.length === 0 || filePaths[0] === "";
+		if (canceled) {
+			return { canceled: true, path: "", bookmark: null };
+		}
+		const selectedPath = filePaths[0] ?? "";
+		if (!selectedPath) {
+			return { canceled: true, path: "", bookmark: null };
+		}
+		const bookmark =
+			process.platform === "darwin"
+				? createSecurityScopedBookmark(selectedPath)
+				: null;
+		return { canceled: false, path: selectedPath, bookmark };
+	}
+
+	resolveWorkspaceFolderBookmark(options: { bookmark: string }): {
+		ok: boolean;
+		path: string;
+		stale?: boolean;
+		error?: string;
+	} {
+		if (process.platform !== "darwin") {
+			return { ok: true, path: "" };
+		}
+		const path = startAccessingSecurityScopedBookmark(options.bookmark);
+		if (!path) {
+			return {
+				ok: false,
+				path: "",
+				error: "Unable to resolve security-scoped bookmark.",
+			};
+		}
+		return { ok: true, path };
+	}
+
+	releaseWorkspaceFolderBookmarks(): { ok: true } {
+		stopAccessingSecurityScopedBookmarks();
+		return { ok: true };
 	}
 
 	// MARK: - Helpers

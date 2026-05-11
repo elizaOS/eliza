@@ -3,18 +3,18 @@
 ## Second-Pass Status (2026-05-05)
 
 - Superseded: account-pool strategy now flows into direct env and runtime shim selection paths.
-- Still open: multi-account subscription preflight still collapses rows by provider, inline subscription probe failures still map too broadly to `rate-limited`, Z.AI aliases are incomplete, and `resolveProviderCredentialMulti()` does not pass selection config.
+- Still open: coding-agent preflight still needs broader provider coverage, inline subscription probe failures still map too broadly to `rate-limited`, and `resolveProviderCredentialMulti()` does not pass selection config.
 - Launch gate: keep `packages/app-core/src/services/__tests__/account-pool.test.ts` in the focused launch suite and add row-aggregation/health-mapping tests before treating this area as complete.
 
 ## Current state
 
-- Multi-account credential storage exists for `anthropic-subscription`, `openai-codex`, and direct API account providers including `zai-api`. Credentials are stored per provider/account under `~/.eliza/auth/{providerId}/{accountId}.json`, with legacy single-account migration.
+- Multi-account credential storage exists for subscription providers including `anthropic-subscription`, `openai-codex`, `gemini-cli`, `zai-coding`, `kimi-coding`, and `deepseek-coding`, plus direct API account providers including `zai-api`. Credentials are stored per provider/account under `~/.eliza/auth/{providerId}/{accountId}.json`, with legacy single-account migration.
 - The account pool implements `priority`, `round-robin`, `least-used`, and `quota-aware` selection, plus health filtering, cooldown re-entry, and session affinity.
 - Settings UI can add, test, refresh, delete, reprioritize, and choose a strategy for accounts. The strategy is persisted in config and displayed by `/api/accounts`.
 - Runtime integration is only partial. AccountPool callers for Claude, Codex, and direct API credentials generally call `pool.select()` without passing the configured strategy or service-route account allowlist. In practice, runtime selection defaults to priority except when accounts are disabled, excluded, or unhealthy.
 - Claude subscription support is intentionally code-agent only in the core startup path. Anthropic subscription tokens are not applied to `ANTHROPIC_API_KEY`; Claude Code child processes get `CLAUDE_CODE_OAUTH_TOKEN`/`ANTHROPIC_AUTH_TOKEN` only when spawning the `claude` CLI.
-- Codex subscription accounts can be applied to `OPENAI_API_KEY`. The selected Codex account comes from the subscription selector shim when installed, but the shim also defaults to priority selection.
-- Z.AI direct API support exists in account-provider types, account routes, credential resolution, local provider enable-state, and runtime `getSetting()`. Alias support for `Z_AI_API_KEY` is inconsistent in plugin loading and native desktop credential scanning.
+- Codex subscription accounts are not applied to `OPENAI_API_KEY`. The selected Codex account comes from the subscription selector shim when installed, and the shim can read persisted provider selection config.
+- Z.AI direct API support exists in account-provider types, account routes, credential resolution, local provider enable-state, and runtime `getSetting()`. z.ai Coding Plan support is separate under `zai-coding`; coding-plan credentials are not copied into `ZAI_API_KEY` or `Z_AI_API_KEY`.
 - Eliza Cloud and local fallback paths exist. Cloud-managed onboarding builds cloud service routing and clears subscription-provider config; `ELIZA_LOCAL_LLAMA=1` is documented in code as additive, so remote providers remain loadable unless explicit local-only mode applies.
 
 ## Evidence reviewed with file refs
@@ -47,7 +47,8 @@
 - AccountPool itself supports multiple accounts, independent provider pools, priority, round-robin, least-used, quota-aware, explicit `accountIds`, exclusions, session affinity, health skipping, cooldown re-entry, and usage refresh logic.
 - `/api/accounts` supports multi-account CRUD, provider strategy persistence, direct API-key providers, OAuth status streaming, health state surfaced from the pool, and independent Anthropic/Codex pools.
 - Core startup installs account-pool shims before subscription credentials are applied.
-- Claude subscription is not applied to runtime env by `applySubscriptionCredentials`; Codex subscription is applied to `OPENAI_API_KEY`.
+- Claude subscription is not applied to runtime env by `applySubscriptionCredentials`; Codex subscription is not applied to `OPENAI_API_KEY`.
+- Codex, z.ai Coding Plan, Kimi Code, and Gemini CLI subscription credentials are not applied to general API environment variables. They are restricted to their first-party coding client or dedicated coding endpoint.
 - Claude Code spawns can receive the selected account token in child env, and subprocess auth failures can mark that account rate-limited, invalid, or needing reauth.
 - Settings UI exposes the multi-account list and strategy controls for both subscription and direct API providers.
 - Auth sanitization exists for native startup diagnostics and native credential scan masks returned API keys.

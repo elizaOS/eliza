@@ -4,11 +4,8 @@ vi.mock("./registry", () => ({
   listInstalledModels: vi.fn(async () => []),
 }));
 
-vi.mock("./dflash-server", async () => {
-  const actual =
-    await vi.importActual<typeof import("./dflash-server")>("./dflash-server");
+vi.mock("./dflash-server", () => {
   return {
-    ...actual,
     getDflashRuntimeStatus: () => ({
       enabled: true,
       required: false,
@@ -33,22 +30,7 @@ describe("runDflashDoctor — tokenizer parity check", () => {
     const { runDflashDoctor } = await import("./dflash-doctor");
     const { MODEL_CATALOG } = await import("./catalog");
     const dflashTargets = MODEL_CATALOG.filter((m) => m.runtime?.dflash);
-
-    // Eliza-1 tiers don't declare `runtime.dflash` until their drafter
-    // bundles publish — the catalog row is frozen and fabricating drafter
-    // ids would silently misrepresent. When the catalog has no DFlash
-    // entries at all, skip the parity assertion with a clear reason; when
-    // entries do exist, exercise the parity check the same way as before.
-    if (dflashTargets.length === 0) {
-      // Pending bundle publish (see packages/inference/AGENTS.md §3 + §6).
-      // The runDflashDoctor() shape is still verified — runs without throwing.
-      const report = await runDflashDoctor();
-      const tokenizerChecks = report.checks.filter((c) =>
-        c.id.endsWith(":tokenizer"),
-      );
-      expect(tokenizerChecks).toEqual([]);
-      return;
-    }
+    expect(dflashTargets.length).toBeGreaterThan(0);
 
     const report = await runDflashDoctor();
     const tokenizerChecks = report.checks.filter((c) =>
@@ -67,10 +49,7 @@ describe("runDflashDoctor — tokenizer parity check", () => {
     const { MODEL_CATALOG } = await import("./catalog");
     const target = MODEL_CATALOG.find((m) => m.runtime?.dflash);
     if (!target?.runtime?.dflash) {
-      // No DFlash pairs in the catalog yet — pending bundle publish, see
-      // packages/inference/AGENTS.md §3. The behavioral expectation is
-      // covered by the it.todo() guard below.
-      return;
+      throw new Error("Expected at least one DFlash catalog entry");
     }
     const originalDrafter = target.runtime.dflash.drafterModelId;
     target.runtime.dflash.drafterModelId = "does-not-exist-drafter";
@@ -87,11 +66,29 @@ describe("runDflashDoctor — tokenizer parity check", () => {
     }
   });
 
-  // Contract guarantee for the future. Per packages/inference/AGENTS.md §3,
-  // every default-eligible Eliza-1 tier MUST declare `runtime.dflash` once
-  // its drafter bundle is published. Until then this is an it.todo() so the
-  // requirement stays visible in the test report without failing the suite.
-  it.todo(
-    "every default-eligible Eliza-1 tier declares runtime.dflash once drafters publish",
-  );
+  it("every default-eligible Eliza-1 tier declares runtime.dflash", async () => {
+    const { ELIZA_1_TIER_IDS, MODEL_CATALOG, isDefaultEligibleId } =
+      await import("./catalog");
+
+    for (const id of ELIZA_1_TIER_IDS) {
+      const model = MODEL_CATALOG.find((m) => m.id === id);
+      expect(model, `${id} missing from catalog`).toBeDefined();
+      expect(isDefaultEligibleId(id), `${id} should be default-eligible`).toBe(
+        true,
+      );
+      expect(
+        model?.runtime?.dflash,
+        `${id} missing runtime.dflash`,
+      ).toBeDefined();
+
+      const drafterId = model?.runtime?.dflash?.drafterModelId;
+      expect(drafterId).toBe(`${id}-drafter`);
+
+      const drafter = MODEL_CATALOG.find((m) => m.id === drafterId);
+      expect(drafter, `${drafterId} missing from catalog`).toBeDefined();
+      expect(drafter?.runtimeRole).toBe("dflash-drafter");
+      expect(drafter?.companionForModelId).toBe(id);
+      expect(drafter?.tokenizerFamily).toBe(model?.tokenizerFamily);
+    }
+  });
 });

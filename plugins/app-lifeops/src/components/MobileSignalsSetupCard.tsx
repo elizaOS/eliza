@@ -1,22 +1,17 @@
 import {
+  MobileSignals,
+  type MobileSignalsPermissionStatus,
+  type MobileSignalsPermissionTarget,
+  type MobileSignalsSetupAction,
+} from "@elizaos/capacitor-mobile-signals";
+import {
   Badge,
   Button,
   isElectrobunRuntime,
   isNative,
   useApp,
 } from "@elizaos/ui";
-import {
-  MobileSignals,
-  type MobileSignalsPermissionStatus,
-  type MobileSignalsSetupAction,
-} from "@elizaos/capacitor-mobile-signals";
-import {
-  Activity,
-  Monitor,
-  RefreshCw,
-  Settings,
-  Smartphone,
-} from "lucide-react";
+import { Activity, Monitor, RefreshCw, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type TranslateOptions = { defaultValue?: string } & Record<
@@ -74,6 +69,15 @@ function nonMobileBadgeLabel(t: TranslateFn): string {
     : t("lifeopssettings.deviceSetupWeb", {
         defaultValue: "Web",
       });
+}
+
+function requestTargetForAction(
+  action: MobileSignalsSetupAction,
+): MobileSignalsPermissionTarget | null {
+  if (action.id === "health_permissions") return "health";
+  if (action.id === "screen_time_authorization") return "screenTime";
+  if (action.id === "notification_settings") return "notifications";
+  return null;
 }
 
 function DeviceRuntimeGlyph({
@@ -145,27 +149,34 @@ export function MobileSignalsSetupCard() {
     void refresh();
   }, [refresh]);
 
-  const requestPermissions = useCallback(async () => {
-    if (!plugin || typeof plugin.requestPermissions !== "function") {
-      return;
-    }
-    setBusy("request");
-    try {
-      const next = await plugin.requestPermissions();
-      setPermissionStatus(next);
-      setMessage(next.reason ?? null);
-    } catch (error) {
-      setMessage(
-        error instanceof Error
-          ? error.message
-          : t("lifeopssettings.deviceSetupRequestFailed", {
-              defaultValue: "Failed to request device permissions.",
-            }),
-      );
-    } finally {
-      setBusy(null);
-    }
-  }, [plugin, t]);
+  const requestPermissions = useCallback(
+    async (action: MobileSignalsSetupAction) => {
+      if (!plugin || typeof plugin.requestPermissions !== "function") {
+        return;
+      }
+      const target = requestTargetForAction(action);
+      if (!target) {
+        return;
+      }
+      setBusy("request");
+      try {
+        const next = await plugin.requestPermissions({ target });
+        setPermissionStatus(next);
+        setMessage(next.reason ?? null);
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : t("lifeopssettings.deviceSetupRequestFailed", {
+                defaultValue: "Failed to request device permissions.",
+              }),
+        );
+      } finally {
+        setBusy(null);
+      }
+    },
+    [plugin, t],
+  );
 
   const openSettings = useCallback(
     async (action: MobileSignalsSetupAction) => {
@@ -202,9 +213,6 @@ export function MobileSignalsSetupCard() {
 
   const actions: MobileSignalsSetupAction[] =
     permissionStatus?.setupActions ?? [];
-  const needsRequest = actions.some(
-    (action) => action.status !== "ready" && action.canRequest,
-  );
   const runtimeLabel = nativeMobile
     ? (permissionStatus?.status ?? "checking")
     : nonMobileBadgeLabel(t);
@@ -237,35 +245,19 @@ export function MobileSignalsSetupCard() {
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 sm:pt-0.5">
           {nativeMobile && plugin ? (
-            <>
-              {needsRequest ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
-                  disabled={busy !== null}
-                  onClick={() => void requestPermissions()}
-                >
-                  <Settings className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                  {t("lifeopssettings.deviceSetupEnable", {
-                    defaultValue: "Enable",
-                  })}
-                </Button>
-              ) : null}
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
-                disabled={busy !== null}
-                onClick={() => void refresh()}
-              >
-                <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
-                {t("lifeopssettings.deviceSetupRefresh", {
-                  defaultValue: "Refresh",
-                })}
-              </Button>
-            </>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+              disabled={busy !== null}
+              onClick={() => void refresh()}
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+              {t("lifeopssettings.deviceSetupRefresh", {
+                defaultValue: "Refresh",
+              })}
+            </Button>
           ) : null}
         </div>
       </div>
@@ -307,7 +299,7 @@ export function MobileSignalsSetupCard() {
                     disabled={busy !== null}
                     onClick={() =>
                       action.canRequest
-                        ? void requestPermissions()
+                        ? void requestPermissions(action)
                         : void openSettings(action)
                     }
                   >

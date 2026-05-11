@@ -124,6 +124,7 @@ HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"
 TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
 TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
 # -----------------------------------------------------------------------------
 # Required secrets — set via `wrangler secret put KEY` (or run
@@ -190,6 +191,7 @@ TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
 #   NEON_API_KEY                       Per-app database provisioning
 #   CONTAINERS_SSH_KEY / AGENT_SSH_KEY Docker provider SSH private key for the Node sidecar
 #   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
+#   TUNNEL_HOSTNAME_SIGNING_SECRET     Shared HMAC secret with tunnel-proxy
 #   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
 # -----------------------------------------------------------------------------
 
@@ -242,6 +244,7 @@ HEADSCALE_API_URL = "https://headscale-staging.elizacloud.ai"
 HEADSCALE_USER = "tunnel"
 TUNNEL_PROXY_HOST = "tunnel-staging.elizacloud.ai"
 TUNNEL_TAILNET_DOMAIN = "tunnel.staging.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
 # Cloudflare Workers does NOT inherit top-level r2_buckets into environment
 # blocks — they must be re-declared per-env. Same physical resources.
@@ -295,6 +298,7 @@ HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
 HEADSCALE_USER = "tunnel"
 TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
 TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
 
 [[env.production.r2_buckets]]
 binding = "BLOB"

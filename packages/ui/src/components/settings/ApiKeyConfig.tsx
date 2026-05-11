@@ -236,7 +236,7 @@ export function ApiKeyConfig({
           handlePluginFieldChange(selectedProvider.id, key, String(value ?? ""))
         }
         revealSecret={async (pluginId, key) => {
-          // Server route at packages/app-core/src/api/plugins-compat-routes.ts
+          // Server route at packages/app-core/src/api/plugins-routes.ts
           // (POST /api/plugins/:id/reveal) round-trips the saved value
           // back through an audit-logged read. Closes the "no reveal"
           // bug — Settings UI can now confirm what's actually stored.

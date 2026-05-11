@@ -34,6 +34,14 @@ const config: CapacitorConfig = {
     CapacitorHttp: {
       enabled: true,
     },
+    BackgroundRunner: {
+      label: "eliza-tasks",
+      src: "runners/eliza-tasks.js",
+      event: "wake",
+      repeat: true,
+      interval: 15,
+      autoStart: true,
+    },
   },
   ios: {
     contentInset: "automatic",

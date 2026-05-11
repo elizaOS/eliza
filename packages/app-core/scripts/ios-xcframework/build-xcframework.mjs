@@ -49,13 +49,12 @@ const DFLASH_BUILD_SCRIPT = path.join(SCRIPTS_DIR, "build-llama-cpp-dflash.mjs")
 //
 // Each entry: { kernel, symbolPattern, where }
 //   - `kernel` is the AGENTS.md §3 name.
-//   - `symbolPattern` is a regex tested against `nm -g <archive>` output
-//     across every produced .a in the slice. The archives include the
-//     ggml-base / ggml-cpu / ggml-metal kernels (for QJL/Polar) and,
-//     once the EMBED-path Metal kernel patcher lands, the metallib
-//     symbol stubs (for TurboQuant variants). Until then `turbo3` /
-//     `turbo4` will fail this check on iOS — which is the correct
-//     loud-failure behavior per AGENTS.md §3.
+//   - `symbolPattern` is a regex tested against `nm -g <archive>` plus
+//     `strings <archive>` output across every produced .a in the slice. The
+//     archives include the ggml-base / ggml-cpu / ggml-metal kernels and the
+//     embedded metallib payload. Metal shader function names are payload
+//     strings, not Mach-O symbols, so `strings` is required for iOS EMBED
+//     verification.
 //   - `where` indicates which archive(s) the symbol may live in;
 //     only used in the diagnostic message.
 const REQUIRED_IOS_KERNEL_SYMBOLS = [
@@ -79,10 +78,6 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
   },
   {
     kernel: "turbo3",
-    // Turbo kernels live in the metallib produced by the EMBED build.
-    // EMBED-path patcher in kernel-patches/metal-kernels.mjs is a
-    // documented gap — until it lands, this symbol check WILL fail
-    // and that is the correct hard-fail behavior per AGENTS.md §3.
     symbolPattern: /turbo3(?!_tcq)/i,
     where: "libggml-metal.a (via embedded metallib)",
   },
@@ -92,6 +87,36 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
     where: "libggml-metal.a (via embedded metallib)",
   },
 ];
+
+const REQUIRED_IOS_RUNTIME_SYMBOLS = [
+  "llama_init_context",
+  "llama_release_context",
+  "llama_completion",
+  "llama_stop_completion",
+  "llama_get_formatted_chat",
+  "llama_toggle_native_log",
+  "llama_embedding",
+  "llama_embedding_register_context",
+  "llama_embedding_unregister_context",
+  "llama_get_model_info",
+  "llama_get_context_ptr",
+  "llama_get_last_error",
+  "llama_free_string",
+  "eliza_inference_abi_version",
+  "eliza_inference_create",
+  "eliza_inference_destroy",
+  "eliza_inference_mmap_acquire",
+  "eliza_inference_mmap_evict",
+  "eliza_inference_tts_synthesize",
+  "eliza_inference_asr_transcribe",
+  "eliza_inference_free_string",
+].map((symbol) => ({
+  symbol,
+  symbolPattern: new RegExp(`(?:^|\\s)_?${symbol}\\b`, "m"),
+    where: symbol.startsWith("eliza_inference_")
+    ? "libelizainference ABI archive (fail-closed shim or real OmniVoice build)"
+    : "llama-cpp-capacitor bridge archive",
+}));
 
 /** @typedef {{ name: string, archives: string[], headerDir: string, capabilities: string }} SliceInputs */
 
@@ -167,6 +192,44 @@ function defaultSliceDir(target) {
   return path.join(elizaStateDir(), "local-inference", "bin", "dflash", target);
 }
 
+function refreshIosRuntimeSymbolShim({ sliceDir, isSimulator }) {
+  if (!fs.existsSync(sliceDir)) return;
+  const source = path.join(__dirname, "runtime-symbol-shim.c");
+  if (!fs.existsSync(source)) {
+    throw new Error(`[ios-xcframework] runtime symbol shim missing: ${source}`);
+  }
+  const sdk = isSimulator ? "iphonesimulator" : "iphoneos";
+  const sdkPath = captureStdout("xcrun", ["--sdk", sdk, "--show-sdk-path"]).trim();
+  const obj = path.join(sliceDir, "eliza-ios-runtime-shim.o");
+  const archive = path.join(sliceDir, "libeliza-ios-runtime-shim.a");
+  const minVersionFlag = isSimulator
+    ? "-mios-simulator-version-min=14.0"
+    : "-miphoneos-version-min=14.0";
+
+  run("xcrun", [
+    "--sdk",
+    sdk,
+    "clang",
+    "-std=c11",
+    "-arch",
+    "arm64",
+    "-isysroot",
+    sdkPath,
+    minVersionFlag,
+    "-fvisibility=default",
+    "-c",
+    source,
+    "-o",
+    obj,
+  ]);
+  run("xcrun", ["--sdk", sdk, "ar", "rcs", archive, obj]);
+  run("xcrun", ["--sdk", sdk, "ranlib", archive]);
+  fs.rmSync(obj, { force: true });
+  console.log(
+    `[ios-xcframework] refreshed runtime symbol shim: ${path.relative(process.cwd(), archive)}`,
+  );
+}
+
 /**
  * @param {string} cmd
  * @param {string[]} args
@@ -192,10 +255,11 @@ function captureStdout(cmd, args) {
   const result = spawnSync(cmd, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.status !== 0) {
+  if (result.status !== 0 || result.error) {
     throw new Error(
-      `${cmd} ${args.join(" ")} failed with ${result.status}: ${result.stderr || ""}`,
+      `${cmd} ${args.join(" ")} failed with ${result.status}: ${result.error?.message || result.stderr || ""}`,
     );
   }
   return result.stdout || "";
@@ -318,15 +382,16 @@ function buildStaticFramework(tmpDir, slice, target) {
 }
 
 /**
- * Run nm against every archive in a slice and aggregate the symbol text.
+ * Run nm + strings against every archive in a slice and aggregate symbol text.
  * @param {SliceInputs} slice
  * @returns {string}
  */
 function dumpSliceSymbols(slice) {
   const chunks = [];
   for (const archive of slice.archives) {
-    const out = captureStdout("nm", ["-g", archive]);
-    chunks.push(`# ${path.basename(archive)}\n${out}`);
+    const nmOut = captureStdout("nm", ["-g", archive]);
+    const stringsOut = captureStdout("strings", [archive]);
+    chunks.push(`# ${path.basename(archive)}\n${nmOut}\n${stringsOut}`);
   }
   return chunks.join("\n");
 }
@@ -372,6 +437,50 @@ function verifyKernelSymbols(slices) {
   }
   console.log(
     `[ios-xcframework] kernel-symbol audit PASS for slices: ${slices
+      .map((s) => s.name)
+      .join(", ")}`,
+  );
+}
+
+/**
+ * @param {SliceInputs[]} slices
+ */
+function verifyRuntimeSymbols(slices) {
+  const sliceSymbols = slices.map((slice) => ({
+    slice,
+    text: dumpSliceSymbols(slice),
+  }));
+  const missing = [];
+  for (const { symbol, symbolPattern, where } of REQUIRED_IOS_RUNTIME_SYMBOLS) {
+    const sliceMisses = sliceSymbols.filter(
+      ({ text }) => !symbolPattern.test(text),
+    );
+    if (sliceMisses.length > 0) {
+      missing.push({
+        symbol,
+        slices: sliceMisses.map(({ slice }) => slice.name),
+        where,
+      });
+    }
+  }
+  if (missing.length > 0) {
+    const lines = missing.map(
+      (m) =>
+        `  - ${m.symbol}: missing in ${m.slices.join(" + ")} ` +
+        `(expected in ${m.where})`,
+    );
+    throw new Error(
+      `[ios-xcframework] AGENTS.md §3 runtime-symbol audit FAILED:\n${lines.join(
+        "\n",
+      )}\n\n` +
+        `The iOS xcframework must carry the Capacitor bridge symbols and the\n` +
+        `libelizainference voice ABI symbols. Kernel-only archives are not\n` +
+        `a releaseable Eliza-1 mobile runtime. Wire the bridge and voice\n` +
+        `ABI into the iOS slice, then re-run.`,
+    );
+  }
+  console.log(
+    `[ios-xcframework] runtime-symbol audit PASS for slices: ${slices
       .map((s) => s.name)
       .join(", ")}`,
   );
@@ -439,11 +548,15 @@ async function main() {
     }
   }
 
+  refreshIosRuntimeSymbolShim({ sliceDir: deviceDir, isSimulator: false });
+  refreshIosRuntimeSymbolShim({ sliceDir: simDir, isSimulator: true });
+
   const deviceSlice = loadSlice(deviceDir, "device");
   const simSlice = loadSlice(simDir, "simulator");
 
   if (args.verify) {
     verifyKernelSymbols([deviceSlice, simSlice]);
+    verifyRuntimeSymbols([deviceSlice, simSlice]);
   }
 
   const tmpDir = fs.mkdtempSync(

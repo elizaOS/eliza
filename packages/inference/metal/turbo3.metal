@@ -1,8 +1,6 @@
-// DRAFT: COMPILED locally NOT YET — agent runs on Linux without xcrun metal.
-// SOURCE-LEVEL VERIFIED against fork's dequantize_turbo3_0_t4 at
-// ggml/src/ggml-metal/ggml-metal.metal:700 (commit 6575873e9c). Byte layout
-// and centroid lookup are bit-identical. Hardware verification still required
-// before use — see packages/inference/README.md "Verification matrix".
+// HARDWARE VERIFIED on Apple M4 Max (Metal runtime JIT): 8/8 PASS against the
+// fixture harness. Source-level verified against fork's dequantize_turbo3_0_t4
+// at ggml/src/ggml-metal/ggml-metal.metal:700 (commit 6575873e9c).
 //
 // turbo3 KV cache dequant + Q·K dot product (Metal Shading Language).
 //

@@ -4,11 +4,11 @@ import {
 	logger,
 	type Plugin,
 } from "@elizaos/core";
-import setupCredentials from "./actions/setup-credentials";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
+import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
 import { DiscordService } from "./service";
 import { discordSetupRoutes } from "./setup-routes";
 import { DiscordTestSuite } from "./tests";
@@ -24,7 +24,7 @@ const discordPlugin: Plugin = {
 		DiscordUserAccountScraperImpl,
 	],
 	routes: discordSetupRoutes,
-	actions: [setupCredentials],
+	actions: [],
 	providers: [],
 	tests: [new DiscordTestSuite()],
 	autoEnable: {
@@ -43,6 +43,8 @@ const discordPlugin: Plugin = {
 				"Failed to register Discord provider with ConnectorAccountManager",
 			);
 		}
+
+		registerDiscordDmSensitiveRequestAdapter(runtime);
 
 		const token = runtime.getSetting("DISCORD_API_TOKEN") as string;
 		const botTokens = runtime.getSetting("DISCORD_BOT_TOKENS") as string;

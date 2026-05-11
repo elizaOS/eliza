@@ -1,0 +1,109 @@
+{
+  "schemaVersion": 1,
+  "backend": "vulkan",
+  "sourceOfTruth": "Runtime-ready means a built llama.cpp fork graph route selects the shipped Vulkan pipeline and a numeric smoke test passes on native Vulkan hardware. Standalone SPIR-V, MoltenVK fixture success, shader symbols, and pipeline slots are not enough.",
+  "latestReport": "reports/porting/2026-05-11/remaining-work-ledger.md",
+  "status": "source-patched-pending-native-graph-smoke",
+  "runtimeReady": false,
+  "requiredSmoke": "make -C packages/inference/verify vulkan-dispatch-smoke",
+  "nativeLinuxSmoke": "make -C packages/inference/verify vulkan-native-smoke",
+  "androidSmoke": "make -C packages/inference/verify android-vulkan-smoke",
+  "evidenceDate": "2026-05-11",
+  "blocker": "The Vulkan graph-dispatch source patch is in place, but native Linux/Android built-fork graph smoke has not been run on physical Vulkan hardware in this workspace.",
+  "graphRoutes": [
+    "GGML_OP_ATTN_SCORE_QJL",
+    "GGML_OP_ATTN_SCORE_TBQ/turbo3",
+    "GGML_OP_ATTN_SCORE_TBQ/turbo4",
+    "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq",
+    "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0",
+    "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1"
+  ],
+  "kernels": {
+    "turbo3": {
+      "runtimeCapabilityKey": "turbo3",
+      "status": "source-patched-pending-smoke",
+      "runtimeReady": false,
+      "shippedSymbols": [
+        "milady_turbo3_data",
+        "milady_turbo3_len",
+        "pipeline_milady_turbo3"
+      ],
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "graphRoutes": [
+        "GGML_OP_ATTN_SCORE_TBQ/turbo3"
+      ],
+      "smokeTarget": "vulkan-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
+      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork."
+    },
+    "turbo4": {
+      "runtimeCapabilityKey": "turbo4",
+      "status": "source-patched-pending-smoke",
+      "runtimeReady": false,
+      "shippedSymbols": [
+        "milady_turbo4_data",
+        "milady_turbo4_len",
+        "pipeline_milady_turbo4"
+      ],
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "graphRoutes": [
+        "GGML_OP_ATTN_SCORE_TBQ/turbo4"
+      ],
+      "smokeTarget": "vulkan-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
+      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork."
+    },
+    "turbo3_tcq": {
+      "runtimeCapabilityKey": "turbo3_tcq",
+      "status": "source-patched-pending-smoke",
+      "runtimeReady": false,
+      "shippedSymbols": [
+        "milady_turbo3_tcq_data",
+        "milady_turbo3_tcq_len",
+        "pipeline_milady_turbo3_tcq"
+      ],
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "graphRoutes": [
+        "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq"
+      ],
+      "smokeTarget": "vulkan-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
+      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork."
+    },
+    "qjl": {
+      "runtimeCapabilityKey": "qjl_full",
+      "status": "source-patched-pending-smoke",
+      "runtimeReady": false,
+      "shippedSymbols": [
+        "milady_qjl_data",
+        "milady_qjl_len",
+        "pipeline_milady_qjl"
+      ],
+      "graphOp": "GGML_OP_ATTN_SCORE_QJL",
+      "graphRoutes": [
+        "GGML_OP_ATTN_SCORE_QJL"
+      ],
+      "smokeTarget": "vulkan-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
+      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork."
+    },
+    "polar": {
+      "runtimeCapabilityKey": "polarquant",
+      "status": "source-patched-pending-smoke",
+      "runtimeReady": false,
+      "shippedSymbols": [
+        "milady_polar_data",
+        "milady_polar_len",
+        "pipeline_milady_polar"
+      ],
+      "graphOp": "GGML_OP_ATTN_SCORE_POLAR",
+      "graphRoutes": [
+        "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0",
+        "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1"
+      ],
+      "smokeTarget": "vulkan-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify vulkan-dispatch-smoke",
+      "blocker": "Needs native Linux/Android Vulkan graph smoke against a built fork."
+    }
+  }
+}

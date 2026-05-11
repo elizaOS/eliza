@@ -6,8 +6,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "bun --bun vite",
+    "build": "bun --bun vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/ || echo '[__APP_NAME__] lint ok (biome not configured)'",
     "test": "vitest run --config ./vitest.config.ts"

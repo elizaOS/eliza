@@ -28,11 +28,33 @@ Backbones (do not change without explicit human approval):
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
-- **Voice (TTS + ASR):** OmniVoice (Qwen3-TTS lineage). The repo at
+- **Voice (TTS):** OmniVoice (Qwen3-TTS lineage). The repo at
   `https://github.com/ServeurpersoCom/omnivoice.cpp` is the C++ source
-  we fuse with llama.cpp. The omnivoice-singing variant is **research
-  only** until legal review clears its dataset licenses; do not promote
-  it to default.
+  we fuse with llama.cpp. The omnivoice-singing variant adds an
+  emotion + singing tag vocabulary (`[singing]`, `[happy]`, `[sad]`,
+  `[whisper]`, `[angry]`, `[nervous]`, `[calm]`, `[excited]`, and
+  preserved non-verbals `[laughter]`, `[sigh]`). Per Wave-6 user
+  direction (2026-05-10), the prior "research-only until legal review"
+  gate is **lifted for non-commercial use**: Eliza-1 is non-commercial
+  open source under CC-compatible terms. omnivoice-singing CAN ship as
+  part of default bundles. If the project ever pivots to commercial
+  licensing, CC-BY-NC-SA training-data lineage (GTSinger, RAVDESS,
+  Expresso) must be re-evaluated and likely re-trained on
+  commercially-licensed corpora — until then, ship it.
+- **ASR:** Qwen3-ASR (`ggml-org/Qwen3-ASR-0.6B-GGUF` for
+  lite/mobile/desktop tiers, `ggml-org/Qwen3-ASR-1.7B-GGUF` for
+  pro/server). Tokenizer fused with the Qwen3.5/3.6 text backbone
+  (zero re-tokenization between ASR output and text input). whisper.cpp
+  is **not** the default — it vendors its own ggml, violating the
+  one-llama.cpp-build / one-GGML-pin contract in §4.
+- **VAD:** Silero VAD (MIT, ~2 MB ONNX). Ships in every voice-enabled
+  bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
+- **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
+  only. Hidden in cloud mode per three-mode hide-not-disable.
+- **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
+  Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
+  artifact. On `0_6b` the embedding model IS the text backbone
+  with `--pooling last` — no duplicate weights.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
 
@@ -73,11 +95,11 @@ hosted under the `elizalabs` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `lite-0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `mobile-1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `desktop-9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `pro-27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `server-h200`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
+| `9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
+| `27b-256k`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -167,8 +189,8 @@ the recommended-models endpoint.
 
 ### Required for `desktop`/`pro`/`server` tiers
 
-6. **TCQ trellis-coded quantization** option for the longest-context
-   variant. `turbo3_tcq.comp` / `turbo3_tcq.metal`.
+6. **TCQ trellis-coded quantization** for desktop/pro/server and any
+   long-context text variant. `turbo3_tcq.comp` / `turbo3_tcq.metal`.
 7. **CPU-offloaded KV cache** for context > 64k where device RAM is
    insufficient. The runtime MUST implement spill, not just refuse the
    request.
@@ -185,13 +207,11 @@ from the build:
   a structured error to the UI. It MUST NOT silently fall back to
   unoptimized inference. It MUST NOT log-and-continue.
 
-The default-on Vulkan turbo* patch
-(`ELIZA_DFLASH_PATCH_VULKAN_KERNELS=1`) is part of the contract. The
-Metal turbo3/QJL/Polar patches are currently opt-in pending hardware
-verification (see `packages/inference/README.md` for the matrix). When
-those flip default-on, this file's "Required for ALL tiers" list
-becomes machine-enforced — until then, treat any builder/runtime that
-disables a default-on patch as broken.
+The Metal and Vulkan kernel patchers run unconditionally for matching
+build targets. Build outputs can record shipped shader symbols
+separately from runtime-ready graph dispatch, but only runtime-ready
+capabilities may satisfy this contract. Treat any builder/runtime that
+disables a required patch as broken.
 
 ---
 
@@ -297,8 +317,8 @@ catalogs drift from it — generate them.
 ```json
 {
   "$schema": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
-  "id": "eliza-1-desktop-9b",
-  "tier": "desktop-9b",
+  "id": "eliza-1-9b",
+  "tier": "9b",
   "version": "1.0.0",
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
@@ -307,16 +327,16 @@ catalogs drift from it — generate them.
     "drafter": { "base": "dflash-9b-drafter", "license": "..." }
   },
   "files": {
-    "text":    [{ "path": "text/eliza-1-desktop-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
+    "text":    [{ "path": "text/eliza-1-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
     "voice":   [{ "path": "tts/omnivoice-1.7b.gguf",          "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
-    "vision":  [{ "path": "vision/mmproj-desktop-9b.gguf",    "sha256": "..." }],
-    "dflash":  [{ "path": "dflash/drafter-desktop-9b.gguf",   "sha256": "..." }],
+    "vision":  [{ "path": "vision/mmproj-9b.gguf",    "sha256": "..." }],
+    "dflash":  [{ "path": "dflash/drafter-9b.gguf",   "sha256": "..." }],
     "cache":   [{ "path": "cache/voice-preset-default.bin",   "sha256": "..." }]
   },
   "kernels": {
-    "required": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-    "optional": ["turbo3_tcq"],
+    "required": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+    "optional": [],
     "verifiedBackends": {
       "metal":  { "status": "pass", "atCommit": "...", "report": "..." },
       "vulkan": { "status": "pass", "atCommit": "...", "report": "..." },

@@ -2,7 +2,13 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <AVFoundation/AVFoundation.h>
 #import <Availability.h>
+#import <Contacts/Contacts.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <EventKit/EventKit.h>
+#import <UserNotifications/UserNotifications.h>
+#include <math.h>
+#include <stdlib.h>
+#include <string.h>
 
 static NSString *const kElectrobunVibrancyViewIdentifier =
 	@"ElectrobunVibrancyView";
@@ -16,6 +22,93 @@ static NSString *const kElectrobunNativeDragRightEdgeIdentifier =
 	@"ElectrobunNativeDragRightEdge";
 static NSString *const kElizaInactiveTrafficLightsOverlayIdentifier =
 	@"ElizaInactiveTrafficLightsOverlay";
+
+static NSMutableArray<NSURL *> *elizaSecurityScopedUrls(void) {
+	static NSMutableArray<NSURL *> *urls = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		urls = [[NSMutableArray alloc] init];
+	});
+	return urls;
+}
+
+static char *elizaCopyCString(NSString *value) {
+	if (value == nil) {
+		return nullptr;
+	}
+	const char *utf8 = [value UTF8String];
+	if (utf8 == nullptr) {
+		return nullptr;
+	}
+	size_t len = strlen(utf8);
+	char *out = (char *)malloc(len + 1);
+	if (out == nullptr) {
+		return nullptr;
+	}
+	memcpy(out, utf8, len + 1);
+	return out;
+}
+
+static NSString *elizaNSStringFromCString(const char *value) {
+	if (value == nullptr) {
+		return @"";
+	}
+	NSString *string = [NSString stringWithUTF8String:value];
+	return string == nil ? @"" : string;
+}
+
+static NSDictionary *elizaJsonError(NSString *code, NSString *message) {
+	return @{
+		@"ok" : @NO,
+		@"error" : code == nil ? @"native_error" : code,
+		@"message" : message == nil ? @"" : message,
+	};
+}
+
+static NSDictionary *elizaJsonOk(NSDictionary *fields) {
+	NSMutableDictionary *out = [NSMutableDictionary dictionaryWithObject:@YES
+																 forKey:@"ok"];
+	if (fields != nil) {
+		[out addEntriesFromDictionary:fields];
+	}
+	return out;
+}
+
+static char *elizaCopyJson(NSDictionary *object) {
+	if (object == nil) {
+		return elizaCopyCString(@"{\"ok\":false,\"error\":\"native_error\"}");
+	}
+	NSError *error = nil;
+	NSData *data = [NSJSONSerialization dataWithJSONObject:object
+												   options:0
+													 error:&error];
+	if (data == nil || error != nil) {
+		return elizaCopyCString(@"{\"ok\":false,\"error\":\"native_error\",\"message\":\"Failed to encode native JSON.\"}");
+	}
+	NSString *json = [[NSString alloc] initWithData:data
+										   encoding:NSUTF8StringEncoding];
+	return elizaCopyCString(json);
+}
+
+static NSDictionary *elizaParseJsonObject(const char *json) {
+	NSString *string = elizaNSStringFromCString(json);
+	NSData *data = [string dataUsingEncoding:NSUTF8StringEncoding];
+	if (data == nil) {
+		return nil;
+	}
+	id object = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+	if (![object isKindOfClass:[NSDictionary class]]) {
+		return nil;
+	}
+	return (NSDictionary *)object;
+}
+
+static NSString *elizaErrorMessage(NSError *error, NSString *fallback) {
+	if (error != nil && [[error localizedDescription] length] > 0) {
+		return [error localizedDescription];
+	}
+	return fallback == nil ? @"Native operation failed." : fallback;
+}
 
 /** Transparent strip for moving the window. WKWebView does not honor
  *  -webkit-app-region reliably on system WebKit; this view is stacked
@@ -582,6 +675,1283 @@ extern "C" void requestMicrophonePermission(void) {
 	                         completionHandler:^(BOOL granted) {
 		(void)granted;
 	}];
+}
+
+API_AVAILABLE(macos(10.14))
+static int elizaNotificationAuthorizationStatusToInt(
+	UNAuthorizationStatus status) {
+	switch (status) {
+		case UNAuthorizationStatusAuthorized:
+		case UNAuthorizationStatusProvisional:
+			return 2;
+		case UNAuthorizationStatusDenied:
+			return 1;
+		case UNAuthorizationStatusNotDetermined:
+			return 0;
+	}
+	return 3;
+}
+
+/**
+ * Check notification authorization without prompting.
+ * Returns: 0=not-determined, 1=denied, 2=granted, 3=restricted
+ */
+extern "C" int checkNotificationPermission(void) {
+	if (@available(macOS 10.14, *)) {
+		__block int result = 0;
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		[[UNUserNotificationCenter currentNotificationCenter]
+			getNotificationSettingsWithCompletionHandler:
+				^(UNNotificationSettings *settings) {
+					result = elizaNotificationAuthorizationStatusToInt(
+						[settings authorizationStatus]);
+					dispatch_semaphore_signal(semaphore);
+				}];
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)));
+		return result;
+	}
+	return 2;
+}
+
+/**
+ * Request notification authorization, then return the resulting status.
+ */
+extern "C" int requestNotificationPermission(void) {
+	if (@available(macOS 10.14, *)) {
+		__block int result = 0;
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		UNAuthorizationOptions options =
+			UNAuthorizationOptionAlert | UNAuthorizationOptionSound |
+			UNAuthorizationOptionBadge;
+		[[UNUserNotificationCenter currentNotificationCenter]
+			requestAuthorizationWithOptions:options
+						  completionHandler:^(BOOL granted, NSError *error) {
+			if (error != nil) {
+				result = 1;
+				dispatch_semaphore_signal(semaphore);
+				return;
+			}
+			if (!granted) {
+				result = 1;
+				dispatch_semaphore_signal(semaphore);
+				return;
+			}
+			[[UNUserNotificationCenter currentNotificationCenter]
+				getNotificationSettingsWithCompletionHandler:
+					^(UNNotificationSettings *settings) {
+						result = elizaNotificationAuthorizationStatusToInt(
+							[settings authorizationStatus]);
+						dispatch_semaphore_signal(semaphore);
+					}];
+		}];
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(10 * NSEC_PER_SEC)));
+		return result;
+	}
+	return 2;
+}
+
+static int elizaEventKitAuthorizationStatusToInt(EKAuthorizationStatus status) {
+	NSInteger raw = (NSInteger)status;
+	if (raw == 0) return 0; // not determined
+	if (raw == 2) return 1; // denied
+	if (raw == 3) return 2; // full access / legacy authorized
+	if (raw == 1) return 3; // restricted
+	if (raw == 4) return 4; // write-only events: not enough for read/update
+	return 3;
+}
+
+static BOOL elizaEventKitHasFullAccess(EKEntityType entityType) {
+	EKAuthorizationStatus status =
+		[EKEventStore authorizationStatusForEntityType:entityType];
+	return (NSInteger)status == 3;
+}
+
+static int elizaContactsAuthorizationStatusToInt(CNAuthorizationStatus status) {
+	NSInteger raw = (NSInteger)status;
+	if (raw == 0) return 0; // not determined
+	if (raw == 2) return 1; // denied
+	if (raw == 3 || raw == 4) return 2; // authorized or limited
+	if (raw == 1) return 3; // restricted
+	return 3;
+}
+
+static BOOL elizaContactsHasAccess(void) {
+	CNAuthorizationStatus status =
+		[CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts];
+	NSInteger raw = (NSInteger)status;
+	return raw == 3 || raw == 4;
+}
+
+extern "C" int checkRemindersPermission(void) {
+	return elizaEventKitAuthorizationStatusToInt(
+		[EKEventStore authorizationStatusForEntityType:EKEntityTypeReminder]);
+}
+
+extern "C" int requestRemindersPermission(void) {
+	@autoreleasepool {
+		EKEventStore *store = [[EKEventStore alloc] init];
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		if (@available(macOS 14.0, *)) {
+			[store requestFullAccessToRemindersWithCompletion:
+					   ^(BOOL granted, NSError *error) {
+				(void)granted;
+				(void)error;
+				dispatch_semaphore_signal(semaphore);
+			}];
+		} else {
+			#pragma clang diagnostic push
+			#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+			[store requestAccessToEntityType:EKEntityTypeReminder
+								  completion:^(BOOL granted, NSError *error) {
+				(void)granted;
+				(void)error;
+				dispatch_semaphore_signal(semaphore);
+			}];
+			#pragma clang diagnostic pop
+		}
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(120 * NSEC_PER_SEC)));
+		return checkRemindersPermission();
+	}
+}
+
+extern "C" int checkCalendarPermission(void) {
+	return elizaEventKitAuthorizationStatusToInt(
+		[EKEventStore authorizationStatusForEntityType:EKEntityTypeEvent]);
+}
+
+extern "C" int requestCalendarPermission(void) {
+	@autoreleasepool {
+		EKEventStore *store = [[EKEventStore alloc] init];
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		if (@available(macOS 14.0, *)) {
+			[store requestFullAccessToEventsWithCompletion:
+					   ^(BOOL granted, NSError *error) {
+				(void)granted;
+				(void)error;
+				dispatch_semaphore_signal(semaphore);
+			}];
+		} else {
+			#pragma clang diagnostic push
+			#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+			[store requestAccessToEntityType:EKEntityTypeEvent
+								  completion:^(BOOL granted, NSError *error) {
+				(void)granted;
+				(void)error;
+				dispatch_semaphore_signal(semaphore);
+			}];
+			#pragma clang diagnostic pop
+		}
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(120 * NSEC_PER_SEC)));
+		return checkCalendarPermission();
+	}
+}
+
+extern "C" int checkContactsPermission(void) {
+	return elizaContactsAuthorizationStatusToInt(
+		[CNContactStore authorizationStatusForEntityType:CNEntityTypeContacts]);
+}
+
+extern "C" int requestContactsPermission(void) {
+	@autoreleasepool {
+		CNContactStore *store = [[CNContactStore alloc] init];
+		dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+		[store requestAccessForEntityType:CNEntityTypeContacts
+						completionHandler:^(BOOL granted, NSError *error) {
+			(void)granted;
+			(void)error;
+			dispatch_semaphore_signal(semaphore);
+		}];
+		dispatch_semaphore_wait(
+			semaphore,
+			dispatch_time(DISPATCH_TIME_NOW, (int64_t)(120 * NSEC_PER_SEC)));
+		return checkContactsPermission();
+	}
+}
+
+static void elizaApplyReminderDueDate(EKReminder *reminder,
+									  double dueAtSeconds) {
+	if (dueAtSeconds <= 0) {
+		[reminder setDueDateComponents:nil];
+		[reminder setAlarms:@[]];
+		return;
+	}
+	NSDate *dueDate = [NSDate dateWithTimeIntervalSince1970:dueAtSeconds];
+	NSCalendar *calendar = [NSCalendar currentCalendar];
+	NSDateComponents *components =
+		[calendar components:(NSCalendarUnitYear | NSCalendarUnitMonth |
+							  NSCalendarUnitDay | NSCalendarUnitHour |
+							  NSCalendarUnitMinute | NSCalendarUnitSecond)
+					fromDate:dueDate];
+	[components setTimeZone:[NSTimeZone localTimeZone]];
+	[reminder setDueDateComponents:components];
+	[reminder setAlarms:@[[EKAlarm alarmWithAbsoluteDate:dueDate]]];
+}
+
+static EKCalendar *elizaDefaultReminderCalendar(EKEventStore *store) {
+	EKCalendar *calendar = [store defaultCalendarForNewReminders];
+	if (calendar != nil) {
+		return calendar;
+	}
+	NSArray<EKCalendar *> *calendars =
+		[store calendarsForEntityType:EKEntityTypeReminder];
+	return [calendars count] > 0 ? [calendars objectAtIndex:0] : nil;
+}
+
+extern "C" char *createAppleReminderJson(const char *title,
+										 const char *notes,
+										 double dueAtSeconds,
+										 int priority) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeReminder)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission",
+				@"Apple Reminders access has not been granted."));
+		}
+		NSString *titleString = [elizaNSStringFromCString(title)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		if ([titleString length] == 0) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Reminder title is required."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKCalendar *calendar = elizaDefaultReminderCalendar(store);
+		if (calendar == nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"No writable Apple Reminders list is available."));
+		}
+		EKReminder *reminder = [EKReminder reminderWithEventStore:store];
+		[reminder setTitle:titleString];
+		NSString *notesString = elizaNSStringFromCString(notes);
+		[reminder setNotes:[notesString length] > 0 ? notesString : nil];
+		[reminder setCalendar:calendar];
+		[reminder setPriority:priority];
+		elizaApplyReminderDueDate(reminder, dueAtSeconds);
+
+		NSError *error = nil;
+		BOOL ok = [store saveReminder:reminder commit:YES error:&error];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to create Apple reminder.")));
+		}
+		NSString *reminderId = [reminder calendarItemIdentifier] ?: @"";
+		return elizaCopyJson(elizaJsonOk(@{@"reminderId" : reminderId}));
+	}
+}
+
+extern "C" char *updateAppleReminderJson(const char *reminderId,
+										 const char *title,
+										 const char *notes,
+										 double dueAtSeconds,
+										 int priority) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeReminder)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission",
+				@"Apple Reminders access has not been granted."));
+		}
+		NSString *identifier = [elizaNSStringFromCString(reminderId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		NSString *titleString = [elizaNSStringFromCString(title)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		if ([identifier length] == 0 || [titleString length] == 0) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Reminder id and title are required."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKCalendarItem *item = [store calendarItemWithIdentifier:identifier];
+		if (item == nil || ![item isKindOfClass:[EKReminder class]]) {
+			return elizaCopyJson(elizaJsonError(
+				@"not_found", @"Apple reminder was not found."));
+		}
+		EKReminder *reminder = (EKReminder *)item;
+		[reminder setTitle:titleString];
+		NSString *notesString = elizaNSStringFromCString(notes);
+		[reminder setNotes:[notesString length] > 0 ? notesString : nil];
+		[reminder setPriority:priority];
+		elizaApplyReminderDueDate(reminder, dueAtSeconds);
+
+		NSError *error = nil;
+		BOOL ok = [store saveReminder:reminder commit:YES error:&error];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to update Apple reminder.")));
+		}
+		NSString *nextId = [reminder calendarItemIdentifier] ?: identifier;
+		return elizaCopyJson(elizaJsonOk(@{@"reminderId" : nextId}));
+	}
+}
+
+extern "C" char *deleteAppleReminderJson(const char *reminderId) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeReminder)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission",
+				@"Apple Reminders access has not been granted."));
+		}
+		NSString *identifier = [elizaNSStringFromCString(reminderId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		if ([identifier length] == 0) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Reminder id is required."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKCalendarItem *item = [store calendarItemWithIdentifier:identifier];
+		if (item == nil || ![item isKindOfClass:[EKReminder class]]) {
+			return elizaCopyJson(elizaJsonError(
+				@"not_found", @"Apple reminder was not found."));
+		}
+		NSError *error = nil;
+		BOOL ok = [store removeReminder:(EKReminder *)item commit:YES error:&error];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to delete Apple reminder.")));
+		}
+		return elizaCopyJson(elizaJsonOk(nil));
+	}
+}
+
+static NSString *elizaPayloadString(NSDictionary *payload, NSString *key);
+static NSArray *elizaPayloadArray(NSDictionary *payload, NSString *key);
+
+static NSISO8601DateFormatter *elizaISO8601FormatterWithFractionalSeconds(void) {
+	static NSISO8601DateFormatter *formatter = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		formatter = [[NSISO8601DateFormatter alloc] init];
+		formatter.formatOptions =
+			NSISO8601DateFormatWithInternetDateTime |
+			NSISO8601DateFormatWithFractionalSeconds;
+	});
+	return formatter;
+}
+
+static NSISO8601DateFormatter *elizaISO8601FormatterWithoutFractionalSeconds(void) {
+	static NSISO8601DateFormatter *formatter = nil;
+	static dispatch_once_t onceToken;
+	dispatch_once(&onceToken, ^{
+		formatter = [[NSISO8601DateFormatter alloc] init];
+		formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime;
+	});
+	return formatter;
+}
+
+static NSDate *elizaDateFromISO8601String(NSString *value) {
+	if ([value length] == 0) {
+		return nil;
+	}
+	NSDate *date =
+		[elizaISO8601FormatterWithFractionalSeconds() dateFromString:value];
+	if (date != nil) {
+		return date;
+	}
+	return [elizaISO8601FormatterWithoutFractionalSeconds() dateFromString:value];
+}
+
+static NSString *elizaISO8601StringFromDate(NSDate *date) {
+	if (date == nil) {
+		return @"";
+	}
+	return [elizaISO8601FormatterWithFractionalSeconds() stringFromDate:date];
+}
+
+static NSString *elizaEventStatusString(EKEventStatus status) {
+	switch (status) {
+		case EKEventStatusNone:
+			return @"none";
+		case EKEventStatusConfirmed:
+			return @"confirmed";
+		case EKEventStatusTentative:
+			return @"tentative";
+		case EKEventStatusCanceled:
+			return @"cancelled";
+	}
+	return @"unknown";
+}
+
+static NSString *elizaParticipantStatusString(EKParticipantStatus status) {
+	switch (status) {
+		case EKParticipantStatusUnknown:
+			return @"unknown";
+		case EKParticipantStatusPending:
+			return @"pending";
+		case EKParticipantStatusAccepted:
+			return @"accepted";
+		case EKParticipantStatusDeclined:
+			return @"declined";
+		case EKParticipantStatusTentative:
+			return @"tentative";
+		case EKParticipantStatusDelegated:
+			return @"delegated";
+		case EKParticipantStatusCompleted:
+			return @"completed";
+		case EKParticipantStatusInProcess:
+			return @"in_process";
+	}
+	return @"unknown";
+}
+
+static NSString *elizaParticipantEmail(EKParticipant *participant) {
+	NSURL *url = [participant URL];
+	if (url == nil) {
+		return @"";
+	}
+	if ([[[url scheme] lowercaseString] isEqualToString:@"mailto"]) {
+		return [[url resourceSpecifier] stringByRemovingPercentEncoding] ?: @"";
+	}
+	return @"";
+}
+
+static NSDictionary *elizaParticipantJson(EKParticipant *participant) {
+	NSString *email = elizaParticipantEmail(participant);
+	return @{
+		@"email" : [email length] > 0 ? email : (id)[NSNull null],
+		@"displayName" : [[participant name] length] > 0
+			? [participant name]
+			: (id)[NSNull null],
+		@"responseStatus" : elizaParticipantStatusString(
+			[participant participantStatus]),
+		@"self" : @([participant isCurrentUser]),
+		@"organizer" : @([participant participantRole] == EKParticipantRoleChair),
+		@"optional" :
+			@([participant participantRole] == EKParticipantRoleOptional),
+	};
+}
+
+static NSString *elizaHexColorFromCGColor(CGColorRef colorRef) {
+	if (colorRef == nil) {
+		return nil;
+	}
+	NSColor *color = [NSColor colorWithCGColor:colorRef];
+	NSColor *rgb =
+		[color colorUsingColorSpace:[NSColorSpace sRGBColorSpace]];
+	if (rgb == nil) {
+		return nil;
+	}
+	int r = (int)lrint(MAX(0, MIN(1, [rgb redComponent])) * 255.0);
+	int g = (int)lrint(MAX(0, MIN(1, [rgb greenComponent])) * 255.0);
+	int b = (int)lrint(MAX(0, MIN(1, [rgb blueComponent])) * 255.0);
+	return [NSString stringWithFormat:@"#%02X%02X%02X", r, g, b];
+}
+
+static EKCalendar *elizaDefaultEventCalendar(EKEventStore *store) {
+	EKCalendar *calendar = [store defaultCalendarForNewEvents];
+	if (calendar != nil && [calendar allowsContentModifications]) {
+		return calendar;
+	}
+	for (EKCalendar *candidate in [store calendarsForEntityType:EKEntityTypeEvent]) {
+		if ([candidate allowsContentModifications]) {
+			return candidate;
+		}
+	}
+	return nil;
+}
+
+static EKCalendar *elizaEventCalendarForIdentifier(EKEventStore *store,
+												   NSString *identifier,
+												   BOOL requireWritable) {
+	if ([identifier length] == 0 || [identifier isEqualToString:@"primary"]) {
+		return requireWritable ? elizaDefaultEventCalendar(store)
+							   : [store defaultCalendarForNewEvents];
+	}
+	for (EKCalendar *calendar in [store calendarsForEntityType:EKEntityTypeEvent]) {
+		if ([[calendar calendarIdentifier] isEqualToString:identifier]) {
+			if (requireWritable && ![calendar allowsContentModifications]) {
+				return nil;
+			}
+			return calendar;
+		}
+	}
+	return nil;
+}
+
+static NSDictionary *elizaCalendarJson(EKCalendar *calendar,
+									   EKCalendar *defaultCalendar) {
+	NSString *color = elizaHexColorFromCGColor([calendar CGColor]);
+	NSString *calendarId = [calendar calendarIdentifier] ?: @"";
+	NSString *defaultId = [defaultCalendar calendarIdentifier] ?: @"";
+	EKSource *source = [calendar source];
+	return @{
+		@"calendarId" : calendarId,
+		@"summary" : [calendar title] ?: @"Calendar",
+		@"description" : [[source title] length] > 0 ? [source title]
+													  : (id)[NSNull null],
+		@"primary" : @([calendarId length] > 0 &&
+					   [calendarId isEqualToString:defaultId]),
+		@"accessRole" : [calendar allowsContentModifications] ? @"writer"
+															  : @"reader",
+		@"backgroundColor" : color ?: (id)[NSNull null],
+		@"foregroundColor" : [NSNull null],
+		@"timeZone" : [[[NSTimeZone localTimeZone] name] length] > 0
+			? [[NSTimeZone localTimeZone] name]
+			: (id)[NSNull null],
+		@"selected" : @YES,
+	};
+}
+
+static NSDictionary *elizaEventJson(EKEvent *event) {
+	EKCalendar *calendar = [event calendar];
+	NSString *identifier =
+		[event calendarItemIdentifier] ?: [event eventIdentifier] ?: @"";
+	NSMutableArray *attendees = [NSMutableArray array];
+	NSArray<EKParticipant *> *eventAttendees = [event attendees] ?: @[];
+	for (EKParticipant *attendee in eventAttendees) {
+		[attendees addObject:elizaParticipantJson(attendee)];
+	}
+	id organizer = [event organizer] != nil
+		? (id)elizaParticipantJson([event organizer])
+		: (id)[NSNull null];
+	return @{
+		@"id" : identifier,
+		@"externalId" : identifier,
+		@"calendarId" : [calendar calendarIdentifier] ?: @"",
+		@"calendarSummary" : [calendar title] ?: @"",
+		@"title" : [[event title] length] > 0 ? [event title] : @"(untitled)",
+		@"description" : [event notes] ?: @"",
+		@"location" : [event location] ?: @"",
+		@"status" : elizaEventStatusString([event status]),
+		@"startAt" : elizaISO8601StringFromDate([event startDate]),
+		@"endAt" : elizaISO8601StringFromDate([event endDate]),
+		@"isAllDay" : @([event isAllDay]),
+		@"timezone" : [[event timeZone] name] ?: (id)[NSNull null],
+		@"htmlLink" : [NSNull null],
+		@"conferenceLink" : [NSNull null],
+		@"organizer" : organizer,
+		@"attendees" : attendees,
+	};
+}
+
+static NSDictionary *elizaAppleCalendarUnsupportedAttendeesError(void) {
+	return elizaJsonError(
+		@"unsupported_feature",
+		@"Apple Calendar does not allow this app to create or edit event invitees through EventKit. Remove attendees or use Google Calendar for invited meetings.");
+}
+
+static NSDictionary *elizaApplyEventPayload(EKEvent *event,
+											NSDictionary *payload,
+											EKEventStore *store,
+											BOOL requireTitle,
+											NSError **errorOut) {
+	(void)errorOut;
+	NSArray *attendees = elizaPayloadArray(payload, @"attendees");
+	if ([attendees count] > 0) {
+		return elizaAppleCalendarUnsupportedAttendeesError();
+	}
+	if ([payload objectForKey:@"title"] != nil || requireTitle) {
+		NSString *title = [elizaPayloadString(payload, @"title")
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		if ([title length] == 0) {
+			return elizaJsonError(@"native_error", @"Calendar event title is required.");
+		}
+		[event setTitle:title];
+	}
+	if ([payload objectForKey:@"description"] != nil ||
+		[payload objectForKey:@"notes"] != nil) {
+		NSString *notes = elizaPayloadString(
+			payload,
+			[payload objectForKey:@"description"] != nil ? @"description" : @"notes");
+		[event setNotes:[notes length] > 0 ? notes : nil];
+	}
+	if ([payload objectForKey:@"location"] != nil) {
+		NSString *location = elizaPayloadString(payload, @"location");
+		[event setLocation:[location length] > 0 ? location : nil];
+	}
+	if ([payload objectForKey:@"timeZone"] != nil) {
+		NSString *timeZoneName = elizaPayloadString(payload, @"timeZone");
+		NSTimeZone *timeZone = [NSTimeZone timeZoneWithName:timeZoneName];
+		if (timeZone != nil) {
+			[event setTimeZone:timeZone];
+		}
+	}
+	if ([payload objectForKey:@"calendarId"] != nil) {
+		EKCalendar *calendar = elizaEventCalendarForIdentifier(
+			store,
+			elizaPayloadString(payload, @"calendarId"),
+			YES);
+		if (calendar == nil) {
+			return elizaJsonError(
+				@"native_error",
+				@"The selected Apple Calendar is not writable or was not found.");
+		}
+		[event setCalendar:calendar];
+	}
+	if ([payload objectForKey:@"isAllDay"] != nil) {
+		id raw = [payload objectForKey:@"isAllDay"];
+		if ([raw isKindOfClass:[NSNumber class]]) {
+			[event setAllDay:[(NSNumber *)raw boolValue]];
+		}
+	}
+	if ([payload objectForKey:@"startAt"] != nil) {
+		NSDate *start = elizaDateFromISO8601String(
+			elizaPayloadString(payload, @"startAt"));
+		if (start == nil) {
+			return elizaJsonError(@"native_error", @"Calendar event startAt is invalid.");
+		}
+		[event setStartDate:start];
+	}
+	if ([payload objectForKey:@"endAt"] != nil) {
+		NSDate *end =
+			elizaDateFromISO8601String(elizaPayloadString(payload, @"endAt"));
+		if (end == nil) {
+			return elizaJsonError(@"native_error", @"Calendar event endAt is invalid.");
+		}
+		[event setEndDate:end];
+	}
+	if ([event startDate] == nil || [event endDate] == nil) {
+		return elizaJsonError(
+			@"native_error",
+			@"Calendar event startAt and endAt are required.");
+	}
+	if ([[event endDate] timeIntervalSinceDate:[event startDate]] <= 0) {
+		return elizaJsonError(
+			@"native_error",
+			@"Calendar event endAt must be later than startAt.");
+	}
+	if ([event calendar] == nil) {
+		EKCalendar *calendar = elizaDefaultEventCalendar(store);
+		if (calendar == nil) {
+			return elizaJsonError(
+				@"native_error",
+				@"No writable Apple Calendar is available.");
+		}
+		[event setCalendar:calendar];
+	}
+	return nil;
+}
+
+extern "C" char *listAppleCalendarsJson(void) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeEvent)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Calendar access has not been granted."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKCalendar *defaultCalendar = [store defaultCalendarForNewEvents];
+		NSMutableArray *calendars = [NSMutableArray array];
+		for (EKCalendar *calendar in [store calendarsForEntityType:EKEntityTypeEvent]) {
+			[calendars addObject:elizaCalendarJson(calendar, defaultCalendar)];
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"calendars" : calendars}));
+	}
+}
+
+extern "C" char *listAppleCalendarEventsJson(const char *calendarId,
+											 double startSeconds,
+											 double endSeconds) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeEvent)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Calendar access has not been granted."));
+		}
+		if (endSeconds <= startSeconds) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Calendar event window is invalid."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		NSString *identifier = [elizaNSStringFromCString(calendarId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		NSArray<EKCalendar *> *calendars = nil;
+		if ([identifier length] > 0 && ![identifier isEqualToString:@"all"]) {
+			EKCalendar *calendar =
+				elizaEventCalendarForIdentifier(store, identifier, NO);
+			if (calendar == nil) {
+				return elizaCopyJson(elizaJsonError(
+					@"not_found", @"Apple Calendar was not found."));
+			}
+			calendars = @[calendar];
+		}
+		NSDate *start = [NSDate dateWithTimeIntervalSince1970:startSeconds];
+		NSDate *end = [NSDate dateWithTimeIntervalSince1970:endSeconds];
+		NSPredicate *predicate = [store predicateForEventsWithStartDate:start
+																endDate:end
+															  calendars:calendars];
+		NSArray<EKEvent *> *events =
+			[[store eventsMatchingPredicate:predicate]
+				sortedArrayUsingComparator:^NSComparisonResult(EKEvent *left,
+															   EKEvent *right) {
+			return [[left startDate] compare:[right startDate]];
+		}];
+		NSMutableArray *rows = [NSMutableArray array];
+		for (EKEvent *event in events) {
+			[rows addObject:elizaEventJson(event)];
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"events" : rows}));
+	}
+}
+
+extern "C" char *createAppleCalendarEventJson(const char *payloadJson) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeEvent)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Calendar access has not been granted."));
+		}
+		NSDictionary *payload = elizaParseJsonObject(payloadJson);
+		if (payload == nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Invalid calendar event payload."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKEvent *event = [EKEvent eventWithEventStore:store];
+		NSDictionary *payloadError =
+			elizaApplyEventPayload(event, payload, store, YES, nil);
+		if (payloadError != nil) {
+			return elizaCopyJson(payloadError);
+		}
+		NSError *error = nil;
+		BOOL ok = [store saveEvent:event
+							   span:EKSpanThisEvent
+							 commit:YES
+							  error:&error];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to create Apple Calendar event.")));
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"event" : elizaEventJson(event)}));
+	}
+}
+
+extern "C" char *updateAppleCalendarEventJson(const char *eventId,
+											 const char *payloadJson) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeEvent)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Calendar access has not been granted."));
+		}
+		NSString *identifier = [elizaNSStringFromCString(eventId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		NSDictionary *payload = elizaParseJsonObject(payloadJson);
+		if ([identifier length] == 0 || payload == nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Calendar event id and payload are required."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKCalendarItem *item = [store calendarItemWithIdentifier:identifier];
+		if (item == nil || ![item isKindOfClass:[EKEvent class]]) {
+			return elizaCopyJson(elizaJsonError(
+				@"not_found", @"Apple Calendar event was not found."));
+		}
+		EKEvent *event = (EKEvent *)item;
+		if (![[event calendar] allowsContentModifications]) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Apple Calendar event is not writable."));
+		}
+		NSDictionary *payloadError =
+			elizaApplyEventPayload(event, payload, store, NO, nil);
+		if (payloadError != nil) {
+			return elizaCopyJson(payloadError);
+		}
+		NSError *error = nil;
+		BOOL ok = [store saveEvent:event
+							   span:EKSpanThisEvent
+							 commit:YES
+							  error:&error];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to update Apple Calendar event.")));
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"event" : elizaEventJson(event)}));
+	}
+}
+
+extern "C" char *deleteAppleCalendarEventJson(const char *eventId) {
+	@autoreleasepool {
+		if (!elizaEventKitHasFullAccess(EKEntityTypeEvent)) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Calendar access has not been granted."));
+		}
+		NSString *identifier = [elizaNSStringFromCString(eventId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		if ([identifier length] == 0) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Calendar event id is required."));
+		}
+		EKEventStore *store = [[EKEventStore alloc] init];
+		EKCalendarItem *item = [store calendarItemWithIdentifier:identifier];
+		if (item == nil || ![item isKindOfClass:[EKEvent class]]) {
+			return elizaCopyJson(elizaJsonError(
+				@"not_found", @"Apple Calendar event was not found."));
+		}
+		EKEvent *event = (EKEvent *)item;
+		NSError *error = nil;
+		BOOL ok = [store removeEvent:event
+								  span:EKSpanThisEvent
+								commit:YES
+								 error:&error];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to delete Apple Calendar event.")));
+		}
+		return elizaCopyJson(elizaJsonOk(nil));
+	}
+}
+
+static NSArray<id<CNKeyDescriptor>> *elizaContactKeys(void) {
+	return @[
+		CNContactIdentifierKey,
+		CNContactGivenNameKey,
+		CNContactFamilyNameKey,
+		CNContactPhoneNumbersKey,
+		CNContactEmailAddressesKey,
+		[CNContactFormatter
+			descriptorForRequiredKeysForStyle:CNContactFormatterStyleFullName],
+	];
+}
+
+static NSString *elizaContactDisplayName(CNContact *contact) {
+	NSString *name = [CNContactFormatter
+		stringFromContact:contact
+					style:CNContactFormatterStyleFullName];
+	if ([name length] > 0) {
+		return name;
+	}
+	NSString *joined =
+		[[NSString stringWithFormat:@"%@ %@", [contact givenName], [contact familyName]]
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+	return [joined length] > 0 ? joined : @"";
+}
+
+static NSDictionary *elizaPhoneEntry(CNLabeledValue<CNPhoneNumber *> *entry) {
+	return @{
+		@"label" : [entry label] ?: [NSNull null],
+		@"value" : [[entry value] stringValue] ?: @"",
+	};
+}
+
+static NSDictionary *elizaEmailEntry(CNLabeledValue<NSString *> *entry) {
+	return @{
+		@"label" : [entry label] ?: [NSNull null],
+		@"value" : [entry value] ?: @"",
+	};
+}
+
+static NSDictionary *elizaFullContactJson(CNContact *contact) {
+	NSMutableArray *phones = [NSMutableArray array];
+	for (CNLabeledValue<CNPhoneNumber *> *phone in [contact phoneNumbers]) {
+		[phones addObject:elizaPhoneEntry(phone)];
+	}
+	NSMutableArray *emails = [NSMutableArray array];
+	for (CNLabeledValue<NSString *> *email in [contact emailAddresses]) {
+		[emails addObject:elizaEmailEntry(email)];
+	}
+	return @{
+		@"id" : [contact identifier] ?: @"",
+		@"name" : elizaContactDisplayName(contact),
+		@"firstName" : [[contact givenName] length] > 0
+			? [contact givenName]
+			: (id)[NSNull null],
+		@"lastName" : [[contact familyName] length] > 0
+			? [contact familyName]
+			: (id)[NSNull null],
+		@"phones" : phones,
+		@"emails" : emails,
+	};
+}
+
+extern "C" char *loadContactsJson(void) {
+	@autoreleasepool {
+		if (!elizaContactsHasAccess()) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Contacts access has not been granted."));
+		}
+		CNContactStore *store = [[CNContactStore alloc] init];
+		CNContactFetchRequest *request =
+			[[CNContactFetchRequest alloc] initWithKeysToFetch:elizaContactKeys()];
+		[request setUnifyResults:YES];
+		NSMutableArray *rows = [NSMutableArray array];
+		NSError *error = nil;
+		BOOL ok = [store
+			enumerateContactsWithFetchRequest:request
+										error:&error
+								   usingBlock:^(CNContact *contact, BOOL *stop) {
+			(void)stop;
+			NSString *name = elizaContactDisplayName(contact);
+			for (CNLabeledValue<CNPhoneNumber *> *phone in [contact phoneNumbers]) {
+				NSString *value = [[phone value] stringValue] ?: @"";
+				if ([value length] > 0 && [name length] > 0) {
+					[rows addObject:@{
+						@"kind" : @"phone",
+						@"handle" : value,
+						@"name" : name,
+					}];
+				}
+			}
+			for (CNLabeledValue<NSString *> *email in [contact emailAddresses]) {
+				NSString *value = [email value] ?: @"";
+				if ([value length] > 0 && [name length] > 0) {
+					[rows addObject:@{
+						@"kind" : @"email",
+						@"handle" : value,
+						@"name" : name,
+					}];
+				}
+			}
+		}];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to read Apple Contacts.")));
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"contacts" : rows}));
+	}
+}
+
+extern "C" char *listAllContactsJson(void) {
+	@autoreleasepool {
+		if (!elizaContactsHasAccess()) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Contacts access has not been granted."));
+		}
+		CNContactStore *store = [[CNContactStore alloc] init];
+		CNContactFetchRequest *request =
+			[[CNContactFetchRequest alloc] initWithKeysToFetch:elizaContactKeys()];
+		[request setUnifyResults:YES];
+		NSMutableArray *contacts = [NSMutableArray array];
+		NSError *error = nil;
+		BOOL ok = [store
+			enumerateContactsWithFetchRequest:request
+										error:&error
+								   usingBlock:^(CNContact *contact, BOOL *stop) {
+			(void)stop;
+			[contacts addObject:elizaFullContactJson(contact)];
+		}];
+		if (!ok) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to list Apple Contacts.")));
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"contacts" : contacts}));
+	}
+}
+
+static NSString *elizaPayloadString(NSDictionary *payload, NSString *key) {
+	id value = [payload objectForKey:key];
+	return [value isKindOfClass:[NSString class]] ? (NSString *)value : @"";
+}
+
+static NSArray *elizaPayloadArray(NSDictionary *payload, NSString *key) {
+	id value = [payload objectForKey:key];
+	return [value isKindOfClass:[NSArray class]] ? (NSArray *)value : @[];
+}
+
+static CNLabeledValue<CNPhoneNumber *> *elizaPayloadPhone(NSDictionary *entry) {
+	NSString *value = elizaPayloadString(entry, @"value");
+	if ([value length] == 0) {
+		return nil;
+	}
+	NSString *label = elizaPayloadString(entry, @"label");
+	if ([label length] == 0) {
+		label = CNLabelPhoneNumberMobile;
+	}
+	return [CNLabeledValue labeledValueWithLabel:label
+										   value:[CNPhoneNumber
+													 phoneNumberWithStringValue:value]];
+}
+
+static CNLabeledValue<NSString *> *elizaPayloadEmail(NSDictionary *entry) {
+	NSString *value = elizaPayloadString(entry, @"value");
+	if ([value length] == 0) {
+		return nil;
+	}
+	NSString *label = elizaPayloadString(entry, @"label");
+	if ([label length] == 0) {
+		label = CNLabelHome;
+	}
+	return [CNLabeledValue labeledValueWithLabel:label value:value];
+}
+
+static void elizaApplyContactPayload(CNMutableContact *contact,
+									 NSDictionary *payload) {
+	if ([payload objectForKey:@"firstName"] != nil) {
+		[contact setGivenName:elizaPayloadString(payload, @"firstName")];
+	}
+	if ([payload objectForKey:@"lastName"] != nil) {
+		[contact setFamilyName:elizaPayloadString(payload, @"lastName")];
+	}
+	NSMutableArray<CNLabeledValue<CNPhoneNumber *> *> *phones =
+		[[contact phoneNumbers] mutableCopy];
+	for (id value in elizaPayloadArray(payload, @"removePhones")) {
+		if (![value isKindOfClass:[NSString class]]) {
+			continue;
+		}
+		NSString *needle = (NSString *)value;
+		NSIndexSet *matches = [phones
+			indexesOfObjectsPassingTest:
+				^BOOL(CNLabeledValue<CNPhoneNumber *> *entry,
+					  NSUInteger idx,
+					  BOOL *stop) {
+			(void)idx;
+			(void)stop;
+			return [[[entry value] stringValue] isEqualToString:needle];
+		}];
+		[phones removeObjectsAtIndexes:matches];
+	}
+	for (id value in elizaPayloadArray(payload, @"addPhones")) {
+		if (![value isKindOfClass:[NSDictionary class]]) {
+			continue;
+		}
+		CNLabeledValue<CNPhoneNumber *> *phone =
+			elizaPayloadPhone((NSDictionary *)value);
+		if (phone != nil) {
+			[phones addObject:phone];
+		}
+	}
+	if ([payload objectForKey:@"phones"] != nil) {
+		[phones removeAllObjects];
+		for (id value in elizaPayloadArray(payload, @"phones")) {
+			if (![value isKindOfClass:[NSDictionary class]]) {
+				continue;
+			}
+			CNLabeledValue<CNPhoneNumber *> *phone =
+				elizaPayloadPhone((NSDictionary *)value);
+			if (phone != nil) {
+				[phones addObject:phone];
+			}
+		}
+	}
+	[contact setPhoneNumbers:phones];
+
+	NSMutableArray<CNLabeledValue<NSString *> *> *emails =
+		[[contact emailAddresses] mutableCopy];
+	for (id value in elizaPayloadArray(payload, @"removeEmails")) {
+		if (![value isKindOfClass:[NSString class]]) {
+			continue;
+		}
+		NSString *needle = (NSString *)value;
+		NSIndexSet *matches = [emails
+			indexesOfObjectsPassingTest:
+				^BOOL(CNLabeledValue<NSString *> *entry,
+					  NSUInteger idx,
+					  BOOL *stop) {
+			(void)idx;
+			(void)stop;
+			return [[entry value] isEqualToString:needle];
+		}];
+		[emails removeObjectsAtIndexes:matches];
+	}
+	for (id value in elizaPayloadArray(payload, @"addEmails")) {
+		if (![value isKindOfClass:[NSDictionary class]]) {
+			continue;
+		}
+		CNLabeledValue<NSString *> *email =
+			elizaPayloadEmail((NSDictionary *)value);
+		if (email != nil) {
+			[emails addObject:email];
+		}
+	}
+	if ([payload objectForKey:@"emails"] != nil) {
+		[emails removeAllObjects];
+		for (id value in elizaPayloadArray(payload, @"emails")) {
+			if (![value isKindOfClass:[NSDictionary class]]) {
+				continue;
+			}
+			CNLabeledValue<NSString *> *email =
+				elizaPayloadEmail((NSDictionary *)value);
+			if (email != nil) {
+				[emails addObject:email];
+			}
+		}
+	}
+	[contact setEmailAddresses:emails];
+}
+
+extern "C" char *addContactJson(const char *payloadJson) {
+	@autoreleasepool {
+		if (!elizaContactsHasAccess()) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Contacts access has not been granted."));
+		}
+		NSDictionary *payload = elizaParseJsonObject(payloadJson);
+		if (payload == nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Invalid contact payload."));
+		}
+		CNMutableContact *contact = [[CNMutableContact alloc] init];
+		elizaApplyContactPayload(contact, payload);
+		CNSaveRequest *request = [[CNSaveRequest alloc] init];
+		[request addContact:contact toContainerWithIdentifier:nil];
+		CNContactStore *store = [[CNContactStore alloc] init];
+		NSError *error = nil;
+		if (![store executeSaveRequest:request error:&error]) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to create Apple contact.")));
+		}
+		return elizaCopyJson(elizaJsonOk(@{@"id" : [contact identifier] ?: @""}));
+	}
+}
+
+extern "C" char *updateContactJson(const char *personId,
+								   const char *payloadJson) {
+	@autoreleasepool {
+		if (!elizaContactsHasAccess()) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Contacts access has not been granted."));
+		}
+		NSString *identifier = [elizaNSStringFromCString(personId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		NSDictionary *payload = elizaParseJsonObject(payloadJson);
+		if ([identifier length] == 0 || payload == nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Contact id and payload are required."));
+		}
+		CNContactStore *store = [[CNContactStore alloc] init];
+		NSError *error = nil;
+		CNContact *existing =
+			[store unifiedContactWithIdentifier:identifier
+									keysToFetch:elizaContactKeys()
+										  error:&error];
+		if (existing == nil || error != nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"not_found",
+				elizaErrorMessage(error, @"Apple contact was not found.")));
+		}
+		CNMutableContact *mutableContact = [existing mutableCopy];
+		elizaApplyContactPayload(mutableContact, payload);
+		CNSaveRequest *request = [[CNSaveRequest alloc] init];
+		[request updateContact:mutableContact];
+		error = nil;
+		if (![store executeSaveRequest:request error:&error]) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to update Apple contact.")));
+		}
+		return elizaCopyJson(elizaJsonOk(nil));
+	}
+}
+
+extern "C" char *deleteContactJson(const char *personId) {
+	@autoreleasepool {
+		if (!elizaContactsHasAccess()) {
+			return elizaCopyJson(elizaJsonError(
+				@"permission", @"Apple Contacts access has not been granted."));
+		}
+		NSString *identifier = [elizaNSStringFromCString(personId)
+			stringByTrimmingCharactersInSet:[NSCharacterSet
+											 whitespaceAndNewlineCharacterSet]];
+		if ([identifier length] == 0) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error", @"Contact id is required."));
+		}
+		CNContactStore *store = [[CNContactStore alloc] init];
+		NSError *error = nil;
+		CNContact *existing =
+			[store unifiedContactWithIdentifier:identifier
+									keysToFetch:elizaContactKeys()
+										  error:&error];
+		if (existing == nil || error != nil) {
+			return elizaCopyJson(elizaJsonError(
+				@"not_found",
+				elizaErrorMessage(error, @"Apple contact was not found.")));
+		}
+		CNMutableContact *mutableContact = [existing mutableCopy];
+		CNSaveRequest *request = [[CNSaveRequest alloc] init];
+		[request deleteContact:mutableContact];
+		error = nil;
+		if (![store executeSaveRequest:request error:&error]) {
+			return elizaCopyJson(elizaJsonError(
+				@"native_error",
+				elizaErrorMessage(error, @"Failed to delete Apple contact.")));
+		}
+		return elizaCopyJson(elizaJsonOk(nil));
+	}
+}
+
+extern "C" void freeNativeCString(char *value) {
+	if (value != nullptr) {
+		free(value);
+	}
+}
+
+extern "C" char *createSecurityScopedBookmark(const char *path) {
+	@autoreleasepool {
+		if (path == nullptr || path[0] == '\0') {
+			return nullptr;
+		}
+		NSString *pathString = [NSString stringWithUTF8String:path];
+		if (pathString == nil) {
+			return nullptr;
+		}
+		NSURL *url = [NSURL fileURLWithPath:pathString isDirectory:YES];
+		if (url == nil) {
+			return nullptr;
+		}
+		NSError *error = nil;
+		NSData *bookmark = [url
+			bookmarkDataWithOptions:NSURLBookmarkCreationWithSecurityScope
+			includingResourceValuesForKeys:nil
+			relativeToURL:nil
+			error:&error];
+		if (bookmark == nil || error != nil) {
+			return nullptr;
+		}
+		return elizaCopyCString([bookmark base64EncodedStringWithOptions:0]);
+	}
+}
+
+extern "C" char *startAccessingSecurityScopedBookmark(const char *base64) {
+	@autoreleasepool {
+		if (base64 == nullptr || base64[0] == '\0') {
+			return nullptr;
+		}
+		NSString *base64String = [NSString stringWithUTF8String:base64];
+		if (base64String == nil) {
+			return nullptr;
+		}
+		NSData *bookmark = [[NSData alloc]
+			initWithBase64EncodedString:base64String
+			options:NSDataBase64DecodingIgnoreUnknownCharacters];
+		if (bookmark == nil) {
+			return nullptr;
+		}
+		BOOL stale = NO;
+		NSError *error = nil;
+		NSURL *url = [NSURL URLByResolvingBookmarkData:bookmark
+			options:NSURLBookmarkResolutionWithSecurityScope
+			relativeToURL:nil
+			bookmarkDataIsStale:&stale
+			error:&error];
+		if (url == nil || error != nil) {
+			return nullptr;
+		}
+		if (![url startAccessingSecurityScopedResource]) {
+			return nullptr;
+		}
+		[elizaSecurityScopedUrls() addObject:url];
+		return elizaCopyCString([url path]);
+	}
+}
+
+extern "C" void stopAccessingSecurityScopedBookmarks(void) {
+	@autoreleasepool {
+		NSMutableArray<NSURL *> *urls = elizaSecurityScopedUrls();
+		for (NSURL *url in urls) {
+			[url stopAccessingSecurityScopedResource];
+		}
+		[urls removeAllObjects];
+	}
 }
 
 extern "C" bool enableWindowVibrancy(void *windowPtr) {

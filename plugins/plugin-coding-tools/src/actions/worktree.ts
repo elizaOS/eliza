@@ -10,15 +10,23 @@ import {
 
 import { failureToActionResult, readStringParam } from "../lib/format.js";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
-import { enterWorktreeAction } from "./enter-worktree.js";
-import { exitWorktreeAction } from "./exit-worktree.js";
+import { enterWorktreeHandler } from "./enter-worktree.js";
+import { exitWorktreeHandler } from "./exit-worktree.js";
 
 const WORKTREE_OPERATIONS = ["enter", "exit"] as const;
 type WorktreeOperation = (typeof WORKTREE_OPERATIONS)[number];
 
-const WORKTREE_ACTIONS: Record<WorktreeOperation, Action> = {
-  enter: enterWorktreeAction,
-  exit: exitWorktreeAction,
+type WorktreeHandler = (
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+  callback: HandlerCallback | undefined,
+) => Promise<ActionResult>;
+
+const WORKTREE_ACTIONS: Record<WorktreeOperation, WorktreeHandler> = {
+  enter: enterWorktreeHandler,
+  exit: exitWorktreeHandler,
 };
 
 const WORKTREE_OPERATION_ALIASES: Record<string, WorktreeOperation> = {
@@ -108,7 +116,8 @@ export const worktreeAction: Action = {
         message: "WORKTREE requires action=enter/exit",
       });
     }
-    const result = await WORKTREE_ACTIONS[operation].handler(
+    const handler = WORKTREE_ACTIONS[operation];
+    const result = await handler(
       runtime,
       message,
       state,

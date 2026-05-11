@@ -1,5 +1,6 @@
 package ai.elizaos.app;
 
+import android.content.Context;
 import android.webkit.JavascriptInterface;
 
 /**
@@ -28,11 +29,32 @@ public final class ElizaNativeBridge {
 
     public static final String JS_NAME = "ElizaNative";
 
+    private final Context appContext;
+
+    public ElizaNativeBridge(Context context) {
+        this.appContext = context.getApplicationContext();
+    }
+
     @JavascriptInterface
     public String getLocalAgentToken() {
         String token = ElizaAgentService.localAgentToken();
         if (token == null) return null;
         String trimmed = token.trim();
         return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    @JavascriptInterface
+    public String getAndroidVirtualization() {
+        return AndroidVirtualizationBridge.probeJson(appContext);
+    }
+
+    @JavascriptInterface
+    public boolean isAndroidVirtualizationAvailable() {
+        return AndroidVirtualizationBridge.probe(appContext).available;
+    }
+
+    @JavascriptInterface
+    public String requestAndroidVirtualization(String requestJson) {
+        return AndroidVirtualizationBridge.request(appContext, requestJson);
     }
 }

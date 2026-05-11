@@ -194,6 +194,7 @@ import { handleAppsRoutes } from "./apps-routes.ts";
 import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
 import { handleBugReportRoutes } from "./bug-report-routes.ts";
+import { handleBuildVariantRoutes } from "./build-variant-routes.ts";
 import { handleCharacterRoutes } from "./character-routes.ts";
 import {
   initSse as initSseFromChatRoutes,
@@ -1785,6 +1786,11 @@ async function handleRequest(
     return;
   }
 
+  // ─ GET /api/build/variant — desktop build variant + platform ─────────
+  if (handleBuildVariantRoutes({ req, res, method, pathname, json })) {
+    return;
+  }
+
   // ── Onboarding GET routes (extracted to onboarding-routes.ts) ─────────
   if (
     await handleOnboardingRoutes({
@@ -2829,6 +2835,14 @@ async function handleRequest(
       url,
       runtime: state.runtime,
       isAuthorized: () => isAuthorized(req),
+      hostContext: {
+        config: state.config as unknown as Record<string, unknown>,
+        saveConfig: (nextConfig) => {
+          state.config = nextConfig as unknown as ElizaConfig;
+          saveElizaConfig(state.config);
+        },
+        restartRuntime,
+      },
     })
   ) {
     return;
@@ -3275,7 +3289,7 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  void attachMobileDeviceBridgeToServer(server).catch((err) => {
+  void attachMobileDeviceBridgeToServer(server).catch((err: unknown) => {
     logger.warn(
       "[eliza-api] Failed to attach mobile device bridge:",
       err instanceof Error ? err.message : String(err),

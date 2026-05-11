@@ -122,6 +122,8 @@ type AppCoreRuntimeModule = {
     options: AccountPoolCredentialsOptions,
   ) => Promise<void> | void;
   startAccountPoolKeepAlive: () => void;
+  getBuildVariant: () => "store" | "direct";
+  isStoreBuild: () => boolean;
 };
 
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
@@ -254,6 +256,15 @@ async function loadRequiredPluginSql(): Promise<
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
+    if (packageName === "@elizaos/plugin-agent-orchestrator") {
+      return await import("@elizaos/plugin-agent-orchestrator");
+    }
+    if (packageName === "@elizaos/plugin-shell") {
+      return await import("@elizaos/plugin-shell");
+    }
+    if (packageName === "@elizaos/plugin-coding-tools") {
+      return await import("@elizaos/plugin-coding-tools");
+    }
     return await import(packageName);
   } catch {
     return null;
@@ -338,8 +349,10 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginLocalEmbedding,
       pluginAgentOrchestrator,
       pluginShell,
+      pluginCodingTools,
       pluginCommands,
       pluginVideo,
+      pluginBackgroundRunner,
       pluginElizacloud,
       pluginOllama,
       pluginAnthropic,
@@ -349,8 +362,10 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       getPluginLocalEmbedding(),
       getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
       getOptionalPlugin("@elizaos/plugin-shell"),
+      getOptionalPlugin("@elizaos/plugin-coding-tools"),
       getOptionalPlugin("@elizaos/plugin-commands"),
       getOptionalPlugin("@elizaos/plugin-video"),
+      getOptionalPlugin("@elizaos/plugin-background-runner"),
       getOptionalPlugin("@elizaos/plugin-elizacloud"),
       getOptionalPlugin("@elizaos/plugin-ollama"),
       getOptionalPlugin("@elizaos/plugin-anthropic"),
@@ -367,9 +382,15 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         ? { "agent-orchestrator": pluginAgentOrchestrator }
         : {}),
       ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
+      ...(pluginCodingTools
+        ? { "@elizaos/plugin-coding-tools": pluginCodingTools }
+        : {}),
       // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
       ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
       ...(pluginVideo ? { "@elizaos/plugin-video": pluginVideo } : {}),
+      ...(pluginBackgroundRunner
+        ? { "@elizaos/plugin-background-runner": pluginBackgroundRunner }
+        : {}),
       ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
       ...(pluginAnthropic
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
@@ -2243,6 +2264,13 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     "PARALLAX_AIDER_PROVIDER",
     "PARALLAX_AIDER_MODEL_POWERFUL",
     "PARALLAX_AIDER_MODEL_FAST",
+    // AOSP/local coding-tool policy and shell runtime controls.
+    "CODING_TOOLS_WORKSPACE_ROOTS",
+    "CODING_TOOLS_BLOCKED_PATHS",
+    "CODING_TOOLS_BLOCKED_PATHS_ADD",
+    "CODING_TOOLS_SHELL",
+    "SHELL_ALLOWED_DIRECTORY",
+    "ELIZA_RUNTIME_MODE",
     // Custom credential forwarding — intentionally broad: users configure which env vars
     // to forward to coding agents via this comma-separated key list (e.g. MCP server tokens).
     "CUSTOM_CREDENTIAL_KEYS",
@@ -2771,7 +2799,20 @@ export async function startEliza(
   // eliza.json + config.env + sensitive process.env keys into the OS-keychain
   // vault, then resolve any vault://KEY sentinels in `config.env` so the
   // legacy hydration loop below sees real values.
-  {
+  //
+  // Skipped on mobile. `hydrateWalletKeysFromNodePlatformSecureStore` and
+  // `runVaultBootstrap` both reach for the OS keychain through
+  // `defaultMasterKey().load()` (packages/vault/src/master-key.ts:217)
+  // and open a second PGlite worker at `<stateDir>/.vault-pglite/`. Neither
+  // is meaningful on Android: there is no D-Bus session for the libsecret
+  // backend (vault falls back to an ELIZA_VAULT_PASSPHRASE-derived key,
+  // which `ElizaAgentService` already sets per-install from ANDROID_ID),
+  // the spawned bun process has no sensitive secrets to migrate (those
+  // arrive through the service env — per-boot bearer token, llama config),
+  // and the second PGlite worker just doubles disk + RAM pressure on a
+  // 4 GB device. Mirrors the `if (!isMobilePlatform()) { ... }` guard at
+  // line ~2888 around the `applyCloudConfigToEnv` block.
+  if (!isMobilePlatform()) {
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
@@ -2989,6 +3030,28 @@ export async function startEliza(
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
+
+  // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
+  // policy is incompatible with running an embedded local AgentRuntime, so
+  // store builds must route to Eliza Cloud. If the cloud config is missing,
+  // fail loudly and route the user to onboarding.
+  const { isStoreBuild } = await importAppCoreRuntime();
+  if (isStoreBuild()) {
+    if (deploymentTarget.runtime === "local") {
+      throw new Error(
+        "[eliza] Store-variant builds cannot run a local agent. " +
+          "Pair an Eliza Cloud account in onboarding, or switch to the direct download build.",
+      );
+    }
+    if (!config.cloud?.apiKey?.trim() || !config.cloud?.agentId?.trim()) {
+      throw new Error(
+        "[eliza] Store-variant build requires a paired Eliza Cloud account. " +
+          "Run onboarding to link Eliza Cloud, or switch to the direct download build.",
+      );
+    }
+    return startInCloudMode(config, config.cloud.agentId, opts);
+  }
+
   if (
     deploymentTarget.runtime === "cloud" &&
     deploymentTarget.provider === "elizacloud" &&

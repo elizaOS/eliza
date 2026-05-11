@@ -111,7 +111,11 @@ export async function forwardRemoteCloudMutation(
   if (snapshot.mode !== "remote") return false;
   if (!shouldForwardToRemoteTarget(url.pathname, method)) return false;
   if (!snapshot.remoteApiBase) {
-    sendJsonError(res, 503, "Remote target not configured");
+    sendJsonError(
+      res,
+      snapshot.remoteApiBaseError ? 400 : 503,
+      snapshot.remoteApiBaseError ?? "Remote target not configured",
+    );
     return true;
   }
 
@@ -144,8 +148,7 @@ export async function forwardRemoteCloudMutation(
 
   const responseBody = await upstream.arrayBuffer();
   res.writeHead(upstream.status, {
-    "content-type":
-      upstream.headers.get("content-type") ?? "application/json",
+    "content-type": upstream.headers.get("content-type") ?? "application/json",
   });
   res.end(Buffer.from(responseBody));
   return true;
