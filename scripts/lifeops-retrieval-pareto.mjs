@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Wave 2-C top-K Pareto sweep.
+ * Top-K Pareto sweep for action retrieval.
  *
  * Reads measured trajectories (those with `perStageScores` + `fusedTopK`
  * + `correctActions`) and, for each candidate top-K in

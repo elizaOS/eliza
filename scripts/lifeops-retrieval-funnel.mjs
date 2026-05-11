@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Wave 2-C funnel analyzer.
+ * Retrieval funnel analyzer.
  *
  * Walks `~/.milady/trajectories/` (or `--input <dir>`), reads every JSON
  * file, and for each `toolSearch` stage that has `perStageScores` plus a
