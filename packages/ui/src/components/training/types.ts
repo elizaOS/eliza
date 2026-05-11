@@ -60,3 +60,30 @@ export interface CreateJobRequest {
   epochs: number;
   run_name?: string;
 }
+
+/**
+ * Running cost snapshot for a Vast.ai training job (M9 budget surface).
+ *
+ * Mirrors `VastJobBudget` in the server. Field names are lowercase_snake
+ * to match the wire format directly — the python module is the source of
+ * truth so we never reshape on the boundary.
+ */
+export interface TrainingBudget {
+  job_id: string;
+  instance_id: number | null;
+  pipeline: string;
+  run_name: string;
+  gpu_name: string;
+  num_gpus: number;
+  gpu_sku: string;
+  state: string;
+  uptime_seconds: number;
+  uptime_pretty: string;
+  dph_total: number;
+  total_so_far_usd: number;
+  soft_cap_usd: number | null;
+  hard_cap_usd: number | null;
+  over_soft: boolean;
+  over_hard: boolean;
+  fetched_at: number;
+}
