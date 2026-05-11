@@ -27,8 +27,12 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const jsonPath = path.resolve(args.json ?? path.join(here, "ios-physical-device-smoke-latest.json"));
-const outPath = path.resolve(args.out ?? path.join(here, "ios-physical-device-smoke.md"));
+const jsonPath = path.resolve(
+  args.json ?? path.join(here, "ios-physical-device-smoke-latest.json"),
+);
+const outPath = path.resolve(
+  args.out ?? path.join(here, "ios-physical-device-smoke.md"),
+);
 
 const data = JSON.parse(fs.readFileSync(jsonPath, "utf8"));
 
@@ -39,12 +43,14 @@ function extractXcTestSummary(stdoutTail) {
   const cases = [];
   // xcodebuild prints e.g.
   //   Test Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testFoo]' passed (0.001 seconds).
-  const re = /Test Case '-\[[^\] ]+ ([A-Za-z0-9_]+)\]' (passed|failed) \(([0-9.]+) seconds\)/g;
-  let m;
-  while ((m = re.exec(text)) !== null) {
+  const re =
+    /Test Case '-\[[^\] ]+ ([A-Za-z0-9_]+)\]' (passed|failed) \(([0-9.]+) seconds\)/g;
+  for (const m of text.matchAll(re)) {
     cases.push({ name: m[1], result: m[2], seconds: Number(m[3]) });
   }
-  const totalMatch = text.match(/Executed (\d+) tests?, with (\d+) failures \((\d+) unexpected\)/);
+  const totalMatch = text.match(
+    /Executed (\d+) tests?, with (\d+) failures \((\d+) unexpected\)/,
+  );
   const succeeded = /\*\* TEST SUCCEEDED \*\*/.test(text);
   return {
     cases,
@@ -76,15 +82,21 @@ const model =
   dev.model ??
   (udidPrefix && APPLE_UDID_PREFIX_MODEL[udidPrefix]
     ? APPLE_UDID_PREFIX_MODEL[udidPrefix]
-    : dev.name ?? "unknown device");
-const iosVersion = dev.version ?? dev.matchedFromOfflineDevice?.version ?? "unknown";
-const xcodeVer = (data?.toolchain?.xcodebuild?.stdout ?? "").trim().replace(/\n/g, " / ") || "unknown";
+    : (dev.name ?? "unknown device"));
+const iosVersion =
+  dev.version ?? dev.matchedFromOfflineDevice?.version ?? "unknown";
+const xcodeVer =
+  (data?.toolchain?.xcodebuild?.stdout ?? "").trim().replace(/\n/g, " / ") ||
+  "unknown";
 const dur = durationSeconds(data.startedAt, data.finishedAt);
 const slice = data.xcframeworkDeviceSlice?.library ?? {};
 
 const requiredSymbols = data.requiredSymbols ?? {};
 const symbolGroups = Object.entries(requiredSymbols)
-  .map(([group, list]) => `- \`${group}\`: ${(list ?? []).map((s) => `\`${s}\``).join(", ")}`)
+  .map(
+    ([group, list]) =>
+      `- \`${group}\`: ${(list ?? []).map((s) => `\`${s}\``).join(", ")}`,
+  )
   .join("\n");
 
 const lines = [];
@@ -93,7 +105,9 @@ lines.push("");
 lines.push(
   "> This file is generated from `ios-physical-device-smoke-latest.json` by",
 );
-lines.push("> `render-ios-smoke-report.mjs` (same directory). Do not hand-edit; re-run the");
+lines.push(
+  "> `render-ios-smoke-report.mjs` (same directory). Do not hand-edit; re-run the",
+);
 lines.push("> generator after a fresh smoke.");
 lines.push("");
 lines.push("## Status");
@@ -110,16 +124,24 @@ if (data.status === "passed" && summary.succeeded) {
     lines.push(`- \`${c.name}\` — ${c.result} (${c.seconds.toFixed(3)}s)`);
   }
 } else {
-  lines.push(`**${(data.status ?? "unknown").toUpperCase()}** — see \`blocker\` below.`);
+  lines.push(
+    `**${(data.status ?? "unknown").toUpperCase()}** — see \`blocker\` below.`,
+  );
   if (data.blocker) lines.push("", `Blocker: ${JSON.stringify(data.blocker)}`);
 }
 lines.push("");
 lines.push("## Run Metadata");
 lines.push("");
-lines.push(`- Device: ${model} — id \`${dev.id ?? "n/a"}\`, state \`${dev.state ?? "n/a"}\``);
+lines.push(
+  `- Device: ${model} — id \`${dev.id ?? "n/a"}\`, state \`${dev.state ?? "n/a"}\``,
+);
 lines.push(`- iOS: ${iosVersion}`);
-lines.push(`- Xcode / xctrace: ${xcodeVer}; xctrace ${(data?.toolchain?.xctrace?.stdout ?? "").trim() || "unknown"}`);
-lines.push(`- Started: ${fmtDate(data.startedAt)} · Finished: ${fmtDate(data.finishedAt)}${dur ? ` · ${dur}s wall (most of it waiting for the device to be unlocked)` : ""}`);
+lines.push(
+  `- Xcode / xctrace: ${xcodeVer}; xctrace ${(data?.toolchain?.xctrace?.stdout ?? "").trim() || "unknown"}`,
+);
+lines.push(
+  `- Started: ${fmtDate(data.startedAt)} · Finished: ${fmtDate(data.finishedAt)}${dur ? ` · ${dur}s wall (most of it waiting for the device to be unlocked)` : ""}`,
+);
 lines.push(
   `- xcframework device slice: \`${slice.LibraryIdentifier ?? "n/a"}\` (${(slice.SupportedArchitectures ?? []).join(", ")}), \`${slice.LibraryPath ?? "n/a"}\``,
 );
@@ -129,22 +151,34 @@ lines.push("## Runnable Entrypoint");
 lines.push("");
 lines.push("```sh");
 lines.push("ELIZA_IOS_DEVELOPMENT_TEAM=<Apple Team ID> \\");
-lines.push("  node packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs \\");
+lines.push(
+  "  node packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs \\",
+);
 lines.push("    --build-if-missing \\");
-lines.push("    --report packages/inference/reports/porting/2026-05-11/ios-physical-device-smoke-latest.json");
+lines.push(
+  "    --report packages/inference/reports/porting/2026-05-11/ios-physical-device-smoke-latest.json",
+);
 lines.push("```");
 lines.push("");
-lines.push("It is physical-device only: it rejects simulators and exits non-zero when no");
-lines.push("connected, unlocked, trusted iPhone/iPad is available. Fail-closed flags in this run:");
+lines.push(
+  "It is physical-device only: it rejects simulators and exits non-zero when no",
+);
+lines.push(
+  "connected, unlocked, trusted iPhone/iPad is available. Fail-closed flags in this run:",
+);
 for (const [k, v] of Object.entries(data.failClosed ?? {})) {
   lines.push(`- \`${k}\`: ${v}`);
 }
 lines.push("");
 lines.push("## What This Smoke Actually Verified");
 lines.push("");
-lines.push("On the physical device, the XCTest runner asserted (one bullet per case that ran):");
+lines.push(
+  "On the physical device, the XCTest runner asserted (one bullet per case that ran):",
+);
 lines.push("");
-const ran = new Set(summary.cases.filter((c) => c.result === "passed").map((c) => c.name));
+const ran = new Set(
+  summary.cases.filter((c) => c.result === "passed").map((c) => c.name),
+);
 if (ran.has("testMetalDeviceIsAvailableOnPhysicalIos")) {
   lines.push(
     "- `MTLCreateSystemDefaultDevice()` returns a non-nil Metal device with a non-empty name (`testMetalDeviceIsAvailableOnPhysicalIos`).",
@@ -170,19 +204,33 @@ lines.push(symbolGroups);
 lines.push("");
 lines.push("## What It Does NOT Claim");
 lines.push("");
-lines.push("This is a **symbol-resolution + xcframework-structure + Metal-availability** check on");
+lines.push(
+  "This is a **symbol-resolution + xcframework-structure + Metal-availability** check on",
+);
 lines.push("device. It is not a numerical model-generation pass:");
 lines.push("");
-lines.push("- No Eliza-1 weights are staged into the temporary XCTest package.");
+lines.push(
+  "- No Eliza-1 weights are staged into the temporary XCTest package.",
+);
 lines.push("- No tokens are generated; no TTS/ASR audio is produced.");
 lines.push("- No latency, RSS, or thermal numbers are measured.");
 lines.push("");
-lines.push("A release-quality iOS pass still requires the follow-up weight-backed Capacitor");
-lines.push("bundle smoke that loads the exact release artifact and records: first token latency,");
-lines.push("first audio latency, peak RSS, thermal state, a minimal text response, a minimal");
-lines.push("TTS/voice response, and voice-off mode proving the TTS/ASR mmap regions stay unmapped.");
+lines.push(
+  "A release-quality iOS pass still requires the follow-up weight-backed Capacitor",
+);
+lines.push(
+  "bundle smoke that loads the exact release artifact and records: first token latency,",
+);
+lines.push(
+  "first audio latency, peak RSS, thermal state, a minimal text response, a minimal",
+);
+lines.push(
+  "TTS/voice response, and voice-off mode proving the TTS/ASR mmap regions stay unmapped.",
+);
 lines.push("That bundle smoke is tracked in `needs-hardware-ledger.md`.");
 lines.push("");
 
-fs.writeFileSync(outPath, lines.join("\n") + "\n");
-console.log(`[render-ios-smoke-report] wrote ${path.relative(process.cwd(), outPath)} from ${path.relative(process.cwd(), jsonPath)} (status=${data.status}, xctest=${summary.executed}/${summary.executed - (summary.failures ?? 0)})`);
+fs.writeFileSync(outPath, `${lines.join("\n")}\n`);
+console.log(
+  `[render-ios-smoke-report] wrote ${path.relative(process.cwd(), outPath)} from ${path.relative(process.cwd(), jsonPath)} (status=${data.status}, xctest=${summary.executed}/${summary.executed - (summary.failures ?? 0)})`,
+);
