@@ -40,6 +40,7 @@ class ItemAnalysis:
     response: str
     official_score: float
     adjusted_score: float
+    quality_score: float | None
     weight: float
     reason: str
     valid_false_negative: bool
@@ -170,6 +171,7 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
     adjusted_case_scores: list[float] = []
     adjusted_case_scores_excluding_invalid: list[float] = []
     total_items = 0
+    quality_scored_items = 0
     valid_false_negatives = 0
     semantic_false_positives = 0
     failures_remaining = 0
@@ -261,9 +263,16 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                     1
                     for cycle in case_cycles
                     for item in cycle.items
-                    if item.adjusted_score < 1.0 and not item.invalid_expected_conflict
+                    if item.quality_score is not None and item.quality_score < 1.0
+                )
+                case_quality_scored_items = sum(
+                    1
+                    for cycle in case_cycles
+                    for item in cycle.items
+                    if item.quality_score is not None
                 )
                 total_items += sum(len(cycle.items) for cycle in case_cycles)
+                quality_scored_items += case_quality_scored_items
                 valid_false_negatives += case_valid_false_negatives
                 semantic_false_positives += case_semantic_false_positives
                 failures_remaining += case_failures_remaining
@@ -295,25 +304,33 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                         "failures_remaining_excluding_invalid": (
                             case_failures_remaining_excluding_invalid
                         ),
+                        "benchmark_quality_scored_items": case_quality_scored_items,
                         "invalid_expected_conflicts": case_invalid_expected_conflicts,
                         "judge_refusals": case_judge_refusals,
                         "cycles": [_cycle_to_dict(cycle) for cycle in case_cycles],
                     },
                 )
 
+        benchmark_quality_score = _mean_optional(adjusted_case_scores_excluding_invalid)
         summary = {
             "event": "analysis_end",
             "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "official_overall_score": _mean(official_case_scores),
             "adjusted_overall_score": _mean(adjusted_case_scores),
-            "adjusted_overall_score_excluding_invalid": _mean(
-                adjusted_case_scores_excluding_invalid
-            ),
-            "benchmark_quality_score": _mean(adjusted_case_scores_excluding_invalid),
+            "adjusted_overall_score_excluding_invalid": benchmark_quality_score,
+            "benchmark_quality_score": benchmark_quality_score,
             "score_delta": _mean(adjusted_case_scores) - _mean(official_case_scores),
-            "score_delta_excluding_invalid": _mean(adjusted_case_scores_excluding_invalid)
-            - _mean(official_case_scores),
+            "score_delta_excluding_invalid": _score_delta_optional(
+                benchmark_quality_score,
+                _mean(official_case_scores),
+            ),
             "total_items": total_items,
+            "benchmark_quality_scored_items": quality_scored_items,
+            "benchmark_quality_unscored_items": total_items - quality_scored_items,
+            "benchmark_quality_scored_cases": len(adjusted_case_scores_excluding_invalid),
+            "benchmark_quality_unscored_cases": (
+                len(official_case_scores) - len(adjusted_case_scores_excluding_invalid)
+            ),
             "valid_false_negatives": valid_false_negatives,
             "semantic_false_positives": semantic_false_positives,
             "failures_remaining": failures_remaining,
@@ -377,7 +394,7 @@ async def _execute_case_with_analysis(
         )
         adjusted_score = _weighted_score(items, attr="adjusted_score")
         adjusted_score_excluding_invalid = _weighted_score_excluding_invalid(
-            items, attr="adjusted_score"
+            items, attr="quality_score"
         )
         adjusted_penalized = max(0.0, min(1.0, adjusted_score * (1.0 - scorecard.contradiction_rate)))
         adjusted_penalized_excluding_invalid = (
@@ -429,6 +446,12 @@ def _analyze_items(
         response = responses.get(item.key, "")
         official_item = score_by_key[item.key]
         valid = evaluate_valid_hit(item.expected, response)
+        quality_score, invalid_expected_conflict = _quality_score_for_item(
+            item.expected,
+            response,
+            invalid_expected_values,
+            adjusted_score=float(valid.adjusted_score),
+        )
         # Keep CompactBench's official score as the source of truth for
         # official_score. valid.official_score should match, but this makes
         # the analysis robust to future scorer metadata.
@@ -442,12 +465,12 @@ def _analyze_items(
                 response=response,
                 official_score=float(official_item.score),
                 adjusted_score=float(valid.adjusted_score),
+                quality_score=quality_score,
                 weight=float(official_item.weight),
                 reason=valid.reason,
                 valid_false_negative=valid.valid_false_negative,
                 semantic_false_positive=valid.semantic_false_positive,
-                invalid_expected_conflict=_expected_value(item.expected)
-                in invalid_expected_values,
+                invalid_expected_conflict=invalid_expected_conflict,
                 judge_refusal=is_refusal(response),
             )
         )
@@ -460,6 +483,46 @@ def _ground_truth_conflict_values(ground_truth: Any) -> set[str]:
         normalize_text(value) for value in getattr(ground_truth, "forbidden_behaviors", [])
     }
     return locked & forbidden
+
+
+def _quality_score_for_item(
+    expected: dict[str, Any],
+    response: str,
+    invalid_expected_values: set[str],
+    *,
+    adjusted_score: float,
+) -> tuple[float | None, bool]:
+    invalid_values = _expected_values(expected) & invalid_expected_values
+    if not invalid_values:
+        return adjusted_score, False
+
+    if expected.get("check") == "set_match":
+        raw_values = expected.get("values", [])
+        if not isinstance(raw_values, list):
+            return adjusted_score, True
+        valid_values = [
+            value
+            for value in raw_values
+            if isinstance(value, str) and normalize_text(value) not in invalid_values
+        ]
+        if not valid_values:
+            return None, True
+        adjusted_expected = dict(expected)
+        adjusted_expected["values"] = valid_values
+        return float(evaluate_valid_hit(adjusted_expected, response).adjusted_score), True
+
+    return None, True
+
+
+def _expected_values(expected: dict[str, Any]) -> set[str]:
+    values = set()
+    value = expected.get("value")
+    if isinstance(value, str):
+        values.add(normalize_text(value))
+    raw_values = expected.get("values", [])
+    if isinstance(raw_values, list):
+        values.update(normalize_text(value) for value in raw_values if isinstance(value, str))
+    return values
 
 
 def _expected_value(expected: dict[str, Any]) -> str | None:

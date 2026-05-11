@@ -228,10 +228,27 @@ export function resolveChain(
 	lookup: (modelType: string) => readonly ModelHandler[] | undefined,
 ): ResolvedActionModel[] {
 	const resolved: ResolvedActionModel[] = [];
+	const seen = new Set<string>();
 	for (const step of strategy.chain) {
-		const r = resolveStep(step, lookup);
-		if (r) {
-			resolved.push(r);
+		const handlers = lookup(step.modelType);
+		if (!handlers || handlers.length === 0) {
+			continue;
+		}
+		for (const handler of handlers) {
+			if (step.providerFilter && !step.providerFilter(handler.provider)) {
+				continue;
+			}
+			const key = `${step.modelType}:${handler.provider}`;
+			if (seen.has(key)) {
+				continue;
+			}
+			seen.add(key);
+			resolved.push({
+				handler: handler.handler,
+				modelType: step.modelType,
+				provider: handler.provider,
+			});
+			break;
 		}
 	}
 	return resolved;
