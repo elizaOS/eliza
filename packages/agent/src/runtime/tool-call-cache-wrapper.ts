@@ -92,7 +92,13 @@ export function wrapActionWithCache(
   const descriptor = resolveDescriptor(action.name, cfg);
   const original: Handler = action.handler;
 
-  const wrapped: Handler = async (runtime, message, state, options, ...rest) => {
+  const wrapped: Handler = async (
+    runtime,
+    message,
+    state,
+    options,
+    ...rest
+  ) => {
     const args = extractArgs(options);
     const hit = cache.get(descriptor, args);
     if (hit) return hit.output as unknown as ActionResult;

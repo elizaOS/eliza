@@ -98,7 +98,10 @@ writeFileSync(
 function collectWorkspaceVersions(rootDir) {
   const packageRoots = [
     path.join(rootDir, "packages"),
+    path.join(rootDir, "packages", "native-plugins"),
+    path.join(rootDir, "packages", "app-core", "platforms"),
     path.join(rootDir, "plugins"),
+    path.join(rootDir, "cloud", "packages"),
   ];
   const versions = new Map();
 

@@ -39,11 +39,11 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-mobile-1_7b");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-1_7b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
-    // pro-27b (minRam 32, size 16.8) fits; server-h200 (minRam 96) does
-    // not. Ladder is server → pro → desktop → mobile, picks pro-27b.
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-pro-27b");
+    // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
+    // not. Ladder is server → pro → desktop → mobile, picks 27b.
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
   it("picks the server tier on a >=96 GB-effective workstation", () => {
@@ -60,8 +60,8 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    // effective = max(128, 64) = 128 ≥ server-h200 minRam (96).
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-server-h200");
+    // effective = max(128, 64) = 128 ≥ 27b-256k minRam (96).
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
   it("uses the mobile ladder and prefers the Eliza-1 mobile tier when it fits", () => {
@@ -76,15 +76,15 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-lite-0_6b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-mobile-1_7b");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_6b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
   });
 
   it("falls back to the lite tier on minimal mobile", () => {
-    // mobile-1_7b needs 4 GB minRam; below that the ladder collapses
-    // to lite-0_6b (2 GB minRam). Below 2 GB nothing fits.
+    // 1_7b needs 4 GB minRam; below that the ladder collapses
+    // to 0_6b (2 GB minRam). Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
-      [3.5, "eliza-1-lite-0_6b"],
+      [3.5, "eliza-1-0_6b"],
       [1.5, null],
     ];
 
@@ -112,14 +112,14 @@ describe("local inference recommendations", () => {
       arch: "arm64",
       recommendedBucket: "mid",
     });
-    const desktop = findCatalogModel("eliza-1-desktop-9b");
+    const desktop = findCatalogModel("eliza-1-9b");
 
-    if (!desktop) throw new Error("eliza-1-desktop-9b missing from catalog");
+    if (!desktop) throw new Error("eliza-1-9b missing from catalog");
     expect(assessCatalogModelFit(probe, desktop)).toBe("wontfit");
   });
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
-    // linux-gpu host with enough effective memory for desktop-9b
+    // linux-gpu host with enough effective memory for 9b
     // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, desktop minRam 12).
     const probe = hardware({
       totalRamGb: 32,
@@ -131,15 +131,15 @@ describe("local inference recommendations", () => {
     });
 
     const fallback = chooseSmallerFallbackModel(
-      "eliza-1-pro-27b",
+      "eliza-1-27b",
       probe,
       "TEXT_LARGE",
     );
 
-    expect(fallback?.id).toBe("eliza-1-desktop-9b");
+    expect(fallback?.id).toBe("eliza-1-9b");
   });
 
-  it("ignores binaryKernels for default-eligible Eliza-1 tiers without catalog-level requiresKernel", () => {
+  it("does not recommend Eliza-1 tiers when the probed binary lacks required kernels", () => {
     // Kernel requirements are declared by the published bundle manifest,
     // not by the visible catalog entry.
     const probe = hardware({
@@ -155,12 +155,40 @@ describe("local inference recommendations", () => {
       turbo4: false,
       turbo3_tcq: false,
       qjl_full: false,
+      polarquant: false,
       lookahead: true,
       ngramDraft: true,
     };
 
     const recommended = selectRecommendedModels(probe, undefined, {
       binaryKernels: stockBinary,
+    });
+
+    expect(recommended.TEXT_SMALL.model).toBeNull();
+    expect(recommended.TEXT_LARGE.model).toBeNull();
+  });
+
+  it("recommends Eliza-1 tiers when all required kernels are present", () => {
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
+      source: "node-llama-cpp",
+    });
+
+    const completeBinary = {
+      dflash: true,
+      turbo3: true,
+      turbo4: true,
+      turbo3_tcq: true,
+      qjl_full: true,
+      polarquant: true,
+      lookahead: true,
+      ngramDraft: true,
+    };
+
+    const recommended = selectRecommendedModels(probe, undefined, {
+      binaryKernels: completeBinary,
     });
 
     expect(recommended.TEXT_SMALL.model?.id).toMatch(/^eliza-1-/);

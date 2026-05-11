@@ -346,6 +346,19 @@ function resolveBrowserWorkspaceSelection(
   return visibleTab?.id ?? tabs[0]?.id ?? null;
 }
 
+function parseEip155ChainId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = trimmed.startsWith("0x")
+    ? Number.parseInt(trimmed.slice(2), 16)
+    : Number(trimmed);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function BrowserWorkspaceView(): JSX.Element {
   const {
     getStewardPending,
@@ -966,7 +979,10 @@ export function BrowserWorkspaceView(): JSX.Element {
                 });
                 return;
               }
-              const chainId = tabChainIdRef.current.get(req.tabId) ?? 1;
+              const txChainId = parseEip155ChainId(tx.chainId);
+              const chainId =
+                txChainId ?? tabChainIdRef.current.get(req.tabId) ?? 1;
+              tabChainIdRef.current.set(req.tabId, chainId);
               const value =
                 typeof tx.value === "string"
                   ? tx.value.startsWith("0x")

@@ -1,10 +1,10 @@
 /**
  * SCAPE — single Pattern C parent action that absorbs every old leaf:
  *
- *   op: walk_to | attack | chat_public | eat | drop |
+ *   action: walk_to | attack | chat_public | eat | drop |
  *       set_goal | complete_goal | remember
  *
- * Per-op param shape:
+ * Per-action param shape:
  *   walk_to       { x, z, run? }
  *   attack        { npcId }
  *   chat_public   { message }                           (game-world chat,
@@ -265,9 +265,9 @@ async function dispatchOp(
 export const scapeAction: Action = {
   name: "SCAPE",
   description:
-    "Drive the 'scape (xRSPS) game agent. Pick one op: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
+    "Drive the 'scape (xRSPS) game agent. Pick one action: walk_to (x,z,run?), attack (npcId), chat_public (message), eat (item?), drop (item), set_goal (title,notes?), complete_goal (status?,goalId?,notes?), remember (notes,kind?,weight?). Returns success and a short status message; the autonomous loop already handles its own dispatch — this is the planner-facing surface.",
   descriptionCompressed:
-    "scape ops: walk_to|attack|chat_public|eat|drop|set_goal|complete_goal|remember",
+    "scape actions: walk_to|attack|chat_public|eat|drop|set_goal|complete_goal|remember",
   contexts: ["game", "automation", "world", "state", "messaging"],
   roleGate: { minRole: "ADMIN" },
   similes: [
@@ -296,17 +296,24 @@ export const scapeAction: Action = {
   examples: [],
   parameters: [
     {
-      name: "subaction",
+      name: "action",
       description: "Operation to run.",
-      descriptionCompressed: "Op.",
+      descriptionCompressed: "Action.",
       required: true,
       schema: { type: "string", enum: SCAPE_OPS as string[] },
     },
     {
+      name: "subaction",
+      description: "Legacy alias for action.",
+      descriptionCompressed: "Legacy op alias.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
       name: "params",
       description:
-        "Optional JSON object containing the fields required by the chosen op.",
-      descriptionCompressed: "Op fields.",
+        "Optional JSON object containing the fields required by the chosen action.",
+      descriptionCompressed: "Action fields.",
       required: false,
       schema: { type: "object" },
     },
@@ -335,10 +342,14 @@ export const scapeAction: Action = {
       ...paramsFromOptions(options),
     };
     const op = normalizeOp(
-      params.op ?? params.subaction ?? params.actionType ?? params.type,
+      params.action ??
+        params.op ??
+        params.subaction ??
+        params.actionType ??
+        params.type,
     );
     if (!op) {
-      const text = `SCAPE requires a valid op: one of ${SCAPE_OPS.join("|")}.`;
+      const text = `SCAPE requires a valid action: one of ${SCAPE_OPS.join("|")}.`;
       callback?.({ text, action: "SCAPE" });
       return { success: false, text };
     }

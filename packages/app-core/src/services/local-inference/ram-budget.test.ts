@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { findCatalogModel, MODEL_CATALOG } from "./catalog";
+import { ELIZA_1_TIER_IDS, findCatalogModel } from "./catalog";
 import type { Eliza1Manifest } from "./manifest";
 import { type ManifestLoader, resolveRamBudget } from "./ram-budget";
 import type { CatalogModel, InstalledModel } from "./types";
@@ -144,7 +144,11 @@ describe("resolveRamBudget", () => {
   });
 
   it("covers every Eliza-1 tier with a manifest budget when one is supplied", () => {
-    const tiers = MODEL_CATALOG.filter((m) => m.id.startsWith("eliza-1-"));
+    const tiers = ELIZA_1_TIER_IDS.map((id) => {
+      const model = findCatalogModel(id);
+      if (!model) throw new Error(`missing catalog tier ${id}`);
+      return model;
+    });
     for (const tier of tiers) {
       const loader: ManifestLoader = () =>
         syntheticManifest({

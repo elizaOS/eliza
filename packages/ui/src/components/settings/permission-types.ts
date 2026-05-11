@@ -1,8 +1,8 @@
-import type { PermissionStatus, SystemPermissionId } from "../../api";
+import type { PermissionId, PermissionStatus } from "../../api";
 
 /** Permission definition for UI rendering. */
 export interface PermissionDef {
-  id: SystemPermissionId;
+  id: PermissionId;
   name: string;
   nameKey: string;
   description: string;
@@ -86,6 +86,97 @@ export const SYSTEM_PERMISSIONS: PermissionDef[] = [
     platforms: ["darwin", "win32", "linux"],
     requiredForFeatures: ["travel-time", "location"],
   },
+  {
+    id: "reminders",
+    name: "Apple Reminders",
+    nameKey: "permissionssection.permission.reminders.name",
+    description: "Create and read reminders for LifeOps tasks and follow-ups",
+    descriptionKey: "permissionssection.permission.reminders.description",
+    icon: "list-todo",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "reminders"],
+  },
+  {
+    id: "calendar",
+    name: "Apple Calendar",
+    nameKey: "permissionssection.permission.calendar.name",
+    description: "Read and write calendar events for scheduling",
+    descriptionKey: "permissionssection.permission.calendar.description",
+    icon: "calendar",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "calendar"],
+  },
+  {
+    id: "health",
+    name: "Apple Health",
+    nameKey: "permissionssection.permission.health.name",
+    description: "Read HealthKit data, including sleep from paired devices",
+    descriptionKey: "permissionssection.permission.health.description",
+    icon: "heart-pulse",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "health", "sleep"],
+  },
+  {
+    id: "screentime",
+    name: "Screen Time",
+    nameKey: "permissionssection.permission.screentime.name",
+    description: "Read app and device usage signals for LifeOps",
+    descriptionKey: "permissionssection.permission.screentime.description",
+    icon: "hourglass",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "screentime"],
+  },
+  {
+    id: "contacts",
+    name: "Contacts",
+    nameKey: "permissionssection.permission.contacts.name",
+    description: "Read contacts for person-aware reminders and follow-ups",
+    descriptionKey: "permissionssection.permission.contacts.description",
+    icon: "contact",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "contacts"],
+  },
+  {
+    id: "notes",
+    name: "Apple Notes",
+    nameKey: "permissionssection.permission.notes.name",
+    description: "Read and create notes through user-approved automation",
+    descriptionKey: "permissionssection.permission.notes.description",
+    icon: "notebook-tabs",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "notes"],
+  },
+  {
+    id: "notifications",
+    name: "Notifications",
+    nameKey: "permissionssection.permission.notifications.name",
+    description:
+      "Show system notifications for reminders and background results",
+    descriptionKey: "permissionssection.permission.notifications.description",
+    icon: "bell",
+    platforms: ["darwin", "win32", "linux"],
+    requiredForFeatures: ["notifications", "lifeops"],
+  },
+  {
+    id: "full-disk",
+    name: "Full Disk Access",
+    nameKey: "permissionssection.permission.fullDisk.name",
+    description: "Read protected local app data when explicitly enabled",
+    descriptionKey: "permissionssection.permission.fullDisk.description",
+    icon: "hard-drive",
+    platforms: ["darwin"],
+    requiredForFeatures: ["imessage", "local-data"],
+  },
+  {
+    id: "automation",
+    name: "Automation",
+    nameKey: "permissionssection.permission.automation.name",
+    description: "Control other macOS apps through Apple Events",
+    descriptionKey: "permissionssection.permission.automation.description",
+    icon: "workflow",
+    platforms: ["darwin"],
+    requiredForFeatures: ["lifeops", "automation"],
+  },
 ];
 
 /** Capability toggle definition. */
@@ -95,7 +186,7 @@ export interface CapabilityDef {
   labelKey: string;
   description: string;
   descriptionKey: string;
-  requiredPermissions: SystemPermissionId[];
+  requiredPermissions: PermissionId[];
 }
 
 export const CAPABILITIES: CapabilityDef[] = [
@@ -189,7 +280,7 @@ export function translateWithFallback(
 
 export function getPermissionAction(
   t: (key: string) => string,
-  id: SystemPermissionId,
+  id: PermissionId,
   status: PermissionStatus,
   canRequest: boolean,
   platform?: string,
@@ -203,7 +294,11 @@ export function getPermissionAction(
   }
 
   const usesWindowsPrivacySettings =
-    platform === "win32" && (id === "microphone" || id === "camera");
+    platform === "win32" &&
+    (id === "microphone" ||
+      id === "camera" ||
+      id === "location" ||
+      id === "notifications");
 
   if (status === "not-determined" && canRequest) {
     if (id === "website-blocking") {
@@ -280,7 +375,7 @@ export function getPermissionAction(
 
 export function getPermissionBadge(
   t: (key: string) => string,
-  id: SystemPermissionId,
+  id: PermissionId,
   status: PermissionStatus,
   platform: string,
 ): { tone: "success" | "danger" | "warning" | "muted"; label: string } {

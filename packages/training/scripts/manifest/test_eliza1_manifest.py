@@ -37,9 +37,11 @@ def base_kwargs(tier: str = "desktop-9b") -> dict:
         version="1.0.0",
         published_at="2026-05-10T00:00:00Z",
         lineage={
-            "text": LineageEntry(base="qwen3.5-9b", license="apache-2.0"),
-            "voice": LineageEntry(base="omnivoice-1.7b", license="apache-2.0"),
-            "drafter": LineageEntry(base="dflash-9b-drafter", license="apache-2.0"),
+            "text": LineageEntry(base="eliza-1-text-backbone", license="apache-2.0"),
+            "voice": LineageEntry(base="eliza-1-voice-backbone", license="apache-2.0"),
+            "drafter": LineageEntry(base="eliza-1-drafter", license="apache-2.0"),
+            "asr": LineageEntry(base="eliza-1-asr", license="apache-2.0"),
+            "vision": LineageEntry(base="eliza-1-vision", license="apache-2.0"),
         },
         files={
             "text": [
@@ -52,12 +54,14 @@ def base_kwargs(tier: str = "desktop-9b") -> dict:
             "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
         },
         kernels_required=list(REQUIRED_KERNELS_BY_TIER[tier]),
-        kernels_optional=["turbo3_tcq"],
+        kernels_optional=[],
         verified_backends=passing_backends(),
         text_eval_score=0.71,
         text_eval_passed=True,
         voice_rtf=0.42,
         voice_rtf_passed=True,
+        asr_wer=0.05,
+        asr_wer_passed=True,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
         ram_budget_min_mb=7000,
@@ -77,6 +81,37 @@ def test_build_manifest_happy_path():
     assert manifest["defaultEligible"] is True
     assert manifest["$schema"].endswith("eliza-1.manifest.v1.json")
     # Validates against itself.
+    assert validate_manifest(manifest) == ()
+
+
+def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
+    kwargs = base_kwargs()
+    kwargs["lineage"] = {
+        **kwargs["lineage"],
+        "embedding": LineageEntry(base="eliza-1-embedding", license="apache-2.0"),
+        "vad": LineageEntry(base="eliza-1-vad", license="mit"),
+        "wakeword": LineageEntry(base="eliza-1-wakeword", license="apache-2.0"),
+    }
+    kwargs["files"] = {
+        **kwargs["files"],
+        "embedding": [FileEntry(path="embedding/eliza-1-embed.gguf", sha256=SHA)],
+        "vad": [FileEntry(path="vad/eliza-1-vad.onnx", sha256=SHA)],
+        "wakeword": [FileEntry(path="wakeword/eliza-1.onnx", sha256=SHA)],
+    }
+    kwargs.update(
+        embed_mteb_score=0.62,
+        embed_mteb_passed=True,
+        vad_latency_ms_median=16.0,
+        vad_latency_ms_passed=True,
+        expressive_tag_faithfulness=0.9,
+        expressive_mos=4.1,
+        expressive_tag_leakage=0.01,
+        expressive_passed=True,
+        voice_capabilities=["tts", "emotion-tags"],
+    )
+    manifest = build_manifest(**kwargs)
+    assert manifest["files"]["embedding"][0]["path"].startswith("embedding/")
+    assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags"]
     assert validate_manifest(manifest) == ()
 
 
@@ -120,6 +155,27 @@ def test_default_eligible_with_failing_e2e_rejected():
         build_manifest(**kwargs)
 
 
+def test_component_files_require_matching_lineage_and_eval_gate():
+    kwargs = base_kwargs("desktop-9b")
+    kwargs["lineage"] = {
+        k: v for k, v in kwargs["lineage"].items() if k != "asr"
+    }
+    kwargs["asr_wer"] = None
+    kwargs["asr_wer_passed"] = None
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("lineage.asr" in e for e in exc.value.errors)
+    assert any("evals.asrWer" in e for e in exc.value.errors)
+
+
+def test_expressive_voice_capabilities_require_expressive_eval():
+    kwargs = base_kwargs("desktop-9b")
+    kwargs["voice_capabilities"] = ["tts", "singing"]
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("evals.expressive" in e for e in exc.value.errors)
+
+
 def test_default_eligible_with_failing_backend_rejected():
     kwargs = base_kwargs("desktop-9b")
     backends = passing_backends()
@@ -151,10 +207,26 @@ def test_long_context_requires_turbo3_tcq():
     kwargs["files"]["text"] = [
         FileEntry(path="text/eliza-1-desktop-9b-128k.gguf", sha256=SHA, ctx=131072)
     ]
-    kwargs["kernels_optional"] = []  # remove tcq
+    kwargs["kernels_required"] = [
+        k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
+    ]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
     assert any("turbo3_tcq" in e for e in exc.value.errors)
+
+
+def test_long_context_rejects_turbo3_tcq_optional_only():
+    kwargs = base_kwargs("desktop-9b")
+    kwargs["files"]["text"] = [
+        FileEntry(path="text/eliza-1-desktop-9b-128k.gguf", sha256=SHA, ctx=131072)
+    ]
+    kwargs["kernels_required"] = [
+        k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
+    ]
+    kwargs["kernels_optional"] = ["turbo3_tcq"]
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("kernels.required" in e for e in exc.value.errors)
 
 
 def test_long_context_with_turbo3_tcq_in_required_passes():
@@ -162,9 +234,7 @@ def test_long_context_with_turbo3_tcq_in_required_passes():
     kwargs["files"]["text"] = [
         FileEntry(path="text/eliza-1-desktop-9b-128k.gguf", sha256=SHA, ctx=131072)
     ]
-    kwargs["kernels_required"] = list(
-        REQUIRED_KERNELS_BY_TIER["desktop-9b"]
-    ) + ["turbo3_tcq"]
+    kwargs["kernels_required"] = list(REQUIRED_KERNELS_BY_TIER["desktop-9b"])
     kwargs["kernels_optional"] = []
     manifest = build_manifest(**kwargs)
     assert validate_manifest(manifest) == ()

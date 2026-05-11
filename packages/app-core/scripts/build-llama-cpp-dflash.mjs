@@ -96,6 +96,11 @@ const SUPPORTED_TARGETS = [
   "ios-arm64-simulator-metal",
   "windows-x64-cpu",
   "windows-x64-cuda",
+  // windows-x64-vulkan: generic-GPU path on x64 Windows. NVIDIA/AMD/Intel
+  // ARC all expose Vulkan 1.3+ here. Cross-builds from a Linux/Darwin host
+  // via mingw + Khronos Vulkan-Headers — same shape as windows-x64-cpu but
+  // with the existing Vulkan-headers prep step.
+  "windows-x64-vulkan",
   // Windows arm64 (Snapdragon X Elite / Copilot+ PC, 2024+). Adreno X1
   // GPU is Vulkan 1.3; the 12-core ARM CPU runs the NEON paths in
   // qjl-cpu/polarquant-cpu. Both targets require an MSVC arm64
@@ -111,9 +116,11 @@ const SUPPORTED_TARGETS = [
   // for the GGML pin reconciliation strategy. The non-fused targets
   // above remain unchanged; fused is purely additive.
   "linux-x64-cpu-fused",
+  "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "darwin-x64-metal-fused",
+  "windows-x64-cuda-fused",
 ];
 
 // Targets that opt into omnivoice fusion. Membership in this set is
@@ -121,9 +128,11 @@ const SUPPORTED_TARGETS = [
 // shortcuts, no implicit upgrades from a non-fused target.
 const FUSED_TARGETS = new Set([
   "linux-x64-cpu-fused",
+  "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "darwin-x64-metal-fused",
+  "windows-x64-cuda-fused",
 ]);
 
 // Strip the "-fused" suffix when one is present, returning the base
@@ -638,8 +647,8 @@ function cmakeFlagsForTarget(target, ctx) {
     // EMBED_LIBRARY behavior:
     //
     //   * iOS (later in this function) sets it to ON unconditionally —
-    //     the static-archive build needs the metallib data baked into
-    //     the framework via .incbin.
+    //     the static-archive build needs compiled metallib bytes baked
+    //     into the framework via .incbin.
     //   * Darwin desktop (this branch) sets it OFF so the metallib is
     //     compiled at build time into a sidecar default.metallib that
     //     ships next to llama-server. The kernel-patches/metal-kernels
@@ -648,13 +657,10 @@ function cmakeFlagsForTarget(target, ctx) {
     //     is compiled into its own .air and merged into default.metallib
     //     alongside ggml-metal.air.
     //
-    //     The EMBED path is incompatible with the standalones because
-    //     it concatenates ggml-metal.metal + ggml-common.h into a single
-    //     compilation unit, and the standalones redefine block_qjl1_256
-    //     and block_q4_polar (same byte layout, different field names)
-    //     plus QK_POLAR / QK_QJL / QJL_RESIDUAL_BYTES already in
-    //     ggml-common.h. Wiring them through the EMBED path requires a
-    //     dup-strip pass that is filed as a separate follow-up.
+    //     The EMBED path is patched by kernel-patches/metal-kernels.mjs
+    //     to embed a compiled default.metallib instead of concatenated
+    //     source. That keeps the standalone shader TUs separate and
+    //     avoids duplicate block_* / constant declarations.
     flags.push("-DGGML_METAL_EMBED_LIBRARY=OFF");
   } else if (backend === "cuda") {
     flags[flags.indexOf("-DGGML_CUDA=OFF")] = "-DGGML_CUDA=ON";
@@ -817,16 +823,11 @@ function cmakeFlagsForTarget(target, ctx) {
     } else {
       flags.push("-DCMAKE_OSX_SYSROOT=iphoneos");
     }
-    // iOS static-archive build needs the metallib data baked in via .incbin
-    // since there is no place on-device to ship a sidecar default.metallib.
-    // Override the OFF default that the metal backend block set above.
-    // NOTE: at v0.4.0-milady the iOS path is a deferred gap — the EMBED
-    // pipeline concatenates ggml-metal.metal with ggml-common.h via sed,
-    // and our standalone shaders' redefinitions of block_qjl1_256 /
-    // block_q4_polar collide. The iOS metallib will not yet contain the
-    // milady kernels until kernel-patches/metal-kernels.mjs grows an
-    // EMBED-path patcher that strips the duplicate decls. requiredKernels-
-    // Missing() will catch and refuse the iOS artifact accordingly.
+    // iOS static-archive build needs compiled metallib data baked in via
+    // .incbin since there is no sidecar default.metallib next to a console
+    // binary. The Metal patcher rewrites the EMBED_LIBRARY CMake branch to
+    // compile ggml-metal.metal + the milady standalones into one metallib
+    // before embedding it.
     const embedIdx = flags.indexOf("-DGGML_METAL_EMBED_LIBRARY=OFF");
     if (embedIdx !== -1) {
       flags[embedIdx] = "-DGGML_METAL_EMBED_LIBRARY=ON";
@@ -1027,6 +1028,12 @@ function ensureCheckout(cacheDir, ref) {
   if (fs.existsSync(path.join(cacheDir, ".git"))) {
     run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
     run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
+    // This checkout is a generated build cache owned by this script. Always
+    // reset tracked and untracked source edits before applying our patch set
+    // so stale kernel-patch artifacts from prior builds cannot leak into a
+    // new artifact.
+    run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: cacheDir });
+    run("git", ["clean", "-fd"], { cwd: cacheDir });
   } else {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
@@ -1080,12 +1087,11 @@ function ensureCheckout(cacheDir, ref) {
 //     wiring is a separate fork-internals patch and is the next agent's
 //     mission.
 //
-//   * The EMBED_LIBRARY=ON branch (used by iOS targets) is not yet patched.
-//     iOS builds compile a single concatenated .metal via .incbin and would
-//     require stripping the duplicate decls (block_qjl1_256, block_q4_polar,
-//     QK_QJL, QK_POLAR, QJL_RESIDUAL_BYTES already in ggml-common.h). That
-//     is a separate patch tracked in kernel-patches/metal-kernels.mjs's
-//     module comment.
+//   * The EMBED_LIBRARY=ON branch (used by iOS targets) is also patched:
+//     it compiles ggml-metal.metal + the milady standalones as separate
+//     .air files, merges them into one default.metallib, and embeds those
+//     compiled bytes. That avoids duplicate source declarations while
+//     shipping the same five kernel symbols as the desktop sidecar.
 //
 //   * Vulkan: the 8 standalone .comp files are staged into
 //     ggml/src/ggml-vulkan/vulkan-shaders/ (picked up by file(GLOB)),
@@ -1094,10 +1100,10 @@ function ensureCheckout(cacheDir, ref) {
 //     SPV blobs are linked into libggml-vulkan.so. Symbol audit (`nm
 //     libggml-vulkan.so | grep milady_`) passes; op-level dispatch routing
 //     for GGML_OP_ATTN_SCORE_QJL and the milady GGML_TYPE_* values is the
-//     remaining gap and is the next agent's mission. Until it lands, the
-//     ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN=1 env var still applies — the
-//     help-text probe in probeKernels() can't yet see qjl/polar via CLI
-//     flags because the runtime can't select them.
+//     remaining gap and is the next agent's mission. Incomplete Vulkan
+//     artifacts are now publish-blocking: probeKernels() marks symbol-only
+//     QJL/Polar/Turbo paths false until op-level dispatch is numerically
+//     verified.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
@@ -1204,11 +1210,11 @@ function probeKernels(target, buildDir, outDir) {
       kernels.qjl_full = /qjl[_-]?full|qjl|qjl1_256/.test(lc);
       kernels.polarquant = /polar(?:quant)?|q4[_-]?polar/.test(lc);
       // For Metal targets, also inspect default.metallib for kernel symbols.
-      // This is the source of truth for "the kernel is shipped" — the help
-      // text only proves the GGML_TYPE_* enum is registered. Symbol presence
-      // proves the Metal compile actually produced .air for our standalones.
-      // Reachability via dispatch is a separate concern documented in
-      // packages/inference/README.md (Wave-6 audit).
+      // This proves "the kernel is shipped", not that the kernel is reachable
+      // from llama.cpp graph execution. The published `kernels` capability
+      // map below intentionally stays dispatch-ready only; symbol-only
+      // kernels are recorded in logs/README, not allowed to satisfy the
+      // Eliza-1 runtime contract.
       if (backend === "metal") {
         const metallibPath = path.join(outDir, "default.metallib");
         if (fs.existsSync(metallibPath)) {
@@ -1273,6 +1279,27 @@ function probeKernels(target, buildDir, outDir) {
       kernels.dflash = true;
     }
   }
+
+  // Honesty gate: Metal/Vulkan standalone shaders can compile and be present
+  // as symbols/pipelines while still being unreachable or semantically wrong
+  // through generic llama.cpp ops. Do not let symbol presence satisfy
+  // AGENTS.md §3. Flip these back to true only after dedicated dispatch is
+  // wired. Metal currently has a dedicated GGML_OP_ATTN_SCORE_QJL bridge;
+  // Turbo and Polar remain symbol-only.
+  if (backend === "metal") {
+    const shipped = probeMetalShippedKernelSymbols(buildDir, outDir).symbols;
+    kernels.turbo3 = false;
+    kernels.turbo4 = false;
+    kernels.turbo3_tcq = false;
+    kernels.qjl_full = Boolean(shipped.qjl_full);
+    kernels.polarquant = false;
+  } else if (backend === "vulkan") {
+    kernels.turbo3 = false;
+    kernels.turbo4 = false;
+    kernels.turbo3_tcq = false;
+    kernels.qjl_full = false;
+    kernels.polarquant = false;
+  }
   return kernels;
 }
 
@@ -1313,34 +1340,58 @@ function collectFilesUnder(root, pattern) {
 }
 
 // Per AGENTS.md §3, every Eliza-1 bundle MUST run dflash + turbo3 + turbo4 +
-// qjl + polar. probeKernels() returns the per-target detection map; this gate
-// translates that into a hard failure when a required kernel is absent.
+// turbo3_tcq + qjl + polar. probeKernels() returns the per-target detection
+// map; this gate translates that into a hard failure when a required kernel is
+// absent.
 //
 // Returns the list of missing-but-required kernels. An empty list means the
 // target satisfies the contract.
 function requiredKernelsMissing(target, kernels) {
-  const { backend } = parseTarget(target);
   // Required for every shipped backend.
-  const required = ["dflash", "turbo3", "turbo4", "qjl_full", "polarquant"];
-  // Vulkan host detection currently relies on `--help` strings (CLI flags).
-  // Metal kernel-presence after this patch is verified via the metallib
-  // (see kernel-patches/metal-kernels.mjs); the help-text probe still works
-  // because the fork's CLI lists the quant types regardless of backend.
-  if (backend === "vulkan") {
-    // After kernel-patches/vulkan-dispatch-patches/, the 8 milady SPV blobs
-    // and pipeline_milady_* slots are linked into libggml-vulkan.so. What is
-    // still missing is op-level dispatch routing (GGML_OP_ATTN_SCORE_QJL and
-    // milady GGML_TYPE_* case branches) — without it, llama-server --help
-    // still won't show qjl/polar/turbo as user-visible cache types. Allow
-    // the build to proceed when the operator explicitly acknowledges the
-    // routing gap; CAPABILITIES.json then records `kernels.qjl_full=false`
-    // so the runtime layer can refuse to load Eliza-1 bundles on this
-    // binary. Once op routing lands, drop this branch.
-    if (process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_VULKAN === "1") {
-      return [];
+  const required = [
+    "dflash",
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl_full",
+    "polarquant",
+  ];
+  return required.filter((k) => !kernels[k]);
+}
+
+function probeMetalShippedKernelSymbols(buildDir, outDir) {
+  const shipped = {
+    turbo3: false,
+    turbo4: false,
+    turbo3_tcq: false,
+    qjl_full: false,
+    polarquant: false,
+  };
+  const metallibs = [
+    ...collectFilesUnder(buildDir, /\.metallib$/),
+    ...collectFilesUnder(outDir, /\.metallib$/),
+  ];
+  for (const metallibPath of metallibs) {
+    const bytes = fs.readFileSync(metallibPath);
+    const has = (sym) => bytes.indexOf(sym) !== -1;
+    if (has("kernel_turbo3_dot")) shipped.turbo3 = true;
+    if (has("kernel_turbo4_dot")) shipped.turbo4 = true;
+    if (has("kernel_turbo3_tcq_dot")) shipped.turbo3_tcq = true;
+    if (
+      has("kernel_attn_score_qjl1_256") ||
+      has("kernel_get_rows_qjl1_256") ||
+      has("kernel_mul_mv_qjl1_256_f32")
+    ) {
+      shipped.qjl_full = true;
+    }
+    if (
+      has("kernel_get_rows_q4_polar") ||
+      has("kernel_mul_mv_q4_polar_f32")
+    ) {
+      shipped.polarquant = true;
     }
   }
-  return required.filter((k) => !kernels[k]);
+  return { metallibs, symbols: shipped };
 }
 
 function writeCapabilities({
@@ -1354,6 +1405,8 @@ function writeCapabilities({
   const { platform, arch, backend, fused } = parseTarget(target);
   const kernels = probeKernels(target, buildDir, outDir);
   const missing = requiredKernelsMissing(target, kernels);
+  const shippedKernels =
+    backend === "metal" ? probeMetalShippedKernelSymbols(buildDir, outDir) : null;
   const capabilities = {
     target,
     platform,
@@ -1364,6 +1417,7 @@ function writeCapabilities({
     fork: "milady-ai/llama.cpp",
     forkCommit,
     kernels,
+    shippedKernels,
     binaries,
     omnivoice,
   };
@@ -1375,7 +1429,7 @@ function writeCapabilities({
     throw new Error(
       `[dflash-build] target=${target} missing required kernels: ${missing.join(", ")}. ` +
         `AGENTS.md §3 forbids shipping an Eliza-1 binary without the full ` +
-        `dflash + turbo3 + turbo4 + qjl + polar kernel set. CAPABILITIES.json ` +
+        `dflash + turbo3 + turbo4 + turbo3_tcq + qjl + polar kernel set. CAPABILITIES.json ` +
         `was written for diagnostic purposes only — the artifact is incomplete ` +
         `and must not be published. Inspect the build log for the failed ` +
         `patch hook or absent dispatch site, fix the root cause, and rebuild.`,
@@ -1387,6 +1441,27 @@ function writeCapabilities({
 function targetOutDir(target, override) {
   if (override) return override;
   return path.join(stateDir(), "local-inference", "bin", "dflash", target);
+}
+
+function cmakeBuildTargetsFor(target) {
+  const { platform, backend, fused } = parseTarget(target);
+  const isIos = platform === "ios";
+  const targets = isIos
+    ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
+    : fused
+      ? fusedCmakeBuildTargets()
+      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+
+  // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
+  // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
+  // builds ONLY the listed targets and skips everything in ALL. Without
+  // ggml-metal-lib in the explicit target list the metallib never gets
+  // assembled and the Wave-5 milady-shipped/*.air merge step never fires.
+  if (backend === "metal" && !isIos) {
+    targets.push("ggml-metal-lib");
+  }
+
+  return targets;
 }
 
 // Build a single target. Returns the resulting CAPABILITIES.json object.
@@ -1446,11 +1521,10 @@ function buildTarget({ target, args, ctx }) {
     console.log(
       `  cmake -B ${buildDir} ${flags.join(" ")}`.replace(/ +/g, " "),
     );
-    const dryTargets = fused
-      ? fusedCmakeBuildTargets()
-      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+    const dryTargets = cmakeBuildTargetsFor(target);
+    const isDryRunMultiConfig = platform === "windows" || platform === "ios";
     console.log(
-      `  cmake --build ${buildDir} --target ${dryTargets.join(" ")} -j ${args.jobs}`,
+      `  cmake --build ${buildDir}${isDryRunMultiConfig ? " --config Release" : ""} --target ${dryTargets.join(" ")} -j ${args.jobs}`,
     );
     console.log(`  install -> ${outDir}`);
     return null;
@@ -1467,23 +1541,7 @@ function buildTarget({ target, args, ctx }) {
   // Fused targets additionally build omnivoice-core, libelizainference,
   // and the stub fused server.
   const isIos = platform === "ios";
-  const cmakeBuildTargets = isIos
-    ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
-    : fused
-      ? fusedCmakeBuildTargets()
-      : ["llama-server", "llama-cli", "llama-speculative-simple"];
-
-  // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
-  // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
-  // builds ONLY the listed targets and skips everything in ALL. Without
-  // ggml-metal-lib in the explicit target list the metallib never gets
-  // assembled and the Wave-5 milady-shipped/*.air merge step never fires —
-  // even though llama-server links and runs. Add it for darwin Metal builds
-  // (iOS uses EMBED_LIBRARY=ON which bakes the metallib into the static
-  // archive directly via .incbin, no separate target needed).
-  if (backend === "metal" && !isIos) {
-    cmakeBuildTargets.push("ggml-metal-lib");
-  }
+  const cmakeBuildTargets = cmakeBuildTargetsFor(target);
 
   // MSVC + Xcode are multi-config generators — cmake --build needs an
   // explicit --config flag, otherwise it defaults to Debug and the install
@@ -1728,6 +1786,16 @@ function build(args) {
   }
 
   if (!args.dryRun) {
+    if (args.targets && args.targets.length > 0 && !args.all) {
+      for (const target of targets) {
+        const compat = targetCompatibility(target, ctx);
+        if (!compat.ok) {
+          throw new Error(
+            `target ${target} is not buildable: ${compat.reason}`,
+          );
+        }
+      }
+    }
     ctx.forkCommit = ensureCheckout(args.cacheDir, args.ref);
   } else if (fs.existsSync(path.join(args.cacheDir, ".git"))) {
     ctx.forkCommit = run("git", ["rev-parse", "HEAD"], {

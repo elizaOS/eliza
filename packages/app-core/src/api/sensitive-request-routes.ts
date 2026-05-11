@@ -3,7 +3,6 @@ import {
   defaultSensitiveRequestPolicy,
   resolveSensitiveRequestDelivery,
   type SensitiveRequest,
-  type SensitiveRequestAuditEvent,
   type SensitiveRequestCallback,
   type SensitiveRequestDeliveryPlan,
   type SensitiveRequestEnvironment,
@@ -33,6 +32,7 @@ import {
   type LocalSensitiveRequestStore,
   localSensitiveRequestStore,
   redactLocalSensitiveRequest,
+  type SensitiveRequestAuditEvent,
 } from "./sensitive-request-store";
 
 const ROUTE_PREFIX = "/api/sensitive-requests";

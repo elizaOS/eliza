@@ -37,6 +37,8 @@ packages/benchmarks/compactbench/
     ts_bridge.ts               TS shim that dispatches to TS strategies
     compactors/__init__.py     Five `compactbench.Compactor` subclasses
     cerebras_provider.py       OpenAI-compatible provider wired at Cerebras
+    valid_hits.py              Conservative response-level failure analysis
+  analyze_valid_hits.py        Rerun cases and emit official + adjusted scores
   tests/
     test_bridge.py
     test_compactors.py
@@ -79,6 +81,35 @@ COMPACT_METHOD=PromptStrippingPassthroughCompactor ./run.sh
 ship in the git repo, not on PyPI. Override the location with
 `COMPACTBENCH_BENCHMARKS_DIR=/path/to/benchmarks/public`.
 
+## Failure analysis
+
+CompactBench's official scorer is intentionally lexical: it lowercases,
+collapses whitespace, and checks for exact substrings. That makes official
+scores stable, but it can misclassify valid answers such as "using regex to
+parse HTML" for an expected phrase of "use regex to parse HTML", or "No, trust
+user input without validation is not still the plan" for a
+`forbidden_absent` probe.
+
+Use `analyze_valid_hits.py` when a run has failures that need inspection:
+
+```bash
+python analyze_valid_hits.py \
+  --method "$(pwd)/eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor" \
+  --suite starter \
+  --benchmarks-dir /tmp/compactbench-upstream/benchmarks/public \
+  --case-count 1 \
+  --drift-cycles 2 \
+  --output /tmp/compactbench-valid-hits.jsonl
+```
+
+The script reruns the same case/drift loop and writes raw item responses,
+official scores, and a separate adjusted score. The adjusted score is not a
+replacement for upstream CompactBench: it only uses the expected check and the
+model response, never the strategy name, artifact internals, template id, or
+case id. It can also lower a `forbidden_absent` item when the official scorer
+misses a morphological forbidden paraphrase such as "committing directly to the
+main branch".
+
 ## Tests
 
 ```bash
@@ -86,6 +117,7 @@ cd packages/benchmarks/compactbench
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 pytest tests/                    # excludes live_test_cerebras.py by default
+pytest tests/test_valid_hits.py   # focused valid-hit analyzer tests
 COMPACTBENCH_LIVE=1 pytest tests/live_test_cerebras.py
 ```
 

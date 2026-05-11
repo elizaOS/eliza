@@ -111,7 +111,11 @@ export async function forwardRemoteCloudMutation(
   if (snapshot.mode !== "remote") return false;
   if (!shouldForwardToRemoteTarget(url.pathname, method)) return false;
   if (!snapshot.remoteApiBase) {
-    sendJsonError(res, 503, "Remote target not configured");
+    sendJsonError(
+      res,
+      snapshot.remoteApiBaseError ? 400 : 503,
+      snapshot.remoteApiBaseError ?? "Remote target not configured",
+    );
     return true;
   }
 

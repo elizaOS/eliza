@@ -14,6 +14,7 @@ import { moneyAction } from "./money.js";
 import { scheduleAction } from "./schedule.js";
 import { schedulingNegotiationAction } from "./scheduling-negotiation.js";
 import { screenTimeAction } from "./screen-time.js";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
 
 const OWNER_LIFE_ACTIONS = [
   "create",
@@ -414,15 +415,111 @@ export const ownerFinancesAction: Action = {
     ),
 };
 
-const PERSONAL_ASSISTANT_ACTIONS = ["book_travel", "scheduling"] as const;
+const PERSONAL_ASSISTANT_ACTIONS = [
+  "book_travel",
+  "scheduling",
+  "sign_document",
+] as const;
+
+function getMessageText(message: Memory): string {
+  const text = message.content?.text;
+  return typeof text === "string" ? text : "";
+}
+
+function firstUrl(text: string): string | null {
+  return text.match(/https?:\/\/\S+/u)?.[0] ?? null;
+}
+
+function defaultSignatureDeadline(text: string): string {
+  const inDays = /\bin\s+(\d+)\s+days?\b/iu.exec(text);
+  if (inDays?.[1]) {
+    const date = new Date(Date.now() + Number(inDays[1]) * 24 * 60 * 60 * 1000);
+    return date.toISOString();
+  }
+  return new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+}
+
+async function enqueueDocumentSignatureApproval(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  options: unknown;
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  const params = readParameters(args.options);
+  const text = getMessageText(args.message);
+  const documentName =
+    readStringParam(args.options, "documentName") ??
+    readStringParam(args.options, "document_name") ??
+    (/nda/i.test(text) ? "NDA" : "Document for signature");
+  const documentId =
+    readStringParam(args.options, "documentId") ??
+    readStringParam(args.options, "document_id") ??
+    `signature-${String(args.message.id ?? Date.now())}`;
+  const signatureUrl =
+    readStringParam(args.options, "signatureUrl") ??
+    readStringParam(args.options, "signature_url") ??
+    firstUrl(text) ??
+    "pending-signature-url";
+  const deadline =
+    readStringParam(args.options, "deadline") ?? defaultSignatureDeadline(text);
+  const subjectUserId =
+    typeof args.message.entityId === "string"
+      ? args.message.entityId
+      : String(args.runtime.agentId);
+
+  const queue = createApprovalQueue(args.runtime, {
+    agentId: args.runtime.agentId,
+  });
+  const request = await queue.enqueue({
+    requestedBy: "PERSONAL_ASSISTANT",
+    subjectUserId,
+    action: "sign_document",
+    payload: {
+      action: "sign_document",
+      documentId,
+      documentName,
+      signatureUrl,
+      deadline,
+    },
+    channel: "internal",
+    reason:
+      typeof params.reason === "string" && params.reason.trim().length > 0
+        ? params.reason.trim()
+        : `Initiate signing flow for ${documentName}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+
+  const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: "PERSONAL_ASSISTANT",
+  });
+  return {
+    success: true,
+    text: responseText,
+    data: {
+      actionName: "PERSONAL_ASSISTANT",
+      action: "sign_document",
+      approvalRequestId: request.id,
+    },
+  };
+}
 
 export const personalAssistantAction: Action = {
   name: "PERSONAL_ASSISTANT",
-  similes: ["ASSISTANT", "BOOK_TRAVEL", "SCHEDULING", "SCHEDULING_NEGOTIATION"],
+  similes: [
+    "ASSISTANT",
+    "BOOK_TRAVEL",
+    "SCHEDULING",
+    "SCHEDULING_NEGOTIATION",
+    "SIGN_DOCUMENT",
+    "DOCUSIGN",
+  ],
   description:
-    "Owner personal-assistant workflows. Use action=book_travel for real travel booking and action=scheduling for scheduling negotiation.",
+    "Owner personal-assistant workflows. Use action=book_travel for real travel booking, action=scheduling for scheduling negotiation, and action=sign_document for document-signature flows that must be queued for owner approval.",
   descriptionCompressed:
-    "personal assistant workflows: action=book_travel|scheduling",
+    "personal assistant workflows: action=book_travel|scheduling|sign_document",
   contexts: ["general", "calendar", "travel", "tasks"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -450,9 +547,17 @@ export const personalAssistantAction: Action = {
         callback,
       );
     }
+    if (action === "sign_document") {
+      return enqueueDocumentSignatureApproval({
+        runtime,
+        message,
+        options,
+        callback,
+      });
+    }
     return {
       success: false,
-      text: "PERSONAL_ASSISTANT requires action=book_travel or action=scheduling.",
+      text: "PERSONAL_ASSISTANT requires action=book_travel, action=scheduling, or action=sign_document.",
       data: { error: "MISSING_ACTION" },
     };
   },

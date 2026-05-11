@@ -68,7 +68,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 const CHAT_MODEL_ELIZA_1_MOBILE = {
   id: "eliza-1-mobile-1_7b",
   displayName: "Eliza-1 mobile",
-  hfRepo: "elizaos/eliza-1-mobile-1_7b",
+  hfRepo: "elizalabs/eliza-1-mobile-1_7b",
   ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
   expectedMinBytes: 900 * 1024 * 1024,
   expectedMaxBytes: 1700 * 1024 * 1024,
@@ -78,7 +78,7 @@ const CHAT_MODEL_ELIZA_1_MOBILE = {
 const EMBEDDING_MODEL_ELIZA_1_LITE = {
   id: "eliza-1-lite-0_6b",
   displayName: "Eliza-1 lite",
-  hfRepo: "elizaos/eliza-1-lite-0_6b",
+  hfRepo: "elizalabs/eliza-1-lite-0_6b",
   ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
   expectedMinBytes: 300 * 1024 * 1024,
   expectedMaxBytes: 800 * 1024 * 1024,

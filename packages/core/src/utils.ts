@@ -518,7 +518,9 @@ export const formatMessages = ({
 								lines.push(`Type: ${media.contentType}`);
 							}
 							if (media.text || media.description) {
-								lines.push("Stored content available via ATTACHMENT action=read");
+								lines.push(
+									"Stored content available via ATTACHMENT action=read",
+								);
 							}
 							return lines.join("\n");
 						})

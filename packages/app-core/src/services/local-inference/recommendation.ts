@@ -23,11 +23,11 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
-const TIER_LITE: Eliza1TierId = "eliza-1-lite-0_6b";
-const TIER_MOBILE: Eliza1TierId = "eliza-1-mobile-1_7b";
-const TIER_DESKTOP: Eliza1TierId = "eliza-1-desktop-9b";
-const TIER_PRO: Eliza1TierId = "eliza-1-pro-27b";
-const TIER_SERVER: Eliza1TierId = "eliza-1-server-h200";
+const TIER_LITE: Eliza1TierId = "eliza-1-0_6b";
+const TIER_MOBILE: Eliza1TierId = "eliza-1-1_7b";
+const TIER_DESKTOP: Eliza1TierId = "eliza-1-9b";
+const TIER_PRO: Eliza1TierId = "eliza-1-27b";
+const TIER_SERVER: Eliza1TierId = "eliza-1-27b-256k";
 
 export type RecommendationPlatformClass =
   | "mobile"

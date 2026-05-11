@@ -9,8 +9,8 @@
  * Native API:
  *   - AEDeterminePermissionToAutomateTarget(target, typeWildCard, typeWildCard, askUserIfNeeded)
  *
- * Without an FFI for AE we shell out to osascript and inspect the error
- * code, same pattern as `notes.ts`.
+ * Without an FFI for AE we read TCC.db for check() and reserve osascript
+ * for request(), where a prompt is expected.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
@@ -18,24 +18,20 @@ import {
   buildState,
   IS_DARWIN,
   platformUnsupportedState,
+  queryAppleEventsTccStatus,
   runOsascript,
 } from "./_bridge.js";
 
 const ID = "automation" as const;
+const SYSTEM_EVENTS_BUNDLE_ID = "com.apple.systemevents";
 
-async function probeAutomationAccess(): Promise<
+async function checkAutomationAccess(): Promise<
   "granted" | "denied" | "not-determined"
 > {
-  const result = await runOsascript(
-    'try\n  tell application "System Events" to get name of current user\non error errMsg number errNum\n  return "ERR:" & errNum\nend try',
+  return (
+    (await queryAppleEventsTccStatus(SYSTEM_EVENTS_BUNDLE_ID)) ??
+    "not-determined"
   );
-  if (result === null) return "not-determined";
-  if (result.startsWith("ERR:")) {
-    const num = parseInt(result.slice(4), 10);
-    if (num === -1743 || num === -10004) return "denied";
-    return "not-determined";
-  }
-  return "granted";
 }
 
 export const automationProber: Prober = {
@@ -43,13 +39,16 @@ export const automationProber: Prober = {
 
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
-    const status = await probeAutomationAccess();
+    const status = await checkAutomationAccess();
     return buildState(ID, status, { canRequest: status === "not-determined" });
   },
 
   async request({ reason: _reason }): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
-    const status = await probeAutomationAccess();
+    await runOsascript(
+      'tell application "System Events" to get name of current user',
+    );
+    const status = await checkAutomationAccess();
     return buildState(ID, status, {
       canRequest: status === "not-determined",
       lastRequested: Date.now(),

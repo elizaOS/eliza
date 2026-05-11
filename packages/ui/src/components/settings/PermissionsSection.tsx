@@ -1,12 +1,8 @@
 import { Button } from "@elizaos/ui";
 import { useCallback, useMemo } from "react";
-import type { SystemPermissionId } from "../../api";
+import type { PermissionId } from "../../api";
 import { useBootConfig } from "../../config/boot-config-react";
-import {
-  isDesktopPlatform,
-  isNative,
-  isWebPlatform,
-} from "../../platform";
+import { isDesktopPlatform, isNative, isWebPlatform } from "../../platform";
 import { useApp } from "../../state";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
 import {
@@ -195,7 +191,7 @@ function DesktopPermissionsView() {
   } = useDesktopPermissionsState();
 
   const arePermissionsGranted = useCallback(
-    (requiredPerms: SystemPermissionId[]): boolean => {
+    (requiredPerms: PermissionId[]): boolean => {
       if (!permissions) return false;
       return requiredPerms.every((id) => {
         const state = permissions[id];

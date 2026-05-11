@@ -10,9 +10,8 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import type { Action, ActionResult } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createToolCallCacheFromConfig,
@@ -39,7 +38,9 @@ function makeStubAction(
     description: "stub",
     handler: async (_runtime, _msg, _state, options) => {
       count += 1;
-      const opts = options as { parameters?: Record<string, unknown> } | undefined;
+      const opts = options as
+        | { parameters?: Record<string, unknown> }
+        | undefined;
       return impl(opts?.parameters ?? {});
     },
     validate: async () => true,
@@ -60,18 +61,8 @@ describe("wrapActionWithCache", () => {
     });
 
     const opts = { parameters: { q: "foo" } };
-    const r1 = await wrapped.handler(
-      {} as never,
-      {} as never,
-      undefined,
-      opts,
-    );
-    const r2 = await wrapped.handler(
-      {} as never,
-      {} as never,
-      undefined,
-      opts,
-    );
+    const r1 = await wrapped.handler({} as never, {} as never, undefined, opts);
+    const r2 = await wrapped.handler({} as never, {} as never, undefined, opts);
 
     expect(calls()).toBe(1);
     expect(r1).toEqual(r2);

@@ -276,7 +276,9 @@ export const characterActionsGroupAction = createPageActionGroupAction({
     [
       {
         name: "{{name1}}",
-        content: { text: "Update my character bio to mention I work in design." },
+        content: {
+          text: "Update my character bio to mention I work in design.",
+        },
       },
       {
         name: "{{agentName}}",
@@ -396,7 +398,9 @@ export const automationActionsGroupAction = createPageActionGroupAction({
     [
       {
         name: "{{name1}}",
-        content: { text: "Schedule a daily standup reminder at 9am on weekdays." },
+        content: {
+          text: "Schedule a daily standup reminder at 9am on weekdays.",
+        },
       },
       {
         name: "{{agentName}}",

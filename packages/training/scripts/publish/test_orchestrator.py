@@ -31,6 +31,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     EXIT_KERNEL_VERIFY_FAIL,
     EXIT_MISSING_FILE,
     EXIT_OK,
+    EXIT_USAGE,
     PublishContext,
     run,
 )
@@ -96,6 +97,25 @@ def _build_fixture_bundle(
         json.dumps({"acceptance_window": 4}),
     )
     _write(bundle / "cache" / "voice-preset-default.bin", b"\x00cache\x00")
+
+    kernel_manifest = {
+        "kernel_target": ["stub"],
+        "block_layout_version": {"stub": "v1"},
+        "codebook_hash": {"stub": "hash"},
+        "per_block_tolerance": {"stub": 0.01},
+    }
+    _write(
+        bundle / "turboquant.json",
+        json.dumps({"method": "turboquant", "kernel_manifest": kernel_manifest}),
+    )
+    _write(
+        bundle / "qjl_config.json",
+        json.dumps({"method": "qjl", "kernel_manifest": kernel_manifest}),
+    )
+    _write(
+        bundle / "polarquant_config.json",
+        json.dumps({"method": "polarquant", "kernel_manifest": kernel_manifest}),
+    )
 
     # Licenses.
     license_names = (
@@ -189,7 +209,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id=f"elizaos/eliza-1-{tier}",
+        repo_id=f"elizalabs/eliza-1-{tier}",
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(
@@ -239,6 +259,25 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
 
 def test_missing_license_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.dflash")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    metal = _metal_report(tmp_path)
+    ctx = _ctx("desktop-9b", bundle, metal=metal, dry_run=True)
+    bad = PublishContext(
+        **{**ctx.__dict__, "repo_id": "elizaos/eliza-1-desktop-9b"}
+    )
+    rc = run(bad)
+    assert rc == EXIT_USAGE
+
+
+def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "qjl_config.json").unlink()
     metal = _metal_report(tmp_path)
     rc = run(_ctx("desktop-9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE

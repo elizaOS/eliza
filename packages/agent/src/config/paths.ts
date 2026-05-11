@@ -22,12 +22,7 @@ function readEnvOverride(
   return undefined;
 }
 
-export {
-  getElizaNamespace,
-  resolveOAuthDir,
-  resolveStateDir,
-  resolveUserPath,
-};
+export { getElizaNamespace, resolveOAuthDir, resolveStateDir, resolveUserPath };
 
 export function resolveConfigPath(
   env: NodeJS.ProcessEnv = process.env,

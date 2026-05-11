@@ -2,6 +2,15 @@
   "name": "@elizaos/electrobun",
   "version": "2.0.0-beta.1",
   "type": "module",
+  "files": [
+    "assets",
+    "entitlements",
+    "scripts",
+    "src",
+    "electrobun.config.ts",
+    "README.md",
+    "tsconfig.json"
+  ],
   "scripts": {
     "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
     "build": "bun run build:preload && ELECTROBUN_SKIP_CODESIGN=1 PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",

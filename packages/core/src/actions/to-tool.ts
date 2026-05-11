@@ -163,7 +163,7 @@ const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
 	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. processMessage is implicit RESPOND for DMs. List plan.contexts to engage; set plan.requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set plan.contexts=['simple'] and put text in plan.reply. Optionally include action-retrieval hints in plan.candidateActions / plan.parentActionHints / plan.contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const PLAN_ACTIONS_DESCRIPTION =
-	"Stage 2 — invoke an action by name with parameters. Use multiple times in sequence to build up a turn's work. Action names and parameter schemas are listed under available_actions in the conversation; the system prompt only describes the protocol. For router-style actions (e.g. LINEAR_ISSUE, SHOPIFY) pass the routed sub-operation in `subaction`. Use REPLY to emit a user-facing reply; IGNORE / STOP to terminate the turn.";
+	"Stage 2 — invoke an action by name with parameters. Use multiple times in sequence to build up a turn's work. Action names and parameter schemas are listed under available_actions in the conversation; the system prompt only describes the protocol. Use exactly the parameter names from that action schema; for routed actions the selector is usually `action` inside `parameters`. Use REPLY to emit a user-facing reply; IGNORE / STOP to terminate the turn.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /
@@ -202,8 +202,8 @@ export function createHandleResponseTool(options?: {
 export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool();
 
 /**
- * Stage 2 tool. The model uses this to invoke an action (or one of its
- * sub-actions) with parameters. Action names + their parameter schemas
+ * Stage 2 tool. The model uses this to invoke an action with parameters.
+ * Action names + their parameter schemas
  * live in the available_actions block of the conversation, NOT in the
  * static system prompt — the system prompt only describes the protocol.
  *
@@ -226,15 +226,10 @@ export const PLAN_ACTIONS_TOOL: ToolDefinition = {
 				description:
 					"Action name to invoke. Must match one of the names listed under available_actions in the conversation. Use REPLY for terminal user-facing replies; IGNORE / STOP to terminate the turn.",
 			},
-			subaction: {
-				type: "string",
-				description:
-					"Optional. Sub-operation name for router-style actions (e.g. action=LINEAR_ISSUE, subaction=create). Leave empty for non-router actions.",
-			},
 			parameters: {
 				type: "object",
 				description:
-					"Action-shaped parameters object. Shape depends on the action; see its parameter schema in available_actions.",
+					"Action-shaped parameters object. Shape depends on the action; use only parameter names listed in that action's available_actions schema.",
 				additionalProperties: true,
 			},
 			thought: {

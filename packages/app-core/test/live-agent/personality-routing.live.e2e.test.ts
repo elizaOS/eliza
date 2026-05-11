@@ -15,7 +15,6 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  configureLocalEmbeddingPlugin,
   extractPlugin,
   type TestPluginModule,
 } from "@elizaos/agent";
@@ -122,9 +121,6 @@ describeIf(hasModelProvider)("Personality Routing E2E", () => {
 
     const plugins: Plugin[] = [];
     const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
-    const localEmbeddingPlugin = await loadPlugin(
-      "@elizaos/plugin-local-embedding",
-    );
     const modelPlugin = await loadPlugin(selectedLiveProvider.pluginPackage);
     if (modelPlugin) {
       plugins.push(modelPlugin);
@@ -142,10 +138,6 @@ describeIf(hasModelProvider)("Personality Routing E2E", () => {
       if (runtime.adapter && !(await runtime.adapter.isReady())) {
         await runtime.adapter.init();
       }
-    }
-    if (localEmbeddingPlugin) {
-      configureLocalEmbeddingPlugin(localEmbeddingPlugin);
-      await runtime.registerPlugin(localEmbeddingPlugin);
     }
 
     await runtime.initialize();

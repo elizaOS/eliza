@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test vulkan vulkan-spirv vulkan-qjl-polar metal metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork dispatch-smoke clean
+.PHONY: all reference-test vulkan vulkan-spirv vulkan-verify vulkan-qjl-polar metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify verify-fork dispatch-smoke clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -95,6 +95,25 @@ vulkan-qjl-polar: vulkan_verify vulkan-spirv
 	./vulkan_verify ../vulkan/qjl.spv fixtures/qjl.json
 	@echo "[kernels/verify] running vulkan_verify on Polar fixture..."
 	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
+	@echo "[kernels/verify] running vulkan_verify on Polar+QJL-residual fixture..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
+
+# Full Vulkan correctness gate for the default-on kernel set. Runs all five
+# score kernels plus the Polar residual fixture so the optional residual branch
+# is not left to source review only.
+vulkan-verify: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan turbo3..."
+	./vulkan_verify ../vulkan/turbo3.spv fixtures/turbo3.json
+	@echo "[kernels/verify] vulkan turbo4..."
+	./vulkan_verify ../vulkan/turbo4.spv fixtures/turbo4.json
+	@echo "[kernels/verify] vulkan turbo3_tcq..."
+	./vulkan_verify ../vulkan/turbo3_tcq.spv fixtures/turbo3_tcq.json
+	@echo "[kernels/verify] vulkan qjl..."
+	./vulkan_verify ../vulkan/qjl.spv fixtures/qjl.json
+	@echo "[kernels/verify] vulkan polar..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar.json
+	@echo "[kernels/verify] vulkan polar + QJL residual..."
+	./vulkan_verify ../vulkan/polar.spv fixtures/polar_qjl.json
 
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
@@ -104,6 +123,38 @@ metal_verify: metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 		metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ) \
 		-framework Foundation -framework Metal -framework MetalKit -framework CoreGraphics \
 		-lm -o metal_verify
+
+# Full Metal correctness gate for the default-on kernel set. The single-block
+# kernels are the compatibility entrypoints; Polar is checked both with and
+# without its QJL residual branch.
+metal-verify: metal_verify reference-test
+	@echo "[kernels/verify] metal turbo3..."
+	./metal_verify ../metal/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json
+	@echo "[kernels/verify] metal turbo4..."
+	./metal_verify ../metal/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json
+	@echo "[kernels/verify] metal turbo3_tcq..."
+	./metal_verify ../metal/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json
+	@echo "[kernels/verify] metal qjl..."
+	./metal_verify ../metal/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json
+	@echo "[kernels/verify] metal polar..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json
+	@echo "[kernels/verify] metal polar + QJL residual..."
+	./metal_verify ../metal/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar_qjl.json
+
+# Additive check for the long-context multi-block Metal entrypoints. These
+# are separate symbols from the compatibility entrypoints and need direct
+# harness coverage whenever their dispatch shape changes.
+metal-verify-multiblock: metal_verify reference-test
+	@for n in 2 3 4 8; do \
+	  echo "[kernels/verify] metal turbo3 multi $$n..." && \
+	  ./metal_verify ../metal/turbo3.metal kernel_turbo3_dot_multi fixtures/turbo3.json --multi $$n && \
+	  echo "[kernels/verify] metal turbo4 multi $$n..." && \
+	  ./metal_verify ../metal/turbo4.metal kernel_turbo4_dot_multi fixtures/turbo4.json --multi $$n && \
+	  echo "[kernels/verify] metal turbo3_tcq multi $$n..." && \
+	  ./metal_verify ../metal/turbo3_tcq.metal kernel_turbo3_tcq_dot_multi fixtures/turbo3_tcq.json --multi $$n && \
+	  echo "[kernels/verify] metal qjl multi $$n..." && \
+	  ./metal_verify ../metal/qjl.metal kernel_attn_score_qjl1_256_multi fixtures/qjl.json --multi $$n || exit 1; \
+	done
 
 # Metal performance harness (macOS only). Sibling of metal_verify; measures
 # end-to-end GPU latency, CPU wait, and bandwidth utilisation per kernel at
@@ -334,7 +385,7 @@ endif
 # ~/.cache/eliza-dflash/milady-llama-cpp. If the cache dir is absent, this
 # target prints a clear "fork not present, please run build first" message
 # rather than failing cryptically.
-ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/milady-kernels
+ELIZA_DFLASH_FORK_METAL_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-metal/milady-shipped
 ELIZA_DFLASH_FORK_VULKAN_DIR := $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-vulkan/vulkan-shaders
 
 verify-fork:
@@ -347,15 +398,16 @@ else
 	@if which xcrun >/dev/null 2>&1; then \
 	  if [ ! -d "$(ELIZA_DFLASH_FORK_METAL_DIR)" ]; then \
 	    echo "[verify-fork] fork present but $(ELIZA_DFLASH_FORK_METAL_DIR) missing — fork layout drift."; \
+	    echo "[verify-fork] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal --dry-run' to stage/describe the shipped kernel patch."; \
 	    exit 1; \
 	  fi; \
 	  $(MAKE) metal_verify >/dev/null && \
-	  echo "[verify-fork] metal/turbo3   (fork: tbq3_0.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/tbq3_0.metal     kernel_turbo3_dot          fixtures/turbo3.json     && \
-	  echo "[verify-fork] metal/turbo4   (fork: tbq4_0.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/tbq4_0.metal     kernel_turbo4_dot          fixtures/turbo4.json     && \
-	  echo "[verify-fork] metal/turbo3_tcq (fork: tbq3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/tbq3_tcq.metal   kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
-	  echo "[verify-fork] metal/qjl     (fork: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal       kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
-	  echo "[verify-fork] metal/polar   (fork: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal     kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
-	  echo "[verify-fork] metal: 5/5 fork shaders verified against the same fixtures as the standalones"; \
+	  echo "[verify-fork] metal/turbo3   (patched shipped: turbo3.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3.metal     kernel_turbo3_dot          fixtures/turbo3.json     && \
+	  echo "[verify-fork] metal/turbo4   (patched shipped: turbo4.metal)"     && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo4.metal     kernel_turbo4_dot          fixtures/turbo4.json     && \
+	  echo "[verify-fork] metal/turbo3_tcq (patched shipped: turbo3_tcq.metal)" && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/turbo3_tcq.metal kernel_turbo3_tcq_dot      fixtures/turbo3_tcq.json && \
+	  echo "[verify-fork] metal/qjl     (patched shipped: qjl.metal)"         && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/qjl.metal        kernel_attn_score_qjl1_256 fixtures/qjl.json        && \
+	  echo "[verify-fork] metal/polar   (patched shipped: polar.metal)"       && ./metal_verify $(ELIZA_DFLASH_FORK_METAL_DIR)/polar.metal      kernel_mul_mv_q4_polar_f32 fixtures/polar.json      && \
+	  echo "[verify-fork] metal: 5/5 patched shipped shaders verified against the same fixtures as the standalones"; \
 	else \
 	  echo "[verify-fork] xcrun not found — skipping Metal fork verification (macOS only)"; \
 	fi
@@ -381,9 +433,10 @@ else
 	@echo "[verify-fork] done. Compare the per-kernel pass/fail above against the standalone reference runs to detect drift."
 endif
 
-# MILADY-DISPATCH-V1 smoke test. Links against the BUILT libggml-metal.dylib /
-# libggml-base.dylib in the fork's build/darwin-arm64-metal/bin tree, so it
-# exercises the actual fork dispatch pipeline (not the JIT). Prerequisite:
+# GGML_OP_ATTN_SCORE_QJL Metal dispatch smoke test. Links against the BUILT
+# libggml-metal.dylib / libggml-base.dylib in the fork's
+# build/darwin-arm64-metal/bin tree, so it exercises the actual fork dispatch
+# pipeline (not the JIT). Prerequisite:
 # `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
 # darwin-arm64-metal` has succeeded and produced libggml-*.dylib + the
 # milady kernels in default.metallib.

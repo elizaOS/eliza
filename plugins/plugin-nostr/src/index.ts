@@ -13,13 +13,13 @@ import { NostrService } from "./service.js";
 import { DEFAULT_NOSTR_RELAYS } from "./types.js";
 
 export * from "./accounts.js";
+export { publishProfile } from "./actions/index.js";
 // Export types
 export * from "./types.js";
 // Export service / providers / actions
 // Nostr DMs route through MESSAGE. Public notes route through POST. Profile
 // publishing is connector-owned identity metadata, not a planner action.
 export { identityContextProvider, NostrService };
-export { publishProfile } from "./actions/index.js";
 
 /**
  * Nostr plugin definition

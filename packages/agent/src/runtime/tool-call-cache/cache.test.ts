@@ -14,10 +14,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ToolCallCache } from "./cache.ts";
 import { buildCacheKey, canonicalizeJson } from "./key.ts";
 import { defaultPrivacyRedactor } from "./redact.ts";
-import {
-  CACHEABLE_TOOL_REGISTRY,
-  resolveToolDescriptor,
-} from "./registry.ts";
+import { CACHEABLE_TOOL_REGISTRY, resolveToolDescriptor } from "./registry.ts";
 import type { CacheableToolDescriptor, PrivacyRedactor } from "./types.ts";
 
 const passthroughRedact: PrivacyRedactor = (v) => v;
@@ -229,9 +226,10 @@ describe("ToolCallCache", () => {
         const out: Record<string, unknown> = {};
         for (const k of Object.keys(v as Record<string, unknown>)) {
           const val = (v as Record<string, unknown>)[k];
-          out[k] = typeof val === "string"
-            ? val.replace(/SECRET/g, "<REDACTED>")
-            : val;
+          out[k] =
+            typeof val === "string"
+              ? val.replace(/SECRET/g, "<REDACTED>")
+              : val;
         }
         return out;
       }

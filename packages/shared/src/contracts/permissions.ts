@@ -2,9 +2,7 @@
  * Shared system permission contracts.
  *
  * `PermissionId` is the canonical 16-id union covering OS integrations across
- * macOS / win32 / linux. The legacy `SystemPermissionId` alias retains the
- * original seven ids for the dashboard API's `AllPermissionsState` map and
- * other record-keyed callers; new code should use `PermissionId`.
+ * macOS / win32 / linux.
  */
 
 export type PermissionId =
@@ -25,11 +23,7 @@ export type PermissionId =
   | "full-disk"
   | "automation";
 
-/**
- * Legacy narrow alias for the original seven permission ids that the
- * dashboard API (`AllPermissionsState`) and existing UI callers depend on.
- * Strict subset of `PermissionId` so existing record-keyed lookups compile.
- */
+/** Legacy narrow alias for older dashboard callers. New code should use PermissionId. */
 export type SystemPermissionId =
   | "accessibility"
   | "screen-recording"
@@ -164,19 +158,13 @@ export interface IPermissionsRegistry {
 }
 
 /**
- * Legacy fixed-shape map keyed by the original seven permission ids. The
- * dashboard API and `permission-controls.tsx` still rely on this shape; the
- * registry is the new source of truth.
+ * Full permission-state snapshot keyed by every canonical permission id.
+ * Legacy callers that only render the original dashboard subset can safely
+ * index the keys they know about; newer settings/chat surfaces use the full
+ * map so LifeOps, Health, Screen Time, and Apple app permissions share one
+ * contract.
  */
-export interface AllPermissionsState {
-  accessibility: PermissionState;
-  "screen-recording": PermissionState;
-  microphone: PermissionState;
-  camera: PermissionState;
-  shell: PermissionState;
-  "website-blocking": PermissionState;
-  location: PermissionState;
-}
+export type AllPermissionsState = Record<PermissionId, PermissionState>;
 
 export interface PermissionManagerConfig {
   cacheTimeoutMs: number;

@@ -172,6 +172,79 @@ function looksLikeFlightConflictQuestion(text: string): boolean {
   );
 }
 
+function looksLikeDocumentSignatureRequest(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\b(?:nda|docusign|signature|signed|signing|sign\s+(?:the|a)?\s*(?:document|doc|nda)|document\s+sign(?:ing|ature)?)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:meeting|appointment|kick-?off|deadline|before|due|in\s+\d+\s+days?|partnership)\b/u.test(
+      normalized,
+    ) &&
+    /\b(?:initiate|start|begin|draft|queue|prepare|send|get\s+(?:it|the\s+nda)\s+signed|signing\s+flow)\b/u.test(
+      normalized,
+    )
+  );
+}
+
+function defaultSignatureDeadline(text: string): string {
+  const match = /\bin\s+(\d+)\s+days?\b/iu.exec(text);
+  if (match?.[1]) {
+    return new Date(
+      Date.now() + Number(match[1]) * 24 * 60 * 60 * 1000,
+    ).toISOString();
+  }
+  return new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString();
+}
+
+async function queueDocumentSignatureRequest(args: {
+  runtime: IAgentRuntime;
+  message: Memory;
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  const text = getMessageText(args.message);
+  const documentName = /\bnda\b/iu.test(text) ? "NDA" : "Document";
+  const documentId = `signature-${String(args.message.id ?? Date.now())}`;
+  const signatureUrl = text.match(/https?:\/\/\S+/u)?.[0] ?? "pending-signature-url";
+  const subjectUserId =
+    typeof args.message.entityId === "string"
+      ? args.message.entityId
+      : String(args.runtime.agentId);
+  const queue = createApprovalQueue(args.runtime, {
+    agentId: args.runtime.agentId,
+  });
+  const request = await queue.enqueue({
+    requestedBy: "PERSONAL_ASSISTANT",
+    subjectUserId,
+    action: "sign_document",
+    payload: {
+      action: "sign_document",
+      documentId,
+      documentName,
+      signatureUrl,
+      deadline: defaultSignatureDeadline(text),
+    },
+    channel: "internal",
+    reason: `Initiate signing flow for ${documentName}`,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  });
+  const responseText = `Queued the ${documentName} signing flow for approval before anything is sent.`;
+  await args.callback?.({
+    text: responseText,
+    source: "action",
+    action: "PERSONAL_ASSISTANT",
+  });
+  return {
+    success: true,
+    text: responseText,
+    data: {
+      actionName: "PERSONAL_ASSISTANT",
+      action: "sign_document",
+      approvalRequestId: request.id,
+    },
+  };
+}
+
 function buildFlightConflictPreview(text: string): string {
   if (/8\s*(?:am|a\.m\.)/iu.test(text) && /9\s*(?:am|a\.m\.)/iu.test(text)) {
     return "The 8 AM JFK arrival is too tight for a 9 AM board meeting. I would treat that as a conflict unless the meeting is at the airport or remote. The concrete options are to rebook to an earlier flight or the night before, move the meeting later, or plan to join remotely while in transit.";
@@ -321,6 +394,9 @@ async function handleLifeOpsDirectMessageRequest(args: {
         subaction: "flight_conflict_rebooking",
       },
     };
+  }
+  if (looksLikeDocumentSignatureRequest(text)) {
+    return queueDocumentSignatureRequest(args);
   }
   return null;
 }

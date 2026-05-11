@@ -10,7 +10,7 @@ Wraps llama.cpp's two-stage GGUF conversion:
 
 Output is written to ``<output>/eliza-1-<size>-Q4_K_M.gguf``, matching the
 sibling K-quant levels (``-Q5_K_M``, ``-Q6_K``) so the publish layer can
-upload them to a single ``elizaos/eliza-1-<size>-gguf-q4_k_m`` HF repo.
+upload them to a single ``elizalabs/eliza-1-<size>-gguf-q4_k_m`` HF repo.
 
 Both binaries must be on ``PATH`` (or pointed at via ``--llama-cpp-dir``).
 If they are missing the script exits 2 with an actionable diagnostic
@@ -123,7 +123,7 @@ def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
 def _resolve_output_basename(model_id_or_path: str, output_dir: Path) -> str:
     """Pick the gguf filename from the model dir or HF repo id.
 
-    For elizaos/eliza-1-<size> we want the publishable filename
+    For elizalabs/eliza-1-<size> we want the publishable filename
     ``eliza-1-<size>-Q4_K_M.gguf``. Falls back to <last-path-segment>.
     """
     last = model_id_or_path.rstrip("/").split("/")[-1]

@@ -44,7 +44,7 @@ function defaultStateFor(id: PermissionId): PermissionState {
 
 function resolveStateDir(): string {
   const explicit = process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR;
-  if (explicit && explicit.trim()) return explicit;
+  if (explicit?.trim()) return explicit;
   return path.join(os.homedir(), ".milady");
 }
 
@@ -201,7 +201,8 @@ export class PermissionRegistry
     const cutoff = Date.now() - PENDING_BLOCK_WINDOW_MS;
     return this.list().filter((s) => {
       if (s.status === "not-determined") return true;
-      if (s.lastBlockedFeature && s.lastBlockedFeature.at >= cutoff) return true;
+      if (s.lastBlockedFeature && s.lastBlockedFeature.at >= cutoff)
+        return true;
       return false;
     });
   }

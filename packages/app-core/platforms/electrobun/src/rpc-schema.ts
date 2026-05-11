@@ -251,12 +251,14 @@ export interface DiscoveryResult {
 
 // -- Permissions --
 export type {
+	PermissionId,
 	PermissionState,
 	PermissionStatus,
-	SystemPermissionId,
 } from "@elizaos/shared";
 
-import type { PermissionState, SystemPermissionId } from "@elizaos/shared";
+import type { PermissionId, PermissionState } from "@elizaos/shared";
+
+export type SystemPermissionId = PermissionId;
 
 /** Local variant uses an index signature (the canonical contract uses explicit keys). */
 export interface AllPermissionsState {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-// Post-consolidation: SEND_TO_AGENT is `TASKS { op: "send" }`. The action
+// Post-consolidation: SEND_TO_AGENT is `TASKS { action: "send" }`. The action
 // variable still imports as `sendToAgentAction` (alias on the parent).
 import { sendToAgentAction } from "../../src/actions/tasks.js";
 import {
@@ -10,8 +10,8 @@ import {
   state,
 } from "../../src/test-utils/action-test-utils.js";
 
-describe("TASKS:send (legacy SEND_TO_AGENT)", () => {
-  it("sends input via op=send", async () => {
+describe("TASKS:send", () => {
+  it("sends input via action=send", async () => {
     const svc = serviceMock();
     expect(
       (
@@ -19,13 +19,13 @@ describe("TASKS:send (legacy SEND_TO_AGENT)", () => {
           runtimeWith(svc),
           memory({ sessionId: "abcdef123456", input: "continue" }),
           state,
-          { parameters: { op: "send" } },
+          { parameters: { action: "send" } },
           callback(),
         )
       )?.data,
     ).toMatchObject({ sessionId: "abcdef123456", input: "continue" });
   });
-  it("sends keys via op=send", async () => {
+  it("sends keys via action=send", async () => {
     const svc = serviceMock();
     expect(
       (
@@ -33,7 +33,7 @@ describe("TASKS:send (legacy SEND_TO_AGENT)", () => {
           runtimeWith(svc),
           memory({ sessionId: "abcdef123456", keys: "ctrl-c" }),
           state,
-          { parameters: { op: "send" } },
+          { parameters: { action: "send" } },
           callback(),
         )
       )?.data,
@@ -46,7 +46,7 @@ describe("TASKS:send (legacy SEND_TO_AGENT)", () => {
           runtimeWith(undefined),
           memory(),
           state,
-          { parameters: { op: "send" } },
+          { parameters: { action: "send" } },
           callback(),
         )
       )?.error,
@@ -64,7 +64,7 @@ describe("TASKS:send (legacy SEND_TO_AGENT)", () => {
           ),
           memory({ input: "x" }),
           state,
-          { parameters: { op: "send" } },
+          { parameters: { action: "send" } },
           callback(),
         )
       )?.error,

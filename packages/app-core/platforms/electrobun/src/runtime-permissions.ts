@@ -6,7 +6,7 @@ import type {
 	SystemPermissionId,
 } from "./native/permissions-shared";
 
-export const RUNTIME_PERMISSION_IDS = ["website-blocking", "location"] as const;
+export const RUNTIME_PERMISSION_IDS = ["website-blocking"] as const;
 
 type RuntimePermissionId = (typeof RUNTIME_PERMISSION_IDS)[number];
 type RuntimePermissionOperation = "check" | "request" | "open-settings";
@@ -39,6 +39,12 @@ export function buildRuntimePermissionUnavailableState(
 		status: "denied",
 		lastChecked: Date.now(),
 		canRequest: false,
+		platform:
+			process.platform === "darwin" ||
+			process.platform === "win32" ||
+			process.platform === "linux"
+				? process.platform
+				: "linux",
 		reason,
 	};
 }

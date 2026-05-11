@@ -21,6 +21,8 @@ export interface ResponseHandlerPatch {
 	debug?: readonly string[];
 }
 
+type ResponseHandlerEvaluatorResult = ResponseHandlerPatch | undefined;
+
 export interface ResponseHandlerEvaluatorContext {
 	runtime: IAgentRuntime;
 	message: Memory;
@@ -38,7 +40,7 @@ export interface ResponseHandlerEvaluator {
 	): boolean | Promise<boolean>;
 	evaluate(
 		context: ResponseHandlerEvaluatorContext,
-	): ResponseHandlerPatch | void | Promise<ResponseHandlerPatch | void>;
+	): ResponseHandlerEvaluatorResult | Promise<ResponseHandlerEvaluatorResult>;
 }
 
 export interface ResponseHandlerPatchTrace {

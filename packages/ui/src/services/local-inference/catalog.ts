@@ -2,13 +2,13 @@
  * Eliza-curated local model catalog.
  *
  * Eliza-1 is the only default-eligible model line. There is exactly one
- * default per device tier (`lite-0_6b`, `mobile-1_7b`, `desktop-9b`,
- * `pro-27b`, `server-h200`). The recommendation engine picks one of
+ * default per device tier (`0_6b`, `1_7b`, `9b`,
+ * `27b`, `27b-256k`). The recommendation engine picks one of
  * these tiers based on hardware. See
- * `/Users/shawwalters/eliza-workspace/milady/packages/inference/AGENTS.md`
+ * `/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/AGENTS.md`
  * §2 for the binding tier matrix.
  *
- * HF-search results from outside `elizaos/eliza-1-*` MUST never be
+ * HF-search results from outside `elizalabs/eliza-1-*` MUST never be
  * marked default-eligible (handled by `hf-search.ts`, which produces
  * entries that are absent from `DEFAULT_ELIGIBLE_MODEL_IDS`).
  *
@@ -17,30 +17,30 @@
  * downloader.
  */
 
-import type { CatalogModel } from "./types";
+import type { CatalogModel, LocalRuntimeKernel } from "./types";
 
 /**
  * Eliza-1 tier identifiers, in tier-matrix order. Source of truth for
  * the recommendation ladders and the default-eligible set.
  */
 export const ELIZA_1_TIER_IDS = [
-  "eliza-1-lite-0_6b",
-  "eliza-1-mobile-1_7b",
-  "eliza-1-desktop-9b",
-  "eliza-1-pro-27b",
-  "eliza-1-server-h200",
+  "eliza-1-0_6b",
+  "eliza-1-1_7b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
 /**
  * The model id the engine auto-loads on first run when no preference is
- * set. Resolves to the `mobile-1_7b` tier — the smallest Eliza-1 tier
+ * set. Resolves to the `1_7b` tier — the smallest Eliza-1 tier
  * that fits the broadest range of hardware (modern phone or laptop).
- * Hosts that can't fit `mobile-1_7b` get the `lite-0_6b` fallback via
+ * Hosts that can't fit `1_7b` get the `0_6b` fallback via
  * the recommendation ladder.
  */
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-mobile-1_7b";
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-1_7b";
 
 /**
  * The single source of truth for default-eligibility. Only Eliza-1
@@ -61,97 +61,230 @@ export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
 
+const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
+  "dflash",
+  "turbo3",
+  "turbo4",
+  "qjl_full",
+  "polarquant",
+];
+
+function requiredKernelsForContext(
+  contextLength: number,
+): LocalRuntimeKernel[] {
+  return contextLength > 65536
+    ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
+    : [...BASE_REQUIRED_KERNELS];
+}
+
+function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
+  return `${id}-drafter`;
+}
+
+function runtimeFor(
+  id: Eliza1TierId,
+  contextLength: number,
+): CatalogModel["runtime"] {
+  return {
+    preferredBackend: "llama-server",
+    optimizations: {
+      parallel: contextLength >= 131072 ? 8 : 4,
+      flashAttention: true,
+      mlock: contextLength >= 131072,
+      requiresKernel: requiredKernelsForContext(contextLength),
+    },
+    dflash: {
+      drafterModelId: drafterId(id),
+      specType: "dflash",
+      contextSize: contextLength,
+      draftContextSize: Math.min(contextLength, 65536),
+      draftMin: 2,
+      draftMax: contextLength >= 131072 ? 8 : 6,
+      gpuLayers: "auto",
+      draftGpuLayers: "auto",
+      disableThinking: true,
+    },
+  };
+}
+
+function drafterCompanion(args: {
+  id: Eliza1TierId;
+  displayName: string;
+  ggufFile: string;
+  params: CatalogModel["params"];
+  sizeGb: number;
+  minRamGb: number;
+  bucket: CatalogModel["bucket"];
+}): CatalogModel {
+  return {
+    id: drafterId(args.id),
+    displayName: `${args.displayName} drafter`,
+    hfRepo: `elizalabs/${args.id}`,
+    ggufFile: args.ggufFile,
+    params: args.params,
+    quant: "Eliza-1 drafter companion",
+    sizeGb: args.sizeGb,
+    minRamGb: args.minRamGb,
+    category: "drafter",
+    bucket: args.bucket,
+    hiddenFromCatalog: true,
+    runtimeRole: "dflash-drafter",
+    companionForModelId: args.id,
+    tokenizerFamily: "eliza1",
+    blurb: `${args.displayName} drafter companion.`,
+  };
+}
+
 export const MODEL_CATALOG: CatalogModel[] = [
   // ─── Eliza-1 lite (low-RAM phones, CPU fallback) ────────────────────
   {
-    id: "eliza-1-lite-0_6b",
+    id: "eliza-1-0_6b",
     displayName: "Eliza-1 lite",
-    hfRepo: "elizaos/eliza-1-lite-0_6b",
-    ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
+    hfRepo: "elizalabs/eliza-1-0_6b",
+    ggufFile: "text/eliza-1-0_6b-32k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
     params: "1B",
-    quant: "TurboQuant Q3 + Polar Q4 KV",
+    quant: "Eliza-1 optimized local runtime",
     sizeGb: 0.5,
     minRamGb: 2,
     category: "chat",
     bucket: "small",
     contextLength: 32768,
     tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-0_6b-drafter"],
+    runtime: runtimeFor("eliza-1-0_6b", 32768),
     blurb:
-      "Eliza-1 lite — fits low-RAM phones and CPU-only fallback. Fused text + voice bundle with TurboQuant Q3 + Polar KV.",
+      "Eliza-1 lite — fits low-RAM phones and CPU-only fallback with the optimized local runtime.",
   },
+  drafterCompanion({
+    id: "eliza-1-0_6b",
+    displayName: "Eliza-1 lite",
+    ggufFile: "dflash/drafter-0_6b.gguf",
+    params: "1B",
+    sizeGb: 0.25,
+    minRamGb: 2,
+    bucket: "small",
+  }),
 
   // ─── Eliza-1 mobile (modern phones) ─────────────────────────────────
   {
-    id: "eliza-1-mobile-1_7b",
+    id: "eliza-1-1_7b",
     displayName: "Eliza-1 mobile",
-    hfRepo: "elizaos/eliza-1-mobile-1_7b",
-    ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
+    hfRepo: "elizalabs/eliza-1-1_7b",
+    ggufFile: "text/eliza-1-1_7b-32k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
     params: "1.7B",
-    quant: "TurboQuant Q3/Q4 + QJL K-cache",
+    quant: "Eliza-1 optimized local runtime",
     sizeGb: 1.2,
     minRamGb: 4,
     category: "chat",
     bucket: "small",
     contextLength: 32768,
     tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-1_7b-drafter"],
+    runtime: runtimeFor("eliza-1-1_7b", 32768),
     blurb:
-      "Eliza-1 mobile — modern phone default. Fused text + voice with TurboQuant Q3/Q4 and QJL K-cache.",
+      "Eliza-1 mobile — modern phone default with text and voice prepared for the optimized local runtime.",
   },
+  drafterCompanion({
+    id: "eliza-1-1_7b",
+    displayName: "Eliza-1 mobile",
+    ggufFile: "dflash/drafter-1_7b.gguf",
+    params: "1.7B",
+    sizeGb: 0.35,
+    minRamGb: 4,
+    bucket: "small",
+  }),
 
   // ─── Eliza-1 desktop (laptops, 24GB phones, 48GB Mac) ───────────────
   {
-    id: "eliza-1-desktop-9b",
+    id: "eliza-1-9b",
     displayName: "Eliza-1 desktop",
-    hfRepo: "elizaos/eliza-1-desktop-9b",
-    ggufFile: "text/eliza-1-desktop-9b-64k.gguf",
+    hfRepo: "elizalabs/eliza-1-9b",
+    ggufFile: "text/eliza-1-9b-64k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
     params: "9B",
-    quant: "TurboQuant Q4 + QJL + Polar",
+    quant: "Eliza-1 optimized local runtime",
     sizeGb: 5.4,
     minRamGb: 12,
     category: "chat",
     bucket: "mid",
     contextLength: 65536,
     tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-9b-drafter"],
+    runtime: runtimeFor("eliza-1-9b", 65536),
     blurb:
-      "Eliza-1 desktop — laptop / 24 GB phone / 48 GB Mac default. Fused text + voice + vision with TurboQuant Q4, QJL, PolarQuant.",
+      "Eliza-1 desktop — laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
   },
+  drafterCompanion({
+    id: "eliza-1-9b",
+    displayName: "Eliza-1 desktop",
+    ggufFile: "dflash/drafter-9b.gguf",
+    params: "9B",
+    sizeGb: 0.8,
+    minRamGb: 12,
+    bucket: "mid",
+  }),
 
   // ─── Eliza-1 pro (96GB+ Mac, high-VRAM desktop) ─────────────────────
   {
-    id: "eliza-1-pro-27b",
+    id: "eliza-1-27b",
     displayName: "Eliza-1 pro",
-    hfRepo: "elizaos/eliza-1-pro-27b",
-    ggufFile: "text/eliza-1-pro-27b-128k.gguf",
+    hfRepo: "elizalabs/eliza-1-27b",
+    ggufFile: "text/eliza-1-27b-128k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
     params: "27B",
-    quant: "TurboQuant Q4 + QJL + Polar",
+    quant: "Eliza-1 optimized local runtime",
     sizeGb: 16.8,
     minRamGb: 32,
     category: "chat",
     bucket: "large",
     contextLength: 131072,
     tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-27b-drafter"],
+    runtime: runtimeFor("eliza-1-27b", 131072),
     blurb:
       "Eliza-1 pro — 96 GB+ Mac and high-VRAM desktop default. Fused text + voice + vision; longest-context Eliza-1 tier on workstation hardware.",
   },
+  drafterCompanion({
+    id: "eliza-1-27b",
+    displayName: "Eliza-1 pro",
+    ggufFile: "dflash/drafter-27b.gguf",
+    params: "9B",
+    sizeGb: 1.2,
+    minRamGb: 32,
+    bucket: "large",
+  }),
 
   // ─── Eliza-1 server (workstation / server) ──────────────────────────
   {
-    id: "eliza-1-server-h200",
+    id: "eliza-1-27b-256k",
     displayName: "Eliza-1 server",
-    hfRepo: "elizaos/eliza-1-server-h200",
-    ggufFile: "text/eliza-1-server-h200-256k.gguf",
+    hfRepo: "elizalabs/eliza-1-27b-256k",
+    ggufFile: "text/eliza-1-27b-256k-256k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
     params: "27B",
-    quant: "CUDA TurboQuant + QJL + Polar",
+    quant: "Eliza-1 optimized local runtime",
     sizeGb: 16.8,
     minRamGb: 96,
     category: "chat",
     bucket: "large",
     contextLength: 262144,
     tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-27b-256k-drafter"],
+    runtime: runtimeFor("eliza-1-27b-256k", 262144),
     blurb:
-      "Eliza-1 server — H200-class workstation / server. CUDA TurboQuant + QJL + Polar with the largest context window in the line.",
+      "Eliza-1 server — H200-class workstation / server tier with the largest context window in the line.",
   },
-
+  drafterCompanion({
+    id: "eliza-1-27b-256k",
+    displayName: "Eliza-1 server",
+    ggufFile: "dflash/drafter-27b-256k.gguf",
+    params: "9B",
+    sizeGb: 1.2,
+    minRamGb: 96,
+    bucket: "large",
+  }),
 ];
 
 export function findCatalogModel(id: string): CatalogModel | undefined {
@@ -165,15 +298,22 @@ export function findCatalogModel(id: string): CatalogModel | undefined {
  * downloader e2e test suite can redirect all downloads without touching
  * the catalog.
  */
-export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
+export function buildHuggingFaceResolveUrlForPath(
+  model: CatalogModel,
+  filePath: string,
+): string {
   const base =
     process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";
   // Encode each path segment separately so nested bundle layouts like
-  // `text/eliza-1-mobile-1_7b-32k.gguf` keep their slashes.
-  const encodedPath = model.ggufFile
+  // `text/eliza-1-1_7b-32k.gguf` keep their slashes.
+  const encodedPath = filePath
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/");
   return `${base}/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
+}
+
+export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
+  return buildHuggingFaceResolveUrlForPath(model, model.ggufFile);
 }

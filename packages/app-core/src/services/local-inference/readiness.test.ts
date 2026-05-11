@@ -57,6 +57,15 @@ describe("local inference text readiness", () => {
         lastUsedAt: null,
         source: "eliza-download",
       },
+      {
+        id: "eliza-1-mobile-1_7b-drafter",
+        displayName: "Eliza-1 mobile drafter",
+        path: "/tmp/eliza-1-mobile-1_7b-drafter.gguf",
+        sizeBytes: 512,
+        installedAt: new Date().toISOString(),
+        lastUsedAt: null,
+        source: "eliza-download",
+      },
     ];
 
     const readiness = buildTextGenerationReadiness({

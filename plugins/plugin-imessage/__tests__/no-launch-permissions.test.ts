@@ -21,9 +21,9 @@ const { loadContactsMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/contacts-reader.js", async () => {
-  const actual = await vi.importActual<
-    typeof import("../src/contacts-reader.js")
-  >("../src/contacts-reader.js");
+  const actual = await vi.importActual<typeof import("../src/contacts-reader.js")>(
+    "../src/contacts-reader.js"
+  );
   return {
     ...actual,
     loadContacts: loadContactsMock,

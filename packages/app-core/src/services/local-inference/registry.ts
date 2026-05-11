@@ -84,6 +84,16 @@ export async function upsertElizaModel(model: InstalledModel): Promise<void> {
       "[local-inference] Eliza-owned models must live under the local-inference root",
     );
   }
+  if (model.bundleRoot && !isWithinElizaRoot(model.bundleRoot)) {
+    throw new Error(
+      "[local-inference] Eliza-owned bundle roots must live under the local-inference root",
+    );
+  }
+  if (model.manifestPath && !isWithinElizaRoot(model.manifestPath)) {
+    throw new Error(
+      "[local-inference] Eliza-owned manifests must live under the local-inference root",
+    );
+  }
   const owned = await readElizaOwned();
   const withoutCurrent = owned.filter((m) => m.id !== model.id);
   withoutCurrent.push(model);
@@ -125,8 +135,12 @@ export async function removeElizaModel(id: string): Promise<{
     return { removed: false, reason: "external" };
   }
 
+  const removePath =
+    target.bundleRoot && isWithinElizaRoot(target.bundleRoot)
+      ? target.bundleRoot
+      : target.path;
   try {
-    await fs.rm(target.path, { force: true });
+    await fs.rm(removePath, { recursive: true, force: true });
   } catch {
     // If the file was already gone we still want to clear the registry entry.
   }

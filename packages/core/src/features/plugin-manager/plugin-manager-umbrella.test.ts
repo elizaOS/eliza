@@ -25,11 +25,11 @@ describe("plugin manager umbrella action", () => {
 		}
 	});
 
-	it("folds plugin management operations into subactions", () => {
-		const subaction = pluginAction.parameters?.find(
-			(parameter) => parameter.name === "subaction",
+	it("folds plugin management operations into the action parameter", () => {
+		const action = pluginAction.parameters?.find(
+			(parameter) => parameter.name === "action",
 		);
-		expect(subaction?.schema.enum).toEqual([
+		expect(action?.schema.enum).toEqual([
 			"install",
 			"eject",
 			"sync",
@@ -44,6 +44,11 @@ describe("plugin manager umbrella action", () => {
 			"core_status",
 			"create",
 		]);
+		expect(
+			pluginAction.parameters?.some(
+				(parameter) => parameter.name === "subaction",
+			),
+		).toBe(false);
 	});
 
 	it("does not re-export standalone core plugin management actions", () => {

@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizaos/eliza-1-<tier>``. This is the single entry point referenced
+``elizalabs/eliza-1-<tier>``. This is the single entry point referenced
 by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -28,7 +28,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 6. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizaos/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
+   to ``elizalabs/eliza-1-<tier>`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -87,6 +87,8 @@ EXIT_EVAL_GATE_FAIL = 13
 EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 
+ELIZA_1_HF_ORG = "elizalabs"
+
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
 # ---------------------------------------------------------------------------
@@ -107,6 +109,21 @@ REQUIRED_LICENSE_FILES: tuple[str, ...] = (
     "LICENSE.voice",
     "LICENSE.dflash",
     "LICENSE.eliza-1",
+)
+
+# Quantization recipe sidecars required by training/AGENTS.md §3. The
+# publish manifest builder consumes these as proof that the bundle flowed
+# through the matching recipes and that recipe/kernel layout pins are present.
+REQUIRED_QUANTIZATION_SIDECARS: Mapping[str, tuple[str, ...]] = {
+    "turboquant": ("turboquant.json", "fused_turboquant.json"),
+    "qjl": ("qjl_config.json",),
+    "polarquant": ("polarquant_config.json",),
+}
+REQUIRED_KERNEL_MANIFEST_KEYS: tuple[str, ...] = (
+    "kernel_target",
+    "block_layout_version",
+    "codebook_hash",
+    "per_block_tolerance",
 )
 
 # Tier matrix — tagline + lineage taken from inference/AGENTS.md §2.
@@ -195,6 +212,55 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text())
 
 
+def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
+    for name in names:
+        for base in (bundle, bundle / "text", bundle / "dflash", bundle / "evals"):
+            candidate = base / name
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
+    found: list[Path] = []
+    for method, names in REQUIRED_QUANTIZATION_SIDECARS.items():
+        sidecar = _find_sidecar(bundle, names)
+        if sidecar is None:
+            raise OrchestratorError(
+                "bundle layout: missing quantization sidecar for "
+                f"{method}; expected one of {', '.join(names)} in bundle root, "
+                "text/, dflash/, or evals/",
+                EXIT_MISSING_FILE,
+            )
+        data = _read_sidecar(sidecar)
+        kernel_manifest = data.get("kernel_manifest")
+        if not isinstance(kernel_manifest, dict):
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} missing kernel_manifest object",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        missing_keys = [
+            key
+            for key in REQUIRED_KERNEL_MANIFEST_KEYS
+            if key not in kernel_manifest
+        ]
+        if missing_keys:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} has incomplete "
+                f"kernel_manifest; missing {missing_keys}",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        targets = kernel_manifest.get("kernel_target")
+        if not isinstance(targets, list) or not targets:
+            raise OrchestratorError(
+                f"quantization sidecar {sidecar} kernel_manifest.kernel_target "
+                "must be a non-empty array",
+                EXIT_BUNDLE_LAYOUT_FAIL,
+            )
+        found.append(sidecar)
+    return found
+
+
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     """Enforce the §2 layout. Populates ``ctx.layout_files`` and returns it.
 
@@ -273,7 +339,19 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             EXIT_MISSING_FILE,
         )
 
+    out["quantization_sidecars"] = _validate_quantization_sidecars(bundle)
+
     return out
+
+
+def validate_destination_repo(ctx: PublishContext) -> None:
+    expected = f"{ELIZA_1_HF_ORG}/eliza-1-{ctx.tier}"
+    if ctx.repo_id != expected:
+        raise OrchestratorError(
+            f"Eliza-1 bundle publishes must target {expected}; got {ctx.repo_id!r}. "
+            "Use a non-release publisher for experiments or custom checkpoints.",
+            EXIT_USAGE,
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -514,7 +592,9 @@ def _collect_files_for_manifest(
 
 
 def _build_lineage(
-    tier: str, sidecar: Mapping[str, Any] | None
+    tier: str,
+    sidecar: Mapping[str, Any] | None,
+    files: Mapping[str, Sequence[FileEntry]],
 ) -> dict[str, LineageEntry]:
     """Read lineage from ``bundle/lineage.json`` if present, else defaults.
 
@@ -530,15 +610,42 @@ def _build_lineage(
             base=f"dflash-{tier}-drafter", license="apache-2.0"
         ),
     }
-    if not sidecar:
-        return defaults
     out = dict(defaults)
-    for slot in ("text", "voice", "drafter"):
+
+    optional_defaults: dict[str, LineageEntry] = {
+        "asr": LineageEntry(base="eliza-1-asr-family", license="apache-2.0"),
+        "vision": LineageEntry(base="eliza-1-vision-family", license="apache-2.0"),
+        "embedding": LineageEntry(
+            base="eliza-1-embedding-family", license="apache-2.0"
+        ),
+        "vad": LineageEntry(base="eliza-1-vad-family", license="apache-2.0"),
+        "wakeword": LineageEntry(
+            base="eliza-1-wakeword-family", license="apache-2.0"
+        ),
+    }
+    for slot, default in optional_defaults.items():
+        if files.get(slot):
+            out[slot] = default
+
+    if not sidecar:
+        return out
+
+    for slot in (
+        "text",
+        "voice",
+        "drafter",
+        "asr",
+        "vision",
+        "embedding",
+        "vad",
+        "wakeword",
+    ):
         spec = sidecar.get(slot)
         if isinstance(spec, dict):
+            default = out.get(slot)
             out[slot] = LineageEntry(
-                base=str(spec.get("base", defaults[slot].base)),
-                license=str(spec.get("license", defaults[slot].license)),
+                base=str(spec.get("base", default.base if default else "")),
+                license=str(spec.get("license", default.license if default else "")),
             )
     return out
 
@@ -549,15 +656,15 @@ def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tu
     """Compute the ``kernels.required`` and ``kernels.optional`` lists.
 
     Required kernels come from REQUIRED_KERNELS_BY_TIER. ``turbo3_tcq``
-    is added as optional whenever any text variant has ctx > 64k.
+    is promoted to required whenever any text variant has ctx > 64k.
     """
     req = list(REQUIRED_KERNELS_BY_TIER[tier])
     opt: list[str] = []
     for p in layout.get("text", []):
         ctx = parse_text_ctx_from_filename(p)
         if ctx is not None and ctx > 65536:
-            if "turbo3_tcq" not in req and "turbo3_tcq" not in opt:
-                opt.append("turbo3_tcq")
+            if "turbo3_tcq" not in req:
+                req.append("turbo3_tcq")
     return req, opt
 
 
@@ -591,7 +698,7 @@ def assemble_manifest(
     lineage_sidecar: dict[str, Any] | None = None
     if lineage_path.is_file():
         lineage_sidecar = json.loads(lineage_path.read_text())
-    lineage = _build_lineage(ctx.tier, lineage_sidecar)
+    lineage = _build_lineage(ctx.tier, lineage_sidecar, files_map)
 
     ram_path = ctx.bundle_dir / "ram_budget.json"
     if ram_path.is_file():
@@ -604,6 +711,8 @@ def assemble_manifest(
     results = eval_blob["results"]
     text_eval_score = float(results["text_eval"])
     voice_rtf = float(results["voice_rtf"])
+    has_asr = bool(files_map.get("asr"))
+    asr_wer = float(results["asr_wer"]) if has_asr else None
 
     # All evals' ``passed`` flags come from the gate report — it's the
     # only source of truth and matches the manifest validator's rules.
@@ -656,6 +765,8 @@ def assemble_manifest(
             ram_budget_min_mb=ram_min,
             ram_budget_recommended_mb=ram_rec,
             default_eligible=default_eligible,
+            asr_wer=asr_wer,
+            asr_wer_passed=_gate_passed(gate_report, "asr_wer") if has_asr else None,
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(
@@ -846,6 +957,13 @@ def _build_upload_list(
         if p.is_file():
             pairs.append((p, f"evals/{p.name}"))
 
+    existing_targets = {target for _, target in pairs}
+    for p in layout.get("quantization_sidecars", []):
+        target = str(p.relative_to(ctx.bundle_dir))
+        if target not in existing_targets:
+            pairs.append((p, target))
+            existing_targets.add(target)
+
     return pairs
 
 
@@ -971,6 +1089,8 @@ def run(ctx: PublishContext) -> int:
     """Run every stage. Returns an exit code; never raises."""
 
     try:
+        validate_destination_repo(ctx)
+
         log.info("[stage 1/6] validate bundle layout (%s)", ctx.bundle_dir)
         layout = validate_bundle_layout(ctx)
 
@@ -1055,7 +1175,10 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     ap.add_argument(
         "--repo-id",
         default=None,
-        help="Override HF repo id (default: elizaos/eliza-1-<tier>).",
+        help=(
+            "HF repo id. Must equal elizalabs/eliza-1-<tier>; accepted only "
+            "so wrappers can pass the resolved destination explicitly."
+        ),
     )
     ap.add_argument(
         "--public",
@@ -1084,7 +1207,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"elizaos/eliza-1-{args.tier}"
+    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1-{args.tier}"
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )

@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildCharacterFromConfig,
-  configureLocalEmbeddingPlugin,
   createElizaPlugin,
 } from "@elizaos/agent";
 import {
@@ -249,9 +248,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       character.secrets = selectedProviderEnv;
 
       const sqlPlugin = await loadPlugin("@elizaos/plugin-sql");
-      const localEmbeddingPlugin = await loadPlugin(
-        "@elizaos/plugin-local-embedding",
-      );
       const providerPlugin = selectedLiveProvider
         ? await loadPlugin(selectedLiveProvider.plugin)
         : null;
@@ -277,10 +273,6 @@ describeIf(LIVE_SUITE_ENABLED)(
       await runtime.registerPlugin(sqlPlugin as Plugin);
       if (runtime.adapter && !(await runtime.adapter.isReady())) {
         await runtime.adapter.init();
-      }
-      if (localEmbeddingPlugin) {
-        configureLocalEmbeddingPlugin(localEmbeddingPlugin);
-        await runtime.registerPlugin(localEmbeddingPlugin as Plugin);
       }
       await runtime.initialize();
 
