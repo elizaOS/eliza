@@ -33,7 +33,6 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const SCRIPTS_DIR = path.resolve(__dirname, "..");
 const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const APP_DIR = path.join(REPO_ROOT, "packages", "app");
 const XCFRAMEWORK_BUILD_SCRIPT = path.join(__dirname, "build-xcframework.mjs");
@@ -618,6 +617,10 @@ async function main() {
     report.status = "failed";
     report.finishedAt = new Date().toISOString();
     report.error = err instanceof Error ? err.message : String(err);
+    if (err?.devices) {
+      report.connectedPhysicalDevices = err.devices.connected;
+      report.offlinePhysicalDevices = err.devices.offline;
+    }
     writeReport(args.report, report);
     process.stderr.write(`${report.error}\n`);
     process.exit(err?.exitCode ?? EXIT.xcodebuildFailed);

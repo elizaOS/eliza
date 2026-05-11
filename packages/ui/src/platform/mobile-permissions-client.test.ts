@@ -149,6 +149,50 @@ describe("createMobileSignalsPermissionsRegistry", () => {
     expect(native.requestPermissions).not.toHaveBeenCalled();
   });
 
+  it("requests native notifications when the platform can prompt", async () => {
+    const native = plugin(
+      permissions({
+        setupActions: [
+          {
+            id: "notification_settings",
+            label: "Notifications",
+            status: "needs-action",
+            canRequest: true,
+            canOpenSettings: true,
+            settingsTarget: "notification",
+            reason: "Allow notifications.",
+          },
+        ],
+      }),
+    );
+    const registry = createMobileSignalsPermissionsRegistry(native);
+
+    await registry.request("notifications", {
+      reason: "Send reminder prompts.",
+      feature: { app: "lifeops", action: "reminders.notify" },
+    });
+
+    expect(native.requestPermissions).toHaveBeenCalledWith({
+      target: "notifications",
+    });
+    expect(native.openSettings).not.toHaveBeenCalled();
+  });
+
+  it("opens notification settings when native notifications cannot prompt", async () => {
+    const native = plugin();
+    const registry = createMobileSignalsPermissionsRegistry(native);
+
+    await registry.request("notifications", {
+      reason: "Send reminder prompts.",
+      feature: { app: "lifeops", action: "reminders.notify" },
+    });
+
+    expect(native.openSettings).toHaveBeenCalledWith({
+      target: "notification",
+    });
+    expect(native.requestPermissions).not.toHaveBeenCalled();
+  });
+
   it("delegates non-mobile permissions to the fallback client", async () => {
     const fallbackState: PermissionState = {
       id: "reminders",

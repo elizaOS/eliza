@@ -613,6 +613,7 @@ extern "C" void requestMicrophonePermission(void) {
 	}];
 }
 
+API_AVAILABLE(macos(10.14))
 static int elizaNotificationAuthorizationStatusToInt(
 	UNAuthorizationStatus status) {
 	switch (status) {

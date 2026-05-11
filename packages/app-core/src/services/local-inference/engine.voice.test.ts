@@ -21,11 +21,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
-import type {
-  ElizaInferenceContextHandle,
-  ElizaInferenceFfi,
-  ElizaInferenceRegion,
-} from "./voice/ffi-bindings";
 import {
   defaultLifecycleLoaders,
   type MmapRegionHandle,
@@ -34,6 +29,11 @@ import {
   type VoiceLifecycleLoaders,
 } from "./voice";
 import { VoiceStartupError } from "./voice/engine-bridge";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+  ElizaInferenceRegion,
+} from "./voice/ffi-bindings";
 import type {
   AudioChunk,
   OmniVoiceBackend,
@@ -457,11 +457,7 @@ describe("LocalInferenceEngine voice surface", () => {
       bundleRoot,
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
-      lifecycleLoaders: defaultLifecycleLoaders(
-        bundleRoot,
-        fakeFfi(calls),
-        1n,
-      ),
+      lifecycleLoaders: defaultLifecycleLoaders(bundleRoot, fakeFfi(calls), 1n),
     });
 
     // Voice-off mode must not map TTS/ASR pages or duplicate model

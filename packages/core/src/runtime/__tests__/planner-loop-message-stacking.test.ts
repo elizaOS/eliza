@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ChatMessage, ToolDefinition } from "../../types/model";
+import type {
+	ChatMessage,
+	ChatMessageContentPart,
+	ToolDefinition,
+} from "../../types/model";
 import { runPlannerLoop } from "../planner-loop";
 
 /**
@@ -9,8 +13,9 @@ import { runPlannerLoop } from "../planner-loop";
  *   1. The base messages (before any trajectory steps) must be byte-identical
  *      across planner iterations — required for Cerebras/OpenAI prefix cache.
  *
- *   2. Each completed step adds exactly one assistant message (with toolCalls)
- *      and one tool message (with toolCallId). No JSON dump in a user message.
+ *   2. Each completed step adds exactly one assistant message (with a
+ *      tool-call content part) and one tool message (with a tool-result
+ *      content part). No JSON dump in a user message.
  *
  *   3. The messages array MUST NOT contain a role:"user" message whose content
  *      matches /^trajectory:\n\[/ (the old JSON-dump anti-pattern).
@@ -26,6 +31,16 @@ const TOOL_DEF: ToolDefinition = {
 	description: "Look something up",
 	parameters: { type: "object", properties: {} },
 };
+
+function contentPartOfType(
+	message: ChatMessage | undefined,
+	type: string,
+): ChatMessageContentPart | undefined {
+	if (!Array.isArray(message?.content)) {
+		return undefined;
+	}
+	return message.content.find((part) => part.type === type);
+}
 
 describe("planner-loop message stacking regression", () => {
 	it("messages array grows append-only across planner iterations", async () => {
@@ -109,14 +124,15 @@ describe("planner-loop message stacking regression", () => {
 		const added = msgs2.slice(msgs1.length);
 		expect(added.length).toBe(2);
 		expect(added[0].role).toBe("assistant");
-		expect(added[0].toolCalls).toBeDefined();
-		expect(added[0].toolCalls).toHaveLength(1);
 		expect(added[1].role).toBe("tool");
-		expect(added[1].toolCallId).toBeDefined();
 
-		// The assistant message's tool call id must match the tool message's toolCallId
-		const assistantToolCallId = added[0].toolCalls?.[0]?.id;
-		expect(added[1].toolCallId).toBe(assistantToolCallId);
+		const assistantToolCall = contentPartOfType(added[0], "tool-call");
+		const toolResult = contentPartOfType(added[1], "tool-result");
+		expect(assistantToolCall).toBeDefined();
+		expect(toolResult).toBeDefined();
+
+		// The assistant message's tool-call id must match the tool-result id.
+		expect(toolResult?.toolCallId).toBe(assistantToolCall?.toolCallId);
 	});
 
 	it("planner never appends a standalone trajectory JSON dump as the LAST message", async () => {
@@ -280,7 +296,7 @@ describe("planner-loop message stacking regression", () => {
 		}
 	});
 
-	it("tool message toolCallId matches the assistant toolCalls id", async () => {
+	it("tool message result id matches the assistant tool-call id", async () => {
 		const capturedMessages: ChatMessage[][] = [];
 		let callCount = 0;
 		const runtime = {
@@ -329,9 +345,10 @@ describe("planner-loop message stacking regression", () => {
 		if (added.length >= 2) {
 			const assistantMsg = added[0];
 			const toolMsg = added[1];
-			const tcId = assistantMsg?.toolCalls?.[0]?.id;
+			const tcId = contentPartOfType(assistantMsg, "tool-call")?.toolCallId;
+			const resultId = contentPartOfType(toolMsg, "tool-result")?.toolCallId;
 			expect(tcId).toBeDefined();
-			expect(toolMsg?.toolCallId).toBe(tcId);
+			expect(resultId).toBe(tcId);
 		}
 	});
 });

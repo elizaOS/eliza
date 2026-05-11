@@ -117,6 +117,7 @@ $cli = Join-Path $BinDir "llama-cli.exe"
 if (-not (Test-Path $cli)) {
   Fail "missing llama-cli.exe in $BinDir"
 }
+$env:PATH = "$BinDir;$env:PATH"
 
 if ($env:WINDOWS_SKIP_GRAPH_SMOKE -eq "1") {
   Write-Host "[windows_runner] WINDOWS_SKIP_GRAPH_SMOKE=1 - build/hardware preflight only; graph dispatch NOT verified."

@@ -5,8 +5,9 @@
 > `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md`.
 > Since this audit, Vulkan standalone QJL/Polar verification was added on
 > Apple M4 Max via MoltenVK, Metal `GGML_OP_ATTN_SCORE_QJL` graph dispatch
-> became runtime-ready, and the build gate was tightened so `turbo3_tcq` is
-> required alongside `turbo3`, `turbo4`, QJL, Polar, and DFlash.
+> became runtime-ready, the build gate was tightened so `turbo3_tcq` is
+> required alongside `turbo3`, `turbo4`, QJL, Polar, and DFlash, and the
+> Vulkan follow-up now has explicit native Linux / Android smoke entrypoints.
 
 Scope: every (tier × backend × OS × arch) combination implied by
 [`AGENTS.md`](AGENTS.md) §2/§3 and the build matrix in

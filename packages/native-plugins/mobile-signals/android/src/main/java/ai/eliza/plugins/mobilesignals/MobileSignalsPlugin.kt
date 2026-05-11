@@ -52,7 +52,10 @@ private const val NOTIFICATION_PERMISSION_ALIAS = "notifications"
 @CapacitorPlugin(
     name = "MobileSignals",
     permissions = [
-        Permission(alias = NOTIFICATION_PERMISSION_ALIAS, strings = [Manifest.permission.POST_NOTIFICATIONS])
+        Permission(
+            alias = NOTIFICATION_PERMISSION_ALIAS,
+            strings = [Manifest.permission.POST_NOTIFICATIONS],
+        ),
     ],
 )
 class MobileSignalsPlugin : Plugin() {
@@ -726,6 +729,50 @@ class MobileSignalsPlugin : Plugin() {
         }
     }
 
+    private data class NotificationPermissionStatus(
+        val status: String,
+        val canRequest: Boolean,
+        val reason: String?,
+    )
+
+    private fun notificationPermissionStatus(): NotificationPermissionStatus {
+        val appNotificationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.areNotificationsEnabled()
+        } else {
+            true
+        }
+
+        val runtimeState = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getPermissionState(NOTIFICATION_PERMISSION_ALIAS)
+        } else {
+            PermissionState.GRANTED
+        }
+
+        if (runtimeState == PermissionState.GRANTED && appNotificationsEnabled) {
+            return NotificationPermissionStatus("granted", false, null)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && runtimeState != PermissionState.GRANTED) {
+            val canRequest = runtimeState != PermissionState.DENIED
+            return NotificationPermissionStatus(
+                if (runtimeState == PermissionState.DENIED) "denied" else "not-determined",
+                canRequest,
+                if (canRequest) {
+                    "Allow notifications when LifeOps needs to remind or prompt you."
+                } else {
+                    "Notifications are denied for Eliza. Open Android settings to enable reminders and prompts."
+                },
+            )
+        }
+
+        return NotificationPermissionStatus(
+            "denied",
+            false,
+            "Notifications are disabled for Eliza. Open Android settings to enable reminders and prompts.",
+        )
+    }
+
     private fun buildSetupActions(
         healthStatus: String,
         healthCanRequest: Boolean,
@@ -775,14 +822,15 @@ class MobileSignalsPlugin : Plugin() {
                 },
             )
         })
+        val notifications = notificationPermissionStatus()
         actions.add(JSObject().apply {
             put("id", "notification_settings")
             put("label", "Notifications")
-            put("status", "needs-action")
-            put("canRequest", false)
+            put("status", if (notifications.status == "granted") "ready" else "needs-action")
+            put("canRequest", notifications.canRequest)
             put("canOpenSettings", true)
             put("settingsTarget", "notification")
-            put("reason", "Open notification settings if reminders or telemetry prompts are muted.")
+            put("reason", notifications.reason ?: JSONObject.NULL)
         })
         actions.add(JSObject().apply {
             put("id", "battery_optimization")

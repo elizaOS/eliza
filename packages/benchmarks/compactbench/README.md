@@ -103,12 +103,20 @@ python analyze_valid_hits.py \
 ```
 
 The script reruns the same case/drift loop and writes raw item responses,
-artifact context, official scores, and a separate adjusted score. The adjusted
-score is not a replacement for upstream CompactBench: it only uses the expected
-check and the model response, never the strategy name, artifact internals,
-template id, or case id. It can also lower a `forbidden_absent` item when the
-official scorer misses a morphological forbidden paraphrase such as
-"committing directly to the main branch".
+artifact context, official scores, a separate adjusted score, and
+`benchmark_quality_score`. The adjusted score is not a replacement for upstream
+CompactBench: it only uses the expected check and the model response, never the
+strategy name, artifact internals, template id, or case id. It can also lower a
+`forbidden_absent` item when the official scorer misses a morphological
+forbidden paraphrase such as "committing directly to the main branch".
+
+`benchmark_quality_score` is the stricter "is this benchmark run actually
+actionable?" metric. It applies the same conservative adjusted scoring, then
+drops generated checks where the same normalized phrase is both required in
+`locked_decisions` and forbidden in `forbidden_behaviors`. Those cases are
+impossible to satisfy without either recalling the value or rejecting it, so they
+remain visible as `invalid_expected_conflicts` instead of being counted as agent
+failures.
 
 When iterating on scorer rules, rescore an existing analysis file without model
 calls:

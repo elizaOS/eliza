@@ -1,7 +1,8 @@
 # `verify/` harness extension roadmap
 
 > Status note, 2026-05-11: this file is historical planning context. Vulkan
-> QJL/Polar bind-set verification and the CUDA harness now exist in this
+> QJL/Polar bind-set verification, the CUDA harness, the Vulkan built-fork
+> dispatch smoke gate, and the Android Vulkan smoke runner now exist in this
 > directory. The enforceable current contract is
 > `kernel-contract.json`, checked by `make kernel-contract`; the current
 > blocker ledger is

@@ -4143,7 +4143,7 @@ export class AgentRuntime implements IAgentRuntime {
 					return executeChainWithFallback(
 						resolvedChain,
 						strategy.confidenceThreshold,
-						(resolved) =>
+						async (resolved) =>
 							runWithoutActionRoutingContext(() =>
 								this.useModel<T, R>(
 									resolved.modelType as T,

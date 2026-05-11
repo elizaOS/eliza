@@ -28,7 +28,15 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -61,12 +69,25 @@ const STUB_DYLIB = path.join(
 );
 
 function bunOnPath(): string | null {
+  const direct = spawnSync("bun", ["--version"], { encoding: "utf8" });
+  if (direct.status === 0) return "bun";
+
   const which = spawnSync("bash", ["-lc", "command -v bun"], {
     encoding: "utf8",
   });
   if (which.status !== 0) return null;
   const trimmed = which.stdout.trim();
-  return trimmed.length > 0 ? trimmed : null;
+  if (trimmed.length > 0) return trimmed;
+
+  if (process.execPath && /(?:^|[/\\])bun(?:\.exe)?$/i.test(process.execPath)) {
+    const probe = spawnSync(process.execPath, ["--version"], {
+      encoding: "utf8",
+    });
+    if (probe.status === 0 && probe.stdout.trim().length > 0) {
+      return process.execPath;
+    }
+  }
+  return null;
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
@@ -129,14 +150,14 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 
   it("loads the stub, reports ABI v1, completes a create/destroy round-trip", () => {
     const report = runBunHarness({ scenario: "create-destroy" });
-    expect(report.ok).toBe(true);
+    expectHarnessOk(report);
     expect(report.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
     expect(report.contextWasNonNull).toBe(true);
   });
 
   it("ttsSynthesize against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error (no crash)", () => {
     const report = runBunHarness({ scenario: "tts-not-implemented" });
-    expect(report.ok).toBe(true);
+    expectHarnessOk(report);
     expect(report.threwLifecycleError).toBe(true);
     expect(report.errorCode).toBe("kernel-missing");
     // The C stub's diagnostic must surface verbatim.
@@ -145,7 +166,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 
   it("mmapEvict against the stub returns ELIZA_ERR_NOT_IMPLEMENTED as a structured error", () => {
     const report = runBunHarness({ scenario: "mmap-evict-not-implemented" });
-    expect(report.ok).toBe(true);
+    expectHarnessOk(report);
     expect(report.threwLifecycleError).toBe(true);
     expect(report.errorCode).toBe("kernel-missing");
     expect(report.errorMessage).toMatch(/not implemented in stub/);
@@ -155,7 +176,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
     const report = runBunHarness({
       scenario: "mmap-acquire-not-implemented",
     });
-    expect(report.ok).toBe(true);
+    expectHarnessOk(report);
     expect(report.threwLifecycleError).toBe(true);
     expect(report.errorCode).toBe("kernel-missing");
     expect(report.errorMessage).toMatch(/not implemented in stub/);
@@ -166,7 +187,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
     // version BEFORE calling the loader, simulating a future binding
     // loading an older library.
     const report = runBunHarness({ scenario: "abi-mismatch" });
-    expect(report.ok).toBe(true);
+    expectHarnessOk(report);
     expect(report.threwLifecycleError).toBe(true);
     expect(report.errorCode).toBe("kernel-missing");
     expect(report.errorMessage).toMatch(/ABI mismatch/);
@@ -205,24 +226,39 @@ interface HarnessOptions {
     | "abi-mismatch";
 }
 
+function expectHarnessOk(report: HarnessReport): void {
+  if (!report.ok) {
+    throw new Error(
+      report.unexpectedError ??
+        `Bun FFI harness failed without diagnostic for ${report.scenario}`,
+    );
+  }
+}
+
 function runBunHarness(opts: HarnessOptions): HarnessReport {
   const bindingsPath = path.join(__dirname, "ffi-bindings.ts");
   const lifecyclePath = path.join(__dirname, "lifecycle.ts");
   const dylibPath = STUB_DYLIB;
+  const tmp = mkdtempSync(path.join(tmpdir(), "eliza-ffi-harness-"));
+  const scriptPath = path.join(tmp, "harness.mjs");
+  const reportPath = path.join(tmp, "report.json");
 
   // Inline ESM script the bun subprocess executes. Imports the binding
   // and the lifecycle error class via absolute paths, runs the requested
-  // scenario, and emits one JSON line on stdout prefixed with REPORT::
-  // for the parent to extract.
+  // scenario, and writes one JSON report to a temp file. File output is
+  // intentional: Bun's test runner can swallow nested bun stdout on some
+  // hosts even when the child exits 0.
   const script = `
+import { writeFileSync } from "node:fs";
 import { loadElizaInferenceFfi, ELIZA_INFERENCE_ABI_VERSION } from ${JSON.stringify(bindingsPath)};
 import { VoiceLifecycleError } from ${JSON.stringify(lifecyclePath)};
 
 const SCENARIO = ${JSON.stringify(opts.scenario)};
 const DYLIB = ${JSON.stringify(dylibPath)};
+const REPORT_PATH = ${JSON.stringify(reportPath)};
 
 function emit(report) {
-  process.stdout.write("REPORT::" + JSON.stringify(report) + "\\n");
+  writeFileSync(REPORT_PATH, JSON.stringify(report));
 }
 
 function asLifecycleErr(e) {
@@ -365,12 +401,15 @@ function asLifecycleErr(e) {
 });
 `;
 
-  const result = spawnSync("bun", ["-e", script], {
+  const bun = bunOnPath() ?? "bun";
+  writeFileSync(scriptPath, script);
+  const result = spawnSync(bun, [scriptPath], {
     encoding: "utf8",
     timeout: 30_000,
   });
 
   if (result.error) {
+    rmSync(tmp, { recursive: true, force: true });
     return {
       ok: false,
       scenario: opts.scenario,
@@ -378,12 +417,22 @@ function asLifecycleErr(e) {
     };
   }
   if (result.status !== 0) {
+    rmSync(tmp, { recursive: true, force: true });
     return {
       ok: false,
       scenario: opts.scenario,
       unexpectedError: `bun exited ${result.status}\nstdout=${result.stdout}\nstderr=${result.stderr}`,
     };
   }
+
+  if (existsSync(reportPath)) {
+    const report = JSON.parse(
+      readFileSync(reportPath, "utf8"),
+    ) as HarnessReport;
+    rmSync(tmp, { recursive: true, force: true });
+    return report;
+  }
+  rmSync(tmp, { recursive: true, force: true });
 
   const lines = result.stdout.split("\n");
   for (const line of lines) {

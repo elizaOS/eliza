@@ -8,7 +8,7 @@
 > | TurboQuant — Metal  | `metal/turbo3.metal`, `metal/turbo4.metal`, `metal/turbo3_tcq.metal` | YES (matches in-tree `dequantize_turbo3_0_t4` + the in-tree `tbq4_0.metal` `block_turbo4_0` layout) | YES (`clang++ -framework Metal` runtime JIT path; Metal Toolchain not required for `metal_verify`) | YES — 8/8 PASS on Apple M4 Max (Darwin 25.2.0, runtime `MTLDevice.newLibraryWithSource`); max diff 6.7e-06 |
 > | QJL          | `metal/qjl.metal`, `vulkan/qjl{,_get_rows,_mul_mv}.comp`         | YES (against `qjl_score_qk_ref` in `packages/native-plugins/qjl-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max after Wave-3 fix to `kernel_attn_score_qjl1_256` (uniform `uint3` attribute params; original mixed `uint`+`uint2` failed Metal compile). Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C); max diff 7.629e-6 |
 > | PolarQuant   | `metal/polar.metal`, `vulkan/polar{,_get_rows}.comp`             | YES (against `dequantize_row_q4_polar_ref` + `polar_dot_ref` in `packages/native-plugins/polarquant-cpu`) | YES (Vulkan); YES (Metal — runtime JIT) | Metal: YES — 8/8 PASS on Apple M4 Max. Vulkan: YES — 8/8 PASS on Apple M4 Max via MoltenVK 1.4.1 (Wave-4-C, after threadgroup-cooperative Hadamard mirror); max diff 5.722e-6 |
-> | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in fork v0.4.0-milady; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/CUDA_VERIFICATION.md` for the end-to-end runbook (local CUDA host or `CUDA_REMOTE=user@host ./cuda_runner.sh`) |
+> | CUDA (all 5) | `verify/cuda_verify.cu` linking `~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/.../libggml-cuda.so` (qjl, polar, turbo3_tcq exported symbols; turbo3/turbo4 via thin `__global__` wrapper around the shipped device-side `tbq_decode_block_cuda`) plus `verify/runtime_graph_smoke.sh` for `llama-cli --cache-type-k` graph dispatch | YES (against `ggml-cuda/{turboquant,turbo-tcq,qjl,polarquant}.cu(h)` in fork v0.4.0-milady; `make cuda-preprocess-check` asserts every API symbol + every `block_*` layout is present in the in-fork headers) | NEEDS-HARDWARE — `make cuda` requires `nvcc` (gated on Linux + CUDA Toolkit; macOS not supported); preprocessor-only API surface check passes on M4 Max | NEEDS-HARDWARE — see `verify/HARDWARE_VERIFICATION.md` and `verify/CUDA_VERIFICATION.md`; `cuda_runner.sh` now requires NVIDIA hardware, fixture parity, and a real GGUF graph-smoke model before a pass can be recorded |
 >
 > Earlier history: the original `turbo*.comp` Vulkan port reported 0/8 PASS
 > against Mesa llvmpipe AND Intel ARL — different wrong values per ICD,
@@ -352,16 +352,17 @@ make vulkan-spirv
 VULKAN_SDK=/opt/vulkan-sdk make vulkan
 make vulkan-verify
 
-# 2) On-device (Android) verification: cross-compile the harness against
+# 2) On native Linux hardware, run the stricter smoke gate. This rejects
+#    software ICDs unless ELIZA_ALLOW_SOFTWARE_VULKAN=1, runs standalone
+#    fixtures, builds the patched fork, then runs the built-fork graph gate.
+make vulkan-native-smoke
+
+# 3) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
 #    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures.
-adb push ../vulkan/*.spv /data/local/tmp/eliza-kernels/
-adb push fixtures/   /data/local/tmp/eliza-kernels/fixtures/
-adb push vulkan_verify /data/local/tmp/eliza-kernels/
-adb shell "cd /data/local/tmp/eliza-kernels && \
-           ./vulkan_verify turbo3.spv fixtures/turbo3.json"
+make android-vulkan-smoke
 
-# 3) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
+# 4) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
 #    default-on. The build still refuses publishable artifacts until graph
 #    dispatch capabilities are runtime-ready, not merely symbol-shipped.
 bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan

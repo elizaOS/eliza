@@ -10,6 +10,14 @@ fi
 
 TARGET="${ELIZA_DFLASH_TARGET:-linux-x64-vulkan}"
 ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
+CANONICAL_FIXTURES=(
+  turbo3.json
+  turbo4.json
+  turbo3_tcq.json
+  qjl.json
+  polar.json
+  polar_qjl.json
+)
 
 if command -v vulkaninfo >/dev/null 2>&1; then
   summary="$(vulkaninfo --summary 2>/dev/null || true)"
@@ -22,7 +30,7 @@ else
   echo "[linux-vulkan-smoke] warning: vulkaninfo not found; vulkan_verify will still enumerate the runtime device." >&2
 fi
 
-echo "[linux-vulkan-smoke] standalone Vulkan fixture gate"
+echo "[linux-vulkan-smoke] standalone Vulkan fixture gate: ${CANONICAL_FIXTURES[*]}"
 make reference-test kernel-contract vulkan-verify
 
 if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then

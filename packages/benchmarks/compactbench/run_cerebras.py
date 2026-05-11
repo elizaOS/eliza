@@ -179,8 +179,15 @@ def main() -> int:
         print(
             f"  official_overall_score={summary['official_overall_score']:.3f} "
             f"adjusted_overall_score={summary['adjusted_overall_score']:.3f} "
+            f"benchmark_quality_score={summary['benchmark_quality_score']:.3f} "
             f"valid_false_negatives={summary['valid_false_negatives']} "
             f"semantic_false_positives={summary['semantic_false_positives']}"
+        )
+        print(
+            "  failures_remaining_excluding_invalid="
+            f"{summary['failures_remaining_excluding_invalid']} "
+            f"invalid_expected_conflicts={summary['invalid_expected_conflicts']} "
+            f"judge_refusals={summary['judge_refusals']}"
         )
         print(f"  wrote {valid_hit_output}")
 

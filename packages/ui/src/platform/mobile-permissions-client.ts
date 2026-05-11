@@ -264,7 +264,15 @@ export function createMobileSignalsPermissionsRegistry(
       }
 
       if (id === "notifications") {
-        await openMobilePermissionSettings(id, plugin);
+        const current = await checkMobilePermission(id);
+        if (
+          current.canRequest &&
+          typeof plugin.requestPermissions === "function"
+        ) {
+          await plugin.requestPermissions({ target: "notifications" });
+        } else {
+          await openMobilePermissionSettings(id, plugin);
+        }
       } else if (id === "screentime") {
         const current = await checkMobilePermission(id);
         if (

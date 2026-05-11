@@ -22,6 +22,42 @@
     "verify/HARDWARE_VERIFICATION.md",
     "verify/CUDA_VERIFICATION.md"
   ],
+  "runtimeSmoke": {
+    "vulkanBuiltForkGraph": {
+      "makeTarget": "vulkan-dispatch-smoke",
+      "source": "verify/vulkan_dispatch_smoke.cpp",
+      "status": "blocked",
+      "description": "Links against libggml-vulkan and runs GGML_OP_ATTN_SCORE_QJL through real graph execution. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
+    },
+    "linuxNativeVulkan": {
+      "makeTarget": "vulkan-native-smoke",
+      "script": "verify/linux_vulkan_smoke.sh",
+      "status": "needs-hardware",
+      "fixtures": [
+        "verify/fixtures/turbo3.json",
+        "verify/fixtures/turbo4.json",
+        "verify/fixtures/turbo3_tcq.json",
+        "verify/fixtures/qjl.json",
+        "verify/fixtures/polar.json",
+        "verify/fixtures/polar_qjl.json"
+      ],
+      "description": "Rejects non-Linux/MoltenVK, runs standalone Vulkan fixtures, builds linux-x64-vulkan, then runs the built-fork graph gate."
+    },
+    "androidVulkan": {
+      "makeTarget": "android-vulkan-smoke",
+      "script": "verify/android_vulkan_smoke.sh",
+      "status": "needs-hardware",
+      "fixtures": [
+        "verify/fixtures/turbo3.json",
+        "verify/fixtures/turbo4.json",
+        "verify/fixtures/turbo3_tcq.json",
+        "verify/fixtures/qjl.json",
+        "verify/fixtures/polar.json",
+        "verify/fixtures/polar_qjl.json"
+      ],
+      "description": "Cross-compiles vulkan_verify with the Android NDK, pushes verifier/SPIR-V/fixtures through adb, and runs on physical Adreno/Mali hardware."
+    }
+  },
   "kernels": [
     {
       "id": "turbo3",

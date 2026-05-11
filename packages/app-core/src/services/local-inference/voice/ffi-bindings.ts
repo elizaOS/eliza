@@ -355,10 +355,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
     create(bundleDir: string): ElizaInferenceContextHandle {
       const err = makeOutErr();
       const bundleArg = cstr(bundleDir);
-      const handle = lib.symbols.eliza_inference_create(
-        bundleArg.ptr,
-        err.ptr,
-      );
+      const handle = lib.symbols.eliza_inference_create(bundleArg.ptr, err.ptr);
       if (handle === 0n) {
         const message =
           takeError(err.buf) ??

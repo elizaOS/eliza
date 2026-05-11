@@ -342,6 +342,50 @@ for (const [target, gate] of Object.entries(contract.platformTargets || {})) {
   }
 }
 
+// 3b. Runtime smoke declarations must point at real Makefile/script/source
+// gates. These are allowed to be "blocked" or "needs-hardware"; the contract
+// only requires the gate to exist and to cover the canonical fixtures so a
+// future pass cannot be replaced by a softer symbol-only audit.
+for (const [name, smoke] of Object.entries(contract.runtimeSmoke || {})) {
+  if (!smoke || typeof smoke !== "object") {
+    fail(`runtimeSmoke.${name}: must be an object`);
+    continue;
+  }
+  if (!allowedStatuses.has(smoke.status)) {
+    fail(`runtimeSmoke.${name}: invalid status=${smoke.status}`);
+  }
+  if (typeof smoke.makeTarget !== "string" || smoke.makeTarget.length === 0) {
+    fail(`runtimeSmoke.${name}: missing makeTarget`);
+  } else {
+    const body = targetBody(makefile, smoke.makeTarget);
+    if (!body) fail(`runtimeSmoke.${name}: Makefile target ${smoke.makeTarget} has empty body`);
+  }
+  for (const field of ["source", "script"]) {
+    if (smoke[field] && !fs.existsSync(relFromInference(smoke[field]))) {
+      fail(`runtimeSmoke.${name}: missing ${field} ${smoke[field]}`);
+    }
+  }
+  for (const fixture of smoke.fixtures || []) {
+    const fixturePath = relFromInference(fixture);
+    if (!fs.existsSync(fixturePath)) {
+      fail(`runtimeSmoke.${name}: missing fixture ${fixture}`);
+      continue;
+    }
+    const haystacks = [];
+    if (smoke.script && fs.existsSync(relFromInference(smoke.script))) {
+      haystacks.push(readText(relFromInference(smoke.script)));
+    }
+    if (smoke.makeTarget) haystacks.push(targetBody(makefile, smoke.makeTarget));
+    const fixtureRef = fixture.replace(/^verify\/fixtures\//, "");
+    if (
+      haystacks.length > 0 &&
+      !haystacks.some((haystack) => haystack.includes(fixtureRef))
+    ) {
+      fail(`runtimeSmoke.${name}: ${fixture} is declared but not referenced by its smoke gate`);
+    }
+  }
+}
+
 // 4. Makefile targets must actually run the declared fixtures.
 const metalVerifyBody = targetBody(makefile, "metal-verify");
 const metalMultiblockBody = targetBody(makefile, "metal-verify-multiblock");

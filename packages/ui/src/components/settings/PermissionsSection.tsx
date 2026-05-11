@@ -123,6 +123,7 @@ function mobileSetupActionTarget(action: MobileSignalsSetupAction) {
 function mobileSetupRequestTarget(action: MobileSignalsSetupAction) {
   if (action.id === "health_permissions") return "health";
   if (action.id === "screen_time_authorization") return "screenTime";
+  if (action.id === "notification_settings") return "notifications";
   return "all";
 }
 
@@ -184,7 +185,8 @@ function MobileSignalsPermissionsPanel() {
         if (
           action.canRequest &&
           (action.id === "health_permissions" ||
-            action.id === "screen_time_authorization") &&
+            action.id === "screen_time_authorization" ||
+            action.id === "notification_settings") &&
           typeof plugin.requestPermissions === "function"
         ) {
           await plugin.requestPermissions({
@@ -450,25 +452,6 @@ function DesktopPermissionsView() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Button
-              variant="default"
-              size="sm"
-              className="h-9 rounded-lg px-3 text-xs font-semibold"
-              onClick={async () => {
-                for (const def of applicablePermissions) {
-                  if (def.id === "shell") continue;
-                  const state = permissions[def.id];
-                  if (state?.status === "granted") continue;
-                  if (state?.canRequest) {
-                    await handleRequest(def.id);
-                  } else {
-                    await handleOpenSettings(def.id);
-                  }
-                }
-              }}
-            >
-              {t("permissionssection.AllowAll", { defaultValue: "Allow All" })}
-            </Button>
             <Button
               variant="outline"
               size="sm"

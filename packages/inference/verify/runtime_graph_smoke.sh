@@ -86,6 +86,10 @@ if [[ ! -x "$CLI" && -x "$BIN_DIR/llama-cli.exe" ]]; then
 fi
 [[ -x "$CLI" ]] || die "missing executable llama-cli in $BIN_DIR; build target $TARGET first"
 
+export LD_LIBRARY_PATH="$BIN_DIR:${LD_LIBRARY_PATH:-}"
+export DYLD_LIBRARY_PATH="$BIN_DIR:${DYLD_LIBRARY_PATH:-}"
+export PATH="$BIN_DIR:$PATH"
+
 mkdir -p "$REPORT_DIR"
 
 HELP_LOG="$REPORT_DIR/${TARGET}-llama-cli-help.log"
