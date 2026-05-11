@@ -26,6 +26,7 @@ import {
   deriveSlotId,
   evictExpired,
   readCacheStats,
+  slotCacheFileName,
   slotSavePath,
 } from "./cache-bridge";
 import { ELIZA_1_PLACEHOLDER_IDS, findCatalogModel } from "./catalog";
@@ -1184,6 +1185,23 @@ function resolveEvictionIntervalMs(): number {
   return parsed;
 }
 
+/**
+ * Keep-alive sweep interval. Sits just under the short TTL (5 min) so an
+ * idle-but-alive conversation gets its slot KV re-warmed before the radix
+ * cache would evict it. Override via `ELIZA_LOCAL_KEEPALIVE_INTERVAL_MS`.
+ */
+const DEFAULT_KEEPALIVE_INTERVAL_MS = 4 * 60 * 1000;
+/** Re-warm a slot once it has been untouched for this fraction of the short TTL. */
+const KEEPALIVE_STALE_FRACTION = 0.8;
+
+function resolveKeepAliveIntervalMs(): number {
+  const raw = process.env.ELIZA_LOCAL_KEEPALIVE_INTERVAL_MS?.trim();
+  if (!raw) return DEFAULT_KEEPALIVE_INTERVAL_MS;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 30_000) return DEFAULT_KEEPALIVE_INTERVAL_MS;
+  return parsed;
+}
+
 export class DflashLlamaServer implements LocalInferenceBackend {
   readonly id = "llama-server" as const;
 
@@ -1207,6 +1225,19 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * slot id (e.g. after a --parallel resize) can still find its KV.
    */
   private conversationKvDir: string | null = null;
+  /** Keep-alive timer that re-warms slot KV before the short TTL elapses. */
+  private keepAliveTimer: NodeJS.Timeout | null = null;
+  /**
+   * Last `prewarmConversation` prompt prefix issued per slot, plus the
+   * wall-clock ms it (or a real generate against that slot) was last
+   * touched. The keep-alive sweep re-issues the prefix for slots that
+   * haven't been touched within ~80% of the short TTL so the radix KV
+   * doesn't get evicted out from under an idle-but-alive conversation.
+   */
+  private readonly lastPrewarmBySlot = new Map<
+    number,
+    { prefix: string; touchedAtMs: number }
+  >();
   /**
    * Track which conversation ids have written KV state so far this
    * process lifetime. Used for diagnostics and the "did the last save
@@ -1552,16 +1583,23 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // Periodic eviction sweep — short TTL or shorter, capped to one
     // sweep per minute. Without this, stale slot files accumulate to
     // gigabytes over a long-running session because eviction was only
-    // ever fired at startup.
+    // ever fired at startup. Also drops idle conversation handles.
     this.startEvictionTimer();
+    // Keep-alive sweep — re-warms pre-warmed slots before the short TTL
+    // elapses so an idle-but-alive conversation keeps its KV resident.
+    this.startKeepAliveTimer();
   }
 
   /**
    * Set up the periodic eviction sweep that keeps stale slot files from
-   * accumulating. Runs `evictExpired` against both the per-slot save
-   * directory (used by llama-server's own KV save) and the per-conversation
-   * directory (used by our `persistConversationKv` saves) so neither can
-   * grow without bound.
+   * accumulating. Each tick:
+   *   - `evictExpired` against the per-slot save directory and the
+   *     per-conversation directory (per-file TTL by encoded class), so
+   *     neither can grow without bound;
+   *   - `conversationRegistry.evictIdle()` to drop conversation handles
+   *     that have been untouched past their TTL — persist each one's KV
+   *     to disk and `close()` it so an idle handle gets flushed-and-dropped
+   *     rather than lingering and inflating the parallel high-water mark.
    */
   private startEvictionTimer(): void {
     if (this.evictionTimer) return;
@@ -1578,9 +1616,65 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       if (conversationDir) {
         void evictExpired(conversationDir, DEFAULT_CACHE_TTLS).catch(() => {});
       }
+      void this.evictIdleConversations().catch(() => {});
     }, intervalMs);
     timer.unref();
     this.evictionTimer = timer;
+  }
+
+  /**
+   * Drop idle conversation handles from the registry, persisting each
+   * one's KV to disk before close so a re-open can lazy-restore. Inline
+   * import avoids a module-load cycle with the engine (which imports this
+   * file at module load).
+   */
+  private async evictIdleConversations(): Promise<void> {
+    const { conversationRegistry } = await import("./conversation-registry");
+    // Snapshot slot ids before evictIdle drops the handles so we know
+    // which slot to persist for each evicted conversation.
+    const slotByConversation = new Map<string, number>();
+    for (const handle of conversationRegistry.snapshot()) {
+      slotByConversation.set(handle.conversationId, handle.slotId);
+    }
+    const dropped = conversationRegistry.evictIdle();
+    if (dropped.length === 0) return;
+    await Promise.all(
+      dropped.map(async (conversationId) => {
+        const slotId = slotByConversation.get(conversationId);
+        if (slotId === undefined) return;
+        this.lastPrewarmBySlot.delete(slotId);
+        try {
+          await this.persistConversationKv(conversationId, slotId);
+        } catch {
+          // A failed persist just means the idle conversation cold-prefills
+          // when it next reopens — not worth crashing the timer over.
+        }
+      }),
+    );
+  }
+
+  /**
+   * Keep-alive sweep (item I3): for every slot that was previously
+   * pre-warmed and hasn't been touched (pre-warm or generate) within
+   * `KEEPALIVE_STALE_FRACTION` of the short TTL, re-issue the last
+   * pre-warm prefix so the slot's radix KV stays resident.
+   */
+  private startKeepAliveTimer(): void {
+    if (this.keepAliveTimer) return;
+    const intervalMs = resolveKeepAliveIntervalMs();
+    const staleThresholdMs = DEFAULT_CACHE_TTLS.short * KEEPALIVE_STALE_FRACTION;
+    const timer = setInterval(() => {
+      const now = Date.now();
+      for (const [slotId, entry] of [...this.lastPrewarmBySlot]) {
+        if (now - entry.touchedAtMs < staleThresholdMs) continue;
+        void this.prewarmConversation(entry.prefix, { slotId }).catch(() => {
+          // Best-effort — a failed keep-alive just means the next real
+          // request cold-prefills, which is the pre-keep-alive behaviour.
+        });
+      }
+    }, intervalMs);
+    timer.unref();
+    this.keepAliveTimer = timer;
   }
 
   async stop(): Promise<void> {
@@ -1588,6 +1682,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       clearInterval(this.evictionTimer);
       this.evictionTimer = null;
     }
+    if (this.keepAliveTimer) {
+      clearInterval(this.keepAliveTimer);
+      this.keepAliveTimer = null;
+    }
+    this.lastPrewarmBySlot.clear();
     const child = this.child;
     const baseUrl = this.baseUrl;
     const conversationDir = this.conversationKvDir;
@@ -1636,7 +1735,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const tasks = handles.map(async (handle) => {
       const targetPath = path.join(
         conversationDir,
-        `${handle.conversationId}.bin`,
+        slotCacheFileName(handle.conversationId, "long"),
       );
       try {
         await this.requestSlotSave(baseUrl, handle.slotId, targetPath);
@@ -1721,7 +1820,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const baseUrl = this.baseUrl;
     const conversationDir = this.conversationKvDir;
     if (!baseUrl || !conversationDir || slotId < 0) return false;
-    const targetPath = path.join(conversationDir, `${conversationId}.bin`);
+    const targetPath = path.join(
+      conversationDir,
+      slotCacheFileName(conversationId, "long"),
+    );
     try {
       await this.requestSlotSave(baseUrl, slotId, targetPath);
       this.persistedConversations.add(conversationId);
@@ -1743,7 +1845,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const baseUrl = this.baseUrl;
     const conversationDir = this.conversationKvDir;
     if (!baseUrl || !conversationDir || slotId < 0) return false;
-    const sourcePath = path.join(conversationDir, `${conversationId}.bin`);
+    const sourcePath = path.join(
+      conversationDir,
+      slotCacheFileName(conversationId, "long"),
+    );
     try {
       const restored = await this.requestSlotRestore(
         baseUrl,
@@ -1862,6 +1967,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
+    this.touchSlot(slotId);
     return { text, usage, slotId };
   }
 
@@ -1906,12 +2012,28 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         },
         30_000,
       );
+      // Remember the prefix + touch time so the keep-alive sweep can
+      // re-issue it before the radix KV ages out. Only pinned slots are
+      // worth tracking — slot_id -1 is "any free slot" and not stable.
+      if (slotId >= 0) {
+        this.lastPrewarmBySlot.set(slotId, {
+          prefix: promptPrefix,
+          touchedAtMs: Date.now(),
+        });
+      }
       return true;
     } catch {
       // Pre-warm is best-effort by definition — a failure just means the
       // real request cold-prefills, which is the pre-prewarm behaviour.
       return false;
     }
+  }
+
+  /** Bump the keep-alive touch time for a slot after a real generate. */
+  private touchSlot(slotId: number): void {
+    if (slotId < 0) return;
+    const entry = this.lastPrewarmBySlot.get(slotId);
+    if (entry) entry.touchedAtMs = Date.now();
   }
 
   private captureLog(chunk: Buffer | string): void {

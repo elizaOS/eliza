@@ -139,10 +139,54 @@ export function ttlMsForKey(
   return ttls.short;
 }
 
+/** TTL classes that can be encoded into a slot `.bin` filename. */
+export type SlotCacheTtlClass = "short" | "long" | "extended";
+
 /**
- * Sweep the slot-save directory and delete files older than the longest
- * configured TTL. Mtime is the watermark; llama-server rewrites the slot
- * file on every save, so a slot that's actively used keeps a fresh mtime.
+ * Build the basename for a persisted slot/conversation `.bin` file with
+ * its TTL class encoded as a middle component: `<base>.<ttl>.bin`. The
+ * eviction sweep reads that component back via `parseSlotCacheTtlClass`
+ * so a slot persisted with the long retention window isn't deleted on
+ * the short horizon (and vice versa). Pass `"long"` for cross-restart
+ * conversation KV — that matches the prior global (long-only) behaviour
+ * for those files.
+ */
+export function slotCacheFileName(
+  base: string,
+  ttl: SlotCacheTtlClass,
+): string {
+  return `${base}.${ttl}.bin`;
+}
+
+/**
+ * Parse the TTL class encoded into a slot `.bin` filename by
+ * `slotCacheFileName`. Returns `undefined` for legacy / hand-written
+ * filenames without an encoded class — those keep the `long` horizon
+ * (the prior global behaviour for persisted slot files).
+ */
+export function parseSlotCacheTtlClass(
+  fileName: string,
+): SlotCacheTtlClass | undefined {
+  // `<base>.<ttl>.bin` — the penultimate dot-component is the class.
+  const withoutBin = fileName.endsWith(".bin")
+    ? fileName.slice(0, -".bin".length)
+    : fileName;
+  const lastDot = withoutBin.lastIndexOf(".");
+  if (lastDot < 0) return undefined;
+  const candidate = withoutBin.slice(lastDot + 1);
+  if (candidate === "short" || candidate === "long" || candidate === "extended") {
+    return candidate;
+  }
+  return undefined;
+}
+
+/**
+ * Sweep the slot-save directory and delete files older than their
+ * per-file TTL horizon. The TTL class is read from the filename
+ * (`<base>.<ttl>.bin` — see `slotCacheFileName`); files without an
+ * encoded class use the `long` horizon (the prior global behaviour).
+ * Mtime is the watermark; llama-server rewrites the slot file on every
+ * save, so a slot that's actively used keeps a fresh mtime.
  *
  * Returns the number of files deleted. Missing directories are not
  * errors — eviction on a clean install just no-ops.
@@ -152,7 +196,6 @@ export async function evictExpired(
   ttls: CacheTtls = DEFAULT_CACHE_TTLS,
   now: number = Date.now(),
 ): Promise<number> {
-  const horizon = Math.max(ttls.short, ttls.long, ttls.extended ?? 0);
   let entries: string[];
   try {
     entries = await fs.readdir(rootDir);
@@ -170,6 +213,8 @@ export async function evictExpired(
       continue;
     }
     if (!stat.isFile()) continue;
+    const ttlClass = parseSlotCacheTtlClass(entry) ?? "long";
+    const horizon = ttlMsForKey(ttlClass, ttls);
     if (now - stat.mtimeMs > horizon) {
       try {
         await fs.unlink(full);
