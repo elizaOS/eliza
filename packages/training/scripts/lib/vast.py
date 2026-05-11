@@ -33,6 +33,17 @@ GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
     qwen3.6-27b at the registry's 190 GB budget; usable for 9B if
     blackwell6000-1x and h200-1x are unavailable.
 
+  GRPO multi-GPU targets (verl splits actor train + rollout across the
+  device pool — see ``scripts/train_grpo_verl.sh``):
+  * ``h200-2x`` — 2 × H200 SXM (141 GB each = 282 GB). GRPO default for
+    qwen3.5-2b (1 train + 1 rollout). ~24h wall.
+  * ``h200-4x`` — 4 × H200 SXM (564 GB total). GRPO default for
+    qwen3.5-9b (1 train + 3 rollout shards). ~24-48h wall.
+  * ``h200-8x`` — 8 × H200 SXM (1128 GB total). GRPO default for
+    qwen3.6-27b (4 train + 4 rollout). ~48h wall.
+  * ``b200-4x`` / ``b200-8x`` — B200 fallbacks when the H200 pool is
+    empty. ~1.5-2× the $/hr but ~2× the throughput.
+
 Usage from the shell:
 
     python -m scripts.lib.vast pick blackwell6000-2x      # cheapest matching offer id
@@ -131,6 +142,45 @@ TARGETS: dict[str, dict[str, Any]] = {
         "num_gpus": 2,
         "min_per_gpu_ram_gb": 75,
         "description": "2× H100 SXM/NVL (80 GB each = 160 GB total)",
+    },
+    # ─── GRPO multi-GPU targets ───
+    # GRPO needs separate train + rollout GPUs (verl splits actor / rollout
+    # across the available device pool via `n_gpus_per_node`). Per
+    # RL_STRATEGY.md hardware budgets:
+    #   qwen3.5-2b  → 2× H200 (1 train + 1 rollout)
+    #   qwen3.5-9b  → 4× H200 (1 train + 3 rollout shards)
+    #   qwen3.6-27b → 8× H200 (4 train + 4 rollout)
+    # The B200 variants are 1.5-2× pricier but ~2× faster and serve as the
+    # fallback when the H200 pool is empty.
+    "h200-2x": {
+        "gpu_names": ["H200_SXM", "H200"],
+        "num_gpus": 2,
+        "min_per_gpu_ram_gb": 130,
+        "description": "2× H200 SXM (141 GB each = 282 GB total) — GRPO 2B default",
+    },
+    "h200-4x": {
+        "gpu_names": ["H200_SXM", "H200"],
+        "num_gpus": 4,
+        "min_per_gpu_ram_gb": 130,
+        "description": "4× H200 SXM (141 GB each = 564 GB total) — GRPO 9B default",
+    },
+    "h200-8x": {
+        "gpu_names": ["H200_SXM", "H200"],
+        "num_gpus": 8,
+        "min_per_gpu_ram_gb": 130,
+        "description": "8× H200 SXM (141 GB each = 1128 GB total) — GRPO 27B default",
+    },
+    "b200-4x": {
+        "gpu_names": ["B200"],
+        "num_gpus": 4,
+        "min_per_gpu_ram_gb": 170,
+        "description": "4× NVIDIA B200 (≈183 GB each = ≈732 GB total) — GRPO 9B fallback",
+    },
+    "b200-8x": {
+        "gpu_names": ["B200"],
+        "num_gpus": 8,
+        "min_per_gpu_ram_gb": 170,
+        "description": "8× NVIDIA B200 (≈183 GB each = ≈1464 GB total) — GRPO 27B fallback",
     },
 }
 
