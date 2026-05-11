@@ -195,6 +195,18 @@ export class ConversationRegistry {
   }
 
   /**
+   * Drop every handle and reset the high-water mark. Test-only — the
+   * module singleton leaks state across files when the suite runs
+   * together; call this in `beforeEach` to isolate. Not part of the
+   * runtime contract.
+   */
+  __resetForTests(): void {
+    this.handles.clear();
+    this.slotLoad.clear();
+    this.highWaterMark = 0;
+  }
+
+  /**
    * Pick the slot with the fewest in-flight handles. Ties are broken by a
    * deterministic hash of the conversation id, which avoids consistently
    * loading slot 0 when N concurrent opens race.
