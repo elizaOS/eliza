@@ -1272,6 +1272,7 @@ function overlayAndroid() {
       "GatewayConnectionService.java",
       "AgentPlugin.java",
       "AndroidVirtualizationBridge.java",
+      "BatteryOptimizationPlugin.java",
       "ElizaNativeBridge.java",
       "MainActivity.java",
       "ElizaAgentService.java",
@@ -1288,6 +1289,8 @@ function overlayAndroid() {
       "ElizaRespondViaMessageService.java",
       "ElizaSmsComposeActivity.java",
       "ElizaSmsReceiver.java",
+      "ElizaTasksWorker.java",
+      "ElizaWorkScheduler.java",
     ]) {
       const src = path.join(srcJava, file);
       if (!fs.existsSync(src)) continue;
@@ -2029,6 +2032,7 @@ function generatePodfile() {
     ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
     ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
     ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
+    ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
     ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
