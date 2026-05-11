@@ -241,6 +241,19 @@ describe("resolveChain", () => {
 		const chain = resolveChain(ACTION_MODEL_STRATEGIES.LOCAL, lookup);
 		expect(chain.map((r) => r.provider)).toEqual(["openai", "anthropic"]);
 	});
+
+	it("LOCAL chain: does not repeat the same provider when the local handler is already first", () => {
+		const lookup = makeRegistry({
+			[ModelType.TEXT_SMALL]: [makeHandler("ollama"), makeHandler("openai")],
+			[ModelType.TEXT_LARGE]: [makeHandler("anthropic")],
+		});
+		const chain = resolveChain(ACTION_MODEL_STRATEGIES.LOCAL, lookup);
+		expect(chain.map((r) => r.provider)).toEqual([
+			"ollama",
+			"openai",
+			"anthropic",
+		]);
+	});
 });
 
 // ─── isLowConfidence ──────────────────────────────────────────────────────
