@@ -793,7 +793,7 @@ def _weighted_score_dicts(items: list[dict[str, Any]], *, attr: str) -> float:
 def _weighted_score_dicts_excluding_invalid(
     items: list[dict[str, Any]], *, attr: str
 ) -> float | None:
-    valid_items = [item for item in items if not item.get("invalid_expected_conflict")]
+    valid_items = [item for item in items if item.get(attr) is not None]
     if not valid_items:
         return None
     return _weighted_score_dicts(valid_items, attr=attr)

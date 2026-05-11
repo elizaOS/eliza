@@ -119,6 +119,7 @@ const env = {
   TUNNEL_PROXY_HOST: "tunnel.elizacloud.ai",
   TUNNEL_TAILNET_DOMAIN: "tunnel.eliza.local",
   TUNNEL_AUTH_KEY_COST_USD: "0.01",
+  TUNNEL_HOSTNAME_SIGNING_SECRET: "test-tunnel-hostname-signing-secret",
 };
 
 describe("tunnel auth-key route", () => {
@@ -139,6 +140,9 @@ describe("tunnel auth-key route", () => {
     expect(body.tailnet).toBe("https://headscale.elizacloud.ai");
     expect(String(body.magicDnsName)).toEndWith(".tunnel.elizacloud.ai");
     expect(String(body.hostname)).toStartWith("eliza-111111112222-");
+    expect(String(body.hostname)).toMatch(
+      /^eliza-111111112222-[a-f0-9]{20}-[a-f0-9]{16}$/,
+    );
     expect(body.tags).toEqual(["tag:eliza-tunnel"]);
     expect(body.billing).toEqual({
       model: "on_demand",
