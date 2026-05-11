@@ -143,7 +143,7 @@ const AUTH_PROVIDER_PLUGINS = {
   GROK_API_KEY:                   "@elizaos/plugin-xai",                 // bundled
   OPENROUTER_API_KEY:             "@elizaos/plugin-openrouter",          // bundled
   OLLAMA_BASE_URL:                "@elizaos/plugin-ollama",              // bundled
-  ZAI_API_KEY:                    "@homunculuslabs/plugin-zai",          // upstream
+  ZAI_API_KEY:                    "@elizaos/plugin-zai",          // upstream
   DEEPSEEK_API_KEY:               "@elizaos/plugin-deepseek",            // upstream
   TOGETHER_API_KEY:               "@elizaos/plugin-together",            // upstream
   MISTRAL_API_KEY:                "@elizaos/plugin-mistral",             // upstream

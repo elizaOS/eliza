@@ -1,18 +1,16 @@
 ---
 title: "Zai Plugin"
 sidebarTitle: "Zai"
-description: "Zai model provider for Eliza — access Homunculus Labs' Zai language models."
+description: "Zai model provider for Eliza — access z.ai language models."
 ---
 
-The Zai plugin connects Eliza agents to Homunculus Labs' Zai language models.
+The Zai plugin connects Eliza agents to z.ai language models.
 
 <Info>
 This plugin is available from the upstream elizaOS registry. It is **not bundled** in `plugins.json` and must be installed explicitly.
 </Info>
 
-> **Third-party on-demand plugin.** This is an external plugin published by Homunculus Labs (not `@elizaos`). It is resolved from the remote plugin registry and is not included in Eliza's bundled `plugins.json` index.
-
-**Package:** `@homunculuslabs/plugin-zai`
+**Package:** `@elizaos/plugin-zai`
 
 ## Installation
 
@@ -22,7 +20,7 @@ eliza plugins install @elizaos/plugin-zai
 
 ## Auto-Enable
 
-The plugin auto-enables when `ZAI_API_KEY` is present:
+The plugin auto-enables when `ZAI_API_KEY` is present. Legacy `Z_AI_API_KEY` is also accepted for existing installs:
 
 ```bash
 export ZAI_API_KEY=your-zai-api-key
@@ -32,7 +30,8 @@ export ZAI_API_KEY=your-zai-api-key
 
 | Environment Variable | Required | Description |
 |---------------------|----------|-------------|
-| `ZAI_API_KEY` | Yes | Zai API key from Homunculus Labs |
+| `ZAI_API_KEY` | Yes | z.ai API key |
+| `Z_AI_API_KEY` | No | Legacy alias used only when `ZAI_API_KEY` is unset |
 
 ### eliza.json Example
 
@@ -50,9 +49,8 @@ export ZAI_API_KEY=your-zai-api-key
 
 ## Features
 
-- Text generation via Homunculus Labs models
-- Streaming responses
-- Tool use / function calling
+- Text generation via z.ai models
+- Anthropic-compatible z.ai endpoint support
 
 ## Related
 
