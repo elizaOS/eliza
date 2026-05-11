@@ -120,7 +120,9 @@ describe("planner-loop message stacking regression", () => {
 			expect(JSON.stringify(msgs2[i])).toBe(JSON.stringify(msgs1[i]));
 		}
 
-		// The new messages added in call 2 must be assistant + tool pair
+		// The new messages added in call 2 must be assistant + tool pair (AI SDK v6 shape:
+		// tool calls live inside `content` as `ToolCallPart`, tool results inside `content`
+		// as `ToolResultPart`).
 		const added = msgs2.slice(msgs1.length);
 		expect(added.length).toBe(2);
 		expect(added[0].role).toBe("assistant");
