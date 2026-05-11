@@ -337,6 +337,33 @@ async function writeSourceStagedRootEntrypoint(params: {
   await fs.writeFile(targetPath, rootEntrypoint.source);
 }
 
+async function sourcePackageContainsRootEntrypointImports(params: {
+  dependencyName: string;
+  sourcePackageRoot: string;
+}): Promise<boolean> {
+  const rootEntrypoint = SOURCE_STAGED_ROOT_ENTRYPOINTS[params.dependencyName];
+  if (!rootEntrypoint) {
+    return true;
+  }
+
+  const relativeEntrypointDir = path.dirname(
+    rootEntrypoint.path.replace(/^\.\//, ""),
+  );
+  const relativeImports = [
+    ...rootEntrypoint.source.matchAll(/from\s+"(\.\/[^"]+)"/g),
+  ].map((match) => match[1]);
+
+  for (const relativeImport of relativeImports) {
+    const importedPath = path.join(relativeEntrypointDir, relativeImport);
+    const sourcePath = path.join(params.sourcePackageRoot, importedPath);
+    if (!(await pathEntryExists(sourcePath))) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
   dependencyName: string;
   sourceNodeModulesDir: string;
@@ -357,6 +384,14 @@ async function stageWorkspaceSourceDependencyIntoNodeModules(params: {
   if (
     !(await pathEntryExists(sourceSrcPath)) ||
     !(await pathEntryExists(sourcePackageJsonPath))
+  ) {
+    return false;
+  }
+  if (
+    !(await sourcePackageContainsRootEntrypointImports({
+      dependencyName: params.dependencyName,
+      sourcePackageRoot: resolvedSourcePath,
+    }))
   ) {
     return false;
   }
@@ -1142,7 +1177,7 @@ async function stagePluginImportRoot(params: {
   await fs.cp(params.packageRoot, stagedPackageRoot, {
     recursive: true,
     force: true,
-    dereference: true,
+    dereference: false,
     filter: createPluginPackageStageFilter(params.packageRoot),
   });
 
@@ -1504,14 +1539,16 @@ export async function resolvePlugins(
         )) as PluginModuleShape;
 
     // Pre-flight: ensure native dependencies are available for special plugins.
+    // For plugin-browser, the stagehand-server binary is only needed by the
+    // `stagehand` backend; the workspace (Electrobun) and bridge (Chrome/Safari
+    // extension) backends do not require it. So a missing server is a warning,
+    // not a fatal load error — the plugin still registers BROWSER + its routes
+    // for the backends that work without stagehand.
     if (pluginName === "@elizaos/plugin-browser") {
       if (!ensureBrowserServerLink()) {
-        failedPlugins.push({
-          name: pluginName,
-          error: "browser server binary not found",
-        });
-        // ensureBrowserServerLink() already logged one debug line with setup hints.
-        return null;
+        logger.warn(
+          "[eliza] plugin-browser: stagehand-server binary not found — loading anyway; the workspace and bridge backends do not need it, but the `stagehand` backend will be unavailable. To enable stagehand, build/link plugins/plugin-browser/stagehand-server.",
+        );
       }
     }
 

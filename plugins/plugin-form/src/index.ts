@@ -71,7 +71,7 @@ export { C, ControlBuilder, Form, FormBuilder } from "./builder";
 
 export { FormService } from "./service";
 
-export { formRestoreAction } from "./actions/restore";
+export { formAction, formRestoreAction } from "./actions/form";
 export { formEvaluator } from "./evaluators/extractor";
 export { formContextProvider } from "./providers/context";
 

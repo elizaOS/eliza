@@ -12,9 +12,9 @@
  *     in `./lib/calendly-handler.ts` is now a top-level Action — Calendly is a
  *     provider, not a CALENDAR subaction.
  *   - `negotiate_*` verbs moved out into the new
- *     `SCHEDULING_NEGOTIATION` action at `./scheduling-negotiation.ts`.
- *     Multi-turn negotiation is a long-running stateful actor, not a calendar
- *     verb (§7, §8.3).
+ *     `SCHEDULING_NEGOTIATION` action defined in
+ *     `./lib/scheduling-handler.ts`. Multi-turn negotiation is a long-running
+ *     stateful actor, not a calendar verb (§7, §8.3).
  *
  * What stays compound here is exactly the irreducible calendar-provider
  * surface plus `bulk_reschedule`, which `HARDCODING_AUDIT.md` §7 explicitly

@@ -3,8 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { desktopAction } from "../actions/desktop.js";
 import { useComputerAction } from "../actions/use-computer.js";
+import { windowAction } from "../actions/window.js";
 import computerUsePlugin from "../index.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
 
@@ -50,24 +50,22 @@ describe("computer-use live parity", () => {
   });
 
   it("exports the full public action surface", () => {
-    expect(computerUsePlugin.actions?.map((action) => action.name)).toEqual([
-      "COMPUTER_USE",
-      "DESKTOP",
-    ]);
+    const actionNames = computerUsePlugin.actions?.map((action) => action.name);
+    expect(actionNames).toContain("COMPUTER_USE");
+    expect(actionNames).toContain("WINDOW");
+    expect(actionNames).not.toContain("DESKTOP");
     expect(useComputerAction.similes).toContain("USE_COMPUTER");
     expect(useComputerAction.roleGate).toMatchObject({ minRole: "OWNER" });
-    expect(desktopAction.similes).toEqual(
+    expect(windowAction.similes).toEqual(
       expect.arrayContaining([
-        "FILE_ACTION",
         "MANAGE_WINDOW",
-        "TERMINAL_ACTION",
-        "DESKTOP",
-        "USE_DESKTOP",
+        "WINDOW",
+        "USE_WINDOW",
       ]),
     );
   });
 
-  it("publishes the COMPUTER_USE desktop op surface and DESKTOP op enum", () => {
+  it("publishes the COMPUTER_USE desktop action surface and WINDOW action enum", () => {
     const desktopActions = useComputerAction.parameters?.find(
       (parameter) => parameter.name === "action",
     );
@@ -89,18 +87,20 @@ describe("computer-use live parity", () => {
       ]),
     });
 
-    const desktopOp = desktopAction.parameters?.find(
-      (parameter) => parameter.name === "op",
+    const windowOp = windowAction.parameters?.find(
+      (parameter) => parameter.name === "action",
     );
-    expect(desktopOp?.schema).toMatchObject({
+    expect(windowOp?.schema).toMatchObject({
       enum: expect.arrayContaining([
-        "file",
-        "window",
-        "terminal",
-        // Reserved future ops — currently live on COMPUTER_USE.
-        "screenshot",
-        "ocr",
-        "detect_elements",
+        "list",
+        "focus",
+        "switch",
+        "arrange",
+        "move",
+        "minimize",
+        "maximize",
+        "restore",
+        "close",
       ]),
     });
   });

@@ -167,12 +167,12 @@ function sqliteStringLiteral(value: string): string {
 /**
  * Read TCC.db for Apple Events permission from this runtime to a target app.
  *
- * AppleScript-driven integrations such as Reminders.app, Contacts.app,
- * Notes.app, Calendar.app, and System Events are not represented by the
- * target app's domain TCC service. They live under kTCCServiceAppleEvents
- * keyed by both sender bundle id (`client`) and target bundle id
- * (`indirect_object_identifier`). This check is read-only and must be used
- * instead of probing with osascript in `check()` paths.
+ * Remaining AppleScript-driven integrations such as Calendar.app, Notes.app,
+ * and System Events are not represented by the target app's domain TCC
+ * service. They live under kTCCServiceAppleEvents keyed by both sender bundle
+ * id (`client`) and target bundle id (`indirect_object_identifier`). This
+ * check is read-only and must be used instead of probing with osascript in
+ * `check()` paths.
  */
 export async function queryAppleEventsTccStatus(
   targetBundleIdentifier: string,
@@ -248,6 +248,8 @@ export function resolveBundleId(execPath = process.execPath): string {
  *   - checkMicrophonePermission / requestMicrophonePermission
  *   - checkCameraPermission / requestCameraPermission
  *   - checkNotificationPermission / requestNotificationPermission
+ *   - EventKit/CNContactStore privacy probes for Reminders, Calendar,
+ *     and Contacts
  *
  * We re-use it rather than ship a parallel implementation. If the dylib
  * isn't present (e.g. running in CI or a tree where the native build hasn't
@@ -260,6 +262,12 @@ interface NativePermissionsLib {
   checkAccessibilityPermission: () => boolean;
   requestScreenRecordingPermission: () => boolean;
   checkScreenRecordingPermission: () => boolean;
+  checkRemindersPermission: () => number;
+  requestRemindersPermission: () => number;
+  checkCalendarPermission: () => number;
+  requestCalendarPermission: () => number;
+  checkContactsPermission: () => number;
+  requestContactsPermission: () => number;
   checkMicrophonePermission: () => number;
   checkCameraPermission: () => number;
   checkNotificationPermission: () => number;
@@ -272,12 +280,14 @@ let nativeLib: NativePermissionsLib | null = null;
 let nativeLibResolved = false;
 
 const DYLIB_CANDIDATES = [
+  // Absolute env override
+  process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "",
+  // Source worktree layout — relative to this prober file
+  "../../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Worktree layout — relative to the agent package
   "../../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
   // Installed package layout
   "../../../app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
-  // Absolute env override
-  process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "",
 ].filter(Boolean);
 
 export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
@@ -297,6 +307,12 @@ export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
         checkAccessibilityPermission: { args: [], returns: FFIType.bool },
         requestScreenRecordingPermission: { args: [], returns: FFIType.bool },
         checkScreenRecordingPermission: { args: [], returns: FFIType.bool },
+        checkRemindersPermission: { args: [], returns: FFIType.i32 },
+        requestRemindersPermission: { args: [], returns: FFIType.i32 },
+        checkCalendarPermission: { args: [], returns: FFIType.i32 },
+        requestCalendarPermission: { args: [], returns: FFIType.i32 },
+        checkContactsPermission: { args: [], returns: FFIType.i32 },
+        requestContactsPermission: { args: [], returns: FFIType.i32 },
         checkMicrophonePermission: { args: [], returns: FFIType.i32 },
         checkCameraPermission: { args: [], returns: FFIType.i32 },
         checkNotificationPermission: { args: [], returns: FFIType.i32 },
@@ -326,6 +342,19 @@ export function mapUNAuthStatus(value: number): PermissionStatus {
   if (value === 2) return "granted";
   if (value === 1) return "denied";
   if (value === 3) return "restricted";
+  return "not-determined";
+}
+
+/**
+ * Map native privacy authorization status values from EventKit and Contacts.
+ * 0=not determined, 1=denied, 2=granted, 3=restricted, 4=write-only.
+ * Write-only is intentionally restricted for our canonical permissions
+ * because our features need read/update/delete semantics after creation.
+ */
+export function mapNativePrivacyAuthStatus(value: number): PermissionStatus {
+  if (value === 2) return "granted";
+  if (value === 1) return "denied";
+  if (value === 3 || value === 4) return "restricted";
   return "not-determined";
 }
 

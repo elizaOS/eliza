@@ -310,11 +310,7 @@ export const minecraftAction: Action = {
     const params = mergedInput(message, options);
     const text = message.content.text ?? "";
     const op = normalizeOp(
-      params.action ??
-        params.subaction ??
-        params.op ??
-        params.actionType ??
-        params.type,
+      params.action ?? params.subaction ?? params.op ?? params.actionType ?? params.type
     );
     if (!op) {
       return emit(

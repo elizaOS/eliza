@@ -442,8 +442,11 @@ async function loadPersistedTrajectoriesForExport(
   }
 
   const whereClauses = buildTrajectoryWhereClauses({
+    source: options.source,
+    status: options.status,
     startDate: options.startDate,
     endDate: options.endDate,
+    search: options.search,
     scenarioId: options.scenarioId,
     batchId: options.batchId,
   });
@@ -760,6 +763,8 @@ export async function installDatabaseTrajectoryLogger(
       totalProviderAccesses: 0,
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
+      totalCacheReadInputTokens: 0,
+      totalCacheCreationInputTokens: 0,
       averageDurationMs: 0,
       bySource: {},
       byModel: {},
@@ -779,6 +784,8 @@ export async function installDatabaseTrajectoryLogger(
           COALESCE(sum(provider_access_count), 0) AS total_provider_accesses,
           COALESCE(sum(total_prompt_tokens), 0) AS total_prompt_tokens,
           COALESCE(sum(total_completion_tokens), 0) AS total_completion_tokens,
+          COALESCE(sum(total_cache_read_input_tokens), 0) AS total_cache_read_input_tokens,
+          COALESCE(sum(total_cache_creation_input_tokens), 0) AS total_cache_creation_input_tokens,
           COALESCE(avg(duration_ms), 0) AS avg_duration_ms
         FROM trajectories`,
       );
@@ -792,6 +799,14 @@ export async function installDatabaseTrajectoryLogger(
         totalProviderAccesses: toNumber(row?.total_provider_accesses, 0),
         totalPromptTokens: toNumber(row?.total_prompt_tokens, 0),
         totalCompletionTokens: toNumber(row?.total_completion_tokens, 0),
+        totalCacheReadInputTokens: toNumber(
+          row?.total_cache_read_input_tokens,
+          0,
+        ),
+        totalCacheCreationInputTokens: toNumber(
+          row?.total_cache_creation_input_tokens,
+          0,
+        ),
         averageDurationMs: toNumber(row?.avg_duration_ms, 0),
         bySource,
         byModel: {},
@@ -1410,8 +1425,9 @@ async function exportRawTrajectoriesToCompressedArchive(
     `SELECT
       id, id AS trajectory_id, agent_id, source, status, start_time, end_time,
       duration_ms, step_count, llm_call_count, provider_access_count,
-      total_prompt_tokens, total_completion_tokens, total_reward, scenario_id,
-      batch_id, steps_json,
+      total_prompt_tokens, total_completion_tokens,
+      total_cache_read_input_tokens, total_cache_creation_input_tokens,
+      total_reward, scenario_id, batch_id, steps_json,
       metadata, created_at, updated_at, episode_length, ai_judge_reward,
       ai_judge_reasoning, archetype
     FROM trajectories
@@ -1478,14 +1494,18 @@ export async function pruneOldTrajectories(
         `INSERT OR IGNORE INTO trajectory_archive (
           id, agent_id, source, status, start_time, end_time, duration_ms,
           step_count, llm_call_count, provider_access_count,
-          total_prompt_tokens, total_completion_tokens, total_reward,
+          total_prompt_tokens, total_completion_tokens,
+          total_cache_read_input_tokens, total_cache_creation_input_tokens,
+          total_reward,
           scenario_id, batch_id, metadata, observations, archive_blob_path,
           created_at, updated_at, archived_at
         )
         SELECT
           id, agent_id, source, status, start_time, end_time, duration_ms,
           step_count, llm_call_count, provider_access_count,
-          total_prompt_tokens, total_completion_tokens, total_reward,
+          total_prompt_tokens, total_completion_tokens,
+          total_cache_read_input_tokens, total_cache_creation_input_tokens,
+          total_reward,
           scenario_id, batch_id, metadata,
           COALESCE(json_extract(metadata, '$.observations'), '[]'),
           ${sqlQuote(archivePath)},
@@ -1503,14 +1523,18 @@ export async function pruneOldTrajectories(
           `INSERT INTO trajectory_archive (
             id, agent_id, source, status, start_time, end_time, duration_ms,
             step_count, llm_call_count, provider_access_count,
-            total_prompt_tokens, total_completion_tokens, total_reward,
+            total_prompt_tokens, total_completion_tokens,
+            total_cache_read_input_tokens, total_cache_creation_input_tokens,
+            total_reward,
             scenario_id, batch_id, metadata, observations, archive_blob_path,
             created_at, updated_at, archived_at
           )
           SELECT
             id, agent_id, source, status, start_time, end_time, duration_ms,
             step_count, llm_call_count, provider_access_count,
-            total_prompt_tokens, total_completion_tokens, total_reward,
+            total_prompt_tokens, total_completion_tokens,
+            total_cache_read_input_tokens, total_cache_creation_input_tokens,
+            total_reward,
             scenario_id, batch_id, metadata,
             COALESCE(metadata::json->>'observations', '[]'),
             ${sqlQuote(archivePath)},

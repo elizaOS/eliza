@@ -419,7 +419,7 @@ function parseDevicectlDevices(text) {
       model,
       idSource: "devicectl",
     };
-    if (/available/i.test(state) && !/unavailable|offline/i.test(state)) {
+    if (/(available|connected)/i.test(state) && !/unavailable|offline|disconnected/i.test(state)) {
       connected.push(record);
     } else {
       offline.push(record);
@@ -608,8 +608,16 @@ function classifyXcodebuildFailure(result) {
   if (/framework 'Accelerate' not found|Undefined symbol: _(?:cblas_|vDSP_)/i.test(text)) {
     return "missing-system-framework-linkage";
   }
-  const missingVoiceAbi = /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(text);
-  const missingCapacitorBridge = /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(text);
+  if (/Crash:\s+ElizaIosRuntimeSmokeHost\s+at\s+eliza_ios_ffi_abi_smoke_run|testLibElizaInferenceAbiV1CallsMatchHeader.*Failed|unexpected exit, crash, or test timeout/i.test(text)) {
+    return "voice-abi-runtime-crash";
+  }
+  const undefinedSymbolFailure = /Undefined symbols|symbol\(s\) not found|ld: symbol/i.test(text);
+  const missingVoiceAbi =
+    undefinedSymbolFailure &&
+    /_eliza_inference_(?:abi_version|create|destroy|mmap_acquire|mmap_evict|tts_synthesize|asr_transcribe|free_string)\b/i.test(text);
+  const missingCapacitorBridge =
+    undefinedSymbolFailure &&
+    /_llama_(?:init_context|release_context|completion|stop_completion|get_formatted_chat|toggle_native_log|embedding|embedding_register_context|embedding_unregister_context|get_model_info|get_context_ptr|get_last_error|free_string)\b/i.test(text);
   if (missingVoiceAbi && missingCapacitorBridge) {
     return "missing-capacitor-bridge-and-voice-abi-symbols";
   }

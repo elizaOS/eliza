@@ -29,10 +29,10 @@ import {
   isDefaultEligibleId,
 } from "./catalog";
 import {
-  parseManifestOrThrow,
   type Eliza1FileEntry,
   type Eliza1Files,
   type Eliza1Manifest,
+  parseManifestOrThrow,
 } from "./manifest";
 import {
   downloadsStagingDir,
@@ -140,7 +140,9 @@ function parseBundleManifestOrThrow(
       `Invalid Eliza-1 manifest: id ${manifest.id} does not match ${catalogEntry.id}`,
     );
   }
-  if (!manifest.files.text.some((entry) => entry.path === catalogEntry.ggufFile)) {
+  if (
+    !manifest.files.text.some((entry) => entry.path === catalogEntry.ggufFile)
+  ) {
     throw new Error(
       `Invalid Eliza-1 manifest: primary text file ${catalogEntry.ggufFile} is missing`,
     );

@@ -38,15 +38,30 @@ This branch now has the following foundation:
   - `quickjs`
   - `wasm`
 - `MobileSafeVirtualFileSystem` now includes read/write/delete/mkdir/stat/list,
-  snapshots, diffs, rollback, and quota reporting.
+  snapshots, diffs, rollback, and quota reporting, with in-memory quota and
+  max-file enforcement for store-mobile applets.
 - The app-core VFS contract can broker file capabilities and adapt the agent
   `VirtualFilesystemService`.
 - The agent `VirtualFilesystemService` remains the durable on-disk VFS:
   project quotas, max-file quotas, traversal rejection, symlink rejection,
   snapshots, diffs, and rollback.
-- `android-cloud` mobile builds strip the on-device agent service, privileged
-  default-role activities, system-only permissions, staged `assets/agent`
-  runtime, and disguised native runtime libraries.
+- Workbench exposes VFS REST routes for project creation, file read/write/list,
+  quota, snapshots, diffs, rollback, TypeScript plugin compilation, and loading
+  a VFS-sourced plugin into the running agent runtime.
+- The Android template exposes a reflection-only AVF/Microdroid probe through
+  `ElizaNative.getAndroidVirtualization()` and request contract through
+  `ElizaNative.requestAndroidVirtualization(...)`. It does not yet package a
+  Microdroid payload.
+- The Eliza Cloud plugin exposes local routes and service methods for promoting
+  a VFS bundle into a coding container, requesting a Claude/Codex/OpenCode
+  container, and syncing changes. These fail closed with 503-style unavailable
+  responses when Cloud auth or the backend control-plane endpoint is unavailable.
+- `android-cloud` mobile builds produce a release AAB by default, with
+  `android-cloud-debug` reserved for iteration. Cloud builds strip the on-device
+  agent service, privileged default-role activities, system-only permissions,
+  staged `assets/agent` runtime, disguised native runtime libraries,
+  `MANAGE_VIRTUAL_MACHINE`, and cloud-disallowed native plugin references, then
+  audit the source tree and output artifact.
 - Store desktop builds remove local execution plugins from the load set even
   when config or environment asks for shell, coding tools, or agent
   orchestrator.
@@ -68,11 +83,12 @@ Hard constraints:
 Allowed shape:
 
 - User-created projects, scripts, and applets stored as user documents in our
-  VFS.
-- Interpretation by a bundled, reviewable runtime surface such as
-  JavaScriptCore, QuickJS, or WASM, provided the applet is treated as user
-  content in the IDE and cannot escape into native code, private APIs, or
-  forbidden platform behavior.
+  VFS. Public VFS API responses intentionally omit host filesystem roots.
+- Interpretation by an attached, reviewable runtime boundary such as
+  JavaScriptCore, QuickJS isolated process, or WASM, provided the applet is
+  treated as user content in the IDE and cannot escape into native code, private
+  APIs, or forbidden platform behavior. The in-process `safe-js-applet` fallback
+  is dev-only and is not advertised as a hard sandbox.
 - Full shell and coding agents through Cloud hosting containers.
 
 ### Google Play Android
@@ -173,7 +189,7 @@ for a real terminal or coding-agent CLI.
 ### Layer 3: AOSP Full Local IDE
 
 AOSP should route local execution through the existing Bun backend, now with
-shell/coding-tools/orchestrator loaded. The next AOSP work is:
+shell/coding-tools/orchestrator loaded. The remaining AOSP work is:
 
 1. Validate PTY behavior on Cuttlefish and real devices.
 2. Bundle and expose a known-good toolchain under the app/service path.
@@ -182,7 +198,8 @@ shell/coding-tools/orchestrator loaded. The next AOSP work is:
    - Use PTY-backed CLIs only when Android-compatible binaries exist.
    - Fall back to Cloud containers for Codex/Claude/OpenCode when local
      binaries are unavailable.
-4. Add a native AVF bridge for supported AOSP builds.
+4. Package the Microdroid payload and attach VM lifecycle/RPC to the existing
+   native AVF bridge for supported AOSP builds.
 5. Use the agent VFS for snapshots/rollback even when writing into a broader
    workspace.
 
@@ -207,18 +224,20 @@ Use AVF only where the Android build can legally and technically access it:
 
 Implementation steps:
 
-1. Add a Java/Kotlin `AndroidVirtualization` bridge that probes
-   `VirtualMachineManager` and capabilities.
-2. Set `ELIZA_ANDROID_AVF_AVAILABLE=1` or attach a native/global bridge only
-   when the platform probe succeeds.
-3. Package a Microdroid payload embedded in the APK/product image.
-4. Expose Binder/vsock RPC for:
+1. Done: Java `AndroidVirtualizationBridge` probes `VirtualMachineManager`,
+   permission state, feature state, and exposed capabilities through reflection.
+2. Done: app-core can attach a feature probe / boundary from
+   `window.ElizaNative`.
+3. Done: feature detection only advertises AVF when an env/native/global probe
+   reports support.
+4. Remaining: package a Microdroid payload embedded in the APK/product image.
+5. Remaining: expose Binder/vsock RPC for:
    - `shell.exec`
    - `app.compile`
    - `app.load`
    - `app.run`
    - VFS file exchange
-5. Treat AVF as an execution boundary for dangerous work. Do not assume the
+6. Treat AVF as an execution boundary for dangerous work. Do not assume the
    whole Bun backend can move into Microdroid until Bun-on-Bionic/Microdroid is
    proven.
 
@@ -242,14 +261,16 @@ architecture is otherwise easy to overstate in product or API docs.
    stdout/stderr streaming, process cleanup.
 2. TODO-AOSP-TOOLCHAIN: AOSP bundled tools: `git`, `rg`, archive tools, package-manager stance, and
    Android-compatible coding-agent adapters.
-3. TODO-AVF-BRIDGE: Native AVF bridge: Java/Kotlin probe, VM lifecycle, payload build, RPC, file
-   sync, telemetry, and fallback to VFS.
+3. TODO-AVF-PAYLOAD: Microdroid payload work: VM lifecycle, payload build, Binder/vsock RPC,
+   file sync, telemetry, and fallback to VFS.
 4. TODO-STORE-MOBILE-BRIDGES: Store-mobile provider attachment: real JSCore/QuickJS/WASM bridge wiring to
-   `MobileSafeRuntimeProvider`.
+   `MobileSafeRuntimeProvider`. Provider detection no longer advertises JSCore,
+   QuickJS, or in-process safe-js unless an actual boundary/dev flag is attached.
 5. TODO-VFS-UI: VFS UI: snapshot, diff, rollback, quota display, and "promote to cloud
    container" flow.
-6. TODO-CLOUD-VFS-SYNC: Cloud workspace sync: push VFS project into a cloud container, run
-   Claude/Codex/OpenCode, pull back patches.
+6. TODO-CLOUD-BACKEND: Cloud workspace backend/control plane: accept VFS bundle uploads,
+   start Claude/Codex/OpenCode containers, stream terminal/task state, and pull
+   back patches. The local plugin/API contract exists.
 7. TODO-REVIEW-NOTES: Review posture: app descriptions and review notes must describe local
    applets as IDE/user-content execution, and full shell as Cloud/AOSP/direct
    only.
@@ -264,9 +285,10 @@ The policy surface is guarded by tests rather than prose alone:
 - `packages/app-core/src/runtime/mobile-safe-runtime.test.ts` checks provider
   detection, AVF preference, isolated-process fallback, VFS snapshots, diffs,
   rollback, quota, and brokered operations.
-- `packages/app-core/src/runtime/platform-policy-docs.test.ts` keeps this plan,
-  desktop build docs, mobile docs, and the Android cloud build script aligned
-  with the source-level policy constants.
+- `packages/app-core/src/runtime/android-avf-microdroid-bridge.test.ts` checks
+  the JS-facing Android AVF probe/boundary contract.
+- `packages/agent/src/api/workbench-vfs-routes.test.ts` checks the VFS REST
+  project/file/snapshot/diff flow.
 
 ## External References
 

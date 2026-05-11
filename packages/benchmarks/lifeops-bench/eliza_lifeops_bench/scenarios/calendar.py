@@ -17,6 +17,7 @@ from __future__ import annotations
 from ..types import Action, Domain, FirstQuestionFallback, Scenario, ScenarioMode
 from ._personas import (
     PERSONA_ALEX_ENG,
+    PERSONA_DEV_FREELANCER,
     PERSONA_LIN_OPS,
     PERSONA_MAYA_PARENT,
     PERSONA_NORA_CONSULTANT,

@@ -6,7 +6,10 @@ import type {
   PermissionStatus,
 } from "@elizaos/shared";
 import {
+  getAppleCalendarPlugin,
   getMobileSignalsPlugin,
+  type AppleCalendarPermissionStatus,
+  type AppleCalendarPluginLike,
   type MobileSignalsOpenSettingsResult,
   type MobileSignalsPermissionStatus,
   type MobileSignalsPluginLike,
@@ -18,7 +21,7 @@ import { platform } from "./init";
 
 type MobilePermissionId = Extract<
   PermissionId,
-  "health" | "screentime" | "notifications"
+  "calendar" | "health" | "screentime" | "notifications"
 >;
 
 type PermissionClientLike = {
@@ -28,6 +31,7 @@ type PermissionClientLike = {
 };
 
 const MOBILE_SIGNAL_PERMISSION_IDS = new Set<PermissionId>([
+  "calendar",
   "health",
   "screentime",
   "notifications",
@@ -162,10 +166,25 @@ function stateFromNotifications(
   });
 }
 
+function stateFromAppleCalendar(
+  permissions: AppleCalendarPermissionStatus,
+): PermissionState {
+  const status =
+    permissions.calendar === "prompt"
+      ? "not-determined"
+      : permissions.calendar;
+  return defaultMobileState("calendar", status, {
+    canRequest: permissions.canRequest,
+    reason: permissions.reason ?? undefined,
+    restrictedReason: status === "restricted" ? "os_policy" : undefined,
+  });
+}
+
 function stateFromMobileSignals(
   id: MobilePermissionId,
   permissions: MobileSignalsPermissionStatus,
 ): PermissionState {
+  if (id === "calendar") return defaultMobileState("calendar");
   if (id === "health") return stateFromHealth(permissions);
   if (id === "screentime") return stateFromScreenTime(permissions);
   return stateFromNotifications(permissions);
@@ -200,6 +219,7 @@ export async function openMobilePermissionSettings(
 export function createMobileSignalsPermissionsRegistry(
   plugin: MobileSignalsPluginLike = getMobileSignalsPlugin(),
   fallbackClient?: PermissionClientLike,
+  appleCalendarPlugin: AppleCalendarPluginLike = getAppleCalendarPlugin(),
 ): IPermissionsRegistry {
   const states = new Map<PermissionId, PermissionState>();
   const subscribers = new Set<(state: PermissionState[]) => void>();
@@ -218,6 +238,18 @@ export function createMobileSignalsPermissionsRegistry(
   };
 
   const checkMobilePermission = async (id: MobilePermissionId) => {
+    if (id === "calendar") {
+      if (typeof appleCalendarPlugin.checkPermissions !== "function") {
+        return commit(
+          defaultMobileState("calendar", "not-applicable", {
+            restrictedReason: "platform_unsupported",
+          }),
+        );
+      }
+      return commit(
+        stateFromAppleCalendar(await appleCalendarPlugin.checkPermissions()),
+      );
+    }
     if (typeof plugin.checkPermissions !== "function") {
       return commit(defaultMobileState(id));
     }
@@ -263,7 +295,17 @@ export function createMobileSignalsPermissionsRegistry(
         return commit(defaultMobileState(id, "not-applicable"));
       }
 
-      if (id === "notifications") {
+      if (id === "calendar") {
+        const current = await checkMobilePermission(id);
+        if (
+          current.canRequest &&
+          typeof appleCalendarPlugin.requestPermissions === "function"
+        ) {
+          await appleCalendarPlugin.requestPermissions();
+        } else {
+          await openMobilePermissionSettings(id, plugin);
+        }
+      } else if (id === "notifications") {
         const current = await checkMobilePermission(id);
         if (
           current.canRequest &&

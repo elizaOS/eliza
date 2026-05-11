@@ -157,15 +157,17 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
     maxSecondsPerPhrase?: number;
   }) {
     this.ffi = args.ffi;
-    this.getContext = args.getContext ?? (() => {
-      if (args.ctx === undefined) {
-        throw new VoiceStartupError(
-          "missing-fused-build",
-          "[voice] FFI backend has no context provider",
-        );
-      }
-      return args.ctx;
-    });
+    this.getContext =
+      args.getContext ??
+      (() => {
+        if (args.ctx === undefined) {
+          throw new VoiceStartupError(
+            "missing-fused-build",
+            "[voice] FFI backend has no context provider",
+          );
+        }
+        return args.ctx;
+      });
     this.sampleRate = args.sampleRate ?? SAMPLE_RATE_DEFAULT;
     this.maxSecondsPerPhrase = args.maxSecondsPerPhrase ?? 6;
   }
@@ -332,7 +334,10 @@ export class EngineVoiceBridge {
       );
     }
 
-    const presetPath = path.join(opts.bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
+    const presetPath = path.join(
+      opts.bundleRoot,
+      DEFAULT_VOICE_PRESET_REL_PATH,
+    );
     if (!existsSync(presetPath)) {
       throw new VoiceStartupError(
         "missing-speaker-preset",
@@ -363,7 +368,9 @@ export class EngineVoiceBridge {
     let ffiHandle: ElizaInferenceFfi | null = null;
     let ffiContextRef: FfiContextRef | null = null;
     let backend: OmniVoiceBackend;
-    const asrAvailable = bundleHasRegularFile(path.join(opts.bundleRoot, "asr"));
+    const asrAvailable = bundleHasRegularFile(
+      path.join(opts.bundleRoot, "asr"),
+    );
     if (opts.backendOverride && opts.useFfiBackend) {
       throw new VoiceStartupError(
         "missing-fused-build",
@@ -665,19 +672,20 @@ function readAscii(bytes: Uint8Array, offset: number, length: number): string {
  *
  * When a live `ffi`/`ctx` pair is passed in, arming calls
  * `ffi.mmapAcquire(ctx, "tts" | "asr")` before the lifecycle can enter
- * `voice-on`, and the returned mmap handles' `evictPages()` calls
- * forward to `ffi.mmapEvict(ctx, "tts" | "asr")`. The C ABI is declared
- * in `scripts/omnivoice-fuse/ffi.h`. The real fused build implements
- * this against `mmap` / `madvise(MADV_DONTNEED)` on POSIX and
- * `VirtualUnlock + OfferVirtualMemory` on Windows. The stub library
+ * `voice-on`, and the returned handles' `evictPages()` calls forward
+ * to `ffi.mmapEvict(ctx, "tts" | "asr")`. The C ABI is declared in
+ * `scripts/omnivoice-fuse/ffi.h`. Production builds may implement this
+ * as page eviction or as a full voice-runtime unload for mobile RAM
+ * pressure; callers must reacquire before using the region again. The stub library
  * returns `ELIZA_ERR_NOT_IMPLEMENTED`, which the binding raises as
  * `VoiceLifecycleError({code:"kernel-missing"})`.
  *
  * When `ffi` is null, acquire/evict are documented no-ops — used by the
  * stub TTS path in tests + dev (no real mmap exists). Directory and
- * "contains at least one file" checks still run for TTS. ASR is optional
- * for TTS-only bundles: a missing ASR directory gets a zero-byte virtual
- * region so voice-on can synthesize while local transcription stays disabled.
+ * "contains at least one file" checks still run for both TTS and ASR.
+ * ASR never gets a virtual fallback: voice-on requires a real bundled ASR
+ * model file so the FFI path can acquire the `"asr"` region and surface
+ * the fused ABI's diagnostic if the runtime is incomplete.
  */
 interface FfiContextRef {
   current: ElizaInferenceContextHandle | null;
@@ -700,13 +708,8 @@ function defaultLifecycleLoaders(
   return {
     loadTtsRegion: async () =>
       bundleMmapRegion(path.join(bundleRoot, "tts"), "tts", ffi, ctx),
-    loadAsrRegion: async () => {
-      const asrDir = path.join(bundleRoot, "asr");
-      if (!bundleHasRegularFile(asrDir)) {
-        return virtualMmapRegion("asr", bundleRoot);
-      }
-      return bundleMmapRegion(asrDir, "asr", ffi, ctx);
-    },
+    loadAsrRegion: async () =>
+      bundleMmapRegion(path.join(bundleRoot, "asr"), "asr", ffi, ctx),
     loadVoiceCaches: async () => ({
       id: `voice-caches:${bundleRoot}`,
       async release() {
@@ -842,19 +845,6 @@ function bundleHasRegularFile(dir: string): boolean {
   } catch {
     return false;
   }
-}
-
-function virtualMmapRegion(
-  kind: "asr",
-  bundleRoot: string,
-): MmapRegionHandle {
-  return {
-    id: `mmap:${kind}:virtual:${bundleRoot}`,
-    path: path.join(bundleRoot, kind),
-    sizeBytes: 0,
-    async evictPages() {},
-    async release() {},
-  };
 }
 
 function managedFusedRuntimeDirs(): string[] {

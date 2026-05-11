@@ -179,6 +179,19 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
   };
 }
 
+function fakeFfiWithAsrAcquireError(
+  calls: string[],
+  error: VoiceLifecycleError,
+): ElizaInferenceFfi {
+  return {
+    ...fakeFfi(calls),
+    mmapAcquire(_ctx, region: ElizaInferenceRegion) {
+      calls.push(`acquire:${region}`);
+      if (region === "asr") throw error;
+    },
+  };
+}
+
 describe("LocalInferenceEngine voice surface", () => {
   let bundleRoot: string;
 
@@ -488,7 +501,7 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(bridge.lifecycle.current().kind).toBe("voice-off");
   });
 
-  it("(e) default loaders arm TTS-only bundles without requiring ASR files", async () => {
+  it("(e) default loaders refuse to arm when ASR assets are missing", async () => {
     writePresetBundle(bundleRoot);
     mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
     writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
@@ -504,17 +517,43 @@ describe("LocalInferenceEngine voice surface", () => {
 
     expect(bridge.asrAvailable).toBe(false);
 
-    await engine.armVoice();
-    expect(bridge.lifecycle.current().kind).toBe("voice-on");
-    expect(calls).toEqual(["acquire:tts"]);
-
-    await expect(
-      engine.transcribePcm({ pcm: new Float32Array([0]), sampleRate: 24000 }),
-    ).rejects.toMatchObject({ code: "missing-fused-build" });
-
-    await engine.stopVoice();
+    await expect(engine.armVoice()).rejects.toMatchObject({
+      code: "mmap-fail",
+    });
     expect(calls).toEqual(["acquire:tts", "evict:tts"]);
-    expect(bridge.lifecycle.current().kind).toBe("voice-off");
+    expect(bridge.lifecycle.current().kind).toBe("voice-error");
+  });
+
+  it("(e) default loaders acquire the real ASR region and preserve fused ABI errors", async () => {
+    writePresetBundle(bundleRoot);
+    mkdirSync(path.join(bundleRoot, "tts"), { recursive: true });
+    mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
+    writeFileSync(path.join(bundleRoot, "tts", "omnivoice-test.gguf"), "tts");
+    writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
+
+    const calls: string[] = [];
+    const fusedError = new VoiceLifecycleError(
+      "kernel-missing",
+      "[ffi-bindings] eliza_inference_mmap_acquire(asr) rc=-1: ASR runtime not implemented",
+    );
+    const engine = new LocalInferenceEngine();
+    const bridge = engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: new CountingBackend(),
+      lifecycleLoaders: defaultLifecycleLoaders(
+        bundleRoot,
+        fakeFfiWithAsrAcquireError(calls, fusedError),
+        1n,
+      ),
+    });
+
+    await expect(engine.armVoice()).rejects.toBe(fusedError);
+    expect(calls).toEqual(["acquire:tts", "acquire:asr", "evict:tts"]);
+    expect(bridge.lifecycle.current()).toMatchObject({
+      kind: "voice-error",
+      error: fusedError,
+    });
   });
 
   it("(e) RAM-pressure during arm surfaces VoiceLifecycleError — no silent fallback", async () => {

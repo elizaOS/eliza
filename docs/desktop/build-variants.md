@@ -53,15 +53,16 @@ target environment for local shell and terminal access.
 
 Google Play Android uses the `android-cloud` build target. That target strips
 the on-device agent service, privileged default-role activities, system-only
-permissions, staged `assets/agent` runtime, and disguised native runtime
-libraries before building the APK.
+permissions, staged `assets/agent` runtime, disguised native runtime libraries,
+and `MANAGE_VIRTUAL_MACHINE` before building the APK.
 
 ## Verification
 
 - `packages/agent/src/runtime/plugin-collector-aosp.test.ts` verifies the store
   variant plugin gate and the AOSP terminal plugin exception.
-- `packages/app-core/src/runtime/platform-policy-docs.test.ts` verifies this
-  document keeps naming the policy knobs and Android cloud stripping behavior.
+- `packages/app-core/src/runtime/mobile-safe-runtime.test.ts` and
+  `packages/app-core/src/runtime/android-avf-microdroid-bridge.test.ts` verify
+  the mobile-safe provider and AVF bridge contracts.
 
 ## Human Release Requirements
 

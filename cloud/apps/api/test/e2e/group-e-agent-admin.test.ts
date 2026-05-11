@@ -275,6 +275,25 @@ describe("Group E: advertising / accounts", () => {
     const res = await api.delete(`/api/v1/advertising/accounts/${FAKE_UUID}`);
     expectAuthGate(res.status, "DELETE advertising/accounts/:id");
   });
+
+  test("POST /api/v1/advertising/accounts/:id/media rejects unauthenticated", async () => {
+    if (!serverReachable) return;
+    const res = await api.post(`/api/v1/advertising/accounts/${FAKE_UUID}/media`, {
+      type: "image",
+      url: "https://example.com/creative.png",
+    });
+    expectAuthGate(res.status, "POST advertising/accounts/:id/media");
+  });
+
+  test("POST /api/v1/advertising/accounts/:id/media rejects invalid body with 400", async () => {
+    if (!shouldRun()) return;
+    const res = await api.post(
+      `/api/v1/advertising/accounts/${FAKE_UUID}/media`,
+      { type: "audio", url: "not-a-url" },
+      { headers: bearerHeaders() },
+    );
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("Group E: advertising / campaigns", () => {

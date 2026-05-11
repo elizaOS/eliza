@@ -1,0 +1,93 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    # Optional: Only run on specific file changes
+    # paths:
+    #   - "src/**/*.ts"
+    #   - "src/**/*.tsx"
+    #   - "src/**/*.js"
+    #   - "src/**/*.jsx"
+
+jobs:
+  claude-review:
+    # Optional: Filter by PR author
+    # if: |
+    #   github.event.pull_request.user.login == 'external-contributor' ||
+    #   github.event.pull_request.user.login == 'new-developer' ||
+    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Optional: Specify model (defaults to Claude Sonnet 4, uncomment for Claude Opus 4.1)
+          # model: "claude-opus-4-1-20250805"
+
+          # Direct prompt for automated review (no @claude mention needed)
+          direct_prompt: |
+            This is the elizaOS Registry repository. Review this PR against the contribution guidelines in the README.
+            
+            **Critical Requirements:**
+            1. ONLY the index.json file should be modified (no other files)
+            2. Changes must follow the registry format specified in the README
+            3. JSON must be valid and maintain alphabetical sorting
+            4. No duplicate entries
+            5. Validate that packages and repositories actually exist
+            
+            **Validation Steps:**
+            For each new registry entry, use the available tools to verify:
+            
+            - **NPM Package Validation**: Run `npm view @package-name` to check if the NPM package exists
+            - **GitHub Repository Validation**: Use `curl -I https://github.com/org/repo` or `git ls-remote https://github.com/org/repo.git` to verify the GitHub repository exists and is accessible
+            
+            **Review Actions:**
+            - If other files are modified: Reject and ask contributor to only modify index.json
+            - If format is incorrect: Reference the "Registry Format" section in README
+            - If NPM package doesn't exist: Ask contributor to publish package to NPM first or correct the package name
+            - If GitHub repository doesn't exist or is inaccessible: Ask contributor to verify the repository URL and ensure it's public
+            - If everything is correct: Approve and welcome the contributor
+            
+            Refer contributors to the README's "Contributing to the Registry" section for detailed guidelines.
+
+          # Optional: Use sticky comments to make Claude reuse the same comment on subsequent pushes to the same PR
+          # use_sticky_comment: true
+          
+          # Optional: Customize review based on file types
+          # direct_prompt: |
+          #   Review this PR focusing on:
+          #   - For TypeScript files: Type safety and proper interface usage
+          #   - For API endpoints: Security, input validation, and error handling
+          #   - For React components: Performance, accessibility, and best practices
+          #   - For tests: Coverage, edge cases, and test quality
+          
+          # Optional: Different prompts for different authors
+          # direct_prompt: |
+          #   ${{ github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR' && 
+          #   'Welcome! Please review this PR from a first-time contributor. Be encouraging and provide detailed explanations for any suggestions.' ||
+          #   'Please provide a thorough code review focusing on our coding standards and best practices.' }}
+          
+          # Enable tools for validation
+          allowed_tools: "Bash(npm view),Bash(curl),Bash(git ls-remote)"
+          
+          # Optional: Skip review for certain conditions
+          # if: |
+          #   !contains(github.event.pull_request.title, '[skip-review]') &&
+          #   !contains(github.event.pull_request.title, '[WIP]')
+

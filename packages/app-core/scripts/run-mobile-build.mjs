@@ -6,14 +6,16 @@
  * Reads app identity from the host's app.config.ts so web, desktop, and
  * native builds share one canonical app contract.
  *
- * Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-system|ios|ios-overlay>
+ * Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-cloud-debug|android-system|ios|ios-overlay>
  *
  * Android targets:
  *   - android         Sideload-only debug APK with the on-device agent runtime
  *                     and AOSP/system-only permissions. NOT Play-Store-shippable.
- *   - android-cloud   Play-Store-compliant thin Capacitor client backed by
+ *   - android-cloud   Play-Store-compliant release AAB thin client backed by
  *                     Eliza Cloud. No on-device agent, no default-role
  *                     activities, no system-only permissions.
+ *   - android-cloud-debug
+ *                     Debug APK for cloud-client iteration. Not for Play.
  *   - android-system  Privileged platform-signed AOSP release APK for
  *                     Milady OS / ElizaOS device builds.
  *
@@ -30,7 +32,7 @@
  *                             docs/agent-on-mobile.md).
  *   6. Native build         — gradlew / xcodebuild
  */
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -193,6 +195,19 @@ function firstExisting(paths) {
     if (p && fs.existsSync(p)) return p;
   }
   return null;
+}
+
+function walkFiles(root, visitor) {
+  if (!fs.existsSync(root)) return;
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  for (const entry of entries) {
+    const filePath = path.join(root, entry.name);
+    if (entry.isDirectory()) {
+      walkFiles(filePath, visitor);
+    } else if (entry.isFile()) {
+      visitor(filePath);
+    }
+  }
 }
 
 function resolveExecutable(name) {
@@ -545,7 +560,9 @@ export function applyIosAppIdentity({
 
 async function buildWeb(platform) {
   const capacitorTarget =
-    platform === "android-system" || platform === "android-cloud"
+    platform === "android-system" ||
+    platform === "android-cloud" ||
+    platform === "android-cloud-debug"
       ? "android"
       : platform === "ios-overlay"
         ? "ios"
@@ -556,7 +573,7 @@ async function buildWeb(platform) {
   // is the default sideload/AOSP behavior. Surfaced to the renderer via
   // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
   const androidRuntimeMode =
-    platform === "android-cloud"
+    platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
       : platform === "android" || platform === "android-system"
         ? "local"
@@ -649,6 +666,7 @@ const ANDROID_PERMISSIONS = [
   // privapp-permissions-com.elizaai.eliza.xml.
   "PACKAGE_USAGE_STATS",
   "MANAGE_APP_OPS_MODES",
+  "MANAGE_VIRTUAL_MACHINE",
 ];
 
 function replaceOrInsertGradleString(content, key, value) {
@@ -830,8 +848,23 @@ export function injectNativeLibLegacyPackaging(content) {
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
+function ensureCopyForkLlamaLibCloudGuard(content) {
+  if (!/\[copyForkLlamaLib\]/.test(content)) return content;
+  if (/skipped for cloud build/.test(content)) return content;
+  return content.replace(
+    /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
+    `$1` +
+      `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
+      `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
+      `            return\n` +
+      `        }\n`,
+  );
+}
+
 export function injectCopyForkLlamaLibTask(content) {
-  if (/\[copyForkLlamaLib\]/.test(content)) return content;
+  if (/\[copyForkLlamaLib\]/.test(content)) {
+    return ensureCopyForkLlamaLibCloudGuard(content);
+  }
   const block =
     `\n// Bundle the buun-llama-cpp fork's android-arm64 .so into the APK so\n` +
     `// mobile gets DFlash + TurboQuant KV cache + QJL kernels. Stock\n` +
@@ -850,6 +883,10 @@ export function injectCopyForkLlamaLibTask(content) {
     `\n` +
     `task copyForkLlamaLib {\n` +
     `    doLast {\n` +
+    `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
+    `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
+    `            return\n` +
+    `        }\n` +
     `        def libDir = resolveForkLlamaLibDir()\n` +
     `        if (!libDir) {\n` +
     `            println "[copyForkLlamaLib] no fork lib dir configured (set -Peliza.dflash.android.libdir or build via packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan); APK ships stock llama-cpp-capacitor only"\n` +
@@ -902,8 +939,35 @@ export function injectCopyForkLlamaLibTask(content) {
   return content;
 }
 
+function ensureCloudBuildAssetThinning(content) {
+  if (/\[cloud-app-thinning\]/.test(content)) return content;
+  return (
+    content +
+    `\n// [cloud-app-thinning] Cloud builds must never package the local agent payload.\n` +
+    `// This second hook patches older generated projects whose existing\n` +
+    `// [app-thinning] block only honored -PelizaStripAndroidAgentAssets.\n` +
+    `afterEvaluate {\n` +
+    `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
+    `        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')\n` +
+    `        mergeTask.doLast {\n` +
+    `            if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
+    `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
+    `                def agentDir = new File(assetsDir, 'agent')\n` +
+    `                if (agentDir.exists()) {\n` +
+    `                    println "[cloud-app-thinning] removing assets/agent/ from \${mergeTask.name}"\n` +
+    `                    agentDir.deleteDir()\n` +
+    `                }\n` +
+    `            }\n` +
+    `        }\n` +
+    `    }\n` +
+    `}\n`
+  );
+}
+
 export function injectAospAssetThinning(content) {
-  if (/\[app-thinning\]/.test(content)) return content;
+  if (/\[app-thinning\]/.test(content)) {
+    return ensureCloudBuildAssetThinning(content);
+  }
   const block =
     `\n// Optional app thinning: keep assets/agent/ by default so stock\n` +
     `// Capacitor APKs can run the bundled local agent. Set\n` +
@@ -912,12 +976,13 @@ export function injectAospAssetThinning(content) {
     `    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->\n` +
     `        mergeTask.inputs.property('elizaAospBuild', project.findProperty('elizaAospBuild') ?: 'false')\n` +
     `        mergeTask.inputs.property('elizaStripAgentAssets', project.findProperty('elizaStripAgentAssets') ?: 'false')\n` +
+    `        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')\n` +
     `        mergeTask.doLast {\n` +
-    `            if (project.findProperty('elizaAospBuild') != 'true' && project.findProperty('elizaStripAgentAssets') == 'true') {\n` +
+    `            if (project.findProperty('elizaAospBuild') != 'true' && (project.findProperty('elizaStripAgentAssets') == 'true' || project.findProperty('elizaCloudBuild') == 'true')) {\n` +
     `                def assetsDir = mergeTask.outputDir.get().asFile\n` +
     `                def agentDir = new File(assetsDir, 'agent')\n` +
     `                if (agentDir.exists()) {\n` +
-    `                    println "[app-thinning] removing assets/agent/ from \${mergeTask.name} (explicit slim Capacitor build)"\n` +
+    `                    println "[app-thinning] removing assets/agent/ from \${mergeTask.name} (cloud/slim Capacitor build)"\n` +
     `                    agentDir.deleteDir()\n` +
     `                }\n` +
     `            } else {\n` +
@@ -941,12 +1006,14 @@ export function injectAospAssetThinning(content) {
     }
     i += 1;
   }
-  return content;
+  return ensureCloudBuildAssetThinning(content);
 }
 
 const ANDROID_OFFICIAL_CAPACITOR_PACKAGES = [
   "@capacitor/app",
   "@capacitor/barcode-scanner",
+  "@capacitor/background-runner",
+  "@capacitor-community/background-runner",
   "@capacitor/browser",
   "@capacitor/haptics",
   "@capacitor/keyboard",
@@ -1184,6 +1251,7 @@ function overlayAndroid() {
     for (const file of [
       "GatewayConnectionService.java",
       "AgentPlugin.java",
+      "AndroidVirtualizationBridge.java",
       "ElizaNativeBridge.java",
       "MainActivity.java",
       "ElizaAgentService.java",
@@ -1916,6 +1984,7 @@ function generatePodfile() {
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
     ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
+    ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
     ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
     ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
     ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
@@ -2845,12 +2914,14 @@ const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "SYSTEM_ALERT_WINDOW",
   "PACKAGE_USAGE_STATS",
   "MANAGE_APP_OPS_MODES",
+  "MANAGE_VIRTUAL_MACHINE",
   "BIND_DEVICE_ADMIN",
 ];
 
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
 const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
+  "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
   "ElizaAssistActivity.java",
   "ElizaBootReceiver.java",
@@ -2866,6 +2937,473 @@ const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
 ];
+
+const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set(["llama-cpp-kernels.json"]);
+
+const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
+  ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
+  ["@elizaos/capacitor-appblocker", "elizaos-capacitor-appblocker"],
+  ["@elizaos/capacitor-contacts", "elizaos-capacitor-contacts"],
+  ["@elizaos/capacitor-messages", "elizaos-capacitor-messages"],
+  ["@elizaos/capacitor-mobile-signals", "elizaos-capacitor-mobile-signals"],
+  ["@elizaos/capacitor-phone", "elizaos-capacitor-phone"],
+  ["@elizaos/capacitor-system", "elizaos-capacitor-system"],
+  ["@elizaos/capacitor-websiteblocker", "elizaos-capacitor-websiteblocker"],
+  ["@elizaos/capacitor-wifi", "elizaos-capacitor-wifi"],
+  ["llama-cpp-capacitor", "llama-cpp-capacitor"],
+];
+
+function isCloudBannedNativeLibrary(fileName) {
+  return (
+    fileName.startsWith("libeliza_") ||
+    fileName === "libsigsys-handler.so" ||
+    /^lib.*llama.*\.so$/i.test(fileName)
+  );
+}
+
+function isCloudBannedAsset(filePath) {
+  const base = path.basename(filePath);
+  return (
+    ANDROID_CLOUD_STRIPPED_ASSET_FILES.has(base) ||
+    base === "bun" ||
+    base.endsWith(".gguf")
+  );
+}
+
+function cloudBrandUserAgentMarkerLines() {
+  const markers = [
+    { systemProp: "ro.elizaos.product", uaPrefix: "ElizaOS/" },
+    ...(APP.userAgentMarkers ?? []),
+  ];
+  return markers
+    .map(
+      (marker) =>
+        `        new UserAgentMarker("${escapeJavaString(marker.systemProp)}", "${escapeJavaString(marker.uaPrefix)}"),`,
+    )
+    .join("\n");
+}
+
+function cloudSafeMainActivityJava(androidPackage) {
+  return `package ${androidPackage};
+
+import android.os.Build;
+import android.os.Bundle;
+import android.util.Log;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+
+import com.getcapacitor.BridgeActivity;
+
+import app.eliza.BuildConfig;
+
+import java.lang.reflect.Method;
+
+public class MainActivity extends BridgeActivity {
+
+    private static final String TAG = "ElizaMainActivity";
+
+    private static final class UserAgentMarker {
+        final String systemProp;
+        final String uaPrefix;
+
+        UserAgentMarker(String systemProp, String uaPrefix) {
+            this.systemProp = systemProp;
+            this.uaPrefix = uaPrefix;
+        }
+    }
+
+    private static final UserAgentMarker[] BRAND_USER_AGENT_MARKERS = new UserAgentMarker[] {
+${cloudBrandUserAgentMarkerLines()}
+    };
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
+
+        registerPlugin(AgentPlugin.class);
+        super.onCreate(savedInstanceState);
+
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            WebSettings settings = getBridge().getWebView().getSettings();
+            settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+            applyBrandUserAgentMarkers(settings);
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (!isFinishing()) {
+            GatewayConnectionService.start(this);
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        if (isFinishing()) {
+            GatewayConnectionService.stop(this);
+        }
+        super.onDestroy();
+    }
+
+    private void applyBrandUserAgentMarkers(WebSettings settings) {
+        StringBuilder newUa = null;
+        String currentUa = settings.getUserAgentString();
+        for (UserAgentMarker marker : BRAND_USER_AGENT_MARKERS) {
+            if (marker.systemProp == null || marker.systemProp.isEmpty()) {
+                continue;
+            }
+            String tag = readSystemProperty(marker.systemProp);
+            if (tag == null || tag.isEmpty()) {
+                continue;
+            }
+            String token = marker.uaPrefix + tag;
+            if (currentUa != null && currentUa.contains(token)) {
+                continue;
+            }
+            if (newUa == null) {
+                newUa = new StringBuilder(currentUa == null ? "" : currentUa);
+            }
+            if (newUa.length() > 0) {
+                newUa.append(" ");
+            }
+            newUa.append(token);
+        }
+        if (newUa != null) {
+            settings.setUserAgentString(newUa.toString());
+        }
+    }
+
+    private static String readSystemProperty(String key) {
+        try {
+            Class<?> spClass = Class.forName("android.os.SystemProperties");
+            Method get = spClass.getMethod("get", String.class);
+            Object result = get.invoke(null, key);
+            return result instanceof String ? (String) result : "";
+        } catch (ReflectiveOperationException | SecurityException e) {
+            Log.w(TAG, "SystemProperties.get failed for " + key, e);
+            return "";
+        }
+    }
+}
+`;
+}
+
+function cloudSafeAgentPluginJava(androidPackage) {
+  return `package ${androidPackage};
+
+import com.getcapacitor.JSObject;
+import com.getcapacitor.Plugin;
+import com.getcapacitor.PluginCall;
+import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.CapacitorPlugin;
+
+import org.json.JSONObject;
+
+@CapacitorPlugin(name = "Agent")
+public class AgentPlugin extends Plugin {
+
+    @PluginMethod
+    public void start(PluginCall call) {
+        call.resolve(cloudOnlyStatus());
+    }
+
+    @PluginMethod
+    public void stop(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("ok", true);
+        result.put("cloudOnly", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void getStatus(PluginCall call) {
+        call.resolve(cloudOnlyStatus());
+    }
+
+    @PluginMethod
+    public void getLocalAgentToken(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("available", false);
+        result.put("token", JSONObject.NULL);
+        result.put("cloudOnly", true);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void request(PluginCall call) {
+        call.reject("Local agent runtime is not bundled in the android-cloud build");
+    }
+
+    private static JSObject cloudOnlyStatus() {
+        JSObject result = new JSObject();
+        result.put("state", "cloud_only");
+        result.put("agentName", JSONObject.NULL);
+        result.put("port", JSONObject.NULL);
+        result.put("startedAt", JSONObject.NULL);
+        result.put("error", JSONObject.NULL);
+        result.put("cloudOnly", true);
+        return result;
+    }
+}
+`;
+}
+
+function rewriteCloudJavaSources(javaRoots, androidPackage) {
+  let touched = 0;
+  for (const root of javaRoots) {
+    if (!fs.existsSync(root)) continue;
+    const mainActivity = path.join(root, "MainActivity.java");
+    if (fs.existsSync(mainActivity)) {
+      fs.writeFileSync(
+        mainActivity,
+        cloudSafeMainActivityJava(androidPackage),
+        "utf8",
+      );
+      touched += 1;
+    }
+    const agentPlugin = path.join(root, "AgentPlugin.java");
+    if (fs.existsSync(agentPlugin)) {
+      fs.writeFileSync(
+        agentPlugin,
+        cloudSafeAgentPluginJava(androidPackage),
+        "utf8",
+      );
+      touched += 1;
+    }
+    const nativeBridge = path.join(root, "ElizaNativeBridge.java");
+    if (fs.existsSync(nativeBridge)) {
+      fs.rmSync(nativeBridge);
+      touched += 1;
+    }
+  }
+  if (touched > 0) {
+    console.log(
+      `[mobile-build] Rewrote ${touched} local-agent Java source(s) for android-cloud.`,
+    );
+  }
+}
+
+function removeCloudNativeArtifacts() {
+  const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
+  const stagedAgentAssets = path.join(assetsRoot, "agent");
+  if (fs.existsSync(stagedAgentAssets)) {
+    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
+    console.log(
+      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
+    );
+  }
+
+  let removedAssetCount = 0;
+  walkFiles(assetsRoot, (filePath) => {
+    if (isCloudBannedAsset(filePath)) {
+      fs.rmSync(filePath, { force: true });
+      removedAssetCount += 1;
+    }
+  });
+  if (removedAssetCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedAssetCount} native inference/runtime asset(s) from android-cloud source tree.`,
+    );
+  }
+
+  const stagedJniLibs = path.join(androidDir, "app", "src", "main", "jniLibs");
+  let removedLibCount = 0;
+  walkFiles(stagedJniLibs, (filePath) => {
+    if (isCloudBannedNativeLibrary(path.basename(filePath))) {
+      fs.rmSync(filePath, { force: true });
+      removedLibCount += 1;
+    }
+  });
+  if (removedLibCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedLibCount} native runtime/inference library(s) from jniLibs/.`,
+    );
+  }
+}
+
+function stripAndroidCloudNativePlugins() {
+  const strippedPkgs = new Set(
+    ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.map(([pkg]) => pkg),
+  );
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  if (fs.existsSync(settingsPath)) {
+    let patched = fs.readFileSync(settingsPath, "utf8");
+    const current = patched;
+    for (const [, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
+      const escaped = escapeRegExp(gradleProject);
+      patched = patched
+        .replace(new RegExp(`\\ninclude ':${escaped}'\\s*`, "g"), "\n")
+        .replace(
+          new RegExp(
+            `\\nproject\\(':${escaped}'\\)\\.projectDir = new File\\([^\\n]+\\)\\s*`,
+            "g",
+          ),
+          "\n",
+        );
+    }
+    if (patched !== current) {
+      fs.writeFileSync(settingsPath, patched, "utf8");
+      console.log(
+        "[mobile-build] Stripped cloud-disallowed native plugins from capacitor.settings.gradle.",
+      );
+    }
+  }
+
+  const capacitorBuildPath = path.join(
+    androidDir,
+    "app",
+    "capacitor.build.gradle",
+  );
+  if (fs.existsSync(capacitorBuildPath)) {
+    let patched = fs.readFileSync(capacitorBuildPath, "utf8");
+    const current = patched;
+    for (const [, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
+      const escaped = escapeRegExp(gradleProject);
+      patched = patched.replace(
+        new RegExp(`\\n\\s*implementation project\\(':${escaped}'\\)\\s*`, "g"),
+        "\n",
+      );
+    }
+    if (patched !== current) {
+      fs.writeFileSync(capacitorBuildPath, patched, "utf8");
+      console.log(
+        "[mobile-build] Stripped cloud-disallowed native plugins from capacitor.build.gradle.",
+      );
+    }
+  }
+
+  const pluginManifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "assets",
+    "capacitor.plugins.json",
+  );
+  if (fs.existsSync(pluginManifestPath)) {
+    try {
+      const plugins = JSON.parse(fs.readFileSync(pluginManifestPath, "utf8"));
+      if (Array.isArray(plugins)) {
+        const filtered = plugins.filter(
+          (plugin) => !strippedPkgs.has(plugin?.pkg),
+        );
+        if (filtered.length !== plugins.length) {
+          fs.writeFileSync(
+            pluginManifestPath,
+            `${JSON.stringify(filtered, null, "\t")}\n`,
+            "utf8",
+          );
+          console.log(
+            "[mobile-build] Stripped cloud-disallowed native plugins from capacitor.plugins.json.",
+          );
+        }
+      }
+    } catch (error) {
+      throw new Error(
+        `[mobile-build] Could not parse capacitor.plugins.json while stripping android-cloud native plugins: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+}
+
+function auditAndroidCloudSource(phase) {
+  const failures = [];
+  const manifestPath = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "AndroidManifest.xml",
+  );
+  if (fs.existsSync(manifestPath)) {
+    const xml = fs.readFileSync(manifestPath, "utf8");
+    if (xml.includes("ElizaAgentService")) {
+      failures.push("AndroidManifest.xml still references ElizaAgentService");
+    }
+    for (const component of ANDROID_CLOUD_STRIPPED_COMPONENTS) {
+      if (xml.includes(component)) {
+        failures.push(`AndroidManifest.xml still references ${component}`);
+      }
+    }
+    for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
+      const full = `android.permission.${perm}`;
+      if (xml.includes(full)) {
+        failures.push(`AndroidManifest.xml still requests ${full}`);
+      }
+    }
+    if (/usesCleartextTraffic="true"/.test(xml)) {
+      failures.push(
+        "AndroidManifest.xml still allows global cleartext traffic",
+      );
+    }
+  }
+
+  const javaRoot = path.join(androidDir, "app", "src", "main", "java");
+  walkFiles(javaRoot, (filePath) => {
+    const base = path.basename(filePath);
+    if (base === "ElizaAgentService.java") {
+      failures.push(path.relative(androidDir, filePath));
+      return;
+    }
+    if (!base.endsWith(".java")) return;
+    const source = fs.readFileSync(filePath, "utf8");
+    if (source.includes("ElizaAgentService")) {
+      failures.push(
+        `${path.relative(androidDir, filePath)} still references ElizaAgentService`,
+      );
+    }
+    if (source.includes("new ElizaNativeBridge(")) {
+      failures.push(
+        `${path.relative(androidDir, filePath)} still installs ElizaNativeBridge`,
+      );
+    }
+  });
+
+  const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
+  if (fs.existsSync(path.join(assetsRoot, "agent"))) {
+    failures.push("app/src/main/assets/agent still exists");
+  }
+  walkFiles(assetsRoot, (filePath) => {
+    if (isCloudBannedAsset(filePath)) {
+      failures.push(path.relative(androidDir, filePath));
+    }
+  });
+
+  const jniRoot = path.join(androidDir, "app", "src", "main", "jniLibs");
+  walkFiles(jniRoot, (filePath) => {
+    if (isCloudBannedNativeLibrary(path.basename(filePath))) {
+      failures.push(path.relative(androidDir, filePath));
+    }
+  });
+
+  for (const relPath of [
+    "capacitor.settings.gradle",
+    path.join("app", "capacitor.build.gradle"),
+    path.join("app", "src", "main", "assets", "capacitor.plugins.json"),
+  ]) {
+    const filePath = path.join(androidDir, relPath);
+    if (!fs.existsSync(filePath)) continue;
+    const source = fs.readFileSync(filePath, "utf8");
+    for (const [pkg, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
+      if (source.includes(pkg) || source.includes(gradleProject)) {
+        failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
+      }
+    }
+  }
+
+  if (failures.length > 0) {
+    throw new Error(
+      `[mobile-build] android-cloud ${phase} audit failed:\n` +
+        failures.map((failure) => `  - ${failure}`).join("\n"),
+    );
+  }
+  console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
+}
 
 /**
  * Strip the Play-Store-noncompliant manifest components, permissions, and
@@ -2906,6 +3444,10 @@ function stripAndroidForCloud() {
       );
       xml = xml.replace(re, "\n");
     }
+    xml = xml.replace(
+      /android:usesCleartextTraffic="true"/g,
+      'android:usesCleartextTraffic="false"',
+    );
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -2947,46 +3489,14 @@ function stripAndroidForCloud() {
       `[mobile-build] Removed ${removedJavaCount} Play-Store-noncompliant Java source(s).`,
     );
   }
+  rewriteCloudJavaSources(javaRoots, androidPackage);
 
   // 3. Wipe any previously-staged on-device agent runtime. These are
   //    build artifacts (.gitignore covers them) — the cloud APK must not
   //    embed bun, musl, libstdc++, libgcc, llama-server, or the
   //    libeliza_*.so jniLibs disguise.
-  const stagedAgentAssets = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "assets",
-    "agent",
-  );
-  if (fs.existsSync(stagedAgentAssets)) {
-    fs.rmSync(stagedAgentAssets, { recursive: true, force: true });
-    console.log(
-      "[mobile-build] Removed staged on-device agent runtime under assets/agent/.",
-    );
-  }
-
-  const stagedJniLibs = path.join(androidDir, "app", "src", "main", "jniLibs");
-  if (fs.existsSync(stagedJniLibs)) {
-    let libelizaCount = 0;
-    for (const abi of fs.readdirSync(stagedJniLibs)) {
-      const abiDir = path.join(stagedJniLibs, abi);
-      const stat = fs.statSync(abiDir);
-      if (!stat.isDirectory()) continue;
-      for (const lib of fs.readdirSync(abiDir)) {
-        if (lib.startsWith("libeliza_") || lib === "libsigsys-handler.so") {
-          fs.rmSync(path.join(abiDir, lib));
-          libelizaCount += 1;
-        }
-      }
-    }
-    if (libelizaCount > 0) {
-      console.log(
-        `[mobile-build] Removed ${libelizaCount} disguised native runtime library(s) from jniLibs/.`,
-      );
-    }
-  }
+  removeCloudNativeArtifacts();
+  stripAndroidCloudNativePlugins();
 }
 
 async function buildAndroid() {
@@ -3064,7 +3574,77 @@ async function buildAndroid() {
   });
 }
 
-async function buildAndroidCloud() {
+function findAndroidCloudAab() {
+  const releaseBundleDir = path.join(
+    androidDir,
+    "app",
+    "build",
+    "outputs",
+    "bundle",
+    "release",
+  );
+  if (!fs.existsSync(releaseBundleDir)) return null;
+  const candidates = fs
+    .readdirSync(releaseBundleDir)
+    .filter((name) => name.endsWith(".aab"))
+    .map((name) => path.join(releaseBundleDir, name));
+  return firstExisting(candidates);
+}
+
+function findAndroidCloudDebugApk() {
+  return firstExisting([
+    path.join(
+      androidDir,
+      "app",
+      "build",
+      "outputs",
+      "apk",
+      "debug",
+      "app-debug.apk",
+    ),
+  ]);
+}
+
+function auditAndroidCloudArtifact({ debug = false, javaHome } = {}) {
+  const artifact = debug ? findAndroidCloudDebugApk() : findAndroidCloudAab();
+  if (!artifact) {
+    throw new Error(
+      `[mobile-build] android-cloud ${debug ? "debug APK" : "release AAB"} was not found under app/build/outputs/.`,
+    );
+  }
+  const jar = path.join(
+    javaHome,
+    "bin",
+    process.platform === "win32" ? "jar.exe" : "jar",
+  );
+  const result = spawnSync(jar, ["tf", artifact], { encoding: "utf8" });
+  if (result.status !== 0) {
+    throw new Error(
+      `[mobile-build] Could not inspect ${artifact}: ${
+        result.stderr || result.stdout || `jar exited with ${result.status}`
+      }`,
+    );
+  }
+  const offenders = result.stdout
+    .split(/\r?\n/)
+    .filter((entry) =>
+      /(^|\/)assets\/agent\/|libeliza_|libllama|libsigsys-handler\.so|llama-cpp-kernels\.json/i.test(
+        entry,
+      ),
+    );
+  if (offenders.length > 0) {
+    throw new Error(
+      `[mobile-build] android-cloud artifact contains local runtime payloads:\n` +
+        offenders.map((entry) => `  - ${entry}`).join("\n"),
+    );
+  }
+  console.log(
+    `[mobile-build] android-cloud artifact audit passed: ${artifact}`,
+  );
+  return artifact;
+}
+
+async function buildAndroidCloud({ debug = false } = {}) {
   const sdk = resolveAndroidSdkRoot();
   const jdk = resolveJavaHome();
   if (!sdk)
@@ -3073,7 +3653,7 @@ async function buildAndroidCloud() {
     );
   if (!jdk) throw new Error("JDK 21 not found. Set JAVA_HOME.");
 
-  await buildWeb("android-cloud");
+  await buildWeb(debug ? "android-cloud-debug" : "android-cloud");
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
 
@@ -3092,9 +3672,11 @@ async function buildAndroidCloud() {
   // here as a post-overlay pass so the merge logic remains a single
   // source of truth across all three Android targets.
   stripAndroidForCloud();
+  auditAndroidCloudSource("pre-gradle");
 
   const env = {
     ...process.env,
+    ELIZA_ANDROID_CLOUD_BUILD: "1",
     ANDROID_HOME: sdk,
     ANDROID_SDK_ROOT: sdk,
     JAVA_HOME: jdk,
@@ -3105,22 +3687,30 @@ async function buildAndroidCloud() {
   };
 
   // The Play-Store target intentionally builds without `-PelizaAospBuild`,
-  // so BuildConfig.AOSP_BUILD = false at runtime — ElizaAgentService is
-  // already stripped from the manifest and the related `assets/agent/`
-  // tree is gone, but turning off the AOSP gradle flag also drops any
-  // Soong/AOSP-only resource paths from the APK.
+  // so BuildConfig.AOSP_BUILD = false at runtime. It does pass the cloud
+  // flags, which make injected Gradle hooks skip DFlash/native restaging and
+  // strip any merged assets/agent tree that an older generated project kept.
   const settingsGradle = fs.readFileSync(
     path.join(androidDir, "capacitor.settings.gradle"),
     "utf8",
   );
-  const gradleArgs = [];
-  if (settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
+  const cloudGradleFlags = [
+    "-PelizaCloudBuild=true",
+    "-PelizaStripAgentAssets=true",
+  ];
+  const gradleArgs = [...cloudGradleFlags];
+  if (debug && settingsGradle.includes(":elizaos-capacitor-websiteblocker")) {
     gradleArgs.push(":elizaos-capacitor-websiteblocker:testDebugUnitTest");
   }
-  gradleArgs.push(":app:assembleDebug");
+  gradleArgs.push(debug ? ":app:assembleDebug" : ":app:bundleRelease");
   await run(
     "./gradlew",
-    [":capacitor-cordova-android-plugins:writeDebugAarMetadata"],
+    [
+      ...cloudGradleFlags,
+      debug
+        ? ":capacitor-cordova-android-plugins:writeDebugAarMetadata"
+        : ":capacitor-cordova-android-plugins:writeReleaseAarMetadata",
+    ],
     {
       cwd: androidDir,
       env,
@@ -3130,6 +3720,10 @@ async function buildAndroidCloud() {
     cwd: androidDir,
     env,
   });
+  auditAndroidCloudSource("post-gradle");
+  const artifact = auditAndroidCloudArtifact({ debug, javaHome: jdk });
+  if (!debug)
+    console.log(`[mobile-build] android-cloud release AAB: ${artifact}`);
 }
 
 function findAndroidSystemApk() {
@@ -3251,12 +3845,28 @@ async function buildIos() {
   await generateIosBrandAssets();
   await ensureIosLlamaCppVendoredFramework({ buildTarget });
 
-  // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues
+  // CocoaPods compiles Capacitor from source, avoiding SPM binary API issues.
+  // CocoaPods 1.16.x crashes with `Pod::Config#installation_root` when the
+  // terminal locale is not UTF-8 (it warns "CocoaPods requires your terminal
+  // to be using UTF-8 encoding"). Force the spawned `pod` process to a UTF-8
+  // locale regardless of the host shell so builds don't fail under tmux,
+  // CI runners, or background launchers that ship without LANG set.
   if (
     fs.existsSync(path.join(iosDir, "Podfile")) ||
     shouldRunIosPodInstall(syncedFiles)
   ) {
-    await run("pod", ["install"], { cwd: iosDir });
+    await run("pod", ["install"], {
+      cwd: iosDir,
+      env: {
+        ...process.env,
+        LANG: process.env.LANG?.includes("UTF-8")
+          ? process.env.LANG
+          : "en_US.UTF-8",
+        LC_ALL: process.env.LC_ALL?.includes("UTF-8")
+          ? process.env.LC_ALL
+          : "en_US.UTF-8",
+      },
+    });
   }
 
   const wsPath = path.join(iosDir, "App.xcworkspace");
@@ -3292,12 +3902,13 @@ export async function main(argv = process.argv.slice(2)) {
   if (
     target !== "android" &&
     target !== "android-cloud" &&
+    target !== "android-cloud-debug" &&
     target !== "android-system" &&
     target !== "ios" &&
     target !== "ios-overlay"
   ) {
     console.error(
-      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-system|ios|ios-overlay>",
+      "Usage: node scripts/run-mobile-build.mjs <android|android-cloud|android-cloud-debug|android-system|ios|ios-overlay>",
     );
     process.exit(1);
   }
@@ -3305,6 +3916,8 @@ export async function main(argv = process.argv.slice(2)) {
     await buildAndroid();
   } else if (target === "android-cloud") {
     await buildAndroidCloud();
+  } else if (target === "android-cloud-debug") {
+    await buildAndroidCloud({ debug: true });
   } else if (target === "android-system") {
     await buildAndroidSystem();
   } else if (target === "ios") {

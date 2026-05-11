@@ -119,6 +119,12 @@ export interface MobileSignalsRequestPermissionsOptions {
   target?: MobileSignalsPermissionTarget;
 }
 
+export interface AppleCalendarPermissionStatus {
+  calendar: "granted" | "denied" | "prompt" | "restricted";
+  canRequest: boolean;
+  reason?: string | null;
+}
+
 export interface MobileSignalsPermissionStatus {
   status: "granted" | "denied" | "not-determined" | "not-applicable";
   canRequest: boolean;
@@ -442,6 +448,11 @@ export interface MobileSignalsPluginLike extends NativePlugin {
   ): Promise<PluginListenerHandle>;
 }
 
+export interface AppleCalendarPluginLike extends NativePlugin {
+  checkPermissions?(): Promise<AppleCalendarPermissionStatus>;
+  requestPermissions?(): Promise<AppleCalendarPermissionStatus>;
+}
+
 export interface TalkModePermissionStatus {
   microphone?: "granted" | "denied" | "prompt";
   speechRecognition?: "granted" | "denied" | "prompt" | "not_supported";
@@ -596,6 +607,10 @@ export function getTalkModePlugin(): TalkModePluginLike {
 
 export function getMobileSignalsPlugin(): MobileSignalsPluginLike {
   return getNativePlugin<MobileSignalsPluginLike>("MobileSignals");
+}
+
+export function getAppleCalendarPlugin(): AppleCalendarPluginLike {
+  return getNativePlugin<AppleCalendarPluginLike>("AppleCalendar");
 }
 
 export function getAppBlockerPlugin(): AppBlockerPluginLike {

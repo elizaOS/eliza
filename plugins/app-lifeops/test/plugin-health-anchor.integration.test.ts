@@ -49,6 +49,7 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
 } from "../src/lifeops/scheduled-task/runner.ts";
 import { createInMemoryScheduledTaskLogStore } from "../src/lifeops/scheduled-task/state-log.ts";
 import type {
@@ -173,6 +174,7 @@ describe("J16 — plugin-health anchor + bus integration with the spine", () => 
       globalPause: pause,
       activity: { hasSignalSince: (...a) => bus.hasSignalSince(...a) },
       subjectStore,
+      dispatcher: TestNoopScheduledTaskDispatcher,
       newTaskId: () => {
         counter += 1;
         return `hat_${counter}`;

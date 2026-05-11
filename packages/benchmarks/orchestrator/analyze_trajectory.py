@@ -41,6 +41,7 @@ class TurnTokens:
     prompt: int = 0
     completion: int = 0
     cached: int = 0
+    cache_creation: int = 0
     has_cached: bool = False
 
 
@@ -50,6 +51,7 @@ class TurnRecord:
     index: int
     prompt_text: str
     tokens: TurnTokens
+    latency_ms: float | None = None
 
 
 @dataclass
@@ -59,9 +61,12 @@ class RunSummary:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     cached_tokens: int = 0
+    cache_creation_tokens: int = 0
     turns_with_cached_field: int = 0
     cache_hit_ratio: float = 0.0
     prompt_chars: int = 0
+    mean_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
     repeated_prefixes: list[tuple[str, int]] = field(default_factory=list)
 
 
@@ -70,6 +75,25 @@ def _coerce_int(value: Any) -> int:
         return 0
     if isinstance(value, (int, float)):
         return int(value)
+    return 0
+
+
+def _coerce_float(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _token_detail_value(usage: dict[str, Any], keys: tuple[str, ...]) -> int:
+    for container_key in ("prompt_tokens_details", "input_token_details", "token_details"):
+        details = usage.get(container_key)
+        if not isinstance(details, dict):
+            continue
+        for key in keys:
+            if key in details:
+                return _coerce_int(details.get(key))
     return 0
 
 
@@ -83,14 +107,25 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         completion = _coerce_int(
             usage.get("completionTokens") or usage.get("completion_tokens")
         )
-        cached_raw = usage.get("cachedTokens") or usage.get("cached_tokens")
+        cached_raw = (
+            usage.get("cachedTokens")
+            or usage.get("cached_tokens")
+            or usage.get("cache_read_input_tokens")
+            or _token_detail_value(usage, ("cached_tokens", "cache_read_input_tokens"))
+        )
+        cache_creation = _coerce_int(
+            usage.get("cacheCreationInputTokens")
+            or usage.get("cache_creation_input_tokens")
+            or _token_detail_value(usage, ("cache_creation_input_tokens",))
+        )
         has_cached = cached_raw is not None
         cached = _coerce_int(cached_raw)
-        if prompt or completion or cached:
+        if prompt or completion or cached or cache_creation:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
                 cached=cached,
+                cache_creation=cache_creation,
                 has_cached=has_cached,
             )
 
@@ -103,16 +138,23 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 _coerce_int(c.get("completionTokens")) for c in calls if isinstance(c, dict)
             )
             cached = 0
+            cache_creation = 0
             has_cached = False
             for c in calls:
                 if isinstance(c, dict) and c.get("cachedTokens") is not None:
                     cached += _coerce_int(c.get("cachedTokens"))
                     has_cached = True
-            if prompt or completion or cached:
+                if isinstance(c, dict):
+                    cache_creation += _coerce_int(
+                        c.get("cacheCreationInputTokens")
+                        or c.get("cache_creation_input_tokens")
+                    )
+            if prompt or completion or cached or cache_creation:
                 return TurnTokens(
                     prompt=prompt,
                     completion=completion,
                     cached=cached,
+                    cache_creation=cache_creation,
                     has_cached=has_cached,
                 )
 
@@ -128,8 +170,16 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
                 prompt=prompt,
                 completion=completion,
                 cached=cached,
+                cache_creation=_coerce_int(obj.get("cache_creation_input_tokens")),
                 has_cached=has_cached,
             )
+
+    # Shape 3b: benchmark result turns (LifeOps, some tool-use reports).
+    if "input_tokens" in obj or "output_tokens" in obj:
+        prompt = _coerce_int(obj.get("input_tokens"))
+        completion = _coerce_int(obj.get("output_tokens"))
+        if prompt or completion:
+            return TurnTokens(prompt=prompt, completion=completion)
 
     # Shape 4: nested `tokens` dict.
     tokens = obj.get("tokens")
@@ -139,11 +189,13 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         cached_raw = tokens.get("cached")
         has_cached = cached_raw is not None
         cached = _coerce_int(cached_raw)
-        if prompt or completion or cached:
+        cache_creation = _coerce_int(tokens.get("cache_creation"))
+        if prompt or completion or cached or cache_creation:
             return TurnTokens(
                 prompt=prompt,
                 completion=completion,
                 cached=cached,
+                cache_creation=cache_creation,
                 has_cached=has_cached,
             )
 
@@ -151,11 +203,25 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
 
 
 def extract_prompt(obj: dict[str, Any]) -> str:
-    for key in ("promptText", "prompt_text", "prompt", "user_text", "inputText"):
+    for key in ("promptText", "prompt_text", "prompt", "user_text", "inputText", "question", "agent_message"):
         v = obj.get(key)
         if isinstance(v, str):
             return v
     return ""
+
+
+def extract_latency_ms(obj: dict[str, Any]) -> float | None:
+    for key in ("latency_ms", "latencyMs", "duration_ms", "durationMs", "elapsed_ms", "response_ms"):
+        value = _coerce_float(obj.get(key))
+        if value is not None:
+            return value
+    usage = obj.get("usage")
+    if isinstance(usage, dict):
+        for key in ("latency_ms", "latencyMs", "duration_ms", "durationMs", "elapsed_ms"):
+            value = _coerce_float(usage.get(key))
+            if value is not None:
+                return value
+    return None
 
 
 def iter_turn_objs(path: Path) -> Iterable[dict[str, Any]]:
@@ -193,6 +259,24 @@ def iter_turn_objs(path: Path) -> Iterable[dict[str, Any]]:
                     if isinstance(item, dict):
                         yield item
                 return
+        detailed = data.get("detailed_results")
+        if isinstance(detailed, list):
+            for item in detailed:
+                if isinstance(item, dict):
+                    yield item
+            return
+        scenarios = data.get("scenarios")
+        if isinstance(scenarios, list):
+            for scenario in scenarios:
+                if not isinstance(scenario, dict):
+                    continue
+                turns = scenario.get("turns")
+                if not isinstance(turns, list):
+                    continue
+                for item in turns:
+                    if isinstance(item, dict):
+                        yield item
+            return
         yield data
 
 
@@ -203,6 +287,8 @@ def discover_trajectories(run_dir: Path) -> list[Path]:
         "**/trajectory*.jsonl",
         "**/*_traces.jsonl",
         "**/*_trajectory.json",
+        "**/bfcl_results_*.json",
+        "**/lifeops_*.json",
     )
     seen: set[Path] = set()
     out: list[Path] = []
@@ -252,20 +338,26 @@ def summarize(
 
     for f in files:
         for idx, obj in enumerate(iter_turn_objs(f)):
-            tokens = extract_tokens(obj) or TurnTokens()
             prompt_text = extract_prompt(obj)
+            latency_ms = extract_latency_ms(obj)
+            tokens = extract_tokens(obj)
+            if tokens is None and not prompt_text and latency_ms is None:
+                continue
+            tokens = tokens or TurnTokens()
             records.append(
                 TurnRecord(
                     file=str(f.relative_to(run_dir)),
                     index=idx,
                     prompt_text=prompt_text,
                     tokens=tokens,
+                    latency_ms=latency_ms,
                 )
             )
             summary.turns += 1
             summary.prompt_tokens += tokens.prompt
             summary.completion_tokens += tokens.completion
             summary.cached_tokens += tokens.cached
+            summary.cache_creation_tokens += tokens.cache_creation
             if tokens.has_cached:
                 summary.turns_with_cached_field += 1
             summary.prompt_chars += len(prompt_text)
@@ -279,6 +371,11 @@ def summarize(
         min_repeats=min_repeats,
         top=top,
     )
+    latency_values = sorted(r.latency_ms for r in records if r.latency_ms is not None)
+    if latency_values:
+        summary.mean_latency_ms = sum(latency_values) / len(latency_values)
+        p95_index = max(0, min(len(latency_values) - 1, int(round((len(latency_values) - 1) * 0.95))))
+        summary.p95_latency_ms = latency_values[p95_index]
     return summary, records
 
 
@@ -297,7 +394,11 @@ def render_text(run_dir: Path, summary: RunSummary, window: int) -> str:
         lines.append(f"  cache hit ratio  : {summary.cache_hit_ratio:.2%}")
     else:
         lines.append("  cached tokens    : (no turn reported a cached_tokens field)")
+    lines.append(f"  cache creation   : {summary.cache_creation_tokens}")
     lines.append(f"  prompt chars     : {summary.prompt_chars}")
+    if summary.mean_latency_ms is not None:
+        lines.append(f"  mean latency ms  : {summary.mean_latency_ms:.2f}")
+        lines.append(f"  p95 latency ms   : {summary.p95_latency_ms:.2f}")
     lines.append("")
     lines.append(f"Top repeated prompt prefixes (window={window} chars):")
     if not summary.repeated_prefixes:
@@ -316,9 +417,12 @@ def render_json(summary: RunSummary, records: list[TurnRecord]) -> str:
         "prompt_tokens": summary.prompt_tokens,
         "completion_tokens": summary.completion_tokens,
         "cached_tokens": summary.cached_tokens,
+        "cache_creation_tokens": summary.cache_creation_tokens,
         "turns_with_cached_field": summary.turns_with_cached_field,
         "cache_hit_ratio": summary.cache_hit_ratio,
         "prompt_chars": summary.prompt_chars,
+        "mean_latency_ms": summary.mean_latency_ms,
+        "p95_latency_ms": summary.p95_latency_ms,
         "repeated_prefixes": [
             {"snippet": s, "count": n} for s, n in summary.repeated_prefixes
         ],

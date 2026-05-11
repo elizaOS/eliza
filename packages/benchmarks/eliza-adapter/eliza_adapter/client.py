@@ -37,6 +37,7 @@ class ElizaClient:
         base_url: str | None = None,
         token: str | None = None,
     ) -> None:
+        self._delegate = _build_delegate_client()
         resolved_url = (
             base_url
             or os.environ.get("ELIZA_BENCH_URL")
@@ -58,6 +59,8 @@ class ElizaClient:
 
     def health(self) -> dict[str, object]:
         """GET /api/benchmark/health — check if the server is up."""
+        if self._delegate is not None:
+            return self._delegate.health()
         return self._get("/api/benchmark/health")
 
     def reset(
@@ -76,6 +79,13 @@ class ElizaClient:
         loads the LifeWorld JSON into an in-process fake backend keyed by
         ``task_id``.
         """
+        if self._delegate is not None:
+            return self._delegate.reset(
+                task_id=task_id,
+                benchmark=benchmark,
+                world_snapshot_path=world_snapshot_path,
+                now_iso=now_iso,
+            )
         if benchmark == "lifeops_bench" and world_snapshot_path is not None:
             payload: dict[str, object] = {
                 "task_id": task_id,
@@ -102,6 +112,18 @@ class ElizaClient:
         Returns the raw JSON body — callers are expected to map it into a
         ``MessageTurn`` (see ``eliza_adapter.lifeops_bench``).
         """
+        if self._delegate is not None:
+            response = self._delegate.send_message(
+                text,
+                context={"benchmark": "lifeops_bench", "task_id": task_id, "tools": tools or []},
+            )
+            return {
+                "text": response.text,
+                "thought": response.thought,
+                "actions": response.actions,
+                "tool_calls": response.params.get("tool_calls", []),
+                "usage": response.params.get("usage", {}),
+            }
         body: dict[str, object] = {"task_id": task_id, "text": text}
         if tools:
             body["context"] = {"tools": tools}
@@ -110,11 +132,15 @@ class ElizaClient:
     def lifeops_world_state(self, task_id: str) -> dict[str, object]:
         """GET /api/benchmark/lifeops_bench/{task_id}/world_state — returns
         the LifeWorld JSON snapshot for state-hash scoring."""
+        if self._delegate is not None:
+            return {"task_id": task_id, "status": "unavailable", "world": None}
         return self._get(f"/api/benchmark/lifeops_bench/{task_id}/world_state")
 
     def lifeops_teardown(self, task_id: str) -> dict[str, object]:
         """POST /api/benchmark/lifeops_bench/teardown — frees the per-task
         fake backend on the server."""
+        if self._delegate is not None:
+            return {"task_id": task_id, "status": "ok"}
         return self._post(
             "/api/benchmark/lifeops_bench/teardown",
             {"task_id": task_id},
@@ -126,6 +152,8 @@ class ElizaClient:
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
         """POST /api/benchmark/message — send a message and get response."""
+        if self._delegate is not None:
+            return self._delegate.send_message(text, context)
         body: dict[str, object] = {"text": text}
         if context is not None:
             body["context"] = dict(context)
@@ -139,6 +167,8 @@ class ElizaClient:
         )
 
     def is_ready(self) -> bool:
+        if self._delegate is not None:
+            return bool(self._delegate.is_ready())
         import socket
 
         parsed = urlparse(self.base_url)
@@ -158,6 +188,8 @@ class ElizaClient:
 
     def wait_until_ready(self, timeout: float = 120.0, poll: float = 1.0) -> None:
         """Block until the benchmark server is healthy or *timeout* elapses."""
+        if self._delegate is not None:
+            return self._delegate.wait_until_ready(timeout=timeout, poll=poll)
         deadline = time.monotonic() + timeout
         last_err: str = ""
         progress = os.environ.get("ELIZA_BENCH_WAIT_PROGRESS", "").strip() == "1"
@@ -233,3 +265,35 @@ class ElizaClient:
             raise RuntimeError(
                 f"HTTP {exc.code} from eliza benchmark server: {body}"
             ) from exc
+
+
+def _build_delegate_client():
+    """Return the selected non-Eliza harness client, if any.
+
+    The orchestrator sets ``BENCHMARK_HARNESS`` / ``ELIZA_BENCH_HARNESS`` for
+    every run. Existing benchmarks that already call ``ElizaClient`` therefore
+    get Hermes/OpenClaw apples-to-apples transport without changing their
+    scenario loops, context shaping, or tool inventories.
+    """
+
+    harness = (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or ""
+    ).strip().lower()
+    provider = (os.environ.get("BENCHMARK_MODEL_PROVIDER") or "cerebras").strip().lower()
+    model = (
+        os.environ.get("BENCHMARK_MODEL_NAME")
+        or os.environ.get("MODEL_NAME")
+        or os.environ.get("CEREBRAS_MODEL")
+        or "gpt-oss-120b"
+    ).strip()
+    if harness == "hermes":
+        from hermes_adapter.client import HermesClient  # noqa: WPS433
+
+        return HermesClient(provider=provider, model=model)
+    if harness == "openclaw":
+        from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
+
+        return OpenClawClient(provider=provider, model=model)
+    return None

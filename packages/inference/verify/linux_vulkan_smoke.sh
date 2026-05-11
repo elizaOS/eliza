@@ -52,6 +52,9 @@ ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
 STATE_DIR="${ELIZA_STATE_DIR:-$HOME/.eliza}"
 OUT_DIR="${ELIZA_DFLASH_TARGET_OUT_DIR:-$STATE_DIR/local-inference/bin/dflash/$TARGET}"
 CAPABILITIES="$OUT_DIR/CAPABILITIES.json"
+LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-$HOME/.cache/eliza-dflash/milady-llama-cpp}"
+BUILD_BIN_DIR="$LLAMA_DIR/build/$TARGET/bin"
+GRAPH_BIN_DIR="${ELIZA_DFLASH_VULKAN_BIN_DIR:-$OUT_DIR}"
 CANONICAL_FIXTURES=(
   turbo3.json
   turbo4.json
@@ -60,6 +63,15 @@ CANONICAL_FIXTURES=(
   polar.json
   polar_qjl.json
 )
+
+if [[ "$TARGET" != "linux-x64-vulkan" ]]; then
+  fail 2 "linux Vulkan graph dispatch smoke currently supports target=linux-x64-vulkan only; got $TARGET"
+fi
+
+echo "[linux-vulkan-smoke] target=$TARGET"
+echo "[linux-vulkan-smoke] managed output dir=$OUT_DIR"
+echo "[linux-vulkan-smoke] build-tree bin candidate=$BUILD_BIN_DIR"
+echo "[linux-vulkan-smoke] graph dispatch bin dir=$GRAPH_BIN_DIR"
 
 if command -v vulkaninfo >/dev/null 2>&1; then
   summary="$(vulkaninfo --summary 2>/dev/null || true)"
@@ -100,7 +112,11 @@ fi
 
 echo "[linux-vulkan-smoke] built-fork Vulkan graph dispatch gate"
 set +e
-make vulkan-dispatch-smoke
+ELIZA_DFLASH_TARGET="$TARGET" \
+ELIZA_STATE_DIR="$STATE_DIR" \
+ELIZA_DFLASH_LLAMA_DIR="$LLAMA_DIR" \
+ELIZA_DFLASH_VULKAN_BIN_DIR="$GRAPH_BIN_DIR" \
+  make vulkan-dispatch-smoke
 smoke_status=$?
 set -e
 if [[ "$smoke_status" -ne 0 ]]; then

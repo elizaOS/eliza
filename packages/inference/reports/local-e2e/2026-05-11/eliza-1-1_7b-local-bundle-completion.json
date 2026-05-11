@@ -1,0 +1,242 @@
+{
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+  "checksumValidation": {
+    "errors": [],
+    "ok": true
+  },
+  "defaultEligible": false,
+  "gateReport": {
+    "gates": [
+      {
+        "actual": null,
+        "comparator": ">=",
+        "name": "text_eval",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'text_eval' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 0.45
+      },
+      {
+        "actual": 1.522,
+        "comparator": "<=",
+        "name": "voice_rtf",
+        "passed": false,
+        "provisional": true,
+        "reason": "voice_rtf = 1.522 fails <= 0.5 (PROVISIONAL threshold)",
+        "required": true,
+        "threshold": 0.5
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "asr_wer",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'asr_wer' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 0.1
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "vad_latency_ms",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'vad_latency_ms' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 30
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "first_token_latency_ms",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'first_token_latency_ms' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 250
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "first_audio_latency_ms",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'first_audio_latency_ms' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 500
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "barge_in_cancel_ms",
+        "passed": false,
+        "provisional": false,
+        "reason": "required gate 'barge_in_cancel_ms' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 100
+      },
+      {
+        "actual": false,
+        "comparator": null,
+        "name": "thirty_turn_ok",
+        "passed": false,
+        "provisional": false,
+        "reason": "thirty_turn_ok = False but gate requires True",
+        "required": true,
+        "threshold": true
+      },
+      {
+        "actual": null,
+        "comparator": ">=",
+        "name": "dflash_acceptance",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'dflash_acceptance' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 0.6
+      },
+      {
+        "actual": null,
+        "comparator": ">=",
+        "name": "expressive_tag_faithfulness",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'expressive_tag_faithfulness' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 0.8
+      },
+      {
+        "actual": null,
+        "comparator": ">=",
+        "name": "expressive_mos",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'expressive_mos' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 3.5
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "expressive_tag_leakage",
+        "passed": false,
+        "provisional": true,
+        "reason": "required gate 'expressive_tag_leakage' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 0.05
+      },
+      {
+        "actual": null,
+        "comparator": "<=",
+        "name": "mobile_peak_rss_mb",
+        "passed": false,
+        "provisional": false,
+        "reason": "required gate 'mobile_peak_rss_mb' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": 3500
+      },
+      {
+        "actual": null,
+        "comparator": null,
+        "name": "mobile_thermal_ok",
+        "passed": false,
+        "provisional": false,
+        "reason": "required gate 'mobile_thermal_ok' has no result (missing or None); a missing measurement counts as a fail",
+        "required": true,
+        "threshold": true
+      }
+    ],
+    "passed": false,
+    "tier": "1_7b"
+  },
+  "generatedAt": "2026-05-11T10:23:42Z",
+  "generatedBundleFiles": [
+    "README.md",
+    "asr/eliza-1-asr-mmproj.gguf",
+    "asr/eliza-1-asr.gguf",
+    "cache/voice-preset-default.bin",
+    "checksums/SHA256SUMS",
+    "dflash/drafter-1_7b.gguf",
+    "dflash/target-meta.json",
+    "eliza-1.manifest.json",
+    "evals/aggregate.json",
+    "evals/cpu_dispatch.json",
+    "evals/cpu_verify.json",
+    "evals/e2e-loop.json",
+    "evals/local_staging_validation.json",
+    "evals/metal_dispatch.json",
+    "evals/metal_verify.json",
+    "evals/text-eval.json",
+    "evals/voice-rtf.json",
+    "evals/vulkan_dispatch.json",
+    "evals/vulkan_verify.json",
+    "evidence/bundle-assets.json",
+    "evidence/local-bundle-completion.json",
+    "evidence/platform/darwin-arm64-metal.json",
+    "evidence/release.json",
+    "evidence/source-weights.json",
+    "licenses/LICENSE.asr",
+    "licenses/LICENSE.dflash",
+    "licenses/LICENSE.eliza-1",
+    "licenses/LICENSE.source-text",
+    "licenses/LICENSE.text",
+    "licenses/LICENSE.vad",
+    "licenses/LICENSE.voice",
+    "lineage.json",
+    "source/text/qwen3-1.7b-q8_0.gguf",
+    "text/eliza-1-1_7b-64k.gguf",
+    "tts/omnivoice-base-Q4_K_M.gguf",
+    "tts/omnivoice-tokenizer-Q4_K_M.gguf",
+    "vad/silero-vad-int8.onnx"
+  ],
+  "manifestValidation": {
+    "localNonPublishableErrors": [],
+    "localNonPublishableOk": true,
+    "publishReadyErrors": [
+      "kernels.verifiedBackends.metal: status is \"fail\", expected \"pass\" for tier 1_7b",
+      "kernels.verifiedBackends.vulkan: status is \"fail\", expected \"pass\" for tier 1_7b",
+      "kernels.verifiedBackends.cpu: status is \"fail\", expected \"pass\" for tier 1_7b",
+      "evals.textEval.passed: false",
+      "evals.voiceRtf.passed: false",
+      "evals.e2eLoopOk: false",
+      "evals.thirtyTurnOk: false",
+      "evals.asrWer.passed: false",
+      "evals.vadLatencyMs.passed: false",
+      "evals.expressive.passed: false"
+    ],
+    "publishReadyOk": false
+  },
+  "publishBlockingReasons": [
+    "text artifact is a local stand-in, not final Eliza-1 1_7b text weights",
+    "DFlash drafter is a local stand-in, not a drafter trained and verified against final Eliza-1 1_7b text weights",
+    "required text quality, ASR WER, VAD latency, expressive voice, DFlash acceptance, first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are missing or failed",
+    "required Metal, Vulkan, and CPU backend verification is not pass for the staged bytes",
+    "text and DFlash license blobs are local provenance notes, not release-reviewed license attestations",
+    "release evidence is local-standin and cannot be uploaded by the publish orchestrator"
+  ],
+  "publishEligible": false,
+  "schemaVersion": 1,
+  "staged": [
+    {
+      "destination": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-64k.gguf",
+      "method": "existing",
+      "provenance": "local-standin",
+      "role": "text",
+      "sha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d",
+      "sizeBytes": 2871743520,
+      "source": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash/Qwen_Qwen3.5-4B-Q4_K_M.gguf"
+    },
+    {
+      "destination": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/dflash/drafter-1_7b.gguf",
+      "method": "existing",
+      "provenance": "local-standin",
+      "role": "dflash",
+      "sha256": "ff8fb97c4cf5c887dc536697030d449bf27bff2c7b337e9be06418656b55cb19",
+      "sizeBytes": 327297216,
+      "source": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4/Qwen3.5-4B-DFlash-Q4_K_M.repaired.gguf"
+    }
+  ],
+  "tier": "1_7b"
+}

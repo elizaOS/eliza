@@ -6,10 +6,7 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": [
-      "node",
-      "bun-types"
-    ],
+    "types": ["node", "bun-types"],
     "typeRoots": [
       "./node_modules/@types",
       "../../node_modules/@types",
@@ -22,39 +19,20 @@
       "@elizaos/plugin-lifeops-browser": [
         "../../plugins/plugin-lifeops-browser/src/index.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
-      "@elizaos/plugin-video": [
-        "../../plugins/plugin-video/dist/index.d.ts"
-      ],
-      "@elizaos/app-core": [
-        "./src/index.ts"
-      ],
-      "@elizaos/app-wallet": [
-        "../../plugins/app-wallet/src/index.ts"
-      ],
-      "@elizaos/plugin-wallet": [
-        "../../plugins/plugin-wallet/src/index.ts"
-      ],
-      "@elizaos/app-training": [
-        "../../plugins/app-training/src/index.ts"
-      ],
-      "@elizaos/ui": [
-        "../ui/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/app-core": ["./src/index.ts"],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
+      "@elizaos/ui": ["../ui/src/index.ts"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],
-      "@elizaos/ui/navigation": [
-        "../ui/src/navigation/index.ts"
-      ],
-      "@elizaos/agent": [
-        "../agent/src/index.ts"
-      ],
-      "@elizaos/agent/*": [
-        "../agent/src/*"
-      ],
+      "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/src/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],
@@ -78,60 +56,37 @@
       "@elizaos/plugin-local-inference/*": [
         "../../plugins/plugin-local-inference/src/*"
       ],
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],
-      "@elizaos/plugin-signal": [
-        "../../plugins/plugin-signal/src/index.ts"
-      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/app-task-coordinator": [
         "../../plugins/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/plugin-google": [
-        "../../plugins/plugin-google/src/index.ts"
-      ],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/src/index.node.ts"
-      ],
-      "@elizaos/shared": [
-        "../shared/src/index.ts"
-      ],
-      "@elizaos/skills": [
-        "../skills/src/index.ts"
-      ],
-      "@elizaos/core": [
-        "../core/src/index.node.ts"
-      ],
-      "@elizaos/capacitor-*": [
-        "../native-plugins/*/src/index.ts"
-      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"
       ],
-      "drizzle-orm": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm"
-      ],
-      "drizzle-orm/*": [
-        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
-      ],
-      "react": [
-        "./node_modules/@types/react/index.d.ts"
-      ],
-      "react/jsx-runtime": [
-        "./node_modules/@types/react/jsx-runtime.d.ts"
-      ],
+      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
       "react/jsx-dev-runtime": [
         "./node_modules/@types/react/jsx-dev-runtime.d.ts"
       ],
-      "react-dom": [
-        "./node_modules/@types/react-dom/index.d.ts"
-      ],
-      "lucide-react": [
-        "./node_modules/lucide-react"
-      ]
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
+      "lucide-react": ["./node_modules/lucide-react"]
     }
   },
   "exclude": [
@@ -140,9 +95,5 @@
     "src/**/*.stories.ts",
     "src/**/*.stories.tsx"
   ],
-  "include": [
-    "src",
-    "../agent/src/external-modules.d.ts",
-    "vite-env.d.ts"
-  ]
+  "include": ["src", "../agent/src/external-modules.d.ts", "vite-env.d.ts"]
 }

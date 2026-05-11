@@ -949,7 +949,12 @@ function AppProviderInner({
 
   // ── Cloud state (extracted to useCloudState) ───────────────────────
   // Placed after walletHook so loadWalletConfig is available.
-  const cloudHook = useCloudState({ setActionNotice, loadWalletConfig, t });
+  const cloudHook = useCloudState({
+    setActionNotice,
+    loadWalletConfig,
+    t,
+    disconnectLocked: brandingOverride?.cloudOnly === true,
+  });
 
   // ── Vincent state (extracted to useVincentState) ──────────────────
   const vincentHook = useVincentState({ setActionNotice, t });

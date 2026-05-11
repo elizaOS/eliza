@@ -1,8 +1,9 @@
 import {
-  type Action,
-  type ActionExample,
   type ActionResult,
+  type HandlerOptions,
   type IAgentRuntime,
+  type Memory,
+  type State,
   logger,
 } from "@elizaos/core";
 import {
@@ -401,140 +402,45 @@ async function handleWhitelistList(
 }
 
 /**
- * Internal implementation of the legacy `AUTOFILL` action surface.
+ * Handler function backing the CREDENTIALS umbrella's autofill subactions
+ * (`fill`, `whitelist_add`, `whitelist_list`).
  *
- * Audit B Defer #5 folded `AUTOFILL` and `PASSWORD_MANAGER` into the single
- * `CREDENTIALS` umbrella (`./credentials.ts`). The umbrella forwards `fill`,
- * `whitelist_add`, and `whitelist_list` to this impl. The legacy export name
- * (`autofillAction`) is re-exported below as an alias for `credentialsAction`
- * so cached planner outputs and downstream importers keep resolving — but no
- * `AUTOFILL`-named action is registered in the plugin anymore; the umbrella
- * simile carries the legacy name forward.
+ * Folded out of the legacy `AUTOFILL` action surface — Audit B Defer #5.
+ * The umbrella in `./credentials.ts` is the only caller; no Action object
+ * is registered for this handler anymore.
  */
-export const autofillActionImpl: Action & {
-  suppressPostActionContinuation?: boolean;
-} = {
-  name: ACTION_NAME,
-  suppressPostActionContinuation: true,
-  similes: ["AUTOFILL", "FILL_PASSWORD", "TRUST_SITE", "SHOW_AUTOFILL_DOMAINS"],
-  description:
-    "Owner-only. Browser autofill via the LifeOps browser extension. Subactions: " +
-    "fill (request a one-field autofill from the password manager; refused on non-whitelisted domains), " +
-    "whitelist_add (add a domain to the autofill whitelist; requires confirmed:true), " +
-    "whitelist_list (show effective whitelist).",
-  descriptionCompressed:
-    "browser autofill: fill(field,domain) whitelist-add(domain,confirm) whitelist-list; allowlist-gated browser-feature-gated",
-  contexts: ["browser", "secrets", "settings", "automation"],
-  roleGate: { minRole: "OWNER" },
+export async function runAutofillHandler(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | undefined,
+): Promise<ActionResult> {
+  const resolved = await resolveActionArgs<AutofillSubaction, AutofillParams>({
+    runtime,
+    message,
+    state,
+    options,
+    actionName: ACTION_NAME,
+    subactions: SUBACTIONS,
+  });
+  if (!resolved.ok) {
+    return {
+      success: false,
+      text: resolved.clarification,
+      data: { actionName: ACTION_NAME, missing: resolved.missing },
+    };
+  }
 
-  validate: async () => true,
-
-  parameters: [
-    {
-      name: "subaction",
-      description: "One of: fill, whitelist_add, whitelist_list.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "field",
-      description:
-        "For fill: one of email, password, name, phone, custom. Tells the password manager which field to resolve.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "domain",
-      description:
-        "Domain to act on. For fill, used as the tab URL when url is omitted. For whitelist_add, the domain to add.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "url",
-      description:
-        "Optional explicit tab URL for fill (used for whitelist enforcement).",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "confirmed",
-      description:
-        "For whitelist_add: must be explicitly true. Required to ensure the user approved the addition, not the agent.",
-      required: false,
-      schema: { type: "boolean" as const },
-    },
-  ],
-
-  handler: async (runtime, message, state, options): Promise<ActionResult> => {
-    const resolved = await resolveActionArgs<AutofillSubaction, AutofillParams>(
-      {
-        runtime,
-        message,
-        state,
-        options,
-        actionName: ACTION_NAME,
-        subactions: SUBACTIONS,
-      },
-    );
-    if (!resolved.ok) {
-      return {
-        success: false,
-        text: resolved.clarification,
-        data: { actionName: ACTION_NAME, missing: resolved.missing },
-      };
-    }
-
-    const { subaction, params } = resolved;
-    switch (subaction) {
-      case "fill":
-        return handleFill(runtime, params);
-      case "whitelist_add":
-        return handleWhitelistAdd(runtime, params);
-      case "whitelist_list":
-        return handleWhitelistList(runtime);
-    }
-  },
-
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Can you log me into github? I'm on the sign-in page.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Requested password autofill on github.com via the browser extension.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Yes, trust notion.so for autofill going forward." },
-      },
-      {
-        name: "{{agentName}}",
-        content: { text: "Added notion.so to the autofill whitelist." },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Which sites are allowed for autofill right now?" },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Autofill whitelist (4 entries): github.com, notion.so, linear.app, example.com",
-        },
-      },
-    ],
-  ] as ActionExample[][],
-};
+  const { subaction, params } = resolved;
+  switch (subaction) {
+    case "fill":
+      return handleFill(runtime, params);
+    case "whitelist_add":
+      return handleWhitelistAdd(runtime, params);
+    case "whitelist_list":
+      return handleWhitelistList(runtime);
+  }
+}
 
 export const __internal = {
   effectiveWhitelist,
@@ -542,8 +448,3 @@ export const __internal = {
   saveUserDomains,
   WHITELIST_CACHE_KEY,
 };
-
-// Legacy export — the `AUTOFILL` name lives on as a simile of the new
-// CREDENTIALS umbrella. Importers that destructured `autofillAction` get the
-// umbrella back so they continue to dispatch through the unified entry.
-export { credentialsAction as autofillAction } from "./credentials.js";

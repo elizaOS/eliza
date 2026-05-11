@@ -1,32 +1,22 @@
 /**
- * Unit coverage for the FeatureResult contract on apple-reminders.ts.
+ * Unit coverage for the native Apple Reminders FeatureResult contract.
  *
  * Spec contract:
- *   - non-darwin → { ok: false, reason: "not_supported", platform }
- *   - osascript denial stderr → { ok: false, reason: "permission",
+ *   - non-darwin -> { ok: false, reason: "not_supported", platform }
+ *   - native permission response -> { ok: false, reason: "permission",
  *       permission: "reminders", canRequest } and `recordBlock` is called.
- *   - other osascript stderr → { ok: false, reason: "native_error", message }
- *   - successful exec → { ok: true, data: { provider, reminderId } }
+ *   - native failure response -> { ok: false, reason: "native_error", message }
+ *   - successful native response -> { ok: true, data: { provider, reminderId } }
  */
 
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-
-const { execFileMock } = vi.hoisted(() => ({
-  execFileMock: vi.fn(),
-}));
-
-vi.mock("node:child_process", () => ({
-  execFile: execFileMock,
-}));
-
+import type { IPermissionsRegistry, PermissionState } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __testing,
   createNativeAppleReminderLikeItem,
   deleteNativeAppleReminderLikeItem,
   updateNativeAppleReminderLikeItem,
 } from "../src/lifeops/apple-reminders.ts";
-import type { IPermissionsRegistry } from "@elizaos/agent";
-import type { PermissionState } from "@elizaos/shared";
 
 const ORIGINAL_PLATFORM = process.platform;
 
@@ -37,17 +27,9 @@ function setPlatform(platform: NodeJS.Platform): void {
   });
 }
 
-function makeError(stderr: string): NodeJS.ErrnoException & { stderr: string } {
-  const err = new Error("osascript failed") as NodeJS.ErrnoException & {
-    stderr: string;
-  };
-  err.stderr = stderr;
-  return err;
-}
-
 function fakeRegistry(state: Partial<PermissionState> = {}): {
-  registry: IPermissionsRegistry;
   recordBlock: ReturnType<typeof vi.fn>;
+  registry: IPermissionsRegistry;
 } {
   const recordBlock = vi.fn();
   const registry: IPermissionsRegistry = {
@@ -76,40 +58,31 @@ function fakeRegistry(state: Partial<PermissionState> = {}): {
 function fakeRuntime(registry: IPermissionsRegistry | null) {
   return {
     getService: vi.fn(() => registry),
-  } as unknown as Parameters<typeof createNativeAppleReminderLikeItem>[0]["runtime"];
+  } as unknown as Parameters<
+    typeof createNativeAppleReminderLikeItem
+  >[0]["runtime"];
+}
+
+function setBridge(overrides: {
+  create?: ReturnType<typeof vi.fn>;
+  delete?: ReturnType<typeof vi.fn>;
+  update?: ReturnType<typeof vi.fn>;
+}): void {
+  __testing.setNativeReminderBridgeForTest({
+    create: overrides.create ?? vi.fn(() => JSON.stringify({ ok: true })),
+    delete: overrides.delete ?? vi.fn(() => JSON.stringify({ ok: true })),
+    update: overrides.update ?? vi.fn(() => JSON.stringify({ ok: true })),
+  });
 }
 
 beforeEach(() => {
-  execFileMock.mockReset();
   setPlatform("darwin");
+  __testing.setNativeReminderBridgeForTest(null);
 });
 
 afterEach(() => {
+  __testing.setNativeReminderBridgeForTest(null);
   setPlatform(ORIGINAL_PLATFORM);
-});
-
-describe("isPermissionDeniedStderr", () => {
-  it("matches the canonical macOS denial line", () => {
-    expect(
-      __testing.isPermissionDeniedStderr(
-        "execution error: Not authorized to send Apple events to Reminders. (-1743)",
-      ),
-    ).toBe(true);
-  });
-
-  it("matches via the numeric error code only", () => {
-    expect(
-      __testing.isPermissionDeniedStderr("execution error: foo (-1743)"),
-    ).toBe(true);
-  });
-
-  it("does not match unrelated stderr", () => {
-    expect(
-      __testing.isPermissionDeniedStderr(
-        "execution error: Reminder not found. (-2700)",
-      ),
-    ).toBe(false);
-  });
 });
 
 describe("createNativeAppleReminderLikeItem", () => {
@@ -125,47 +98,41 @@ describe("createNativeAppleReminderLikeItem", () => {
       reason: "not_supported",
       platform: "linux",
     });
-    expect(execFileMock).not.toHaveBeenCalled();
   });
 
   it("returns ok with reminderId on success", async () => {
-    execFileMock.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        _opts: unknown,
-        cb: (err: Error | null, out: { stdout: string }) => void,
-      ) => {
-        cb(null, { stdout: "REMINDER-123\n" });
-      },
+    const create = vi.fn(() =>
+      JSON.stringify({ ok: true, reminderId: "REMINDER-123" }),
     );
+    setBridge({ create });
+    const dueAt = new Date().toISOString();
     const result = await createNativeAppleReminderLikeItem({
       kind: "reminder",
       title: "Call mom",
-      dueAt: new Date().toISOString(),
+      dueAt,
     });
     expect(result).toEqual({
       ok: true,
       data: { provider: "apple_reminders", reminderId: "REMINDER-123" },
     });
+    expect(create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notes: "Created by Eliza.",
+        priority: 5,
+        title: "Call mom",
+      }),
+    );
   });
 
-  it("returns permission failure when osascript denies access", async () => {
-    execFileMock.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        _opts: unknown,
-        cb: (err: NodeJS.ErrnoException, out: unknown) => void,
-      ) => {
-        cb(
-          makeError(
-            "execution error: Not authorized to send Apple events to Reminders. (-1743)",
-          ),
-          undefined,
-        );
-      },
+  it("returns permission failure when EventKit denies access", async () => {
+    const create = vi.fn(() =>
+      JSON.stringify({
+        ok: false,
+        error: "permission",
+        message: "Apple Reminders access has not been granted.",
+      }),
     );
+    setBridge({ create });
     const { registry, recordBlock } = fakeRegistry({ canRequest: false });
     const result = await createNativeAppleReminderLikeItem({
       kind: "reminder",
@@ -185,17 +152,16 @@ describe("createNativeAppleReminderLikeItem", () => {
     });
   });
 
-  it("returns native_error for other osascript failures", async () => {
-    execFileMock.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        _opts: unknown,
-        cb: (err: NodeJS.ErrnoException, out: unknown) => void,
-      ) => {
-        cb(makeError("execution error: syntax error (-2741)"), undefined);
-      },
-    );
+  it("returns native_error for other native failures", async () => {
+    setBridge({
+      create: vi.fn(() =>
+        JSON.stringify({
+          ok: false,
+          error: "native_error",
+          message: "No writable Apple Reminders list is available.",
+        }),
+      ),
+    });
     const result = await createNativeAppleReminderLikeItem({
       kind: "reminder",
       title: "Call mom",
@@ -205,27 +171,21 @@ describe("createNativeAppleReminderLikeItem", () => {
     if (result.ok) return;
     expect(result.reason).toBe("native_error");
     if (result.reason !== "native_error") return;
-    expect(result.message).toContain("syntax error");
+    expect(result.message).toContain("No writable Apple Reminders list");
   });
 });
 
 describe("updateNativeAppleReminderLikeItem permission denial", () => {
   it("records reminders.update on the registry", async () => {
-    execFileMock.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        _opts: unknown,
-        cb: (err: NodeJS.ErrnoException, out: unknown) => void,
-      ) => {
-        cb(
-          makeError(
-            "execution error: Not authorized to send Apple events to Reminders. (-1743)",
-          ),
-          undefined,
-        );
-      },
-    );
+    setBridge({
+      update: vi.fn(() =>
+        JSON.stringify({
+          ok: false,
+          error: "permission",
+          message: "Apple Reminders access has not been granted.",
+        }),
+      ),
+    });
     const { registry, recordBlock } = fakeRegistry({ canRequest: true });
     const result = await updateNativeAppleReminderLikeItem({
       reminderId: "r-1",
@@ -249,21 +209,15 @@ describe("updateNativeAppleReminderLikeItem permission denial", () => {
 
 describe("deleteNativeAppleReminderLikeItem permission denial", () => {
   it("records reminders.delete on the registry", async () => {
-    execFileMock.mockImplementation(
-      (
-        _cmd: string,
-        _args: string[],
-        _opts: unknown,
-        cb: (err: NodeJS.ErrnoException, out: unknown) => void,
-      ) => {
-        cb(
-          makeError(
-            "execution error: Not authorized to send Apple events to Reminders. (-1743)",
-          ),
-          undefined,
-        );
-      },
-    );
+    setBridge({
+      delete: vi.fn(() =>
+        JSON.stringify({
+          ok: false,
+          error: "permission",
+          message: "Apple Reminders access has not been granted.",
+        }),
+      ),
+    });
     const { registry, recordBlock } = fakeRegistry();
     const result = await deleteNativeAppleReminderLikeItem("r-1", {
       runtime: fakeRuntime(registry),

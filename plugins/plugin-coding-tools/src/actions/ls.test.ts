@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SandboxService } from "../services/sandbox-service.js";
 import { SessionCwdService } from "../services/session-cwd-service.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { lsAction } from "./ls.js";
+import { lsHandler } from "./ls.js";
 
 let tmpRoot: string;
 let blockedPath: string;
@@ -65,7 +65,7 @@ const state: State | undefined = undefined;
 describe("LS", () => {
   it("lists fixture entries with directories first then files (sorted)", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler?.(runtime, message, state, {
+    const result = await lsHandler(runtime, message, state, {
       parameters: {},
     });
 
@@ -100,7 +100,7 @@ describe("LS", () => {
 
   it("respects the ignore glob list", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler?.(runtime, message, state, {
+    const result = await lsHandler(runtime, message, state, {
       parameters: { ignore: ["*.log"] },
     });
 
@@ -115,7 +115,7 @@ describe("LS", () => {
 
   it("rejects a path under the blocklist", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler?.(runtime, message, state, {
+    const result = await lsHandler(runtime, message, state, {
       parameters: { path: blockedPath },
     });
     expect(result.success).toBe(false);
@@ -124,7 +124,7 @@ describe("LS", () => {
 
   it("fails when roomId is missing", async () => {
     const { runtime } = await buildRuntime();
-    const result = await lsAction.handler?.(runtime, {} as Memory, state, {
+    const result = await lsHandler(runtime, {} as Memory, state, {
       parameters: {},
     });
     expect(result.success).toBe(false);
@@ -133,7 +133,7 @@ describe("LS", () => {
 
   it("includes file size for files in the entries data", async () => {
     const { runtime, message } = await buildRuntime();
-    const result = await lsAction.handler?.(runtime, message, state, {
+    const result = await lsHandler(runtime, message, state, {
       parameters: {},
     });
     expect(result.success).toBe(true);

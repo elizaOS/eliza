@@ -37,11 +37,11 @@ _MESSAGE_CATEGORIES = (
     "resource_abuse",
     "content_policy",
 )
-_OPENAI_COMPATIBLE_PROVIDERS = ("openai", "groq", "openrouter")
+_OPENAI_COMPATIBLE_PROVIDERS = ("openai", "groq", "openrouter", "cerebras")
 
 
 def _configure_bridge_model_env(model_name: str | None) -> None:
-    model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME") or "openai/gpt-oss-120b").strip()
+    model = (model_name or os.environ.get("BENCHMARK_MODEL_NAME") or "gpt-oss-120b").strip()
     if not model:
         return
     for key in (
@@ -55,6 +55,9 @@ def _configure_bridge_model_env(model_name: str | None) -> None:
         "OPENAI_LARGE_MODEL",
         "OPENROUTER_SMALL_MODEL",
         "OPENROUTER_LARGE_MODEL",
+        "CEREBRAS_SMALL_MODEL",
+        "CEREBRAS_LARGE_MODEL",
+        "CEREBRAS_MODEL",
     ):
         os.environ.setdefault(key, model)
 
@@ -108,6 +111,8 @@ class OpenAICompatibleTrustHandler:
                 provider = "groq"
             elif os.environ.get("OPENROUTER_API_KEY"):
                 provider = "openrouter"
+            elif os.environ.get("CEREBRAS_API_KEY"):
+                provider = "cerebras"
             else:
                 provider = "openai"
         if provider not in set(_OPENAI_COMPATIBLE_PROVIDERS):
@@ -116,6 +121,7 @@ class OpenAICompatibleTrustHandler:
             "openai": "OPENAI_API_KEY",
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
         }[provider]
         api_key = os.environ.get(key_var, "")
         if not api_key:
@@ -125,12 +131,14 @@ class OpenAICompatibleTrustHandler:
             "openai": "openai/gpt-oss-120b",
             "groq": "openai/gpt-oss-120b",
             "openrouter": "openai/gpt-oss-120b",
+            "cerebras": "gpt-oss-120b",
         }[provider]
         self.api_key = api_key
         self.base_url = {
             "openai": "https://api.openai.com/v1",
             "groq": "https://api.groq.com/openai/v1",
             "openrouter": "https://openrouter.ai/api/v1",
+            "cerebras": "https://api.cerebras.ai/v1",
         }[provider]
         self._cache: dict[str, dict[str, dict[str, bool | float]]] = {}
 
@@ -349,7 +357,7 @@ Handler descriptions:
     parser.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama"],
+        choices=["openai", "groq", "openrouter", "cerebras", "anthropic", "google", "ollama"],
         default=None,
         help="Model provider to use for --handler eliza/llm (default: auto-detect)",
     )
@@ -389,7 +397,12 @@ Handler descriptions:
     try:
         if args.handler in {"eliza", "eliza-bridge"}:
             _configure_bridge_model_env(args.model)
-            if not os.environ.get("ELIZA_BENCH_URL"):
+            harness = (
+                os.environ.get("ELIZA_BENCH_HARNESS")
+                or os.environ.get("BENCHMARK_HARNESS")
+                or "eliza"
+            ).strip().lower()
+            if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
                 from eliza_adapter.server_manager import ElizaServerManager
 
                 server_manager = ElizaServerManager()

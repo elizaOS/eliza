@@ -5,6 +5,7 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
+import { BackgroundRunner } from "@capacitor-community/background-runner";
 import {
   CompanionShell,
   createVectorBrowserRenderer,
@@ -193,6 +194,8 @@ const isIOS = platform === "ios";
 const isAndroid = platform === "android";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
+const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
+const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
@@ -368,6 +371,10 @@ async function initializePlatform(): Promise<void> {
     await initializeDesktopShell();
   } else if (isNative) {
     await initializeAgent();
+  }
+
+  if (isIOS || isAndroid) {
+    void configureMobileBackgroundRunner();
   }
 }
 
@@ -826,6 +833,62 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   }
 }
 
+async function readAndroidLocalAgentToken(): Promise<string | undefined> {
+  if (!isAndroid) return undefined;
+  try {
+    const result = await Agent.getLocalAgentToken?.();
+    const token = result?.token?.trim();
+    return token ? token : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
+  if (!isNative || (!isIOS && !isAndroid)) return;
+
+  const runtimeConfig = getCurrentIosRuntimeConfig();
+  const bootConfig = getBootConfig();
+  const bootApiBase = bootConfig.apiBase?.trim();
+  let authToken =
+    bootConfig.apiToken?.trim() || runtimeConfig.apiToken?.trim() || undefined;
+
+  if (isAndroid && runtimeConfig.mode === "local") {
+    authToken = (await readAndroidLocalAgentToken()) ?? authToken;
+  }
+
+  const details: Record<string, unknown> = {
+    platform,
+    mode: runtimeConfig.mode,
+  };
+  const apiBase = bootApiBase || runtimeConfig.apiBase?.trim();
+  if (apiBase) details.apiBase = apiBase;
+  if (authToken) details.authToken = authToken;
+  if (isAndroid && runtimeConfig.mode === "local") {
+    details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
+  }
+
+  try {
+    await BackgroundRunner.dispatchEvent({
+      label: BACKGROUND_RUNNER_LABEL,
+      event: "configure",
+      details,
+    });
+  } catch (error) {
+    console.warn(
+      `${APP_LOG_PREFIX} Background runner unavailable:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+
+  if (isAndroid && runtimeConfig.mode === "local" && !authToken && retry < 2) {
+    window.setTimeout(
+      () => void configureMobileBackgroundRunner(retry + 1),
+      BACKGROUND_RUNNER_CONFIG_RETRY_MS * (retry + 1),
+    );
+  }
+}
+
 async function initializeMobileDeviceBridge(): Promise<void> {
   const runtimeConfig = getCurrentIosRuntimeConfig();
   if (
@@ -885,9 +948,11 @@ function initializeMobileRuntimeModeListener(): void {
     if (mode === "cloud-hybrid" || mode === "local") {
       stopMobileDeviceBridge();
       void initializeMobileDeviceBridge();
+      void configureMobileBackgroundRunner();
       return;
     }
     stopMobileDeviceBridge();
+    void configureMobileBackgroundRunner();
   });
 }
 

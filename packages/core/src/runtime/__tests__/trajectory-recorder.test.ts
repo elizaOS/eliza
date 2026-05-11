@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyTrajectoryFieldCap,
 	captureToolStageIO,
@@ -316,6 +316,165 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(trajectory?.metrics.totalCostUsd).toBeCloseTo(1.3, 6);
 	});
 
+	it("tags every LLM step with priceTableId when cost is annotated", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-price-table",
+			rootMessage: { id: "msg", text: "test" },
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-anthropic",
+			kind: "planner",
+			startedAt: 0,
+			endedAt: 100,
+			latencyMs: 100,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "claude-opus-4-7",
+				provider: "anthropic",
+				prompt: "p",
+				response: "r",
+				usage: {
+					promptTokens: 1000,
+					completionTokens: 500,
+					totalTokens: 1500,
+				},
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		const model = trajectory?.stages[0]?.model;
+		expect(typeof model?.priceTableId).toBe("string");
+		expect((model?.priceTableId ?? "").length).toBeGreaterThan(0);
+		// Anthropic Opus: 1000 input * $15/M + 500 output * $75/M = $0.0525
+		expect(model?.costUsd).toBeCloseTo(0.0525, 6);
+	});
+
+	it("annotates cost=0 with no warning for local-provider steps", async () => {
+		const warn = vi.fn();
+		const recorder = createJsonFileTrajectoryRecorder({
+			rootDir: tmpDir,
+			logger: { warn },
+		});
+		const id = recorder.startTrajectory({
+			agentId: "agent-local",
+			rootMessage: { id: "msg", text: "test" },
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-local",
+			kind: "planner",
+			startedAt: 0,
+			endedAt: 100,
+			latencyMs: 100,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "qwen-2.5-14b-q5_k_m",
+				provider: "ollama",
+				prompt: "p",
+				response: "r",
+				usage: {
+					promptTokens: 5000,
+					completionTokens: 1000,
+					totalTokens: 6000,
+				},
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		expect(trajectory?.stages[0]?.model?.costUsd).toBe(0);
+		expect(trajectory?.metrics.totalCostUsd).toBe(0);
+		// The pricing module must not warn for local providers — local cost
+		// is a real zero, not a missing price.
+		const pricingWarns = warn.mock.calls.filter(
+			(call) => typeof call[1] === "string" && call[1].includes("[pricing]"),
+		);
+		expect(pricingWarns).toHaveLength(0);
+	});
+
+	it("annotates cost=0 and warns when a hosted-provider model has no price entry", async () => {
+		const warn = vi.fn();
+		const recorder = createJsonFileTrajectoryRecorder({
+			rootDir: tmpDir,
+			logger: { warn },
+		});
+		const id = recorder.startTrajectory({
+			agentId: "agent-unknown-hosted",
+			rootMessage: { id: "msg", text: "test" },
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-unknown",
+			kind: "planner",
+			startedAt: 0,
+			endedAt: 100,
+			latencyMs: 100,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "fictional-model-that-does-not-exist",
+				provider: "openai",
+				prompt: "p",
+				response: "r",
+				usage: {
+					promptTokens: 1000,
+					completionTokens: 500,
+					totalTokens: 1500,
+				},
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		// cost_usd defaults to 0 — observability must never crash.
+		expect(trajectory?.stages[0]?.model?.costUsd).toBe(0);
+		// And the recorder logged a structured warning so the operator can
+		// see that pricing was missing.
+		const pricingWarns = warn.mock.calls.filter(
+			(call) => typeof call[1] === "string" && call[1].includes("[pricing]"),
+		);
+		expect(pricingWarns.length).toBeGreaterThanOrEqual(1);
+	});
+
+	it("preserves a caller-provided costUsd and tags it with priceTableId", async () => {
+		// Mirrors what evaluator.ts / planner-loop.ts already do: they compute
+		// costUsd themselves and hand it to recordStage. The recorder must
+		// not overwrite that number but should still tag the table id.
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-precomputed",
+			rootMessage: { id: "msg", text: "test" },
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-precomputed",
+			kind: "planner",
+			startedAt: 0,
+			endedAt: 100,
+			latencyMs: 100,
+			model: {
+				modelType: "ACTION_PLANNER",
+				modelName: "claude-haiku-4-5",
+				provider: "anthropic",
+				prompt: "p",
+				response: "r",
+				usage: {
+					promptTokens: 100,
+					completionTokens: 50,
+					totalTokens: 150,
+				},
+				costUsd: 0.4242, // intentionally arbitrary to detect any overwrite
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const trajectory = await recorder.load(id);
+		expect(trajectory?.stages[0]?.model?.costUsd).toBe(0.4242);
+		expect(typeof trajectory?.stages[0]?.model?.priceTableId).toBe("string");
+	});
+
 	it("marks trajectories as errored when endTrajectory is called with errored", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({
@@ -511,7 +670,7 @@ describe("action exec input/output/error capture (M12)", () => {
 	it("encodes Error instances via the sanitizer (no `{}` payloads)", () => {
 		const encoded = encodeTrajectoryFieldValue(new Error("boom"));
 		expect(encoded).toContain("boom");
-		expect(encoded).toContain("\"message\"");
+		expect(encoded).toContain('"message"');
 	});
 
 	it("returns the original value when under the cap with no marker", () => {

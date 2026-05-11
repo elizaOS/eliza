@@ -28,7 +28,7 @@ export interface ActionParametersJsonSchema extends JsonSchema {
 	type: "object";
 	properties: Record<string, JsonSchema>;
 	required: string[];
-	additionalProperties?: false;
+	additionalProperties?: boolean;
 }
 
 const SUPPORTED_SCHEMA_TYPES = new Set<string>([
@@ -298,6 +298,7 @@ function appendParameterExamples(
 
 export function actionParametersToJsonSchema(
 	parameters: ActionParameter[] = [],
+	options: { allowAdditionalProperties?: boolean } = {},
 ): ActionParametersJsonSchema {
 	const properties: Record<string, JsonSchema> = {};
 	const required: string[] = [];
@@ -326,10 +327,12 @@ export function actionParametersToJsonSchema(
 		type: "object",
 		properties,
 		required,
-		additionalProperties: false,
+		additionalProperties: options.allowAdditionalProperties === true,
 	};
 }
 
 export function actionToJsonSchema(action: Action): ActionParametersJsonSchema {
-	return actionParametersToJsonSchema(action.parameters ?? []);
+	return actionParametersToJsonSchema(action.parameters ?? [], {
+		allowAdditionalProperties: action.allowAdditionalParameters === true,
+	});
 }

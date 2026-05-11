@@ -5,6 +5,28 @@
  * for containers, auth, credits, bridge messaging, and agent state snapshots.
  */
 
+export type {
+  CloudCodingAgent,
+  CloudCodingContainerSession,
+  CloudCodingContainerStatus,
+  CloudCodingPatch,
+  CloudCodingPatchFormat,
+  CloudCodingPromotion,
+  CloudCodingSyncDirection,
+  CloudCodingSyncResult,
+  CloudVfsBundle,
+  CloudVfsDeletedFile,
+  CloudVfsFile,
+  CloudVfsFileEncoding,
+  CloudVfsSourceKind,
+  PromoteVfsToCloudContainerRequest,
+  PromoteVfsToCloudContainerResponse,
+  RequestCodingAgentContainerRequest,
+  RequestCodingAgentContainerResponse,
+  SyncCloudCodingContainerRequest,
+  SyncCloudCodingContainerResponse,
+} from "@elizaos/shared";
+
 // ─── Container Types ────────────────────────────────────────────────────────
 
 export type ContainerStatus =
@@ -109,169 +131,6 @@ export interface ContainerHealthResponse {
     lastCheck: string | null;
     uptime: number | null;
   };
-}
-
-// ─── Coding Container Promotion / Sync Types ───────────────────────────────
-
-export type CloudCodingAgent = "claude" | "codex" | "opencode";
-
-export type CloudCodingContainerStatus =
-  | "requested"
-  | "pending"
-  | "building"
-  | "running"
-  | "failed"
-  | "stopped"
-  | "stubbed";
-
-export type CloudVfsSourceKind = "project" | "workspace";
-
-export type CloudVfsFileEncoding = "utf8" | "base64";
-
-export interface CloudVfsFile {
-  path: string;
-  contents?: string;
-  encoding?: CloudVfsFileEncoding;
-  size?: number;
-  sha256?: string;
-  mode?: string;
-  mtimeMs?: number;
-}
-
-export interface CloudVfsDeletedFile {
-  path: string;
-  sha256?: string;
-}
-
-export interface CloudVfsBundle {
-  sourceKind: CloudVfsSourceKind;
-  projectId?: string;
-  workspaceId?: string;
-  rootPath?: string;
-  snapshotId?: string;
-  revision?: string;
-  files?: CloudVfsFile[];
-  deletedFiles?: CloudVfsDeletedFile[];
-  manifest?: {
-    fileCount?: number;
-    totalBytes?: number;
-    ignoredPaths?: string[];
-  };
-  metadata?: Record<string, unknown>;
-}
-
-export interface PromoteVfsToCloudContainerRequest {
-  source: CloudVfsBundle;
-  name?: string;
-  description?: string;
-  preferredAgent?: CloudCodingAgent;
-  target?: {
-    containerId?: string;
-    workspacePath?: string;
-    branchName?: string;
-  };
-  metadata?: Record<string, unknown>;
-}
-
-export interface CloudCodingPromotion {
-  promotionId: string;
-  status: "accepted" | "uploaded" | "stubbed";
-  source: CloudVfsBundle;
-  workspacePath: string;
-  uploadUrl?: string;
-  expiresAt?: string | null;
-  createdAt: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface PromoteVfsToCloudContainerResponse {
-  success: boolean;
-  stubbed?: boolean;
-  data: CloudCodingPromotion;
-  message?: string;
-}
-
-export interface RequestCodingAgentContainerRequest {
-  agent: CloudCodingAgent;
-  promotionId?: string;
-  source?: CloudVfsBundle;
-  prompt?: string;
-  container?: {
-    name?: string;
-    image?: string;
-    cpu?: number;
-    memory?: number;
-    architecture?: ContainerArchitecture;
-    environmentVars?: Record<string, string>;
-  };
-  workspacePath?: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CloudCodingContainerSession {
-  containerId: string;
-  status: CloudCodingContainerStatus;
-  agent: CloudCodingAgent;
-  promotionId?: string;
-  workspacePath: string;
-  url?: string | null;
-  branchName?: string;
-  createdAt: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface RequestCodingAgentContainerResponse {
-  success: boolean;
-  stubbed?: boolean;
-  data: CloudCodingContainerSession;
-  message?: string;
-}
-
-export type CloudCodingSyncDirection = "pull" | "push" | "roundtrip";
-
-export type CloudCodingPatchFormat = "unified-diff" | "json-patch";
-
-export interface CloudCodingPatch {
-  path: string;
-  format: CloudCodingPatchFormat;
-  patch: string;
-  baseSha256?: string;
-  afterSha256?: string;
-}
-
-export interface SyncCloudCodingContainerRequest {
-  direction?: CloudCodingSyncDirection;
-  target: {
-    sourceKind: CloudVfsSourceKind;
-    projectId?: string;
-    workspaceId?: string;
-    baseRevision?: string;
-    targetRevision?: string;
-  };
-  changedFiles?: CloudVfsFile[];
-  deletedFiles?: CloudVfsDeletedFile[];
-  patches?: CloudCodingPatch[];
-  metadata?: Record<string, unknown>;
-}
-
-export interface CloudCodingSyncResult {
-  syncId: string;
-  containerId: string;
-  status: "accepted" | "applied" | "ready" | "stubbed";
-  direction: CloudCodingSyncDirection;
-  target: SyncCloudCodingContainerRequest["target"];
-  changedFiles: CloudVfsFile[];
-  deletedFiles: CloudVfsDeletedFile[];
-  patches: CloudCodingPatch[];
-  createdAt: string;
-  metadata?: Record<string, unknown>;
-}
-
-export interface SyncCloudCodingContainerResponse {
-  success: boolean;
-  stubbed?: boolean;
-  data: CloudCodingSyncResult;
-  message?: string;
 }
 
 // ─── Auth Types ─────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@ import {
 } from "@elizaos/shared";
 import type { TriggerSummary } from "../triggers/types.ts";
 import { WORKBENCH_TODO_TAG } from "./workbench-helpers.ts";
+import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
 
 interface WorkbenchTodoView {
   id: string;
@@ -66,6 +67,10 @@ export async function handleWorkbenchRoutes(
   ctx: WorkbenchRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, state, json, error, readJsonBody } = ctx;
+
+  if (await handleWorkbenchVfsRoutes(ctx)) {
+    return true;
+  }
 
   // ── GET /api/workbench/overview ──────────────────────────────────────
   // Workbench surfaces todos + triggers. Tasks were unified into workflows;

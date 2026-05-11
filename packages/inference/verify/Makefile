@@ -479,8 +479,22 @@ endif
 # milady kernels in default.metallib.
 ELIZA_DFLASH_METAL_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/darwin-arm64-metal
 ELIZA_DFLASH_METAL_BIN_DIR   ?= $(ELIZA_DFLASH_METAL_BUILD_DIR)/bin
-ELIZA_DFLASH_VULKAN_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/linux-x64-vulkan
-ELIZA_DFLASH_VULKAN_BIN_DIR   ?= $(ELIZA_DFLASH_VULKAN_BUILD_DIR)/bin
+ELIZA_STATE_DIR ?= $(HOME)/.eliza
+ELIZA_DFLASH_TARGET ?= linux-x64-vulkan
+ifneq ($(strip $(ELIZA_DFLASH_TARGET_OUT_DIR)),)
+ELIZA_DFLASH_VULKAN_OUT_DIR ?= $(ELIZA_DFLASH_TARGET_OUT_DIR)
+else
+ELIZA_DFLASH_VULKAN_OUT_DIR ?= $(ELIZA_STATE_DIR)/local-inference/bin/dflash/$(ELIZA_DFLASH_TARGET)
+endif
+ELIZA_DFLASH_VULKAN_BUILD_DIR ?= $(ELIZA_DFLASH_LLAMA_DIR)/build/$(ELIZA_DFLASH_TARGET)
+ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_DIR)/bin
+ifndef ELIZA_DFLASH_VULKAN_BIN_DIR
+ifneq ($(strip $(wildcard $(ELIZA_DFLASH_VULKAN_OUT_DIR)/libggml-vulkan.so)$(wildcard $(ELIZA_DFLASH_VULKAN_OUT_DIR)/libggml-vulkan.dylib)),)
+ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_OUT_DIR)
+else
+ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)
+endif
+endif
 
 dispatch-smoke: dispatch_smoke
 	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
@@ -513,16 +527,43 @@ dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
 	    -lm -o dispatch_smoke
 
 vulkan-dispatch-smoke: vulkan_dispatch_smoke
+	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
+	    echo "[vulkan-dispatch-smoke] native Linux required for recordable Vulkan graph dispatch evidence."; \
+	    echo "[vulkan-dispatch-smoke] macOS/MoltenVK can validate standalone SPIR-V only; it cannot flip runtime-ready Vulkan capability bits."; \
+	    echo "[vulkan-dispatch-smoke] run './linux_vulkan_smoke.sh' on physical Linux Vulkan hardware or use './android_vulkan_smoke.sh' with Android graph evidence."; \
+	    exit 2; \
+	fi
 	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
+	@echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"
+	@echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"
 	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
+	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
+	    exit 1; \
+	fi
 	LD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$LD_LIBRARY_PATH \
 	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./vulkan_dispatch_smoke
 
 vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
+	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
+	    echo "[vulkan-dispatch-smoke] native Linux required for recordable Vulkan graph dispatch evidence."; \
+	    echo "[vulkan-dispatch-smoke] macOS/MoltenVK can validate standalone SPIR-V only; it cannot flip runtime-ready Vulkan capability bits."; \
+	    echo "[vulkan-dispatch-smoke] run './linux_vulkan_smoke.sh' on physical Linux Vulkan hardware or use './android_vulkan_smoke.sh' with Android graph evidence."; \
+	    exit 2; \
+	fi
+	@if [ ! -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml.h" ] || [ ! -f "$(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-backend.h" ]; then \
+	    echo "[vulkan-dispatch-smoke] missing ggml headers under $(ELIZA_DFLASH_LLAMA_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' first, or override ELIZA_DFLASH_LLAMA_DIR."; \
+	    exit 1; \
+	fi
 	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
-	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan' on a Linux Vulkan host first."; \
+	    echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"; \
+	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
+	    echo "[vulkan-dispatch-smoke] if using explicit prebuilt artifacts, set ELIZA_DFLASH_VULKAN_BIN_DIR=/path/to/the/bin-dir-containing-libggml-vulkan.so."; \
 	    exit 1; \
 	fi
 	$(CXX) $(CXXFLAGS) \

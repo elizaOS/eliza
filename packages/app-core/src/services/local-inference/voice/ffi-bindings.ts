@@ -79,9 +79,10 @@ export interface ElizaInferenceFfi {
     region: ElizaInferenceRegion,
   ): void;
   /**
-   * Hint the kernel that a region's pages are no longer needed
-   * (madvise MADV_DONTNEED / VirtualUnlock). Does not close the file
-   * descriptor — a subsequent `mmapAcquire` re-pages without an open().
+   * Release or evict a voice-only region after the lifecycle leaves
+   * voice-on. Implementations may madvise mapped pages or unload the
+   * ASR/TTS runtime state entirely; callers must treat the region as
+   * unavailable until the next `mmapAcquire`.
    */
   mmapEvict(
     ctx: ElizaInferenceContextHandle,

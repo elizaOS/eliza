@@ -14,9 +14,15 @@
 #   CUDA_TARGET                default linux-x64-cuda or linux-aarch64-cuda
 #   CUDA_BUILD_FORK            default 1; build the target before verifying
 #   CUDA_SKIP_GRAPH_SMOKE      default 0; set 1 only for fixture-only bring-up
+#   CUDA_REMOTE_REPORT         remote report path when driving CUDA_REMOTE
+#   ELIZA_DFLASH_CMAKE_FLAGS   extra target CMake flags passed to the build hook
+#   ELIZA_DFLASH_HARDWARE_REPORT_DIR
+#                              graph-smoke log directory, default verify/hardware-results
 #   ELIZA_DFLASH_LLAMA_DIR     default ~/.cache/eliza-dflash/milady-llama-cpp
 #   ELIZA_DFLASH_LIBGGML_CUDA  default $ELIZA_DFLASH_LLAMA_DIR/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 #   ELIZA_DFLASH_SMOKE_MODEL   required unless CUDA_SKIP_GRAPH_SMOKE=1
+#   ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
+#                              forwarded to runtime_graph_smoke.sh
 
 set -euo pipefail
 
@@ -31,6 +37,7 @@ GPU_INFO=""
 TOOLCHAIN_INFO=""
 GRAPH_SMOKE_STATUS="required"
 REMOTE_DELEGATED="false"
+REPORT_WRITTEN_EXTERNALLY="false"
 
 usage() {
     cat <<'USAGE' >&2
@@ -79,6 +86,7 @@ model_sha256() {
 
 write_report() {
     local exit_code="$1"
+    [[ "$REPORT_WRITTEN_EXTERNALLY" != "true" ]] || return 0
     [[ -n "$REPORT_PATH" ]] || return 0
     mkdir -p "$(dirname "$REPORT_PATH")"
     RUNNER="cuda_runner.sh" \
@@ -93,12 +101,13 @@ write_report() {
     TARGET="${CUDA_TARGET:-}" \
     GPU_INFO="$GPU_INFO" \
     TOOLCHAIN_INFO="$TOOLCHAIN_INFO" \
+    CMAKE_FLAGS="${ELIZA_DFLASH_CMAKE_FLAGS:-}" \
     MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}" \
     MODEL_SHA256="$(model_sha256)" \
     GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
     REMOTE_DELEGATED="$REMOTE_DELEGATED" \
     REPORT_PATH="$REPORT_PATH" \
-    node <<'NODE' || true
+    node <<'NODE'
 const fs = require('node:fs');
 const env = process.env;
 const report = {
@@ -123,6 +132,7 @@ const report = {
   evidence: {
     gpuInfo: env.GPU_INFO || null,
     toolchainInfo: env.TOOLCHAIN_INFO || null,
+    cmakeFlags: env.CMAKE_FLAGS || null,
     model: env.MODEL || null,
     modelSha256: env.MODEL_SHA256 || null
   }
@@ -150,20 +160,47 @@ if [[ -n "${CUDA_REMOTE:-}" ]]; then
     REMOTE_DELEGATED="true"
     REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza}/packages/inference/verify"
     REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/milady-llama-cpp}"
+    REMOTE_REPORT_PATH="${CUDA_REMOTE_REPORT:-}"
+    if [[ -n "$REPORT_PATH" && -z "$REMOTE_REPORT_PATH" ]]; then
+        REMOTE_REPORT_PATH="hardware-results/$(basename "$REPORT_PATH")"
+    fi
+    REMOTE_REPORT_ARG=""
+    if [[ -n "$REMOTE_REPORT_PATH" ]]; then
+        REMOTE_REPORT_ARG="--report '$REMOTE_REPORT_PATH'"
+    fi
     echo "[cuda_runner] remote host: $CUDA_REMOTE"
     echo "[cuda_runner] remote dir:  $REMOTE_DIR"
-    ssh "$CUDA_REMOTE" "cd $REMOTE_DIR && env \
+    if ! ssh "$CUDA_REMOTE" "cd $REMOTE_DIR && env \
         CUDA_HOME='${CUDA_HOME:-/usr/local/cuda}' \
         CUDA_TARGET='${CUDA_TARGET:-}' \
         CUDA_BUILD_FORK='${CUDA_BUILD_FORK:-1}' \
         CUDA_SKIP_GRAPH_SMOKE='${CUDA_SKIP_GRAPH_SMOKE:-0}' \
+        ELIZA_DFLASH_CMAKE_FLAGS='${ELIZA_DFLASH_CMAKE_FLAGS:-}' \
+        ELIZA_DFLASH_HARDWARE_REPORT_DIR='${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-}' \
         ELIZA_DFLASH_LLAMA_DIR=$REMOTE_LLAMA_DIR \
         ELIZA_DFLASH_LIBGGML_CUDA='${ELIZA_DFLASH_LIBGGML_CUDA:-}' \
         ELIZA_DFLASH_SMOKE_MODEL='${ELIZA_DFLASH_SMOKE_MODEL:-}' \
         ELIZA_DFLASH_SMOKE_CACHE_TYPES='${ELIZA_DFLASH_SMOKE_CACHE_TYPES:-}' \
-        ELIZA_DFLASH_HARDWARE_REPORT='${REPORT_PATH:-}' \
-        ./cuda_runner.sh"
-    exit $?
+        ELIZA_DFLASH_SMOKE_TOKENS='${ELIZA_DFLASH_SMOKE_TOKENS:-}' \
+        ELIZA_DFLASH_SMOKE_NGL='${ELIZA_DFLASH_SMOKE_NGL:-}' \
+        ELIZA_DFLASH_SMOKE_PROMPT='${ELIZA_DFLASH_SMOKE_PROMPT:-}' \
+        ELIZA_DFLASH_SMOKE_EXTRA_ARGS='${ELIZA_DFLASH_SMOKE_EXTRA_ARGS:-}' \
+        ./cuda_runner.sh $REMOTE_REPORT_ARG"; then
+        fail "remote CUDA verification failed on $CUDA_REMOTE"
+    fi
+    if [[ -n "$REPORT_PATH" ]]; then
+        REMOTE_REPORT_SOURCE="$REMOTE_REPORT_PATH"
+        case "$REMOTE_REPORT_SOURCE" in
+            /*|~*) ;;
+            *) REMOTE_REPORT_SOURCE="$REMOTE_DIR/$REMOTE_REPORT_SOURCE" ;;
+        esac
+        mkdir -p "$(dirname "$REPORT_PATH")"
+        if ! scp "$CUDA_REMOTE:$REMOTE_REPORT_SOURCE" "$REPORT_PATH"; then
+            fail "remote CUDA verification passed but report fetch failed: $CUDA_REMOTE:$REMOTE_REPORT_SOURCE"
+        fi
+        REPORT_WRITTEN_EXTERNALLY="true"
+    fi
+    exit 0
 fi
 
 if [[ "$(uname -s)" != "Linux" ]]; then

@@ -3,10 +3,10 @@ import {
   type BackgroundRunnerLike,
   type CapacitorEnvironment,
   resolveCapacitorEnvironment,
-} from '../capacitor/bridge';
-import { CapacitorBgScheduler } from '../capacitor/capacitor-scheduler';
-import { BACKGROUND_RUNNER_SERVICE_TYPE, type IBgTaskScheduler } from '../types';
-import { IntervalBgScheduler } from './IntervalBgScheduler';
+} from '../capacitor/bridge.js';
+import { CapacitorBgScheduler } from '../capacitor/capacitor-scheduler.js';
+import { BACKGROUND_RUNNER_SERVICE_TYPE, type IBgTaskScheduler } from '../types.js';
+import { IntervalBgScheduler } from './IntervalBgScheduler.js';
 
 /**
  * Subset of core's TaskService that this plugin needs. Pinned structurally

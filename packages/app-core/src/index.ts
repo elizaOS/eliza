@@ -17,6 +17,7 @@ export * from "./diagnostics/integration-observability";
 export * from "./permissions/types";
 export * from "./platform/empty-node-module";
 export * from "./registry";
+export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";

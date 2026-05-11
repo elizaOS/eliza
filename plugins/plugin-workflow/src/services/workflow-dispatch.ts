@@ -76,7 +76,7 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
   return {
     async execute(
       workflowId: string,
-      _payload: Record<string, unknown> = {}
+      payload: Record<string, unknown> = {}
     ): Promise<WorkflowDispatchResult> {
       const id = workflowId.trim();
       if (!id) {
@@ -87,7 +87,13 @@ export function createWorkflowDispatchService(runtime: IAgentRuntime): WorkflowD
         return { ok: false, error: 'embedded workflow service not registered' };
       }
       try {
-        const execution = await service.executeWorkflow(id, { mode: 'trigger' });
+        // Forward the trigger payload (e.g. eventKind, eventPayload from the
+        // event bridge) as `triggerData`. The embedded engine seeds the trigger
+        // node's first item with this so workflows can read upstream event data.
+        const execution = await service.executeWorkflow(id, {
+          mode: 'trigger',
+          triggerData: payload,
+        });
         return execution.id ? { ok: true, executionId: execution.id } : { ok: true };
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);

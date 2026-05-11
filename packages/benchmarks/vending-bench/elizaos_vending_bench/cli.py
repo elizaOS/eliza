@@ -113,13 +113,13 @@ Examples:
     run_parser.add_argument(
         "--model",
         type=str,
-        default="openai/gpt-oss-120b",
-        help="Model to use (default: openai/gpt-oss-120b)",
+        default="gpt-oss-120b",
+        help="Model to use (default: gpt-oss-120b)",
     )
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["openai", "anthropic", "groq", "heuristic", "eliza", "vllm"],
+        choices=["openai", "anthropic", "groq", "heuristic", "eliza", "vllm", "cerebras"],
         default="heuristic",
         help=(
             "LLM provider (default: heuristic). 'eliza' routes through the "
@@ -193,7 +193,12 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     server_mgr = None
     if args.provider == "eliza":
         _ensure_eliza_adapter_importable()
-    if args.provider == "eliza" and not __import__("os").environ.get("ELIZA_BENCH_URL"):
+    harness = (
+        __import__("os").environ.get("ELIZA_BENCH_HARNESS")
+        or __import__("os").environ.get("BENCHMARK_HARNESS")
+        or "eliza"
+    ).strip().lower()
+    if args.provider == "eliza" and harness == "eliza" and not __import__("os").environ.get("ELIZA_BENCH_URL"):
         from eliza_adapter.server_manager import ElizaServerManager
         import os as _os
 
@@ -288,6 +293,21 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             base_url=base_url,
         )
         logger.info(f"Using vLLM provider at {base_url} with model {args.model}")
+
+    elif args.provider == "cerebras":
+        import os
+
+        from elizaos_vending_bench.providers.openai import OpenAIProvider
+
+        api_key = args.api_key or os.getenv("CEREBRAS_API_KEY")
+        if not api_key:
+            raise ValueError("CEREBRAS_API_KEY not set")
+        llm_provider = OpenAIProvider(
+            api_key=api_key,
+            model=args.model,
+            base_url=os.getenv("CEREBRAS_BASE_URL") or "https://api.cerebras.ai/v1",
+        )
+        logger.info(f"Using Cerebras provider with model {args.model}")
 
     # Run benchmark
     runner = VendingBenchRunner(config, llm_provider)

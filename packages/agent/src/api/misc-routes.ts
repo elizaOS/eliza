@@ -26,6 +26,7 @@ import {
   buildTestHandler,
   registerCustomActionLive,
 } from "../runtime/custom-actions.ts";
+import { runShell } from "../services/shell-execution-router.ts";
 import { resolveTerminalRunLimits } from "./terminal-run-limits.ts";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,25 @@ type TerminalRunRequestBody = {
   clientId?: unknown;
   terminalToken?: string;
 };
+
+function resolveTerminalShellCommand(): {
+  command: string;
+  argsFor: (command: string) => string[];
+} {
+  if (process.platform === "win32") {
+    return {
+      command: process.env.ComSpec || "cmd.exe",
+      argsFor: (command) => ["/d", "/s", "/c", command],
+    };
+  }
+  return {
+    command:
+      process.env.CODING_TOOLS_SHELL ||
+      process.env.SHELL ||
+      (process.env.ELIZA_PLATFORM === "android" ? "/system/bin/sh" : "/bin/sh"),
+    argsFor: (command) => ["-c", command],
+  };
+}
 
 type CompanionEmote = {
   id: string;
@@ -387,7 +407,6 @@ export async function handleMiscRoutes(
       json(res, { ok: true });
     }
 
-    const { spawn } = await import("node:child_process");
     const runId = `run-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
     emitTerminalEvent({
@@ -396,12 +415,6 @@ export async function handleMiscRoutes(
       event: "start",
       command,
       maxDurationMs,
-    });
-
-    const proc = spawn(command, {
-      shell: true,
-      cwd: process.cwd(),
-      env: { ...process.env, FORCE_COLOR: "0" },
     });
 
     ctx.setActiveTerminalRunCount(1);
@@ -439,78 +452,76 @@ export async function handleMiscRoutes(
     };
 
     const timeoutHandle = setTimeout(() => {
-      if (proc.killed) return;
       timedOut = true;
-      proc.kill("SIGTERM");
       emitTerminalEvent({
         type: "terminal-output",
         runId,
         event: "timeout",
         maxDurationMs,
       });
-
-      setTimeout(() => {
-        if (!proc.killed) proc.kill("SIGKILL");
-      }, 3000);
     }, maxDurationMs);
 
-    proc.stdout?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8");
-      stdout = appendOutput(stdout, text);
+    const appendAndEmit = (stream: "stdout" | "stderr", text: string) => {
+      if (stream === "stdout") stdout = appendOutput(stdout, text);
+      else stderr = appendOutput(stderr, text);
       emitTerminalEvent({
         type: "terminal-output",
         runId,
-        event: "stdout",
+        event: stream,
         data: text,
       });
-    });
+    };
 
-    proc.stderr?.on("data", (chunk: Buffer) => {
-      const text = chunk.toString("utf-8");
-      stderr = appendOutput(stderr, text);
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "stderr",
-        data: text,
-      });
-    });
-
-    proc.on("close", (code: number | null) => {
-      finalize();
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "exit",
-        code: code ?? 1,
-      });
-      if (captureOutput) {
-        json(res, {
-          ok: true,
+    const shell = resolveTerminalShellCommand();
+    runShell(
+      {
+        command: shell.command,
+        args: shell.argsFor(command),
+        cwd: process.env.SHELL_ALLOWED_DIRECTORY || process.cwd(),
+        env: { FORCE_COLOR: "0" },
+        timeoutMs: maxDurationMs,
+        onStdout: (text) => appendAndEmit("stdout", text),
+        onStderr: (text) => appendAndEmit("stderr", text),
+        toolName: "terminal.run",
+      },
+      null,
+    )
+      .then((result) => {
+        finalize();
+        emitTerminalEvent({
+          type: "terminal-output",
           runId,
-          command,
-          exitCode: code ?? 1,
-          stdout,
-          stderr,
-          timedOut,
-          truncated,
-          maxDurationMs,
+          event: "exit",
+          code: result.exitCode,
         });
-      }
-    });
-
-    proc.on("error", (err: Error) => {
-      finalize();
-      emitTerminalEvent({
-        type: "terminal-output",
-        runId,
-        event: "error",
-        data: err.message,
+        if (captureOutput) {
+          json(res, {
+            ok: true,
+            runId,
+            command,
+            exitCode: result.exitCode,
+            stdout,
+            stderr,
+            timedOut: timedOut || result.exitCode === 124,
+            truncated,
+            maxDurationMs,
+            sandbox: result.sandbox,
+            durationMs: result.durationMs,
+          });
+        }
+      })
+      .catch((err: Error) => {
+        finalize();
+        emitTerminalEvent({
+          type: "terminal-output",
+          runId,
+          event: "error",
+          data: err.message,
+        });
+        if (captureOutput) {
+          error(res, err.message, 500);
+        }
       });
-      if (captureOutput) {
-        error(res, err.message, 500);
-      }
-    });
 
     return true;
   }

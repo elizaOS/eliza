@@ -7,15 +7,9 @@ describe("parseModelsResponse", () => {
     expect(
       parseModelsResponse({
         object: "list",
-        data: [
-          { id: "qwen-2.5-7b", object: "model" },
-          { id: "llama-3.1-8b" },
-        ],
+        data: [{ id: "qwen-2.5-7b", object: "model" }, { id: "llama-3.1-8b" }],
       })
-    ).toEqual([
-      { id: "qwen-2.5-7b", object: "model" },
-      { id: "llama-3.1-8b" },
-    ]);
+    ).toEqual([{ id: "qwen-2.5-7b", object: "model" }, { id: "llama-3.1-8b" }]);
   });
 
   it("falls back to bare array responses", () => {
@@ -40,11 +34,12 @@ describe("parseModelsResponse", () => {
 
 describe("detectLMStudio", () => {
   it("normalizes baseURL by appending /v1 when missing", async () => {
-    const fetcher = vi.fn(async () =>
-      new Response(JSON.stringify({ object: "list", data: [{ id: "m1" }] }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ object: "list", data: [{ id: "m1" }] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
     );
 
     const result = await detectLMStudio({
@@ -60,14 +55,15 @@ describe("detectLMStudio", () => {
   });
 
   it("returns available with parsed models on 200", async () => {
-    const fetcher = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          object: "list",
-          data: [{ id: "lmstudio-community/qwen2.5-7b" }],
-        }),
-        { status: 200, headers: { "Content-Type": "application/json" } }
-      )
+    const fetcher = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            object: "list",
+            data: [{ id: "lmstudio-community/qwen2.5-7b" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
     );
 
     const result = await detectLMStudio({
@@ -80,8 +76,8 @@ describe("detectLMStudio", () => {
   });
 
   it("surfaces non-2xx responses with HTTP status", async () => {
-    const fetcher = vi.fn(async () =>
-      new Response("internal err", { status: 500, statusText: "Internal Server Error" })
+    const fetcher = vi.fn(
+      async () => new Response("internal err", { status: 500, statusText: "Internal Server Error" })
     );
 
     const result = await detectLMStudio({
@@ -104,11 +100,12 @@ describe("detectLMStudio", () => {
   });
 
   it("rejects body shapes that don't look like a models list", async () => {
-    const fetcher = vi.fn(async () =>
-      new Response(JSON.stringify({ surprise: true }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      })
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ surprise: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
     );
 
     const result = await detectLMStudio({

@@ -143,6 +143,9 @@ export interface CapturedModelUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cachedInputTokens?: number;
   model?: string;
   provider?: string;
   isEstimated: boolean;
@@ -153,6 +156,9 @@ interface ModelUsageRecord {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
+  cachedInputTokens?: number;
   model?: string;
   provider?: string;
   isEstimated: boolean;
@@ -745,10 +751,28 @@ function normalizeModelUsageRecord(payload: unknown): ModelUsageRecord | null {
   const promptTokens = toOptionalNumber(tokens.prompt);
   const completionTokens = toOptionalNumber(tokens.completion);
   const totalTokens = toOptionalNumber(tokens.total);
+  const cacheReadInputTokens =
+    toOptionalNumber(tokens.cacheReadInputTokens) ??
+    toOptionalNumber(tokens.cache_read_input_tokens) ??
+    toOptionalNumber(tokens.cacheReadTokens) ??
+    toOptionalNumber(tokens.cachedInputTokens) ??
+    toOptionalNumber(tokens.cached_input_tokens);
+  const cacheCreationInputTokens =
+    toOptionalNumber(tokens.cacheCreationInputTokens) ??
+    toOptionalNumber(tokens.cache_creation_input_tokens) ??
+    toOptionalNumber(tokens.cacheWriteInputTokens) ??
+    toOptionalNumber(tokens.cacheWriteTokens);
+  const cachedInputTokens =
+    toOptionalNumber(tokens.cachedInputTokens) ??
+    toOptionalNumber(tokens.cached_input_tokens) ??
+    cacheReadInputTokens;
   if (
     promptTokens === undefined &&
     completionTokens === undefined &&
-    totalTokens === undefined
+    totalTokens === undefined &&
+    cacheReadInputTokens === undefined &&
+    cacheCreationInputTokens === undefined &&
+    cachedInputTokens === undefined
   ) {
     return null;
   }
@@ -773,6 +797,11 @@ function normalizeModelUsageRecord(payload: unknown): ModelUsageRecord | null {
     promptTokens: normalizedPromptTokens,
     completionTokens: normalizedCompletionTokens,
     totalTokens: normalizedTotalTokens,
+    ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
+    ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
     ...(toUsageModelLabel(record) ? { model: toUsageModelLabel(record) } : {}),
     ...(provider ? { provider } : {}),
     isEstimated:
@@ -790,6 +819,12 @@ function aggregateModelUsage(
   let promptTokens = 0;
   let completionTokens = 0;
   let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheCreationInputTokens = 0;
+  let cachedInputTokens = 0;
+  let hasCacheReadInputTokens = false;
+  let hasCacheCreationInputTokens = false;
+  let hasCachedInputTokens = false;
   let model: string | undefined;
   let provider: string | undefined;
   let isEstimated = false;
@@ -798,6 +833,18 @@ function aggregateModelUsage(
     promptTokens += record.promptTokens;
     completionTokens += record.completionTokens;
     totalTokens += record.totalTokens;
+    if (record.cacheReadInputTokens !== undefined) {
+      cacheReadInputTokens += record.cacheReadInputTokens;
+      hasCacheReadInputTokens = true;
+    }
+    if (record.cacheCreationInputTokens !== undefined) {
+      cacheCreationInputTokens += record.cacheCreationInputTokens;
+      hasCacheCreationInputTokens = true;
+    }
+    if (record.cachedInputTokens !== undefined) {
+      cachedInputTokens += record.cachedInputTokens;
+      hasCachedInputTokens = true;
+    }
     model = record.model ?? model;
     provider = record.provider ?? provider;
     isEstimated ||= record.isEstimated;
@@ -807,6 +854,9 @@ function aggregateModelUsage(
     promptTokens,
     completionTokens,
     totalTokens: totalTokens || promptTokens + completionTokens,
+    ...(hasCacheReadInputTokens ? { cacheReadInputTokens } : {}),
+    ...(hasCacheCreationInputTokens ? { cacheCreationInputTokens } : {}),
+    ...(hasCachedInputTokens ? { cachedInputTokens } : {}),
     ...(model ? { model } : {}),
     ...(provider ? { provider } : {}),
     isEstimated,
@@ -1355,6 +1405,7 @@ export function installPromptOptimizations(
         // under budget, the existing tail-truncation pipeline still kicks in.
         try {
           const beforeConversationCompaction = nextPrompt;
+          let conversationCompactionSkipReason: string | undefined;
           nextPrompt = await maybeApplyConversationCompaction(
             runtime,
             nextPrompt,
@@ -1363,11 +1414,16 @@ export function installPromptOptimizations(
             (result) => {
               const { prompt: _prompt, ...rest } = result;
               promptOptimizationTelemetry.conversationCompaction = rest;
+              conversationCompactionSkipReason = result.skipReason;
             },
           );
           if (nextPrompt !== beforeConversationCompaction) {
             promptOptimizationTelemetry.transformations.push(
               `conversation-compaction:${beforeConversationCompaction.length}->${nextPrompt.length}`,
+            );
+          } else if (conversationCompactionSkipReason) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-compaction-skipped:${conversationCompactionSkipReason}`,
             );
           }
         } catch (error) {
@@ -1396,6 +1452,7 @@ export function installPromptOptimizations(
       } else if (nextMessages && !payloadHasProviderTools) {
         try {
           const beforeRendered = renderMessagesForTelemetry(nextMessages);
+          let conversationCompactionSkipReason: string | undefined;
           nextMessages = await maybeApplyConversationMessageCompaction(
             runtime,
             nextMessages,
@@ -1404,12 +1461,17 @@ export function installPromptOptimizations(
             (result) => {
               const { messages: _messages, ...rest } = result;
               promptOptimizationTelemetry.conversationCompaction = rest;
+              conversationCompactionSkipReason = result.skipReason;
             },
           );
           const afterRendered = renderMessagesForTelemetry(nextMessages);
           if (afterRendered !== beforeRendered) {
             promptOptimizationTelemetry.transformations.push(
               `conversation-message-compaction:${beforeRendered.length}->${afterRendered.length}`,
+            );
+          } else if (conversationCompactionSkipReason) {
+            promptOptimizationTelemetry.transformations.push(
+              `conversation-message-compaction-skipped:${conversationCompactionSkipReason}`,
             );
           }
         } catch (error) {
@@ -1526,6 +1588,12 @@ export function installPromptOptimizations(
       latencyMs: Math.max(0, Date.now() - startedAt),
       promptTokens,
       completionTokens,
+      ...(capturedUsage?.cacheReadInputTokens !== undefined
+        ? { cacheReadInputTokens: capturedUsage.cacheReadInputTokens }
+        : {}),
+      ...(capturedUsage?.cacheCreationInputTokens !== undefined
+        ? { cacheCreationInputTokens: capturedUsage.cacheCreationInputTokens }
+        : {}),
       tokenUsageEstimated: !capturedUsage,
       providerMetadata: {
         ...(payloadRecord.providerMetadata &&

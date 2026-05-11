@@ -38,6 +38,7 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
 } from "../src/lifeops/scheduled-task/runner.ts";
 import {
@@ -158,6 +159,7 @@ function makeHarness(initialIso?: string): Harness {
     globalPause: pauseView,
     activity,
     subjectStore,
+    dispatcher: TestNoopScheduledTaskDispatcher,
     newTaskId: () => {
       counter += 1;
       return `cje_${counter}`;

@@ -71,7 +71,7 @@ import {
   resolveConversationGreetingText,
   resolveWalletModeGuidanceReply,
 } from "./server-helpers.ts";
-import type { ConversationMeta, ConversationMetadata } from "./server-types.ts";
+import type { ConversationMeta } from "./server-types.ts";
 
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence

@@ -3,7 +3,6 @@ import {
   type Content,
   classifySensitiveRequestSource,
   type DeliveryResult,
-  type DispatchSensitiveRequest,
   logger,
   type SensitiveRequest,
   type SensitiveRequestDeliveryAdapter,
@@ -112,11 +111,8 @@ function buildInlineEnvelope(
       instruction: (request.delivery as { instruction?: string } | undefined)
         ?.instruction,
       privateRouteRequired:
-        (
-          request.delivery as
-            | { privateRouteRequired?: boolean }
-            | undefined
-        )?.privateRouteRequired ?? false,
+        (request.delivery as { privateRouteRequired?: boolean } | undefined)
+          ?.privateRouteRequired ?? false,
       canCollectValueInCurrentChannel: true,
     },
     form: {

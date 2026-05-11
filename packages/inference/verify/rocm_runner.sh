@@ -5,6 +5,17 @@
 # model. There is not yet a standalone HIP fixture harness equivalent to
 # cuda_verify; this script verifies the built fork routes the configured KV
 # cache types through a HIP-backed llama-cli invocation.
+#
+# Environment overrides:
+#   ROCM_TARGET                 default linux-x64-rocm
+#   ROCM_BUILD_FORK             default 1; build the target before verifying
+#   ROCM_SKIP_GRAPH_SMOKE       default 0; set 1 only for preflight bring-up
+#   ELIZA_DFLASH_CMAKE_FLAGS    default gfx90a/gfx942/RDNA3 HIP arch list
+#   ELIZA_DFLASH_HARDWARE_REPORT_DIR
+#                               graph-smoke log directory, default verify/hardware-results
+#   ELIZA_DFLASH_SMOKE_MODEL    required unless ROCM_SKIP_GRAPH_SMOKE=1
+#   ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
+#                               forwarded to runtime_graph_smoke.sh
 
 set -euo pipefail
 
@@ -84,7 +95,7 @@ write_report() {
     MODEL_SHA256="$(model_sha256)" \
     GRAPH_SMOKE_STATUS="$GRAPH_SMOKE_STATUS" \
     REPORT_PATH="$REPORT_PATH" \
-    node <<'NODE' || true
+    node <<'NODE'
 const fs = require('node:fs');
 const env = process.env;
 const report = {

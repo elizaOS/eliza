@@ -24,11 +24,9 @@ const ROOT_PRIVACY =
 const MAC_DEEP_LINKS: Record<PermissionId, string> = {
   accessibility: `${ROOT_PRIVACY}_Accessibility`,
   "screen-recording": `${ROOT_PRIVACY}_ScreenCapture`,
-  // These app-scoped permissions are currently AppleScript-backed, so the
-  // actual macOS toggle lives under Automation for this app → target app.
-  reminders: `${ROOT_PRIVACY}_Automation`,
-  calendar: `${ROOT_PRIVACY}_Automation`,
-  contacts: `${ROOT_PRIVACY}_Automation`,
+  reminders: `${ROOT_PRIVACY}_Reminders`,
+  calendar: `${ROOT_PRIVACY}_Calendars`,
+  contacts: `${ROOT_PRIVACY}_Contacts`,
   notes: `${ROOT_PRIVACY}_Automation`,
   health: `${ROOT_PRIVACY}_Health`,
   microphone: `${ROOT_PRIVACY}_Microphone`,

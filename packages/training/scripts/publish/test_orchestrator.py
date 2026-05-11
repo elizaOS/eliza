@@ -135,6 +135,9 @@ def _build_fixture_bundle(
         "LICENSE.voice",
         "LICENSE.dflash",
         "LICENSE.eliza-1",
+        "LICENSE.asr",
+        "LICENSE.vision",
+        "LICENSE.vad",
     )
     for name in license_names:
         if name == skip_license:
@@ -169,8 +172,19 @@ def _build_fixture_bundle(
             }
         ),
     )
+    _write(
+        bundle / "evals" / "rocm_verify.json",
+        json.dumps(
+            {
+                "backend": "rocm",
+                "status": "pass",
+                "atCommit": "deadbee",
+                "report": "rocm_verify.txt",
+            }
+        ),
+    )
     graph_kernel_set = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"]
-    for backend in ("metal", "vulkan", "cuda", "cpu"):
+    for backend in ("metal", "vulkan", "cuda", "rocm", "cpu"):
         _write(
             bundle / "evals" / f"{backend}_dispatch.json",
             json.dumps(
@@ -211,9 +225,13 @@ def _build_fixture_bundle(
         "android-adreno-vulkan",
         "android-mali-vulkan",
         "linux-x64-cuda",
+        "linux-x64-rocm",
         "windows-x64-cuda",
+        "windows-x64-vulkan",
         "linux-x64-cpu",
         "windows-x64-cpu",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan",
     ):
         backend = target.rsplit("-", 1)[-1]
         _write(
@@ -293,11 +311,15 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
                     "licenses/LICENSE.voice",
                     "licenses/LICENSE.dflash",
                     "licenses/LICENSE.eliza-1",
+                    "licenses/LICENSE.asr",
+                    "licenses/LICENSE.vision",
+                    "licenses/LICENSE.vad",
                 ],
                 "kernelDispatchReports": {
                     "metal": "evals/metal_dispatch.json",
                     "vulkan": "evals/vulkan_dispatch.json",
                     "cuda": "evals/cuda_dispatch.json",
+                    "rocm": "evals/rocm_dispatch.json",
                     "cpu": "evals/cpu_dispatch.json",
                 },
                 "platformEvidence": {
@@ -307,9 +329,13 @@ def _write_release_evidence(bundle: Path, tier: str = "9b") -> None:
                     "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
                     "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
                     "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+                    "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
                     "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+                    "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
                     "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
                     "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json",
+                    "windows-arm64-cpu": "evidence/platform/windows-arm64-cpu.json",
+                    "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
                 },
                 "hf": {
                     "repoId": f"elizalabs/eliza-1-{tier}",
@@ -419,6 +445,13 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
 
 def test_missing_license_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.dflash")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_missing_component_license_fails_when_component_ships(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.vad")
     metal = _metal_report(tmp_path)
     rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
@@ -749,6 +782,9 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
         ),
         "cuda": KernelVerification(
             status="pass", at_commit="x", report="cuda_verify.txt"
+        ),
+        "rocm": KernelVerification(
+            status="pass", at_commit="x", report="rocm_verify.txt"
         ),
         "cpu": KernelVerification(
             status="pass", at_commit="x", report="reference-test"

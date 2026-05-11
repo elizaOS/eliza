@@ -77,6 +77,25 @@ describe("VirtualFilesystemService", () => {
     });
   });
 
+  it("rejects colliding or unsafe project ids instead of rewriting them", () => {
+    expect(() => service({ projectId: "team/a" })).toThrow(
+      /Invalid VFS project id/,
+    );
+    expect(() => service({ projectId: "team:a" })).toThrow(
+      /Invalid VFS project id/,
+    );
+    expect(service({ projectId: "team-a" }).projectId).toBe("team-a");
+  });
+
+  it("maps missing deletes to VFS not found errors", async () => {
+    const vfs = service();
+    await vfs.initialize();
+
+    await expect(vfs.delete("missing.txt")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
+  });
+
   it("enforces per-file and project quotas", async () => {
     const vfs = service({ quotaBytes: 8, maxFileBytes: 5 });
     await vfs.initialize();

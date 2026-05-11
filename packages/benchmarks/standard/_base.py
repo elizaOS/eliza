@@ -180,6 +180,87 @@ class MockClient:
         )
 
 
+class HarnessClient:
+    """Adapter from the tri-agent benchmark harnesses to standard chat calls."""
+
+    def __init__(self, *, harness: str, endpoint: str, api_key: str) -> None:
+        del endpoint, api_key
+        self._harness = harness
+        self._server_manager: object | None = None
+        if harness == "hermes":
+            from hermes_adapter.client import HermesClient  # noqa: WPS433
+
+            self._client = HermesClient(
+                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+            )
+        elif harness == "openclaw":
+            from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
+
+            self._client = OpenClawClient(
+                provider=os.environ.get("BENCHMARK_MODEL_PROVIDER", "cerebras"),
+                model=os.environ.get("BENCHMARK_MODEL_NAME", "gpt-oss-120b"),
+            )
+        else:
+            from eliza_adapter.client import ElizaClient  # noqa: WPS433
+
+            if not os.environ.get("ELIZA_BENCH_URL"):
+                from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+
+                self._server_manager = ElizaServerManager()
+                self._server_manager.start()  # type: ignore[attr-defined]
+            self._client = ElizaClient()
+        self._client.wait_until_ready(timeout=120)
+
+    def __del__(self) -> None:
+        manager = getattr(self, "_server_manager", None)
+        if manager is not None and hasattr(manager, "stop"):
+            try:
+                manager.stop()
+            except Exception:
+                pass
+
+    def generate(
+        self,
+        messages: Sequence[ChatMessage],
+        config: GenerationConfig,
+    ) -> GenerationResult:
+        serialized = [{"role": m.role, "content": m.content} for m in messages]
+        user_text = next((m.content for m in reversed(messages) if m.role == "user"), "")
+        system_prompt = next((m.content for m in messages if m.role == "system"), "")
+        response = self._client.send_message(
+            user_text,
+            context={
+                "messages": serialized,
+                "system_prompt": system_prompt,
+                "benchmark": "standard",
+                "max_tokens": config.max_tokens,
+            },
+        )
+        usage = response.params.get("usage")
+        usage_obj = usage if isinstance(usage, dict) else {}
+        prompt_tokens = int(
+            usage_obj.get("prompt_tokens")
+            or usage_obj.get("promptTokens")
+            or 0
+        )
+        completion_tokens = int(
+            usage_obj.get("completion_tokens")
+            or usage_obj.get("completionTokens")
+            or 0
+        )
+        return GenerationResult(
+            text=response.text,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            raw={
+                "harness": self._harness,
+                "actions": response.actions,
+                "params": response.params,
+            },
+        )
+
+
 def resolve_endpoint(
     *,
     model_endpoint: str | None,
@@ -218,6 +299,13 @@ def make_client(
 ) -> OpenAICompatibleClient:
     if mock_responses is not None:
         return MockClient(mock_responses)
+    harness = (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or ""
+    ).strip().lower()
+    if harness in {"eliza", "hermes", "openclaw"}:
+        return HarnessClient(harness=harness, endpoint=endpoint, api_key=api_key)
     return HTTPOpenAICompatibleClient(endpoint=endpoint, api_key=api_key)
 
 

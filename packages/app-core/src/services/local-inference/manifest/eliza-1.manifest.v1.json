@@ -102,11 +102,12 @@
         "verifiedBackends": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["metal", "vulkan", "cuda", "cpu"],
+          "required": ["metal", "vulkan", "cuda", "rocm", "cpu"],
           "properties": {
             "metal": { "$ref": "#/$defs/backendStatus" },
             "vulkan": { "$ref": "#/$defs/backendStatus" },
             "cuda": { "$ref": "#/$defs/backendStatus" },
+            "rocm": { "$ref": "#/$defs/backendStatus" },
             "cpu": { "$ref": "#/$defs/backendStatus" }
           }
         }

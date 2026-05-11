@@ -55,7 +55,7 @@ elizaos info --language typescript
 
 | Template | Description | Languages |
 | --- | --- | --- |
-| `project` | elizaOS project backed by a local `eliza` checkout | TypeScript |
+| `project` | Package-first elizaOS app with optional local source eject | TypeScript |
 | `plugin` | Plugin starter workspace | TypeScript |
 
 `project` remains accepted as an alias for `project`.

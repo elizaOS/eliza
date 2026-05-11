@@ -106,6 +106,8 @@ describe("local inference downloader status", () => {
 
     const text = "GGUF text model";
     const voice = "GGUF voice model";
+    const asr = "GGUF ASR model";
+    const vad = "VAD model";
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
     const manifest = JSON.stringify({
@@ -116,6 +118,8 @@ describe("local inference downloader status", () => {
       lineage: {
         text: { base: "eliza-1-text", license: "test" },
         voice: { base: "eliza-1-voice", license: "test" },
+        asr: { base: "eliza-1-asr", license: "test" },
+        vad: { base: "eliza-1-vad", license: "test" },
         drafter: { base: "eliza-1-drafter", license: "test" },
       },
       defaultEligible: true,
@@ -128,7 +132,7 @@ describe("local inference downloader status", () => {
           },
         ],
         voice: [{ path: "tts/voice.gguf", sha256: sha256(voice) }],
-        asr: [],
+        asr: [{ path: "asr/asr.gguf", sha256: sha256(asr) }],
         vision: [],
         dflash: [
           {
@@ -142,6 +146,7 @@ describe("local inference downloader status", () => {
             sha256: sha256(cache),
           },
         ],
+        vad: [{ path: "vad/eliza-1-vad.onnx", sha256: sha256(vad) }],
       },
       kernels: {
         required: ["turboquant_q3", "qjl", "polarquant", "dflash"],
@@ -158,9 +163,14 @@ describe("local inference downloader status", () => {
             report: "test-vulkan",
           },
           cuda: {
-            status: "skipped",
+            status: "pass",
             atCommit: "test",
             report: "test-cuda",
+          },
+          rocm: {
+            status: "pass",
+            atCommit: "test",
+            report: "test-rocm",
           },
           cpu: {
             status: "pass",
@@ -172,6 +182,8 @@ describe("local inference downloader status", () => {
       evals: {
         textEval: { score: 1, passed: true },
         voiceRtf: { rtf: 0.5, passed: true },
+        asrWer: { wer: 0.05, passed: true },
+        vadLatencyMs: { median: 16, passed: true },
         e2eLoopOk: true,
         thirtyTurnOk: true,
       },
@@ -182,6 +194,8 @@ describe("local inference downloader status", () => {
         ["eliza-1.manifest.json", manifest],
         ["text/eliza-1-0_6b-32k.gguf", text],
         ["tts/voice.gguf", voice],
+        ["asr/asr.gguf", asr],
+        ["vad/eliza-1-vad.onnx", vad],
         ["dflash/drafter-0_6b.gguf", drafter],
         ["cache/voice-preset-default.bin", cache],
       ]),
@@ -215,6 +229,10 @@ describe("local inference downloader status", () => {
     expect(main.bundleVersion).toBe("1.0.0");
     expect(main.bundleSizeBytes).toBeGreaterThan(main.sizeBytes);
     expect(fs.existsSync(path.join(bundleRoot, "tts/voice.gguf"))).toBe(true);
+    expect(fs.existsSync(path.join(bundleRoot, "asr/asr.gguf"))).toBe(true);
+    expect(fs.existsSync(path.join(bundleRoot, "vad/eliza-1-vad.onnx"))).toBe(
+      true,
+    );
     expect(companion.runtimeRole).toBe("dflash-drafter");
     expect(companion.companionFor).toBe(model.id);
     expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);

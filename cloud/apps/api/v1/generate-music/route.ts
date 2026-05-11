@@ -9,6 +9,7 @@ import {
   getSupportedMusicModelDefinition,
   SUPPORTED_MUSIC_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
+import { contentSafetyService } from "@/lib/services/content-safety";
 import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
@@ -342,6 +343,18 @@ app.post("/", async (c) => {
         "validation_error",
       );
     }
+
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "media_generation_prompt",
+      organizationId: user.organization_id,
+      userId: user.id,
+      text: [
+        `Music prompt: ${request.prompt}`,
+        request.lyrics ? `Lyrics: ${request.lyrics}` : undefined,
+        request.referenceUrl ? `Reference URL: ${request.referenceUrl}` : undefined,
+      ],
+      metadata: { type: "music", model: request.model, provider },
+    });
 
     const durationSeconds = request.durationSeconds ?? definition.defaultParameters.durationSeconds;
     const cost = await calculateMusicGenerationCostFromCatalog({

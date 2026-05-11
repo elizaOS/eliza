@@ -322,15 +322,24 @@ export const terminalAction: Action = {
     }
 
     try {
+      const terminalToken = process.env.ELIZA_TERMINAL_RUN_TOKEN?.trim();
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+      if (terminalToken) {
+        headers["X-Eliza-Terminal-Token"] = terminalToken;
+      }
+
       const response = await fetch(
         `http://localhost:${API_PORT}/api/terminal/run`,
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers,
           body: JSON.stringify({
             command,
             clientId: "runtime-terminal-action",
             captureOutput: true,
+            ...(terminalToken ? { terminalToken } : {}),
           }),
         },
       );

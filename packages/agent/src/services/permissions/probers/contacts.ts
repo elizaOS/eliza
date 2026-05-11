@@ -1,26 +1,32 @@
 /**
  * Contacts prober.
  *
- * Contacts integrations currently use Contacts.app through AppleScript.
- * The effective permission is therefore Apple Events from this runtime to
- * Contacts.app. check() reads that TCC row; request() runs the benign
- * AppleScript probe that can surface the OS prompt.
- *
- * INTEGRATION TODO: switch this to CNContactStore authorization checks if
- * the Contacts implementation moves away from AppleScript.
+ * iMessage contact resolution and CRUD use CNContactStore, so the canonical
+ * permission is the native Contacts privacy grant, not Automation.
  */
 
 import type { PermissionState, Prober } from "../contracts.js";
 import {
   buildState,
+  getNativeDylib,
   IS_DARWIN,
+  mapNativePrivacyAuthStatus,
+  openPrivacyPane,
   platformUnsupportedState,
-  queryAppleEventsTccStatus,
-  runOsascript,
+  queryTccStatus,
+  resolveBundleId,
 } from "./_bridge.js";
 
 const ID = "contacts" as const;
-const CONTACTS_BUNDLE_ID = "com.apple.AddressBook";
+const TCC_SERVICE = "kTCCServiceAddressBook";
+
+function stateFromNative(value: number): PermissionState {
+  const status = mapNativePrivacyAuthStatus(value);
+  return buildState(ID, status, {
+    canRequest: status === "not-determined",
+    restrictedReason: status === "restricted" ? "os_policy" : undefined,
+  });
+}
 
 export const contactsProber: Prober = {
   id: ID,
@@ -28,7 +34,10 @@ export const contactsProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
 
-    const tcc = await queryAppleEventsTccStatus(CONTACTS_BUNDLE_ID);
+    const lib = await getNativeDylib();
+    if (lib) return stateFromNative(lib.checkContactsPermission());
+
+    const tcc = await queryTccStatus(TCC_SERVICE, resolveBundleId());
     if (tcc === "granted")
       return buildState(ID, "granted", { canRequest: false });
     if (tcc === "denied")
@@ -38,7 +47,14 @@ export const contactsProber: Prober = {
 
   async request({ reason: _reason }): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
-    await runOsascript('tell application "Contacts" to count of people');
+
+    const lib = await getNativeDylib();
+    if (lib) {
+      const state = stateFromNative(lib.requestContactsPermission());
+      return { ...state, lastRequested: Date.now() };
+    }
+
+    await openPrivacyPane("Contacts");
     const state = await contactsProber.check();
     return { ...state, lastRequested: Date.now() };
   },

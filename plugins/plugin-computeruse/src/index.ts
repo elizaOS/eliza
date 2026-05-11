@@ -2,8 +2,10 @@
  * @elizaos/plugin-computeruse
  *
  * Desktop automation plugin for elizaOS agents — screenshots, mouse/keyboard
- * control, browser CDP automation, terminal access, file operations, and
- * window management.
+ * control, browser CDP automation, and window management.
+ *
+ * File operations belong on the FILE action; shell/terminal access belongs on
+ * the SHELL action. They are not exposed by this plugin.
  *
  * Deeply ported from coasty-ai/open-computer-use (Apache 2.0).
  *
@@ -22,8 +24,8 @@
 
 import type { Plugin, Route } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
-import { desktopAction } from "./actions/desktop.js";
 import { useComputerAction } from "./actions/use-computer.js";
+import { windowAction } from "./actions/window.js";
 import { computerStateProvider } from "./providers/computer-state.js";
 import { computerUseRouteHandler } from "./routes/computer-use-compat-routes.js";
 import { ComputerUseService } from "./services/computer-use-service.js";
@@ -62,20 +64,20 @@ export const computerUsePlugin: Plugin = {
   name: "@elizaos/plugin-computeruse",
   description:
     "Desktop automation — take screenshots, control mouse and keyboard, " +
-    "automate web browsers via CDP, manage desktop windows, read/write files, and use a local terminal. " +
+    "automate web browsers via CDP, and manage desktop windows. " +
     "Ported from open-computer-use (Apache 2.0).",
 
   services: [ComputerUseService],
 
   // COMPUTER_USE (canonical desktop interaction: screenshot/click/key/etc.)
-  // and DESKTOP (parent action dispatching file/window/terminal ops) stay
+  // and WINDOW (window management: list/focus/switch/arrange/move/...) stay
   // registered as distinct top-level actions — they cover different surfaces.
   // Each umbrella's subactions are promoted to virtual top-level actions
-  // (e.g. COMPUTER_USE_CLICK, DESKTOP_OPEN) so the planner can pick a
+  // (e.g. COMPUTER_USE_CLICK, WINDOW_FOCUS) so the planner can pick a
   // specific verb directly from the action catalogue.
   actions: [
     ...promoteSubactionsToActions(useComputerAction),
-    ...promoteSubactionsToActions(desktopAction),
+    ...promoteSubactionsToActions(windowAction),
   ],
 
   providers: [computerStateProvider],

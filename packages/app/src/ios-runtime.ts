@@ -60,22 +60,38 @@ export function apiBaseToDeviceBridgeUrl(apiBase: string): string {
 export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   const mode = normalizeMode(
     readString(env, [
+      "VITE_MILADY_ANDROID_RUNTIME_MODE",
+      "VITE_MILADY_IOS_RUNTIME_MODE",
+      "VITE_MILADY_MOBILE_RUNTIME_MODE",
+      "VITE_ELIZA_ANDROID_RUNTIME_MODE",
       "VITE_ELIZA_IOS_RUNTIME_MODE",
       "VITE_ELIZA_MOBILE_RUNTIME_MODE",
     ]),
   );
   const apiBase = readString(env, [
+    "VITE_MILADY_ANDROID_API_BASE",
+    "VITE_MILADY_IOS_API_BASE",
+    "VITE_MILADY_MOBILE_API_BASE",
+    "VITE_ELIZA_ANDROID_API_BASE",
     "VITE_ELIZA_IOS_API_BASE",
     "VITE_ELIZA_MOBILE_API_BASE",
   ])?.replace(/\/+$/, "");
   const apiToken = readString(env, [
+    "VITE_MILADY_ANDROID_API_TOKEN",
+    "VITE_MILADY_IOS_API_TOKEN",
+    "VITE_MILADY_MOBILE_API_TOKEN",
+    "VITE_ELIZA_ANDROID_API_TOKEN",
     "VITE_ELIZA_IOS_API_TOKEN",
     "VITE_ELIZA_MOBILE_API_TOKEN",
   ]);
   const explicitDeviceBridgeUrl = readString(env, [
+    "VITE_MILADY_DEVICE_BRIDGE_URL",
     "VITE_ELIZA_DEVICE_BRIDGE_URL",
   ]);
-  const deviceBridgeToken = readString(env, ["VITE_ELIZA_DEVICE_BRIDGE_TOKEN"]);
+  const deviceBridgeToken = readString(env, [
+    "VITE_MILADY_DEVICE_BRIDGE_TOKEN",
+    "VITE_ELIZA_DEVICE_BRIDGE_TOKEN",
+  ]);
 
   return {
     mode,

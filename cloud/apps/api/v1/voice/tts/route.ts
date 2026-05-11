@@ -28,10 +28,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { z } from "zod";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
+import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { CUSTOM_VOICE_TTS_MARKUP } from "@/lib/pricing-constants";
 import { billFlatUsage } from "@/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@/lib/services/ai-pricing";
+import { contentSafetyService } from "@/lib/services/content-safety";
 import {
   type CreditReservation,
   creditsService,
@@ -90,6 +92,14 @@ async function __hono_POST(request: Request) {
         { status: 400 },
       );
     }
+
+    await contentSafetyService.assertSafeForPublicUse({
+      surface: "media_generation_prompt",
+      organizationId: user.organization_id,
+      userId: user.id,
+      text: `TTS text: ${text}`,
+      metadata: { type: "tts", model: modelId || "eleven_flash_v2_5", voiceId },
+    });
 
     logger.info(`[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`);
 
@@ -230,6 +240,10 @@ async function __hono_POST(request: Request) {
     if (reservation) {
       await reservation.reconcile(0);
       logger.info("[Voice TTS API] Refunded credits after error");
+    }
+
+    if (error instanceof ApiError) {
+      return Response.json(error.toJSON(), { status: error.status });
     }
 
     const errorMessage =

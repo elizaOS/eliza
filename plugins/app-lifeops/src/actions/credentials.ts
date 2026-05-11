@@ -19,8 +19,8 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { autofillActionImpl } from "./autofill.js";
-import { passwordManagerActionImpl } from "./password-manager.js";
+import { runAutofillHandler } from "./autofill.js";
+import { runPasswordManagerHandler } from "./password-manager.js";
 
 const ACTION_NAME = "CREDENTIALS";
 
@@ -235,8 +235,13 @@ export const credentialsAction: Action & {
     } as HandlerOptions;
 
     if (AUTOFILL_SUBACTIONS.has(subaction)) {
-      return autofillActionImpl.handler(runtime, message, state, forwardedOptions);
+      return runAutofillHandler(runtime, message, state, forwardedOptions);
     }
-    return passwordManagerActionImpl.handler(runtime, message, state, forwardedOptions);
+    return runPasswordManagerHandler(
+      runtime,
+      message,
+      state,
+      forwardedOptions,
+    );
   },
 };

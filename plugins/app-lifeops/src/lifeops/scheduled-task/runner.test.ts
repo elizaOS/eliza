@@ -39,6 +39,7 @@ import {
 import {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
+  TestNoopScheduledTaskDispatcher,
   type ScheduledTaskRunnerHandle,
 } from "./runner.js";
 import {
@@ -112,6 +113,7 @@ function makeHarness(initialIso = "2026-05-09T12:00:00.000Z"): Harness {
     subjectStore: {
       wasUpdatedSince: (...a) => subjectStore.wasUpdatedSince(...a),
     },
+    dispatcher: TestNoopScheduledTaskDispatcher,
     newTaskId: () => {
       counter += 1;
       return `task_${counter}`;
@@ -441,6 +443,7 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
       globalPause: { current: async () => ({ active: false }) },
       activity: { hasSignalSince: () => false },
       subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: TestNoopScheduledTaskDispatcher,
       newTaskId: () => "t1",
       now: () => new Date("2026-05-09T12:00:00.000Z"),
     });
@@ -486,6 +489,7 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
       globalPause: { current: async () => ({ active: false }) },
       activity: { hasSignalSince: () => false },
       subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: TestNoopScheduledTaskDispatcher,
       newTaskId: () => "t-any",
       now: () => new Date("2026-05-09T12:00:00.000Z"),
     });
@@ -531,6 +535,7 @@ describe("ScheduledTaskRunner — fire path + gates", () => {
       globalPause: { current: async () => ({ active: false }) },
       activity: { hasSignalSince: () => false },
       subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: TestNoopScheduledTaskDispatcher,
       newTaskId: () => "t-all",
       now: () => new Date("2026-05-09T12:00:00.000Z"),
     });

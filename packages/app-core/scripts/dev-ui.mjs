@@ -132,9 +132,6 @@ function resolveDevServerEntryRelativePath(devCwd) {
   const packagedAppCoreEntry = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
     "..",
-    "packages",
-    "app-core",
-    "src",
     "runtime",
     "dev-server.js",
   );

@@ -7,19 +7,19 @@
  * of the Python module's evolution.
  */
 
+import fs from "node:fs";
 import * as http from "node:http";
 import { Socket } from "node:net";
-import fs from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
-  ELIZA_BENCHMARK_COMPARE_SCHEMA,
-  ELIZA_BENCHMARK_SCORES_SCHEMA,
   type BenchmarkCompareResponse,
   type BenchmarkScoresResponse,
+  ELIZA_BENCHMARK_COMPARE_SCHEMA,
+  ELIZA_BENCHMARK_SCORES_SCHEMA,
   handleTrainingBenchmarksRoute,
   openBenchmarkResultsReader,
   resolveBenchmarkResultsDbPath,
@@ -353,7 +353,10 @@ describe("training-benchmarks read API", () => {
   });
 
   it.each([
-    ["dangerous model_id with semicolons", { model_id: "m;DROP", benchmark: "mmlu" }],
+    [
+      "dangerous model_id with semicolons",
+      { model_id: "m;DROP", benchmark: "mmlu" },
+    ],
     ["dangerous model_id with spaces", { model_id: "m x", benchmark: "mmlu" }],
     ["dangerous benchmark with quotes", { model_id: "m", benchmark: 'b"x' }],
     ["benchmark with slash", { model_id: "m", benchmark: "b/c" }],
@@ -373,7 +376,7 @@ describe("training-benchmarks read API", () => {
   it("compare: returns a/b/delta and dbReady=true when both sides have runs", async () => {
     seedDb(dbPath, [
       { modelId: "a", benchmark: "mmlu", score: 0.75, ts: 1_000 },
-      { modelId: "b", benchmark: "mmlu", score: 0.60, ts: 1_000 },
+      { modelId: "b", benchmark: "mmlu", score: 0.6, ts: 1_000 },
     ]);
     const res = fakeRes();
     await handleTrainingBenchmarksRoute(
@@ -390,15 +393,15 @@ describe("training-benchmarks read API", () => {
     expect(body.schema).toBe(ELIZA_BENCHMARK_COMPARE_SCHEMA);
     expect(body.dbReady).toBe(true);
     expect(body.a?.score).toBe(0.75);
-    expect(body.b?.score).toBe(0.60);
+    expect(body.b?.score).toBe(0.6);
     expect(body.delta).toBeCloseTo(0.15, 8);
   });
 
   it("compare: uses the most recent score for each side", async () => {
     seedDb(dbPath, [
-      { modelId: "a", benchmark: "mmlu", score: 0.50, ts: 1_000 },
-      { modelId: "a", benchmark: "mmlu", score: 0.80, ts: 2_000 },
-      { modelId: "b", benchmark: "mmlu", score: 0.40, ts: 1_500 },
+      { modelId: "a", benchmark: "mmlu", score: 0.5, ts: 1_000 },
+      { modelId: "a", benchmark: "mmlu", score: 0.8, ts: 2_000 },
+      { modelId: "b", benchmark: "mmlu", score: 0.4, ts: 1_500 },
     ]);
     const res = fakeRes();
     await handleTrainingBenchmarksRoute(
@@ -411,9 +414,9 @@ describe("training-benchmarks read API", () => {
       { dbPath },
     );
     const body = res.body<BenchmarkCompareResponse>();
-    expect(body.a?.score).toBe(0.80);
-    expect(body.b?.score).toBe(0.40);
-    expect(body.delta).toBeCloseTo(0.40, 8);
+    expect(body.a?.score).toBe(0.8);
+    expect(body.b?.score).toBe(0.4);
+    expect(body.delta).toBeCloseTo(0.4, 8);
   });
 
   it("compare: returns null delta when one side is missing", async () => {
@@ -499,13 +502,11 @@ describe("openBenchmarkResultsReader", () => {
   });
 
   it("returns a non-ready reader when the file does not exist", () => {
-    const reader = openBenchmarkResultsReader(
-      path.join(tmpDir, "missing.db"),
-    );
+    const reader = openBenchmarkResultsReader(path.join(tmpDir, "missing.db"));
     expect(reader.ready).toBe(false);
-    expect(reader.getHistory({ modelId: "m", benchmark: "b", limit: 10 })).toEqual(
-      [],
-    );
+    expect(
+      reader.getHistory({ modelId: "m", benchmark: "b", limit: 10 }),
+    ).toEqual([]);
     expect(reader.getLatest({ modelId: "m", benchmark: "b" })).toBeNull();
     reader.close(); // must not throw
   });

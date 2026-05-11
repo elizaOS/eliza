@@ -10,6 +10,7 @@
  */
 
 import z from "zod";
+import { CloudCodingAgentSchema } from "./cloud-coding-containers.js";
 
 const WorkbenchTodoPrioritySchema = z.union([z.number(), z.string(), z.null()]);
 
@@ -91,6 +92,54 @@ export const PostWorkbenchVfsRollbackRequestSchema = z
     snapshotId: value.snapshotId.trim(),
   }));
 
+export const PostWorkbenchVfsCompilePluginRequestSchema = z
+  .object({
+    entry: z.string().regex(/\S/, "entry is required"),
+    outFile: z.string().regex(/\S/).optional(),
+    format: z.enum(["esm", "cjs"]).optional(),
+    target: z.string().regex(/\S/).optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    ...value,
+    entry: value.entry.trim(),
+    ...(value.outFile ? { outFile: value.outFile.trim() } : {}),
+    ...(value.target ? { target: value.target.trim() } : {}),
+  }));
+
+export const PostWorkbenchVfsLoadPluginRequestSchema = z
+  .object({
+    entry: z.string().regex(/\S/, "entry is required"),
+    outFile: z.string().regex(/\S/).optional(),
+    compileFirst: z.boolean().optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    ...value,
+    entry: value.entry.trim(),
+    ...(value.outFile ? { outFile: value.outFile.trim() } : {}),
+  }));
+
+export const PostWorkbenchVfsPromoteToCloudRequestSchema = z
+  .object({
+    snapshotId: z.string().regex(/\S/).optional(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    preferredAgent: CloudCodingAgentSchema.optional(),
+    workspacePath: z.string().regex(/\S/).optional(),
+    branchName: z.string().regex(/\S/).optional(),
+    metadata: z.record(z.string(), z.unknown()).optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    ...value,
+    ...(value.snapshotId ? { snapshotId: value.snapshotId.trim() } : {}),
+    ...(value.workspacePath
+      ? { workspacePath: value.workspacePath.trim() }
+      : {}),
+    ...(value.branchName ? { branchName: value.branchName.trim() } : {}),
+  }));
+
 export type PostWorkbenchVfsProjectRequest = z.infer<
   typeof PostWorkbenchVfsProjectRequestSchema
 >;
@@ -102,4 +151,13 @@ export type PostWorkbenchVfsSnapshotRequest = z.infer<
 >;
 export type PostWorkbenchVfsRollbackRequest = z.infer<
   typeof PostWorkbenchVfsRollbackRequestSchema
+>;
+export type PostWorkbenchVfsCompilePluginRequest = z.infer<
+  typeof PostWorkbenchVfsCompilePluginRequestSchema
+>;
+export type PostWorkbenchVfsLoadPluginRequest = z.infer<
+  typeof PostWorkbenchVfsLoadPluginRequestSchema
+>;
+export type PostWorkbenchVfsPromoteToCloudRequest = z.infer<
+  typeof PostWorkbenchVfsPromoteToCloudRequestSchema
 >;

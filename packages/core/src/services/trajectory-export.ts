@@ -64,6 +64,27 @@ function toExactOptionalString(value: unknown): string | undefined {
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
+function primitiveTrajectoryMetadata(
+	value: unknown,
+): Record<string, string | number | boolean | null> {
+	const record = asRecord(value);
+	if (!record) {
+		return {};
+	}
+	const out: Record<string, string | number | boolean | null> = {};
+	for (const [key, item] of Object.entries(record)) {
+		if (
+			typeof item === "string" ||
+			typeof item === "number" ||
+			typeof item === "boolean" ||
+			item === null
+		) {
+			out[key] = item as string | number | boolean | null;
+		}
+	}
+	return out;
+}
+
 function normalizeTags(value: unknown): string[] {
 	if (!Array.isArray(value)) {
 		return [];
@@ -485,13 +506,22 @@ export function buildElizaNativeTrajectoryRows(
 					step_id: call.stepId,
 					call_id: call.callId,
 					agent_id: call.agentId,
+					...(call.runId ? { source_run_id: call.runId } : {}),
+					...(call.roomId ? { source_room_id: call.roomId } : {}),
+					...(call.messageId ? { source_message_id: call.messageId } : {}),
+					...(call.executionTraceId
+						? { source_execution_trace_id: call.executionTraceId }
+						: {}),
 					trajectory_source: call.source,
+					...(call.scenarioId ? { scenario_id: call.scenarioId } : {}),
+					...(call.batchId ? { batch_id: call.batchId } : {}),
 					source_call_purpose: call.purpose,
 					source_action_type: call.actionType,
 					source_step_type: call.stepType,
 					source_model: call.model,
 					source_model_type: call.modelType ?? call.modelSlot,
 					source_provider: call.provider,
+					trajectory_metadata: primitiveTrajectoryMetadata(trajectory.metadata),
 				},
 				trajectoryTotals,
 				cacheStats,

@@ -1,6 +1,5 @@
 import type {
   Action,
-  ActionExample,
   ActionParameters,
   ActionResult,
   AgentContext,
@@ -12,13 +11,53 @@ import type {
 } from "@elizaos/core";
 import { resolveActionContexts } from "@elizaos/core";
 
-type PageActionGroupConfig = {
-  name: string;
-  contexts: AgentContext[];
-  description: string;
-  similes?: string[];
-  examples?: ActionExample[][];
+/**
+ * PAGE_DELEGATE — owner-only main-chat parent that dispatches to the child
+ * action set scoped to a named page (browser, wallet, character, settings,
+ * connectors, automation, phone, owner).
+ *
+ * Replaces the per-page `<PAGE>_ACTIONS` parents. The discriminator is `page`;
+ * the child action name is `action`; child fields go in `parameters` (or as
+ * top-level fields — `allowAdditionalParameters` auto-lifts them).
+ */
+
+const PAGE_KEYS = [
+  "browser",
+  "wallet",
+  "character",
+  "settings",
+  "connectors",
+  "automation",
+  "phone",
+  "owner",
+] as const;
+
+type PageKey = (typeof PAGE_KEYS)[number];
+
+const PAGE_CONTEXTS: Record<PageKey, AgentContext[]> = {
+  browser: ["browser"],
+  wallet: ["wallet"],
+  character: ["character"],
+  settings: ["settings"],
+  connectors: ["connectors"],
+  automation: ["automation"],
+  phone: ["phone"],
+  owner: [
+    "tasks",
+    "calendar",
+    "email",
+    "contacts",
+    "health",
+    "subscriptions",
+    "screen_time",
+    "automation",
+    "messaging",
+  ],
 };
+
+const ALL_PAGE_CONTEXTS: AgentContext[] = Array.from(
+  new Set<AgentContext>(PAGE_KEYS.flatMap((page) => PAGE_CONTEXTS[page])),
+);
 
 type PageActionGroup = Action & {
   actionGroup: {
@@ -26,27 +65,11 @@ type PageActionGroup = Action & {
   };
 };
 
-type PageActionGroupParameters = {
+type PageDelegateParameters = {
+  page?: string;
   action?: string;
   parameters?: ActionParameters;
 };
-
-const ACTION_GROUP_PARAMETER_SCHEMA = [
-  {
-    name: "action",
-    description:
-      "The child action name to run, such as BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, or LIST_CONNECTORS.",
-    required: true,
-    schema: { type: "string" as const },
-  },
-  {
-    name: "parameters",
-    description:
-      "Parameters forwarded to the selected child action. Use the child action's parameter names.",
-    required: false,
-    schema: { type: "object" as const },
-  },
-];
 
 function normalizeActionName(value: string): string {
   return value.trim().toUpperCase();
@@ -56,23 +79,61 @@ function normalizeContext(context: AgentContext): string {
   return `${context}`.toLowerCase();
 }
 
+function readPageKey(value: unknown): PageKey | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return (PAGE_KEYS as readonly string[]).includes(normalized)
+    ? (normalized as PageKey)
+    : undefined;
+}
+
+/**
+ * Parse the delegate call into `{ page, action, parameters }`. Accepts both
+ * the canonical nested shape and a flat shape that LLMs commonly emit.
+ *
+ * Canonical (nested):
+ *   `{page: "browser", action: "BROWSER", parameters: {subaction: "navigate", url: "..."}}`
+ *
+ * Flat (auto-lifted): every key except `page`, `action`, and `parameters` is
+ * treated as a child-action parameter and merged into `parameters`:
+ *   `{page: "browser", action: "BROWSER", subaction: "navigate", url: "..."}`
+ */
 function readParameters(
   options: HandlerOptions | undefined,
-): PageActionGroupParameters {
+): PageDelegateParameters {
   const parameters = options?.parameters ?? {};
+  const explicitPage =
+    typeof parameters.page === "string" ? parameters.page : undefined;
+  const explicitAction =
+    typeof parameters.action === "string" ? parameters.action : undefined;
+  const explicitChildParams =
+    parameters.parameters &&
+    typeof parameters.parameters === "object" &&
+    !Array.isArray(parameters.parameters)
+      ? (parameters.parameters as ActionParameters)
+      : undefined;
+  const lifted: ActionParameters = {};
+  for (const [key, value] of Object.entries(parameters)) {
+    if (key === "page" || key === "action" || key === "parameters") continue;
+    lifted[key] = value as ActionParameters[string];
+  }
+  const hasLifted = Object.keys(lifted).length > 0;
+  let mergedChildParams: ActionParameters | undefined;
+  if (explicitChildParams && hasLifted) {
+    mergedChildParams = { ...lifted, ...explicitChildParams };
+  } else if (explicitChildParams) {
+    mergedChildParams = explicitChildParams;
+  } else if (hasLifted) {
+    mergedChildParams = lifted;
+  }
   return {
-    action:
-      typeof parameters.action === "string" ? parameters.action : undefined,
-    parameters:
-      parameters.parameters &&
-      typeof parameters.parameters === "object" &&
-      !Array.isArray(parameters.parameters)
-        ? (parameters.parameters as ActionParameters)
-        : undefined,
+    page: explicitPage,
+    action: explicitAction,
+    parameters: mergedChildParams,
   };
 }
 
-function isPageActionGroup(action: Action): boolean {
+function isPageDelegate(action: Action): boolean {
   return Array.isArray(
     (action as Partial<PageActionGroup>).actionGroup?.contexts,
   );
@@ -104,7 +165,7 @@ function findChildAction(
   const normalizedName = normalizeActionName(actionName);
   const allowedContexts = new Set(contexts.map(normalizeContext));
   for (const action of runtime.actions) {
-    if (isPageActionGroup(action)) {
+    if (isPageDelegate(action)) {
       continue;
     }
     if (!actionMatchesName(action, normalizedName)) {
@@ -118,80 +179,115 @@ function findChildAction(
   return null;
 }
 
-function createPageActionGroupAction(
-  config: PageActionGroupConfig,
-): PageActionGroup {
-  return {
-    name: config.name,
-    similes: config.similes ?? [],
-    contexts: ["general", ...config.contexts],
-    actionGroup: { contexts: config.contexts },
-    roleGate: { minRole: "OWNER" },
-    description: `${config.description} Pass { action, parameters } to run one validated child action. Only the owner may use this parent action from main chat; page-scoped chats expose the child actions directly.`,
-    descriptionCompressed: `${config.name}: owner-only parent action that delegates to page child actions.`,
-    validate: async () => true,
-    handler: async (
-      runtime: IAgentRuntime,
-      message: Memory,
-      state?: State,
-      options?: HandlerOptions,
-      callback?: HandlerCallback,
-    ): Promise<ActionResult> => {
-      const params = readParameters(options);
-      const requestedAction = params.action?.trim();
-      if (!requestedAction) {
-        return {
-          success: false,
-          text: `${config.name} requires an action parameter naming the child action to run.`,
-        };
-      }
+export const pageDelegateAction: PageActionGroup = {
+  name: "PAGE_DELEGATE",
+  similes: [
+    "PAGE_ACTIONS",
+    "BROWSER_TOOLS",
+    "WALLET_TOOLS",
+    "CHARACTER_TOOLS",
+    "SETTINGS_TOOLS",
+    "CONNECTOR_TOOLS",
+    "AUTOMATION_TOOLS",
+    "PHONE_TOOLS",
+    "OWNER_TOOLS",
+    "PERSONAL_ASSISTANT_ACTIONS",
+  ],
+  contexts: ["general", ...ALL_PAGE_CONTEXTS],
+  actionGroup: { contexts: ALL_PAGE_CONTEXTS },
+  roleGate: { minRole: "OWNER" },
+  // Outer envelope accepts unknown top-level keys (auto-lifted to the child
+  // action's parameters). Smaller LLMs commonly emit the flat shape
+  // `{page, action, url, selector}` instead of nested
+  // `{page, action, parameters:{url, selector}}`.
+  allowAdditionalParameters: true,
+  description: `Owner-only main-chat parent action. Routes a request to a child action under one of the page contexts (${PAGE_KEYS.join(", ")}). Call shape: { page: "<PAGE>", action: "<CHILD_NAME>", ...child fields }. The child action's parameter names go at the top level alongside \`page\` and \`action\` — for example, to navigate the browser: \`{ "page": "browser", "action": "BROWSER", "subaction": "navigate", "url": "https://example.com" }\`. The legacy nested shape \`{ page, action, parameters: { ... } }\` is also accepted. Page-scoped chats expose the child actions directly without going through PAGE_DELEGATE.`,
+  descriptionCompressed:
+    "PAGE_DELEGATE: owner-only parent; { page: <browser|wallet|character|settings|connectors|automation|phone|owner>, action: <CHILD>, ...child fields }.",
+  validate: async () => true,
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const params = readParameters(options);
+    const page = readPageKey(params.page);
+    if (!page) {
+      return {
+        success: false,
+        text: `PAGE_DELEGATE requires a page parameter (one of: ${PAGE_KEYS.join(", ")}).`,
+      };
+    }
 
-      const childAction = findChildAction(
+    const requestedAction = params.action?.trim();
+    if (!requestedAction) {
+      return {
+        success: false,
+        text: `PAGE_DELEGATE requires an action parameter naming the child action to run on the ${page} page.`,
+      };
+    }
+
+    const childContexts = PAGE_CONTEXTS[page];
+    const childAction = findChildAction(
+      runtime,
+      requestedAction,
+      childContexts,
+    );
+    if (!childAction) {
+      return {
+        success: false,
+        text: `${requestedAction} is not available on the ${page} page.`,
+      };
+    }
+
+    if (!(await childAction.validate(runtime, message, state))) {
+      return {
+        success: false,
+        text: `${childAction.name} is not available for this request.`,
+      };
+    }
+
+    return (
+      (await childAction.handler(
         runtime,
-        requestedAction,
-        config.contexts,
-      );
-      if (!childAction) {
-        return {
-          success: false,
-          text: `${requestedAction} is not available through ${config.name}.`,
-        };
+        message,
+        state,
+        {
+          ...options,
+          parameters: params.parameters ?? {},
+        },
+        callback,
+      )) ?? {
+        success: true,
+        text: `${childAction.name} completed.`,
       }
-
-      if (!(await childAction.validate(runtime, message, state))) {
-        return {
-          success: false,
-          text: `${childAction.name} is not available for this request.`,
-        };
-      }
-
-      return (
-        (await childAction.handler(
-          runtime,
-          message,
-          state,
-          {
-            ...options,
-            parameters: params.parameters ?? {},
-          },
-          callback,
-        )) ?? {
-          success: true,
-          text: `${childAction.name} completed.`,
-        }
-      );
+    );
+  },
+  parameters: [
+    {
+      name: "page",
+      description:
+        "Page context to dispatch under. Selects the allowed child-action context set.",
+      required: true,
+      schema: { type: "string" as const, enum: [...PAGE_KEYS] },
     },
-    parameters: ACTION_GROUP_PARAMETER_SCHEMA,
-    examples: config.examples ?? [],
-  };
-}
-
-export const browserActionsGroupAction = createPageActionGroupAction({
-  name: "BROWSER_ACTIONS",
-  contexts: ["browser"],
-  similes: ["BROWSER_TOOLS", "BROWSER_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for browser page work including browser sessions, page extraction, app browser workspace control, and browser bridge setup/status.",
+    {
+      name: "action",
+      description:
+        "Child action name to run, e.g. BROWSER, CHECK_BALANCE, MODIFY_CHARACTER, UPDATE_AI_PROVIDER, LIST_CONNECTORS.",
+      required: true,
+      schema: { type: "string" as const },
+    },
+    {
+      name: "parameters",
+      description:
+        "Parameters forwarded to the selected child action. Use the child action's parameter names.",
+      required: false,
+      schema: { type: "object" as const },
+    },
+  ],
   examples: [
     [
       {
@@ -202,37 +298,12 @@ export const browserActionsGroupAction = createPageActionGroupAction({
         name: "{{agentName}}",
         content: {
           text: "Routing to BROWSER for navigation.",
-          actions: ["BROWSER_ACTIONS"],
+          actions: ["PAGE_DELEGATE"],
           thought:
-            "Owner asked for a browser navigation; BROWSER_ACTIONS forwards to the BROWSER child action.",
+            "Owner asked for a browser navigation; PAGE_DELEGATE dispatches to the BROWSER child action under the browser page.",
         },
       },
     ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Pull the article text from the page I'm on." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Extracting the page contents now.",
-          actions: ["BROWSER_ACTIONS"],
-          thought:
-            "Page-text request maps to EXTRACT_PAGE; BROWSER_ACTIONS dispatches to it under the browser context.",
-        },
-      },
-    ],
-  ],
-});
-
-export const walletActionsGroupAction = createPageActionGroupAction({
-  name: "WALLET_ACTIONS",
-  contexts: ["wallet"],
-  similes: ["WALLET_TOOLS", "WALLET_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for wallet page work including balances, receive addresses, swaps, transfers, wallet signing, and trading actions.",
-  examples: [
     [
       {
         name: "{{name1}}",
@@ -242,251 +313,12 @@ export const walletActionsGroupAction = createPageActionGroupAction({
         name: "{{agentName}}",
         content: {
           text: "Pulling wallet balances.",
-          actions: ["WALLET_ACTIONS"],
+          actions: ["PAGE_DELEGATE"],
           thought:
-            "Balance request belongs to the wallet page; WALLET_ACTIONS forwards to the CHECK_BALANCE child action.",
+            "Balance request maps to the wallet page; PAGE_DELEGATE dispatches to the CHECK_BALANCE child action.",
         },
       },
     ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Send 0.1 ETH to my savings address." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Preparing the transfer.",
-          actions: ["WALLET_ACTIONS"],
-          thought:
-            "Transfer intent under the wallet page routes through WALLET_ACTIONS to the EVM_TRANSFER child action.",
-        },
-      },
-    ],
-  ],
-});
-
-export const characterActionsGroupAction = createPageActionGroupAction({
-  name: "CHARACTER_ACTIONS",
-  contexts: ["character"],
-  similes: ["CHARACTER_TOOLS", "CHARACTER_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for character page work including character edits, owner identity, and profile-related actions.",
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Update my character bio to mention I work in design.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Updating the character bio.",
-          actions: ["CHARACTER_ACTIONS"],
-          thought:
-            "Character bio edit belongs to the character page; CHARACTER_ACTIONS forwards to the MODIFY_CHARACTER child action.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Set my owner display name to Pat." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Setting your display name.",
-          actions: ["CHARACTER_ACTIONS"],
-          thought:
-            "Owner identity update routes through CHARACTER_ACTIONS to the owner identity child action.",
-        },
-      },
-    ],
-  ],
-});
-
-export const settingsActionsGroupAction = createPageActionGroupAction({
-  name: "SETTINGS_ACTIONS",
-  contexts: ["settings"],
-  similes: ["SETTINGS_TOOLS", "SETTINGS_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for settings page work including identity, AI provider, capability, and training settings.",
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Switch the LLM provider to Anthropic." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Switching the AI provider.",
-          actions: ["SETTINGS_ACTIONS"],
-          thought:
-            "AI provider change is a settings-page concern; SETTINGS_ACTIONS forwards to the UPDATE_AI_PROVIDER child action.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Turn on autonomy mode in settings." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Enabling autonomy mode.",
-          actions: ["SETTINGS_ACTIONS"],
-          thought:
-            "Capability toggle is a settings-page concern; SETTINGS_ACTIONS forwards to the TOGGLE_FEATURE / SETTINGS child action.",
-        },
-      },
-    ],
-  ],
-});
-
-export const connectorActionsGroupAction = createPageActionGroupAction({
-  name: "CONNECTOR_ACTIONS",
-  contexts: ["connectors"],
-  similes: ["CONNECTOR_TOOLS", "CONNECTOR_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for connector page work including listing, enabling, disabling, configuring, and disconnecting connectors.",
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Show me which connectors are enabled." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Listing your connectors.",
-          actions: ["CONNECTOR_ACTIONS"],
-          thought:
-            "Connector inventory belongs to the connectors page; CONNECTOR_ACTIONS forwards to the LIST_CONNECTORS child action.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Disconnect the Slack integration." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Disconnecting Slack.",
-          actions: ["CONNECTOR_ACTIONS"],
-          thought:
-            "Disconnect intent on the connectors page routes through CONNECTOR_ACTIONS to the CONNECTOR action=disconnect child.",
-        },
-      },
-    ],
-  ],
-});
-
-export const automationActionsGroupAction = createPageActionGroupAction({
-  name: "AUTOMATION_ACTIONS",
-  contexts: ["automation"],
-  similes: ["AUTOMATION_TOOLS", "AUTOMATION_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for automation page work including triggers, workflows, cron jobs, and task management.",
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Schedule a daily standup reminder at 9am on weekdays.",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Setting up the recurring reminder.",
-          actions: ["AUTOMATION_ACTIONS"],
-          thought:
-            "Cron-style schedule belongs to the automation page; AUTOMATION_ACTIONS forwards to the SCHEDULED_TASKS action=create child.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "List the workflows I have running." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Pulling your workflows.",
-          actions: ["AUTOMATION_ACTIONS"],
-          thought:
-            "Workflow inventory routes through AUTOMATION_ACTIONS to the WORKFLOW / TRIGGER child action.",
-        },
-      },
-    ],
-  ],
-});
-
-export const phoneActionsGroupAction = createPageActionGroupAction({
-  name: "PHONE_ACTIONS",
-  contexts: ["phone"],
-  similes: ["PHONE_TOOLS", "PHONE_PAGE_ACTIONS"],
-  description:
-    "Main-chat parent action for phone page work including calls, SMS/message review, contacts, and phone-related LifeOps actions.",
-  examples: [
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Call Pat back." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Placing the call.",
-          actions: ["PHONE_ACTIONS"],
-          thought:
-            "Outgoing call belongs to the phone page; PHONE_ACTIONS forwards to the VOICE_CALL child action.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Look up the number for Pat in my contacts." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Searching your contacts.",
-          actions: ["PHONE_ACTIONS"],
-          thought:
-            "Contact lookup on the phone page routes through PHONE_ACTIONS to the CONTACT action=search child.",
-        },
-      },
-    ],
-  ],
-});
-
-export const ownerActionsGroupAction = createPageActionGroupAction({
-  name: "OWNER_ACTIONS",
-  contexts: [
-    "tasks",
-    "calendar",
-    "email",
-    "contacts",
-    "health",
-    "subscriptions",
-    "screen_time",
-    "automation",
-    "messaging",
-  ],
-  similes: ["OWNER_TOOLS", "OWNER_PAGE_ACTIONS", "PERSONAL_ASSISTANT_ACTIONS"],
-  description:
-    "Main-chat parent action for owner page work including goals, reminders, inbox, calendar, browser workflows, health, subscriptions, travel, and approvals.",
-  examples: [
     [
       {
         name: "{{name1}}",
@@ -496,37 +328,11 @@ export const ownerActionsGroupAction = createPageActionGroupAction({
         name: "{{agentName}}",
         content: {
           text: "Pulling tomorrow's events.",
-          actions: ["OWNER_ACTIONS"],
+          actions: ["PAGE_DELEGATE"],
           thought:
-            "Calendar query is an owner-page concern; OWNER_ACTIONS forwards to the CALENDAR action=feed child.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: { text: "Triage my inbox." },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Triaging messages now.",
-          actions: ["OWNER_ACTIONS"],
-          thought:
-            "Inbox triage on the owner page routes through OWNER_ACTIONS to the MESSAGE action=triage child.",
+            "Calendar query falls under the owner page; PAGE_DELEGATE dispatches to the CALENDAR action=feed child.",
         },
       },
     ],
   ],
-});
-
-export const pageActionGroupActions: Action[] = [
-  browserActionsGroupAction,
-  walletActionsGroupAction,
-  characterActionsGroupAction,
-  settingsActionsGroupAction,
-  connectorActionsGroupAction,
-  automationActionsGroupAction,
-  phoneActionsGroupAction,
-  ownerActionsGroupAction,
-];
+};

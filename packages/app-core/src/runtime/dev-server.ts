@@ -31,7 +31,7 @@ import {
   setRestartHandler,
   syncResolvedApiPort,
 } from "@elizaos/shared";
-import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-compat-routes";
+import { ensureAuthPairingCodeForRemoteAccess } from "../api/auth-pairing-routes";
 import { startApiServer } from "../api/server";
 import { formatApiDevSettingsBannerText } from "./api-dev-settings-banner.js";
 import {
