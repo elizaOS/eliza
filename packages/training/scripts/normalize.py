@@ -225,6 +225,11 @@ def main() -> int:
     ap.add_argument("--skip", type=str, default="")
     ap.add_argument("--max-records", type=int, default=None,
                     help="cap output records per dataset (smoke testing)")
+    ap.add_argument("--sample-per-source", type=int, default=0,
+                    help="when >0, limit each source to ~N output records "
+                         "(head sample). Alias of --max-records used by "
+                         "run_pipeline.py --from-scratch; the smaller of the "
+                         "two wins when both are given.")
     ap.add_argument(
         "--expected-response-format",
         choices=("json", "legacy-toon"),
@@ -251,6 +256,11 @@ def main() -> int:
         log.warning("nothing to normalize")
         return 0
 
+    caps = [c for c in (args.max_records, args.sample_per_source) if c and c > 0]
+    effective_cap = min(caps) if caps else None
+    if args.sample_per_source:
+        log.info("sampling ≤%d records per source (smoke mode)", effective_cap)
+
     encoder = make_expected_response_encoder(args.expected_response_format)
     try:
         manifest = []
@@ -258,7 +268,7 @@ def main() -> int:
         for entry in entries:
             log.info("normalizing %s (%s)", entry["slug"], entry["normalizer"])
             n_in, n_out, n_err = normalize_dataset(
-                entry, max_records=args.max_records, encoder=encoder,
+                entry, max_records=effective_cap, encoder=encoder,
             )
             manifest.append({
                 "slug": entry["slug"],

@@ -322,6 +322,16 @@ def main() -> int:
                     help="ignore per-source weights from datasets.yaml")
     ap.add_argument("--per-source-cap", type=int, default=100_000,
                     help="hard upper bound on records sampled per source")
+    ap.add_argument("--sample-per-source", type=int, default=0,
+                    help="when >0, override per-source-cap and tier caps so "
+                         "each source contributes at most ~N records. Used by "
+                         "run_pipeline.py --from-scratch for a tiny sampled mix.")
+    ap.add_argument("--smoke", action="store_true",
+                    help="relax acceptance gates for a tiny sampled mix: "
+                         "out-of-band records pass through (oob-policy=allow) "
+                         "and the phase-distribution gate is disabled "
+                         "(phase-distribution-target=flat). A clear warning is "
+                         "logged. Do NOT use for production packs.")
     ap.add_argument("--max-train", type=int, default=0,
                     help="cap final train size after split (0 = no cap)")
     ap.add_argument("--val-frac", type=float, default=0.04)
@@ -350,6 +360,20 @@ def main() -> int:
         ),
     )
     args = ap.parse_args()
+
+    if args.smoke:
+        log.warning(
+            "SMOKE MODE: skipping out-of-band rejection (oob-policy→allow) and "
+            "the phase-distribution acceptance gate (phase-distribution-target→"
+            "flat). The resulting pack is for pipeline validation only — NOT a "
+            "production training corpus."
+        )
+        args.oob_policy = "allow"
+        args.phase_distribution_target = "flat"
+    if args.sample_per_source and args.sample_per_source < args.per_source_cap:
+        log.info("sample-per-source=%d overrides per-source-cap=%d",
+                 args.sample_per_source, args.per_source_cap)
+        args.per_source_cap = args.sample_per_source
 
     rng = random.Random(args.seed)
     FINAL.mkdir(parents=True, exist_ok=True)
