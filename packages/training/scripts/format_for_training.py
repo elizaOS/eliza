@@ -14,6 +14,18 @@ existing root `train.jsonl` / `val.jsonl` / `test.jsonl` handoff:
 * legacy flat `ElizaRecord` rows emitted by `pack_dataset.py`.
 
 Auxiliary repair/eval rows are intentionally rejected.
+
+Privacy contract
+----------------
+Every record emitted from `format_record` is passed through the canonical
+Python port of the app-training privacy filter
+(`privacy_filter_trajectories.redact_value`) before it leaves this module.
+The filter is loaded at import time; if the import or pattern compile fails,
+the script errors out rather than silently writing unfiltered data. See
+`packages/training/AGENTS.md` and the repo-wide CLAUDE.md privacy clause —
+the database stores raw user data intentionally; redaction lives on the
+outbound (export / training / HF publish) path, and this module is one of
+the load-bearing barriers.
 """
 
 from __future__ import annotations
@@ -28,6 +40,29 @@ ROOT = Path(__file__).resolve().parent.parent
 PROMPT_REGISTRY = ROOT / "data" / "prompts" / "registry.json"
 
 NATIVE_FORMAT = "eliza_native_v1"
+
+# Mandatory privacy filter — every record must pass through this before
+# JSONL write. Importing eagerly means a broken filter aborts the script;
+# there is no bypass path.
+from privacy_filter_trajectories import (  # noqa: E402
+    PrivacyFilterError,
+    redact_value as _redact_value,
+)
+
+# Force pattern compile at import time so any failure surfaces here, not
+# at first record. `_inline_patterns()` raises `PrivacyFilterError` on
+# empty/failed compile; let it propagate.
+from privacy_filter_trajectories import _inline_patterns as _compile_inline_patterns  # noqa: E402
+
+try:
+    _compile_inline_patterns()
+except PrivacyFilterError:
+    raise
+except Exception as exc:  # pragma: no cover - safety net for unexpected errors
+    raise PrivacyFilterError(
+        f"format_for_training: failed to compile privacy filter patterns: {exc}"
+    ) from exc
+
 NATIVE_BOUNDARIES = {"vercel_ai_sdk.generateText", "vercel_ai_sdk.streamText"}
 ELIZA1_TRAJECTORY_RECORD_SCHEMA = "eliza.eliza1_trajectory_record.v1"
 TRAINABLE_SPLITS = {"train", "val", "validation", "test"}
@@ -403,13 +438,26 @@ def _format_legacy_flat_record(record: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def format_record(record: dict[str, Any]) -> dict[str, Any] | None:
-    """Return a row ready for tokenizer.apply_chat_template, or None."""
+    """Return a row ready for tokenizer.apply_chat_template, or None.
+
+    The returned row is run through the privacy filter before it leaves this
+    function. Callers must NOT bypass `format_record` to write training
+    rows; this is the single chokepoint that guarantees redaction.
+    """
 
     if _is_auxiliary_record(record):
         return None
 
-    return (
+    formatted = (
         _format_native_record(record)
         or _format_messages_record(record)
         or _format_legacy_flat_record(record)
     )
+    if formatted is None:
+        return None
+    redacted = _redact_value(formatted)
+    if not isinstance(redacted, dict):
+        raise PrivacyFilterError(
+            "privacy filter returned non-dict for formatted record"
+        )
+    return redacted
