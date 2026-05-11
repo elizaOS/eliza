@@ -33,6 +33,7 @@ import {
   TIMEZONES,
 } from "../policy-controls";
 import { StewardLogo } from "../steward/injected";
+import { useSettingsSave } from "./settings-control-primitives";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   asSharedRecord(value) ?? {};
@@ -53,9 +54,7 @@ const HOUR_TO_OPTIONS = Array.from({ length: 24 }, (_, i) => ({
 export function PolicyControlsView() {
   const [policies, setPolicies] = useState<PolicyRule[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState(false);
   const [stewardConnected, setStewardConnected] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -93,6 +92,27 @@ export function PolicyControlsView() {
     };
   }, []);
 
+  const performSave = useCallback(async () => {
+    setError(null);
+    try {
+      await client.setStewardPolicies(policies);
+      setDirty(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save policies");
+      throw err;
+    }
+  }, [policies]);
+
+  const {
+    saving,
+    saveSuccess,
+    handleSave,
+    resetStatus: resetSaveStatus,
+  } = useSettingsSave({
+    onSave: performSave,
+    errorFallback: "Failed to save policies",
+  });
+
   const getPolicy = useCallback(
     (type: PolicyType) => findPolicy(policies, type),
     [policies],
@@ -117,9 +137,9 @@ export function PolicyControlsView() {
         ];
       });
       setDirty(true);
-      setSaveSuccess(false);
+      resetSaveStatus();
     },
-    [],
+    [resetSaveStatus],
   );
 
   const togglePolicy = useCallback(
@@ -144,20 +164,6 @@ export function PolicyControlsView() {
     },
     [policies, updatePolicy],
   );
-
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    setError(null);
-    try {
-      await client.setStewardPolicies(policies);
-      setSaveSuccess(true);
-      setDirty(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save policies");
-    } finally {
-      setSaving(false);
-    }
-  }, [policies]);
 
   // Extract configs (must be before early returns so hooks are unconditional)
   const autoApprovePolicy = getPolicy("auto-approve-threshold");
