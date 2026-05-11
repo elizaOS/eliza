@@ -159,11 +159,18 @@ export function resolveBrowserWorkspaceWalletMode(
   solanaAddress: string | null,
   walletConfig: WalletConfigStatus | null,
 ): BrowserWorkspaceWalletMode {
+  const evmMessageSigningAvailable = Boolean(
+    evmAddress && walletConfig?.evmSigningCapability === "local",
+  );
+  const evmTransactionSigningAvailable = Boolean(
+    evmAddress && walletConfig?.executionReady,
+  );
   if (stewardStatus?.connected) {
     return "steward";
   }
   if (
-    (evmAddress && walletConfig?.executionReady) ||
+    evmMessageSigningAvailable ||
+    evmTransactionSigningAvailable ||
     (solanaAddress && walletConfig?.solanaSigningAvailable)
   ) {
     return "local";
@@ -201,6 +208,12 @@ export function buildBrowserWorkspaceWalletState(params: {
   );
   const evmConnected = Boolean(evmAddress);
   const solanaConnected = Boolean(solanaAddress);
+  const evmMessageSigningAvailable = Boolean(
+    evmAddress && walletConfig?.evmSigningCapability === "local",
+  );
+  const evmTransactionSigningAvailable = Boolean(
+    evmAddress && walletConfig?.executionReady,
+  );
   const solanaMessageSigningAvailable = Boolean(
     solanaAddress && walletConfig?.solanaSigningAvailable,
   );
@@ -237,17 +250,12 @@ export function buildBrowserWorkspaceWalletState(params: {
       mode,
       pendingApprovals: 0,
       reason: null,
-      messageSigningAvailable: Boolean(
-        evmAddress && walletConfig?.executionReady,
-      ),
-      transactionSigningAvailable: Boolean(
-        evmAddress && walletConfig?.executionReady,
-      ),
-      chainSwitchingAvailable: Boolean(
-        evmAddress && walletConfig?.executionReady,
-      ),
+      messageSigningAvailable: evmMessageSigningAvailable,
+      transactionSigningAvailable: evmTransactionSigningAvailable,
+      chainSwitchingAvailable: evmTransactionSigningAvailable,
       signingAvailable:
-        Boolean(evmAddress && walletConfig?.executionReady) ||
+        evmMessageSigningAvailable ||
+        evmTransactionSigningAvailable ||
         solanaMessageSigningAvailable ||
         solanaTransactionSigningAvailable,
       solanaAddress,

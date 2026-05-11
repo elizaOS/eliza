@@ -137,6 +137,9 @@ describe("live routing regressions", () => {
 			resolvePlannerActionName(runtime, undefined, "EMAIL_FETCH_UNREAD"),
 		).toEqual(["MESSAGE"]);
 		expect(
+			resolvePlannerActionName(runtime, undefined, "fetch_unread_emails"),
+		).toEqual(["MESSAGE"]);
+		expect(
 			resolvePlannerActionName(runtime, undefined, "SUMMARIZE_UNREAD_EMAILS"),
 		).toEqual(["MESSAGE"]);
 		expect(resolvePlannerActionName(runtime, undefined, "SET_GOAL")).toEqual([

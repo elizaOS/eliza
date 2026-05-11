@@ -129,7 +129,7 @@ function drafterCompanion(args: {
     runtimeRole: "dflash-drafter",
     companionForModelId: args.id,
     tokenizerFamily: "eliza1",
-    blurb: "Hidden DFlash drafter companion.",
+    blurb: "Companion drafter file.",
   };
 }
 
@@ -141,7 +141,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     hfRepo: "elizalabs/eliza-1-0_6b",
     ggufFile: "text/eliza-1-0_6b-32k.gguf",
     bundleManifestFile: "eliza-1.manifest.json",
-    params: "1B",
+    params: "0.6B",
     quant: "Eliza-1 optimized local runtime",
     sizeGb: 0.5,
     minRamGb: 2,
@@ -158,7 +158,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     id: "eliza-1-0_6b",
     displayName: "eliza-1-0_6b",
     ggufFile: "dflash/drafter-0_6b.gguf",
-    params: "1B",
+    params: "0.6B",
     sizeGb: 0.25,
     minRamGb: 2,
     bucket: "small",

@@ -4,6 +4,7 @@ import { emitStreamingHook, getStreamingContext } from "../streaming-context";
 import type { Action, ActionResult, IAgentRuntime } from "../types";
 import type { ContextEvent, ContextObject } from "../types/context-object";
 import type { JSONSchema, ToolDefinition } from "../types/model";
+import { isActionAllowedByRolePolicy } from "./action-role-policy";
 import { filterByContextGate } from "./context-gates";
 import {
 	type ExecutePlannedToolCallContext,
@@ -185,10 +186,17 @@ export async function runSubPlanner(
 		params.action.contexts,
 		...declaredChildActions.map((child) => child.contexts),
 	);
-	const childActions = filterByContextGate(
-		declaredChildActions,
-		authorizedActiveContexts,
-		params.ctx.userRoles,
+	const contextGated = new Set(
+		filterByContextGate(
+			declaredChildActions,
+			authorizedActiveContexts,
+			params.ctx.userRoles,
+		),
+	);
+	const childActions = declaredChildActions.filter(
+		(child) =>
+			contextGated.has(child) ||
+			isActionAllowedByRolePolicy(child.name, params.ctx.userRoles),
 	);
 	if (childActions.length === 0) {
 		throw new Error(

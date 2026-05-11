@@ -2,7 +2,7 @@
 
 import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 const externalDeps = [
   "@elizaos/core",
@@ -89,6 +89,11 @@ async function build() {
       return true;
     })
     .sort();
+  await Promise.all(
+    Array.from(new Set(subpathEntries.map((entry) => join("dist", dirname(entry))))).map((dir) =>
+      mkdir(dir, { recursive: true })
+    )
+  );
   const subpathResult = await Bun.build({
     entrypoints: subpathEntries,
     outdir: "dist",
