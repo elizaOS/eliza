@@ -21,7 +21,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+  ElizaInferenceRegion,
+} from "./voice/ffi-bindings";
 import {
+  defaultLifecycleLoaders,
   type MmapRegionHandle,
   type RefCountedResource,
   VoiceLifecycleError,

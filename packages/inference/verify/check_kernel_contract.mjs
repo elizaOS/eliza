@@ -287,8 +287,13 @@ if (
 // symbols. The build script intentionally forces every non-runtime-ready Metal
 // kernel false until the evidence file records a numeric built-fork graph
 // dispatch smoke.
+const metalHonestyMarker = "Honesty gate: Metal/Vulkan standalone shaders";
+const metalHonestyIndex = buildScript.indexOf(metalHonestyMarker);
 const metalProbeMarker = 'if (backend === "metal")';
-const metalProbeIndex = buildScript.indexOf(metalProbeMarker);
+const metalProbeIndex =
+  metalHonestyIndex === -1
+    ? -1
+    : buildScript.indexOf(metalProbeMarker, metalHonestyIndex);
 if (metalProbeIndex === -1) {
   fail("build script missing Metal honesty gate in probeKernels()");
 } else {
