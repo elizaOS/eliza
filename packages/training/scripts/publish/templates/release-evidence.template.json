@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "tier": "<tier>",
-  "repoId": "elizalabs/eliza-1-<tier>",
+  "repoId": "elizaos/eliza-1-<tier>",
   "releaseState": "upload-candidate",
   "final": {
     "weights": true,
@@ -56,7 +56,7 @@
     "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
   },
   "hf": {
-    "repoId": "elizalabs/eliza-1-<tier>",
+    "repoId": "elizaos/eliza-1-<tier>",
     "status": "pending-upload"
   }
 }

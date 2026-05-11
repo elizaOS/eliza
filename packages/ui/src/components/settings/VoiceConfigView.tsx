@@ -8,7 +8,6 @@ import {
   Input,
   SaveFooter,
   Switch,
-  useTimeout,
 } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -35,6 +34,7 @@ import {
   CloudConnectionStatus,
   CloudSourceModeToggle,
 } from "../cloud/CloudSourceControls";
+import { useSettingsSave } from "./settings-control-primitives";
 
 const DEFAULT_ELEVEN_FAST_MODEL = "eleven_flash_v2_5";
 
@@ -648,16 +648,11 @@ function WakeWordSection({
 }
 
 export function VoiceConfigView() {
-  const { setTimeout } = useTimeout();
-
   const { t, elizaCloudConnected, elizaCloudVoiceProxyAvailable } = useApp();
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig>({});
   const [swabbleServerConfig, setSwabbleServerConfig] =
     useState<Partial<SwabbleConfig> | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [testing, setTesting] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -754,68 +749,57 @@ export function VoiceConfigView() {
     audio.play().catch(() => setTesting(false));
   }, []);
 
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    setSaveError(null);
-    setSaveSuccess(false);
-    try {
-      const cfg = await client.getConfig();
-      const messages = (cfg.messages ?? {}) as Record<string, unknown>;
-      const provider = voiceConfig.provider ?? "elevenlabs";
-      const normalizedElevenLabs =
-        provider === "elevenlabs"
-          ? {
-              ...voiceConfig.elevenlabs,
-              modelId:
-                voiceConfig.elevenlabs?.modelId ?? DEFAULT_ELEVEN_FAST_MODEL,
-            }
-          : voiceConfig.elevenlabs;
-      const sanitizedKey = sanitizeApiKey(normalizedElevenLabs?.apiKey);
-      if (normalizedElevenLabs) {
-        if (sanitizedKey) normalizedElevenLabs.apiKey = sanitizedKey;
-        else delete normalizedElevenLabs.apiKey;
-      }
-      const normalizedVoiceConfig: VoiceConfig = {
-        ...voiceConfig,
-        provider,
-        mode: provider === "elevenlabs" ? currentMode : undefined,
-        elevenlabs: normalizedElevenLabs,
-      };
-      // Also persist swabble (wake word) config — fall back to server config
-      // if the plugin isn't available on this platform (e.g. Electrobun).
-      let swabbleCfg: Partial<SwabbleConfig> | undefined;
-      try {
-        const { config: sc } = await getSwabblePlugin().getConfig();
-        if (sc) swabbleCfg = sc;
-      } catch {
-        // Not available on this platform
-      }
-      if (!swabbleCfg && swabbleServerConfig) {
-        swabbleCfg = swabbleServerConfig;
-      }
-
-      await client.updateConfig({
-        messages: {
-          ...messages,
-          tts: normalizedVoiceConfig,
-          ...(swabbleCfg ? { swabble: swabbleCfg } : {}),
-        },
-      });
-      dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
-      setSaveSuccess(true);
-      setDirty(false);
-      setTimeout(() => setSaveSuccess(false), 2500);
-    } catch (err) {
-      setSaveError(
-        err instanceof Error
-          ? err.message
-          : t("skillsview.failedToSave", {
-              defaultValue: "Failed to save",
-            }),
-      );
+  const performSave = useCallback(async () => {
+    const cfg = await client.getConfig();
+    const messages = (cfg.messages ?? {}) as Record<string, unknown>;
+    const provider = voiceConfig.provider ?? "elevenlabs";
+    const normalizedElevenLabs =
+      provider === "elevenlabs"
+        ? {
+            ...voiceConfig.elevenlabs,
+            modelId:
+              voiceConfig.elevenlabs?.modelId ?? DEFAULT_ELEVEN_FAST_MODEL,
+          }
+        : voiceConfig.elevenlabs;
+    const sanitizedKey = sanitizeApiKey(normalizedElevenLabs?.apiKey);
+    if (normalizedElevenLabs) {
+      if (sanitizedKey) normalizedElevenLabs.apiKey = sanitizedKey;
+      else delete normalizedElevenLabs.apiKey;
     }
-    setSaving(false);
-  }, [currentMode, swabbleServerConfig, voiceConfig, setTimeout, t]);
+    const normalizedVoiceConfig: VoiceConfig = {
+      ...voiceConfig,
+      provider,
+      mode: provider === "elevenlabs" ? currentMode : undefined,
+      elevenlabs: normalizedElevenLabs,
+    };
+    let swabbleCfg: Partial<SwabbleConfig> | undefined;
+    try {
+      const { config: sc } = await getSwabblePlugin().getConfig();
+      if (sc) swabbleCfg = sc;
+    } catch {
+      // Not available on this platform
+    }
+    if (!swabbleCfg && swabbleServerConfig) {
+      swabbleCfg = swabbleServerConfig;
+    }
+
+    await client.updateConfig({
+      messages: {
+        ...messages,
+        tts: normalizedVoiceConfig,
+        ...(swabbleCfg ? { swabble: swabbleCfg } : {}),
+      },
+    });
+    dispatchWindowEvent(VOICE_CONFIG_UPDATED_EVENT, normalizedVoiceConfig);
+    setDirty(false);
+  }, [currentMode, swabbleServerConfig, voiceConfig]);
+
+  const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
+    onSave: performSave,
+    errorFallback: t("skillsview.failedToSave", {
+      defaultValue: "Failed to save",
+    }),
+  });
 
   if (loading) {
     return (

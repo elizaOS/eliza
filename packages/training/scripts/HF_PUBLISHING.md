@@ -8,7 +8,7 @@ machine. This document is the operational runbook.
 
 ## Eliza-1 bundle publish (orchestrator)
 
-Eliza-1 device-tier bundles ship to `elizalabs/eliza-1-<tier>`. The
+Eliza-1 device-tier bundles ship to `elizaos/eliza-1-<tier>`. The
 canonical entry point is the publish orchestrator:
 
 ```bash
@@ -38,7 +38,7 @@ with a specific code (see "Exit codes" below):
    `checksums/SHA256SUMS`. The evidence sidecar must declare final
    weights, final hashes, final eval outputs, complete licenses, runtime
    graph-dispatch reports, platform evidence for every supported
-   backend, the exact `elizalabs/eliza-1-<tier>` destination, and
+   backend, the exact `elizaos/eliza-1-<tier>` destination, and
    size-first repo IDs. The checksum manifest is verified against the
    actual bytes that will be uploaded. A dry-run fails here the same way
    a real publish does.
@@ -72,7 +72,7 @@ with a specific code (see "Exit codes" below):
    No marketing copy. User-visible text stays Eliza-1-first; upstream
    lineage is recorded only in the manifest's `lineage` block.
 7. **HF push + git tag.** Uploads weights, manifest, README, licenses,
-   and eval blobs to `elizalabs/eliza-1-<tier>` via
+   and eval blobs to `elizaos/eliza-1-<tier>` via
    `huggingface_hub.HfApi.create_commit`, then tags the local training
    repo with `eliza-1-<tier>-v<version>`. In `--dry-run` neither side
    effect happens; the would-be commands are logged.
@@ -167,7 +167,7 @@ the evidence is real; do not paste placeholders. Minimum shape:
 {
   "schemaVersion": 1,
   "tier": "9b",
-  "repoId": "elizalabs/eliza-1-9b",
+  "repoId": "elizaos/eliza-1-9b",
   "releaseState": "upload-candidate",
   "final": {
     "weights": true,
@@ -220,7 +220,7 @@ the evidence is real; do not paste placeholders. Minimum shape:
     "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
   },
   "hf": {
-    "repoId": "elizalabs/eliza-1-9b",
+    "repoId": "elizaos/eliza-1-9b",
     "status": "pending-upload"
   }
 }
@@ -240,7 +240,7 @@ The publish flow writes the manifest + README into the bundle dir
 `create_commit` but before `git tag`, the HF repo is consistent and the
 local repo is missing only the tag. To recover:
 
-1. Confirm the upload at `https://huggingface.co/elizalabs/eliza-1-<tier>`
+1. Confirm the upload at `https://huggingface.co/elizaos/eliza-1-<tier>`
    — every file from `_build_upload_list` plus `README.md` and
    `eliza-1.manifest.json` should be present.
 2. Re-tag manually:
@@ -274,10 +274,10 @@ is intentionally absent.
 
 | Local path                                   | HF repo                              | Type    | Status  |
 |----------------------------------------------|--------------------------------------|---------|---------|
-| `data/final/{train_final,val,test}.jsonl`    | `elizalabs/eliza-1-training`           | dataset | PENDING |
-| `data/normalized/scambench.jsonl` + synth    | `elizalabs/eliza-1-scambench`          | dataset | PENDING |
-| `data/synthesized/{actions,prompts}/*.jsonl` | `elizalabs/eliza-1-synthesized`        | dataset | PENDING |
-| `scripts/`, `pyproject.toml`, docs           | `elizalabs/eliza-1-pipeline`           | model   | PENDING |
+| `data/final/{train_final,val,test}.jsonl`    | `elizaos/eliza-1-training`           | dataset | PENDING |
+| `data/normalized/scambench.jsonl` + synth    | `elizaos/eliza-1-scambench`          | dataset | PENDING |
+| `data/synthesized/{actions,prompts}/*.jsonl` | `elizaos/eliza-1-synthesized`        | dataset | PENDING |
+| `scripts/`, `pyproject.toml`, docs           | `elizaos/eliza-1-pipeline`           | model   | PENDING |
 | (pointer only — uses upstream)               | `mlabonne/harmless_alpaca`           | dataset | upstream |
 
 Update the Status column to `published` once each repo lands.
@@ -302,11 +302,11 @@ cd training
 
 # Always preview first.
 uv run python scripts/publish_dataset_to_hf.py \
-    --dataset training --repo-id elizalabs/eliza-1-training --dry-run
+    --dataset training --repo-id elizaos/eliza-1-training --dry-run
 
 # Real upload.
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset training --repo-id elizalabs/eliza-1-training
+    --dataset training --repo-id elizaos/eliza-1-training
 ```
 
 Expected payload: ~12.4 GB (4 files: train ~11.7 GB, val ~456 MB, test ~201
@@ -318,10 +318,10 @@ whose SHA-256 matches the existing remote LFS blob are skipped on re-runs.
 
 ```bash
 uv run python scripts/publish_dataset_to_hf.py \
-    --dataset scambench --repo-id elizalabs/eliza-1-scambench --dry-run
+    --dataset scambench --repo-id elizaos/eliza-1-scambench --dry-run
 
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset scambench --repo-id elizalabs/eliza-1-scambench
+    --dataset scambench --repo-id elizaos/eliza-1-scambench
 ```
 
 Payload: ~152 MB normalized + ~12 MB synthesized.
@@ -330,10 +330,10 @@ Payload: ~152 MB normalized + ~12 MB synthesized.
 
 ```bash
 uv run python scripts/publish_dataset_to_hf.py \
-    --dataset synthesized --repo-id elizalabs/eliza-1-synthesized --dry-run
+    --dataset synthesized --repo-id elizaos/eliza-1-synthesized --dry-run
 
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset synthesized --repo-id elizalabs/eliza-1-synthesized
+    --dataset synthesized --repo-id elizaos/eliza-1-synthesized
 ```
 
 Payload: a few MB of action examples + action pairs + core prompts.
@@ -345,17 +345,17 @@ This dataset just hosts a README pointing at upstream
 
 ```bash
 HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \
-    --dataset abliteration --repo-id elizalabs/eliza-1-abliteration
+    --dataset abliteration --repo-id elizaos/eliza-1-abliteration
 ```
 
 ## Publish the pipeline
 
 ```bash
 uv run python scripts/publish_pipeline_to_hf.py \
-    --repo-id elizalabs/eliza-1-pipeline --dry-run
+    --repo-id elizaos/eliza-1-pipeline --dry-run
 
 HF_TOKEN=hf_xxx uv run python scripts/publish_pipeline_to_hf.py \
-    --repo-id elizalabs/eliza-1-pipeline
+    --repo-id elizaos/eliza-1-pipeline
 ```
 
 Payload: ~5-10 MB (scripts + docs only — no data, no checkpoints, no
@@ -381,8 +381,8 @@ Override the source repos:
 
 ```bash
 bash scripts/train_vast.sh bootstrap-from-hf \
-    --pipeline-repo elizalabs/eliza-1-pipeline \
-    --data-repo elizalabs/eliza-1-training
+    --pipeline-repo elizaos/eliza-1-pipeline \
+    --data-repo elizaos/eliza-1-training
 ```
 
 The remote box installs `uv` and `huggingface_hub[cli]` if missing,
@@ -405,7 +405,7 @@ powered off after `bootstrap-from-hf` returns.
 
 ## elizaos org — fused-kernel optimized models
 
-The `elizalabs/eliza-1-*` repos ship the Eliza-1 device-tier bundles. Each
+The `elizaos/eliza-1-*` repos ship the Eliza-1 device-tier bundles. Each
 published GGUF should be the fused-kernel artifact the local runtimes
 actually install:
 
@@ -464,8 +464,8 @@ public for public repos.
 
 | Role                     | Repo                                                  |
 |--------------------------|-------------------------------------------------------|
-| Inference target (full)  | `elizalabs/eliza-1-<tier>`                              |
-| Drafter for that target  | hidden companion file in the same `elizalabs/eliza-1-<tier>` repo |
+| Inference target (full)  | `elizaos/eliza-1-<tier>`                              |
+| Drafter for that target  | hidden companion file in the same `elizaos/eliza-1-<tier>` repo |
 | Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
 
 `<tier>` follows the catalog ids: `0_6b`, `1_7b`,
@@ -483,7 +483,7 @@ boundary per device tier while preserving the downloader's explicit
 
 ### Drafter pairing manifest
 
-Every `elizalabs/eliza-1-<tier>` repo ships a `manifest.json` alongside
+Every `elizaos/eliza-1-<tier>` repo ships a `manifest.json` alongside
 its GGUFs that records which drafter and which optimization stack the
 file expects. Schema:
 
@@ -514,15 +514,15 @@ file expects. Schema:
     "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady"
   },
   "drafter": {
-    "repo": "elizalabs/eliza-1-1_7b",
+    "repo": "elizaos/eliza-1-1_7b",
     "file": "text/eliza-1-1_7b-drafter.gguf",
     "params": "0.6B",
     "tokenizerFamily": "eliza1"
   },
   "pipeline": {
     "publishedAt": "2026-05-10T00:00:00Z",
-    "trainedFrom": "elizalabs/eliza-1-9b",
-    "trainingPipeline": "elizalabs/eliza-1-pipeline",
+    "trainedFrom": "elizaos/eliza-1-9b",
+    "trainingPipeline": "elizaos/eliza-1-pipeline",
     "buildScript": "packages/training/scripts/publish_milady_model.py"
   }
 }
@@ -539,7 +539,7 @@ catalog sync script can walk either side and reconstruct pairings.
 # would upload. No HF_TOKEN required.
 uv run python scripts/publish_milady_model.py \
     --model-dir /path/to/eliza-1-1_7b \
-    --repo-id elizalabs/eliza-1-1_7b \
+    --repo-id elizaos/eliza-1-1_7b \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -549,7 +549,7 @@ uv run python scripts/publish_milady_model.py \
 # existing remote LFS pointer.
 HF_TOKEN=hf_xxx uv run python scripts/publish_milady_model.py \
     --model-dir /path/to/eliza-1-1_7b \
-    --repo-id elizalabs/eliza-1-1_7b
+    --repo-id elizaos/eliza-1-1_7b
 ```
 
 After a publish run, refresh the local-inference catalog so the phone

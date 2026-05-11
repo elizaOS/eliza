@@ -185,7 +185,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 - Run publish gates: text eval, TTS real-time factor, ASR WER, voice loop,
   DFlash acceptance, 30-turn endurance, memory/thermal, and per-backend kernel
   verification.
-- Upload only to `elizalabs/eliza-1-*` repos. Any red gate forces
+- Upload only to `elizaos/eliza-1-*` repos. Any red gate forces
   `defaultEligible=false`.
 
 ## Known Non-Goals For This Wave

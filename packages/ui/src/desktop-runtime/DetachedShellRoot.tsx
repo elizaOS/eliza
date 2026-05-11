@@ -56,10 +56,6 @@ const BrowserWorkspaceView = lazyNamedView(
   () => import("../components/pages/BrowserWorkspaceView"),
   "BrowserWorkspaceView",
 );
-const ConnectorsPageView = lazyNamedView(
-  () => import("../components/pages/ConnectorsPageView"),
-  "ConnectorsPageView",
-);
 
 // Static import: PluginsPageView is statically imported by App.tsx and
 // AppWindowRenderer; a lazy() here can't move it into a separate chunk
@@ -180,14 +176,6 @@ function DetachedShellContent({ route }: DetachedShellRootProps): JSX.Element {
       );
     case "chat":
       return <DetachedChatView />;
-    case "connectors":
-      return (
-        <DetachedWorkspaceView chatScope="page-connectors">
-          <DetachedLazyBoundary>
-            <ConnectorsPageView />
-          </DetachedLazyBoundary>
-        </DetachedWorkspaceView>
-      );
     case "plugins":
       return (
         <DetachedWorkspaceView chatScope="page-plugins">

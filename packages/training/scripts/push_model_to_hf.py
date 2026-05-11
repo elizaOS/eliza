@@ -2,7 +2,7 @@
 
 Mirrors `scripts/push_to_hf.py` (which publishes the *dataset*) but for the
 *model* side: takes a finished APOLLO SFT checkpoint and uploads it to the
-canonical `elizalabs/eliza-1-*` repo declared in `model_registry.py`.
+canonical `elizaos/eliza-1-*` repo declared in `model_registry.py`.
 
 Usage::
 
@@ -12,13 +12,13 @@ Usage::
         --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --dry-run
 
-    # Real upload to the default repo (elizalabs/eliza-1-2b).
+    # Real upload to the default repo (elizaos/eliza-1-2b).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final
 
     # Upload a quantized sidecar (e.g. polarquant) to a sibling repo
-    # (elizalabs/eliza-1-2b-polarquant).
+    # (elizaos/eliza-1-2b-polarquant).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final-polarquant \\
@@ -167,7 +167,7 @@ def read_optional_json(path: Path) -> dict[str, Any]:
 
 # Per-quant metadata. Drives:
 #   - --quant CLI choices (this dict's keys are the allowed values).
-#   - The sibling-repo suffix (e.g. polarquant -> elizalabs/eliza-1-2b-polarquant).
+#   - The sibling-repo suffix (e.g. polarquant -> elizaos/eliza-1-2b-polarquant).
 #   - Template placeholders in scripts/templates/model_card_quant.md.
 #
 # QJL is intentionally absent: it is a runtime-time KV-cache projection

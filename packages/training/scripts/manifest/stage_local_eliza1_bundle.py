@@ -854,7 +854,7 @@ def _write_release_evidence(
             "schemaVersion": 1,
             "generatedAt": generated_at,
             "tier": tier,
-            "repoId": f"elizalabs/eliza-1-{tier}",
+            "repoId": f"elizaos/eliza-1-{tier}",
             "releaseState": "local-standin",
             "publishEligible": False,
             "defaultEligible": False,
@@ -892,7 +892,7 @@ def _write_release_evidence(
                 "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
             },
             "hf": {
-                "repoId": f"elizalabs/eliza-1-{tier}",
+                "repoId": f"elizaos/eliza-1-{tier}",
                 "status": "blocked-local-standin",
             },
             "publishBlockingReasons": list(reasons),

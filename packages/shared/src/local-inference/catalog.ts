@@ -1,19 +1,53 @@
 /**
- * Local inference catalog re-exports.
+ * Eliza-curated local model catalog.
  *
- * The canonical catalog (Eliza-1 tier ids, default-eligibility set,
- * `MODEL_CATALOG`, HuggingFace URL builders) lives in
- * `@elizaos/shared/local-inference`. This shim preserves the historical
- * import path `./catalog` for server-side code.
+ * Eliza-1 is the only default-eligible model line. The user-facing model
+ * ids are size-first (`eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-9b`,
+ * `eliza-1-27b`, `eliza-1-27b-256k`). The recommendation engine picks
+ * one of these tiers based on hardware.
+ *
+ * HF-search results from outside `elizaos/eliza-1-*` MUST never be
+ * marked default-eligible (handled by `hf-search.ts`, which produces
+ * entries that are absent from `DEFAULT_ELIGIBLE_MODEL_IDS`).
+ *
+ * When upstream naming conventions drift, update `ggufFile` here — we
+ * rely on the exact filename for resolved-URL construction in the
+ * downloader.
  */
 
-export {
-  buildHuggingFaceResolveUrl,
-  buildHuggingFaceResolveUrlForPath,
-  DEFAULT_ELIGIBLE_MODEL_IDS,
-  ELIZA_1_PLACEHOLDER_IDS,
+import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
+
+/**
+ * Eliza-1 tier identifiers, in tier-matrix order. Source of truth for
+ * the recommendation ladders and the default-eligible set.
+ */
+export const ELIZA_1_TIER_IDS = [
+  "eliza-1-0_6b",
+  "eliza-1-1_7b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+] as const;
+
+export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
+
+/**
+ * The model id the engine auto-loads on first run when no preference is
+ * set. Resolves to the `eliza-1-1_7b` tier - the smallest Eliza-1 tier
+ * that fits the broadest range of hardware (modern phone or laptop).
+ * Hosts that can't fit `eliza-1-1_7b` get the `eliza-1-0_6b` fallback via
+ * the recommendation ladder.
+ */
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-1_7b";
+
+/**
+ * The single source of truth for default-eligibility. Only Eliza-1
+ * tiers are default-eligible. The recommendation engine MUST refuse to
+ * surface anything outside this set as a default; HF-search results
+ * MUST never appear here.
+ */
+export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
-<<<<<<< HEAD
 );
 
 export function isDefaultEligibleId(id: string): boolean {
@@ -214,7 +248,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     id: "eliza-1-27b",
     displayName: "eliza-1-27b",
     ggufFile: "dflash/drafter-27b.gguf",
-    params: "27B",
+    params: "9B",
     sizeGb: 1.2,
     minRamGb: 32,
     bucket: "large",
@@ -281,11 +315,3 @@ export function buildHuggingFaceResolveUrlForPath(
 export function buildHuggingFaceResolveUrl(model: CatalogModel): string {
   return buildHuggingFaceResolveUrlForPath(model, model.ggufFile);
 }
-=======
-  type Eliza1TierId,
-  FIRST_RUN_DEFAULT_MODEL_ID,
-  findCatalogModel,
-  isDefaultEligibleId,
-  MODEL_CATALOG,
-} from "@elizaos/shared";
->>>>>>> c916a408d86b45abc977b73dd6a08111ceaf1436

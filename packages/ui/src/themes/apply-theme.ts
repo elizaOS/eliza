@@ -7,7 +7,6 @@
  */
 
 import {
-  BUILTIN_THEMES,
   THEME_CSS_VAR_MAP,
   THEME_FONT_CSS_VARS,
   THEME_FONT_LINK_ID,
@@ -147,16 +146,4 @@ function injectFontLink(url: string): void {
 function removeFontLink(): void {
   if (typeof document === "undefined") return;
   document.getElementById(THEME_FONT_LINK_ID)?.remove();
-}
-
-// ── Theme resolution helper ────────────────────────────────────────
-
-/**
- * Resolve a theme ID to a ThemeDefinition from the built-in set,
- * or return undefined if not found.
- */
-export function resolveBuiltinTheme(
-  themeId: string,
-): ThemeDefinition | undefined {
-  return BUILTIN_THEMES.find((t) => t.id === themeId);
 }

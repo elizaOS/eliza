@@ -111,6 +111,12 @@ export interface GenerateArgs {
    * pass the same signal here that they pass into `runtime.useModel`.
    */
   signal?: AbortSignal;
+  /**
+   * Incremental accepted text from the backend. llama-server calls this for
+   * streamed OpenAI-compatible deltas; node-llama-cpp calls it once with the
+   * completed text until the binding path exposes token callbacks here.
+   */
+  onTextChunk?: (chunk: string) => void | Promise<void>;
 }
 
 export type GenerateResult = string;
