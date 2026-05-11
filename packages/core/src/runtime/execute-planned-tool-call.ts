@@ -19,7 +19,7 @@ import type { UUID } from "../types/primitives";
 import type { State } from "../types/state";
 import {
 	_resetActionRolePolicyCacheForTests as _resetCacheForTests,
-	readActionRolePolicy,
+	resolveActionRolePolicyRole,
 } from "./action-role-policy";
 import { runWithActionRoutingContext } from "./action-routing-context";
 import { satisfiesContextGate, satisfiesRoleGate } from "./context-gates";
@@ -367,7 +367,7 @@ function getGateFailure(
 	action: Action,
 	ctx: ExecutePlannedToolCallContext,
 ): string | undefined {
-	const policyRole = readActionRolePolicy()[action.name];
+	const policyRole = resolveActionRolePolicyRole(action);
 	if (policyRole) {
 		return satisfiesRoleGate(ctx.userRoles, { minRole: policyRole })
 			? undefined
