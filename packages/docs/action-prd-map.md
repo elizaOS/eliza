@@ -26,9 +26,9 @@ The PRD enumerates **49 action names** across 6 domains. Several of these are al
 | Inbox & Messaging | 10 | 7 | 2 | 1 |
 | Follow-Ups | 6 | 3 | 2 | 1 |
 | Travel & Events | 9 | 4 | 3 | 2 |
-| Docs & Portals | 6 | 0 | 0 | 6 |
+| Docs & Portals | 6 | 6 | 0 | 0 |
 | Push & Escalation | 6 | 2 | 2 | 2 |
-| **Total** | **49** | **24** | **12** | **13** |
+| **Total** | **49** | **30** | **12** | **7** |
 
 ## Full action map
 
@@ -71,12 +71,12 @@ The PRD enumerates **49 action names** across 6 domains. Several of these are al
 | EVENT_SET_DECISION_DEADLINE | Events | `SCHEDULED_TASK.create` with priority=high + `DEVICE_INTENT.broadcast` | ✅ |
 | EVENT_BUILD_ITINERARY_BRIEF | Events | none | ❌ — no action assembles per-event itinerary briefs (slides + lodging + transit + checklist) |
 | EVENT_TRACK_ASSET_DEADLINES | Events | `SCHEDULED_TASK.create` with subjectKind=document | ✅ |
-| DOC_REQUEST_SIGNATURE | Docs | none — PRD references in `test/signature-deadline.e2e.test.ts` but the test uses `RESOLVE_REQUEST` + `MESSAGE.send` for outbound; no `DocumentRequest` domain object | ❌ |
-| DOC_REQUEST_APPROVAL | Docs | none — `RESOLVE_REQUEST.approve` exists for queue items but no doc-bound request action | ❌ |
-| DOC_TRACK_DEADLINE | Docs | `SCHEDULED_TASK.create` with subjectKind=document | ❌ — subject kind exists in `ScheduledTaskSubjectKind` but no action creates document-deadline tasks with the doc workflow attached |
-| DOC_UPLOAD_ASSET | Docs | partial: `test/portal-upload.e2e.test.ts` exercises a `BROWSER` workflow, but no `DOC_UPLOAD_ASSET` action exists (audit gap #48) | ❌ |
-| DOC_COLLECT_ID_OR_FORM | Docs | none — referenced by catalog `ea.docs.collect-id-copy-for-workflow`; no impl (audit gap #49) | ❌ |
-| DOC_CLOSE_REQUEST | Docs | none | ❌ |
+| DOC_REQUEST_SIGNATURE | Docs | `DOC.request_signature` (`plugins/app-lifeops/src/actions/document.ts`); `DocumentRequest` type at `plugins/app-lifeops/src/types/document-request.ts` | ✅ — landed by W1-8 (2026-05-11) |
+| DOC_REQUEST_APPROVAL | Docs | `DOC.request_approval` (`plugins/app-lifeops/src/actions/document.ts`) | ✅ — landed by W1-8 (2026-05-11) |
+| DOC_TRACK_DEADLINE | Docs | `DOC.track_deadline` (`plugins/app-lifeops/src/actions/document.ts`); composes `SCHEDULED_TASK.create` with `subjectKind=document` | ✅ — landed by W1-8 (2026-05-11) |
+| DOC_UPLOAD_ASSET | Docs | `DOC.upload_asset` (`plugins/app-lifeops/src/actions/document.ts`); leaves browser routing as Wave-2 follow-up | ✅ — landed by W1-8 (2026-05-11) |
+| DOC_COLLECT_ID_OR_FORM | Docs | `DOC.collect_id` (`plugins/app-lifeops/src/actions/document.ts`) | ✅ — landed by W1-8 (2026-05-11) |
+| DOC_CLOSE_REQUEST | Docs | `DOC.close_request` (`plugins/app-lifeops/src/actions/document.ts`) | ✅ — landed by W1-8 (2026-05-11) |
 | NOTIFICATION_CREATE_INTENT | Push | `SCHEDULED_TASK.create` (the `NotificationIntent` PRD object is folded into `ScheduledTask` with escalation policy) | ✅ |
 | NOTIFICATION_RESOLVE_ENDPOINTS | Push | `CONNECTOR.list` + `CONNECTOR.status` (returns registered endpoints) | 🟡 — connector list exists; no dedicated endpoint-resolver that maps a NotificationIntent to a target device set |
 | NOTIFICATION_DISPATCH | Push | `DEVICE_INTENT.broadcast` | ✅ |
