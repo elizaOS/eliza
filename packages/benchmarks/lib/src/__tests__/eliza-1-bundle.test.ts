@@ -1,5 +1,5 @@
 /**
- * Wave 3-B: reader + pre-release predicate for eliza-1 GGUF bundles.
+ * Reader + pre-release predicate for eliza-1 GGUF bundles.
  *
  * Uses tmpdir-backed synthetic bundles so the test never touches the user's
  * real `~/.eliza/local-inference/models/` checkout.

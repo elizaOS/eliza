@@ -302,7 +302,7 @@ for (const { t } of trajectories) {
     if (s.kind === "toolSearch") bucket.toolSearches += 1;
 
     // Append the stage to the schema-shaped `reportStages` collection. Only
-    // kinds in Wave 0's `StageKind` enum land in `report.json`; the rest
+    // kinds in the `StageKind` enum land in `report.json`; the rest
     // (e.g. `messageHandler`) stay out of the schema artifact but still flow
     // into the markdown / CSV / JSONL outputs.
     const stageKindMap = {
@@ -633,7 +633,7 @@ lines.push(`- raw trajectories: \`${path.relative(runDir, trajectoryDir)}/\``);
 fs.writeFileSync(reportMdPath, lines.join("\n") + "\n");
 
 // ---------------------------------------------------------------------------
-// report.json (Wave 0 canonical schema: lifeops-bench-v1)
+// report.json (canonical schema: lifeops-bench-v1)
 // ---------------------------------------------------------------------------
 
 const scenariosArray = [];

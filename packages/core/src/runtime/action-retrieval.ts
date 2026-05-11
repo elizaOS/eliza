@@ -298,8 +298,8 @@ export function retrieveActions(
 		// the user is in tasks/general, so LIFE wins). Context alone is not a
 		// retrieval signal; otherwise every action sharing a broad context can
 		// leak into Tier B without matching the turn.
-		const parentContexts = Array.isArray(parent.contexts)
-			? (parent.contexts as readonly unknown[])
+		const parentContexts: readonly unknown[] = Array.isArray(parent.contexts)
+			? parent.contexts
 			: [];
 		let contextBoost = 0;
 		if (
@@ -360,8 +360,8 @@ export function retrieveActions(
 		const selectedContextSetForMeasurement = selectedContextSet;
 		const contextMatchScores = new Map<string, number>();
 		for (const parent of input.catalog.parents) {
-			const parentContexts = Array.isArray(parent.contexts)
-				? (parent.contexts as readonly unknown[])
+			const parentContexts: readonly unknown[] = Array.isArray(parent.contexts)
+				? parent.contexts
 				: [];
 			if (
 				selectedContextSetForMeasurement.size > 0 &&
