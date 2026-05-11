@@ -6,13 +6,13 @@
  * cache to disk under the eliza state dir so a container restart does not
  * require an online round-trip just to read its own boot token.
  *
- * State dir resolution honours `ELIZA_STATE_DIR` then `ELIZA_STATE_DIR`,
- * falling back to `~/.eliza`. The default cache TTL is 6h per the plan.
+ * State dir resolution honours `MILADY_STATE_DIR` > `ELIZA_STATE_DIR` >
+ * `~/.eliza`. The default cache TTL is 6h per the plan.
  */
 
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
+import { resolveStateDir } from "@elizaos/core";
 import type { RuntimeEnvRecord } from "@elizaos/shared";
 
 export const DEFAULT_JWKS_TTL_MS = 6 * 60 * 60 * 1000;
@@ -45,14 +45,12 @@ interface JwksCacheEnvelope {
 /**
  * Resolve the eliza state directory.
  *
- * Order: `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza`.
+ * Order: `MILADY_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza`.
  */
 export function resolveElizaStateDir(
   env: RuntimeEnvRecord = process.env,
 ): string {
-  const explicit = env.ELIZA_STATE_DIR?.trim();
-  if (explicit) return path.resolve(explicit);
-  return path.join(os.homedir(), ".eliza");
+  return resolveStateDir(env as NodeJS.ProcessEnv);
 }
 
 /**
