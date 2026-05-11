@@ -1329,6 +1329,9 @@ function main() {
   const actionDocsByName = new Map();
 
   for (const filePath of tsFiles) {
+    if (process.env.DEBUG_ACTION_SPEC) {
+      console.error(`[generate-plugin-action-spec] ${path.relative(REPO_ROOT, filePath)}`);
+    }
     // Only consider files that look like they might define actions.
     if (
       !filePath.includes(`${path.sep}actions${path.sep}`) &&

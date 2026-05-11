@@ -6,6 +6,27 @@ description: Run Eliza on iOS and Android devices using the Capacitor-based mobi
 
 The Eliza mobile app brings the full dashboard experience to iOS and Android devices using [Capacitor](https://capacitorjs.com/), a cross-platform native runtime. The same web UI runs inside a native WebView with access to device hardware through Capacitor plugins.
 
+## Runtime Policy
+
+iOS App Store and Google Play builds are Cloud-backed mobile clients. They do
+not run a local Bun backend, local shell, PTY-spawned Claude/Codex/OpenCode, or
+the privileged AOSP agent service in-app. Local generated applets run through
+the mobile-safe runtime and virtual file system only: `javascriptcore`,
+`quickjs`, or `wasm` on iOS, and `android-isolated-process`, `quickjs`, or
+`wasm` on Google Play Android.
+
+The AOSP / ElizaOS Android build is a separate privileged system target. It can
+stage the on-device Bun agent, `/system/bin/sh`, shell plugin, coding-tools
+plugin, agent orchestrator, and optional AVF/Microdroid boundary when the
+device image exposes those APIs. Claims about AOSP terminal behavior remain
+tracked as TODO-AOSP-PTY and TODO-AOSP-TOOLCHAIN in
+[`docs/mobile-agentic-ide-platform-plan.md`](../../../docs/mobile-agentic-ide-platform-plan.md).
+
+Use `bun run build:android:cloud` from the repository root for a Play-store
+style thin client. Use `bun run build:android:system` for the privileged AOSP
+APK. The legacy `packages/app` `build:android` script is sideload-only and
+embeds the on-device agent runtime.
+
 ## Platform Support
 
 | Platform | Minimum Version | Scheme | Notes |
