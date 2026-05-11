@@ -113,18 +113,22 @@ describe("planner-loop message stacking regression", () => {
 		expect(added[0].role).toBe("assistant");
 		const assistantContent = added[0].content;
 		expect(Array.isArray(assistantContent)).toBe(true);
-		const toolCallPart = (assistantContent as Array<{ type: string }> | undefined)?.find(
-			(part) => part.type === "tool-call",
-		) as { type: "tool-call"; toolCallId: string } | undefined;
+		const toolCallPart = (
+			assistantContent as Array<{ type: string }> | undefined
+		)?.find((part) => part.type === "tool-call") as
+			| { type: "tool-call"; toolCallId: string }
+			| undefined;
 		expect(toolCallPart).toBeDefined();
 		expect(toolCallPart?.toolCallId).toBeDefined();
 
 		expect(added[1].role).toBe("tool");
 		const toolContent = added[1].content;
 		expect(Array.isArray(toolContent)).toBe(true);
-		const toolResultPart = (toolContent as Array<{ type: string }> | undefined)?.find(
-			(part) => part.type === "tool-result",
-		) as { type: "tool-result"; toolCallId: string } | undefined;
+		const toolResultPart = (
+			toolContent as Array<{ type: string }> | undefined
+		)?.find((part) => part.type === "tool-result") as
+			| { type: "tool-result"; toolCallId: string }
+			| undefined;
 		expect(toolResultPart).toBeDefined();
 
 		// The assistant message's tool-call id must match the tool message's tool-result id
@@ -341,12 +345,12 @@ describe("planner-loop message stacking regression", () => {
 		if (added.length >= 2) {
 			const assistantMsg = added[0];
 			const toolMsg = added[1];
-			const tcId = (assistantMsg?.content as Array<{ type: string }> | undefined)
-				?.find((part) => part.type === "tool-call")
-				?.toolCallId;
-			const trId = (toolMsg?.content as Array<{ type: string }> | undefined)
-				?.find((part) => part.type === "tool-result")
-				?.toolCallId;
+			const tcId = (
+				assistantMsg?.content as Array<{ type: string }> | undefined
+			)?.find((part) => part.type === "tool-call")?.toolCallId;
+			const trId = (
+				toolMsg?.content as Array<{ type: string }> | undefined
+			)?.find((part) => part.type === "tool-result")?.toolCallId;
 			expect(tcId).toBeDefined();
 			expect(trId).toBe(tcId);
 		}
