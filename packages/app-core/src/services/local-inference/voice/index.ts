@@ -5,6 +5,7 @@ export {
 } from "./barge-in";
 export {
   decodeMonoPcm16Wav,
+  defaultLifecycleLoaders,
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
   encodeMonoPcm16Wav,

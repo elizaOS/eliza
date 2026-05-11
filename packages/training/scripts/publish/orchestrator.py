@@ -1338,6 +1338,12 @@ def _build_upload_list(
             pairs.append((p, target))
             existing_targets.add(target)
 
+    for rel in (RELEASE_EVIDENCE_PATH, CHECKSUMS_PATH):
+        target = str(rel)
+        if target not in existing_targets:
+            pairs.append((ctx.bundle_dir / rel, target))
+            existing_targets.add(target)
+
     return pairs
 
 
