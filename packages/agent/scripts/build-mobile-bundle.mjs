@@ -193,6 +193,19 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
+  // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that
+  // `packages/app-core/src/api/training-benchmarks.ts` imports at module
+  // top level. Bun 1.3.x on arm64-Android does not yet implement it, so
+  // the unstubbed import bombs on first agent boot:
+  //   error: Could not resolve: "node:sqlite". Maybe you need to "bun install"?
+  //   at /data/data/<pkg>/files/agent/agent-bundle.js:NNNNN
+  // The benchmarks endpoint has no mobile use case — it reads + writes
+  // training-run JSONL from the desktop training pipeline. Swap the
+  // import for `empty.cjs` so the bundle still loads; route handlers
+  // that touch the missing API will return undefined-method errors
+  // through the existing connector-route error path, which is correct
+  // behaviour for a no-op surface on mobile.
+  "node:sqlite": path.join(stubsDir, "empty.cjs"),
   "@types/react": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),

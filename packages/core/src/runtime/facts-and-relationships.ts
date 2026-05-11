@@ -1,3 +1,7 @@
+import {
+	buildFactKeywordsForStorage,
+	scoreFactKeywordRelevance,
+} from "../features/advanced-capabilities/fact-keywords.ts";
 import type {
 	MessageHandlerExtract,
 	MessageHandlerExtractedRelationship,
@@ -9,10 +13,6 @@ import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
-import {
-	buildFactKeywordsForStorage,
-	scoreFactKeywordRelevance,
-} from "../features/advanced-capabilities/fact-keywords.ts";
 import { parseJsonObject } from "./json-output";
 import { buildCanonicalSystemPrompt } from "./system-prompt";
 
@@ -209,7 +209,7 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 			const role = memory.entityId === args.runtime.agentId ? "agent" : "user";
 			const text =
 				typeof memory.content?.text === "string" ? memory.content.text : "";
-			return text ? `${role}: ${text}` : "";
+			return text ? `${role}: ${args.runtime.redactSecrets(text)}` : "";
 		})
 		.filter(Boolean);
 	if (dialogueLines.length > 0) {
@@ -221,7 +221,9 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 			? args.message.content.text
 			: "";
 	if (currentText) {
-		userBlocks.push(`current_message:\n${currentText}`);
+		userBlocks.push(
+			`current_message:\n${args.runtime.redactSecrets(currentText)}`,
+		);
 	}
 
 	if (args.similarFacts.length > 0) {
@@ -230,7 +232,7 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 				typeof memory.content?.text === "string" ? memory.content.text : "",
 			)
 			.filter(Boolean)
-			.map((text) => `- ${text}`);
+			.map((text) => `- ${args.runtime.redactSecrets(text)}`);
 		if (lines.length > 0) {
 			userBlocks.push(`existing_similar_facts:\n${lines.join("\n")}`);
 		}
@@ -473,8 +475,18 @@ async function persistFactsAndRelationships(
 		for (const rel of parsed.relationships) {
 			const normalized = normalizeRelationshipForPersistence(rel);
 			if (!normalized) continue;
-			const sourceEntityId = resolveRoomEntityId(normalized.subject, roomEntities);
-			const targetEntityId = resolveRoomEntityId(normalized.object, roomEntities);
+			const sourceEntityId = resolveRelationshipEntityId(
+				normalized.subject,
+				roomEntities,
+				runtime,
+				message,
+			);
+			const targetEntityId = resolveRelationshipEntityId(
+				normalized.object,
+				roomEntities,
+				runtime,
+				message,
+			);
 			try {
 				await runtime.createMemory(
 					{
@@ -572,7 +584,15 @@ function normalizeRelationshipForPersistence(
 	const object = cleanText(relationship.object);
 	const predicate = cleanPredicate(relationship.predicate);
 	if (!subject || !object || !predicate) return null;
-	if (isLowSignalCandidate(subject) || isLowSignalCandidate(object)) return null;
+	if (
+		containsSecretSignal(subject) ||
+		containsSecretSignal(object) ||
+		containsSecretSignal(predicate)
+	) {
+		return null;
+	}
+	if (isLowSignalCandidate(subject) || isLowSignalCandidate(object))
+		return null;
 	return { subject, predicate, object };
 }
 
@@ -637,7 +657,8 @@ function isSyntheticMemory(memory: Memory): boolean {
 	const tags = Array.isArray(metadata.tags)
 		? metadata.tags.filter((tag): tag is string => typeof tag === "string")
 		: [];
-	const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+	const text =
+		typeof memory.content?.text === "string" ? memory.content.text : "";
 	return (
 		/\b(?:compaction|compactor|synthetic)\b/i.test(source) ||
 		tags.some((tag) => /\b(?:compaction|compactor|synthetic)\b/i.test(tag)) ||
@@ -647,14 +668,30 @@ function isSyntheticMemory(memory: Memory): boolean {
 	);
 }
 
-function resolveRoomEntityId(
+function resolveRelationshipEntityId(
 	value: string,
 	entities: readonly RoomEntityRef[],
+	runtime: IAgentRuntime,
+	message: Memory,
 ): UUID | undefined {
 	const direct = asUuidOrNull(value);
 	if (direct) return direct;
 	const normalized = normalizeForComparison(value);
 	if (!normalized) return undefined;
+	if (
+		normalized === "user" ||
+		normalized === "current user" ||
+		normalized === "sender"
+	) {
+		return message.entityId;
+	}
+	if (
+		normalized === "agent" ||
+		normalized === "assistant" ||
+		normalized === normalizeForComparison(runtime.character?.name ?? "")
+	) {
+		return runtime.agentId;
+	}
 	for (const entity of entities) {
 		if (!entity.id) continue;
 		for (const name of entity.names) {

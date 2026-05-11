@@ -31,7 +31,16 @@ function makeState(): State {
 			providers: {
 				ENTITIES: {
 					data: {
-						entities: [{ names: ["Alice"] }, { names: ["Bob"] }],
+						entities: [
+							{
+								id: "00000000-0000-0000-0000-0000000000a1" as UUID,
+								names: ["Alice"],
+							},
+							{
+								id: "00000000-0000-0000-0000-0000000000b2" as UUID,
+								names: ["Bob"],
+							},
+						],
 					},
 				},
 			},
@@ -46,7 +55,10 @@ function makeRuntime(modelResponse: unknown): FactsRuntime {
 		character: { name: "Eliza", system: "You are concise.", bio: "" },
 		actions: [],
 		providers: [],
-		useModel: vi.fn(async (modelType: string) => {
+		redactSecrets: vi.fn((text: string) =>
+			text.replace(/\b(?:sk|csk)-[A-Za-z0-9_-]+/g, "[REDACTED]"),
+		),
+		useModel: vi.fn(async (_modelType: string) => {
 			return modelResponse;
 		}),
 		getMemories: vi.fn(async () => [
@@ -61,6 +73,7 @@ function makeRuntime(modelResponse: unknown): FactsRuntime {
 		]),
 		getRelationships: vi.fn(async () => []),
 		createMemory: vi.fn(async () => "00000000-0000-0000-0000-00000000cccc"),
+		createRelationship: vi.fn(async () => true),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -197,6 +210,9 @@ describe("runFactsAndRelationshipsStage", () => {
 		expect(params.messages?.[1]?.content).toContain("- fact: the user's");
 		expect(params.messages?.[1]?.content).toContain("existing_similar_facts:");
 		expect(params.messages?.[1]?.content).toContain("room_entities:");
+		expect(params.messages?.[1]?.content).toContain(
+			"Alice (id: 00000000-0000-0000-0000-0000000000a1)",
+		);
 
 		// Result parsed and persisted
 		expect(result.parsed.facts).toEqual(["the user's birthday is March 5"]);
@@ -208,6 +224,8 @@ describe("runFactsAndRelationshipsStage", () => {
 					type: "fact",
 				}),
 				metadata: expect.objectContaining({
+					source: "facts_and_relationships_stage",
+					tags: expect.arrayContaining(["fact", "extracted", "stage1"]),
 					keywords: expect.arrayContaining(["birthday", "march"]),
 				}),
 			}),
@@ -216,7 +234,7 @@ describe("runFactsAndRelationshipsStage", () => {
 		);
 	});
 
-	it("persists relationships under the facts table when kept", async () => {
+	it("persists relationships under the facts table and upserts resolved entity edges when kept", async () => {
 		const runtime = makeRuntime(
 			JSON.stringify({
 				facts: [],
@@ -245,10 +263,85 @@ describe("runFactsAndRelationshipsStage", () => {
 					predicate: "works_with",
 					object: "Alice",
 				}),
+				metadata: expect.objectContaining({
+					source: "facts_and_relationships_stage",
+					sourceEntityId: makeMessage().entityId,
+					targetEntityId: "00000000-0000-0000-0000-0000000000a1",
+				}),
 			}),
 			"facts",
 			true,
 		);
+		expect(runtime.createRelationship).toHaveBeenCalledWith({
+			sourceEntityId: makeMessage().entityId,
+			targetEntityId: "00000000-0000-0000-0000-0000000000a1",
+			tags: ["works_with"],
+			metadata: expect.objectContaining({
+				source: "facts_and_relationships_stage",
+				messageId: makeMessage().id,
+			}),
+		});
+	});
+
+	it("filters low-signal and secret-like candidates before calling the model", async () => {
+		const runtime = makeRuntime("");
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				facts: [
+					"by the way thanks",
+					"my api key is csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6",
+				],
+				relationships: [],
+			},
+		});
+
+		expect(result.parsed.facts).toEqual([]);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it("filters secret-like relationship endpoints before calling the model", async () => {
+		const runtime = makeRuntime("");
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: makeMessage(),
+			state: makeState(),
+			extract: {
+				relationships: [
+					{
+						subject: "user",
+						predicate: "owns_api_key",
+						object: "csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6",
+					},
+				],
+			},
+		});
+
+		expect(result.parsed.relationships).toEqual([]);
+		expect(runtime.useModel).not.toHaveBeenCalled();
+		expect(runtime.createMemory).not.toHaveBeenCalled();
+	});
+
+	it("skips synthetic compaction messages before candidate filtering", async () => {
+		const runtime = makeRuntime("");
+		const synthetic = {
+			...makeMessage(),
+			content: { text: "[conversation summary] user likes squash" },
+			metadata: { source: "conversation-compaction", tags: ["compaction"] },
+		} as Memory;
+
+		const result = await runFactsAndRelationshipsStage({
+			runtime,
+			message: synthetic,
+			state: makeState(),
+			extract: { facts: ["the user likes squash"] },
+		});
+
+		expect(result.parsed.thought).toBe("synthetic message skipped");
+		expect(runtime.useModel).not.toHaveBeenCalled();
 	});
 
 	it("returns gracefully when the model omits candidates from the response", async () => {

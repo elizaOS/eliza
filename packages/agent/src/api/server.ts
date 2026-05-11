@@ -3537,7 +3537,9 @@ export async function startApiServer(opts?: {
             ? streamRoutes.handleStreamRoute
             : null;
         if (!handleStreamRoute) {
-          throw new Error("missing stream route exports");
+          logger.debug(
+            "[eliza-api] @elizaos/plugin-streaming did not export handleStreamRoute; skipping streaming route registration.",
+          );
         }
         // Screen capture manager is injected by the desktop host via globalThis
         const screenCapture = (globalThis as Record<string, unknown>)
@@ -3717,9 +3719,22 @@ export async function startApiServer(opts?: {
               : undefined;
           },
         };
-        state.connectorRouteHandlers.push((req, res, pathname, method) =>
-          handleStreamRoute(req, res, pathname, method, streamState),
-        );
+        // `handleStreamRoute` is exported by `@elizaos/plugin-streaming`,
+        // which the mobile bundle replaces with a null-plugin proxy (see
+        // `packages/agent/scripts/build-mobile-bundle.mjs` —
+        // `@elizaos/plugin-streaming` is in the stub allowlist because the
+        // TTS / SSE worker pool has zero mobile use). On mobile the
+        // dynamic import resolves successfully but `handleStreamRoute` is
+        // `undefined`, and the closure here gets pushed into
+        // `connectorRouteHandlers` anyway — so every inbound HTTP request
+        // (including `/api/local-inference/device-bridge/status`) errors
+        // with `handleStreamRoute is not a function`. Skip the push when
+        // the import returned a stub.
+        if (typeof handleStreamRoute === "function") {
+          state.connectorRouteHandlers.push((req, res, pathname, method) =>
+            handleStreamRoute(req, res, pathname, method, streamState),
+          );
+        }
 
         const destNames = Array.from(destinations.values())
           .map((d) => d.name)

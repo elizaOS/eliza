@@ -53,6 +53,19 @@ const VERIFY_PLUGIN_METHOD = "verifyPlugin";
 const VERDICT_DEDUPE_TTL_MS = 10 * 60 * 1000;
 
 /**
+ * How often we re-check for the SwarmCoordinator service when it was not
+ * registered yet during the first `attach()` call. Plugin start ordering
+ * is not deterministic, so we retry on a fixed interval until the
+ * coordinator shows up or `ATTACH_MAX_RETRIES` is reached.
+ *
+ * 500ms interval × 60 retries = 30 seconds of patience — long enough to
+ * cover slow plugin-loading on cold boots while still bounding the
+ * dangling-timer window after `stop()` to 0.5s.
+ */
+const ATTACH_RETRY_INTERVAL_MS = 500;
+const ATTACH_MAX_RETRIES = 60;
+
+/**
  * Minimal shape of the SwarmCoordinator service surface this bridge
  * depends on. We only need `subscribe`; declared locally so we don't
  * pull in plugin-agent-orchestrator as a hard dependency just for
@@ -190,6 +203,8 @@ export class VerificationRoomBridgeService extends Service {
 		"Posts the AppVerificationService verdict back into the originating chat room when the orchestrator's custom-validator branch fires task_complete / escalation events.";
 
 	private unsubscribe: (() => void) | null = null;
+	private attachRetryTimer: ReturnType<typeof setTimeout> | null = null;
+	private attachRetryAttempts = 0;
 
 	/**
 	 * Dedupe map: `${sessionId}:${verdict}` -> expiresAt epoch ms. Drops
@@ -209,6 +224,12 @@ export class VerificationRoomBridgeService extends Service {
 	}
 
 	override async stop(): Promise<void> {
+		// Cancel any pending attach retry before tearing down so a late retry
+		// can't subscribe to a coordinator after stop() returned.
+		if (this.attachRetryTimer) {
+			clearTimeout(this.attachRetryTimer);
+			this.attachRetryTimer = null;
+		}
 		const unsub = this.unsubscribe;
 		// Always clear the field first so a retry of stop() can't double-call.
 		this.unsubscribe = null;
@@ -236,14 +257,20 @@ export class VerificationRoomBridgeService extends Service {
 			"SWARM_COORDINATOR",
 		) as SwarmCoordinatorLike | null;
 		if (!coordinator || typeof coordinator.subscribe !== "function") {
-			// Orchestrator plugin isn't loaded or is on an older surface that
-			// doesn't expose subscribe(). plugin-app-control still works for
-			// non-create flows without the bridge; log at debug since this
-			// fires every boot when the orchestrator isn't enabled.
-			logger.debug(
-				"[VerificationRoomBridge] SWARM_COORDINATOR service has no subscribe(); bridge inactive. Verification verdicts will not be posted back to chat.",
-			);
+			// Orchestrator plugin isn't loaded yet — but plugin start ordering
+			// is not deterministic, so the orchestrator may register its
+			// SwarmCoordinator after we ran. Retry on a backoff up to
+			// `ATTACH_MAX_RETRIES` so the bridge ends up wired whenever the
+			// orchestrator IS in the plugin set. After the retry budget
+			// expires we give up quietly — `plugin-app-control` still works
+			// for non-create flows without the bridge.
+			this.scheduleAttachRetry();
 			return;
+		}
+		// Clear any pending retry timer — we succeeded on this pass.
+		if (this.attachRetryTimer) {
+			clearTimeout(this.attachRetryTimer);
+			this.attachRetryTimer = null;
 		}
 		this.unsubscribe = coordinator.subscribe((event) => {
 			this.handleEvent(event).catch((err) => {
@@ -253,8 +280,30 @@ export class VerificationRoomBridgeService extends Service {
 			});
 		});
 		logger.info(
-			"[VerificationRoomBridge] subscribed to SWARM_COORDINATOR event stream",
+			`[VerificationRoomBridge] subscribed to SWARM_COORDINATOR event stream${
+				this.attachRetryAttempts > 0
+					? ` (after ${this.attachRetryAttempts} retr${this.attachRetryAttempts === 1 ? "y" : "ies"})`
+					: ""
+			}`,
 		);
+	}
+
+	private scheduleAttachRetry(): void {
+		if (this.attachRetryAttempts >= ATTACH_MAX_RETRIES) {
+			// Final attempt exhausted — log once at debug level so this is
+			// silent in deployments that genuinely don't have the
+			// orchestrator plugin enabled (the common case for non-create
+			// agent deployments) while still being grep-able.
+			logger.debug(
+				`[VerificationRoomBridge] SWARM_COORDINATOR service still has no subscribe() after ${ATTACH_MAX_RETRIES} retries; bridge inactive. Verification verdicts will not be posted back to chat.`,
+			);
+			return;
+		}
+		this.attachRetryAttempts += 1;
+		this.attachRetryTimer = setTimeout(() => {
+			this.attachRetryTimer = null;
+			this.attach();
+		}, ATTACH_RETRY_INTERVAL_MS);
 	}
 
 	private async handleEvent(event: SwarmEventLike): Promise<void> {
