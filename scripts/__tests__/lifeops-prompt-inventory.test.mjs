@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Smoke test for the Wave 2-A prompt-review surface:
+ * Smoke test for the prompt-review surface:
  *
  *   scripts/lifeops-prompt-inventory.mjs
  *   scripts/lifeops-prompt-review.mjs

@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Wave 3-B: round-trip test for the `preRelease` propagation through the
- * aggregator. Builds a synthetic trajectory, runs the aggregator with
- * `--pre-release`, and asserts:
+ * Round-trip test for `preRelease` propagation through the aggregator.
+ * Builds a synthetic trajectory, runs the aggregator with `--pre-release`,
+ * and asserts:
  *
  *   1. `report.json` has `preRelease: true` at the top level AND on every
  *      `scenarios[].preRelease` field.
- *   2. `report.md` opens with the Wave 3-B banner block.
+ *   2. `report.md` opens with the pre-release banner block.
  *   3. Running again without `--pre-release` flips both flags to `false` and
  *      omits the banner.
  *
- * AGENTS.md Cmd #8 — pre-release must not be silently coerced. This test
- * guards against any future regression that defaults the flag to `false`
- * after a malformed-bundle code path.
+ * pre-release must not be silently coerced. This test guards against any
+ * future regression that defaults the flag to `false` after a malformed-bundle
+ * code path.
  */
 
 import { spawnSync } from "node:child_process";

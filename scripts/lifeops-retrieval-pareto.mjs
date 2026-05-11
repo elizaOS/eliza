@@ -241,7 +241,7 @@ function buildMarkdown({ summary, scanned, measuredCount, samples }) {
   lines.push("## Per-tier recommended top-K");
   lines.push("");
   lines.push(
-    "Recall floor by tier (Wave 2-C policy): small=0.70, mid=0.78, large=0.85, frontier=0.90.",
+    "Recall floor by tier: small=0.70, mid=0.78, large=0.85, frontier=0.90.",
   );
   lines.push("");
   lines.push("| Tier      | Floor | Recommended K | Reason |");
