@@ -1647,6 +1647,10 @@ export const lifeScheduledTasks = appLifeopsPgSchema.table(
     createdBy: text("created_by").notNull().default(""),
     ownerVisible: boolean("owner_visible").notNull().default(true),
     metadataJson: text("metadata_json").notNull().default("{}"),
+    // Optimistic concurrency version. Incremented on each update.
+    // Used by withTransaction-wrapped operations to detect concurrent updates
+    // and surface OptimisticLockError instead of silently overwriting.
+    version: integer("version").notNull().default(1),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
   },
@@ -1705,6 +1709,11 @@ export const lifeWorkThreads = appLifeopsPgSchema.table(
     approvalId: text("approval_id"),
     lastMessageMemoryId: text("last_message_memory_id"),
     metadataJson: text("metadata_json").notNull().default("{}"),
+    // Optimistic concurrency version. Incremented on each update.
+    // Used by withTransaction-wrapped operations to detect concurrent updates
+    // (e.g., two simultaneous merges) and surface OptimisticLockError instead
+    // of silently overwriting one merge's sourceRefs with the other.
+    version: integer("version").notNull().default(1),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     lastActivityAt: text("last_activity_at").notNull(),

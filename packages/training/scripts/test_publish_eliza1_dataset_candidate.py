@@ -48,6 +48,48 @@ def chat_row() -> dict:
     }
 
 
+def eliza1_trajectory_record(split: str, *, success: bool = True) -> dict:
+    rating = "gold" if success else "repair"
+    return {
+        "schema": "eliza.eliza1_trajectory_record.v1",
+        "id": f"{split}-record-0001",
+        "split": split,
+        "task": "lifeops_trajectory_turn",
+        "target": {
+            "modelFamily": "qwen",
+            "baseModel": "Qwen3.5/3.6",
+            "sftFormat": "messages",
+            "chatTemplate": "chatml",
+        },
+        "messages": [
+            {"role": "user", "content": "hello"},
+            {"role": "assistant", "content": "hi"},
+        ],
+        "tools": [],
+        "actions": [],
+        "quality": {
+            "success": success,
+            "score": 1.0 if success else 0.0,
+            "weight": 1.0 if success else 0.0,
+            "rating": rating,
+            "requiresRepair": not success,
+            "reasons": [],
+        },
+        "source": {
+            "kind": "eliza_native_v1",
+            "dataset": "unit",
+            "path": "unit.jsonl",
+            "rowIndex": 0,
+            "sourceId": "source-1",
+            "trajectoryId": "traj-1",
+            "scenarioId": None,
+            "turnIndex": None,
+            "format": "eliza_native_v1",
+        },
+        "metadata": {},
+    }
+
+
 def write_jsonl(path: Path, rows: list[dict]) -> None:
     path.write_text(
         "".join(json.dumps(row, separators=(",", ":")) + "\n" for row in rows),
@@ -87,6 +129,49 @@ def test_plan_refuses_mixed_schema_inside_one_file(publisher, tmp_path):
     write_jsonl(train, [native_row("train-1"), chat_row()])
 
     with pytest.raises(publisher.CandidateError, match="mixed schemas inside one split"):
+        publisher.build_plan(
+            candidate_id="unit-candidate",
+            train=train,
+            validation=validation,
+            test=test,
+            source_kind="synthetic",
+            privacy_reviewed=False,
+            candidate_root=tmp_path / "candidates",
+            generated_at="2026-05-11T00:00:00Z",
+        )
+
+
+def test_plan_accepts_trainable_eliza1_trajectory_record_splits(publisher, tmp_path):
+    train = tmp_path / "train.jsonl"
+    validation = tmp_path / "validation.jsonl"
+    test = tmp_path / "test.jsonl"
+    write_jsonl(train, [eliza1_trajectory_record("train")])
+    write_jsonl(validation, [eliza1_trajectory_record("val")])
+    write_jsonl(test, [eliza1_trajectory_record("test")])
+
+    plan = publisher.build_plan(
+        candidate_id="unit-candidate",
+        train=train,
+        validation=validation,
+        test=test,
+        source_kind="synthetic",
+        privacy_reviewed=False,
+        candidate_root=tmp_path / "candidates",
+        generated_at="2026-05-11T00:00:00Z",
+    )
+
+    assert plan.dataset_schema == "eliza.eliza1_trajectory_record.v1"
+
+
+def test_plan_refuses_repair_eval_in_trainable_split(publisher, tmp_path):
+    train = tmp_path / "train.jsonl"
+    validation = tmp_path / "validation.jsonl"
+    test = tmp_path / "test.jsonl"
+    write_jsonl(train, [eliza1_trajectory_record("repair_eval", success=False)])
+    write_jsonl(validation, [eliza1_trajectory_record("val")])
+    write_jsonl(test, [eliza1_trajectory_record("test")])
+
+    with pytest.raises(publisher.CandidateError, match="auxiliary trajectory/repair"):
         publisher.build_plan(
             candidate_id="unit-candidate",
             train=train,
@@ -172,6 +257,115 @@ def test_user_export_write_requires_privacy_review(publisher, tmp_path):
 
     with pytest.raises(publisher.CandidateError, match="without --privacy-reviewed"):
         publisher.write_candidate(plan)
+
+
+def test_source_manifest_hands_off_user_export_privacy_review(publisher, tmp_path):
+    train, validation, test = make_native_splits(tmp_path)
+    source_manifest = tmp_path / "source-manifest.json"
+    source_manifest.write_text(
+        json.dumps({"sourceKind": "user_export", "privacy": {"reviewed": True}}),
+        encoding="utf-8",
+    )
+
+    plan = publisher.build_plan(
+        candidate_id="unit-candidate",
+        train=train,
+        validation=validation,
+        test=test,
+        source_kind="user_export",
+        privacy_reviewed=False,
+        source_manifest=source_manifest,
+        candidate_root=tmp_path / "candidates",
+        generated_at="2026-05-11T00:00:00Z",
+    )
+    publisher.write_candidate(plan)
+
+    manifest = json.loads((plan.candidate_dir / "manifest.json").read_text())
+    assert manifest["privacy"]["reviewed"] is True
+    assert manifest["privacy"]["attestationSource"] == "source_manifest"
+    assert manifest["sourceManifest"]["realUserExport"] is True
+
+
+def test_privacy_filter_attestation_hands_off_user_export_review(publisher, tmp_path):
+    train, validation, test = make_native_splits(tmp_path)
+    source_manifest = tmp_path / "privacy-attestation.json"
+    source_manifest.write_text(
+        json.dumps(
+            {
+                "schema": "eliza.privacy_filter_attestation.v1",
+                "passed": True,
+                "gate": {
+                    "passed": True,
+                    "strict": True,
+                    "residual_findings": {"count": 0},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    plan = publisher.build_plan(
+        candidate_id="unit-candidate",
+        train=train,
+        validation=validation,
+        test=test,
+        source_kind="user_export",
+        privacy_reviewed=False,
+        source_manifest=source_manifest,
+        candidate_root=tmp_path / "candidates",
+        generated_at="2026-05-11T00:00:00Z",
+    )
+    publisher.write_candidate(plan)
+
+    manifest = json.loads((plan.candidate_dir / "manifest.json").read_text())
+    assert manifest["privacy"]["reviewed"] is True
+    assert manifest["privacy"]["attestationSource"] == "source_manifest"
+
+
+def test_source_manifest_user_export_requires_privacy_attestation(publisher, tmp_path):
+    train, validation, test = make_native_splits(tmp_path)
+    source_manifest = tmp_path / "source-manifest.json"
+    source_manifest.write_text(
+        json.dumps({"sourceKind": "user_export", "privacy": {"reviewed": False}}),
+        encoding="utf-8",
+    )
+
+    plan = publisher.build_plan(
+        candidate_id="unit-candidate",
+        train=train,
+        validation=validation,
+        test=test,
+        source_kind="user_export",
+        privacy_reviewed=False,
+        source_manifest=source_manifest,
+        candidate_root=tmp_path / "candidates",
+        generated_at="2026-05-11T00:00:00Z",
+    )
+
+    with pytest.raises(publisher.CandidateError, match="without --privacy-reviewed"):
+        publisher.write_candidate(plan)
+
+
+def test_source_manifest_user_export_blocks_source_kind_downgrade(publisher, tmp_path):
+    train, validation, test = make_native_splits(tmp_path)
+    source_manifest = tmp_path / "source-manifest.json"
+    source_manifest.write_text(
+        json.dumps({"sourceKind": "user_export", "privacy": {"reviewed": True}}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(publisher.CandidateError, match="source manifest marks"):
+        publisher.build_plan(
+            candidate_id="unit-candidate",
+            train=train,
+            validation=validation,
+            test=test,
+            source_kind="synthetic",
+            privacy_reviewed=False,
+            source_manifest=source_manifest,
+            candidate_root=tmp_path / "candidates",
+            generated_at="2026-05-11T00:00:00Z",
+        )
 
 
 def test_write_allows_restaging_from_candidate_files(publisher, tmp_path):

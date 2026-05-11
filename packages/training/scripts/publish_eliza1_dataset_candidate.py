@@ -10,8 +10,10 @@ The script only stages candidate-scoped files:
   data/candidates/eliza1/<candidate-id>/manifest.json
   data/candidates/eliza1/<candidate-id>/data/{train,validation,test}.jsonl
 
-It refuses mixed JSONL schemas across split files and refuses user-export
-writes/pushes unless privacy review is explicitly attested.
+It refuses mixed JSONL schemas across split files, refuses auxiliary repair
+records in trainable split files, and refuses user-export writes/pushes unless
+privacy review is explicitly attested by ``--privacy-reviewed`` or an upstream
+``--source-manifest``.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CANDIDATE_ROOT = ROOT / "data" / "candidates" / "eliza1"
 DEFAULT_REPO_ID = "elizalabs/eliza-1-training-candidates"
 SCHEMA_VERSION = "eliza1.dataset_candidate.v1"
+ELIZA1_TRAJECTORY_RECORD_SCHEMA = "eliza.eliza1_trajectory_record.v1"
 
 SPLIT_TARGETS = {
     "train": Path("data/train.jsonl"),
@@ -47,6 +50,11 @@ ALLOWED_LOCAL_RELATIVE = {
 
 ALLOWED_SOURCE_KINDS = {"public", "synthetic", "user_export"}
 CANDIDATE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,78}[a-z0-9]$")
+TRAINABLE_SPLIT_ALIASES = {
+    "train": {"train"},
+    "validation": {"validation", "val"},
+    "test": {"test"},
+}
 
 
 class CandidateError(RuntimeError):
@@ -81,6 +89,14 @@ class CandidatePlan:
         return str(self.manifest["datasetSchema"])
 
 
+@dataclass(frozen=True)
+class SourceManifestInfo:
+    path: Path
+    source_kind: str | None
+    privacy_reviewed: bool
+    real_user_export: bool
+
+
 def hf_token() -> str | None:
     return os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
 
@@ -112,6 +128,131 @@ def _ensure_under(path: Path, root: Path) -> None:
         raise CandidateError(f"refusing path outside candidate root: {path}") from exc
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "reviewed", "approved"}
+    return False
+
+
+def _candidate_source_manifest(paths: Iterable[Path]) -> Path | None:
+    parents = {path.resolve().parent for path in paths}
+    if len(parents) != 1:
+        return None
+    parent = next(iter(parents))
+    for candidate in (parent / "manifest.json", parent.parent / "manifest.json"):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _manifest_source_kind(manifest: dict[str, Any]) -> str | None:
+    candidates: list[Any] = [
+        manifest.get("sourceKind"),
+        manifest.get("source_kind"),
+        _as_dict(manifest.get("source")).get("kind"),
+        _as_dict(manifest.get("dataset")).get("sourceKind"),
+    ]
+    sources = manifest.get("sources")
+    if isinstance(sources, list):
+        candidates.extend(
+            _as_dict(source).get("sourceKind") or _as_dict(source).get("kind")
+            for source in sources
+        )
+
+    normalized = {
+        str(value).strip().lower()
+        for value in candidates
+        if isinstance(value, str) and value.strip()
+    }
+    if "user_export" in normalized:
+        return "user_export"
+    known = sorted(kind for kind in normalized if kind in ALLOWED_SOURCE_KINDS)
+    return known[0] if known else None
+
+
+def _manifest_privacy_reviewed(manifest: dict[str, Any]) -> bool:
+    gate = _as_dict(manifest.get("gate"))
+    residual = _as_dict(gate.get("residual_findings"))
+    residual_count = residual.get("count") or gate.get("residual_findings_count") or 0
+    try:
+        residual_count_int = int(residual_count)
+    except (TypeError, ValueError):
+        residual_count_int = -1
+    if (
+        manifest.get("schema") == "eliza.privacy_filter_attestation.v1"
+        and _truthy(manifest.get("passed"))
+        and _truthy(gate.get("passed"))
+        and _truthy(gate.get("strict"))
+        and residual_count_int == 0
+    ):
+        return True
+    privacy = _as_dict(manifest.get("privacy"))
+    review = _as_dict(privacy.get("review"))
+    return any(
+        _truthy(value)
+        for value in (
+            manifest.get("privacyReviewed"),
+            manifest.get("privacy_reviewed"),
+            privacy.get("reviewed"),
+            privacy.get("approved"),
+            review.get("approved"),
+            review.get("reviewed"),
+        )
+    )
+
+
+def _manifest_real_user_export(manifest: dict[str, Any], source_kind: str | None) -> bool:
+    privacy = _as_dict(manifest.get("privacy"))
+    sources = manifest.get("sources")
+    source_marks_user_export = False
+    if isinstance(sources, list):
+        source_marks_user_export = any(
+            _manifest_source_kind({"sources": [source]}) == "user_export"
+            or _truthy(_as_dict(source).get("realUserExport"))
+            or _truthy(_as_dict(source).get("real_user_export"))
+            for source in sources
+        )
+    return any(
+        (
+            source_kind == "user_export",
+            _truthy(manifest.get("realUserExport")),
+            _truthy(manifest.get("real_user_export")),
+            _truthy(privacy.get("realUserExport")),
+            _truthy(privacy.get("real_user_export")),
+            source_marks_user_export,
+        )
+    )
+
+
+def load_source_manifest(path: Path) -> SourceManifestInfo:
+    if not path.exists():
+        raise CandidateError(f"source manifest does not exist: {path}")
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise CandidateError(f"{path}: invalid source manifest JSON: {exc.msg}") from exc
+    if not isinstance(manifest, dict):
+        raise CandidateError(f"{path}: source manifest must be a JSON object")
+
+    source_kind = _manifest_source_kind(manifest)
+    privacy_reviewed = _manifest_privacy_reviewed(manifest)
+    real_user_export = _manifest_real_user_export(manifest, source_kind)
+    if real_user_export:
+        source_kind = "user_export"
+    return SourceManifestInfo(
+        path=path.resolve(),
+        source_kind=source_kind,
+        privacy_reviewed=privacy_reviewed,
+        real_user_export=real_user_export,
+    )
+
+
 def _detect_schema(record: dict[str, Any]) -> str:
     if (
         record.get("format") == "eliza_native_v1"
@@ -119,6 +260,22 @@ def _detect_schema(record: dict[str, Any]) -> str:
         and isinstance(record.get("response"), dict)
     ):
         return "eliza_native_v1"
+
+    if record.get("schema") == ELIZA1_TRAJECTORY_RECORD_SCHEMA:
+        required = {
+            "id",
+            "split",
+            "task",
+            "target",
+            "messages",
+            "tools",
+            "actions",
+            "quality",
+            "source",
+            "metadata",
+        }
+        if required <= set(record):
+            return ELIZA1_TRAJECTORY_RECORD_SCHEMA
 
     eliza_fields = {
         "roomName",
@@ -142,6 +299,72 @@ def _detect_schema(record: dict[str, Any]) -> str:
         return "chat_messages_v1"
 
     return "unknown"
+
+
+def _split_label_for_record(record: dict[str, Any], schema: str) -> str | None:
+    if schema == ELIZA1_TRAJECTORY_RECORD_SCHEMA:
+        split = record.get("split")
+        return split if isinstance(split, str) else None
+
+    if schema == "eliza_record_v1":
+        metadata = _as_dict(record.get("metadata"))
+        split = metadata.get("split") or record.get("split")
+        return split if isinstance(split, str) else None
+
+    return None
+
+
+def _validate_trainable_record(
+    *,
+    split: str,
+    source: Path,
+    line_no: int,
+    record: dict[str, Any],
+    schema: str,
+) -> None:
+    actual_split = _split_label_for_record(record, schema)
+    expected = TRAINABLE_SPLIT_ALIASES[split]
+
+    if schema == ELIZA1_TRAJECTORY_RECORD_SCHEMA:
+        quality = _as_dict(record.get("quality"))
+        if (
+            actual_split == "repair_eval"
+            or quality.get("success") is False
+            or quality.get("requiresRepair") is True
+            or quality.get("rating") == "repair"
+        ):
+            raise CandidateError(
+                f"{source}:{line_no}: auxiliary trajectory/repair record cannot be "
+                f"staged as trainable {split} split"
+            )
+        if actual_split not in expected:
+            raise CandidateError(
+                f"{source}:{line_no}: record split {actual_split!r} does not match "
+                f"{split} split; expected one of {sorted(expected)}"
+            )
+        target = _as_dict(record.get("target"))
+        if target.get("sftFormat") != "messages":
+            raise CandidateError(f"{source}:{line_no}: target.sftFormat must be messages")
+        return
+
+    if schema == "eliza_record_v1":
+        if not isinstance(record.get("expectedResponse"), str) or not record[
+            "expectedResponse"
+        ].strip():
+            raise CandidateError(f"{source}:{line_no}: ElizaRecord expectedResponse is empty")
+        current_message = _as_dict(record.get("currentMessage"))
+        if not current_message.get("content"):
+            raise CandidateError(f"{source}:{line_no}: ElizaRecord currentMessage.content is empty")
+        if actual_split in {"repair", "repair_eval"}:
+            raise CandidateError(
+                f"{source}:{line_no}: auxiliary trajectory/repair record cannot be "
+                f"staged as trainable {split} split"
+            )
+        if actual_split and actual_split not in expected:
+            raise CandidateError(
+                f"{source}:{line_no}: record split {actual_split!r} does not match "
+                f"{split} split; expected one of {sorted(expected)}"
+            )
 
 
 def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
@@ -179,6 +402,13 @@ def inspect_split(split: str, source: Path, candidate_dir: Path) -> SplitStats:
         schema = _detect_schema(record)
         if schema == "unknown":
             raise CandidateError(f"{source}:{line_no}: unknown dataset schema")
+        _validate_trainable_record(
+            split=split,
+            source=source,
+            line_no=line_no,
+            record=record,
+            schema=schema,
+        )
         schemas.add(schema)
         rows += 1
         if len(schemas) > 1:
@@ -211,6 +441,7 @@ def build_plan(
     test: Path,
     source_kind: str,
     privacy_reviewed: bool,
+    source_manifest: Path | None = None,
     repo_id: str = DEFAULT_REPO_ID,
     candidate_root: Path = DEFAULT_CANDIDATE_ROOT,
     generated_at: str | None = None,
@@ -221,6 +452,19 @@ def build_plan(
 
     candidate_dir = (candidate_root / candidate_id).resolve()
     _ensure_under(candidate_dir, candidate_root)
+
+    split_sources = (train, validation, test)
+    source_manifest_info: SourceManifestInfo | None = None
+    resolved_source_manifest = source_manifest or _candidate_source_manifest(split_sources)
+    if resolved_source_manifest is not None:
+        source_manifest_info = load_source_manifest(resolved_source_manifest)
+        if source_manifest_info.real_user_export and source_kind != "user_export":
+            raise CandidateError(
+                "source manifest marks this data as user_export; use "
+                "--source-kind user_export"
+            )
+        if source_kind == "user_export" or source_manifest_info.real_user_export:
+            privacy_reviewed = privacy_reviewed or source_manifest_info.privacy_reviewed
 
     split_stats = (
         inspect_split("train", train, candidate_dir),
@@ -245,6 +489,13 @@ def build_plan(
         "privacy": {
             "reviewed": bool(privacy_reviewed),
             "realUserExport": source_kind == "user_export",
+            "attestationSource": (
+                "source_manifest"
+                if source_manifest_info and source_manifest_info.privacy_reviewed
+                else "cli_flag"
+                if privacy_reviewed
+                else None
+            ),
             "note": (
                 "Human privacy review attested before write/push."
                 if privacy_reviewed
@@ -278,6 +529,13 @@ def build_plan(
             for stat in split_stats
         },
     }
+    if source_manifest_info is not None:
+        manifest["sourceManifest"] = {
+            "path": str(source_manifest_info.path),
+            "sourceKind": source_manifest_info.source_kind,
+            "privacyReviewed": source_manifest_info.privacy_reviewed,
+            "realUserExport": source_manifest_info.real_user_export,
+        }
 
     readme = _render_readme(manifest)
     return CandidatePlan(
@@ -458,6 +716,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     ap.add_argument("--validation", required=True, type=Path)
     ap.add_argument("--test", required=True, type=Path)
     ap.add_argument(
+        "--source-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Optional upstream split/source manifest. If it marks the data as "
+            "user_export, privacy review must be attested by the manifest or "
+            "--privacy-reviewed."
+        ),
+    )
+    ap.add_argument(
         "--source-kind",
         choices=sorted(ALLOWED_SOURCE_KINDS),
         default="user_export",
@@ -483,6 +751,7 @@ def main(argv: list[str] | None = None) -> int:
             test=args.test,
             source_kind=args.source_kind,
             privacy_reviewed=args.privacy_reviewed,
+            source_manifest=args.source_manifest,
             repo_id=args.repo_id,
         )
         print_plan(plan)

@@ -94,7 +94,7 @@ def test_validate_prepared_dataset_with_action_manifest(tmp_path: Path) -> None:
     code = validate_main(
         [
             "--input",
-            str(out_dir),
+            str(out_dir / "train.jsonl"),
             "--report",
             str(report),
             "--action-manifest",
@@ -110,11 +110,34 @@ def test_validate_prepared_dataset_with_action_manifest(tmp_path: Path) -> None:
     assert parsed["actionCounts"] == {"SHELL": 1}
 
 
-def test_validate_rejects_noncanonical_alias(tmp_path: Path) -> None:
+def test_validate_trajectory_records_with_action_manifest(tmp_path: Path) -> None:
+    out_dir, action_manifest = _prepared_output(tmp_path)
+    report = tmp_path / "trajectory-report.json"
+
+    code = validate_main(
+        [
+            "--input",
+            str(out_dir / "trajectory_records" / "train.jsonl"),
+            "--report",
+            str(report),
+            "--action-manifest",
+            str(action_manifest),
+            "--strict",
+        ]
+    )
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 0
+    assert parsed["totalRecords"] == 1
+    assert parsed["invalidRecords"] == 0
+    assert parsed["actionCounts"] == {"SHELL": 1}
+
+
+def test_validate_rejects_noncanonical_native_alias(tmp_path: Path) -> None:
     out_dir, _action_manifest = _prepared_output(tmp_path)
     row = _read_jsonl(out_dir / "train.jsonl")[0]
-    row["actions"][0]["name"] = "SHELL_COMMAND"
-    row["messages"][-1]["tool_calls"][0]["function"]["name"] = "SHELL_COMMAND"
+    row["request"]["tools"][0]["function"]["name"] = "SHELL_COMMAND"
+    row["response"]["toolCalls"][0]["toolName"] = "SHELL_COMMAND"
     bad = tmp_path / "bad.jsonl"
     _write_jsonl(bad, [row])
     report = tmp_path / "bad-report.json"
@@ -126,10 +149,9 @@ def test_validate_rejects_noncanonical_alias(tmp_path: Path) -> None:
     assert parsed["errorsByCode"]["noncanonical_action_alias"] >= 2
 
 
-def test_validate_rejects_action_missing_from_manifest(tmp_path: Path) -> None:
+def test_validate_rejects_native_action_missing_from_manifest(tmp_path: Path) -> None:
     out_dir, _action_manifest = _prepared_output(tmp_path)
     row = _read_jsonl(out_dir / "train.jsonl")[0]
-    row["actions"][0]["name"] = "SHELL"
     missing_manifest = tmp_path / "actions.json"
     _write_manifest(missing_manifest, ["MONEY"])
     bad = tmp_path / "unknown.jsonl"
@@ -151,3 +173,28 @@ def test_validate_rejects_action_missing_from_manifest(tmp_path: Path) -> None:
     parsed = json.loads(report.read_text(encoding="utf-8"))
     assert code == 1
     assert parsed["errorsByCode"]["action_not_in_manifest"] >= 1
+
+
+def test_validate_rejects_native_tool_call_not_declared(tmp_path: Path) -> None:
+    out_dir, action_manifest = _prepared_output(tmp_path)
+    row = _read_jsonl(out_dir / "train.jsonl")[0]
+    row["request"].pop("tools")
+    bad = tmp_path / "undeclared.jsonl"
+    _write_jsonl(bad, [row])
+    report = tmp_path / "undeclared-report.json"
+
+    code = validate_main(
+        [
+            "--input",
+            str(bad),
+            "--report",
+            str(report),
+            "--action-manifest",
+            str(action_manifest),
+            "--strict",
+        ]
+    )
+
+    parsed = json.loads(report.read_text(encoding="utf-8"))
+    assert code == 1
+    assert parsed["errorsByCode"]["tool_call_not_declared"] >= 1

@@ -1,0 +1,85 @@
+{
+  "name": "@elizaos/capacitor-mobile-agent-bridge",
+  "version": "2.0.0-beta.1",
+  "description": "Outbound tunnel from a phone-hosted Eliza agent so a remote Mac client can reach it. See docs/reverse-direction-tunneling.md.",
+  "keywords": [
+    "agent",
+    "tunnel",
+    "relay",
+    "mobile",
+    "ios",
+    "android"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "ios/Sources/",
+    "ios/Plugin.xcodeproj/",
+    "*.podspec",
+    "dist"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza"
+  },
+  "scripts": {
+    "lint": "bunx @biomejs/biome check .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "fmt": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "watch": "tsc --watch",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/ios": "^8.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaCapacitorMobileAgentBridge"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "elizaos": {
+    "platforms": [
+      "browser"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Stub for non-native runtimes. Real transport lives on iOS/Android only.",
+      "ios": true,
+      "android": true
+    }
+  }
+}

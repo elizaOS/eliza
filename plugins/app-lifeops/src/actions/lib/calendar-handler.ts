@@ -788,6 +788,15 @@ function buildCalendarServiceErrorFallback(
   if (error.status === 429 || normalized.includes("rate limit")) {
     return "Calendar is rate-limited right now. Try again in a bit.";
   }
+  if (
+    error.status === 409 &&
+    normalized.includes("apple calendar") &&
+    (normalized.includes("attendee") ||
+      normalized.includes("invitee") ||
+      normalized.includes("invited meeting"))
+  ) {
+    return "Apple Calendar can't create or edit invited meetings from here. Connect Google Calendar for invites, or remove the attendees and I'll create it locally.";
+  }
   return "I couldn't finish that calendar change yet. Tell me the event and timing again, and I'll try it a different way.";
 }
 
@@ -3061,7 +3070,7 @@ export const calendarAction: Action & {
     "surface:remote-api",
   ],
   description:
-    "Interact with Google Calendar through LifeOps. " +
+    "Interact with live calendars through LifeOps. " +
     "USE this action for: viewing today's or this week's schedule; checking the next upcoming event; " +
     "searching events by title, attendee, location, or date range; creating new calendar events; " +
     "requests like 'what's my next meeting?', 'show me my calendar for today', 'what does my week look like?', or 'schedule a dentist appointment next Tuesday at 3pm'; " +
@@ -3073,7 +3082,7 @@ export const calendarAction: Action & {
     "DO NOT use this action to propose or suggest candidate meeting times to send to someone — use PROPOSE_MEETING_TIMES for requests like 'propose three times for a 30 min sync with X', 'suggest meeting slots', or 'find times that work next week'. The create_event subaction is only for booking a single known time on your own calendar. " +
     "This action provides the final grounded reply; do not pair it with a speculative REPLY action.",
   descriptionCompressed:
-    "Google Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
+    "Calendar via LifeOps: view schedule, search events, create events, query travel. Not for email or habits.",
   contexts: ["calendar", "contacts", "tasks"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,

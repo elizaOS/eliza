@@ -8,6 +8,8 @@ export {
   ELIZA_1_MANIFEST_SCHEMA_URL,
   ELIZA_1_MANIFEST_SCHEMA_VERSION,
   ELIZA_1_TIERS,
+  ELIZA_1_VOICE_CAPABILITIES,
+  ELIZA_1_VOICE_MANIFEST_VERSION,
   Eliza1BackendEnumSchema,
   Eliza1EvalsSchema,
   Eliza1FileEntrySchema,
@@ -18,9 +20,11 @@ export {
   Eliza1ManifestSchema,
   Eliza1RamBudgetSchema,
   Eliza1TierEnumSchema,
+  Eliza1VoiceSchema,
   Eliza1VerifiedBackendStatusSchema,
   REQUIRED_KERNELS_BY_TIER,
   SUPPORTED_BACKENDS_BY_TIER,
+  VOICE_PRESET_CACHE_PATH,
 } from "./schema";
 
 export type {
@@ -35,6 +39,7 @@ export type {
   Eliza1Manifest,
   Eliza1RamBudget,
   Eliza1Tier,
+  Eliza1Voice,
   Eliza1VerifiedBackendStatus,
 } from "./types";
 

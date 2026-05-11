@@ -1,6 +1,10 @@
 import type { Logger } from "../logger";
 import type { ContextRegistry } from "../runtime/context-registry";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
+import type { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
+import type { RoomHandlerQueue } from "../runtime/room-handler-queue";
+import type { TurnControllerRegistry } from "../runtime/turn-controller";
 import type { PromptBatcher } from "../utils/prompt-batcher";
 import type { Agent, Character } from "./agent";
 import type {
@@ -449,6 +453,37 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	actions: Action[];
 	evaluators: RegisteredEvaluator[];
 	responseHandlerEvaluators: ResponseHandlerEvaluator[];
+	/**
+	 * Registered field evaluators that contribute schema fragments and
+	 * handlers to the Stage-1 response handler's structured output.
+	 *
+	 * Unlike `responseHandlerEvaluators` (post-parse patchers, no LLM
+	 * influence), field evaluators each own one top-level property of the
+	 * HANDLE_RESPONSE tool's schema. The runtime composes them into ONE
+	 * schema, instructs the LLM to populate them in ONE call, then
+	 * dispatches each parsed slice to its owner's handler.
+	 *
+	 * See `runtime/response-handler-field-evaluator.ts` for the contract.
+	 */
+	responseHandlerFieldEvaluators: ResponseHandlerFieldEvaluator[];
+	/**
+	 * The composed-schema registry derived from `responseHandlerFieldEvaluators`.
+	 * Built lazily; cached until registrations change.
+	 */
+	responseHandlerFieldRegistry: ResponseHandlerFieldRegistry;
+	/**
+	 * Per-room AbortController registry. Every message handler invocation
+	 * runs inside a turn-scoped controller; user-facing abort intents (the
+	 * `abort` op of `threadOps`, the `/api/turns/:roomId/abort` endpoint,
+	 * etc.) call `turnControllers.abortTurn(roomId, reason)`.
+	 */
+	turnControllers: TurnControllerRegistry;
+	/**
+	 * Per-room handler serializer. Multiple messages arriving on the same
+	 * room run their handlers one-at-a-time in arrival order. Different
+	 * rooms run in parallel.
+	 */
+	roomHandlerQueue: RoomHandlerQueue;
 	plugins: Plugin[];
 	services: Map<ServiceTypeName, Service[]>;
 	events: RuntimeEventStorage;
@@ -593,6 +628,15 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 	unregisterEvaluator(name: string): boolean;
 	registerResponseHandlerEvaluator(evaluator: ResponseHandlerEvaluator): void;
 	unregisterResponseHandlerEvaluator(name: string): boolean;
+	registerResponseHandlerFieldEvaluator(
+		evaluator: ResponseHandlerFieldEvaluator,
+	): void;
+	unregisterResponseHandlerFieldEvaluator(name: string): boolean;
+	/**
+	 * Abort the active turn for `roomId`. Convenience wrapper for
+	 * `turnControllers.abortTurn`. Returns true if a turn was aborted.
+	 */
+	abortTurn(roomId: string, reason: string): boolean;
 
 	/**
 	 * Get all registered actions.

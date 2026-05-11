@@ -4,6 +4,22 @@ import { ExecApprovalService } from "./approvals";
 import { shellHistoryProvider } from "./providers";
 import { ShellService } from "./services/shellService";
 
+function terminalSupportedByEnv(env: Record<string, string | undefined>): boolean {
+  const variant = (env.MILADY_BUILD_VARIANT ?? env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
+  if (variant === "store") return false;
+  const platform = env.ELIZA_PLATFORM?.trim().toLowerCase();
+  const mobile =
+    platform === "android" || platform === "ios" || Boolean(env.ANDROID_ROOT || env.ANDROID_DATA);
+  if (!mobile) return true;
+  const mode = (env.ELIZA_RUNTIME_MODE ?? env.RUNTIME_MODE ?? env.LOCAL_RUNTIME_MODE ?? "")
+    .trim()
+    .toLowerCase();
+  const aosp = ["1", "true", "yes", "on"].includes(
+    (env.ELIZA_AOSP_BUILD ?? "").trim().toLowerCase()
+  );
+  return platform === "android" && aosp && mode === "local-yolo";
+}
+
 export const shellPlugin: Plugin = {
   name: "shell",
   description: "Shell observability and history management providers",
@@ -12,11 +28,14 @@ export const shellPlugin: Plugin = {
   providers: [shellHistoryProvider],
   // Self-declared auto-enable: activate when features.shell is enabled.
   autoEnable: {
-    shouldEnable: (_env, config) => {
+    shouldEnable: (env, config) => {
       const f = (config?.features as Record<string, unknown> | undefined)?.shell;
       return (
-        f === true ||
-        (typeof f === "object" && f !== null && (f as { enabled?: unknown }).enabled !== false)
+        (f === true ||
+          (typeof f === "object" &&
+            f !== null &&
+            (f as { enabled?: unknown }).enabled !== false)) &&
+        terminalSupportedByEnv(env as Record<string, string | undefined>)
       );
     },
   },

@@ -170,7 +170,8 @@ These commands will:
 
 ## Step 4: Publish Your Plugin
 
-Once local checks pass, publish the package with standard npm tooling and submit the registry update through the current registry contribution process.
+Once local checks pass, publish the package with standard npm tooling and submit
+the registry update through the elizaOS CLI.
 
 ### Publish to npm
 
@@ -179,26 +180,19 @@ npm login
 npm publish --access public
 ```
 
-### Prepare your registry pull request
+### Submit the registry pull request
 
-You may need a scoped Github token for registry submission tooling:
+```bash Terminal
+elizaos plugins submit .
+```
 
-<Steps>
-  <Step title="Create GitHub Personal Access Token (when prompted)">
-    1. Go to [GitHub Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens)
-    2. Click **"Generate new token (classic)"**
-    3. Name it **"elizaOS Publishing"**
-    4. Select these scopes:
-       - `repo` (Full control of private repositories)
-       - `read:org` (Read organization membership)  
-       - `workflow` (Update GitHub Action workflows)
-    5. Click **"Generate token"**
-    6. **Copy the token and paste it when prompted by the CLI**
+The command reads your `package.json`, validates the public npm package and
+GitHub repository, adds one metadata file under
+`entries/third-party/` in your fork of `elizaos-plugins/registry`, and opens a
+pull request. Registered third-party packages are labeled as community
+supported, not first-party supported.
 
-    <img src="/images/github-token-scopes.png" alt="GitHub token scope selection showing repo, read:org, and workflow checked" />
-
-  </Step>
-</Steps>
+Use `--dry-run` to inspect the generated metadata without opening a PR.
 
 <Note>
   Make sure to test that your plugin is configured correctly before publishing,
@@ -210,7 +204,7 @@ You may need a scoped Github token for registry submission tooling:
 ```
 ✓ Successfully published plugin-fal-ai@1.0.0 to npm
 ✓ Created GitHub repository: yourusername/plugin-fal-ai
-✓ Registry pull request created: https://github.com/elizaos-plugins/registry/pull/123
+✓ Created registry PR: https://github.com/elizaos-plugins/registry/pull/123
 
 Your plugin is now available at:
 NPM: https://www.npmjs.com/package/plugin-fal-ai

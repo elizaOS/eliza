@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plugins.elizacloud.ai/schemas/third-party-package.schema.json",
+  "title": "elizaOS third-party registry package",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["package", "repository"],
+  "properties": {
+    "package": {
+      "type": "string",
+      "pattern": "^(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*$"
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^github:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$"
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["plugin", "connector", "app"],
+      "default": "plugin"
+    },
+    "description": {
+      "type": "string"
+    },
+    "homepage": {
+      "type": "string",
+      "format": "uri"
+    },
+    "version": {
+      "type": "string"
+    },
+    "branch": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]+$",
+      "default": "main"
+    },
+    "coreRange": {
+      "type": "string"
+    },
+    "directory": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]+$"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true
+    },
+    "app": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

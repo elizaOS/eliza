@@ -11,7 +11,7 @@
     "react-markdown": "^10.0.0"
   },
   "scripts": {
-    "start": "vite",
+    "start": "bun --bun vite",
     "build": "bun --bun vite build && cp public/404.html dist/404.html",
     "preview": "bun --bun vite preview",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

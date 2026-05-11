@@ -1,4 +1,5 @@
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
+import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import type { Character } from "./agent";
 import type { Action, AgentContext, Provider } from "./components";
 import type { IDatabaseAdapter } from "./database";
@@ -506,6 +507,12 @@ export interface Plugin {
 	providers?: Provider[];
 	evaluators?: RegisteredEvaluator[];
 	responseHandlerEvaluators?: ResponseHandlerEvaluator[];
+	/**
+	 * Field evaluators that contribute schema fragments and handlers to the
+	 * Stage-1 response handler's single LLM call. See
+	 * `runtime/response-handler-field-evaluator.ts`.
+	 */
+	responseHandlerFieldEvaluators?: ResponseHandlerFieldEvaluator[];
 
 	/**
 	 * Database adapter factory. When set, this plugin provides the database
@@ -574,7 +581,7 @@ export interface Plugin {
 		shouldEnable?: (
 			env: Record<string, string | undefined>,
 			config: Record<string, unknown>,
-		) => boolean;
+		) => boolean | Promise<boolean>;
 	};
 }
 

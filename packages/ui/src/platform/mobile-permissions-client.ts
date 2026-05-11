@@ -6,16 +6,19 @@ import type {
   PermissionStatus,
 } from "@elizaos/shared";
 import {
-  getAppleCalendarPlugin,
-  getMobileSignalsPlugin,
   type AppleCalendarPermissionStatus,
   type AppleCalendarPluginLike,
+  getAppleCalendarPlugin,
+  getMobileSignalsPlugin,
+  getPushNotificationsPlugin,
   type MobileSignalsOpenSettingsResult,
   type MobileSignalsPermissionStatus,
   type MobileSignalsPluginLike,
   type MobileSignalsScreenTimeStatus,
   type MobileSignalsSettingsTarget,
   type MobileSignalsSetupAction,
+  type PushNotificationPermissionStatus,
+  type PushNotificationsPluginLike,
 } from "../bridge/native-plugins";
 import { platform } from "./init";
 
@@ -30,7 +33,7 @@ type PermissionClientLike = {
   openPermissionSettings(id: PermissionId): Promise<void>;
 };
 
-const MOBILE_SIGNAL_PERMISSION_IDS = new Set<PermissionId>([
+const MOBILE_PERMISSION_IDS = new Set<PermissionId>([
   "calendar",
   "health",
   "screentime",
@@ -166,13 +169,33 @@ function stateFromNotifications(
   });
 }
 
+function stateFromPushNotifications(
+  permissions: PushNotificationPermissionStatus,
+): PermissionState {
+  switch (permissions.receive) {
+    case "granted":
+      return defaultMobileState("notifications", "granted", {
+        canRequest: false,
+      });
+    case "denied":
+      return defaultMobileState("notifications", "denied", {
+        canRequest: false,
+      });
+    case "prompt":
+    case "prompt-with-rationale":
+      return defaultMobileState("notifications", "not-determined", {
+        canRequest: true,
+      });
+    default:
+      return defaultMobileState("notifications");
+  }
+}
+
 function stateFromAppleCalendar(
   permissions: AppleCalendarPermissionStatus,
 ): PermissionState {
   const status =
-    permissions.calendar === "prompt"
-      ? "not-determined"
-      : permissions.calendar;
+    permissions.calendar === "prompt" ? "not-determined" : permissions.calendar;
   return defaultMobileState("calendar", status, {
     canRequest: permissions.canRequest,
     reason: permissions.reason ?? undefined,
@@ -202,10 +225,10 @@ function mobileSettingsTargetFor(
   return "app";
 }
 
-function isMobileSignalPermissionId(
+function isMobilePermissionId(
   id: PermissionId,
 ): id is MobilePermissionId {
-  return MOBILE_SIGNAL_PERMISSION_IDS.has(id);
+  return MOBILE_PERMISSION_IDS.has(id);
 }
 
 export async function openMobilePermissionSettings(
@@ -220,6 +243,7 @@ export function createMobileSignalsPermissionsRegistry(
   plugin: MobileSignalsPluginLike = getMobileSignalsPlugin(),
   fallbackClient?: PermissionClientLike,
   appleCalendarPlugin: AppleCalendarPluginLike = getAppleCalendarPlugin(),
+  pushNotificationsPlugin: PushNotificationsPluginLike = getPushNotificationsPlugin(),
 ): IPermissionsRegistry {
   const states = new Map<PermissionId, PermissionState>();
   const subscribers = new Set<(state: PermissionState[]) => void>();
@@ -250,6 +274,15 @@ export function createMobileSignalsPermissionsRegistry(
         stateFromAppleCalendar(await appleCalendarPlugin.checkPermissions()),
       );
     }
+    if (id === "notifications") {
+      if (typeof pushNotificationsPlugin.checkPermissions === "function") {
+        return commit(
+          stateFromPushNotifications(
+            await pushNotificationsPlugin.checkPermissions(),
+          ),
+        );
+      }
+    }
     if (typeof plugin.checkPermissions !== "function") {
       return commit(defaultMobileState(id));
     }
@@ -269,18 +302,18 @@ export function createMobileSignalsPermissionsRegistry(
       return (
         states.get(id) ??
         defaultMobileState(id, "not-determined", {
-          canRequest: isMobileSignalPermissionId(id),
+          canRequest: isMobilePermissionId(id),
         })
       );
     },
     async check(id) {
-      if (isMobileSignalPermissionId(id)) return checkMobilePermission(id);
+      if (isMobilePermissionId(id)) return checkMobilePermission(id);
       return checkFallback(id);
     },
     async request(id, opts) {
       const lastRequested = Date.now();
 
-      if (!isMobileSignalPermissionId(id)) {
+      if (!isMobilePermissionId(id)) {
         if (fallbackClient) {
           const next = await fallbackClient.requestPermission(id);
           return commit({
@@ -295,6 +328,7 @@ export function createMobileSignalsPermissionsRegistry(
         return commit(defaultMobileState(id, "not-applicable"));
       }
 
+      let requestedState: PermissionState | null = null;
       if (id === "calendar") {
         const current = await checkMobilePermission(id);
         if (
@@ -308,6 +342,13 @@ export function createMobileSignalsPermissionsRegistry(
       } else if (id === "notifications") {
         const current = await checkMobilePermission(id);
         if (
+          current.canRequest &&
+          typeof pushNotificationsPlugin.requestPermissions === "function"
+        ) {
+          requestedState = stateFromPushNotifications(
+            await pushNotificationsPlugin.requestPermissions(),
+          );
+        } else if (
           current.canRequest &&
           typeof plugin.requestPermissions === "function"
         ) {
@@ -329,7 +370,7 @@ export function createMobileSignalsPermissionsRegistry(
         await plugin.requestPermissions({ target: "health" });
       }
 
-      const next = await checkMobilePermission(id);
+      const next = requestedState ?? (await checkMobilePermission(id));
       return commit({
         ...next,
         lastRequested,

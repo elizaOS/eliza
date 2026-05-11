@@ -19,6 +19,28 @@ const vitestConfigPath = path.join(
   repoRoot,
   "eliza/test/vitest/live-e2e.config.ts",
 );
+const runtimePackageBuildPrerequisites = [
+  {
+    name: "@elizaos/app-core",
+    packageRoot: path.join(repoRoot, "eliza", "packages", "app-core"),
+    requiredPaths: [
+      path.join("dist", "index.js"),
+      path.join("dist", "registry", "entries", "apps"),
+      path.join("dist", "registry", "entries", "connectors"),
+      path.join("dist", "registry", "entries", "plugins"),
+    ],
+  },
+  {
+    name: "@elizaos/app-companion",
+    packageRoot: path.join(repoRoot, "eliza", "plugins", "app-companion"),
+    requiredPaths: [path.join("dist", "plugin.js")],
+  },
+  {
+    name: "@elizaos/app-lifeops",
+    packageRoot: path.join(repoRoot, "eliza", "plugins", "app-lifeops"),
+    requiredPaths: [path.join("dist", "plugin.js")],
+  },
+];
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -152,6 +174,42 @@ if (!pluginId) {
     `${cwd}; add the plugin to plugins.json or run from its package root`;
   console.log(`[plugin-live-smoke] [33m${process.env.SKIP_REASON}[0m`);
   process.exit(0);
+}
+
+function ensureRuntimePackageBuilt(prerequisite) {
+  const missingPaths = prerequisite.requiredPaths.filter(
+    (relativePath) =>
+      !fs.existsSync(path.join(prerequisite.packageRoot, relativePath)),
+  );
+  if (missingPaths.length === 0) {
+    return;
+  }
+
+  console.log(
+    `[plugin-live-smoke] Building ${prerequisite.name} because required runtime artifacts are missing: ${missingPaths.join(", ")}`,
+  );
+  const buildResult = spawnSync(
+    process.env.npm_execpath || process.env.BUN || "bun",
+    ["run", "build"],
+    {
+      cwd: prerequisite.packageRoot,
+      stdio: "inherit",
+      env: process.env,
+    },
+  );
+  if (buildResult.error?.code === "ENOENT") {
+    console.log(
+      `[plugin-live-smoke] Failed to build ${prerequisite.name} because the package manager could not be launched: ${buildResult.error.message}`,
+    );
+    process.exit(1);
+  }
+  if (buildResult.status !== 0) {
+    process.exit(buildResult.status ?? 1);
+  }
+}
+
+for (const prerequisite of runtimePackageBuildPrerequisites) {
+  ensureRuntimePackageBuilt(prerequisite);
 }
 
 const result = spawnSync(

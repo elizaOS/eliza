@@ -22,7 +22,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final, Sequence
 
-from huggingface_hub import HfApi, hf_hub_download
+try:  # pragma: no cover - import availability is environment-dependent
+    from huggingface_hub import HfApi, hf_hub_download
+except ModuleNotFoundError:  # pragma: no cover - env-only path
+    HfApi = None  # type: ignore[assignment]
+    hf_hub_download = None  # type: ignore[assignment]
 
 try:
     from .eliza1_manifest import ELIZA_1_TIERS
@@ -31,6 +35,27 @@ except ImportError:  # pragma: no cover - script execution path
 
 HF_RETRY_ATTEMPTS: Final[int] = 4
 HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
+
+
+def require_hf_hub(*, require_download: bool = False) -> tuple[Any, Any]:
+    global HfApi, hf_hub_download
+    if HfApi is None or (require_download and hf_hub_download is None):
+        try:
+            from huggingface_hub import HfApi as ImportedHfApi
+            from huggingface_hub import hf_hub_download as imported_hf_hub_download
+        except ModuleNotFoundError as exc:  # pragma: no cover - env-only path
+            raise SystemExit(
+                "huggingface_hub is required for non-dry-run source staging; "
+                "install the training deps or run inside the training environment"
+            ) from exc
+        HfApi = ImportedHfApi
+        hf_hub_download = imported_hf_hub_download
+    if HfApi is None or (require_download and hf_hub_download is None):
+        raise SystemExit(
+            "huggingface_hub is required for non-dry-run source staging; "
+            "install the training deps or run inside the training environment"
+        )
+    return HfApi, hf_hub_download
 
 
 @dataclass(frozen=True, slots=True)
@@ -225,7 +250,7 @@ def stage_one(
         }
     cached = Path(
         retry_hf(
-            hf_hub_download,
+            require_hf_hub(require_download=True)[1],
             repo_id=artifact.repo,
             filename=artifact.filename,
             revision=revision,
@@ -264,6 +289,7 @@ def write_source_license_notes(bundle_dir: Path, artifacts: Sequence[SourceArtif
 
 def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
     bundle_dir = args.bundle_dir.resolve()
+    HfApi, _ = require_hf_hub()
     api = HfApi()
     artifacts: list[SourceArtifact] = [TEXT_SOURCES[args.tier]]
     for optional in (DRAFTER_SOURCES[args.tier], VISION_SOURCES[args.tier]):

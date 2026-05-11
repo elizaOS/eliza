@@ -216,8 +216,19 @@ function sanitizeModelRepo(repo: string): string {
 
 function sanitizeModelFilename(filename: string): string {
   const trimmed = filename.trim();
-  if (!/^[A-Za-z0-9._-]+\.gguf$/i.test(trimmed)) {
+  // Permit forward-slash separated path segments so canonical HF-style ids like
+  // `text/eliza-1-lite-0_6b-32k.gguf` (a real subdirectory in the upstream repo
+  // and the on-disk layout under `modelsDir`) pass validation. Each segment is
+  // restricted to `[A-Za-z0-9._-]+`, which alone would let `.` / `..` through;
+  // we reject those explicitly below. `resolveModelPath` provides
+  // defense-in-depth via a realpath comparison against `modelsDir`.
+  if (!/^[A-Za-z0-9._-]+(\/[A-Za-z0-9._-]+)*\.gguf$/i.test(trimmed)) {
     throw new Error(`Invalid embedding model filename: ${filename}`);
+  }
+  for (const segment of trimmed.split("/")) {
+    if (segment === "." || segment === "..") {
+      throw new Error(`Invalid embedding model filename: ${filename}`);
+    }
   }
   return trimmed;
 }

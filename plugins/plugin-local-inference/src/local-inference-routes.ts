@@ -144,7 +144,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-1_7b",
 		displayName: "eliza-1-1_7b",
-		hfRepo: "elizalabs/eliza-1-1_7b",
+		hfRepo: "elizaos/eliza-1-1_7b",
 		ggufFile: "text/eliza-1-1_7b-32k.gguf",
 		params: "1.7B",
 		quant: "fused GGUF",
@@ -158,7 +158,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-9b",
 		displayName: "eliza-1-9b",
-		hfRepo: "elizalabs/eliza-1-9b",
+		hfRepo: "elizaos/eliza-1-9b",
 		ggufFile: "text/eliza-1-9b-64k.gguf",
 		params: "9B",
 		quant: "fused GGUF",
@@ -172,7 +172,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-27b",
 		displayName: "eliza-1-27b",
-		hfRepo: "elizalabs/eliza-1-27b",
+		hfRepo: "elizaos/eliza-1-27b",
 		ggufFile: "text/eliza-1-27b-128k.gguf",
 		params: "27B",
 		quant: "fused GGUF",
@@ -186,7 +186,7 @@ const CATALOG: CatalogModel[] = [
 	{
 		id: "eliza-1-0_6b",
 		displayName: "eliza-1-0_6b",
-		hfRepo: "elizalabs/eliza-1-0_6b",
+		hfRepo: "elizaos/eliza-1-0_6b",
 		ggufFile: "text/eliza-1-0_6b-32k.gguf",
 		params: "0.6B",
 		quant: "fused GGUF",

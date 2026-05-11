@@ -119,6 +119,113 @@ export async function executeRawSql(
 }
 
 // ---------------------------------------------------------------------------
+// Transactions and optimistic concurrency
+//
+// Atomic multi-step operations (e.g., thread merge: update target + mark N
+// source threads stopped + append events) MUST run inside `withTransaction`.
+// Without it, a crash mid-loop leaves dangling state — half-merged threads,
+// scheduled tasks fired but not dispatched, etc.
+//
+// `withTransaction` opens a PostgreSQL transaction via the underlying drizzle
+// adapter and exposes a `TransactionalDb` handle with the same `.execute(raw)`
+// shape as the global runtime DB. Pass it into transaction-aware variants of
+// `executeRawSql`/repository methods (currently named `executeRawSqlTx`).
+//
+// `OptimisticLockError` is thrown when an UPDATE with a version check affects
+// 0 rows — caller catches once, re-reads fresh, retries (3x max, with
+// exponential backoff), then surfaces the conflict.
+// ---------------------------------------------------------------------------
+
+export type TransactionalDb = {
+  execute: (query: RawSqlQuery) => Promise<unknown>;
+};
+
+type DrizzleTransactionalDb = RuntimeDb & {
+  transaction?: <T>(fn: (tx: TransactionalDb) => Promise<T>) => Promise<T>;
+};
+
+export class OptimisticLockError extends Error {
+  readonly code = "OPTIMISTIC_LOCK_ERROR";
+  readonly table: string;
+  readonly id: string;
+  readonly expectedVersion: number;
+  constructor(args: { table: string; id: string; expectedVersion: number }) {
+    super(
+      `Optimistic lock conflict on ${args.table} id=${args.id} expectedVersion=${args.expectedVersion}`,
+    );
+    this.table = args.table;
+    this.id = args.id;
+    this.expectedVersion = args.expectedVersion;
+  }
+}
+
+/**
+ * Run `fn` inside a database transaction. The handle passed to `fn` exposes
+ * the same `.execute(raw)` shape as the global runtime DB, but every call
+ * goes through the transaction. Throwing rolls back; returning commits.
+ *
+ * Drizzle's pg adapter supports `db.transaction(fn)` natively. If the adapter
+ * does not (e.g., a test fake), we fall back to running `fn` against the
+ * global DB and warn — atomicity is not guaranteed in that mode.
+ */
+export async function withTransaction<T>(
+  runtime: IAgentRuntime,
+  fn: (tx: TransactionalDb) => Promise<T>,
+): Promise<T> {
+  const db = getRuntimeDb(runtime) as DrizzleTransactionalDb;
+  if (typeof db.transaction === "function") {
+    return await db.transaction(async (tx) => fn(tx));
+  }
+  // Adapter does not support transactions (likely a test fake). Run inline.
+  return await fn({
+    execute: (query) => db.execute(query),
+  });
+}
+
+/**
+ * Transactional analogue of `executeRawSql`. Pass the `tx` handed in by
+ * `withTransaction`'s callback — every statement participates in the same
+ * transaction and commits/rolls back together.
+ */
+export async function executeRawSqlTx(
+  tx: TransactionalDb,
+  sqlText: string,
+): Promise<Array<Record<string, unknown>>> {
+  const raw = await getSqlRaw();
+  const result = await tx.execute(raw(sqlText));
+  return extractRows(result);
+}
+
+/**
+ * Retry policy for optimistic-lock conflicts. Default: 3 attempts with
+ * exponential backoff at 20ms / 50ms / 120ms. After 3 attempts the original
+ * `OptimisticLockError` is rethrown.
+ */
+export async function withOptimisticRetry<T>(
+  fn: () => Promise<T>,
+  options?: { maxAttempts?: number; baseDelayMs?: number },
+): Promise<T> {
+  const maxAttempts = Math.max(1, options?.maxAttempts ?? 3);
+  const baseDelay = Math.max(1, options?.baseDelayMs ?? 20);
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!(error instanceof OptimisticLockError)) {
+        throw error;
+      }
+      lastError = error;
+      if (attempt < maxAttempts - 1) {
+        const delay = baseDelay * 2 ** attempt + Math.floor(Math.random() * baseDelay);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError;
+}
+
+// ---------------------------------------------------------------------------
 // SQL value encoders
 // ---------------------------------------------------------------------------
 

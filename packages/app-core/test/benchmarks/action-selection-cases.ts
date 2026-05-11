@@ -326,7 +326,9 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "rel-list-contacts",
     userMessage: "who are my closest contacts?",
     expectedAction: "ENTITY",
-    acceptableActions: ["LIST_CONTACTS", "RELATIONSHIPS"],
+    // LIST_CONTACTS / CONTACT are folded to ENTITY by the runner's
+    // canonical map; RELATIONSHIPS is retired.
+    acceptableActions: ["LIST_CONTACTS", "CONTACT"],
     expectedParams: { action: "list" },
     tags: ["relationships", "standard"],
   },
@@ -469,7 +471,9 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "browser-manage-settings",
     userMessage: "show me my LifeOps browser settings",
     expectedAction: "BROWSER",
-    acceptableActions: ["MANAGE_LIFEOPS_BROWSER"],
+    // MANAGE_LIFEOPS_BROWSER was retired in favor of the unified BROWSER
+    // parent. The runner's canonical map folds the old name to BROWSER, so
+    // there's no need to repeat it in acceptableActions.
     expectedParams: { action: "manage" },
     tags: ["browser", "standard"],
   },
@@ -530,7 +534,9 @@ export const ACTION_BENCHMARK_CASES: ActionBenchmarkCase[] = [
     id: "subscriptions-cancel-hulu-browser",
     userMessage: "cancel Hulu in my browser",
     expectedAction: "OWNER_FINANCES",
-    acceptableActions: ["BROWSER", "COMPUTER_USE", "MANAGE_LIFEOPS_BROWSER"],
+    // The runner's canonical map folds MANAGE_LIFEOPS_BROWSER -> BROWSER,
+    // so we just list canonical fallbacks here.
+    acceptableActions: ["BROWSER", "COMPUTER_USE"],
     expectedParams: { action: "subscription_cancel" },
     tags: ["subscriptions", "critical"],
   },

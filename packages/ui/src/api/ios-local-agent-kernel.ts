@@ -106,8 +106,8 @@ interface IosBundleManifest {
     vision: IosBundleFileEntry[];
     dflash: IosBundleFileEntry[];
     cache: IosBundleFileEntry[];
+    vad: IosBundleFileEntry[];
     embedding?: IosBundleFileEntry[];
-    vad?: IosBundleFileEntry[];
     wakeword?: IosBundleFileEntry[];
   };
 }
@@ -1198,9 +1198,24 @@ function parseIosBundleManifest(
     "vision",
     "dflash",
     "cache",
+    "vad",
   ] as const) {
     if (!Array.isArray(raw.files[kind])) {
       throw new Error(`Invalid Eliza-1 manifest files.${kind}`);
+    }
+  }
+  for (const kind of [
+    "text",
+    "voice",
+    "asr",
+    "dflash",
+    "cache",
+    "vad",
+  ] as const) {
+    if (raw.files[kind].length === 0) {
+      throw new Error(
+        `Invalid Eliza-1 manifest files.${kind} must be non-empty`,
+      );
     }
   }
   if (!raw.files.text.some((entry) => entry.path === model.ggufFile)) {
@@ -1722,6 +1737,47 @@ function buildPrompt(messages: LocalMessage[], latestText: string): string {
   return `${DEFAULT_SYSTEM_PROMPT}\n\n${history}${history ? "\n" : ""}User: ${latestText}\nAssistant:`;
 }
 
+/**
+ * Classify a thrown error from `llama.generate` so the caller can decide
+ * between "rotate to cloud" and "propagate". Same shape and reasons as the
+ * AOSP bootstrap's wrapper — we don't share the type because the iOS kernel
+ * deliberately has zero dependency on `@elizaos/app-core`.
+ */
+type IosLocalGenerateFallbackReason =
+  | "local-unavailable"
+  | "local-overloaded"
+  | "local-error"
+  | "local-aborted-pre-completion";
+
+function classifyIosLocalGenerateError(err: unknown): {
+  fallback: boolean;
+  reason: IosLocalGenerateFallbackReason;
+} {
+  if (err instanceof Error) {
+    const name = err.name;
+    const msg = err.message.toLowerCase();
+    if (name === "AbortError") {
+      return { fallback: false, reason: "local-aborted-pre-completion" };
+    }
+    if (
+      msg.includes("native eliza-1 runtime is not available") ||
+      msg.includes("not loaded") ||
+      msg.includes("not installed") ||
+      msg.includes("not staged")
+    ) {
+      return { fallback: true, reason: "local-unavailable" };
+    }
+    if (
+      msg.includes("thermal") ||
+      msg.includes("low-power") ||
+      msg.includes("memory slot")
+    ) {
+      return { fallback: true, reason: "local-overloaded" };
+    }
+  }
+  return { fallback: false, reason: "local-error" };
+}
+
 async function generateLocalReply(
   conversation: LocalConversation,
   text: string,
@@ -1731,27 +1787,56 @@ async function generateLocalReply(
   await ensureActiveModelLoaded();
   const llama = await loadCapacitorLlama();
   if (!llama?.generate) {
-    throw new Error("Native Eliza-1 runtime is not available on this build.");
+    // Surface as a fallback-eligible failure so the caller / future cloud
+    // routing layer can detect it cleanly instead of grepping the message.
+    const err = new Error(
+      "Native Eliza-1 runtime is not available on this build.",
+    );
+    err.name = "LocalRuntimeUnavailableError";
+    throw err;
   }
   const prompt = buildPrompt(conversation.messages, text);
-  const result = await llama.generate({
-    prompt,
-    maxTokens: 256,
-    temperature: 0.7,
-    topP: 0.9,
-    stopSequences: ["\nUser:", "\nAssistant:"],
-  });
-  const cleaned =
-    result.text.trim() || "I could not generate a local response.";
-  return {
-    text: cleaned,
-    usage: {
-      promptTokens: result.promptTokens,
-      completionTokens: result.outputTokens,
-      totalTokens: result.promptTokens + result.outputTokens,
-      ...(activeState.modelId ? { model: activeState.modelId } : {}),
-    },
-  };
+  try {
+    const result = await llama.generate({
+      prompt,
+      maxTokens: 256,
+      temperature: 0.7,
+      topP: 0.9,
+      stopSequences: ["\nUser:", "\nAssistant:"],
+    });
+    const cleaned =
+      result.text.trim() || "I could not generate a local response.";
+    return {
+      text: cleaned,
+      usage: {
+        promptTokens: result.promptTokens,
+        completionTokens: result.outputTokens,
+        totalTokens: result.promptTokens + result.outputTokens,
+        ...(activeState.modelId ? { model: activeState.modelId } : {}),
+      },
+    };
+  } catch (err) {
+    const cls = classifyIosLocalGenerateError(err);
+    if (!cls.fallback) {
+      throw err;
+    }
+    // Local failed in a way that would normally be served by cloud, but
+    // this kernel only exposes the on-device llama adapter — there's no
+    // cloud handler registered here. Surface an honest, actionable error
+    // instead of inventing a fake response. Wave 3C / cloud routing layer
+    // can intercept this and forward to Eliza Cloud when a session token
+    // is available.
+    const reasonDetail = cls.reason;
+    const cause = err instanceof Error ? err : undefined;
+    const honest = new Error(
+      `Local inference unavailable on this device (${reasonDetail}). Pair Eliza Cloud or activate a smaller local model to continue.`,
+    );
+    honest.name = "LocalInferenceFallbackRequired";
+    if (cause) {
+      (honest as Error & { cause?: unknown }).cause = cause;
+    }
+    throw honest;
+  }
 }
 
 async function generateLocalGreeting(): Promise<LocalReply> {

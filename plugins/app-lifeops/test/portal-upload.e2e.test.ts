@@ -2,16 +2,15 @@
 /**
  * LifeOps Journey #16 — Speaker Portal Upload Via Browser Automation
  *
- * User asks the agent to upload a deck to a speaker portal.  The agent uses
- * the browser-workspace bridge to navigate the portal, fill the upload form,
- * and submit the file.
+ * User asks the agent to upload a deck to a speaker portal. The request is
+ * missing both the concrete portal link and the deck file, so the agent should
+ * collect those inputs and confirm the unsafe browser/upload boundary before
+ * taking any account-affecting browser action.
  *
  * PRD §Suite E — Docs, Sign-Off, And Portals
  * (`ea.docs.portal-upload-from-chat`).
  *
- * Gate: ELIZA_LIVE_TEST=1 + provider key + browser-workspace mock available.
- * The browser-workspace mock responds to /tabs, /tabs/:id/navigate,
- * /tabs/:id/eval, and /tabs/:id/snapshot endpoints.
+ * Gate: ELIZA_LIVE_TEST=1 + provider key.
  */
 
 import crypto from "node:crypto";
@@ -24,9 +23,6 @@ import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtim
 
 const LIVE_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const provider = LIVE_ENABLED ? selectLiveProvider() : null;
-
-// Also require the browser-workspace mock environment
-const BROWSER_WS_AVAILABLE = Boolean(process.env.ELIZA_BROWSER_WORKSPACE_URL);
 
 if (!LIVE_ENABLED || !provider) {
   console.info(
@@ -71,7 +67,7 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
       await mocked?.cleanup();
     });
 
-    it("initiates browser-workspace portal navigation for the SXSW speaker portal", async () => {
+    it("collects required portal-upload inputs before browser automation", async () => {
       const message = createMessageMemory({
         id: crypto.randomUUID() as UUID,
         entityId: ownerId,
@@ -103,33 +99,21 @@ describe.skipIf(!LIVE_ENABLED || !provider)(
         String(result?.responseContent?.text ?? "").trim() || responseText;
 
       expect(reply).not.toMatch(/something (?:went wrong|flaked)|try again/i);
+      expect(reply).toMatch(/portal link/i);
+      expect(reply).toMatch(/deck file|file path/i);
+      expect(reply).toMatch(/ask|approval|confirm/i);
 
-      // Assert browser-workspace requests in the ledger
+      // The prompt lacks the portal URL and asset path, so the agent should not
+      // start browser automation or touch the portal yet.
       const ledger = mocked.mocks.requestLedger();
       const browserRequests = ledger.filter(
         (entry) => entry.environment === "browser-workspace",
       );
-
-      if (BROWSER_WS_AVAILABLE) {
-        // When browser-workspace is wired up, expect at least a navigate or eval call
-        expect(
-          browserRequests.length,
-          "expected browser-workspace navigate/eval calls",
-        ).toBeGreaterThanOrEqual(1);
-        expect(
-          browserRequests.some(
-            (entry) =>
-              entry.browserWorkspace?.action === "navigate" ||
-              entry.browserWorkspace?.action === "eval",
-          ),
-        ).toBe(true);
-      } else {
-        expect(browserRequests).toHaveLength(0);
-      }
+      expect(browserRequests).toHaveLength(0);
     }, 120_000);
 
     it.todo(
-      "completes the full portal form fill and upload sequence (requires deterministic portal fixture)",
+      "completes the full portal form fill and upload sequence once portal link and deck fixture are present",
     );
   },
 );

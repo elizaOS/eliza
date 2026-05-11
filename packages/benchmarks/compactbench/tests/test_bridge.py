@@ -90,11 +90,54 @@ def test_bridge_raises_on_error_envelope(monkeypatch: pytest.MonkeyPatch) -> Non
     assert "module not found" in str(excinfo.value)
 
 
-def test_bridge_raises_when_bun_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_bridge_raises_when_bun_missing(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
     monkeypatch.setattr(bridge.shutil, "which", lambda _: None)
+    monkeypatch.setenv("HOME", str(tmp_path))
     with pytest.raises(bridge.BridgeError) as excinfo:
         bridge.run_ts_compactor("naive-summary", {"turns": []})
     assert "bun is not on PATH" in str(excinfo.value)
+
+
+def test_bridge_falls_back_to_home_bun(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    bun = tmp_path / ".bun" / "bin" / "bun"
+    bun.parent.mkdir(parents=True)
+    bun.write_text("#!/bin/sh\n", encoding="utf-8")
+    captured: dict[str, Any] = {}
+
+    def fake_run(args: list[str], *, input: bytes, **_kwargs: Any) -> Any:
+        captured["args"] = args
+        return _make_completed(
+            json.dumps(
+                {
+                    "schemaVersion": "1.0.0",
+                    "summaryText": "ok",
+                    "structured_state": {
+                        "immutable_facts": [],
+                        "locked_decisions": [],
+                        "deferred_items": [],
+                        "forbidden_behaviors": [],
+                        "entity_map": {},
+                        "unresolved_items": [],
+                    },
+                    "selectedSourceTurnIds": [],
+                    "warnings": [],
+                    "methodMetadata": {},
+                }
+            )
+        )
+
+    monkeypatch.setattr(bridge.shutil, "which", lambda _: None)
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    result = bridge.run_ts_compactor("naive-summary", {"turns": []})
+
+    assert captured["args"][0] == str(bun)
+    assert result["summaryText"] == "ok"
 
 
 def test_bridge_raises_on_invalid_json(monkeypatch: pytest.MonkeyPatch) -> None:

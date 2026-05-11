@@ -168,9 +168,17 @@ export const ELIZA_1_VOICE_CAPABILITIES = [
   "emotion-tags",
   "singing",
 ] as const;
+export const ELIZA_1_VOICE_MANIFEST_VERSION = "1";
+export const VOICE_PRESET_CACHE_PATH = "cache/voice-preset-default.bin";
 export type Eliza1VoiceCapability = (typeof ELIZA_1_VOICE_CAPABILITIES)[number];
 
 export const Eliza1VoiceSchema = z.object({
+  version: z.string().min(1),
+  frozen: z.literal(true),
+  cache: z.object({
+    speakerPreset: z.string().min(1),
+    phraseCacheSeed: z.string().min(1),
+  }),
   capabilities: z.array(z.enum(ELIZA_1_VOICE_CAPABILITIES)).default(["tts"]),
 });
 

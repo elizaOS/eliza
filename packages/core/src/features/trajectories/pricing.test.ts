@@ -46,7 +46,7 @@ describe("MODEL_PRICES_USD_PER_M_TOKENS", () => {
 	});
 
 	it("local providers carry a real zero rate (not a missing entry)", () => {
-		expect(MODEL_PRICES_USD_PER_M_TOKENS["ollama"]).toEqual({
+		expect(MODEL_PRICES_USD_PER_M_TOKENS.ollama).toEqual({
 			provider: "ollama",
 			input: 0,
 			output: 0,

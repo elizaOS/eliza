@@ -78,6 +78,9 @@ def test_app_harness_invocation_uses_ui_prompt_by_default(tmp_path) -> None:
     assert "--prompt-via-api" not in invocation.command
     assert "--no-launch" in invocation.command
     assert "--target-url" in invocation.command
+    assert "--require-browser-tab" in invocation.command
+    assert "--require-browser-events" in invocation.command
+    assert "--require-trajectory" in invocation.command
     assert "visualwebbench" in invocation.prompt
 
 

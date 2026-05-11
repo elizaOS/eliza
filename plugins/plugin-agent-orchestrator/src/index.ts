@@ -15,7 +15,10 @@ import {
 } from "@elizaos/core";
 // Side-effect: register coding-agent HTTP routes with the runtime route registry.
 import "./register-routes.js";
-import { tasksSandboxStubAction } from "./actions/sandbox-stub.js";
+import {
+  createTerminalUnsupportedTasksAction,
+  tasksSandboxStubAction,
+} from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
@@ -24,10 +27,13 @@ import { availableAgentsProvider } from "./providers/available-agents.js";
 import { AcpService } from "./services/acp-service.js";
 import { PTYService } from "./services/pty-service.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
+import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object";
+  return (
+    value !== null && (typeof value === "object" || typeof value === "function")
+  );
 }
 
 function assertServiceClass(service: unknown): asserts service is ServiceClass {
@@ -45,44 +51,55 @@ function serviceClass(service: unknown): ServiceClass {
   return service;
 }
 
-const codeExecutionAllowed = isLocalCodeExecutionAllowed();
+export function createAgentOrchestratorPlugin(): Plugin {
+  const terminalSupport = detectOrchestratorTerminalSupport();
+  const localCodeAllowed = isLocalCodeExecutionAllowed();
+  const codeExecutionAllowed = localCodeAllowed && terminalSupport.supported;
 
-// Store-distributed builds cannot fork user-installed CLIs. Drop the host-CLI
-// services and the spawn-bearing actions; expose a single user-facing stub
-// action so reaches for SPAWN_AGENT / CREATE_TASK / etc. surface a clean error
-// instead of attempting (and failing) to spawn.
-const orchestratorServices: ServiceClass[] = codeExecutionAllowed
-  ? [
-      serviceClass(AcpService),
-      serviceClass(SubAgentRouter),
-      serviceClass(PTYService),
-      serviceClass(CodingWorkspaceService),
-    ]
-  : [];
+  // Store-distributed builds cannot fork user-installed CLIs. Drop the host-CLI
+  // services and the spawn-bearing actions; expose a single user-facing stub
+  // action so reaches for SPAWN_AGENT / CREATE_TASK / etc. surface a clean error
+  // instead of attempting (and failing) to spawn.
+  const orchestratorServices: ServiceClass[] = codeExecutionAllowed
+    ? [
+        serviceClass(AcpService),
+        serviceClass(SubAgentRouter),
+        serviceClass(PTYService),
+        serviceClass(CodingWorkspaceService),
+      ]
+    : [];
 
-const orchestratorActions = codeExecutionAllowed
-  ? [...promoteSubactionsToActions(tasksAction)]
-  : [tasksSandboxStubAction];
+  const orchestratorActions = codeExecutionAllowed
+    ? [...promoteSubactionsToActions(tasksAction)]
+    : [
+        localCodeAllowed
+          ? createTerminalUnsupportedTasksAction(terminalSupport)
+          : tasksSandboxStubAction,
+      ];
 
-const orchestratorProviders = codeExecutionAllowed
-  ? [
-      availableAgentsProvider, // Adapter inventory + raw session list
-      activeSubAgentsProvider, // Cache-stable view of routed sub-agent sessions
-      activeWorkspaceContextProvider, // Live workspace/session state
-      codingAgentExamplesProvider, // Structured action call examples
-    ]
-  : [];
+  const orchestratorProviders = codeExecutionAllowed
+    ? [
+        availableAgentsProvider, // Adapter inventory + raw session list
+        activeSubAgentsProvider, // Cache-stable view of routed sub-agent sessions
+        activeWorkspaceContextProvider, // Live workspace/session state
+        codingAgentExamplesProvider, // Structured action call examples
+      ]
+    : [];
 
-export const agentOrchestratorPlugin: Plugin = {
-  name: "@elizaos/plugin-agent-orchestrator",
-  description: codeExecutionAllowed
-    ? "Spawn and orchestrate coding agents via the Agent Client Protocol (acpx) with workspace lifecycle, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
-    : "Coding-agent orchestrator (disabled in store builds — install the direct download to enable). Exposes a single TASKS stub that explains the limitation when the planner reaches for a coding-agent action.",
-  // Services manage ACPX subprocesses, PTY sessions, workspaces, and sub-agent routing.
-  services: orchestratorServices,
-  actions: orchestratorActions,
-  providers: orchestratorProviders,
-};
+  return {
+    name: "@elizaos/plugin-agent-orchestrator",
+    description: codeExecutionAllowed
+      ? "Spawn and orchestrate coding agents via the Agent Client Protocol (acpx) with workspace lifecycle, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
+      : (terminalSupport.message ??
+        "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS stub that explains the limitation when the planner reaches for a coding-agent action."),
+    // Services manage ACPX subprocesses, PTY sessions, workspaces, and sub-agent routing.
+    services: orchestratorServices,
+    actions: orchestratorActions,
+    providers: orchestratorProviders,
+  };
+}
+
+export const agentOrchestratorPlugin: Plugin = createAgentOrchestratorPlugin();
 
 export default agentOrchestratorPlugin;
 

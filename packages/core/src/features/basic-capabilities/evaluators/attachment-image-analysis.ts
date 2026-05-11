@@ -1,11 +1,7 @@
 import { v4 } from "uuid";
 import { imageDescriptionTemplate } from "../../../prompts.ts";
 import { EvaluatorPriority } from "../../../services/evaluator-priorities.ts";
-import {
-	OPTIMIZED_PROMPT_SERVICE,
-	type OptimizedPromptService,
-} from "../../../services/optimized-prompt.ts";
-import { resolveOptimizedPrompt } from "../../../services/optimized-prompt-resolver.ts";
+import { resolveOptimizedPromptForRuntime } from "../../../services/optimized-prompt-resolver.ts";
 import type {
 	Evaluator,
 	IAgentRuntime,
@@ -117,11 +113,8 @@ async function analyzeImageAttachment(
 		return null;
 	}
 
-	const optimizedPromptService = runtime.getService<OptimizedPromptService>(
-		OPTIMIZED_PROMPT_SERVICE,
-	);
-	const prompt = resolveOptimizedPrompt(
-		optimizedPromptService,
+	const prompt = resolveOptimizedPromptForRuntime(
+		runtime,
 		"media_description",
 		imageDescriptionTemplate,
 	);

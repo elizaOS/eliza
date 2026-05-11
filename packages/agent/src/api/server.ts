@@ -193,6 +193,7 @@ import { handleAppPackageRoutes } from "./app-package-routes.ts";
 import { handleAppsRoutes } from "./apps-routes.ts";
 import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
+import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
 import { handleBugReportRoutes } from "./bug-report-routes.ts";
 import { handleBuildVariantRoutes } from "./build-variant-routes.ts";
 import { handleCharacterRoutes } from "./character-routes.ts";
@@ -1668,6 +1669,19 @@ async function handleRequest(
   }
 
   if (await handleLocalInferenceRoutes(req, res)) return;
+
+  if (
+    await handleBackgroundTasksRoute({
+      req,
+      res,
+      method,
+      pathname,
+      state,
+      json,
+    })
+  ) {
+    return;
+  }
   if (await handleComputerUseRoutes(req, res, pathname, method)) return;
 
   // ── Provider inference helpers ────────────────────────────────────────
@@ -3517,7 +3531,14 @@ export async function startApiServer(opts?: {
     // configured, inject it so /api/stream/live can fetch credentials.
     void (async () => {
       try {
-        const { handleStreamRoute } = await import("@elizaos/plugin-streaming");
+        const streamRoutes = await import("@elizaos/plugin-streaming");
+        const handleStreamRoute =
+          typeof streamRoutes.handleStreamRoute === "function"
+            ? streamRoutes.handleStreamRoute
+            : null;
+        if (!handleStreamRoute) {
+          throw new Error("missing stream route exports");
+        }
         // Screen capture manager is injected by the desktop host via globalThis
         const screenCapture = (globalThis as Record<string, unknown>)
           .__elizaScreenCapture as

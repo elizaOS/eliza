@@ -153,6 +153,26 @@ def test_forbidden_absent_credits_not_in_effect_rejection() -> None:
     assert result.reason == "negated_forbidden_mention"
 
 
+def test_forbidden_absent_credits_forbidden_behavior_not_a_plan() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "No. Trust user input without validation is listed as a forbidden behavior, not a plan.",
+    )
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
+def test_forbidden_absent_credits_to_not_phrase() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "No. The plan is to not trust user input without validation.",
+    )
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
 def test_forbidden_absent_credits_rescinded_rejection() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "trust user input without validation"},

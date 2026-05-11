@@ -5,62 +5,74 @@
  * touching PTY / ACP / workspace state.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  _resetBuildVariantForTests,
+  getBuildVariant,
+  isLocalCodeExecutionAllowed,
+} from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { tasksSandboxStubAction } from "../actions/sandbox-stub.js";
+import { createAgentOrchestratorPlugin } from "../index.js";
 
-// Re-importing @elizaos/core via vi.resetModules() pays a one-time cold start
-// that comfortably exceeds vitest's 5s default. Bump per-test timeouts to 30s
-// so cold cache resolution does not flake CI.
+// Keep the slow timeout because importing @elizaos/core from this plugin can
+// still exceed Vitest's default timeout on a cold cache.
 const SLOW = 30_000;
 
 describe("agent-orchestrator sandbox gating", () => {
-  let originalVariant: string | undefined;
+  const ENV_KEYS = [
+    "MILADY_BUILD_VARIANT",
+    "ELIZA_BUILD_VARIANT",
+    "ELIZA_PLATFORM",
+    "ELIZA_AOSP_BUILD",
+    "ELIZA_RUNTIME_MODE",
+    "RUNTIME_MODE",
+    "LOCAL_RUNTIME_MODE",
+    "CODING_TOOLS_SHELL",
+    "SHELL",
+    "PATH",
+  ] as const;
+  let originalEnv: Record<string, string | undefined>;
 
   beforeEach(() => {
-    originalVariant = process.env.MILADY_BUILD_VARIANT;
+    originalEnv = Object.fromEntries(
+      ENV_KEYS.map((key) => [key, process.env[key]]),
+    );
   });
 
   afterEach(async () => {
-    if (originalVariant === undefined) {
-      delete process.env.MILADY_BUILD_VARIANT;
-    } else {
-      process.env.MILADY_BUILD_VARIANT = originalVariant;
+    for (const key of ENV_KEYS) {
+      const value = originalEnv[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
     }
-    vi.resetModules();
-    const core = await import("@elizaos/core");
-    core._resetBuildVariantForTests();
+    _resetBuildVariantForTests();
   });
 
   it("flags isLocalCodeExecutionAllowed=false under store variant", {
     timeout: SLOW,
   }, async () => {
     process.env.MILADY_BUILD_VARIANT = "store";
-    vi.resetModules();
-    const core = await import("@elizaos/core");
-    core._resetBuildVariantForTests();
-    expect(core.getBuildVariant()).toBe("store");
-    expect(core.isLocalCodeExecutionAllowed()).toBe(false);
+    _resetBuildVariantForTests();
+    expect(getBuildVariant()).toBe("store");
+    expect(isLocalCodeExecutionAllowed()).toBe(false);
   });
 
   it("flags isLocalCodeExecutionAllowed=true under direct variant", {
     timeout: SLOW,
   }, async () => {
     process.env.MILADY_BUILD_VARIANT = "direct";
-    vi.resetModules();
-    const core = await import("@elizaos/core");
-    core._resetBuildVariantForTests();
-    expect(core.getBuildVariant()).toBe("direct");
-    expect(core.isLocalCodeExecutionAllowed()).toBe(true);
+    _resetBuildVariantForTests();
+    expect(getBuildVariant()).toBe("direct");
+    expect(isLocalCodeExecutionAllowed()).toBe(true);
   });
 
   it("registers no spawn services and only a TASKS stub under store builds", {
     timeout: SLOW,
   }, async () => {
     process.env.MILADY_BUILD_VARIANT = "store";
-    vi.resetModules();
-    const core = await import("@elizaos/core");
-    core._resetBuildVariantForTests();
+    _resetBuildVariantForTests();
 
-    const { agentOrchestratorPlugin } = await import("../index.js");
+    const agentOrchestratorPlugin = createAgentOrchestratorPlugin();
     expect(agentOrchestratorPlugin.services ?? []).toHaveLength(0);
     expect(agentOrchestratorPlugin.providers ?? []).toHaveLength(0);
     const actions = agentOrchestratorPlugin.actions ?? [];
@@ -68,16 +80,38 @@ describe("agent-orchestrator sandbox gating", () => {
     expect(actions[0]?.name).toBe("TASKS");
   });
 
+  it("registers only a TASKS unsupported stub on vanilla Android", {
+    timeout: SLOW,
+  }, async () => {
+    process.env.MILADY_BUILD_VARIANT = "direct";
+    process.env.ELIZA_PLATFORM = "android";
+    process.env.ELIZA_RUNTIME_MODE = "local-yolo";
+    _resetBuildVariantForTests();
+
+    const agentOrchestratorPlugin = createAgentOrchestratorPlugin();
+    expect(agentOrchestratorPlugin.services ?? []).toHaveLength(0);
+    expect(agentOrchestratorPlugin.providers ?? []).toHaveLength(0);
+    const actions = agentOrchestratorPlugin.actions ?? [];
+    expect(actions).toHaveLength(1);
+    expect(actions[0]?.name).toBe("TASKS");
+
+    const result = await actions[0]?.handler(
+      {} as never,
+      {} as never,
+      undefined,
+      undefined,
+      undefined,
+    );
+    const data = result?.data as { reason?: string } | undefined;
+    expect(data?.reason).toBe("MOBILE_TERMINAL_UNSUPPORTED");
+    expect(result?.text).toContain("branded AOSP");
+  });
+
   it("returns a structured STORE_BUILD_BLOCKED result from the stub handler", {
     timeout: SLOW,
   }, async () => {
     process.env.MILADY_BUILD_VARIANT = "store";
-    vi.resetModules();
-    const core = await import("@elizaos/core");
-    core._resetBuildVariantForTests();
-    const { tasksSandboxStubAction } = await import(
-      "../actions/sandbox-stub.js"
-    );
+    _resetBuildVariantForTests();
     const result = await tasksSandboxStubAction.handler(
       {} as never,
       {} as never,

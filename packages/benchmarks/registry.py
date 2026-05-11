@@ -2355,6 +2355,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     # action-calling
     def _action_calling_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         provider = (model.provider or "").strip().lower() or "vllm"
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"eliza", "hermes", "openclaw"}:
+            provider = "eliza"
         args = [
             python,
             "-m",

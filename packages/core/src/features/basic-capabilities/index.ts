@@ -20,11 +20,8 @@ import {
 } from "../../prompts.ts";
 import { EmbeddingGenerationService } from "../../services/embedding.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
-import {
-	OPTIMIZED_PROMPT_SERVICE,
-	OptimizedPromptService,
-} from "../../services/optimized-prompt.ts";
-import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver.ts";
+import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
+import { resolveOptimizedPromptForRuntime } from "../../services/optimized-prompt-resolver.ts";
 import { TaskService } from "../../services/task.ts";
 import { isExplicitSelfModificationRequest } from "../../should-respond.ts";
 import type { Role } from "../../types/environment.ts";
@@ -304,10 +301,8 @@ export async function processAttachments(
 
 			let response: string | object | undefined;
 			try {
-				const optimizedMediaService =
-					runtime.getService<OptimizedPromptService>(OPTIMIZED_PROMPT_SERVICE);
-				const resolvedImageDescriptionPrompt = resolveOptimizedPrompt(
-					optimizedMediaService,
+				const resolvedImageDescriptionPrompt = resolveOptimizedPromptForRuntime(
+					runtime,
 					"media_description",
 					imageDescriptionTemplate,
 				);

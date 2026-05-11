@@ -139,8 +139,18 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     load_env_file(workspace_root.parent.parent / ".env")
     env = dict(os.environ)
     python_bin = str(Path(sys.executable).parent)
+    path_entries = [python_bin]
+    for candidate in (
+        Path.home() / ".bun" / "bin",
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+    ):
+        if candidate.exists():
+            path_entries.append(str(candidate))
     existing_path = env.get("PATH", "")
-    env["PATH"] = f"{python_bin}{os.pathsep}{existing_path}" if existing_path else python_bin
+    if existing_path:
+        path_entries.append(existing_path)
+    env["PATH"] = os.pathsep.join(path_entries)
     env["PYTHONUNBUFFERED"] = "1"
     env["PIP_DISABLE_PIP_VERSION_CHECK"] = "1"
     plugin_python_paths: list[str] = []

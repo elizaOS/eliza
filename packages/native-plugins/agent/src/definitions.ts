@@ -5,7 +5,9 @@
  * communicating with the embedded Eliza agent.
  *
  * - Electrobun desktop: RPC to the main-process AgentManager
- * - iOS/Android/Web: HTTP calls to the API server
+ * - Android/Web: HTTP calls to the API server or bundled loopback agent
+ * - iOS: HTTP for remote/cloud endpoints; local dev/sideload routes through
+ *   the WebView ITTP kernel until the native route-kernel bridge lands
  */
 
 export interface AgentStatus {
@@ -26,6 +28,17 @@ export interface LocalAgentTokenResult {
   token: string | null;
 }
 
+export interface AgentStartOptions {
+  /**
+   * Optional API base for native shells that need an explicit endpoint.
+   * Android local uses loopback; iOS local dev/sideload builds use the same
+   * URL shape as a stable identity but route app requests through ITTP.
+   */
+  apiBase?: string;
+  /** Runtime mode hint for native shells that cannot read WebView storage. */
+  mode?: "remote-mac" | "cloud" | "cloud-hybrid" | "local" | string;
+}
+
 export interface AgentRequestOptions {
   method?: string;
   path: string;
@@ -43,7 +56,7 @@ export interface AgentRequestResult {
 
 export interface AgentPlugin {
   /** Start the agent runtime. Resolves when it's ready. */
-  start(): Promise<AgentStatus>;
+  start(options?: AgentStartOptions): Promise<AgentStatus>;
 
   /** Stop the agent runtime. */
   stop(): Promise<{ ok: boolean }>;

@@ -268,6 +268,8 @@ interface NativePermissionsLib {
   requestCalendarPermission: () => number;
   checkContactsPermission: () => number;
   requestContactsPermission: () => number;
+  checkLocationPermission: () => number;
+  requestLocationPermission: () => number;
   checkMicrophonePermission: () => number;
   checkCameraPermission: () => number;
   checkNotificationPermission: () => number;
@@ -313,6 +315,8 @@ export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
         requestCalendarPermission: { args: [], returns: FFIType.i32 },
         checkContactsPermission: { args: [], returns: FFIType.i32 },
         requestContactsPermission: { args: [], returns: FFIType.i32 },
+        checkLocationPermission: { args: [], returns: FFIType.i32 },
+        requestLocationPermission: { args: [], returns: FFIType.i32 },
         checkMicrophonePermission: { args: [], returns: FFIType.i32 },
         checkCameraPermission: { args: [], returns: FFIType.i32 },
         checkNotificationPermission: { args: [], returns: FFIType.i32 },

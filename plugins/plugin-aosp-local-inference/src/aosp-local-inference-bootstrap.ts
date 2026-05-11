@@ -75,6 +75,13 @@ interface AospLoader {
     stopSequences?: string[];
     maxTokens?: number;
     temperature?: number;
+    /**
+     * Per-request abort signal. Forwarded into the FFI decode loop in
+     * `aosp-llama-adapter.ts`; the loop checks `signal.aborted` between
+     * chunks and between sampled tokens and throws an AbortError when
+     * the caller cancels.
+     */
+    signal?: AbortSignal;
   }): Promise<string>;
   embed(args: { input: string }): Promise<{
     embedding: number[];
@@ -103,6 +110,123 @@ type RuntimeWithModelRegistration = AgentRuntime & {
     priority?: number,
   ) => void;
 };
+
+/**
+ * Cloud-fallback priority. Sits one below the local handler's
+ * `LOCAL_INFERENCE_PRIORITY = 0`, so the runtime resolves local first
+ * and only consults the wrapper when local isn't registered OR when the
+ * local handler itself explicitly delegates via `findCloudCandidate`.
+ *
+ * The wrapper is INDEPENDENTLY registered at -1 so callers that call
+ * `runtime.useModel(TEXT_LARGE)` with no provider hint still resolve
+ * the local path; the wrapper provides a SECOND chance when local
+ * throws a known-recoverable error.
+ */
+const CLOUD_FALLBACK_PRIORITY = -1;
+
+/**
+ * Typed outcome of a local-inference attempt. The wrapper distinguishes
+ * "succeeded" from "decided to fall back" via an EXPLICIT shape — no
+ * silent try/catch. Unrecoverable errors propagate; only the conditions
+ * listed in `FallbackReason` route to cloud.
+ */
+type FallbackReason =
+  | "local-unavailable"
+  | "local-overloaded"
+  | "local-error"
+  | "local-aborted-pre-completion";
+
+type LocalGenerateOutcome =
+  | { kind: "ok"; text: string }
+  | { kind: "fallback"; reason: FallbackReason; cause?: Error };
+
+/**
+ * Classify a thrown error into either "let it propagate" or "rotate to
+ * cloud". Mirrors `packages/app-core/src/services/local-inference/cloud-fallback.ts`
+ * but inlined here because the AOSP bundle deliberately does NOT import
+ * `@elizaos/app-core` (cycle through `@elizaos/agent`).
+ */
+function classifyLocalError(err: unknown): {
+  fallback: boolean;
+  reason: FallbackReason;
+} {
+  if (err instanceof Error) {
+    const name = err.name;
+    const msg = err.message.toLowerCase();
+    if (name === "AbortError") {
+      return { fallback: false, reason: "local-aborted-pre-completion" };
+    }
+    if (
+      msg.includes("no bundled") ||
+      msg.includes("not installed in this build") ||
+      msg.includes("node-llama-cpp is not installed") ||
+      msg.includes("no local model is active") ||
+      msg.includes("dlopen") ||
+      msg.includes("missing libllama") ||
+      msg.includes("aosp-llama] no") ||
+      msg.includes("called before loadmodel")
+    ) {
+      return { fallback: true, reason: "local-unavailable" };
+    }
+    if (
+      msg.includes("decode: failed to find a memory slot") ||
+      msg.includes("thermal") ||
+      msg.includes("low-power")
+    ) {
+      return { fallback: true, reason: "local-overloaded" };
+    }
+    if (
+      msg.includes("llama_decode") ||
+      msg.includes("llama_tokenize") ||
+      msg.includes("llama_sampler") ||
+      msg.includes("ggml_assert")
+    ) {
+      return { fallback: true, reason: "local-error" };
+    }
+  }
+  return { fallback: false, reason: "local-error" };
+}
+
+/**
+ * Locate the highest-priority registered TEXT_* handler whose provider is
+ * NOT us. The runtime exposes its `models` map on the prototype; we read it
+ * defensively so changes to the registry shape surface as a typed lookup
+ * failure rather than a silent miss.
+ */
+interface CloudCandidate {
+  provider: string;
+  priority: number;
+  handler: GenerateTextHandler;
+}
+
+function findCloudCandidate(
+  runtime: IAgentRuntime,
+  modelType: (typeof ModelType)[keyof typeof ModelType],
+  excludeProvider: string,
+): CloudCandidate | null {
+  const r = runtime as IAgentRuntime & {
+    models?: Map<
+      string,
+      Array<{
+        provider: string;
+        priority: number;
+        handler: GenerateTextHandler;
+      }>
+    >;
+  };
+  const entries = r.models?.get(String(modelType));
+  if (!entries || entries.length === 0) return null;
+  for (const entry of entries) {
+    if (entry.provider !== excludeProvider) {
+      return {
+        provider: entry.provider,
+        priority: entry.priority,
+        handler: entry.handler,
+      };
+    }
+  }
+  return null;
+}
 
 function isAospLoaderShape(value: unknown): value is AospLoader {
   if (!value || typeof value !== "object") return false;
@@ -404,6 +528,54 @@ function makeLoaderLifecycle(loader: AospLoader): {
   };
 }
 
+/**
+ * Internal: attempt local generate and classify the outcome explicitly.
+ * The wrapper at priority -1 consumes this and decides whether to forward
+ * to a cloud handler.
+ */
+async function tryLocalGenerate(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+  params: GenerateTextParams,
+): Promise<LocalGenerateOutcome> {
+  try {
+    await lifecycle.ensureChatLoaded();
+  } catch (err) {
+    const cls = classifyLocalError(err);
+    return cls.fallback
+      ? {
+          kind: "fallback",
+          reason: cls.reason,
+          cause: err instanceof Error ? err : undefined,
+        }
+      : Promise.reject(err);
+  }
+  const args: Parameters<AospLoader["generate"]>[0] = {
+    prompt: params.prompt ?? "",
+  };
+  if (params.stopSequences !== undefined) {
+    args.stopSequences = params.stopSequences;
+  }
+  const paramsSignal = (params as { signal?: AbortSignal }).signal;
+  if (paramsSignal !== undefined) {
+    args.signal = paramsSignal;
+  }
+  try {
+    const text = await loader.generate(args);
+    return { kind: "ok", text };
+  } catch (err) {
+    const cls = classifyLocalError(err);
+    if (!cls.fallback) {
+      throw err;
+    }
+    return {
+      kind: "fallback",
+      reason: cls.reason,
+      cause: err instanceof Error ? err : undefined,
+    };
+  }
+}
+
 function makeGenerateHandler(
   loader: AospLoader,
   lifecycle: ReturnType<typeof makeLoaderLifecycle>,
@@ -416,7 +588,54 @@ function makeGenerateHandler(
     if (params.stopSequences !== undefined) {
       args.stopSequences = params.stopSequences;
     }
+    // The runtime injects `signal` into `params` from the active streaming
+    // context's `abortSignal` when the caller didn't pass one explicitly
+    // (see runtime.ts useModel: paramsAsStreaming.signal ??= abortSignal).
+    // We forward it into the FFI decode loop so APP_PAUSE etc. can cancel
+    // an in-flight phone-CPU prefill that would otherwise pin the bun
+    // process for minutes.
+    const paramsSignal = (params as { signal?: AbortSignal }).signal;
+    if (paramsSignal !== undefined) {
+      args.signal = paramsSignal;
+    }
     return loader.generate(args);
+  };
+}
+
+/**
+ * Build a TEXT_* handler that tries local first, then forwards to the
+ * highest-priority cloud handler when local reports a fallback-eligible
+ * condition. Registered at `CLOUD_FALLBACK_PRIORITY = -1` so the runtime's
+ * default lookup still picks the local handler (priority 0) — this wrapper
+ * is the SAFETY NET for callers that explicitly target the wrapper or for
+ * builds where local isn't registered.
+ */
+function makeCloudFallbackHandler(
+  loader: AospLoader,
+  lifecycle: ReturnType<typeof makeLoaderLifecycle>,
+  modelType: (typeof ModelType)[keyof typeof ModelType],
+): GenerateTextHandler {
+  return async (runtime, params) => {
+    const outcome = await tryLocalGenerate(loader, lifecycle, params);
+    if (outcome.kind === "ok") {
+      return outcome.text;
+    }
+    logger.info(
+      `[aosp-local-inference] cloud-fallback engaged (modelType=${String(modelType)} reason=${outcome.reason})`,
+    );
+    const candidate = findCloudCandidate(runtime, modelType, PROVIDER);
+    if (!candidate) {
+      // No cloud handler available — surface a typed error so callers see
+      // the real reason instead of a generic "no handler" message.
+      const err = new Error(
+        `[aosp-local-inference] Local inference unavailable (${outcome.reason}) and no cloud handler is registered for ${String(modelType)}. Pair Eliza Cloud or install a provider plugin to enable fallback.`,
+      );
+      if (outcome.cause) {
+        (err as Error & { cause?: unknown }).cause = outcome.cause;
+      }
+      throw err;
+    }
+    return candidate.handler(runtime, params);
   };
 }
 
@@ -540,6 +759,25 @@ export async function ensureAospLocalInferenceHandlers(
       handler,
       PROVIDER,
       LOCAL_INFERENCE_PRIORITY,
+    );
+  }
+
+  // Register a cloud-fallback wrapper at priority -1 for the text-generation
+  // slots (NOT embeddings — there's no cloud embedding fallback on this
+  // bundle today). The wrapper tries local first; on a classified
+  // recoverable failure it delegates to the next registered TEXT_* handler.
+  // The runtime always picks the local handler first by priority — this
+  // sits one rung below as the safety net.
+  const fallbackSlots: Array<(typeof ModelType)[keyof typeof ModelType]> = [
+    ModelType.TEXT_SMALL,
+    ModelType.TEXT_LARGE,
+  ];
+  for (const modelType of fallbackSlots) {
+    runtimeWithRegistration.registerModel(
+      modelType,
+      makeCloudFallbackHandler(loader, lifecycle, modelType),
+      `${PROVIDER}-cloud-fallback`,
+      CLOUD_FALLBACK_PRIORITY,
     );
   }
 

@@ -6,6 +6,7 @@
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import path from "node:path";
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { isCloudExecutionMode, shouldUseSandboxExecution } from "@elizaos/shared";
 import spawn from "cross-spawn";
 import type {
   CommandHistoryEntry,
@@ -44,6 +45,11 @@ import {
   truncateMiddle,
 } from "../utils/shellUtils";
 import {
+  detectTerminalSupport,
+  missingTerminalToolForCommand,
+  missingToolMessage,
+} from "../utils/terminalCapabilities";
+import {
   addSession,
   appendOutput,
   createSessionSlug,
@@ -56,7 +62,6 @@ import {
   markBackgrounded,
   markExited,
 } from "./processRegistry";
-import { isCloudExecutionMode, shouldUseSandboxExecution } from "@elizaos/shared";
 
 const DEFAULT_MAX_OUTPUT = clampNumber(
   readEnvInt("SHELL_MAX_OUTPUT_CHARS"),
@@ -204,6 +209,13 @@ export class ShellService extends Service {
     };
   }
 
+  private localTerminalUnsupportedMessage(): string | null {
+    const support = detectTerminalSupport();
+    return support.supported
+      ? null
+      : (support.message ?? "Local terminal execution is unavailable.");
+  }
+
   /**
    * Set scope key for session isolation
    */
@@ -234,6 +246,19 @@ export class ShellService extends Service {
         stderr: "Local shell execution disabled in cloud mode.",
         exitCode: 1,
         error: "Local shell execution disabled in cloud mode.",
+        executedIn: this.currentDirectory,
+      };
+    }
+
+    const unsupported = this.localTerminalUnsupportedMessage();
+    if (unsupported) {
+      logger.error(`[shell:unsupported] ${unsupported}`);
+      return {
+        success: false,
+        stdout: "",
+        stderr: unsupported,
+        exitCode: 1,
+        error: unsupported,
         executedIn: this.currentDirectory,
       };
     }
@@ -292,6 +317,19 @@ export class ShellService extends Service {
     }
 
     const trimmedCommand = command.trim();
+
+    const missingTool = missingTerminalToolForCommand(trimmedCommand);
+    if (missingTool) {
+      const message = missingToolMessage(missingTool);
+      return {
+        success: false,
+        stdout: "",
+        stderr: message,
+        exitCode: 1,
+        error: message,
+        executedIn: this.currentDirectory,
+      };
+    }
 
     if (!isSafeCommand(trimmedCommand)) {
       return {
@@ -365,7 +403,31 @@ export class ShellService extends Service {
       };
     }
 
+    const unsupported = this.localTerminalUnsupportedMessage();
+    if (unsupported) {
+      logger.error(`[shell:unsupported] ${unsupported}`);
+      return {
+        status: "failed",
+        exitCode: 1,
+        durationMs: 0,
+        aggregated: "",
+        reason: unsupported,
+      };
+    }
+
     const trimmedCommand = command.trim();
+
+    const missingTool = missingTerminalToolForCommand(trimmedCommand);
+    if (missingTool) {
+      const message = missingToolMessage(missingTool);
+      return {
+        status: "failed",
+        exitCode: 1,
+        durationMs: 0,
+        aggregated: "",
+        reason: message,
+      };
+    }
 
     if (!isSafeCommand(trimmedCommand)) {
       return {
@@ -407,7 +469,22 @@ export class ShellService extends Service {
 
     // Resolve workdir
     const rawWorkdir = options.workdir?.trim() || this.currentDirectory || process.cwd();
-    const workdir = resolveWorkdir(rawWorkdir, warnings);
+    const resolvedWorkdir = resolveWorkdir(rawWorkdir, warnings);
+    const validatedWorkdir = validatePath(
+      resolvedWorkdir,
+      this.shellConfig.allowedDirectory,
+      this.currentDirectory
+    );
+    if (!validatedWorkdir) {
+      return {
+        status: "failed",
+        exitCode: 1,
+        durationMs: 0,
+        aggregated: "",
+        reason: `workdir is outside allowed directory: ${resolvedWorkdir}`,
+      };
+    }
+    const workdir = validatedWorkdir;
 
     // Build environment
     const baseEnv = coerceEnv(process.env);
@@ -1139,9 +1216,12 @@ export class ShellService extends Service {
       let args: string[];
 
       if (useShell) {
-        cmd = "sh";
-        args = ["-c", command];
-        logger.info(`Executing shell command: sh -c "${command}" in ${this.currentDirectory}`);
+        const shell = getShellConfig();
+        cmd = shell.shell;
+        args = [...shell.args, command];
+        logger.info(
+          `Executing shell command: ${cmd} ${shell.args.join(" ")} "${command}" in ${this.currentDirectory}`
+        );
       } else {
         const parts = command.split(/\s+/);
         cmd = parts[0];

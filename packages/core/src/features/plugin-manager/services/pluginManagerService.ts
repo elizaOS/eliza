@@ -50,6 +50,7 @@ const VALID_PACKAGE_NAME = /^(@[a-zA-Z0-9][\w.-]*\/)?[a-zA-Z0-9][\w.-]*$/;
 const VALID_VERSION = /^[a-zA-Z0-9][\w.+-]*$/;
 const VALID_GIT_URL = /^https:\/\/[a-zA-Z0-9][\w./-]*\.git$/;
 const VALID_BRANCH = /^[a-zA-Z0-9][\w./-]*$/;
+const VALID_REGISTRY_DIRECTORY = /^[a-zA-Z0-9][\w./-]*$/;
 
 function assertSafeForShell(
 	value: string,
@@ -743,6 +744,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 								info.gitUrl,
 								info.git.v2Branch || "main",
 								targetDir,
+								info.directory,
 								onProgress,
 							);
 							installed = true;
@@ -835,6 +837,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		gitUrl: string,
 		branch: string,
 		targetDir: string,
+		directory?: string | null,
 		onProgress?: (progress: InstallProgress) => void,
 	): Promise<void> {
 		assertSafeForShell(gitUrl, "git URL", VALID_GIT_URL);
@@ -859,6 +862,18 @@ export class PluginManagerService extends Service implements PluginRegistry {
 			const pm = await detectPackageManager();
 			await execAsync(`${pm} install`, { cwd: tempDir });
 
+			const registrySourceDir = this.resolveRegistrySourceDir(
+				tempDir,
+				directory,
+			);
+			if (registrySourceDir !== tempDir) {
+				await execAsync(`${pm} run build`, { cwd: registrySourceDir }).catch(
+					() => {},
+				);
+				await fs.copy(registrySourceDir, targetDir);
+				return;
+			}
+
 			const tsDir = path.join(tempDir, "typescript");
 			if (await fs.pathExists(tsDir)) {
 				await execAsync(`${pm} run build`, { cwd: tsDir }).catch(() => {});
@@ -869,6 +884,31 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		} finally {
 			await fs.remove(tempDir);
 		}
+	}
+
+	private resolveRegistrySourceDir(
+		tempDir: string,
+		directory?: string | null,
+	): string {
+		const rawDirectory = directory?.trim();
+		if (!rawDirectory) {
+			return tempDir;
+		}
+		if (
+			rawDirectory.startsWith("/") ||
+			rawDirectory.includes("..") ||
+			!VALID_REGISTRY_DIRECTORY.test(rawDirectory)
+		) {
+			throw new Error(`Refusing unsafe registry directory: ${rawDirectory}`);
+		}
+		const resolved = path.resolve(tempDir, rawDirectory);
+		const relative = path.relative(tempDir, resolved);
+		if (relative.startsWith("..") || path.isAbsolute(relative)) {
+			throw new Error(
+				`Refusing registry directory outside clone: ${rawDirectory}`,
+			);
+		}
+		return resolved;
 	}
 
 	private async clonePluginTo(
@@ -882,6 +922,44 @@ export class PluginManagerService extends Service implements PluginRegistry {
 
 		if (await fs.pathExists(targetDir)) {
 			throw new Error(`Target directory ${targetDir} already exists`);
+		}
+
+		if (info.directory) {
+			const tempDir = path.join(
+				path.dirname(targetDir),
+				`temp-${Date.now()}`,
+			);
+			await fs.ensureDir(tempDir);
+			try {
+				onProgress?.({
+					phase: "downloading",
+					message: `Cloning ${info.gitUrl}#${branch}...`,
+				});
+				await execAsync(
+					`git clone --branch "${branch}" --single-branch --depth 1 "${info.gitUrl}" "${tempDir}"`,
+					{
+						env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+					},
+				);
+
+				onProgress?.({
+					phase: "installing-deps",
+					message: "Installing dependencies...",
+				});
+				const pm = await detectPackageManager();
+				await execAsync(`${pm} install`, { cwd: tempDir });
+				const registrySourceDir = this.resolveRegistrySourceDir(
+					tempDir,
+					info.directory,
+				);
+				await execAsync(`${pm} run build`, { cwd: registrySourceDir }).catch(
+					() => {},
+				);
+				await fs.copy(registrySourceDir, targetDir);
+				return;
+			} finally {
+				await fs.remove(tempDir);
+			}
 		}
 
 		onProgress?.({

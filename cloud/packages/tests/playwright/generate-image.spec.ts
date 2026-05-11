@@ -1,7 +1,7 @@
 import { type APIRequestContext, type APIResponse, expect, test } from "@playwright/test";
 
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? "http://localhost:3000";
-const CLOUD_URL = process.env.CLOUD_URL ?? BASE_URL;
+const CLOUD_URL = process.env.CLOUD_URL ?? process.env.PLAYWRIGHT_API_URL ?? BASE_URL;
 
 type JsonBody = Record<string, unknown>;
 

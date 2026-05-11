@@ -2,7 +2,7 @@
  * Registry Client for Eliza.
  *
  * Provides a 3-tier cached registry (memory → file → network) that works
- * offline, in .app bundles, and in dev. Fetches from the next branch.
+ * offline, in .app bundles, and in dev. Fetches from plugins.elizacloud.ai.
  *
  * @module services/registry-client
  */
@@ -53,24 +53,9 @@ import type {
 // ---------------------------------------------------------------------------
 
 const GENERATED_REGISTRY_URL =
-  "https://raw.githubusercontent.com/elizaos-plugins/registry/next/generated-registry.json";
-const INDEX_REGISTRY_URL =
-  "https://raw.githubusercontent.com/elizaos-plugins/registry/next/index.json";
+  "https://plugins.elizacloud.ai/generated-registry.json";
+const INDEX_REGISTRY_URL = "https://plugins.elizacloud.ai/index.json";
 const CACHE_TTL_MS = 3_600_000; // 1 hour
-const BLOCKED_REGISTRY_PLUGIN_NAMES = new Set([
-  "@elizaos/app-agent-town",
-  "@elizaos/app-dungeons",
-  "@elizaos/app-dungeons-and-daemons",
-]);
-const BLOCKED_REGISTRY_PLUGIN_REPOS = new Set([
-  "agent-town/agent-town",
-  "lalalune/dungeons",
-  "lalalune/dungeons-and-daemons",
-]);
-const BLOCKED_REGISTRY_APP_DISPLAY_NAMES = new Set([
-  "agent-town",
-  "dungeons-and-daemons",
-]);
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -138,49 +123,6 @@ function cacheFilePath(): string {
   return path.join(resolveStateDir(), "cache", "registry.json");
 }
 
-function normalizeRegistryFilterKey(value: string | null | undefined): string {
-  return (value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s{0,32}&\s{0,32}/g, " and ")
-    .replace(/[^a-z0-9/]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-}
-
-function isBlockedRegistryPlugin(info: RegistryPluginInfo): boolean {
-  const name = normalizeRegistryFilterKey(info.name);
-  if (BLOCKED_REGISTRY_PLUGIN_NAMES.has(name)) {
-    return true;
-  }
-
-  const npmPackage = normalizeRegistryFilterKey(info.npm.package);
-  if (BLOCKED_REGISTRY_PLUGIN_NAMES.has(npmPackage)) {
-    return true;
-  }
-
-  const gitRepo = normalizeRegistryFilterKey(info.gitRepo);
-  if (BLOCKED_REGISTRY_PLUGIN_REPOS.has(gitRepo)) {
-    return true;
-  }
-
-  const displayName = normalizeRegistryFilterKey(info.appMeta?.displayName);
-  return BLOCKED_REGISTRY_APP_DISPLAY_NAMES.has(displayName);
-}
-
-function filterBlockedRegistryPlugins(
-  plugins: Map<string, RegistryPluginInfo>,
-): boolean {
-  let removed = false;
-  for (const [name, info] of plugins.entries()) {
-    if (!isBlockedRegistryPlugin(info)) {
-      continue;
-    }
-    plugins.delete(name);
-    removed = true;
-  }
-  return removed;
-}
-
 async function readFileCache(): Promise<Map<
   string,
   RegistryPluginInfo
@@ -194,13 +136,7 @@ async function readFileCache(): Promise<Map<
     if (typeof parsed.fetchedAt !== "number" || !Array.isArray(parsed.plugins))
       return null;
     if (Date.now() - parsed.fetchedAt > CACHE_TTL_MS) return null;
-    const plugins = new Map(parsed.plugins);
-    if (filterBlockedRegistryPlugins(plugins)) {
-      writeFileCache(plugins).catch((err) =>
-        logger.warn(`[registry-client] Cache rewrite failed: ${String(err)}`),
-      );
-    }
-    return plugins;
+    return new Map(parsed.plugins);
   } catch {
     return null;
   }
@@ -210,14 +146,12 @@ async function writeFileCache(
   plugins: Map<string, RegistryPluginInfo>,
 ): Promise<void> {
   const filePath = cacheFilePath();
-  const persistedPlugins = new Map(plugins);
-  filterBlockedRegistryPlugins(persistedPlugins);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(
     filePath,
     JSON.stringify({
       fetchedAt: Date.now(),
-      plugins: [...persistedPlugins.entries()],
+      plugins: [...plugins.entries()],
     }),
     "utf-8",
   );
@@ -321,7 +255,6 @@ export async function getRegistryPlugins(): Promise<
     await applyLocalWorkspaceApps(fromFile);
     await applyNodeModulePlugins(fromFile);
     await mergeCustomEndpoints(fromFile, getConfiguredEndpoints());
-    filterBlockedRegistryPlugins(fromFile);
     memoryCache = { plugins: fromFile, fetchedAt: Date.now() };
     return fromFile;
   }
@@ -331,9 +264,7 @@ export async function getRegistryPlugins(): Promise<
   }
 
   registryLoadPromise = (async () => {
-    logger.info(
-      "[registry-client] Fetching plugin registry from next branch...",
-    );
+    logger.info("[registry-client] Fetching plugin registry...");
     let plugins: Map<string, RegistryPluginInfo>;
     let usedLocalFallback = false;
     try {
@@ -353,7 +284,6 @@ export async function getRegistryPlugins(): Promise<
       usedLocalFallback = true;
     }
     await mergeCustomEndpoints(plugins, getConfiguredEndpoints());
-    filterBlockedRegistryPlugins(plugins);
     logger.info(`[registry-client] Loaded ${plugins.size} plugins`);
 
     memoryCache = {

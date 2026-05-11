@@ -9,8 +9,9 @@ export function validatePath(
   const resolvedPath = path.resolve(currentDir, commandPath);
   const normalizedPath = path.normalize(resolvedPath);
   const normalizedAllowed = path.normalize(allowedDir);
+  const relative = path.relative(normalizedAllowed, normalizedPath);
 
-  if (!normalizedPath.startsWith(normalizedAllowed)) {
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
     logger.warn(
       `Path validation failed: ${normalizedPath} is outside allowed directory ${normalizedAllowed}`
     );

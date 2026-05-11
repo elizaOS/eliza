@@ -27,7 +27,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Final
 
-from huggingface_hub import HfApi, hf_hub_download
+try:  # pragma: no cover - import availability is environment-dependent
+    from huggingface_hub import HfApi, hf_hub_download
+except ModuleNotFoundError:  # pragma: no cover - env-only path
+    HfApi = None  # type: ignore[assignment]
+    hf_hub_download = None  # type: ignore[assignment]
 
 try:
     from .eliza1_manifest import VOICE_QUANT_BY_TIER
@@ -59,6 +63,27 @@ VOICE_PRESET_VERSION: Final[int] = 1
 VOICE_PRESET_HEADER_BYTES: Final[int] = 24
 HF_RETRY_ATTEMPTS: Final[int] = 4
 HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
+
+
+def require_hf_hub(*, require_download: bool = False) -> tuple[Any, Any]:
+    global HfApi, hf_hub_download
+    if HfApi is None or (require_download and hf_hub_download is None):
+        try:
+            from huggingface_hub import HfApi as ImportedHfApi
+            from huggingface_hub import hf_hub_download as imported_hf_hub_download
+        except ModuleNotFoundError as exc:  # pragma: no cover - env-only path
+            raise SystemExit(
+                "huggingface_hub is required for non-dry-run asset staging; "
+                "install the training deps or run inside the training environment"
+            ) from exc
+        HfApi = ImportedHfApi
+        hf_hub_download = imported_hf_hub_download
+    if HfApi is None or (require_download and hf_hub_download is None):
+        raise SystemExit(
+            "huggingface_hub is required for non-dry-run asset staging; "
+            "install the training deps or run inside the training environment"
+        )
+    return HfApi, hf_hub_download
 
 
 def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
@@ -104,7 +129,7 @@ def copy_hf_file(
 
     cached = Path(
         retry_hf(
-            hf_hub_download,
+            require_hf_hub(require_download=True)[1],
             repo_id=repo_id,
             filename=remote_path,
             revision=revision,
@@ -137,7 +162,7 @@ def copy_hf_file(
 
 
 def choose_gguf_file(
-    api: HfApi,
+    api: Any,
     *,
     repo_id: str,
     requested: str | None = None,
@@ -162,7 +187,7 @@ def choose_gguf_file(
 
 
 def choose_mmproj_file(
-    api: HfApi,
+    api: Any,
     *,
     repo_id: str,
     requested: str | None = None,
@@ -280,7 +305,7 @@ def write_license_notes(bundle_dir: Path, *, dry_run: bool) -> None:
             target.write_text(text)
 
 
-def resolve_revisions(api: HfApi, repos: tuple[str, ...]) -> dict[str, str]:
+def resolve_revisions(api: Any, repos: tuple[str, ...]) -> dict[str, str]:
     out: dict[str, str] = {}
     for repo in repos:
         info = retry_hf(api.model_info, repo)
@@ -293,6 +318,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     quant = VOICE_QUANT_BY_TIER[tier]
     bundle_dir = args.bundle_dir.resolve()
     asr_repo = args.asr_repo or ASR_REPO_BY_TIER[tier]
+    HfApi, _ = require_hf_hub()
     api = HfApi()
     revisions = resolve_revisions(api, (VOICE_REPO, asr_repo, VAD_REPO))
     asr_remote_path = choose_gguf_file(api, repo_id=asr_repo, requested=args.asr_file)
@@ -387,6 +413,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
 def upload_assets(args: argparse.Namespace) -> None:
     if not args.upload_repo or args.dry_run:
         return
+    HfApi, _ = require_hf_hub()
     api = HfApi()
     api.create_repo(
         repo_id=args.upload_repo,

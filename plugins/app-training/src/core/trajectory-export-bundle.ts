@@ -21,6 +21,8 @@ type ExportableTrajectory = Trajectory & FilterableTrajectory;
 
 export interface TrajectoryExportBundleSource {
   kind: string;
+  runId?: string;
+  runIds?: string[];
   metadata?: Record<string, unknown>;
 }
 
@@ -43,6 +45,7 @@ export interface TrajectoryExportBundleManifest {
   schema: typeof TRAJECTORY_EXPORT_BUNDLE_SCHEMA;
   schemaVersion: typeof TRAJECTORY_EXPORT_BUNDLE_VERSION;
   generatedAt: string;
+  runId: string | null;
   source: TrajectoryExportBundleSource & {
     inputTrajectoryCount: number;
     sanitizedTrajectoryCount: number;
@@ -59,6 +62,7 @@ export interface TrajectoryExportBundleManifest {
   counts: {
     rawTrajectoryRows: number;
     sanitizedTrajectoryRows: number;
+    taskRows: Record<TrajectoryTrainingTask, number>;
     taskFiles: number;
     taskExamples: number;
     llmCalls: number | null;
@@ -183,6 +187,70 @@ function buildTaskFiles(
   return tasks;
 }
 
+function emptyTaskCounts(): Record<TrajectoryTrainingTask, number> {
+  return {
+    should_respond: 0,
+    context_routing: 0,
+    action_planner: 0,
+    response: 0,
+    media_description: 0,
+  };
+}
+
+function normalizeRunId(value: unknown): string | null {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function addRunId(runIds: Set<string>, value: unknown): void {
+  const runId = normalizeRunId(value);
+  if (runId) runIds.add(runId);
+}
+
+function collectTrajectoryRunIds(
+  trajectories: readonly Trajectory[],
+): string[] {
+  const runIds = new Set<string>();
+  for (const trajectory of trajectories) {
+    const record = trajectory as Trajectory & {
+      runId?: unknown;
+      metadata?: Record<string, unknown>;
+    };
+    addRunId(runIds, record.runId);
+    addRunId(runIds, record.metadata?.runId);
+    addRunId(runIds, record.metadata?.appRunId);
+
+    for (const step of trajectory.steps ?? []) {
+      for (const call of step.llmCalls ?? []) {
+        addRunId(runIds, call.runId);
+      }
+      for (const access of step.providerAccesses ?? []) {
+        addRunId(runIds, access.runId);
+      }
+    }
+  }
+  return [...runIds].sort();
+}
+
+function resolveBundleRunIds(
+  source: TrajectoryExportBundleSource | undefined,
+  trajectories: readonly Trajectory[],
+): { runId: string | null; runIds: string[] } {
+  const runIds = new Set<string>(collectTrajectoryRunIds(trajectories));
+  addRunId(runIds, source?.runId);
+  for (const runId of source?.runIds ?? []) {
+    addRunId(runIds, runId);
+  }
+
+  const sorted = [...runIds].sort();
+  const explicitRunId = normalizeRunId(source?.runId);
+  return {
+    runId: explicitRunId ?? (sorted.length === 1 ? sorted[0] : null),
+    runIds: sorted,
+  };
+}
+
 export async function buildTrajectoryExportBundle(
   options: BuildTrajectoryExportBundleOptions,
 ): Promise<TrajectoryExportBundle> {
@@ -264,14 +332,22 @@ export async function buildTrajectoryExportBundle(
     (sum, task) => sum + task.exampleCount,
     0,
   );
+  const taskCounts = taskDataset?.counts ?? emptyTaskCounts();
   const manifestPath = join(options.outputDir, "manifest.json");
   const generatedAt = (options.now?.() ?? new Date()).toISOString();
+  const runLineage = resolveBundleRunIds(options.source, [
+    ...inputTrajectories,
+    ...sanitizedTrajectories,
+  ]);
   const manifest: TrajectoryExportBundleManifest = {
     schema: TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
     schemaVersion: TRAJECTORY_EXPORT_BUNDLE_VERSION,
     generatedAt,
+    runId: runLineage.runId,
     source: {
       kind: options.source?.kind ?? "trajectory-export-bundle",
+      runId: runLineage.runId ?? undefined,
+      runIds: runLineage.runIds,
       inputTrajectoryCount: inputTrajectories.length || rawTrajectoryRows,
       sanitizedTrajectoryCount: sanitizedTrajectoryRows,
       droppedTrajectoryCount: privacy.droppedCount,
@@ -292,6 +368,7 @@ export async function buildTrajectoryExportBundle(
     counts: {
       rawTrajectoryRows,
       sanitizedTrajectoryRows,
+      taskRows: taskCounts,
       taskFiles: Object.keys(taskFiles).length,
       taskExamples,
       llmCalls: taskDataset?.summary.llmCallCount ?? null,

@@ -104,12 +104,14 @@ def test_filter_paths_writes_redacted_jsonl_ledger_and_stats(tmp_path: Path) -> 
     out = tmp_path / "redacted.jsonl"
     ledger = tmp_path / "ledger.jsonl"
     stats_path = tmp_path / "stats.json"
+    attestation_path = tmp_path / "attestation.json"
 
     stats = p.filter_paths(
         [str(source_dir)],
         output_jsonl=out,
         ledger_jsonl=ledger,
         stats_json=stats_path,
+        attestation_json=attestation_path,
         strict=True,
         config=p.RuntimeConfig(patterns=p.default_patterns()),
     )
@@ -125,11 +127,34 @@ def test_filter_paths_writes_redacted_jsonl_ledger_and_stats(tmp_path: Path) -> 
     assert stats.residual_total == 0
 
     stats_json = json.loads(stats_path.read_text(encoding="utf-8"))
+    assert stats_json["schema"] == p.STATS_SCHEMA
+    assert stats_json["version"] == p.STATS_VERSION
+    assert stats_json["strict"] is True
+    assert stats_json["input_count"] == 3
+    assert stats_json["output_count"] == 3
+    assert stats_json["redaction_count"] == stats.redactions_total
+    assert stats_json["categories"]["secret"] == 1
+    assert stats_json["categories"]["geo"] == 1
+    assert stats_json["categories"]["contact"] == 2
+    assert stats_json["backend_name"] is None
+    assert stats_json["backend_model"] is None
+    assert stats_json["residual_findings"]["count"] == 0
+    assert stats_json["residual_findings_count"] == 0
     assert stats_json["records_written"] == 3
     assert stats_json["redactions"]["by_label"]["bearer"] == 1
     assert stats_json["redactions"]["by_label"]["known-pii-name"] == 1
     assert stats_json["redactions"]["by_label"]["phone"] == 1
     assert ledger.read_text(encoding="utf-8").count("\n") == stats.redactions_total
+
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    assert attestation["schema"] == p.ATTESTATION_SCHEMA
+    assert attestation["version"] == p.ATTESTATION_VERSION
+    assert attestation["passed"] is True
+    assert attestation["gate"]["strict"] is True
+    assert attestation["gate"]["residual_findings"]["count"] == 0
+    assert attestation["artifacts"]["redacted_jsonl"]["rows"] == 3
+    assert attestation["artifacts"]["ledger_jsonl"]["entries"] == stats.redactions_total
+    assert len(attestation["artifacts"]["stats_json"]["sha256"]) == 64
 
 
 def test_backend_hook_applies_span_redactions_without_dependency(tmp_path: Path) -> None:
@@ -182,7 +207,57 @@ else:
     assert stats["backend"]["calls"] == 2
     assert stats["backend"]["model"] == "privacy-test-model"
     assert stats["redactions"]["by_source"]["backend"] == 1
-    assert "Alice" not in ledger.read_text(encoding="utf-8")
+    ledger_text = ledger.read_text(encoding="utf-8")
+    assert "Alice" not in ledger_text
+    ledger_rows = _read_jsonl(ledger)
+    assert ledger_rows[0]["replacement"] == "<REDACTED:person-name>"
+    assert "replacement_sha256" in ledger_rows[0]
+
+
+def test_backend_span_unsafe_label_and_replacement_do_not_leak(tmp_path: Path) -> None:
+    hook = tmp_path / "hook.py"
+    hook.write_text(
+        """
+import json
+import sys
+
+payload = json.loads(sys.stdin.read())
+text = payload["text"]
+start = text.find("Alice")
+print(json.dumps({
+    "redactions": [{
+        "start": start,
+        "end": start + len("Alice"),
+        "label": "Alice Secret",
+        "replacement": "Alice"
+    }]
+}))
+""".strip(),
+        encoding="utf-8",
+    )
+    source = tmp_path / "in.jsonl"
+    source.write_text(json.dumps({"text": "Alice met the owner"}) + "\n", encoding="utf-8")
+    out = tmp_path / "out.jsonl"
+    ledger = tmp_path / "ledger.jsonl"
+
+    p.filter_paths(
+        [str(source)],
+        output_jsonl=out,
+        ledger_jsonl=ledger,
+        stats_json=tmp_path / "stats.json",
+        config=p.RuntimeConfig(
+            patterns=p.default_patterns(),
+            backend_command=f"{sys.executable} {hook}",
+        ),
+    )
+
+    rendered = json.dumps(_read_jsonl(out))
+    ledger_text = ledger.read_text(encoding="utf-8")
+    assert "Alice" not in rendered
+    assert "Alice" not in ledger_text
+    ledger_rows = _read_jsonl(ledger)
+    assert ledger_rows[0]["label"].startswith("backend:sha256:")
+    assert ledger_rows[0]["replacement"].startswith("<REDACTED:backend:sha256:")
 
 
 def test_backend_receives_regex_redacted_text(tmp_path: Path) -> None:
@@ -236,6 +311,7 @@ print(json.dumps({"text": "backend leaked Bearer abcdef0123456789xyz"}))
     )
     source = tmp_path / "in.jsonl"
     source.write_text(json.dumps({"text": "safe text"}) + "\n", encoding="utf-8")
+    attestation_path = tmp_path / "attestation.json"
 
     with pytest.raises(p.PrivacyFilterError, match="residual high-risk"):
         p.filter_paths(
@@ -243,6 +319,7 @@ print(json.dumps({"text": "backend leaked Bearer abcdef0123456789xyz"}))
             output_jsonl=tmp_path / "out.jsonl",
             ledger_jsonl=tmp_path / "ledger.jsonl",
             stats_json=tmp_path / "stats.json",
+            attestation_json=attestation_path,
             strict=True,
             config=p.RuntimeConfig(
                 patterns=p.default_patterns(),
@@ -253,6 +330,9 @@ print(json.dumps({"text": "backend leaked Bearer abcdef0123456789xyz"}))
     stats = json.loads((tmp_path / "stats.json").read_text(encoding="utf-8"))
     assert stats["residual_high_risk"]["total"] >= 1
     assert stats["residual_high_risk"]["by_label"]["bearer"] >= 1
+    attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
+    assert attestation["passed"] is False
+    assert attestation["gate"]["residual_findings"]["count"] >= 1
 
 
 def test_cli_returns_two_for_strict_residual(tmp_path: Path) -> None:
@@ -302,3 +382,4 @@ def test_script_help_runs() -> None:
     )
     assert result.returncode == 0
     assert "--openai-privacy-filter-command" in result.stdout
+    assert "--attestation-json" in result.stdout

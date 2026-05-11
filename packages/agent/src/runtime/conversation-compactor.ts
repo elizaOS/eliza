@@ -194,6 +194,35 @@ function uniqueStrings(items: string[]): string[] {
   return out;
 }
 
+function normalizeForStateComparison(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isForbiddenDuplicate(
+  value: string,
+  forbiddenBehaviors: string[],
+): boolean {
+  const normalized = normalizeForStateComparison(value);
+  if (!normalized) return false;
+  const stripped = normalized.replace(
+    /^(?:required exact phrase|verbatim forbidden behavior|forbidden behavior|forbidden|rejected option|rescinded instruction)\s+/,
+    "",
+  );
+  return forbiddenBehaviors.some((forbidden) => {
+    const forbiddenNormalized = normalizeForStateComparison(forbidden);
+    if (!forbiddenNormalized) return false;
+    return (
+      normalized === forbiddenNormalized ||
+      stripped === forbiddenNormalized ||
+      normalized.includes(forbiddenNormalized)
+    );
+  });
+}
+
 type RequiredStateFragments = {
   facts: string[];
   decisions: string[];
@@ -226,6 +255,11 @@ function mergeRequiredState(
   state: StructuredState,
   required: RequiredStateFragments,
 ): StructuredState {
+  const forbiddenBehaviors = uniqueStrings(
+    required.forbidden_behaviors.length > 0
+      ? required.forbidden_behaviors
+      : state.forbidden_behaviors,
+  ).slice(0, 16);
   const requiredFacts = new Set(required.facts.map((f) => f.trim()));
   const requiredDecisions = new Set(required.decisions.map((d) => d.trim()));
   const requiredPending = new Set(
@@ -238,23 +272,36 @@ function mergeRequiredState(
     (f) =>
       !requiredFacts.has(f.trim()) &&
       !isLowSignalStateItem(f) &&
+      !isForbiddenDuplicate(f, forbiddenBehaviors) &&
       !(hasRequiredOwnership && /\bwill\b/i.test(f)),
   );
   const modelDecisions = state.decisions.filter(
-    (d) => !requiredDecisions.has(d.trim()) && !isLowSignalStateItem(d),
+    (d) =>
+      !requiredDecisions.has(d.trim()) &&
+      !isLowSignalStateItem(d) &&
+      !isForbiddenDuplicate(d, forbiddenBehaviors),
   );
   const modelPending = state.pending_actions.filter(
     (p) => !requiredPending.has(p.trim()) && !isLowSignalStateItem(p),
   );
+  const activeRequiredFacts = required.facts.filter(
+    (f) => !isForbiddenDuplicate(f, forbiddenBehaviors),
+  );
+  const activeRequiredDecisions = required.decisions.filter(
+    (d) => !isForbiddenDuplicate(d, forbiddenBehaviors),
+  );
   return {
     ...state,
     facts: uniqueStrings([
-      ...required.facts,
-      ...modelFacts.slice(0, Math.max(0, 16 - required.facts.length)),
+      ...activeRequiredFacts,
+      ...modelFacts.slice(0, Math.max(0, 16 - activeRequiredFacts.length)),
     ]),
     decisions: uniqueStrings([
-      ...required.decisions,
-      ...modelDecisions.slice(0, Math.max(0, 12 - required.decisions.length)),
+      ...activeRequiredDecisions,
+      ...modelDecisions.slice(
+        0,
+        Math.max(0, 12 - activeRequiredDecisions.length),
+      ),
     ]),
     pending_actions: uniqueStrings([
       ...required.pending_actions,
@@ -263,11 +310,7 @@ function mergeRequiredState(
         Math.max(0, 8 - required.pending_actions.length),
       ),
     ]),
-    forbidden_behaviors: uniqueStrings(
-      required.forbidden_behaviors.length > 0
-        ? required.forbidden_behaviors
-        : state.forbidden_behaviors,
-    ).slice(0, 16),
+    forbidden_behaviors: forbiddenBehaviors,
     // Deterministic fragments are extracted from explicit transcript patterns
     // and exact tool outputs; when they disagree with the model's looser role
     // label ("person", "topic", etc.), the deterministic value is the safer
@@ -296,11 +339,15 @@ function isLowSignalStateItem(value: string): boolean {
     /^user asked (?:about|what|whether|if)\b/.test(normalized) ||
     /^initial plan:/.test(normalized) ||
     /^revised plan:/.test(normalized) ||
+    /^by the way\b/.test(normalized) ||
+    /^remind me\b/.test(normalized) ||
     /^provide reminder\b/.test(normalized) ||
     /^suggest next step\b/.test(normalized) ||
     /^confirm who owns what\b/.test(normalized) ||
+    /^confirm ownership\b/.test(normalized) ||
     /^hard rule: never\b/.test(normalized) ||
     /^user wants to plan\b/.test(normalized) ||
+    /\bignore the earlier instruction\b/.test(normalized) ||
     /^unrelated\b/.test(normalized) ||
     /\b(?:unrelated|aside|small talk|chitchat)\b/.test(normalized) ||
     /\bdiscussed$/.test(normalized)
@@ -449,7 +496,6 @@ function extractRequiredStateFragments(
     const forbidden = cleanSentenceFragment(match[1]);
     if (!forbidden) continue;
     fragments.forbidden_behaviors.push(forbidden);
-    fragments.decisions.push(`verbatim forbidden behavior: ${forbidden}`);
   }
 
   for (const match of userText.matchAll(
@@ -817,11 +863,14 @@ type StructuredState = {
 const STRUCTURED_SYSTEM_PROMPT =
   "You are a conversation state extractor. Read the supplied transcript and" +
   " output a JSON object with exactly these keys:\n" +
-  '  - "facts": string[] — durable facts, rules, constraints, forbidden behaviors, and exact entity assignments established in the conversation\n' +
+  '  - "facts": string[] — durable active facts, rules, constraints, and exact entity assignments established in the conversation\n' +
   '  - "decisions": string[] — decisions made by the user or agent, especially latest overrides that replace earlier decisions\n' +
   '  - "pending_actions": string[] — open follow-ups still to be done\n' +
   '  - "forbidden_behaviors": string[] — exact actions, rejected options, or behaviors the agent must not do\n' +
   '  - "entities": object — exact entity name → short description, role, owner, or assignment\n' +
+  "Do not duplicate rejected, superseded, or forbidden behaviors into facts" +
+  " or decisions; put them only in forbidden_behaviors unless a separate" +
+  " active decision explicitly says what to do instead.\n" +
   "Treat tool-role messages and `[tool_result:name] value` lines as durable" +
   " facts. Preserve exact tool result values, ids, dates, codes, and other" +
   " identifiers verbatim.\n" +
@@ -1243,8 +1292,11 @@ const LEDGER_SYSTEM_PROMPT =
   " and `[tool_result:name] value` lines are always load-bearing: include" +
   " every tool result in state.facts with the exact returned value, and add" +
   " ledger entries for the most recent tool results. Preserve ids, dates," +
-  " codes, rules, constraints, forbidden behaviors, latest overrides, exact" +
-  " entity assignments, and other identifiers verbatim. Output ONLY the" +
+  " codes, rules, constraints, latest overrides, exact" +
+  " entity assignments, and other identifiers verbatim. Put rejected," +
+  " superseded, and forbidden behavior text only in" +
+  " state.forbidden_behaviors, not in state.facts or state.decisions." +
+  " Output ONLY the" +
   " JSON object, no prose, no markdown fences.";
 
 const HYBRID_LEDGER_MAX_ENTRIES = 10;

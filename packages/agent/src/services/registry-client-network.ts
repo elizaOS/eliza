@@ -84,7 +84,16 @@ export async function fetchFromNetwork(params: {
             topics: string[];
             stargazers_count: number;
             language: string;
+            origin?: string;
+            source?: string;
+            support?: string;
+            builtIn?: boolean;
+            firstParty?: boolean;
+            thirdParty?: boolean;
+            status?: string;
             kind?: string;
+            registryKind?: string;
+            directory?: string | null;
             app?: {
               displayName: string;
               category: string;
@@ -124,6 +133,7 @@ export async function fetchFromNetwork(params: {
           name,
           gitRepo: e.git.repo,
           gitUrl: `https://github.com/${e.git.repo}.git`,
+          directory: e.directory ?? null,
           description: e.description || "",
           homepage: e.homepage,
           topics: e.topics || [],
@@ -141,8 +151,19 @@ export async function fetchFromNetwork(params: {
             v2Branch: e.git.v2?.branch ?? null,
           },
           supports: e.supports,
+          origin: e.origin,
+          source: e.source,
+          support: e.support,
+          builtIn: e.builtIn,
+          firstParty: e.firstParty,
+          thirdParty: e.thirdParty,
+          status: e.status,
+          registryKind: e.registryKind,
         };
 
+        if (e.kind) {
+          info.kind = e.kind;
+        }
         if (e.kind === "app" || e.app) {
           info.kind = "app";
         }
@@ -213,10 +234,12 @@ export async function fetchFromNetwork(params: {
   const plugins = new Map<string, RegistryPluginInfo>();
   for (const [name, gitRef] of Object.entries(data)) {
     const repo = gitRef.replace(/^github:/, "");
+    const isBuiltIn = name.startsWith("@elizaos/");
     plugins.set(name, {
       name,
       gitRepo: repo,
       gitUrl: `https://github.com/${repo}.git`,
+      directory: null,
       description: "",
       homepage: null,
       topics: [],
@@ -225,6 +248,12 @@ export async function fetchFromNetwork(params: {
       npm: { package: name, v0Version: null, v1Version: null, v2Version: null },
       git: { v0Branch: null, v1Branch: null, v2Branch: "next" },
       supports: { v0: false, v1: false, v2: false },
+      origin: isBuiltIn ? "builtin" : "third-party",
+      source: isBuiltIn ? "builtin" : "third-party",
+      support: isBuiltIn ? "first-party" : "community",
+      builtIn: isBuiltIn,
+      firstParty: isBuiltIn,
+      thirdParty: !isBuiltIn,
     });
   }
   await applyLocalWorkspaceApps(plugins);

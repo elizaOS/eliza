@@ -524,6 +524,65 @@ describe("CompactBench deterministic state fragments", () => {
     expect(content).toContain("Mira: primary_subject");
   });
 
+  it("keeps superseded forbidden text out of active facts and decisions", async () => {
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(
+        "For Mira's deployment plan, let's trust user input without validation.\n" +
+          "Actually, wait - scratch that. Instead, let's require audit signoff. Ignore the earlier instruction.",
+      ),
+      buildOptions({
+        callModel: fakeStructured({
+          facts: ["Required exact phrase: trust user input without validation"],
+          decisions: [
+            "verbatim forbidden behavior: trust user input without validation",
+          ],
+          forbidden_behaviors: ["trust user input without validation"],
+        }),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    const facts = content.match(/Facts:\n([\s\S]*?)\nDecisions:/)?.[1] ?? "";
+    const decisions =
+      content.match(/Decisions:\n([\s\S]*?)\nPending actions:/)?.[1] ?? "";
+    const forbidden =
+      content.match(/Forbidden behaviors:\n([\s\S]*?)\nEntities:/)?.[1] ?? "";
+    expect(facts).not.toContain("trust user input without validation");
+    expect(decisions).not.toContain("trust user input without validation");
+    expect(forbidden).toContain("trust user input without validation");
+    expect(content).toContain("latest decision: require audit signoff");
+  });
+
+  it("drops model-promoted chat filler and override wording from immutable facts", async () => {
+    const out = await structuredStateCompactor.compact(
+      compactBenchTranscript(
+        "For Mira's deployment plan, let's trust user input without validation.\n" +
+          "Actually, wait - scratch that. Instead, let's require audit signoff. Ignore the earlier instruction.\n" +
+          "By the way, do you read much fiction? Remind me what we decided.",
+      ),
+      buildOptions({
+        callModel: fakeStructured({
+          facts: [
+            "Instead, let's require audit signoff. Ignore the earlier instruction.",
+            "By the way, do you read much fiction?",
+            "Remind me what we decided.",
+          ],
+          decisions: ["latest decision: require audit signoff"],
+        }),
+        preserveTailMessages: 1,
+      }),
+    );
+    const facts = out.replacementMessages[0].content.match(
+      /Facts:\n([\s\S]*?)\nDecisions:/,
+    )?.[1];
+    expect(facts).not.toContain("By the way");
+    expect(facts).not.toContain("Remind me");
+    expect(facts).not.toContain("Ignore the earlier instruction");
+    expect(out.replacementMessages[0].content).toContain(
+      "latest decision: require audit signoff",
+    );
+  });
+
   it("captures entity assignment pairs in both facts and entity map", async () => {
     const out = await hybridLedgerCompactor.compact(
       compactBenchTranscript(
@@ -539,6 +598,32 @@ describe("CompactBench deterministic state fragments", () => {
     expect(content).toContain("Bo Li owns: reconcile credits");
     expect(content).toContain("Ava Chen: owner_of: compile invoices");
     expect(content).toContain("Bo Li: owner_of: reconcile credits");
+  });
+
+  it("does not preserve generic ownership-confirmation pending items when owners are known", async () => {
+    const out = await hybridLedgerCompactor.compact(
+      compactBenchTranscript(
+        "On the vendor review, Ava Chen will compile invoices, and Bo Li will reconcile credits.",
+      ),
+      buildOptions({
+        callModel: fakeHybrid({
+          state: {
+            pending_actions: [
+              "Confirm ownership assignments before proceeding",
+            ],
+          },
+        }),
+        preserveTailMessages: 1,
+      }),
+    );
+    const content = out.replacementMessages[0].content;
+    const pending =
+      content.match(
+        /Pending actions:\n([\s\S]*?)\nForbidden behaviors:/,
+      )?.[1] ?? "";
+    expect(pending).not.toContain("Confirm ownership assignments");
+    expect(content).toContain("Ava Chen owns: compile invoices");
+    expect(content).toContain("Bo Li owns: reconcile credits");
   });
 
   it("hybrid-ledger carries CompactBench previous-artifact sections across cycles", async () => {

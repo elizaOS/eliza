@@ -8,7 +8,7 @@ Status as of 2026-05-11 on this workspace:
 - `adb devices -l` currently shows only `emulator-5554`; emulator Vulkan is diagnostic only and is not recordable Eliza-1 hardware evidence.
 - Physical iOS XCFramework smoke now passes on `Shaw's iPhone (26.3.1)` / iPhone 15 Pro UDID `00008130-001955E91EF8001C`; simulator results remain non-recordable for release bundle evidence.
 - CUDA, ROCm, GH200, and native Windows runners are present and fail closed, but this Mac cannot provide recordable target hardware evidence.
-- No final Eliza-1 release bundles exist yet with final weights, hashes, eval outputs, license manifests, and Hugging Face upload evidence.
+- Local release-shaped Eliza-1 bundles exist for all five tiers with source/candidate stand-ins, quantization sidecars, checksums, manifests, and fail-closed `evidence/release.json`; no final Eliza-1 release bundle exists yet with final weights, passing evals, release licenses, platform evidence, and Hugging Face upload evidence.
 
 ## Pass Criteria
 
@@ -225,4 +225,10 @@ Before publishing any Eliza-1 bundle to Hugging Face:
 - Run tier evals and hardware smoke for the target platform class.
 - Upload to the `elizalabs` Hugging Face org and preserve upload logs/artifact URLs.
 
-No final Eliza-1 release bundle is recordable until these artifacts exist.
+Current local bundles under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`
+are complete enough for runtime-layout smoke: every tier has required local
+`text/`, `tts/`, `asr/`, `vad/`, `dflash/`, `cache/`, `quantization/`,
+`checksums/`, `licenses/`, and `evidence/` paths, and every
+`checksums/SHA256SUMS` has been revalidated. They are not recordable release
+artifacts because `evidence/release.json` is intentionally
+`releaseState=local-standin` and `publishEligible=false`.

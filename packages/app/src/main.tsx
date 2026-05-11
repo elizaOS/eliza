@@ -1,4 +1,5 @@
 import { ErrorBoundary } from "@elizaos/ui";
+import "@elizaos/ui/styles";
 import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";

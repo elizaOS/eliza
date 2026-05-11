@@ -1,0 +1,84 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131606Z_e937bcec/voicebench__voicebench/run_voicebench_20260511T131606Z_1_29fe64d9/output"
+  ],
+  "benchmark_directory": "voicebench",
+  "benchmark_id": "voicebench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": false,
+  "metrics": {
+    "avgEndToEndMs": 92.547,
+    "avgResponseTtftMs": 91.428,
+    "avgTranscriptionMs": 0.182,
+    "avgVoiceFirstTokenCachedMs": 0.141,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "mode": "simple",
+    "p95EndToEndMs": 92.547,
+    "p99EndToEndMs": 92.547,
+    "performance_metrics": {
+      "duration_seconds": 1.2457282920076977,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.0
+    },
+    "profile": "mock",
+    "return_code": 0,
+    "runs": 1,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 0,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 0
+    },
+    "transcriptionNormalizedAccuracy": 1
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 1.2457282920076977,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.0
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131606Z_e937bcec/voicebench__voicebench/run_voicebench_20260511T131606Z_1_29fe64d9/output/voicebench-typescript-mock-1778505366987.json",
+  "run_group_id": "rg_20260511T131606Z_e937bcec",
+  "run_id": "run_voicebench_20260511T131606Z_1_29fe64d9",
+  "score": 92.547,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 0,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 0,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 0
+  },
+  "unit": "ms",
+  "updated_at": "2026-05-11T13:16:08.186764+00:00"
+}

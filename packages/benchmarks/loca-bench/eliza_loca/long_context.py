@@ -544,10 +544,68 @@ def _select_tail_preserving_tool_pairs(
 ) -> list[dict[str, Any]]:
     if tail_messages <= 0:
         return []
-    tail = list(full_history[-tail_messages:])
+    tail_start = max(0, len(full_history) - tail_messages)
+
+    while tail_start > 0:
+        tail = list(full_history[tail_start:])
+        missing = _tool_result_ids(tail) - _assistant_tool_call_ids(tail)
+        if not missing:
+            break
+        producer_index = _find_latest_tool_call_producer(full_history, tail_start, missing)
+        if producer_index is None:
+            break
+        tail_start = producer_index
+
+    tail = list(full_history[tail_start:])
+    produced = _assistant_tool_call_ids(tail)
     while tail and tail[0].get("role") == "tool":
+        tool_id = tail[0].get("tool_call_id")
+        if isinstance(tool_id, str) and tool_id in produced:
+            break
         tail.pop(0)
     return tail
+
+
+def _assistant_tool_call_ids(messages: list[dict[str, Any]]) -> set[str]:
+    ids: set[str] = set()
+    for message in messages:
+        if message.get("role") != "assistant":
+            continue
+        calls = message.get("tool_calls")
+        if not isinstance(calls, list):
+            continue
+        for call in calls:
+            if not isinstance(call, dict):
+                continue
+            call_id = call.get("id")
+            if isinstance(call_id, str) and call_id:
+                ids.add(call_id)
+    return ids
+
+
+def _tool_result_ids(messages: list[dict[str, Any]]) -> set[str]:
+    ids: set[str] = set()
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        tool_id = message.get("tool_call_id")
+        if isinstance(tool_id, str) and tool_id:
+            ids.add(tool_id)
+    return ids
+
+
+def _find_latest_tool_call_producer(
+    full_history: list[dict[str, Any]],
+    before_index: int,
+    missing_ids: set[str],
+) -> int | None:
+    for index in range(before_index - 1, -1, -1):
+        message = full_history[index]
+        if message.get("role") != "assistant":
+            continue
+        if _assistant_tool_call_ids([message]) & missing_ids:
+            return index
+    return None
 
 
 def _filler(chars: int) -> str:
