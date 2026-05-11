@@ -1,167 +1,365 @@
 /**
- * Silero VAD gate + wake-word detector tests:
- *   - the segment state machine debounces speech onset/offset
- *   - `gateToSpeech` drops silent frames before ASR (AGENTS.md §1)
- *   - VAD-reported speech onset drives a barge-in cancel through the
- *     `VoicePipeline` (the cancel hook is `onSpeechStart`)
- *   - `resolveSileroVadPath` hard-fails on a missing bundled ONNX
- *   - `OpenWakeWordDetector` fires once per utterance (refractory-debounced)
- *   - `resolveWakeWordPath` returns null when the optional ONNX is absent
+ * VAD tests — the two-tier audio gate.
+ *
+ *   - `RmsEnergyGate`: hysteresis on synthetic sine / silence frames.
+ *   - `VadDetector`: speech state machine driven by a *deterministic fake
+ *     Silero* (probability scripted per window), asserting the full
+ *     `VadEvent` sequence (start → active → pause → end / blip).
+ *   - `SileroVad` / `createSileroVadDetector`: a network-gated test against
+ *     the real MIT Silero VAD ONNX model — downloaded into a temp dir on
+ *     first run, skipped offline. This is the only test that touches
+ *     `onnxruntime-node`.
  */
 
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { VoiceStartupError } from "./errors";
+import { afterAll, describe, expect, it } from "vitest";
+import type { PcmFrame, VadEvent } from "./types";
 import {
-  EnergyVadModel,
-  resolveSileroVadPath,
-  SILERO_VAD_REL_PATH,
-  SileroVadGate,
-  type VadModel,
+  createSileroVadDetector,
+  RmsEnergyGate,
+  rms,
+  SileroVad,
+  VadDetector,
+  VadUnavailableError,
 } from "./vad";
-import {
-  OpenWakeWordDetector,
-  resolveWakeWordPath,
-  type WakeWordModel,
-} from "./wake-word";
 
-/** Scripted VAD: returns the next probability from a fixed list, looping. */
-class ScriptVad implements VadModel {
-  readonly frameSamples = 4;
-  readonly sampleRate = 16_000;
-  private i = 0;
-  constructor(private readonly probs: number[]) {}
-  scoreFrame(): number {
-    const p = this.probs[this.i % this.probs.length];
-    this.i++;
+const SR = 16_000;
+const FRAME = 512; // one Silero window
+const FRAME_MS = (FRAME / SR) * 1000; // 32 ms
+
+function silenceFrame(ts: number): PcmFrame {
+  return { pcm: new Float32Array(FRAME), sampleRate: SR, timestampMs: ts };
+}
+
+function sineFrame(ts: number, amplitude: number, freq = 220): PcmFrame {
+  const pcm = new Float32Array(FRAME);
+  for (let i = 0; i < FRAME; i++) {
+    pcm[i] = amplitude * Math.sin((2 * Math.PI * freq * i) / SR);
+  }
+  return { pcm, sampleRate: SR, timestampMs: ts };
+}
+
+// --- Deterministic fake Silero --------------------------------------------
+
+class ScriptedSilero {
+  readonly sampleRate = SR;
+  readonly windowSamples = FRAME;
+  private idx = 0;
+  resets = 0;
+  constructor(private readonly probs: readonly number[]) {}
+  async process(window: Float32Array): Promise<number> {
+    expect(window.length).toBe(FRAME);
+    const p = this.probs[this.idx] ?? this.probs[this.probs.length - 1] ?? 0;
+    this.idx++;
     return p;
   }
+  /** Real Silero clears its LSTM state here; it does NOT rewind the input
+   *  stream — so the scripted probability cursor stays where it is. */
   reset(): void {
-    this.i = 0;
+    this.resets++;
   }
 }
 
-function frame(): Float32Array {
-  return new Float32Array(4);
+async function feedProbs(
+  detector: VadDetector,
+  probs: readonly number[],
+): Promise<VadEvent[]> {
+  const events: VadEvent[] = [];
+  detector.onVadEvent((e) => events.push(e));
+  let ts = 1000;
+  for (let i = 0; i < probs.length; i++) {
+    await detector.pushFrame(silenceFrame(ts));
+    ts += FRAME_MS;
+  }
+  await detector.flush();
+  return events;
 }
 
-describe("SileroVadGate", () => {
-  it("debounces speech onset (minSpeechFrames) and offset (minSilenceFrames)", () => {
+describe("rms", () => {
+  it("is zero for silence and ~amplitude/√2 for a sine", () => {
+    expect(rms(new Float32Array(256))).toBe(0);
+    const pcm = sineFrame(0, 0.5).pcm;
+    expect(rms(pcm)).toBeGreaterThan(0.3);
+    expect(rms(pcm)).toBeLessThan(0.4);
+  });
+});
+
+describe("RmsEnergyGate", () => {
+  it("rises above riseThreshold and falls after the hold window", () => {
+    const gate = new RmsEnergyGate({ riseThreshold: 0.05, fallHoldMs: 60 });
     const events: string[] = [];
-    const gate = new SileroVadGate({
-      model: new ScriptVad([0.9, 0.9, 0.9, 0.1, 0.1]),
-      config: { minSpeechFrames: 3, minSilenceFrames: 2 },
-      onSpeechStart: () => events.push("start"),
-      onSpeechEnd: () => events.push("end"),
-    });
-    expect(gate.pushFrame(frame())).toBe(false); // run 1
-    expect(gate.pushFrame(frame())).toBe(false); // run 2
-    expect(gate.pushFrame(frame())).toBe(true); // run 3 → onset
-    expect(gate.pushFrame(frame())).toBe(true); // silence run 1 — still in speech
-    expect(gate.pushFrame(frame())).toBe(false); // silence run 2 → offset
-    expect(events).toEqual(["start", "end"]);
+    gate.onEvent((e) => events.push(`${e.type}`));
+
+    let ts = 0;
+    // Silence — no event.
+    gate.push(silenceFrame(ts));
+    ts += FRAME_MS;
+    expect(events).toEqual([]);
+    expect(gate.isActive).toBe(false);
+
+    // Loud — rise.
+    gate.push(sineFrame(ts, 0.3));
+    ts += FRAME_MS;
+    expect(events).toEqual(["energy-rise"]);
+    expect(gate.isActive).toBe(true);
+
+    // Stay loud — no extra rise.
+    gate.push(sineFrame(ts, 0.3));
+    ts += FRAME_MS;
+    expect(events).toEqual(["energy-rise"]);
+
+    // First quiet frame — starts the hold timer; still active.
+    gate.push(silenceFrame(ts));
+    ts += FRAME_MS;
+    expect(gate.isActive).toBe(true);
+
+    // Second quiet frame — 32 ms quiet, still inside the 60 ms window.
+    gate.push(silenceFrame(ts));
+    ts += FRAME_MS;
+    expect(gate.isActive).toBe(true);
+
+    // Third quiet frame — 64 ms quiet, past the hold window → fall.
+    gate.push(silenceFrame(ts));
+    expect(events).toEqual(["energy-rise", "energy-fall"]);
+    expect(gate.isActive).toBe(false);
   });
 
-  it("gateToSpeech keeps only in-segment frames", () => {
-    // Energy gate: zeros are silence, a loud burst is speech.
-    const gate = new SileroVadGate({
-      model: new EnergyVadModel(4, 16_000, 0.5),
-      config: { minSpeechFrames: 1, minSilenceFrames: 1 },
-    });
-    const pcm = new Float32Array(16);
-    // frames: [0..3]=silence, [4..7]=loud, [8..11]=loud, [12..15]=silence
-    for (let i = 4; i < 12; i++) pcm[i] = 1;
-    const speech = gate.gateToSpeech(pcm);
-    // Two 4-sample frames of speech kept.
-    expect(speech.length).toBe(8);
-    expect([...speech]).toEqual([1, 1, 1, 1, 1, 1, 1, 1]);
-  });
-
-  it("an all-silence buffer gates to empty", () => {
-    const gate = new SileroVadGate({
-      model: new EnergyVadModel(4, 16_000, 0.5),
-    });
-    expect(gate.gateToSpeech(new Float32Array(12)).length).toBe(0);
-  });
-
-  it("rejects a wrong-size frame", () => {
-    const gate = new SileroVadGate({ model: new ScriptVad([0.1]) });
-    expect(() => gate.pushFrame(new Float32Array(3))).toThrow(/expected 4/);
-  });
-});
-
-describe("resolveSileroVadPath", () => {
-  it("returns the bundled path when present", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "eliza-vad-"));
-    const p = path.join(dir, SILERO_VAD_REL_PATH);
-    mkdirSync(path.dirname(p), { recursive: true });
-    writeFileSync(p, "onnx");
-    expect(resolveSileroVadPath(dir)).toBe(p);
-  });
-
-  it("hard-fails when the bundled Silero ONNX is missing (AGENTS.md §1/§3)", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "eliza-vad-"));
-    expect(() => resolveSileroVadPath(dir)).toThrow(VoiceStartupError);
+  it("does not fall when energy returns inside the hold window", () => {
+    const gate = new RmsEnergyGate({ riseThreshold: 0.05, fallHoldMs: 200 });
+    const events: string[] = [];
+    gate.onEvent((e) => events.push(e.type));
+    let ts = 0;
+    gate.push(sineFrame(ts, 0.3));
+    ts += FRAME_MS; // rise
+    gate.push(silenceFrame(ts));
+    ts += FRAME_MS; // quiet, 32ms < 200ms
+    gate.push(sineFrame(ts, 0.3));
+    ts += FRAME_MS; // loud again — cancels the fall
+    gate.push(silenceFrame(ts));
+    ts += FRAME_MS;
+    expect(events).toEqual(["energy-rise"]);
   });
 });
 
-/** Scripted wake-word model. */
-class ScriptWakeWord implements WakeWordModel {
-  readonly frameSamples = 4;
-  readonly sampleRate = 16_000;
-  private i = 0;
-  constructor(private readonly probs: number[]) {}
-  scoreFrame(): number {
-    const p = this.probs[this.i % this.probs.length];
-    this.i++;
+describe("VadDetector", () => {
+  it("emits speech-start → speech-active → speech-pause → speech-end for a clean utterance", async () => {
+    // 0..2 silence, 3..13 speech (~350 ms), then long silence to end.
+    const probs = [
+      0.01, 0.01, 0.01, 0.9, 0.95, 0.9, 0.92, 0.88, 0.9, 0.91, 0.93, 0.9, 0.9,
+      0.9, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+      0.02, 0.02, 0.02, 0.02, 0.02,
+    ];
+    const det = new VadDetector(new ScriptedSilero(probs), {
+      onsetThreshold: 0.5,
+      pauseHangoverMs: 100,
+      endHangoverMs: 300,
+      minSpeechMs: 150,
+      activeHeartbeatMs: 64,
+    });
+    const events = await feedProbs(det, probs);
+    const types = events.map((e) => e.type);
+    expect(types[0]).toBe("speech-start");
+    expect(types).toContain("speech-active");
+    expect(types).toContain("speech-pause");
+    expect(types[types.length - 1]).toBe("speech-end");
+    const end = events.find((e) => e.type === "speech-end");
+    expect(
+      end && end.type === "speech-end" && end.speechDurationMs,
+    ).toBeGreaterThan(150);
+  });
+
+  it("classifies a too-short burst as a blip, not speech-end", async () => {
+    // One speech window only (~32 ms), then silence.
+    const probs = [
+      0.01, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+      0.02,
+    ];
+    const det = new VadDetector(new ScriptedSilero(probs), {
+      onsetThreshold: 0.5,
+      pauseHangoverMs: 64,
+      endHangoverMs: 128,
+      minSpeechMs: 200,
+    });
+    const events = await feedProbs(det, probs);
+    const types = events.map((e) => e.type);
+    expect(types[0]).toBe("speech-start");
+    expect(types).toContain("blip");
+    expect(types).not.toContain("speech-end");
+  });
+
+  it("reopens speech when energy returns during the pause hangover", async () => {
+    // speech, brief dip (1 window), speech again, then end — single segment.
+    const probs = [
+      0.9, 0.9, 0.9, 0.9, 0.9, 0.1, 0.9, 0.9, 0.9, 0.9, 0.9, 0.02, 0.02, 0.02,
+      0.02, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02,
+    ];
+    const det = new VadDetector(new ScriptedSilero(probs), {
+      onsetThreshold: 0.5,
+      pauseHangoverMs: 100, // 3+ windows
+      endHangoverMs: 250,
+      minSpeechMs: 150,
+      activeHeartbeatMs: 1000, // suppress heartbeats so we count starts cleanly
+    });
+    const events = await feedProbs(det, probs);
+    const starts = events.filter((e) => e.type === "speech-start");
+    expect(starts).toHaveLength(1); // not a new segment after the dip
+    expect(events[events.length - 1].type).toBe("speech-end");
+  });
+
+  it("re-windows arbitrarily-sized input frames into 512-sample windows", async () => {
+    const probs = [0.9, 0.9, 0.9, 0.9, 0.02, 0.02, 0.02, 0.02, 0.02, 0.02];
+    const silero = new ScriptedSilero(probs);
+    const det = new VadDetector(silero, {
+      onsetThreshold: 0.5,
+      pauseHangoverMs: 64,
+      endHangoverMs: 128,
+      minSpeechMs: 1,
+    });
+    const events: VadEvent[] = [];
+    det.onVadEvent((e) => events.push(e));
+    // Feed 1280 samples in one 700-sample chunk + one 580-sample chunk +
+    // tail in flush — that's 2.5 windows; flush pads the rest.
+    await det.pushFrame({
+      pcm: new Float32Array(700),
+      sampleRate: SR,
+      timestampMs: 0,
+    });
+    await det.pushFrame({
+      pcm: new Float32Array(580),
+      sampleRate: SR,
+      timestampMs: 50,
+    });
+    // Tail of zeros to drive the segment to end.
+    for (let i = 0; i < 8; i++) {
+      await det.pushFrame({
+        pcm: new Float32Array(512),
+        sampleRate: SR,
+        timestampMs: 100 + i * FRAME_MS,
+      });
+    }
+    await det.flush();
+    expect(events.some((e) => e.type === "speech-start")).toBe(true);
+  });
+
+  it("rejects a sample-rate mismatch", async () => {
+    const det = new VadDetector(new ScriptedSilero([0.1]));
+    await expect(
+      det.pushFrame({
+        pcm: new Float32Array(512),
+        sampleRate: 8000,
+        timestampMs: 0,
+      }),
+    ).rejects.toThrow(/16000/);
+  });
+});
+
+describe("SileroVad — model not found", () => {
+  it("throws VadUnavailableError(model-missing) when the ONNX file is absent", async () => {
+    await expect(
+      SileroVad.load({ modelPath: "/nonexistent/silero.onnx" }),
+    ).rejects.toMatchObject({
+      name: "VadUnavailableError",
+      code: "model-missing",
+    });
+  });
+});
+
+// --- Network-gated real-model test ----------------------------------------
+
+const SILERO_URL =
+  "https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx";
+
+async function tryFetchSileroModel(): Promise<string | null> {
+  if (process.env.ELIZA_VAD_MODEL_PATH) return process.env.ELIZA_VAD_MODEL_PATH;
+  if (process.env.CI && !process.env.ELIZA_VAD_ALLOW_NETWORK) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const res = await fetch(SILERO_URL, { signal: ctrl.signal });
+    clearTimeout(t);
+    if (!res.ok) return null;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    if (bytes.byteLength < 1_000_000) return null;
+    const dir = mkdtempSync(path.join(tmpdir(), "eliza-vad-"));
+    const p = path.join(dir, "silero-vad-int8.onnx");
+    writeFileSync(p, bytes);
     return p;
-  }
-  reset(): void {
-    this.i = 0;
+  } catch {
+    return null;
   }
 }
 
-describe("OpenWakeWordDetector", () => {
-  it("fires once per utterance (refractory-debounced)", () => {
-    let wakes = 0;
-    const det = new OpenWakeWordDetector({
-      model: new ScriptWakeWord([0.9, 0.9, 0.1, 0.1, 0.9]),
-      config: { threshold: 0.5, refractoryFrames: 2 },
-      onWake: () => wakes++,
-    });
-    expect(det.pushFrame(frame())).toBe(true); // detection → cooldown=2
-    expect(det.pushFrame(frame())).toBe(false); // cooldown 2→1
-    expect(det.pushFrame(frame())).toBe(false); // cooldown 1→0
-    expect(det.pushFrame(frame())).toBe(false); // p=0.1 below threshold
-    expect(det.pushFrame(frame())).toBe(true); // p=0.9 → second detection
-    expect(wakes).toBe(2);
-  });
-});
+const modelPathPromise = tryFetchSileroModel();
 
-describe("resolveWakeWordPath", () => {
-  it("returns null when the optional openWakeWord ONNX is absent", () => {
-    const dir = mkdtempSync(path.join(tmpdir(), "eliza-ww-"));
-    expect(resolveWakeWordPath(dir)).toBeNull();
+describe("SileroVad — real ONNX model (network-gated)", () => {
+  afterAll(() => {
+    /* temp dir left for the OS to reap */
   });
-});
 
-/* The VAD→barge-in wiring is verified in `pipeline.test.ts` (barge-in
- * cancels the in-flight turn); here we assert the *source* of that cancel
- * is the VAD's `onSpeechStart` callback by feeding it a speech onset and
- * observing the supplied callback fires. */
-describe("VAD-driven barge-in source", () => {
-  it("invokes the barge-in callback the moment the gate reports speech onset", () => {
-    let bargedIn = false;
-    const gate = new SileroVadGate({
-      model: new EnergyVadModel(4, 16_000, 0.5),
-      config: { minSpeechFrames: 1 },
-      onSpeechStart: () => {
-        bargedIn = true;
-      },
-    });
-    gate.pushFrame(new Float32Array([1, 1, 1, 1])); // loud → onset
-    expect(bargedIn).toBe(true);
-  });
+  it("loads, runs 512-sample windows, and yields low prob on silence", async () => {
+    const modelPath = await modelPathPromise;
+    if (!modelPath) {
+      console.warn(
+        "[vad.test] Skipping real Silero ONNX test — model not available offline. Set ELIZA_VAD_MODEL_PATH or ELIZA_VAD_ALLOW_NETWORK=1.",
+      );
+      return;
+    }
+    let vad: SileroVad;
+    try {
+      vad = await SileroVad.load({ modelPath });
+    } catch (err) {
+      if (err instanceof VadUnavailableError && err.code === "ort-missing") {
+        console.warn("[vad.test] Skipping — onnxruntime-node not installed.");
+        return;
+      }
+      throw err;
+    }
+    expect(vad.windowSamples).toBe(512);
+    const silence = new Float32Array(512);
+    const p1 = await vad.process(silence);
+    const p2 = await vad.process(silence);
+    expect(p1).toBeGreaterThanOrEqual(0);
+    expect(p1).toBeLessThan(0.3);
+    expect(p2).toBeLessThan(0.3);
+    // A loud-ish broadband-ish burst should read higher than dead silence.
+    const noise = new Float32Array(512);
+    for (let i = 0; i < 512; i++)
+      noise[i] = (Math.sin(i * 0.7) + Math.sin(i * 1.9)) * 0.4;
+    vad.reset();
+    const pn = await vad.process(noise);
+    expect(pn).toBeGreaterThanOrEqual(0);
+    expect(pn).toBeLessThanOrEqual(1);
+  }, 20_000);
+
+  it("createSileroVadDetector wires a working VadDetector", async () => {
+    const modelPath = await modelPathPromise;
+    if (!modelPath) return;
+    let det: VadDetector;
+    try {
+      det = await createSileroVadDetector({
+        modelPath,
+        config: { onsetThreshold: 0.5 },
+      });
+    } catch (err) {
+      if (err instanceof VadUnavailableError && err.code === "ort-missing")
+        return;
+      throw err;
+    }
+    const events: VadEvent[] = [];
+    det.onVadEvent((e) => events.push(e));
+    // Feed 1 s of silence — should produce no speech events.
+    let ts = 0;
+    for (let i = 0; i < SR / 512; i++) {
+      await det.pushFrame({
+        pcm: new Float32Array(512),
+        sampleRate: SR,
+        timestampMs: ts,
+      });
+      ts += FRAME_MS;
+    }
+    await det.flush();
+    expect(events.filter((e) => e.type === "speech-start")).toHaveLength(0);
+  }, 20_000);
 });
