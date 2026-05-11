@@ -145,3 +145,6 @@ class ToonDecoder:
 class ToonEncoder:
     def encode(self, value: Any) -> str:
         return "\n".join(_encode_lines(value, 0)).rstrip() + "\n"
+
+    def close(self) -> None:
+        return None
