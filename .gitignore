@@ -482,3 +482,9 @@ test/mocks/mockoon/.mockoon-pids/
 lifeops_bench_results/
 reports/ai-qa/
 scripts/ai-qa/.static-stack.json
+
+# omnivoice-fuse stub library — a build artifact of `make -C
+# packages/app-core/scripts/omnivoice-fuse`, not source. The fused-ABI
+# tests (`voice/ffi-bindings.test.ts`) skip when it is absent.
+packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
+packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib
