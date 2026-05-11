@@ -10,7 +10,6 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
-  useTimeout,
 } from "@elizaos/ui";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -114,7 +113,6 @@ function normalizeVoiceConfigForSave(args: {
 }
 
 export function IdentitySettingsSection() {
-  const { setTimeout } = useTimeout();
   const {
     t,
     characterData,

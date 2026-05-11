@@ -796,7 +796,9 @@ export function VoiceConfigView() {
 
   const { saving, saveError, saveSuccess, handleSave } = useSettingsSave({
     onSave: performSave,
-    errorFallback: t("skillsview.failedToSave", { defaultValue: "Failed to save" }),
+    errorFallback: t("skillsview.failedToSave", {
+      defaultValue: "Failed to save",
+    }),
   });
 
   if (loading) {
