@@ -177,11 +177,19 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// elizaOS/llama.cpp @ v0.4.0-milady (milady/integration HEAD).
-// Composes TBQ (apothic) + QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources
-// (W1-D) + DFlash spec-decode (W2) + W3-B fused CPU kernels + W4-B CUDA
-// QJL/Polar/TBQ3_TCQ kernels onto upstream b8198. See
-// docs/porting/unified-fork-strategy.md for the full migration story.
+// elizaOS/llama.cpp @ v1.0.0-eliza (same tree as the prior v0.4.0-milady tag,
+// commit 08032d57 — re-tagged on the elizaOS rename). Composes TBQ (apothic) +
+// QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
+// (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
+// upstream b8198. See docs/porting/unified-fork-strategy.md for the full
+// migration story.
+//
+// The fork ships in-tree as the git submodule at packages/inference/llama.cpp
+// (next to the dflash build at scripts/build-llama-cpp-dflash.mjs — same
+// pinned commit so both build paths land on identical kernels). When that
+// submodule is initialized this path defaults to it (no clone needed); pass
+// `--src-dir` to point at another checkout, or `--cache-dir` to force a
+// standalone clone of `${LLAMA_CPP_REMOTE}` at `${LLAMA_CPP_TAG}`.
 //
 // Pre-2026-05-09 the AOSP path consumed apothic/llama.cpp-1bit-turboquant
 // directly and applied vendored QJL + PolarQuant patch series via
@@ -189,11 +197,32 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v0.4.0-milady";
+export const LLAMA_CPP_TAG = "v1.0.0-eliza";
 export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
 export const LLAMA_CPP_REMOTE =
   "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+
+// The in-repo submodule checkout of the fork (packages/inference/llama.cpp).
+// `repoRoot` resolves to the repo root that contains a top-level package.json.
+const LLAMA_CPP_SUBMODULE_DIR = path.join(
+  repoRoot,
+  "packages",
+  "inference",
+  "llama.cpp",
+);
+// True when the submodule is checked out (has a worktree). When so, the AOSP
+// cross-compile defaults its source dir to it instead of cloning.
+export function llamaCppSubmodulePresent() {
+  try {
+    return (
+      fs.existsSync(path.join(LLAMA_CPP_SUBMODULE_DIR, ".git")) &&
+      fs.existsSync(path.join(LLAMA_CPP_SUBMODULE_DIR, "CMakeLists.txt"))
+    );
+  } catch {
+    return false;
+  }
+}
 
 export const ABI_TARGETS = [
   {
