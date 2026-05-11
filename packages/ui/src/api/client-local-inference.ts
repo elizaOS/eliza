@@ -5,9 +5,9 @@
  * raw `fetch` from UI code.
  */
 
+import type { ProviderStatus } from "@elizaos/shared";
 import type { DeviceBridgeStatus } from "../services/local-inference/device-bridge";
 import type { PublicRegistration } from "../services/local-inference/handler-registry";
-import type { ProviderStatus } from "../services/local-inference/providers";
 import type {
   RoutingPolicy,
   RoutingPreferences,
