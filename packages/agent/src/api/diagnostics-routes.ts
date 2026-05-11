@@ -4,6 +4,7 @@ import type {
   RouteHelpers,
   RouteRequestMeta,
 } from "@elizaos/core";
+import { PostLogExportRequestSchema } from "@elizaos/shared";
 import { parseClampedInteger } from "../utils/number-parsing.ts";
 
 interface LogEntryLike {
@@ -307,22 +308,19 @@ export async function handleDiagnosticsRoutes(
       json(res, { error: "Log export requires JSON body support" }, 500);
       return true;
     }
-    const body = await ctx.readJsonBody<{
-      format?: unknown;
-      source?: unknown;
-      level?: unknown;
-      tags?: unknown;
-      since?: unknown;
-      limit?: unknown;
-    }>(req, res);
-    if (!body) return true;
-
-    const formatRaw =
-      typeof body.format === "string" ? body.format.trim().toLowerCase() : "";
-    if (formatRaw !== "json" && formatRaw !== "csv") {
-      errorFn(res, 'format must be "json" or "csv"', 400);
+    const rawExp = await ctx.readJsonBody<Record<string, unknown>>(req, res);
+    if (rawExp === null) return true;
+    const parsedExp = PostLogExportRequestSchema.safeParse(rawExp);
+    if (!parsedExp.success) {
+      errorFn(
+        res,
+        parsedExp.error.issues[0]?.message ?? 'format must be "json" or "csv"',
+        400,
+      );
       return true;
     }
+    const body = parsedExp.data;
+    const formatRaw = body.format;
 
     let sinceMs: number | undefined;
     if (typeof body.since === "string" && body.since.trim()) {
