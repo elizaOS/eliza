@@ -50,6 +50,7 @@ export {
   VoiceScheduler,
 } from "./scheduler";
 export {
+  createDflashDrafterHandle,
   type DflashDrafterHandle,
   type KernelSet,
   type MmapRegionHandle,

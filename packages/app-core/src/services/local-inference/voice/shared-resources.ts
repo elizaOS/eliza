@@ -86,6 +86,39 @@ export interface SchedulerSlot extends RefCountedResource {
 /** DFlash drafter is shared between text-only and voice modes (AGENTS.md §4). */
 export interface DflashDrafterHandle extends RefCountedResource {
   readonly drafterModelId: string;
+  /**
+   * Absolute path of the drafter GGUF the running llama-server was launched
+   * with (`-md`). Co-resident with the target for the lifetime of the
+   * server — `release()` here just drops the refcount; the actual unmap
+   * happens when the server stops.
+   */
+  readonly drafterModelPath: string;
+}
+
+/**
+ * Build a real `DflashDrafterHandle` backed by the running llama-server's
+ * `-md` drafter. The drafter is mmapped by the fork at server start and stays
+ * resident until the server stops, so `release()` is a no-op from this
+ * handle's perspective — the registry refcount is what gates whether voice
+ * mode may evict the *target's* page set, not the drafter. Returns null when
+ * no llama-server is running with a configured drafter (the node-llama-cpp
+ * backend has no drafter — text-only, no speculative decoding).
+ */
+export function createDflashDrafterHandle(args: {
+  drafterModelId: string;
+  drafterModelPath: string;
+}): DflashDrafterHandle {
+  return {
+    id: `dflash-drafter:${args.drafterModelPath}`,
+    drafterModelId: args.drafterModelId,
+    drafterModelPath: args.drafterModelPath,
+    async release(): Promise<void> {
+      // The drafter's mmap lifetime is owned by the llama-server process;
+      // dropping the last ref here does not unmap it. This is intentional:
+      // the drafter is "always wired" (AGENTS.md §4) and re-acquired the
+      // moment voice arms again, so churn is wasteful.
+    },
+  };
 }
 
 interface RegistryEntry<T extends RefCountedResource> {

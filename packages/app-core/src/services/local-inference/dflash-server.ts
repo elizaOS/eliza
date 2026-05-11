@@ -1198,6 +1198,24 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   }
 
   /**
+   * Path of the DFlash drafter GGUF the running server was launched with
+   * (`-md`), or null when no server is loaded. The drafter is co-resident
+   * with the target the whole time the server runs — there is no separate
+   * "load drafter" step; `start()` passes `-md` and the fork mmaps both.
+   * The voice shared-resource registry wraps this in a `DflashDrafterHandle`
+   * so the lifecycle can refcount it alongside the text weights (AGENTS.md
+   * §4 — the drafter is always wired and shared by text + voice modes).
+   */
+  loadedDrafterModelPath(): string | null {
+    return this.loadedPlan?.drafterModelPath ?? null;
+  }
+
+  /** Loopback base URL of the running server, or null. Used by tests/diagnostics. */
+  currentBaseUrl(): string | null {
+    return this.baseUrl;
+  }
+
+  /**
    * Scrape the running llama-server's `/metrics` endpoint and return a
    * `DflashMetricsSnapshot` with `drafted` / `accepted` / `decoded` counts.
    * Returns `null` when no server is loaded, the endpoint isn't reachable,

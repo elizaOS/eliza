@@ -1152,6 +1152,33 @@ export class LocalInferenceEngine {
   }
 
   /**
+   * Real `DflashDrafterHandle` backed by the running llama-server's `-md`
+   * drafter, or null when no llama-server is running with a drafter
+   * configured (node-llama-cpp has no drafter — text-only, no speculative
+   * decoding). The voice lifecycle wraps this in its shared-resource
+   * registry so the drafter is refcounted alongside the text weights
+   * (AGENTS.md §4 — the drafter is always wired and shared by text + voice
+   * modes). The engine doesn't cache the handle: `createDflashDrafterHandle`
+   * is cheap and the registry deduplicates by id.
+   */
+  async dflashDrafterHandle(): Promise<
+    import("./voice/shared-resources").DflashDrafterHandle | null
+  > {
+    if (this.activeBackendId() !== "llama-server") return null;
+    const drafterPath = dflashLlamaServer.loadedDrafterModelPath();
+    if (!drafterPath) return null;
+    const installed = await listInstalledModels();
+    const drafter = installed.find((m) => m.path === drafterPath);
+    const { createDflashDrafterHandle } = await import(
+      "./voice/shared-resources"
+    );
+    return createDflashDrafterHandle({
+      drafterModelId: drafter?.id ?? drafterPath,
+      drafterModelPath: drafterPath,
+    });
+  }
+
+  /**
    * Active server's parallel slot count, or 1 when no llama-server
    * backend is running (the node-llama-cpp path has its own pool).
    */
