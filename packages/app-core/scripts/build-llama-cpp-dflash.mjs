@@ -215,6 +215,23 @@ function tryRun(cmd, args, opts = {}) {
   });
 }
 
+// Does the *build host's* CPU expose 256-bit AVX-VNNI (Alder Lake / Arrow Lake
+// and newer)? Used to pass -DGGML_AVX_VNNI=ON for native x86_64-Linux builds so
+// the fork's ggml-cpu CMakeLists adds -mavxvnni + defines GGML_AVX_VNNI /
+// __AVXVNNI__, which the QJL int8-sketch score kernel
+// (qjl_score_qk_i8_avxvnni / qjl_score_avxvnni.c) keys off. cpuid leaf 7,
+// sub-leaf 1, EAX[4]. Linux-only probe via /proc/cpuinfo (lscpu's "avx_vnni"
+// flag is the kernel's name for this bit).
+function hostHasAvxVnni() {
+  if (process.platform !== "linux" || process.arch !== "x64") return false;
+  try {
+    const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+    return /\bflags\b.*\bavx_vnni\b/.test(cpuinfo);
+  } catch {
+    return false;
+  }
+}
+
 function has(cmd) {
   const result = spawnSync(cmd, ["--version"], {
     stdio: "ignore",
@@ -828,6 +845,15 @@ function cmakeFlagsForTarget(target, ctx) {
     // any third-party CMake `if (... aarch64 ...)` checks honest. The CUDA
     // arch list (cudaArchListFlag) already leads with 90a for GH200/Hopper.
     flags.push("-DCMAKE_SYSTEM_PROCESSOR=aarch64");
+  } else if (platform === "linux" && arch === "x64" && hostHasAvxVnni()) {
+    // CPU-AGENT: native x86_64-Linux build on an Alder Lake / Arrow Lake (or
+    // newer) host — turn on GGML_AVX_VNNI so the fork's ggml-cpu CMakeLists adds
+    // -mavxvnni and defines GGML_AVX_VNNI / __AVXVNNI__. -march=native already
+    // gives the compiler the ISA, but the explicit flag is what gates the QJL
+    // int8-sketch score path (qjl_score_qk_i8_avxvnni) and any GGML_AVX_VNNI
+    // `#if` blocks. Cross-builds keep it off — you can't sniff -march for a
+    // different ABI, and AVX-VNNI is not the de-facto x86_64 baseline yet.
+    flags.push("-DGGML_AVX_VNNI=ON");
   } else if (platform === "darwin" && arch === "x64") {
     // Intel-Mac build (`darwin-x64-metal`). Pin the slice explicitly so a
     // build that runs on an Apple-Silicon host (via the x86_64 toolchain)
