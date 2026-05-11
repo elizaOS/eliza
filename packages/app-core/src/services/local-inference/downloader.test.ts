@@ -5,8 +5,85 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
+import type { Eliza1DeviceCaps } from "./manifest";
 import { listInstalledModels } from "./registry";
 import type { DownloadJob } from "./types";
+
+function eliza1Manifest(overrides: {
+  ramBudgetMin?: number;
+  ramBudgetRecommended?: number;
+  verifiedBackends?: Record<
+    string,
+    { status: string; atCommit: string; report: string }
+  >;
+  shaFor: (key: string) => string;
+}): string {
+  const verifiedBackends = overrides.verifiedBackends ?? {
+    metal: { status: "pass", atCommit: "t", report: "metal" },
+    vulkan: { status: "pass", atCommit: "t", report: "vulkan" },
+    cuda: { status: "pass", atCommit: "t", report: "cuda" },
+    rocm: { status: "pass", atCommit: "t", report: "rocm" },
+    cpu: { status: "pass", atCommit: "t", report: "cpu" },
+  };
+  return JSON.stringify({
+    id: "eliza-1-0_6b",
+    tier: "0_6b",
+    version: "1.0.0",
+    publishedAt: "2026-05-11T00:00:00.000Z",
+    lineage: {
+      text: { base: "eliza-1-text", license: "test" },
+      voice: { base: "eliza-1-voice", license: "test" },
+      asr: { base: "eliza-1-asr", license: "test" },
+      vad: { base: "eliza-1-vad", license: "test" },
+      drafter: { base: "eliza-1-drafter", license: "test" },
+    },
+    defaultEligible: true,
+    files: {
+      text: [
+        {
+          path: "text/eliza-1-0_6b-32k.gguf",
+          sha256: overrides.shaFor("text"),
+          ctx: 32768,
+        },
+      ],
+      voice: [{ path: "tts/voice.gguf", sha256: overrides.shaFor("voice") }],
+      asr: [{ path: "asr/asr.gguf", sha256: overrides.shaFor("asr") }],
+      vision: [],
+      dflash: [
+        { path: "dflash/drafter-0_6b.gguf", sha256: overrides.shaFor("drafter") },
+      ],
+      cache: [
+        {
+          path: "cache/voice-preset-default.bin",
+          sha256: overrides.shaFor("cache"),
+        },
+      ],
+      vad: [{ path: "vad/eliza-1-vad.onnx", sha256: overrides.shaFor("vad") }],
+    },
+    kernels: {
+      required: ["turboquant_q3", "qjl", "polarquant", "dflash"],
+      optional: [],
+      verifiedBackends,
+    },
+    evals: {
+      textEval: { score: 1, passed: true },
+      voiceRtf: { rtf: 0.5, passed: true },
+      asrWer: { wer: 0.05, passed: true },
+      vadLatencyMs: { median: 16, passed: true },
+      e2eLoopOk: true,
+      thirtyTurnOk: true,
+    },
+    ramBudgetMb: {
+      min: overrides.ramBudgetMin ?? 2048,
+      recommended: overrides.ramBudgetRecommended ?? 4096,
+    },
+  });
+}
+
+const cpuOnlyCaps: Eliza1DeviceCaps = {
+  availableBackends: ["cpu"],
+  ramMb: 16_384,
+};
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
