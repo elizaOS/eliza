@@ -66,6 +66,40 @@ ELIZA_1_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
 ELIZA_1_VOICE_MANIFEST_VERSION: Final[str] = "1"
 VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 
+# Release-state vocabulary recorded in `manifest.provenance.releaseState` and
+# `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
+# upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
+# fully Milady-optimized (every quant/kernel trick in §3) — but NOT
+# fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
+# non-publishable staging shape; `upload-candidate`/`final` are the
+# fine-tuned-v1 publish states retained for forward-compat.
+ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
+    "local-standin",
+    "base-v1",
+    "finetuned-v2",
+    "upload-candidate",
+    "final",
+)
+# Release states the publish orchestrator + platform-plan blocker check
+# treat as a satisfiable release shape (not a hard publish-blocker).
+ELIZA_1_PUBLISHABLE_RELEASE_STATES: Final[tuple[str, ...]] = (
+    "base-v1",
+    "upload-candidate",
+    "final",
+)
+# Provenance slots that must each carry a `sourceModel` (upstream HF repo)
+# when `manifest.provenance` is present. Mirrors the bundle components: the
+# `base-v1` release is "this exact upstream repo, converted + optimized".
+ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
+    "text",
+    "voice",
+    "asr",
+    "vad",
+    "embedding",
+    "vision",
+    "drafter",
+)
+
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
@@ -716,6 +750,57 @@ def validate_manifest(
                             f"voice.capabilities: unknown capability {capability!r}"
                         )
 
+    # ── provenance (release-state + per-component source model) ─────────
+    # Optional. Present on `base-v1` bundles so the "base, not fine-tuned"
+    # plan is auditable from the manifest itself: which upstream repo each
+    # component is converted from, and whether v1 fine-tuning was applied
+    # (always `false` for the base-v1 release). The validator does NOT
+    # require provenance on a fine-tuned manifest, but if present it must
+    # be internally consistent.
+    provenance = manifest.get("provenance")
+    if provenance is not None:
+        if not _is_object(provenance):
+            errors.append("provenance: must be an object when present")
+        else:
+            rs = provenance.get("releaseState")
+            if rs not in ELIZA_1_RELEASE_STATES:
+                errors.append(
+                    "provenance.releaseState: must be one of "
+                    f"{list(ELIZA_1_RELEASE_STATES)}"
+                )
+            if not isinstance(provenance.get("finetuned"), bool):
+                errors.append("provenance.finetuned: must be a boolean")
+            elif rs == "base-v1" and provenance.get("finetuned") is not False:
+                errors.append(
+                    "provenance.finetuned: must be false for releaseState=base-v1"
+                )
+            sources = provenance.get("sourceModels")
+            if not _is_object(sources):
+                errors.append("provenance.sourceModels: must be an object")
+            else:
+                for slot, source in sources.items():
+                    if slot not in ELIZA_1_PROVENANCE_SLOTS:
+                        errors.append(
+                            f"provenance.sourceModels: unknown component slot {slot!r}"
+                        )
+                    if not _is_object(source):
+                        errors.append(
+                            f"provenance.sourceModels.{slot}: must be an object"
+                        )
+                        continue
+                    if not isinstance(source.get("repo"), str) or not source.get("repo"):
+                        errors.append(
+                            f"provenance.sourceModels.{slot}.repo: required non-empty string"
+                        )
+                    # `file` is optional (some sources are a whole repo dir);
+                    # `convertedVia` records the converter path used.
+                    for opt_field in ("file", "convertedVia", "note"):
+                        val = source.get(opt_field)
+                        if val is not None and (not isinstance(val, str) or not val):
+                            errors.append(
+                                f"provenance.sourceModels.{slot}.{opt_field}: must be a non-empty string when present"
+                            )
+
     # If shape is broken, don't try the cross-field rules.
     if errors:
         return tuple(errors)
@@ -827,6 +912,24 @@ def validate_manifest(
         elif not gate["passed"]:
             readiness_errors.append("evals.expressive.passed: false")
 
+    # ── base-v1 provenance coverage ─────────────────────────────────────
+    # A `base-v1` manifest must record where every shipped component comes
+    # from — that is the whole point of the release state ("these exact
+    # upstream weights, converted + optimized, not fine-tuned").
+    if _is_object(provenance) and provenance.get("releaseState") == "base-v1":
+        sources = provenance.get("sourceModels")
+        if _is_object(sources):
+            required_slots = ["text", "voice", "drafter"]
+            for slot in ("asr", "vad", "embedding", "vision"):
+                if files.get(slot):
+                    required_slots.append(slot)
+            for slot in required_slots:
+                if slot not in sources:
+                    errors.append(
+                        f"provenance.sourceModels.{slot}: required for releaseState=base-v1 "
+                        f"(component is in files.{slot})"
+                    )
+
     if require_publish_ready or manifest["defaultEligible"]:
         errors.extend(readiness_errors)
 
@@ -909,6 +1012,11 @@ def build_manifest(
     voice_cache_phrase_seed: str = VOICE_PRESET_CACHE_PATH,
     kernel_manifest_fragments: Iterable[Mapping[str, Any]] | None = None,
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
+    # Optional provenance block. Pass for a `base-v1` bundle:
+    #   {"releaseState": "base-v1", "finetuned": False,
+    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-9B", "file": "..."},
+    #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
+    provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
@@ -1035,6 +1143,19 @@ def build_manifest(
             },
             "capabilities": list(voice_capabilities),
         }
+    if provenance is not None:
+        # Deep-copy enough that the caller's mapping cannot mutate the
+        # built manifest. Sources are shallow object copies.
+        prov_out: dict[str, Any] = {
+            "releaseState": provenance.get("releaseState"),
+            "finetuned": provenance.get("finetuned"),
+            "sourceModels": {
+                slot: dict(src)
+                for slot, src in (provenance.get("sourceModels") or {}).items()
+                if isinstance(src, Mapping)
+            },
+        }
+        manifest["provenance"] = prov_out
 
     errors = validate_manifest(
         manifest,

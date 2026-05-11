@@ -303,6 +303,62 @@ export const Eliza1RamBudgetSchema = z
     message: "ramBudgetMb.recommended must be >= ramBudgetMb.min",
   });
 
+// Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
+// models — GGUF-converted via the elizaOS/llama.cpp fork and fully
+// Milady-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
+// but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
+// state; `local-standin` is a non-publishable staging shape;
+// `upload-candidate` / `final` are the historical fine-tuned-v1 publish
+// states retained for forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
+// `packages/training/scripts/manifest/eliza1_manifest.py`.
+export const ELIZA_1_RELEASE_STATES = [
+  "local-standin",
+  "base-v1",
+  "finetuned-v2",
+  "upload-candidate",
+  "final",
+] as const;
+export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
+
+// Provenance slots — the bundle components whose upstream source repo a
+// `base-v1` manifest must record. Mirrors `ELIZA_1_PROVENANCE_SLOTS`
+// (Python side).
+export const ELIZA_1_PROVENANCE_SLOTS = [
+  "text",
+  "voice",
+  "asr",
+  "vad",
+  "embedding",
+  "vision",
+  "drafter",
+] as const;
+export type Eliza1ProvenanceSlot = (typeof ELIZA_1_PROVENANCE_SLOTS)[number];
+
+const eliza1SourceModelEntry = z.object({
+  /** Upstream HuggingFace repo this component is converted from. */
+  repo: z.string().min(1),
+  /** Specific file in the upstream repo, when the source is one file. */
+  file: z.string().min(1).optional(),
+  /** The converter / recipe path used (e.g. `<fork>/convert_hf_to_gguf.py`). */
+  convertedVia: z.string().min(1).optional(),
+  /** Free-text provenance note. */
+  note: z.string().min(1).optional(),
+});
+
+// `provenance` — optional manifest block. Required on a `base-v1` bundle so
+// the "base, not fine-tuned" plan is auditable: which upstream repo each
+// shipped component is converted from, and whether v1 fine-tuning was
+// applied (always `false` for the base-v1 release). The contract validator
+// enforces per-component coverage for `base-v1`.
+export const Eliza1ProvenanceSchema = z.object({
+  releaseState: z.enum(ELIZA_1_RELEASE_STATES),
+  finetuned: z.boolean(),
+  sourceModels: z.record(
+    z.enum(ELIZA_1_PROVENANCE_SLOTS),
+    eliza1SourceModelEntry,
+  ),
+});
+
 export const Eliza1ManifestSchema = z
   .object({
     $schema: z.literal(ELIZA_1_MANIFEST_SCHEMA_URL).optional(),
@@ -324,6 +380,12 @@ export const Eliza1ManifestSchema = z
     // no emotion tags, no singing). Bundles that ship the omnivoice-singing
     // weights advertise `["tts","emotion-tags","singing"]`.
     voice: Eliza1VoiceSchema.optional(),
+    // Optional. Present on `base-v1` bundles (the upstream base models,
+    // GGUF-converted + fully optimized, NOT fine-tuned). Records the
+    // release state, the not-fine-tuned flag, and the upstream source repo
+    // per shipped component. The contract validator requires per-component
+    // coverage when `releaseState === "base-v1"`.
+    provenance: Eliza1ProvenanceSchema.optional(),
     defaultEligible: z.boolean(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without

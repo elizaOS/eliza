@@ -100,6 +100,91 @@ function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
   return `${id}-drafter`;
 }
 
+/**
+ * Per-tier "base, not fine-tuned" provenance — the upstream HuggingFace
+ * repos each shipped bundle component is GGUF-converted + Milady-optimized
+ * from. Eliza-1 v1 = these exact base weights, optimized (every quant/kernel
+ * trick in `packages/inference/AGENTS.md` §3), NOT fine-tuned. This must
+ * agree with `provenance.sourceModels` in the tier's
+ * `eliza-1.manifest.json`. Fine-tuning lands in v2.
+ *
+ * Notes:
+ * - 0_6b / 1_7b text use the Qwen3 (3.5-family-precursor) base; the Qwen3.5
+ *   0.6B/1.7B checkpoints are not published, so the 0.6B/1.7B base weights
+ *   are `Qwen/Qwen3-{0.6B,1.7B}` until those land. 9B is `unsloth/Qwen3.5-9B`
+ *   (the available GGUF mirror), 27B is `batiai/Qwen3.6-27B-GGUF` (+ a
+ *   3.6 27B-1m variant when it exists in the catalog).
+ * - 0_6b has no dedicated `embedding` component — it pools from the text
+ *   backbone with `--pooling last` (inference/AGENTS.md §1).
+ * - the drafter is distilled (KD, not fine-tuning of the target) FROM the
+ *   tier's base text model and published under `elizaos/eliza-1-<tier>`.
+ */
+type SourceComponentMap = NonNullable<
+  CatalogModel["sourceModel"]
+>["components"];
+
+function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
+  const omnivoice = { repo: "Serveurperso/OmniVoice-GGUF" } as const;
+  const silero = { repo: "onnx-community/silero-vad" } as const;
+  const embedding = { repo: "Qwen/Qwen3-Embedding-0.6B-GGUF" } as const;
+  const asrSmall = { repo: "ggml-org/Qwen3-ASR-0.6B-GGUF" } as const;
+  const asrLarge = { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" } as const;
+
+  const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
+    "eliza-1-0_6b": {
+      repo: "Qwen/Qwen3-0.6B-GGUF",
+      file: "Qwen3-0.6B-Q8_0.gguf",
+    },
+    "eliza-1-1_7b": {
+      repo: "Qwen/Qwen3-1.7B-GGUF",
+      file: "Qwen3-1.7B-Q8_0.gguf",
+    },
+    "eliza-1-9b": {
+      repo: "unsloth/Qwen3.5-9B-GGUF",
+      file: "Qwen3.5-9B-Q4_K_M.gguf",
+    },
+    "eliza-1-27b": {
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+    },
+    "eliza-1-27b-256k": {
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+    },
+    "eliza-1-27b-1m": {
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+    },
+  };
+  const visionByTier: Partial<
+    Record<Eliza1TierId, { repo: string; file?: string }>
+  > = {
+    "eliza-1-9b": { repo: "unsloth/Qwen3.5-9B-GGUF", file: "mmproj-F16.gguf" },
+    "eliza-1-27b": {
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+    },
+    "eliza-1-27b-256k": {
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+    },
+  };
+  const usesLargeAsr = id.startsWith("eliza-1-27b");
+  const components: SourceComponentMap = {
+    text: textByTier[id],
+    voice: omnivoice,
+    asr: usesLargeAsr ? asrLarge : asrSmall,
+    vad: silero,
+    drafter: {
+      repo: `elizaos/${id}`,
+      file: `dflash/drafter-${id.slice("eliza-1-".length)}.gguf`,
+    },
+  };
+  if (id !== "eliza-1-0_6b") components.embedding = embedding;
+  if (visionByTier[id]) components.vision = visionByTier[id];
+  return { finetuned: false, components };
+}
+
 function runtimeFor(
   id: Eliza1TierId,
   contextLength: number,
@@ -171,6 +256,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 32768,
     tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-0_6b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-0_6b"),
     runtime: runtimeFor("eliza-1-0_6b", 32768),
     blurb:
       "eliza-1-0_6b - low-RAM phones and CPU-only fallback with the optimized local runtime.",
@@ -201,6 +287,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 32768,
     tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-1_7b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-1_7b"),
     runtime: runtimeFor("eliza-1-1_7b", 32768),
     blurb:
       "eliza-1-1_7b - modern phone default with text and voice prepared for the optimized local runtime.",
@@ -231,6 +318,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 65536,
     tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-9b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-9b"),
     runtime: runtimeFor("eliza-1-9b", 65536),
     blurb:
       "eliza-1-9b - laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
@@ -261,6 +349,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 131072,
     tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-27b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-27b"),
     runtime: runtimeFor("eliza-1-27b", 131072),
     blurb:
       "eliza-1-27b - 96 GB+ Mac and high-VRAM desktop default with text, voice, vision, and 128k context.",
@@ -291,6 +380,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 262144,
     tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-27b-256k-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-27b-256k"),
     runtime: runtimeFor("eliza-1-27b-256k", 262144),
     blurb:
       "eliza-1-27b-256k - workstation tier with the largest context window in the line.",
@@ -327,6 +417,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 1_048_576,
     tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-27b-1m-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-27b-1m"),
     runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),
     blurb:
       "eliza-1-27b-1m - GH200-class server tier with a 1M-token context window.",

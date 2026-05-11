@@ -67,7 +67,10 @@ def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
 def test_readiness_mentions_vad_sidecar_caveat() -> None:
     text = render_readiness(build_plan(), missing=None)
     assert "VAD is intentionally a sidecar ONNX artifact" in text
-    assert "Release evidence must use real final weights" in text
+    assert "Release evidence must use real final hashes" in text
+    # v1 release shape is documented in the readiness ledger.
+    assert "releaseState=base-v1" in text
+    assert "NOT fine-tuned" in text
 
 
 def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:
@@ -98,3 +101,75 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
 
     text = render_readiness(plan, missing={}, blockers=blockers)
     assert "Publish-blocking status:" in text
+
+
+def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None:
+    """A `base-v1` bundle (upstream base models, GGUF + fully optimized,
+    NOT fine-tuned) with all the runnable-on-base evidence present is
+    treated as a satisfiable release shape — `final.weights` is NOT a
+    blocker for `base-v1` because the bytes are the upstream base GGUFs by
+    design (recorded via `sourceModels`)."""
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-1_7b.bundle"
+    (bundle / "evidence").mkdir(parents=True)
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "releaseState": "base-v1",
+                "publishEligible": True,
+                "finetuned": False,
+                "sourceModels": {
+                    "text": {"repo": "Qwen/Qwen3-1.7B-GGUF"},
+                    "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
+                    "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+                    "vad": {"repo": "onnx-community/silero-vad"},
+                    "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
+                    "drafter": {"repo": "elizaos/eliza-1-1_7b"},
+                },
+                "final": {
+                    # weights are the upstream base GGUFs by design — not a
+                    # trained Eliza-1 checkpoint, not a blocker for base-v1.
+                    "weights": False,
+                    "hashes": True,
+                    "evals": True,
+                    "licenses": True,
+                    "kernelDispatchReports": True,
+                    "platformEvidence": True,
+                    "sizeFirstRepoIds": True,
+                },
+                "hf": {"status": "pending-upload"},
+            }
+        )
+    )
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+    assert blockers["1_7b"] == []
+
+
+def test_release_status_blockers_base_v1_requires_finetuned_false(
+    tmp_path: Path,
+) -> None:
+    plan = build_plan()
+    bundle = tmp_path / "bundles" / "eliza-1-1_7b.bundle"
+    (bundle / "evidence").mkdir(parents=True)
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps(
+            {
+                "releaseState": "base-v1",
+                "publishEligible": True,
+                "finetuned": True,  # contradicts base-v1
+                "sourceModels": {"text": {"repo": "Qwen/Qwen3-1.7B-GGUF"}},
+                "final": {
+                    "weights": False,
+                    "hashes": True,
+                    "evals": True,
+                    "licenses": True,
+                    "kernelDispatchReports": True,
+                    "platformEvidence": True,
+                    "sizeFirstRepoIds": True,
+                },
+                "hf": {"status": "pending-upload"},
+            }
+        )
+    )
+    blockers = release_status_blockers(tmp_path / "bundles", plan)
+    assert any("finetuned" in item for item in blockers["1_7b"])
