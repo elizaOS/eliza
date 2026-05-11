@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { PhraseCache } from "./phrase-cache";
 import {
+  type AsrTokenStreamer,
   type DraftProposer,
-  type StreamingTranscriber,
   type TargetVerifier,
   VoicePipeline,
 } from "./pipeline";
@@ -76,7 +76,7 @@ const audio: TranscriptionAudio = {
 };
 
 /** ASR that emits a fixed token list, recording when it finished. */
-class StubTranscriber implements StreamingTranscriber {
+class StubTranscriber implements AsrTokenStreamer {
   finishedAt = -1;
   constructor(
     private readonly tokens: TextToken[],
