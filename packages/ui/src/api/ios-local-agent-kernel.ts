@@ -1818,7 +1818,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 function formatGb(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toFixed(1)}GB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 function aggregateDownloadJobs(model: CatalogModel): DownloadJob[] {

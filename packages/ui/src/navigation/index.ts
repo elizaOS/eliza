@@ -289,7 +289,7 @@ export function getTabGroups(
   return groups;
 }
 
-const TAB_PATHS: Record<BuiltinTab, string> = {
+export const TAB_PATHS: Record<BuiltinTab, string> = {
   chat: "/chat",
   phone: "/phone",
   messages: "/messages",

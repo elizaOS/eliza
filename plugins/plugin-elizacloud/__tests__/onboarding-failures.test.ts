@@ -71,12 +71,16 @@ vi.mock("../src/cloud/bridge-client.js", () => {
 
 // Imports must come AFTER vi.mock calls. The real `onboarding.ts` will pick
 // up the mocked auth + bridge-client modules.
-import { logger } from "@elizaos/core";
+import { logger, type IAgentRuntime } from "@elizaos/core";
 import { cloudLogin } from "../src/cloud/auth.js";
 import {
   checkCloudAvailability,
   runCloudOnboarding,
 } from "../src/onboarding.js";
+
+// `vi.mocked` gives us a properly typed Mock handle without the
+// `as unknown as Mock` escape pattern.
+const cloudLoginMock = vi.mocked(cloudLogin);
 
 // ─── Constants pulled from source (don't drift) ───────────────────────────
 // onboarding.ts
@@ -113,6 +117,15 @@ interface ClackStub {
   _lastSpinner: { start: Mock; stop: Mock; message: Mock };
 }
 
+// `runCloudOnboarding` expects `typeof import("@clack/prompts")`. We pass
+// a hand-rolled stub that exercises only the surface onboarding.ts touches
+// (spinner / log / confirm / isCancel). One narrowing helper here keeps the
+// `unknown` escape localized to a single named call.
+type ClackModuleLike = typeof import("@clack/prompts");
+function asClackModule(stub: ClackStub): ClackModuleLike {
+  return stub as unknown as ClackModuleLike;
+}
+
 function makeClack(opts: { confirmReturn?: unknown } = {}): ClackStub {
   const lastSpinner = {
     start: vi.fn(),
@@ -143,7 +156,10 @@ function setAvailability(body: {
     success: body.success ?? true,
     data: { acceptingNewAgents: body.acceptingNewAgents ?? true },
   };
-  (globalThis.fetch as unknown as Mock).mockResolvedValueOnce({
+  // `globalThis.fetch` is reassigned to a `vi.fn()` mock in beforeEach,
+  // but the static type stays `typeof fetch`. `vi.mocked` recovers the
+  // Mock surface without a `as unknown as` escape.
+  vi.mocked(globalThis.fetch).mockResolvedValueOnce({
     ok: body.ok ?? (status >= 200 && status < 300),
     status,
     json: async () => responseBody,
@@ -157,15 +173,45 @@ function resetBridgeBehavior(): void {
   bridgeBehavior.lastApiKey = "";
 }
 
+/**
+ * Replace `globalThis.setTimeout` with a synchronous shim that runs the
+ * callback immediately. Used to fast-forward provisioning poll loops in
+ * tests without burning real wall-clock time.
+ *
+ * The returned restorer must be called from a `finally` block.
+ *
+ * `vi.spyOn` returns `Mock`, not `typeof setTimeout`; we keep the spy in
+ * scope and rely on its own `mockImplementation` typing. The shim signature
+ * matches the timer-callback overload used by `onboarding.ts` (no args, no
+ * AbortSignal); the unused-overload return value is satisfied with a real
+ * `setTimeout(noop, 0)` handle so we never hand back a fake number.
+ */
+function installSyncSetTimeout(opts: { advanceVirtualTime?: (ms: number) => void } = {}): () => void {
+  const realSetTimeout = globalThis.setTimeout;
+  const noop = (): void => undefined;
+  const spy = vi.spyOn(globalThis, "setTimeout");
+  spy.mockImplementation(((fn: () => void, ms?: number) => {
+    if (opts.advanceVirtualTime && typeof ms === "number") {
+      opts.advanceVirtualTime(ms);
+    }
+    fn();
+    return realSetTimeout(noop, 0);
+  }) as typeof setTimeout);
+  return () => spy.mockRestore();
+}
+
 // Spy fetch globally so any unmocked call path surfaces as a clear failure.
 const originalFetch = globalThis.fetch;
 
 beforeEach(() => {
   vi.useRealTimers();
-  globalThis.fetch = vi.fn().mockImplementation((input: unknown) => {
+  // Install a typed fetch mock so per-test setAvailability() can stub
+  // responses while any unintended call surfaces a loud failure.
+  const fetchMock: typeof fetch = vi.fn<typeof fetch>(async (input) => {
     throw new Error(`Unexpected fetch in test: ${String(input)}`);
-  }) as unknown as typeof fetch;
-  (cloudLogin as unknown as Mock).mockReset();
+  });
+  globalThis.fetch = fetchMock;
+  cloudLoginMock.mockReset();
   resetBridgeBehavior();
 });
 
@@ -181,7 +227,7 @@ describe("C1 — availability=true happy path", () => {
   it("advances availability → auth → provisioning → running and returns the result", async () => {
     setAvailability({ acceptingNewAgents: true });
 
-    (cloudLogin as unknown as Mock).mockResolvedValueOnce({
+    cloudLoginMock.mockResolvedValueOnce({
       apiKey: "eliza_test_key_C1",
       keyPrefix: "eliza_",
       expiresAt: null,
@@ -208,23 +254,18 @@ describe("C1 — availability=true happy path", () => {
     const clack = makeClack();
 
     // Don't actually wait PROVISION_POLL_INTERVAL_MS between polls.
-    const setTimeoutSpy = vi
-      .spyOn(globalThis, "setTimeout")
-      .mockImplementation(((fn: () => void) => {
-        fn();
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout);
+    const restoreSetTimeout = installSyncSetTimeout();
 
     let result: Awaited<ReturnType<typeof runCloudOnboarding>>;
     try {
       result = await runCloudOnboarding(
-        clack as never,
+        asClackModule(clack),
         "agent-c1",
         undefined,
         "https://www.elizacloud.ai",
       );
     } finally {
-      setTimeoutSpy.mockRestore();
+      restoreSetTimeout();
     }
 
     expect(result).not.toBeNull();
@@ -244,7 +285,7 @@ describe("C2 — availability=false", () => {
     const clack = makeClack({ confirmReturn: true }); // "yes, run locally"
 
     const result = await runCloudOnboarding(
-      clack as never,
+      asClackModule(clack),
       "agent-c2",
       undefined,
       "https://www.elizacloud.ai",
@@ -283,7 +324,7 @@ describe("C3 — auth success", () => {
   it("returns the apiKey from cloudLogin in CloudOnboardingResult", async () => {
     setAvailability({ acceptingNewAgents: true });
 
-    (cloudLogin as unknown as Mock).mockResolvedValueOnce({
+    cloudLoginMock.mockResolvedValueOnce({
       apiKey: "eliza_test_key_C3",
       keyPrefix: "eliza_",
       expiresAt: "2026-05-11T00:00:00Z",
@@ -306,17 +347,12 @@ describe("C3 — auth success", () => {
       updatedAt: "2026-05-10T00:00:00Z",
     });
 
-    const setTimeoutSpy = vi
-      .spyOn(globalThis, "setTimeout")
-      .mockImplementation(((fn: () => void) => {
-        fn();
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout);
+    const restoreSetTimeout = installSyncSetTimeout();
 
     const clack = makeClack();
     try {
       const result = await runCloudOnboarding(
-        clack as never,
+        asClackModule(clack),
         "agent-c3",
         undefined,
         "https://www.elizacloud.ai",
@@ -332,7 +368,7 @@ describe("C3 — auth success", () => {
       //  in the report.)
       expect(bridgeBehavior.lastApiKey).toBe("eliza_test_key_C3");
     } finally {
-      setTimeoutSpy.mockRestore();
+      restoreSetTimeout();
     }
   });
 });
@@ -345,7 +381,7 @@ describe("C4 — auth timeout", () => {
 
     // Simulate the timeout error cloudLogin would throw after
     // AUTH_OVERALL_TIMEOUT_MS without using a real timer.
-    (cloudLogin as unknown as Mock).mockRejectedValueOnce(
+    cloudLoginMock.mockRejectedValueOnce(
       new Error(
         `Cloud login timed out. The browser login was not completed within ${Math.round(AUTH_OVERALL_TIMEOUT_MS / 1000)} seconds.`,
       ),
@@ -354,7 +390,7 @@ describe("C4 — auth timeout", () => {
     const clack = makeClack({ confirmReturn: false }); // "run locally"
 
     const result = await runCloudOnboarding(
-      clack as never,
+      asClackModule(clack),
       "agent-c4",
       undefined,
       "https://www.elizacloud.ai",
@@ -374,14 +410,14 @@ describe("C4 — auth timeout", () => {
   it("when the user says 'retry' and the retry also times out, returns null", async () => {
     setAvailability({ acceptingNewAgents: true });
 
-    (cloudLogin as unknown as Mock)
+    cloudLoginMock
       .mockRejectedValueOnce(new Error("Cloud login timed out."))
       .mockRejectedValueOnce(new Error("Cloud login timed out."));
 
     const clack = makeClack({ confirmReturn: true }); // "try again"
 
     const result = await runCloudOnboarding(
-      clack as never,
+      asClackModule(clack),
       "agent-c4-retry",
       undefined,
       "https://www.elizacloud.ai",
@@ -398,7 +434,7 @@ describe("C5 — provisioning happy progression", () => {
   it("walks queued → provisioning → running and returns agentId", async () => {
     setAvailability({ acceptingNewAgents: true });
 
-    (cloudLogin as unknown as Mock).mockResolvedValueOnce({
+    cloudLoginMock.mockResolvedValueOnce({
       apiKey: "eliza_test_key_C5",
       keyPrefix: "eliza_",
       expiresAt: null,
@@ -424,18 +460,13 @@ describe("C5 — provisioning happy progression", () => {
         bridgeUrl: "https://bridge.example/agent-c5",
       });
 
-    const setTimeoutSpy = vi
-      .spyOn(globalThis, "setTimeout")
-      .mockImplementation(((fn: () => void) => {
-        fn();
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout);
+    const restoreSetTimeout = installSyncSetTimeout();
 
     const clack = makeClack();
 
     try {
       const result = await runCloudOnboarding(
-        clack as never,
+        asClackModule(clack),
         "agent-c5",
         undefined,
         "https://www.elizacloud.ai",
@@ -446,14 +477,14 @@ describe("C5 — provisioning happy progression", () => {
       // queued → provisioning → running = 3 polls.
       expect(bridgeBehavior.getAgent).toHaveBeenCalledTimes(3);
     } finally {
-      setTimeoutSpy.mockRestore();
+      restoreSetTimeout();
     }
   });
 
   it("treats `completed` like running and returns the agentId", async () => {
     setAvailability({ acceptingNewAgents: true });
 
-    (cloudLogin as unknown as Mock).mockResolvedValueOnce({
+    cloudLoginMock.mockResolvedValueOnce({
       apiKey: "eliza_test_key_C5b",
       keyPrefix: "eliza_",
       expiresAt: null,
@@ -476,23 +507,18 @@ describe("C5 — provisioning happy progression", () => {
       updatedAt: "2026-05-10T00:00:00Z",
     });
 
-    const setTimeoutSpy = vi
-      .spyOn(globalThis, "setTimeout")
-      .mockImplementation(((fn: () => void) => {
-        fn();
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout);
+    const restoreSetTimeout = installSyncSetTimeout();
     const clack = makeClack();
     try {
       const result = await runCloudOnboarding(
-        clack as never,
+        asClackModule(clack),
         "agent-c5b",
         undefined,
         "https://www.elizacloud.ai",
       );
       expect(result?.agentId).toBe("agent-id-c5b");
     } finally {
-      setTimeoutSpy.mockRestore();
+      restoreSetTimeout();
     }
   });
 });
@@ -503,7 +529,7 @@ describe("C6 — provisioning timeout", () => {
   it("returns the agentId (so the user can reconnect later) when status never reaches running before PROVISION_TIMEOUT_MS", async () => {
     setAvailability({ acceptingNewAgents: true });
 
-    (cloudLogin as unknown as Mock).mockResolvedValueOnce({
+    cloudLoginMock.mockResolvedValueOnce({
       apiKey: "eliza_test_key_C6",
       keyPrefix: "eliza_",
       expiresAt: null,
@@ -533,19 +559,17 @@ describe("C6 — provisioning timeout", () => {
     // returns instantly but Date.now() jumps forward by the requested ms.
     let virtualNow = 1_700_000_000_000;
     const nowSpy = vi.spyOn(Date, "now").mockImplementation(() => virtualNow);
-    const setTimeoutSpy = vi
-      .spyOn(globalThis, "setTimeout")
-      .mockImplementation(((fn: () => void, ms?: number) => {
-        virtualNow += ms ?? 0;
-        fn();
-        return 0 as unknown as ReturnType<typeof setTimeout>;
-      }) as typeof setTimeout);
+    const restoreSetTimeout = installSyncSetTimeout({
+      advanceVirtualTime: (ms) => {
+        virtualNow += ms;
+      },
+    });
 
     const clack = makeClack({ confirmReturn: false }); // "don't fall back to local"
 
     try {
       const result = await runCloudOnboarding(
-        clack as never,
+        asClackModule(clack),
         "agent-c6",
         undefined,
         "https://www.elizacloud.ai",
@@ -568,7 +592,7 @@ describe("C6 — provisioning timeout", () => {
         bridgeBehavior.getAgent.mock.calls.length,
       ).toBeGreaterThanOrEqual(expectedMinPolls);
     } finally {
-      setTimeoutSpy.mockRestore();
+      restoreSetTimeout();
       nowSpy.mockRestore();
     }
   });
@@ -613,6 +637,10 @@ describe("C7 — saved-key validation against /models", () => {
       });
 
     try {
+      // CloudAuthService only ever reads `getSetting` off the runtime in
+      // `initialize()` (verified in src/services/cloud-auth.ts). The
+      // remaining IAgentRuntime surface is irrelevant here; we keep the
+      // unknown escape localized to this single construction site.
       const runtime = {
         getSetting: (key: string): string | undefined => {
           if (key === "ELIZAOS_CLOUD_BASE_URL") return "https://www.elizacloud.ai";
@@ -621,12 +649,16 @@ describe("C7 — saved-key validation against /models", () => {
           if (key === "ELIZAOS_CLOUD_ORG_ID") return "org-1";
           return undefined;
         },
-      } as never;
+      } as unknown as IAgentRuntime;
 
       const service = new CloudAuthService(runtime);
-      await (
-        service as unknown as { initialize(): Promise<void> }
-      ).initialize();
+      // `initialize` is private on the class — the cast here documents
+      // that this test deliberately bypasses the public `start()` entry
+      // point to assert on the saved-key validation path in isolation.
+      const serviceWithInitialize = service as unknown as {
+        initialize(): Promise<void>;
+      };
+      await serviceWithInitialize.initialize();
 
       // Optimistic: the key is cached on credentials immediately.
       expect(service.isAuthenticated()).toBe(true);

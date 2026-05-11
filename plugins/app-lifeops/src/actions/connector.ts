@@ -1451,11 +1451,15 @@ export const connectorAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage external service connections (Google, Telegram, Discord, Slack, etc.). " +
+    "Manage **account** state for installed connectors: connect (log in), " +
+    "disconnect (log out), verify, status, list active accounts. " +
     `Actions: ${VALID_SUBACTIONS.join(", ")}. ` +
-    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs an active probe against the upstream API.",
+    "Targets external service accounts (Google, Telegram, Discord, Slack, etc.). " +
+    "Connector kinds resolve through the runtime ConnectorRegistry; verify runs " +
+    "an active probe against the upstream API. " +
+    "For **plugin** install/uninstall/configure, use the `PLUGIN` action instead.",
   descriptionCompressed:
-    "connector lifecycle: connect|disconnect|verify|status|list; registry-driven kinds",
+    "account-level connector lifecycle: connect(log in)|disconnect(log out)|verify|status|list; registry-driven kinds; for plugin install/uninstall use PLUGIN",
   contexts: [
     "connectors",
     "settings",

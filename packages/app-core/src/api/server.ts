@@ -131,6 +131,7 @@ import { handlePluginsCompatRoutes } from "./plugins-compat-routes";
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";
+import { handleTrainingBenchmarksRoute } from "./training-benchmarks";
 
 // Wallet market overview route extracted to @elizaos/plugin-wallet/routes/wallet-market-overview-route.
 // Now served via walletRoutePlugin.routes (rawPath) on the runtime plugin route system.
@@ -776,6 +777,11 @@ async function handleCompatRoute(
   if (await handleCatalogRoutes(req, res, state)) return true;
 
   if (await handleOnboardingCompatRoute(req, res, state)) return true;
+
+  // Benchmark trending DB read API — scaffolds gap M2 (W0-X5).
+  // Producers are Python (W1-B*); this exposes per-model history + pairwise
+  // compare for the dashboard.
+  if (await handleTrainingBenchmarksRoute(req, res, state)) return true;
 
   // GET /api/plugins/:id/ui-spec — generate a UiSpec for plugin configuration.
   // Used by the agent to spawn interactive config forms in chat.

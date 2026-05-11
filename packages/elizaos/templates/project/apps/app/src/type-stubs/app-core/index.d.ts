@@ -18,7 +18,6 @@ export const AppProvider: ComponentType<{
 }>;
 export const CharacterEditor: ComponentType<Record<string, unknown>>;
 export const DetachedShellRoot: ComponentType<{ route?: string | null }>;
-export const DesktopOnboardingRuntime: ComponentType;
 export const DesktopSurfaceNavigationRuntime: ComponentType;
 export const DesktopTrayRuntime: ComponentType;
 export const ErrorBoundary: ComponentType<{ children?: ReactNode }>;

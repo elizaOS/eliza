@@ -3,9 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	applyTrajectoryFieldCap,
+	captureToolStageIO,
 	createJsonFileTrajectoryRecorder,
+	encodeTrajectoryFieldValue,
 	type RecordedStage,
 	type RecordedTrajectory,
+	resolveTrajectoryFieldCapBytes,
 } from "../trajectory-recorder";
 
 let tmpDir: string;
@@ -464,5 +468,258 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(typeof m.toolCallsExecuted).toBe("number");
 		expect(typeof m.toolCallFailures).toBe("number");
 		expect(typeof m.evaluatorFailures).toBe("number");
+	});
+});
+
+describe("action exec input/output/error capture (M12)", () => {
+	const originalCap = process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+
+	afterEach(() => {
+		if (originalCap === undefined) {
+			delete process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+		} else {
+			process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = originalCap;
+		}
+	});
+
+	it("defaults to a 64KB per-field cap when the env var is unset", () => {
+		delete process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
+	});
+
+	it("respects MILADY_TRAJECTORY_FIELD_CAP_BYTES when set to a sane value", () => {
+		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "8192";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(8192);
+	});
+
+	it("ignores invalid or sub-1KB caps and falls back to the default", () => {
+		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "abc";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
+		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "100";
+		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
+	});
+
+	it("encodes objects to JSON and strings pass through unchanged", () => {
+		expect(encodeTrajectoryFieldValue({ a: 1, b: "two" })).toBe(
+			'{"a":1,"b":"two"}',
+		);
+		expect(encodeTrajectoryFieldValue("hello")).toBe("hello");
+		expect(encodeTrajectoryFieldValue(undefined)).toBe("");
+		expect(encodeTrajectoryFieldValue(null)).toBe("");
+	});
+
+	it("encodes Error instances via the sanitizer (no `{}` payloads)", () => {
+		const encoded = encodeTrajectoryFieldValue(new Error("boom"));
+		expect(encoded).toContain("boom");
+		expect(encoded).toContain("\"message\"");
+	});
+
+	it("returns the original value when under the cap with no marker", () => {
+		const { value, marker } = applyTrajectoryFieldCap("input", "small", 1024);
+		expect(value).toBe("small");
+		expect(marker).toBeNull();
+	});
+
+	it("truncates oversize values and emits a structured marker", () => {
+		const big = "a".repeat(2048);
+		const { value, marker } = applyTrajectoryFieldCap("output", big, 256);
+		expect(Buffer.byteLength(value, "utf8")).toBeLessThanOrEqual(256);
+		expect(value.endsWith("...[truncated]")).toBe(true);
+		expect(marker).toEqual({
+			field: "output",
+			originalBytes: 2048,
+			capBytes: 256,
+		});
+	});
+
+	it("captureToolStageIO encodes + caps input/output/error and omits unset fields", () => {
+		const captured = captureToolStageIO({
+			input: { q: "weather in Brooklyn" },
+			output: { success: true, data: { temp: 72 } },
+		});
+		expect(captured.input).toBe('{"q":"weather in Brooklyn"}');
+		expect(captured.output).toBe('{"success":true,"data":{"temp":72}}');
+		expect(captured.errorText).toBeUndefined();
+		expect(captured.truncated).toBeUndefined();
+	});
+
+	it("captureToolStageIO attaches a truncated[] marker only for capped fields", () => {
+		const huge = "z".repeat(200_000);
+		const captured = captureToolStageIO({
+			input: { q: "small" },
+			output: huge,
+			error: "oops",
+			capBytes: 1024,
+		});
+		expect(captured.input).toBe('{"q":"small"}');
+		expect(captured.output?.endsWith("...[truncated]")).toBe(true);
+		expect(captured.errorText).toBe("oops");
+		expect(captured.truncated).toEqual([
+			{ field: "output", originalBytes: 200_000, capBytes: 1024 },
+		]);
+	});
+
+	it("captureToolStageIO captures all three when all three exceed the cap", () => {
+		const big = "x".repeat(200_000);
+		const captured = captureToolStageIO({
+			input: big,
+			output: big,
+			error: big,
+			capBytes: 2048,
+		});
+		expect(captured.truncated).toHaveLength(3);
+		expect(captured.truncated?.map((t) => t.field).sort()).toEqual([
+			"error",
+			"input",
+			"output",
+		]);
+		for (const marker of captured.truncated ?? []) {
+			expect(marker.originalBytes).toBe(200_000);
+			expect(marker.capBytes).toBe(2048);
+		}
+	});
+});
+
+describe("integration: action stage records input/output/error (M12)", () => {
+	let intTmpDir: string;
+
+	beforeEach(async () => {
+		intTmpDir = await fs.mkdtemp(
+			path.join(os.tmpdir(), "trajectory-action-io-"),
+		);
+	});
+
+	afterEach(async () => {
+		await fs.rm(intTmpDir, { recursive: true, force: true });
+	});
+
+	it("persists captured action input/output on the tool stage", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: intTmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-action-io",
+			rootMessage: { id: "msg", text: "run an action" },
+		});
+
+		const captured = captureToolStageIO({
+			input: { q: "eliza", k: 3 },
+			output: { success: true, data: { hits: [{ title: "first" }] } },
+		});
+
+		const stage: RecordedStage = {
+			stageId: "stage-tool-WEB_SEARCH-1",
+			kind: "tool",
+			startedAt: 1,
+			endedAt: 50,
+			latencyMs: 49,
+			tool: {
+				name: "WEB_SEARCH",
+				args: { q: "eliza", k: 3 },
+				result: { success: true, data: { hits: [{ title: "first" }] } },
+				success: true,
+				durationMs: 49,
+				input: captured.input,
+				output: captured.output,
+				errorText: captured.errorText,
+				truncated: captured.truncated,
+			},
+		};
+		await recorder.recordStage(id, stage);
+		await recorder.endTrajectory(id, "finished");
+
+		const loaded = await recorder.load(id);
+		expect(loaded).not.toBeNull();
+		const tool = loaded?.stages[0]?.tool;
+		expect(tool?.input).toBe('{"q":"eliza","k":3}');
+		expect(tool?.output).toBe(
+			'{"success":true,"data":{"hits":[{"title":"first"}]}}',
+		);
+		expect(tool?.errorText).toBeUndefined();
+		expect(tool?.truncated).toBeUndefined();
+	});
+
+	it("persists structured truncation markers when output exceeds the cap", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: intTmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-action-trunc",
+			rootMessage: { id: "msg", text: "huge action output" },
+		});
+
+		const huge = "p".repeat(150_000);
+		const captured = captureToolStageIO({
+			input: { q: "small" },
+			output: huge,
+			error: undefined,
+			capBytes: 4096,
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-tool-BIG-1",
+			kind: "tool",
+			startedAt: 1,
+			endedAt: 10,
+			latencyMs: 9,
+			tool: {
+				name: "BIG_OUTPUT",
+				args: { q: "small" },
+				result: { success: true },
+				success: true,
+				durationMs: 9,
+				input: captured.input,
+				output: captured.output,
+				errorText: captured.errorText,
+				truncated: captured.truncated,
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const loaded = await recorder.load(id);
+		const tool = loaded?.stages[0]?.tool;
+		expect(tool?.output?.endsWith("...[truncated]")).toBe(true);
+		expect(Buffer.byteLength(tool?.output ?? "", "utf8")).toBeLessThanOrEqual(
+			4096,
+		);
+		expect(tool?.truncated).toEqual([
+			{ field: "output", originalBytes: 150_000, capBytes: 4096 },
+		]);
+	});
+
+	it("persists captured action error when the action fails", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: intTmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-action-err",
+			rootMessage: { id: "msg", text: "failing action" },
+		});
+
+		const captured = captureToolStageIO({
+			input: { q: "missing-config" },
+			output: { success: false },
+			error: new Error("Connection refused"),
+		});
+
+		await recorder.recordStage(id, {
+			stageId: "stage-tool-BROKEN-1",
+			kind: "tool",
+			startedAt: 1,
+			endedAt: 5,
+			latencyMs: 4,
+			tool: {
+				name: "BROKEN",
+				args: { q: "missing-config" },
+				result: { success: false, error: new Error("Connection refused") },
+				success: false,
+				durationMs: 4,
+				input: captured.input,
+				output: captured.output,
+				errorText: captured.errorText,
+				truncated: captured.truncated,
+			},
+		});
+		await recorder.endTrajectory(id, "finished");
+
+		const loaded = await recorder.load(id);
+		const tool = loaded?.stages[0]?.tool;
+		expect(tool?.success).toBe(false);
+		expect(tool?.errorText).toContain("Connection refused");
+		expect(tool?.input).toBe('{"q":"missing-config"}');
 	});
 });

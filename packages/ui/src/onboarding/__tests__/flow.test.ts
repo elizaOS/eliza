@@ -31,8 +31,17 @@ import {
   hasPartialOnboardingConnectionConfig,
 } from "../../state/onboarding-resume";
 import { restartAgentAfterOnboarding } from "../../state/onboarding-restart";
+import type { AgentStatus } from "../../api/client-types-core";
 import type { OnboardingStep } from "../../state/types";
 import { ONBOARDING_STEPS } from "../../state/types";
+
+const FAKE_RUNNING_STATUS: AgentStatus = {
+  state: "running",
+  agentName: "test",
+  model: undefined,
+  uptime: undefined,
+  startedAt: undefined,
+};
 
 const STEP_IDS = ONBOARDING_STEPS.map((s) => s.id);
 const EXPECTED_ORDER: OnboardingStep[] = ["deployment", "providers", "features"];
@@ -98,7 +107,9 @@ describe("getOnboardingStepIndex", () => {
   );
 
   it.each(INVALID_STEPS)("returns -1 for invalid id %j", (bad) => {
-    expect(getOnboardingStepIndex(bad as unknown as OnboardingStep)).toBe(-1);
+    // @ts-expect-error — intentionally passing an out-of-domain string to
+    // pin the function's runtime guard against untrusted input.
+    expect(getOnboardingStepIndex(bad)).toBe(-1);
   });
 });
 
@@ -116,9 +127,8 @@ describe("resolveOnboardingNextStep (exhaustive linear forward)", () => {
   });
 
   it.each(INVALID_STEPS)("invalid id %j -> null", (bad) => {
-    expect(
-      resolveOnboardingNextStep(bad as unknown as OnboardingStep),
-    ).toBeNull();
+    // @ts-expect-error — runtime-guard probe with out-of-domain input.
+    expect(resolveOnboardingNextStep(bad)).toBeNull();
   });
 
   it("for every valid step, result is either null or a configured step id", () => {
@@ -145,9 +155,8 @@ describe("resolveOnboardingPreviousStep (exhaustive linear backward)", () => {
   });
 
   it.each(INVALID_STEPS)("invalid id %j -> null", (bad) => {
-    expect(
-      resolveOnboardingPreviousStep(bad as unknown as OnboardingStep),
-    ).toBeNull();
+    // @ts-expect-error — runtime-guard probe with out-of-domain input.
+    expect(resolveOnboardingPreviousStep(bad)).toBeNull();
   });
 
   it("for every valid step, result is either null or a configured step id", () => {
@@ -214,7 +223,8 @@ describe("canRevertOnboardingTo (sidebar jump rules)", () => {
     for (const bad of INVALID_STEPS) {
       expect(
         canRevertOnboardingTo({
-          current: bad as unknown as OnboardingStep,
+          // @ts-expect-error — runtime-guard probe with out-of-domain input.
+          current: bad,
           target: "deployment",
         }),
       ).toBe(false);
@@ -226,7 +236,8 @@ describe("canRevertOnboardingTo (sidebar jump rules)", () => {
       expect(
         canRevertOnboardingTo({
           current: "features",
-          target: bad as unknown as OnboardingStep,
+          // @ts-expect-error — runtime-guard probe with out-of-domain input.
+          target: bad,
         }),
       ).toBe(false);
     }
@@ -407,9 +418,8 @@ describe("getFlaminaTopicForOnboardingStep", () => {
   });
 
   it.each(INVALID_STEPS)("invalid %j -> null", (bad) => {
-    expect(
-      getFlaminaTopicForOnboardingStep(bad as unknown as OnboardingStep),
-    ).toBeNull();
+    // @ts-expect-error — runtime-guard probe with out-of-domain input.
+    expect(getFlaminaTopicForOnboardingStep(bad)).toBeNull();
   });
 });
 
@@ -494,19 +504,20 @@ describe("inferOnboardingResumeStep (resume from persisted state)", () => {
 
 describe("restartAgentAfterOnboarding", () => {
   it("delegates to client.restartAndWait with the provided timeout", async () => {
-    const restartAndWait = vi.fn(async () => "running" as const);
-    const result = await restartAgentAfterOnboarding(
-      { restartAndWait } as never,
-      5000,
-    );
+    const restartAndWait = vi.fn<
+      (maxWaitMs?: number) => Promise<AgentStatus>
+    >(async () => FAKE_RUNNING_STATUS);
+    const result = await restartAgentAfterOnboarding({ restartAndWait }, 5000);
     expect(restartAndWait).toHaveBeenCalledTimes(1);
     expect(restartAndWait).toHaveBeenCalledWith(5000);
-    expect(result).toBe("running");
+    expect(result.state).toBe("running");
   });
 
   it("uses the documented 120s default when no timeout is supplied", async () => {
-    const restartAndWait = vi.fn(async () => "running" as const);
-    await restartAgentAfterOnboarding({ restartAndWait } as never);
+    const restartAndWait = vi.fn<
+      (maxWaitMs?: number) => Promise<AgentStatus>
+    >(async () => FAKE_RUNNING_STATUS);
+    await restartAgentAfterOnboarding({ restartAndWait });
     expect(restartAndWait).toHaveBeenCalledWith(120_000);
   });
 });
@@ -562,25 +573,33 @@ describe("fuzz: random walks", () => {
 
   it("fuzz over invalid ids: next/prev/canRevert never throw and never return an unconfigured id", () => {
     const rng = makeRng(SEED ^ 0xdeadbeef);
-    const universe = [
-      ...EXPECTED_ORDER,
-      ...INVALID_STEPS,
-    ] as unknown as OnboardingStep[];
+    // Mixed universe of valid and invalid step ids. The functions under test
+    // accept only `OnboardingStep`, but at runtime their input comes from
+    // persisted storage / query params and may be anything — that's exactly
+    // the surface this fuzz probe pins. Type the universe as `string` and
+    // cast at each callsite via @ts-expect-error so the looseness stays
+    // localized.
+    const universe: readonly string[] = [...EXPECTED_ORDER, ...INVALID_STEPS];
 
     for (let i = 0; i < WALKS; i += 1) {
       const current = pick(rng, universe);
 
+      // @ts-expect-error — fuzz probe; runtime guards must hold for any string.
       expect(() => resolveOnboardingNextStep(current)).not.toThrow();
+      // @ts-expect-error — fuzz probe.
       expect(() => resolveOnboardingPreviousStep(current)).not.toThrow();
 
+      // @ts-expect-error — fuzz probe.
       const nxt = resolveOnboardingNextStep(current);
       if (nxt !== null) expect(STEP_IDS).toContain(nxt);
 
+      // @ts-expect-error — fuzz probe.
       const prv = resolveOnboardingPreviousStep(current);
       if (prv !== null) expect(STEP_IDS).toContain(prv);
 
       const target = pick(rng, universe);
       expect(() =>
+        // @ts-expect-error — fuzz probe.
         canRevertOnboardingTo({ current, target }),
       ).not.toThrow();
     }

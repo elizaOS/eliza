@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../../logger.ts";
+import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
 import {
 	type ActionContext,
 	type ActionParameters,
@@ -915,12 +916,16 @@ Focus on:
 					previousResults,
 				} satisfies ExtendedHandlerOptions;
 
-				const result = await action.handler(
-					runtime,
-					message,
-					{ values: {}, data: {}, text: "" },
-					options,
-					callback,
+				const result = await runWithActionRoutingContext(
+					{ actionName: action.name, modelClass: action.modelClass },
+					() =>
+						action.handler(
+							runtime,
+							message,
+							{ values: {}, data: {}, text: "" },
+							options,
+							callback,
+						),
 				);
 
 				const actionResult: ActionResult =

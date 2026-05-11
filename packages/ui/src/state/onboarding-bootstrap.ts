@@ -15,13 +15,6 @@ export interface ExistingOnboardingProbeResult {
   detectedExistingInstall: boolean;
 }
 
-export interface DetectedProviderCandidate {
-  id: string;
-  apiKey?: string;
-  authMode?: string;
-  status?: string;
-}
-
 const LOCAL_ACTIVE_SERVER = createPersistedActiveServer({ kind: "local" });
 
 function hasPersistedExistingInstallConfig(
@@ -99,26 +92,4 @@ export async function detectExistingOnboardingConnection(args: {
   }
 
   return result === timeoutToken ? null : result;
-}
-
-export function deriveDetectedProviderPrefill(
-  detected: readonly DetectedProviderCandidate[],
-): {
-  serverTarget: "local";
-  providerId: string;
-  apiKey: string;
-} | null {
-  for (const candidate of detected) {
-    const providerId = candidate.id.trim();
-    const apiKey = candidate.apiKey?.trim() ?? "";
-    if (providerId && apiKey) {
-      return {
-        serverTarget: "local",
-        providerId,
-        apiKey,
-      };
-    }
-  }
-
-  return null;
 }

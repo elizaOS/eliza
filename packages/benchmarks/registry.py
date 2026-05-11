@@ -831,6 +831,82 @@ def _score_from_action_calling_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
+def _standard_benchmark_metrics(
+    metrics: dict[str, JSONValue],
+    *,
+    extra_keys: tuple[str, ...] = (),
+) -> dict[str, JSONValue]:
+    """Shared shape: pull ``score`` + ``n`` plus any extra known keys.
+
+    Adapters under ``benchmarks/standard/`` all emit a ``metrics`` dict
+    matching this contract; collapse to one helper instead of repeating
+    five-line dict literals per benchmark.
+    """
+
+    out: dict[str, JSONValue] = {
+        "score": metrics.get("score") or 0,
+        "n": metrics.get("n") or 0,
+    }
+    for key in extra_keys:
+        if key in metrics:
+            out[key] = metrics[key] or 0
+    return out
+
+
+def _score_from_mmlu_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="mmlu:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="mmlu:root"), ctx="mmlu:metrics")
+    score = expect_float(get_required(metrics, "score", ctx="mmlu:metrics"), ctx="mmlu:score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=_standard_benchmark_metrics(metrics, extra_keys=("accuracy", "correct")),
+    )
+
+
+def _score_from_humaneval_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="humaneval:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="humaneval:root"), ctx="humaneval:metrics")
+    score = expect_float(get_required(metrics, "score", ctx="humaneval:metrics"), ctx="humaneval:score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=_standard_benchmark_metrics(metrics, extra_keys=("pass@1", "passed")),
+    )
+
+
+def _score_from_gsm8k_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="gsm8k:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="gsm8k:root"), ctx="gsm8k:metrics")
+    score = expect_float(get_required(metrics, "score", ctx="gsm8k:metrics"), ctx="gsm8k:score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=_standard_benchmark_metrics(
+            metrics,
+            extra_keys=("accuracy", "format_ok", "correct"),
+        ),
+    )
+
+
+def _score_from_mt_bench_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="mt_bench:root")
+    metrics = expect_dict(get_required(root, "metrics", ctx="mt_bench:root"), ctx="mt_bench:metrics")
+    score = expect_float(get_required(metrics, "score", ctx="mt_bench:metrics"), ctx="mt_bench:score")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=_standard_benchmark_metrics(
+            metrics,
+            extra_keys=("mean_rating", "turn_1_mean", "turn_2_mean"),
+        ),
+    )
+
+
 def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     python = sys.executable
 
@@ -2199,6 +2275,104 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _action_calling_result(output_dir: Path) -> Path:
         return output_dir / "action-calling-results.json"
 
+    # ----- standard public benchmarks (MMLU / HumanEval / GSM8K / MT-Bench) -----
+
+    def _standard_bench_base_args(
+        module: str,
+        output_dir: Path,
+        model: ModelSpec,
+        extra: Mapping[str, JSONValue],
+    ) -> list[str]:
+        """Shared CLI arg builder for ``benchmarks.standard.<name>`` runners.
+
+        Forwards ``--model-endpoint`` / ``--provider`` / ``--model`` /
+        ``--api-key-env`` / ``--mock`` / ``--limit`` from ``ModelSpec`` +
+        ``extra`` to the standardized adapter CLI.
+        """
+
+        args: list[str] = [
+            python,
+            "-m",
+            module,
+            "--output",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        endpoint = extra.get("model_endpoint") or extra.get("base_url")
+        provider_name = (model.provider or "").strip().lower()
+        if isinstance(endpoint, str) and endpoint.strip():
+            args.extend(["--model-endpoint", endpoint.strip()])
+        elif provider_name and provider_name != "mock":
+            args.extend(["--provider", provider_name])
+        api_key_env = extra.get("api_key_env")
+        if isinstance(api_key_env, str) and api_key_env.strip():
+            args.extend(["--api-key-env", api_key_env.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        if extra.get("mock") is True or provider_name == "mock":
+            args.append("--mock")
+        return args
+
+    def _mmlu_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = _standard_bench_base_args("benchmarks.standard.mmlu", output_dir, model, extra)
+        max_tokens = extra.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            args.extend(["--max-tokens", str(max_tokens)])
+        return args
+
+    def _mmlu_result(output_dir: Path) -> Path:
+        return output_dir / "mmlu-results.json"
+
+    def _humaneval_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = _standard_bench_base_args("benchmarks.standard.humaneval", output_dir, model, extra)
+        max_tokens = extra.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            args.extend(["--max-tokens", str(max_tokens)])
+        timeout_s = extra.get("timeout_s")
+        if isinstance(timeout_s, (int, float)) and not isinstance(timeout_s, bool) and timeout_s > 0:
+            args.extend(["--timeout-s", str(float(timeout_s))])
+        return args
+
+    def _humaneval_result(output_dir: Path) -> Path:
+        return output_dir / "humaneval-results.json"
+
+    def _gsm8k_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = _standard_bench_base_args("benchmarks.standard.gsm8k", output_dir, model, extra)
+        max_tokens = extra.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            args.extend(["--max-tokens", str(max_tokens)])
+        return args
+
+    def _gsm8k_result(output_dir: Path) -> Path:
+        return output_dir / "gsm8k-results.json"
+
+    def _mt_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = _standard_bench_base_args("benchmarks.standard.mt_bench", output_dir, model, extra)
+        judge_endpoint = extra.get("judge_endpoint")
+        if isinstance(judge_endpoint, str) and judge_endpoint.strip():
+            args.extend(["--judge-endpoint", judge_endpoint.strip()])
+        judge_provider = extra.get("judge_provider")
+        if isinstance(judge_provider, str) and judge_provider.strip():
+            args.extend(["--judge-provider", judge_provider.strip()])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        judge_api_key_env = extra.get("judge_api_key_env")
+        if isinstance(judge_api_key_env, str) and judge_api_key_env.strip():
+            args.extend(["--judge-api-key-env", judge_api_key_env.strip()])
+        max_tokens = extra.get("max_tokens")
+        if isinstance(max_tokens, int) and max_tokens > 0:
+            args.extend(["--max-tokens", str(max_tokens)])
+        judge_max_tokens = extra.get("judge_max_tokens")
+        if isinstance(judge_max_tokens, int) and judge_max_tokens > 0:
+            args.extend(["--judge-max-tokens", str(judge_max_tokens)])
+        return args
+
+    def _mt_bench_result(output_dir: Path) -> Path:
+        return output_dir / "mt-bench-results.json"
+
     # lifeops-bench
     def _lifeops_bench_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
@@ -2792,6 +2966,83 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_lifeops_bench_cmd,
             locate_result=_lifeops_bench_result,
             extract_score=_score_from_lifeops_bench_json,
+        ),
+        # ----- standard public LLM benchmarks (W1-B1, gap C6) -----
+        BenchmarkDefinition(
+            id="mmlu",
+            display_name="MMLU",
+            description="Massive Multitask Language Understanding (cais/mmlu, 4-way multiple choice over 57 subjects)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Talks to any OpenAI-compatible chat-completion endpoint via "
+                    "--model-endpoint or extra.model_endpoint. Mock provider uses "
+                    "a bundled fixture (no network, no HF datasets install). Real "
+                    "runs require `datasets` and pull cais/mmlu lazily."
+                ),
+            ),
+            build_command=_mmlu_cmd,
+            locate_result=_mmlu_result,
+            extract_score=_score_from_mmlu_json,
+        ),
+        BenchmarkDefinition(
+            id="humaneval",
+            display_name="HumanEval",
+            description="OpenAI HumanEval pass@1 over openai_humaneval (164 Python coding problems)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Talks to any OpenAI-compatible chat-completion endpoint. "
+                    "Each completion is exec'd in a sandboxed subprocess with a "
+                    "per-test timeout. Mock provider uses a bundled fixture. "
+                    "Use extra.timeout_s to override the default 10s test timeout."
+                ),
+            ),
+            build_command=_humaneval_cmd,
+            locate_result=_humaneval_result,
+            extract_score=_score_from_humaneval_json,
+        ),
+        BenchmarkDefinition(
+            id="gsm8k",
+            display_name="GSM8K",
+            description="Grade-school math word problems (openai/gsm8k) with strict #### integer parsing",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Talks to any OpenAI-compatible chat-completion endpoint. "
+                    "Prompts for chain-of-thought ending in '#### <integer>'. "
+                    "Mock provider uses a bundled fixture (no network)."
+                ),
+            ),
+            build_command=_gsm8k_cmd,
+            locate_result=_gsm8k_result,
+            extract_score=_score_from_gsm8k_json,
+        ),
+        BenchmarkDefinition(
+            id="mt_bench",
+            display_name="MT-Bench",
+            description="Multi-turn open-ended LLM benchmark judged 1-10 by a strong model (LMSYS-style)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Candidate model and judge model both talk to OpenAI-compatible "
+                    "endpoints. Use extra.judge_endpoint + extra.judge_model + "
+                    "extra.judge_api_key_env to point the judge at a separate "
+                    "strong model (gpt-4o, claude-opus, eliza-1-70b, etc). "
+                    "Score = mean 1-10 judge rating divided by 10."
+                ),
+            ),
+            build_command=_mt_bench_cmd,
+            locate_result=_mt_bench_result,
+            extract_score=_score_from_mt_bench_json,
         ),
     ]
 

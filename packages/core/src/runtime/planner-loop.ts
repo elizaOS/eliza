@@ -60,6 +60,7 @@ import type {
 	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
+import { captureToolStageIO } from "./trajectory-recorder";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -1597,6 +1598,12 @@ async function recordToolStage(args: {
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
 	try {
+		const inputParams = (args.toolCall.params ?? {}) as Record<string, unknown>;
+		const io = captureToolStageIO({
+			input: inputParams,
+			output: args.result,
+			error: args.result.error,
+		});
 		const stage: RecordedStage = {
 			stageId: `stage-tool-${args.toolCall.name}-${args.startedAt}`,
 			kind: "tool",
@@ -1606,10 +1613,14 @@ async function recordToolStage(args: {
 			latencyMs: args.endedAt - args.startedAt,
 			tool: {
 				name: args.toolCall.name,
-				args: (args.toolCall.params ?? {}) as Record<string, unknown>,
+				args: inputParams,
 				result: args.result,
 				success: args.result.success,
 				durationMs: args.endedAt - args.startedAt,
+				input: io.input,
+				output: io.output,
+				errorText: io.errorText,
+				truncated: io.truncated,
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);

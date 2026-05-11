@@ -11,6 +11,7 @@ export * from "./api/secrets-manager-routes";
 export * from "./api/server";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
+export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
 export * from "./diagnostics/integration-observability";
 export * from "./permissions/types";

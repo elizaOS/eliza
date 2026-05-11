@@ -2,6 +2,7 @@ import { validateToolArgs } from "../actions/validate-tool-args";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { checkSenderRole } from "../roles";
 import { emitStreamingHook, getStreamingContext } from "../streaming-context";
+import { runWithActionRoutingContext } from "./action-routing-context";
 import type {
 	Action,
 	ActionParameters,
@@ -216,13 +217,17 @@ export async function executePlannedToolCall(
 
 	let resultForEvent: ActionResult;
 	try {
-		const result = await action.handler(
-			runtime,
-			executorCtx.message,
-			executorCtx.state,
-			handlerOptions,
-			executorCtx.callback,
-			executorCtx.responses,
+		const result = await runWithActionRoutingContext(
+			{ actionName: action.name, modelClass: action.modelClass },
+			() =>
+				action.handler(
+					runtime,
+					executorCtx.message,
+					executorCtx.state,
+					handlerOptions,
+					executorCtx.callback,
+					executorCtx.responses,
+				),
 		);
 		resultForEvent = normalizeActionResult(action.name, result);
 	} catch (error) {

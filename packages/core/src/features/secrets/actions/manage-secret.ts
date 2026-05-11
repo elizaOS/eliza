@@ -24,6 +24,10 @@ import {
 	type SecretsService,
 } from "../services/secrets.ts";
 import type { SecretContext, SecretType } from "../types.ts";
+import { checkSecretAction } from "./check-secret.ts";
+import { deleteSecretAction } from "./delete-secret.ts";
+import { getSecretAction } from "./get-secret.ts";
+import { listSecretsAction } from "./list-secrets.ts";
 
 /**
  * Type for secret management operation
@@ -318,7 +322,9 @@ export const manageSecretAction: Action = {
 			requesterId: message.entityId as string,
 		};
 
-		// Execute the operation
+		// Execute the operation. For get / list / check / delete we delegate
+		// to the corresponding atomic action; MANAGE_SECRET stays as a thin
+		// compatibility facade preserving the original response text shape.
 		let responseText: string;
 
 		switch (operation.operation) {
@@ -327,17 +333,22 @@ export const manageSecretAction: Action = {
 					responseText = "Please specify which secret you want to retrieve.";
 					break;
 				}
-
 				const key = operation.key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
-				const value = await secretsService.get(key, context);
-
-				if (value) {
-					// Never reveal full secret values - show partial
-					const maskedValue = maskSecretValue(value);
-					responseText = `Your ${key} is set to: ${maskedValue}`;
-				} else {
-					responseText = `I don't have a ${key} stored. Would you like to set one?`;
-				}
+				const result = await getSecretAction.handler(
+					runtime,
+					message,
+					currentState,
+					{
+						parameters: { key, level, mask: true },
+					} as HandlerOptions,
+					undefined,
+				);
+				const data = (result as { data?: Record<string, unknown> }).data ?? {};
+				const value = data.value as string | null | undefined;
+				responseText =
+					value === null || value === undefined
+						? `I don't have a ${key} stored. Would you like to set one?`
+						: `Your ${key} is set to: ${value}`;
 				break;
 			}
 
@@ -377,29 +388,42 @@ export const manageSecretAction: Action = {
 					responseText = "Please specify which secret you want to delete.";
 					break;
 				}
-
 				const key = operation.key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
-				const deleted = await secretsService.delete(key, context);
-
-				if (deleted) {
-					responseText = `I've deleted your ${key}.`;
-				} else {
-					responseText = `I couldn't find a ${key} to delete.`;
-				}
+				const result = await deleteSecretAction.handler(
+					runtime,
+					message,
+					currentState,
+					{ parameters: { key, level } } as HandlerOptions,
+					undefined,
+				);
+				const data = (result as { data?: Record<string, unknown> }).data ?? {};
+				responseText = data.deleted
+					? `I've deleted your ${key}.`
+					: `I couldn't find a ${key} to delete.`;
 				break;
 			}
 
 			case "list": {
-				const metadata = await secretsService.list(context);
-				const keys = Object.keys(metadata);
+				const result = await listSecretsAction.handler(
+					runtime,
+					message,
+					currentState,
+					{ parameters: { level } } as HandlerOptions,
+					undefined,
+				);
+				const data = (result as { data?: Record<string, unknown> }).data ?? {};
+				const keys = Array.isArray(data.keys) ? (data.keys as string[]) : [];
 
 				if (keys.length === 0) {
 					responseText = `You don't have any ${level} secrets stored yet.`;
 				} else {
+					// Re-fetch full metadata so we can render per-key status icons
+					// the way the original MANAGE_SECRET caller expected.
+					const metadata = await secretsService.list(context);
 					const secretList = keys
 						.map((key) => {
 							const config = metadata[key];
-							const status = config.status === "valid" ? "✓" : "⚠";
+							const status = config?.status === "valid" ? "✓" : "⚠";
 							return `• ${key} ${status}`;
 						})
 						.join("\n");
@@ -414,9 +438,19 @@ export const manageSecretAction: Action = {
 					responseText = "Please specify which secret you want to check.";
 					break;
 				}
-
 				const key = operation.key.toUpperCase().replace(/[^A-Z0-9_]/g, "_");
-				const exists = await secretsService.exists(key, context);
+				const result = await checkSecretAction.handler(
+					runtime,
+					message,
+					currentState,
+					{ parameters: { key: [key], level } } as HandlerOptions,
+					undefined,
+				);
+				const data = (result as { data?: Record<string, unknown> }).data ?? {};
+				const present = Array.isArray(data.present)
+					? (data.present as boolean[])
+					: [];
+				const exists = present[0] === true;
 
 				if (exists) {
 					const config = await secretsService.getConfig(key, context);
@@ -496,7 +530,7 @@ export const manageSecretAction: Action = {
 /**
  * Mask a secret value for display
  */
-function maskSecretValue(value: string): string {
+export function maskSecretValue(value: string): string {
 	if (value.length <= 8) {
 		return "****";
 	}

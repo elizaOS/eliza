@@ -12,10 +12,9 @@ import { dirname, join } from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
 
-export type TrainingBackend = "atropos" | "tinker" | "native";
+export type TrainingBackend = "tinker" | "native";
 
 export const ALL_TRAINING_BACKENDS: readonly TrainingBackend[] = [
-  "atropos",
   "tinker",
   "native",
 ] as const;
