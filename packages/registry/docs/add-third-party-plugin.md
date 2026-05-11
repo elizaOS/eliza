@@ -81,4 +81,6 @@ Maintainers check that:
 - The package has enough README/configuration detail for users to operate it.
 
 After merge, the published registry page and JSON data update through the
-registry publishing workflow.
+registry publishing workflow. Future npm releases are picked up by the
+generator's npm version lookup; open another registry PR only when metadata
+such as description, tags, repository, kind, or app launch information changes.

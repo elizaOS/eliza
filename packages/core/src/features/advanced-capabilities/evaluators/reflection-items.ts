@@ -14,7 +14,7 @@ import type {
 	State,
 	UUID,
 } from "../../../types/index.ts";
-import { asUUID, ModelType } from "../../../types/index.ts";
+import { asUUID } from "../../../types/index.ts";
 import type {
 	CurrentFactCategory,
 	CustomMetadata,
@@ -25,6 +25,12 @@ import type {
 } from "../../../types/memory.ts";
 import { MemoryType } from "../../../types/memory.ts";
 import type { JsonValue } from "../../../types/primitives.ts";
+import {
+	buildFactKeywordsForStorage,
+	buildFactSearchText,
+	factLexicalSimilarity,
+	readStoredFactKeywords,
+} from "../fact-keywords.ts";
 import { recordFactCandidate } from "./_factCandidates.ts";
 import {
 	type AddCurrentOp,
@@ -48,7 +54,7 @@ const STRENGTHEN_DELTA = 0.1;
 const DECAY_DELTA = 0.15;
 const FACT_DECAY_FLOOR = 0.2;
 const NEW_FACT_CONFIDENCE = 0.7;
-const DEDUP_SIMILARITY_THRESHOLD = 0.92;
+const DEDUP_SIMILARITY_THRESHOLD = 0.42;
 const IDENTITY_CONFIDENCE_THRESHOLD = 0.5;
 
 const factOpsSchema: JSONSchema = {
@@ -72,6 +78,11 @@ const factOpsSchema: JSONSchema = {
 					claim: { type: "string" },
 					category: { type: "string" },
 					structured_fields: { type: "object" },
+					keywords: {
+						type: "array",
+						items: { type: "string" },
+						maxItems: 16,
+					},
 					verification_status: { type: "string" },
 					valid_at: { type: "string" },
 					factId: { type: "string" },
@@ -188,9 +199,9 @@ interface SuccessPrepared extends ReflectionPrepared {
 	actionResults: unknown[];
 }
 
-interface EmbeddedMemory {
+interface FactCandidate {
 	memory: Memory;
-	embedding: number[] | null;
+	searchText: string;
 }
 
 function nowIso(): string {
@@ -397,47 +408,20 @@ async function prepareFacts(
 	return { ...base, knownFacts };
 }
 
-function cosineSimilarity(a: number[], b: number[]): number {
-	if (!a.length || !b.length) return 0;
-	const len = Math.min(a.length, b.length);
-	let dot = 0;
-	let normA = 0;
-	let normB = 0;
-	for (let i = 0; i < len; i += 1) {
-		const x = a[i] ?? 0;
-		const y = b[i] ?? 0;
-		dot += x * y;
-		normA += x * x;
-		normB += y * y;
-	}
-	if (normA === 0 || normB === 0) return 0;
-	return dot / (Math.sqrt(normA) * Math.sqrt(normB));
-}
-
-async function embedText(
-	runtime: IAgentRuntime,
-	text: string,
-): Promise<number[] | null> {
-	const trimmed = text.trim();
-	if (!trimmed) return null;
-	const result = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-		text: trimmed,
-	});
-	return Array.isArray(result) ? (result as number[]) : null;
-}
-
 function findDedupTarget(
-	candidates: EmbeddedMemory[],
-	targetEmbedding: number[],
+	candidates: FactCandidate[],
+	targetValues: unknown[],
 	kind: FactKind,
 	category: string,
 ): { memory: Memory; similarity: number } | null {
 	let best: { memory: Memory; similarity: number } | null = null;
 	for (const candidate of candidates) {
-		if (!candidate.embedding) continue;
 		if (readFactKind(candidate.memory) !== kind) continue;
 		if (readCategory(candidate.memory) !== category) continue;
-		const similarity = cosineSimilarity(candidate.embedding, targetEmbedding);
+		const similarity = factLexicalSimilarity(targetValues, [
+			candidate.searchText,
+			readStoredFactKeywords(candidate.memory),
+		]);
 		if (similarity >= DEDUP_SIMILARITY_THRESHOLD) {
 			if (!best || similarity > best.similarity) {
 				best = { memory: candidate.memory, similarity };
@@ -450,9 +434,9 @@ function findDedupTarget(
 interface ApplyContext {
 	runtime: IAgentRuntime;
 	message: Memory;
-	candidatePool: EmbeddedMemory[];
+	candidatePool: FactCandidate[];
 	candidatesById: Map<string, Memory>;
-	insertedThisRun: EmbeddedMemory[];
+	insertedThisRun: FactCandidate[];
 }
 
 async function insertFact(
@@ -462,6 +446,7 @@ async function insertFact(
 		kind: FactKind;
 		category: DurableFactCategory | CurrentFactCategory | string;
 		structuredFields: Record<string, unknown>;
+		keywords: string[];
 		verificationStatus: FactVerificationStatus | undefined;
 		validAt: string | undefined;
 	},
@@ -477,6 +462,7 @@ async function insertFact(
 		kind: args.kind,
 		category: args.category,
 		structuredFields: toJsonObject(args.structuredFields),
+		keywords: args.keywords,
 		verificationStatus,
 		...(args.validAt ? { validAt: args.validAt } : {}),
 	};
@@ -490,8 +476,6 @@ async function insertFact(
 		createdAt: Date.now(),
 	};
 	const persistedId = await ctx.runtime.createMemory(memory, "facts", true);
-	const persistedMemory: Memory = { ...memory, id: persistedId };
-	await ctx.runtime.queueEmbeddingGeneration(persistedMemory, "low");
 	return persistedId;
 }
 
@@ -515,6 +499,7 @@ function preserveFactMetadata(fact: Memory): CustomMetadata {
 		...(meta.kind ? { kind: meta.kind } : {}),
 		...(typeof meta.category === "string" ? { category: meta.category } : {}),
 		...(normalizedStructured ? { structuredFields: normalizedStructured } : {}),
+		...(Array.isArray(meta.keywords) ? { keywords: [...meta.keywords] } : {}),
 		...(typeof meta.validAt === "string" ? { validAt: meta.validAt } : {}),
 		...(typeof meta.lastConfirmedAt === "string"
 			? { lastConfirmedAt: meta.lastConfirmedAt }
@@ -544,33 +529,38 @@ async function applyAddDurable(
 	ctx: ApplyContext,
 	op: AddDurableOp,
 ): Promise<{ added: boolean; strengthened: boolean }> {
-	const proposedEmbedding = await embedText(ctx.runtime, op.claim);
-	if (proposedEmbedding) {
-		const dedupTarget = findDedupTarget(
-			[...ctx.candidatePool, ...ctx.insertedThisRun],
-			proposedEmbedding,
-			"durable",
-			op.category,
-		);
-		if (dedupTarget) {
-			await applyStrengthenForMemory(ctx, dedupTarget.memory);
-			return { added: false, strengthened: true };
-		}
+	const keywords = buildFactKeywordsForStorage(
+		op.keywords ?? [],
+		op.claim,
+		op.category,
+		op.structured_fields,
+	);
+	const targetValues = [op.claim, op.category, op.structured_fields, keywords];
+	const dedupTarget = findDedupTarget(
+		[...ctx.candidatePool, ...ctx.insertedThisRun],
+		targetValues,
+		"durable",
+		op.category,
+	);
+	if (dedupTarget) {
+		await applyStrengthenForMemory(ctx, dedupTarget.memory);
+		return { added: false, strengthened: true };
 	}
 	const factId = await insertFact(ctx, {
 		claim: op.claim,
 		kind: "durable",
 		category: op.category,
 		structuredFields: op.structured_fields,
+		keywords,
 		verificationStatus: op.verification_status,
 		validAt: undefined,
 	});
-	if (factId && proposedEmbedding) {
+	if (factId) {
 		const inserted = await ctx.runtime.getMemoryById(factId);
 		if (inserted) {
 			ctx.insertedThisRun.push({
 				memory: inserted,
-				embedding: proposedEmbedding,
+				searchText: buildFactSearchText(inserted),
 			});
 			ctx.candidatesById.set(factId, inserted);
 		}
@@ -582,18 +572,22 @@ async function applyAddCurrent(
 	ctx: ApplyContext,
 	op: AddCurrentOp,
 ): Promise<{ added: boolean; strengthened: boolean }> {
-	const proposedEmbedding = await embedText(ctx.runtime, op.claim);
-	if (proposedEmbedding) {
-		const dedupTarget = findDedupTarget(
-			[...ctx.candidatePool, ...ctx.insertedThisRun],
-			proposedEmbedding,
-			"current",
-			op.category,
-		);
-		if (dedupTarget) {
-			await applyStrengthenForMemory(ctx, dedupTarget.memory);
-			return { added: false, strengthened: true };
-		}
+	const keywords = buildFactKeywordsForStorage(
+		op.keywords ?? [],
+		op.claim,
+		op.category,
+		op.structured_fields,
+	);
+	const targetValues = [op.claim, op.category, op.structured_fields, keywords];
+	const dedupTarget = findDedupTarget(
+		[...ctx.candidatePool, ...ctx.insertedThisRun],
+		targetValues,
+		"current",
+		op.category,
+	);
+	if (dedupTarget) {
+		await applyStrengthenForMemory(ctx, dedupTarget.memory);
+		return { added: false, strengthened: true };
 	}
 	const validAt =
 		typeof op.valid_at === "string" && op.valid_at.length > 0
@@ -604,15 +598,16 @@ async function applyAddCurrent(
 		kind: "current",
 		category: op.category,
 		structuredFields: op.structured_fields,
+		keywords,
 		verificationStatus: undefined,
 		validAt,
 	});
-	if (factId && proposedEmbedding) {
+	if (factId) {
 		const inserted = await ctx.runtime.getMemoryById(factId);
 		if (inserted) {
 			ctx.insertedThisRun.push({
 				memory: inserted,
-				embedding: proposedEmbedding,
+				searchText: buildFactSearchText(inserted),
 			});
 			ctx.candidatesById.set(factId, inserted);
 		}
@@ -861,6 +856,9 @@ Rules:
 - If meaning already exists in known facts, emit strengthen with that factId.
 - If the message contradicts a known fact, emit contradict with that factId and reason.
 - Use only fact IDs shown below for strengthen, decay, and contradict.
+- For add_durable/add_current, emit keywords: 3-8 lowercase retrieval terms
+  from the claim, category, proper nouns, places, dates, projects, symptoms,
+  and preferences. Omit stopwords and generic words.
 
 Recent messages:
 ${formatRecentMessages(prepared.recentMessages)}
@@ -879,12 +877,10 @@ ${formatKnownLines(current.slice(0, MAX_KNOWN_PER_KIND), "current")}`;
 		{
 			name: "applyFactOps",
 			async process({ runtime, message, prepared, output }) {
-				const candidatePool: EmbeddedMemory[] = prepared.knownFacts.map(
+				const candidatePool: FactCandidate[] = prepared.knownFacts.map(
 					(memory) => ({
 						memory,
-						embedding: Array.isArray(memory.embedding)
-							? memory.embedding
-							: null,
+						searchText: buildFactSearchText(memory),
 					}),
 				);
 				const candidatesById = new Map<string, Memory>();

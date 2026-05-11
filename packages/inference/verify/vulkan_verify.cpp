@@ -201,6 +201,23 @@ static std::vector<uint8_t> load_spirv(const char * path) {
     return bytes;
 }
 
+static void hadamard128_inplace(std::vector<float> & x) {
+    if (x.size() != 128) {
+        std::fprintf(stderr, "hadamard128_inplace: expected 128 floats, got %zu\n", x.size());
+        std::exit(2);
+    }
+    for (size_t h = 1; h < x.size(); h <<= 1) {
+        for (size_t i = 0; i < x.size(); i += h << 1) {
+            for (size_t j = i; j < i + h; ++j) {
+                const float a = x[j];
+                const float b = x[j + h];
+                x[j]     = a + b;
+                x[j + h] = a - b;
+            }
+        }
+    }
+}
+
 // --- Push-constant structs. One per kernel family. Strong typing only — no
 // catch-all union — so a mismatch between fixture and shader is a compile
 // error in the harness, not a silent garbage push.
@@ -252,12 +269,14 @@ int main(int argc, char ** argv) {
     const char * spv_path = argv[1];
     const char * fx_path  = argv[2];
     float tol = argc >= 4 ? std::strtof(argv[3], nullptr) : 1e-3f;
+    const bool kernel_uses_preht = std::strstr(spv_path, "preht") != nullptr;
 
     Fixture fx = load_fixture(fx_path);
     std::printf("[vulkan_verify] kernel=%s\n", fx.kernel.c_str());
 
     // --- Resolve kernel-specific bind-set, push constants, dispatch shape ---
     KernelBindings kb{};
+    std::vector<float> polar_q_storage;
     if (fx.kernel == "turbo3" || fx.kernel == "turbo4" || fx.kernel == "turbo3_tcq") {
         // 3 buffers (q, k_blocks, scores) + optional codebook for turbo3_tcq.
         kb.inputs.push_back({ fx.q.data(),         fx.q.size() * sizeof(float) });
@@ -303,8 +322,15 @@ int main(int argc, char ** argv) {
             std::fprintf(stderr, "polar: head_dim must be 128 (got %d)\n", fx.head_dim);
             return 1;
         }
+        const float * q_data = fx.q.data();
+        if (kernel_uses_preht) {
+            polar_q_storage = fx.q;
+            hadamard128_inplace(polar_q_storage);
+            q_data = polar_q_storage.data();
+            std::printf("[vulkan_verify] polar pre-Hadamard query enabled by SPIR-V path\n");
+        }
         kb.inputs.push_back({ fx.k_blocks.data(), fx.k_blocks.size() });
-        kb.inputs.push_back({ fx.q.data(),         fx.q.size() * sizeof(float) });
+        kb.inputs.push_back({ q_data,              fx.q.size() * sizeof(float) });
         kb.output_bytes = (size_t)fx.n_rows * sizeof(float);
         kb.n_outputs    = (uint32_t)fx.n_rows;
         kb.dispatch_x   = (uint32_t)fx.n_rows;

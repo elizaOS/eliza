@@ -2,7 +2,7 @@
 //
 // What this module does:
 //
-//   1. Copies the eight verified standalone .comp shaders from
+//   1. Copies the nine verified standalone .comp shaders from
 //      packages/inference/vulkan/ into the fork at
 //      ggml/src/ggml-vulkan/vulkan-shaders/<name>.comp. The fork's CMakeLists
 //      uses `file(GLOB CONFIGURE_DEPENDS ${input_dir}/*.comp)` to discover
@@ -14,10 +14,10 @@
 //
 //   2. Applies the two unified-anchor staging patches under
 //      vulkan-dispatch-patches/:
-//        - 01-vulkan-shaders-gen.patch — adds 8 string_to_spv() registrations
+//        - 01-vulkan-shaders-gen.patch — adds 9 string_to_spv() registrations
 //          at the bottom of process_shaders().
-//        - 02-ggml-vulkan-pipelines.patch — extends vk_device_struct with 8
-//          pipeline slots and adds 8 ggml_vk_create_pipeline() calls at the
+//        - 02-ggml-vulkan-pipelines.patch — extends vk_device_struct with 9
+//          pipeline slots and adds 9 ggml_vk_create_pipeline() calls at the
 //          bottom of ggml_vk_load_shaders(). End result: each milady SPV blob
 //          is referenced at link time and `nm libggml-vulkan.so | grep
 //          milady_` shows the new symbols.
@@ -74,6 +74,7 @@ export const VULKAN_KERNEL_FILES = [
   "qjl_get_rows.comp",
   "qjl_mul_mv.comp",
   "polar.comp",
+  "polar_preht.comp",
   "polar_get_rows.comp",
 ];
 
@@ -125,7 +126,7 @@ function assertStandalonesPresent() {
 
 function copyStandalonesIntoFork(cacheDir, { dryRun }) {
   // vulkan-shaders/ is the directory the upstream CMakeLists uses for
-  // file(GLOB CONFIGURE_DEPENDS *.comp) — dropping our 8 files there causes
+  // file(GLOB CONFIGURE_DEPENDS *.comp) — dropping our files there causes
   // glslc to compile them automatically as part of the existing per-shader
   // add_custom_command pipeline. The string_to_spv() registration patch
   // (01-vulkan-shaders-gen.patch) wires the resulting .spv bytes into

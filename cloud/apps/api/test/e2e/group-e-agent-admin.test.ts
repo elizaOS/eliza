@@ -294,6 +294,14 @@ describe("Group E: advertising / accounts", () => {
     );
     expect(res.status).toBe(400);
   });
+
+  test("GET /api/v1/advertising/accounts/:id/media rejects missing status query", async () => {
+    if (!shouldRun()) return;
+    const res = await api.get(`/api/v1/advertising/accounts/${FAKE_UUID}/media`, {
+      headers: bearerHeaders(),
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("Group E: advertising / campaigns", () => {

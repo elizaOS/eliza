@@ -1,6 +1,6 @@
 {
   "schemaVersion": "registry-v2",
-  "lastUpdatedAt": "2026-05-11T13:38:36.367Z",
+  "lastUpdatedAt": "2026-05-11T13:58:00.202Z",
   "generatedFrom": {
     "builtinRepo": "github:elizaos/eliza",
     "builtinBranch": "main",
@@ -8,12 +8,12 @@
     "thirdPartyDirectory": "entries/third-party"
   },
   "counts": {
-    "total": 103,
-    "builtin": 103,
+    "total": 104,
+    "builtin": 104,
     "thirdParty": 0,
     "app": 23,
     "connector": 17,
-    "plugin": 63
+    "plugin": 64
   },
   "registry": {
     "@elizaos/app-2004scape": {
@@ -4216,6 +4216,60 @@
         "gaming",
         "built-in",
         "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-mlx": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-mlx",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.1",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-mlx",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.1",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "2.0.0-beta.1"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Mlx",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-mlx#readme",
+      "topics": [
+        "text-large",
+        "text-small",
+        "embedding",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
       ],
       "stargazers_count": 0,
       "language": "TypeScript"

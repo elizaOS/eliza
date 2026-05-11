@@ -950,7 +950,9 @@ function hasBrowserToolStage(item) {
     if (!args || typeof args !== "object") return false;
     return (
       String(args.page ?? "").toLowerCase() === "browser" ||
-      String(args.action ?? "").toUpperCase().startsWith("BROWSER")
+      String(args.action ?? "")
+        .toUpperCase()
+        .startsWith("BROWSER")
     );
   });
 }

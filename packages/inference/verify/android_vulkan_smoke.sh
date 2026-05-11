@@ -150,7 +150,7 @@ echo "[android-vulkan-smoke] compiling verifier for arm64-v8a API ${ANDROID_API}
   -static-libstdc++ -lvulkan -lm -o "$OUT_DIR/vulkan_verify"
 
 echo "[android-vulkan-smoke] compiling SPIR-V with $GLSLC"
-for shader in turbo3 turbo4 turbo3_tcq qjl polar; do
+for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht; do
   "$GLSLC" --target-env=vulkan1.1 --target-spv=spv1.3 \
     -fshader-stage=compute "../vulkan/${shader}.comp" -o "$OUT_DIR/spv/${shader}.spv"
 done
@@ -211,6 +211,8 @@ run_remote turbo3_tcq turbo3_tcq
 run_remote qjl qjl
 run_remote polar polar
 run_remote polar polar_qjl
+run_remote polar_preht polar
+run_remote polar_preht polar_qjl
 
 echo "[android-vulkan-smoke] standalone Vulkan fixtures passed on Android device."
 

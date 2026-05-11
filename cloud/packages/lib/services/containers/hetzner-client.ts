@@ -25,8 +25,8 @@
  *   has a single error type to map to HTTP status codes.
  */
 
-import { and, eq, sql } from "drizzle-orm";
 import * as crypto from "crypto";
+import { and, eq, sql } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
 import { dbRead, dbWrite } from "@/db/client";
@@ -173,6 +173,25 @@ export interface ContainerBootstrapSource {
     totalBytes?: number;
     ignoredPaths?: string[];
   };
+  metadata?: Record<string, unknown>;
+}
+
+export type ContainerWorkspaceSyncDirection = "pull" | "push" | "roundtrip";
+
+export interface ContainerWorkspaceSyncRequest {
+  direction?: ContainerWorkspaceSyncDirection;
+  changedFiles?: ContainerBootstrapFile[];
+  deletedFiles?: Array<{ path: string; sha256?: string }>;
+  patches?: Array<{ path: string; format: string; patch: string }>;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ContainerWorkspaceSyncResult {
+  status: "applied" | "ready";
+  direction: ContainerWorkspaceSyncDirection;
+  changedFiles: ContainerBootstrapFile[];
+  deletedFiles: Array<{ path: string; sha256?: string }>;
+  patches: Array<{ path: string; format: string; patch: string }>;
   metadata?: Record<string, unknown>;
 }
 
@@ -360,12 +379,7 @@ function validateContainerMountPath(value: string | undefined): string {
 
 function normalizeBootstrapPath(value: string): string {
   const trimmed = value.trim();
-  if (
-    !trimmed ||
-    trimmed.startsWith("/") ||
-    trimmed.includes("\\") ||
-    trimmed.includes("\0")
-  ) {
+  if (!trimmed || trimmed.startsWith("/") || trimmed.includes("\\") || trimmed.includes("\0")) {
     throw new HetznerClientError(
       "invalid_input",
       `Invalid bootstrap file path: ${JSON.stringify(value)}`,
@@ -392,10 +406,7 @@ function decodeBootstrapFile(file: ContainerBootstrapFile): Buffer {
       ? Buffer.from(file.contents, "base64")
       : Buffer.from(file.contents, "utf8");
   if (typeof file.size === "number" && file.size !== bytes.byteLength) {
-    throw new HetznerClientError(
-      "invalid_input",
-      `Bootstrap file size mismatch for ${file.path}`,
-    );
+    throw new HetznerClientError("invalid_input", `Bootstrap file size mismatch for ${file.path}`);
   }
   if (file.sha256) {
     const actual = crypto.createHash("sha256").update(bytes).digest("hex");
@@ -417,7 +428,11 @@ function normalizeBootstrapMode(mode: string | undefined): string | null {
   return match?.[1] ?? null;
 }
 
-function bootstrapManifest(source: ContainerBootstrapSource, fileCount: number, totalBytes: number) {
+function bootstrapManifest(
+  source: ContainerBootstrapSource,
+  fileCount: number,
+  totalBytes: number,
+) {
   return {
     sourceKind: source.sourceKind ?? null,
     projectId: source.projectId ?? null,
@@ -464,13 +479,7 @@ async function hydrateBootstrapSource(
     60_000,
   );
 
-  for (const item of decoded) {
-    const target = path.posix.join(volumePath, item.relativePath);
-    await ssh.exec(`mkdir -p ${shellQuote(path.posix.dirname(target))}`, 30_000);
-    await ssh.execStdin(`cat > ${shellQuote(target)}`, item.bytes, 60_000);
-    const mode = normalizeBootstrapMode(item.file.mode);
-    if (mode) await ssh.exec(`chmod ${mode} ${shellQuote(target)}`, 30_000);
-  }
+  await writeDecodedWorkspaceFiles(ssh, volumePath, decoded);
 
   const manifestPath = path.posix.join(volumePath, ".eliza-coding", "source.json");
   await ssh.exec(`mkdir -p ${shellQuote(path.posix.dirname(manifestPath))}`, 30_000);
@@ -481,6 +490,104 @@ async function hydrateBootstrapSource(
   );
 
   return { fileCount: decoded.length, totalBytes };
+}
+
+async function writeDecodedWorkspaceFiles(
+  ssh: DockerSSHClient,
+  volumePath: string,
+  decoded: Array<{ file: ContainerBootstrapFile; relativePath: string; bytes: Buffer }>,
+): Promise<void> {
+  for (const item of decoded) {
+    const target = path.posix.join(volumePath, item.relativePath);
+    await ssh.exec(`mkdir -p ${shellQuote(path.posix.dirname(target))}`, 30_000);
+    await ssh.execStdin(`cat > ${shellQuote(target)}`, item.bytes, 60_000);
+    const mode = normalizeBootstrapMode(item.file.mode);
+    if (mode) await ssh.exec(`chmod ${mode} ${shellQuote(target)}`, 30_000);
+  }
+}
+
+function decodeWorkspaceFiles(files: ContainerBootstrapFile[]): Array<{
+  file: ContainerBootstrapFile;
+  relativePath: string;
+  bytes: Buffer;
+}> {
+  if (files.length > MAX_BOOTSTRAP_FILES) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Workspace sync has too many files: ${files.length}/${MAX_BOOTSTRAP_FILES}`,
+    );
+  }
+  const decoded = files.map((file) => ({
+    file,
+    relativePath: normalizeBootstrapPath(file.path),
+    bytes: decodeBootstrapFile(file),
+  }));
+  const totalBytes = decoded.reduce((sum, file) => sum + file.bytes.byteLength, 0);
+  if (totalBytes > MAX_BOOTSTRAP_BYTES) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Workspace sync is too large: ${totalBytes}/${MAX_BOOTSTRAP_BYTES} bytes`,
+    );
+  }
+  return decoded;
+}
+
+async function deleteWorkspaceFiles(
+  ssh: DockerSSHClient,
+  volumePath: string,
+  files: Array<{ path: string; sha256?: string }>,
+): Promise<void> {
+  for (const file of files) {
+    const target = path.posix.join(volumePath, normalizeBootstrapPath(file.path));
+    await ssh.exec(`rm -f -- ${shellQuote(target)}`, 30_000);
+  }
+}
+
+function parseWorkspaceExport(output: string): ContainerBootstrapFile[] {
+  const files: ContainerBootstrapFile[] = [];
+  for (const line of output.split("\n")) {
+    if (!line.trim()) continue;
+    const [pathBase64, sizeRaw, sha256, contents] = line.split("\t");
+    if (!pathBase64 || !sizeRaw || !sha256 || contents === undefined) {
+      throw new HetznerClientError("container_create_failed", "Malformed workspace export output");
+    }
+    const relativePath = Buffer.from(pathBase64, "base64").toString("utf8");
+    normalizeBootstrapPath(relativePath);
+    const size = Number(sizeRaw);
+    files.push({
+      path: relativePath,
+      contents,
+      encoding: "base64",
+      ...(Number.isFinite(size) ? { size } : {}),
+      sha256,
+    });
+  }
+  if (files.length > MAX_BOOTSTRAP_FILES) {
+    throw new HetznerClientError(
+      "invalid_input",
+      `Workspace export has too many files: ${files.length}/${MAX_BOOTSTRAP_FILES}`,
+    );
+  }
+  return files;
+}
+
+async function exportWorkspaceFiles(
+  ssh: DockerSSHClient,
+  volumePath: string,
+): Promise<ContainerBootstrapFile[]> {
+  const script = `
+set -e
+cd ${shellQuote(volumePath)}
+find . -type f ! -path './.eliza-coding/*' -size -10485760c -print | sort | while IFS= read -r f; do
+  rel=\${f#./}
+  path_b64=$(printf '%s' "$rel" | base64 | tr -d '\\n')
+  size=$(wc -c < "$f" | tr -d '[:space:]')
+  sha=$(sha256sum "$f" | awk '{print $1}')
+  body=$(base64 "$f" | tr -d '\\n')
+  printf '%s\\t%s\\t%s\\t%s\\n' "$path_b64" "$size" "$sha" "$body"
+done
+`;
+  return parseWorkspaceExport(await ssh.exec(script, 120_000));
 }
 
 /**

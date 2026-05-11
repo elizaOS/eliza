@@ -150,6 +150,40 @@ describe("runParentAgentBroker", () => {
     );
   });
 
+  it("forwards Cloud command query parameters", async () => {
+    vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "test-key");
+    vi.stubEnv("ELIZA_CLOUD_BASE_URL", "https://cloud.test");
+    const fetchMock = vi.fn(async () => {
+      return new Response(JSON.stringify({ ready: true, status: "AVAILABLE" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await runParentAgentBroker({
+      runtime: createRuntime(),
+      sessionId: "session-1",
+      args: {
+        mode: "cloud-command",
+        command: "advertising.accounts.media.status",
+        params: {
+          id: "account-1",
+          query: { providerAssetResourceName: "customers/123/youTubeVideoUploads/abc" },
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.pathname).toBe("/api/v1/advertising/accounts/account-1/media");
+    expect(url.searchParams.get("providerAssetResourceName")).toBe(
+      "customers/123/youTubeVideoUploads/abc",
+    );
+    expect(init.method).toBe("GET");
+    expect(init.body).toBeUndefined();
+  });
+
   it("requires explicit confirmation before paid Cloud commands", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

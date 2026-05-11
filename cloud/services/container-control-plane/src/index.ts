@@ -205,11 +205,7 @@ function readBootstrapSource(body: Record<string, unknown>): ContainerBootstrapS
           `bootstrap_source.files.${index}.contents is required`,
         );
       }
-      if (
-        file.encoding !== undefined &&
-        file.encoding !== "base64" &&
-        file.encoding !== "utf-8"
-      ) {
+      if (file.encoding !== undefined && file.encoding !== "base64" && file.encoding !== "utf-8") {
         throw new HetznerClientError(
           "invalid_input",
           `bootstrap_source.files.${index}.encoding must be utf-8 or base64`,

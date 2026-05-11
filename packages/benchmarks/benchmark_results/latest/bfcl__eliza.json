@@ -6,20 +6,20 @@
   "benchmark_directory": "bfcl",
   "benchmark_id": "bfcl",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 0,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "ast_accuracy": 1.0,
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 0,
+      "cache_hit_ratio": 0.0
     },
     "exec_accuracy": 0,
     "overall_score": 1.0,
@@ -32,19 +32,19 @@
     "relevance_accuracy": 1.0,
     "return_code": 0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
       "llm_call_count": 1,
       "prompt_tokens": 0,
-      "total_tokens": 0
+      "completion_tokens": 0,
+      "total_tokens": 0,
+      "avg_prompt_tokens": 0.0,
+      "avg_completion_tokens": 0.0
     },
     "total_tests": 1,
     "trajectory_summary": {
-      "files": 1,
+      "files": 2,
+      "turns": 1,
       "prompt_chars": 0,
-      "repeated_prefixes": [],
-      "turns": 1
+      "repeated_prefixes": []
     }
   },
   "model": "gpt-oss-120b",
@@ -61,19 +61,19 @@
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
     "llm_call_count": 1,
     "prompt_tokens": 0,
-    "total_tokens": 0
+    "completion_tokens": 0,
+    "total_tokens": 0,
+    "avg_prompt_tokens": 0.0,
+    "avg_completion_tokens": 0.0
   },
   "trajectory_summary": {
-    "files": 1,
+    "files": 2,
+    "turns": 1,
     "prompt_chars": 0,
-    "repeated_prefixes": [],
-    "turns": 1
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:33:21.217294+00:00"
+  "updated_at": "2026-05-11T14:00:13.620339+00:00"
 }

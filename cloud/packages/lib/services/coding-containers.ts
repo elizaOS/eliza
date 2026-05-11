@@ -88,7 +88,7 @@ function randomId(prefix: string): string {
 function sourceSlug(request: RequestCodingAgentContainerRequest): string {
   const source = request.source;
   return slugify(
-    request.promotionId ?? source?.projectId ?? source?.workspaceId ?? source?.snapshotId,
+    source?.projectId ?? source?.workspaceId ?? source?.snapshotId ?? request.promotionId,
     "workspace",
   );
 }
@@ -99,9 +99,7 @@ export function resolveCodingWorkspacePath(
 ): string {
   const fallback = `/workspace/${sourceSlug(request) || slugify(fallbackId, "workspace")}`;
   return normalizeContainerPath(
-    trimOptional(request.workspacePath) ??
-      trimOptional(request.source?.rootPath) ??
-      fallback,
+    trimOptional(request.workspacePath) ?? trimOptional(request.source?.rootPath) ?? fallback,
     fallback,
   );
 }
@@ -113,7 +111,12 @@ function normalizeContainerPath(value: string, fallback: string): string {
     .replace(/\/+/g, "/")
     .replace(/\/\.(?=\/|$)/g, "")
     .replace(/\/$/, "");
-  if (!normalized || normalized === "/" || normalized.includes("/../") || normalized.endsWith("/..")) {
+  if (
+    !normalized ||
+    normalized === "/" ||
+    normalized.includes("/../") ||
+    normalized.endsWith("/..")
+  ) {
     return fallback;
   }
   return normalized;
@@ -141,11 +144,16 @@ export function buildCodingContainerCreatePayload(
 
   if (promotionId) environmentVars.ELIZA_CODING_PROMOTION_ID = promotionId;
   if (prompt) environmentVars.ELIZA_CODING_PROMPT = prompt;
-  if (request.source?.sourceKind) environmentVars.ELIZA_CODING_SOURCE_KIND = request.source.sourceKind;
-  if (request.source?.projectId) environmentVars.ELIZA_CODING_SOURCE_PROJECT_ID = request.source.projectId;
-  if (request.source?.workspaceId) environmentVars.ELIZA_CODING_SOURCE_WORKSPACE_ID = request.source.workspaceId;
-  if (request.source?.snapshotId) environmentVars.ELIZA_CODING_SOURCE_SNAPSHOT_ID = request.source.snapshotId;
-  if (request.source?.revision) environmentVars.ELIZA_CODING_SOURCE_REVISION = request.source.revision;
+  if (request.source?.sourceKind)
+    environmentVars.ELIZA_CODING_SOURCE_KIND = request.source.sourceKind;
+  if (request.source?.projectId)
+    environmentVars.ELIZA_CODING_SOURCE_PROJECT_ID = request.source.projectId;
+  if (request.source?.workspaceId)
+    environmentVars.ELIZA_CODING_SOURCE_WORKSPACE_ID = request.source.workspaceId;
+  if (request.source?.snapshotId)
+    environmentVars.ELIZA_CODING_SOURCE_SNAPSHOT_ID = request.source.snapshotId;
+  if (request.source?.revision)
+    environmentVars.ELIZA_CODING_SOURCE_REVISION = request.source.revision;
 
   return {
     name: slugify(request.container?.name, `coding-${request.agent}`),

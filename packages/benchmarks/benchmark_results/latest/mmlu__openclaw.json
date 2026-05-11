@@ -6,20 +6,20 @@
   "benchmark_directory": "standard",
   "benchmark_id": "mmlu",
   "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 1
+    "cache_creation_input_tokens": 0,
+    "turns_with_cached_field": 1,
+    "cache_hit_ratio": 0.0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "accuracy": 0,
     "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 1
+      "cache_creation_input_tokens": 0,
+      "turns_with_cached_field": 1,
+      "cache_hit_ratio": 0.0
     },
     "correct": 0,
     "n": 1.0,
@@ -27,23 +27,23 @@
       "duration_seconds": 6.482005708006909,
       "mean_latency_ms": 1179.219290992478,
       "p95_latency_ms": 1179.219290992478,
-      "throughput_per_second": 0.15427323656391542
+      "throughput_per_second": 0.30854647312783084
     },
     "return_code": 0,
     "score": 0,
     "token_metrics": {
-      "avg_completion_tokens": 16.0,
-      "avg_prompt_tokens": 217.0,
-      "completion_tokens": 16,
-      "llm_call_count": 1,
+      "llm_call_count": 2,
       "prompt_tokens": 217,
-      "total_tokens": 233
+      "completion_tokens": 16,
+      "total_tokens": 233,
+      "avg_prompt_tokens": 108.5,
+      "avg_completion_tokens": 8.0
     },
     "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 318,
-      "repeated_prefixes": [],
-      "turns": 1
+      "files": 2,
+      "turns": 2,
+      "prompt_chars": 401,
+      "repeated_prefixes": []
     }
   },
   "model": "gpt-oss-120b",
@@ -51,7 +51,7 @@
     "duration_seconds": 6.482005708006909,
     "mean_latency_ms": 1179.219290992478,
     "p95_latency_ms": 1179.219290992478,
-    "throughput_per_second": 0.15427323656391542
+    "throughput_per_second": 0.30854647312783084
   },
   "provider": "cerebras",
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output/mmlu-results.json",
@@ -60,19 +60,19 @@
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 16.0,
-    "avg_prompt_tokens": 217.0,
-    "completion_tokens": 16,
-    "llm_call_count": 1,
+    "llm_call_count": 2,
     "prompt_tokens": 217,
-    "total_tokens": 233
+    "completion_tokens": 16,
+    "total_tokens": 233,
+    "avg_prompt_tokens": 108.5,
+    "avg_completion_tokens": 8.0
   },
   "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 318,
-    "repeated_prefixes": [],
-    "turns": 1
+    "files": 2,
+    "turns": 2,
+    "prompt_chars": 401,
+    "repeated_prefixes": []
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T13:23:53.287333+00:00"
+  "updated_at": "2026-05-11T14:00:15.433432+00:00"
 }

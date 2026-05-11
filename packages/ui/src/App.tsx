@@ -63,6 +63,10 @@ import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
 import {
+  FOCUS_CONNECTOR_EVENT,
+  type FocusConnectorEventDetail,
+} from "./events";
+import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,
   isAppsToolTab,
@@ -826,6 +830,19 @@ export function App() {
     },
     [setTab],
   );
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const handleFocusConnector = (event: Event) => {
+      const detail = (event as CustomEvent<FocusConnectorEventDetail>).detail;
+      if (!detail?.connectorId) return;
+      setSettingsInitialSection("connectors");
+      setTab("settings");
+    };
+    document.addEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+    return () =>
+      document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
+  }, [setTab]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

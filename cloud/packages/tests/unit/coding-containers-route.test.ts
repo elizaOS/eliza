@@ -112,6 +112,20 @@ describe("coding-containers route", () => {
           agent: "opencode",
           promotionId: "promo-1",
           prompt: "Fix tests",
+          source: {
+            sourceKind: "project",
+            projectId: "mobile-project",
+            snapshotId: "snapshot-1",
+            files: [
+              {
+                path: "src/index.ts",
+                contents: "export const answer = 42;\n",
+                encoding: "utf-8",
+                size: 26,
+              },
+            ],
+            manifest: { fileCount: 1, totalBytes: 26 },
+          },
           container: {
             name: "Mobile Worktree",
             image: "ghcr.io/elizaos/eliza-coding:latest",
@@ -139,11 +153,29 @@ describe("coding-containers route", () => {
       image: "ghcr.io/elizaos/eliza-coding:latest",
       persist_volume: true,
       use_hetzner_volume: true,
+      volume_mount_path: "/workspace/mobile-project",
+      bootstrap_source: {
+        sourceKind: "project",
+        projectId: "mobile-project",
+        snapshotId: "snapshot-1",
+        files: [
+          {
+            path: "src/index.ts",
+            contents: "export const answer = 42;\n",
+            encoding: "utf-8",
+            size: 26,
+          },
+        ],
+      },
       environment_vars: {
         USER_FLAG: "1",
         ELIZA_CODING_AGENT: "opencode",
         ELIZA_CLOUD_CODING_AGENT: "opencode",
         ELIZA_CODING_PROMOTION_ID: "promo-1",
+        ELIZA_CODING_SOURCE_KIND: "project",
+        ELIZA_CODING_SOURCE_PROJECT_ID: "mobile-project",
+        ELIZA_CODING_SOURCE_SNAPSHOT_ID: "snapshot-1",
+        ELIZA_CODING_WORKSPACE: "/workspace/mobile-project",
       },
     });
 
@@ -154,7 +186,13 @@ describe("coding-containers route", () => {
         status: "pending",
         agent: "opencode",
         promotionId: "promo-1",
+        workspacePath: "/workspace/mobile-project",
         url: "https://container-1.example.test",
+        metadata: {
+          sourceFileCount: 1,
+          sourceTotalBytes: 26,
+          volumeMountPath: "/workspace/mobile-project",
+        },
       },
     });
   });

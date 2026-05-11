@@ -67,6 +67,7 @@
   "@elizaos/plugin-matrix": "github:elizaos/eliza",
   "@elizaos/plugin-mcp": "github:elizaos/eliza",
   "@elizaos/plugin-minecraft": "github:elizaos/eliza",
+  "@elizaos/plugin-mlx": "github:elizaos/eliza",
   "@elizaos/plugin-music": "github:elizaos/eliza",
   "@elizaos/plugin-mysticism": "github:elizaos/eliza",
   "@elizaos/plugin-ngrok": "github:elizaos/eliza",

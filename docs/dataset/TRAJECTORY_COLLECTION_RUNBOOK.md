@@ -59,6 +59,14 @@ Opus default configured elsewhere. Opus labels can be prepared in a dry-run
 manifest, but `--execute` runs with an active or judge model containing `opus`
 are blocked before any suite starts.
 
+The older action-trajectory harness under
+`packages/training/scripts/harness/` is also provider/model configurable. Run
+it as a module and pass `--model`, `--api-url`, `--api-key-env`, and
+`--provider-label`, or set `MILADY_HARNESS_MODEL`,
+`MILADY_HARNESS_API_URL`, `MILADY_HARNESS_API_KEY_ENV`, and
+`MILADY_HARNESS_PROVIDER`. Its default remains the development Groq-compatible
+endpoint only as a fallback.
+
 ## Dry-Run
 
 ```bash

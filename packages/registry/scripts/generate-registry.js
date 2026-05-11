@@ -95,6 +95,22 @@ function uniqueStrings(values) {
   return result;
 }
 
+function npmLatestVersion(packageName) {
+  if (process.env.ELIZA_REGISTRY_SKIP_NPM_LOOKUP === "1") {
+    return null;
+  }
+  try {
+    const output = execFileSync("npm", ["view", packageName, "version"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 8000,
+    }).trim();
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
 function titleFromPackageName(packageName) {
   const shortName = packageName
     .replace(/^@[^/]+\//, "")
@@ -502,7 +518,7 @@ function normalizeThirdPartyMeta(filePath) {
     repo,
     directory: meta.directory || null,
     kind,
-    version: meta.version || null,
+    version: npmLatestVersion(packageName) || meta.version || null,
     branch: meta.branch || "main",
     coreRange: meta.coreRange || null,
     description: meta.description || "",

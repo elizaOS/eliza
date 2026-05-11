@@ -3,11 +3,16 @@ import type {
 	MessageHandlerExtractedRelationship,
 } from "../types/components";
 import type { Relationship } from "../types/environment";
-import type { Memory } from "../types/memory";
+import { type Memory, MemoryType } from "../types/memory";
 import type { ChatMessage, JSONSchema, ToolDefinition } from "../types/model";
 import { ModelType } from "../types/model";
+import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import {
+	buildFactKeywordsForStorage,
+	scoreFactKeywordRelevance,
+} from "../features/advanced-capabilities/fact-keywords.ts";
 import { parseJsonObject } from "./json-output";
 import { buildCanonicalSystemPrompt } from "./system-prompt";
 
@@ -17,8 +22,8 @@ import { buildCanonicalSystemPrompt } from "./system-prompt";
  * message. It does NOT block the user reply: planner + facts run concurrently.
  *
  * Responsibilities:
- *   1. Vector-search the `facts` table for memories similar to each candidate
- *      so the model can see what's already known.
+ *   1. Keyword/BM25-search the `facts` table for memories similar to each
+ *      candidate so the model can see what's already known.
  *   2. Pull existing relationships for the user/agent so duplicates can be
  *      filtered.
  *   3. Surface room entities so the model can ground subject/object names.
@@ -77,7 +82,10 @@ export const factsAndRelationshipsInstructions = `task: Validate candidate facts
 rules:
 - drop any candidate that is a paraphrase or trivial restatement of an existing fact or relationship
 - drop candidates that are speculative, agent-generated, or not stated by the user
+- drop credentials, API keys, passwords, raw tokens, and other secrets; never persist their values
+- drop synthetic summaries, compaction artifacts, generic chat filler, and one-off task requests
 - normalize entity names to match the names already used in existing relationships or room entities when possible (do not invent new aliases)
+- when an entity UUID is shown in room_entities, prefer that UUID for relationship subject/object; otherwise use the canonical display name
 - relationships use snake_case predicates ("works_with", "lives_in", "manages")
 - if every candidate is a duplicate, return empty arrays
 - thought is a one-line internal note about the dedup decision`;
@@ -108,11 +116,30 @@ export async function runFactsAndRelationshipsStage(
 	args: FactsAndRelationshipsRunArgs,
 ): Promise<FactsAndRelationshipsRunResult> {
 	const { runtime, message, extract } = args;
-	const candidateFacts = extract.facts ?? [];
-	const candidateRelationships = extract.relationships ?? [];
+	if (isSyntheticMemory(message)) {
+		return {
+			parsed: {
+				facts: [],
+				relationships: [],
+				thought: "synthetic message skipped",
+			},
+			messages: [],
+			tools: [],
+			written: { facts: 0, relationships: 0 },
+		};
+	}
+
+	const candidateFacts = filterCandidateFacts(runtime, extract.facts ?? []);
+	const candidateRelationships = filterCandidateRelationships(
+		extract.relationships ?? [],
+	);
 	if (candidateFacts.length === 0 && candidateRelationships.length === 0) {
 		return {
-			parsed: { facts: [], relationships: [], thought: "no candidates" },
+			parsed: {
+				facts: [],
+				relationships: [],
+				thought: "no candidates after filtering",
+			},
 			messages: [],
 			tools: [],
 			written: { facts: 0, relationships: 0 },
@@ -128,7 +155,11 @@ export async function runFactsAndRelationshipsStage(
 	const messages = buildFactsStageMessages({
 		runtime,
 		message,
-		extract,
+		extract: {
+			...extract,
+			facts: candidateFacts,
+			relationships: candidateRelationships,
+		},
 		similarFacts,
 		existingRelationships,
 		priorDialogue: args.priorDialogue ?? [],
@@ -145,6 +176,7 @@ export async function runFactsAndRelationshipsStage(
 	const written = await persistFactsAndRelationships({
 		runtime,
 		message,
+		state: args.state,
 		parsed,
 	});
 
@@ -172,6 +204,7 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 	const userBlocks: string[] = [];
 
 	const dialogueLines = args.priorDialogue
+		.filter((memory) => !isSyntheticMemory(memory))
 		.map((memory) => {
 			const role = memory.entityId === args.runtime.agentId ? "agent" : "user";
 			const text =
@@ -213,7 +246,9 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 		}
 	}
 
-	const roomEntities = readRoomEntities(args.state);
+	const roomEntities = readRoomEntityRefs(args.state).map((entity) =>
+		formatRoomEntityRef(entity),
+	);
 	if (roomEntities.length > 0) {
 		userBlocks.push(`room_entities:\n${roomEntities.join("\n")}`);
 	}
@@ -235,7 +270,12 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 	];
 }
 
-function readRoomEntities(state: State): string[] {
+type RoomEntityRef = {
+	id?: UUID;
+	names: string[];
+};
+
+function readRoomEntityRefs(state: State): RoomEntityRef[] {
 	const providers = state.data?.providers;
 	if (!providers || typeof providers !== "object") return [];
 	const entitiesEntry = (providers as Record<string, unknown>).ENTITIES;
@@ -245,17 +285,22 @@ function readRoomEntities(state: State): string[] {
 	const entities = (data as { entities?: unknown }).entities;
 	if (!Array.isArray(entities)) return [];
 	return entities
-		.map((entity) => {
-			if (!entity || typeof entity !== "object") return "";
-			const e = entity as { names?: unknown };
-			if (Array.isArray(e.names) && e.names.length > 0) {
-				const name = e.names.find((n) => typeof n === "string");
-				return typeof name === "string" ? name : "";
-			}
-			return "";
+		.map((entity): RoomEntityRef | null => {
+			if (!entity || typeof entity !== "object") return null;
+			const e = entity as { id?: unknown; names?: unknown };
+			const names = Array.isArray(e.names)
+				? e.names.filter((name): name is string => typeof name === "string")
+				: [];
+			const id = typeof e.id === "string" ? asUuidOrNull(e.id) : null;
+			if (!id && names.length === 0) return null;
+			return { ...(id ? { id } : {}), names };
 		})
-		.filter((name): name is string => name.length > 0)
-		.map((name) => `- ${name}`);
+		.filter((entity): entity is RoomEntityRef => entity !== null);
+}
+
+function formatRoomEntityRef(entity: RoomEntityRef): string {
+	const names = entity.names.join(", ") || "(unnamed)";
+	return entity.id ? `- ${names} (id: ${entity.id})` : `- ${names}`;
 }
 
 function formatRelationshipForPrompt(relationship: Relationship): string {
@@ -274,30 +319,21 @@ async function searchSimilarFacts(
 	candidateFacts: readonly string[],
 ): Promise<Memory[]> {
 	if (candidateFacts.length === 0) return [];
-	if (typeof runtime.searchMemories !== "function") return [];
-
-	const seed = candidateFacts.join("\n");
-	let embedding: number[] | undefined;
-	try {
-		const result = (await runtime.useModel(ModelType.TEXT_EMBEDDING, {
-			text: seed,
-		})) as unknown;
-		if (Array.isArray(result)) {
-			embedding = result as number[];
-		}
-	} catch {
-		return [];
-	}
-	if (!embedding) return [];
+	if (typeof runtime.getMemories !== "function") return [];
 
 	try {
-		const results = await runtime.searchMemories({
+		const results = await runtime.getMemories({
 			tableName: "facts",
-			embedding,
 			roomId: message.roomId,
-			limit: 8,
+			count: 80,
+			unique: false,
 		});
-		return Array.isArray(results) ? results : [];
+		if (!Array.isArray(results)) return [];
+		return scoreFactKeywordRelevance(candidateFacts.join("\n"), results)
+			.filter((entry) => entry.relevance > 0)
+			.sort((left, right) => right.relevance - left.relevance)
+			.slice(0, 8)
+			.map((entry) => entry.memory);
 	} catch {
 		return [];
 	}
@@ -387,6 +423,7 @@ function extractText(raw: unknown): string {
 interface PersistArgs {
 	runtime: IAgentRuntime;
 	message: Memory;
+	state: State;
 	parsed: FactsAndRelationshipsResult;
 }
 
@@ -394,18 +431,30 @@ async function persistFactsAndRelationships(
 	args: PersistArgs,
 ): Promise<{ facts: number; relationships: number }> {
 	const { runtime, message, parsed } = args;
+	const roomEntities = readRoomEntityRefs(args.state);
 	let factsWritten = 0;
 	let relationshipsWritten = 0;
 
 	if (parsed.facts.length > 0 && typeof runtime.createMemory === "function") {
 		for (const factText of parsed.facts) {
+			const sanitized = sanitizePersistedFact(runtime, factText);
+			if (!sanitized) continue;
+			const keywords = buildFactKeywordsForStorage(sanitized);
 			try {
 				await runtime.createMemory(
 					{
 						entityId: message.entityId,
 						agentId: runtime.agentId,
 						roomId: message.roomId,
-						content: { text: factText, type: "fact" },
+						content: { text: sanitized, type: "fact" },
+						metadata: {
+							type: MemoryType.CUSTOM,
+							source: "facts_and_relationships_stage",
+							messageId: message.id,
+							tags: ["fact", "extracted", "stage1"],
+							keywords,
+							extractedAt: Date.now(),
+						},
 					} as Memory,
 					"facts",
 					true,
@@ -422,6 +471,10 @@ async function persistFactsAndRelationships(
 		typeof runtime.createMemory === "function"
 	) {
 		for (const rel of parsed.relationships) {
+			const normalized = normalizeRelationshipForPersistence(rel);
+			if (!normalized) continue;
+			const sourceEntityId = resolveRoomEntityId(normalized.subject, roomEntities);
+			const targetEntityId = resolveRoomEntityId(normalized.object, roomEntities);
 			try {
 				await runtime.createMemory(
 					{
@@ -429,16 +482,44 @@ async function persistFactsAndRelationships(
 						agentId: runtime.agentId,
 						roomId: message.roomId,
 						content: {
-							text: `${rel.subject} ${rel.predicate} ${rel.object}`,
+							text: `${normalized.subject} ${normalized.predicate} ${normalized.object}`,
 							type: "relationship",
-							subject: rel.subject,
-							predicate: rel.predicate,
-							object: rel.object,
+							subject: normalized.subject,
+							predicate: normalized.predicate,
+							object: normalized.object,
+						},
+						metadata: {
+							type: MemoryType.CUSTOM,
+							source: "facts_and_relationships_stage",
+							messageId: message.id,
+							sourceEntityId,
+							targetEntityId,
+							tags: ["relationship", "extracted", "stage1"],
+							extractedAt: Date.now(),
 						},
 					} as Memory,
 					"facts",
 					true,
 				);
+				if (
+					sourceEntityId &&
+					targetEntityId &&
+					sourceEntityId !== targetEntityId &&
+					typeof runtime.createRelationship === "function"
+				) {
+					await runtime
+						.createRelationship({
+							sourceEntityId,
+							targetEntityId,
+							tags: [normalized.predicate],
+							metadata: {
+								source: "facts_and_relationships_stage",
+								messageId: message.id,
+								lastInteractionAt: new Date().toISOString(),
+							},
+						})
+						.catch(() => false);
+				}
 				relationshipsWritten += 1;
 			} catch {
 				// best-effort persistence
@@ -447,4 +528,149 @@ async function persistFactsAndRelationships(
 	}
 
 	return { facts: factsWritten, relationships: relationshipsWritten };
+}
+
+function filterCandidateFacts(
+	runtime: IAgentRuntime,
+	facts: readonly string[],
+): string[] {
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const fact of facts) {
+		const sanitized = sanitizePersistedFact(runtime, fact);
+		if (!sanitized || isLowSignalCandidate(sanitized)) continue;
+		const key = normalizeForComparison(sanitized);
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		out.push(sanitized);
+	}
+	return out.slice(0, 12);
+}
+
+function filterCandidateRelationships(
+	relationships: readonly MessageHandlerExtractedRelationship[],
+): MessageHandlerExtractedRelationship[] {
+	const seen = new Set<string>();
+	const out: MessageHandlerExtractedRelationship[] = [];
+	for (const relationship of relationships) {
+		const normalized = normalizeRelationshipForPersistence(relationship);
+		if (!normalized) continue;
+		const key = normalizeForComparison(
+			`${normalized.subject}:${normalized.predicate}:${normalized.object}`,
+		);
+		if (!key || seen.has(key)) continue;
+		seen.add(key);
+		out.push(normalized);
+	}
+	return out.slice(0, 12);
+}
+
+function normalizeRelationshipForPersistence(
+	relationship: MessageHandlerExtractedRelationship,
+): MessageHandlerExtractedRelationship | null {
+	const subject = cleanText(relationship.subject);
+	const object = cleanText(relationship.object);
+	const predicate = cleanPredicate(relationship.predicate);
+	if (!subject || !object || !predicate) return null;
+	if (isLowSignalCandidate(subject) || isLowSignalCandidate(object)) return null;
+	return { subject, predicate, object };
+}
+
+function sanitizePersistedFact(runtime: IAgentRuntime, value: string): string {
+	const cleaned = cleanText(value);
+	if (!cleaned) return "";
+	if (containsSecretSignal(cleaned)) return "";
+	return runtime.redactSecrets(cleaned).trim();
+}
+
+function cleanText(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
+}
+
+function cleanPredicate(value: string): string {
+	return value
+		.replace(/[^a-zA-Z0-9_ -]/g, "")
+		.replace(/[\s-]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.toLowerCase();
+}
+
+function normalizeForComparison(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+function containsSecretSignal(value: string): boolean {
+	return (
+		/\b(?:api[_\s-]?key|secret|password|access[_\s-]?token|refresh[_\s-]?token|private[_\s-]?key)\b/i.test(
+			value,
+		) ||
+		/\b(?:sk|csk|pk|ghp|gho|ghu|ghs|github_pat)-[A-Za-z0-9_-]{16,}\b/.test(
+			value,
+		)
+	);
+}
+
+function isLowSignalCandidate(value: string): boolean {
+	const normalized = normalizeForComparison(value);
+	return (
+		normalized.length < 4 ||
+		/^(?:by the way|remind me|can you|could you|please|thanks|thank you)\b/.test(
+			normalized,
+		) ||
+		/\b(?:conversation summary|compacted prior planner|compactor|summary mode)\b/.test(
+			normalized,
+		) ||
+		/\b(?:ordinary chat|small talk|chitchat)\b/.test(normalized)
+	);
+}
+
+function isSyntheticMemory(memory: Memory): boolean {
+	const metadata =
+		memory.metadata && typeof memory.metadata === "object"
+			? (memory.metadata as Record<string, unknown>)
+			: {};
+	const source = typeof metadata.source === "string" ? metadata.source : "";
+	const tags = Array.isArray(metadata.tags)
+		? metadata.tags.filter((tag): tag is string => typeof tag === "string")
+		: [];
+	const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+	return (
+		/\b(?:compaction|compactor|synthetic)\b/i.test(source) ||
+		tags.some((tag) => /\b(?:compaction|compactor|synthetic)\b/i.test(tag)) ||
+		/^\[(?:conversation|system) (?:summary|hybrid-ledger|state)\]/i.test(
+			text.trim(),
+		)
+	);
+}
+
+function resolveRoomEntityId(
+	value: string,
+	entities: readonly RoomEntityRef[],
+): UUID | undefined {
+	const direct = asUuidOrNull(value);
+	if (direct) return direct;
+	const normalized = normalizeForComparison(value);
+	if (!normalized) return undefined;
+	for (const entity of entities) {
+		if (!entity.id) continue;
+		for (const name of entity.names) {
+			if (normalizeForComparison(name) === normalized) return entity.id;
+		}
+	}
+	return undefined;
+}
+
+function asUuidOrNull(value: string): UUID | null {
+	if (
+		/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+			value,
+		)
+	) {
+		return value as UUID;
+	}
+	return null;
 }

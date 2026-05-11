@@ -195,7 +195,43 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
             return TurnTokens(prompt=prompt, completion=completion)
 
     if "token_usage" in obj or "tokens_used" in obj:
-        total = _coerce_int(obj.get("token_usage") or obj.get("tokens_used"))
+        token_usage = obj.get("token_usage")
+        if isinstance(token_usage, dict):
+            prompt = _coerce_int(
+                token_usage.get("prompt_tokens")
+                or token_usage.get("promptTokens")
+                or token_usage.get("input_tokens")
+            )
+            completion = _coerce_int(
+                token_usage.get("completion_tokens")
+                or token_usage.get("completionTokens")
+                or token_usage.get("output_tokens")
+            )
+            cached_raw = (
+                token_usage.get("cached_prompt_tokens")
+                or token_usage.get("cachedTokens")
+                or token_usage.get("cached_tokens")
+                or token_usage.get("cache_read_input_tokens")
+            )
+            cached = _coerce_int(cached_raw)
+            cache_creation = _coerce_int(
+                token_usage.get("cache_creation_input_tokens")
+                or token_usage.get("cacheCreationInputTokens")
+            )
+            if prompt or completion or cached or cache_creation:
+                return TurnTokens(
+                    prompt=prompt,
+                    completion=completion,
+                    cached=cached,
+                    cache_creation=cache_creation,
+                    has_cached=cached_raw is not None,
+                )
+        total = _coerce_int(token_usage or obj.get("tokens_used"))
+        if total:
+            return TurnTokens(prompt=total)
+
+    for key in ("total_tokens", "totalTokens", "tokens_used", "tokensUsed"):
+        total = _coerce_int(obj.get(key))
         if total:
             return TurnTokens(prompt=total)
 
@@ -232,7 +268,19 @@ def extract_prompt(obj: dict[str, Any]) -> str:
         "message",
         "response",
         "response_text",
+        "predicted",
+        "prediction",
+        "predicted_answer",
+        "expected_answer",
         "instruction",
+        "task_id",
+        "task_name",
+        "sampleId",
+        "sample_id",
+        "case_id",
+        "template_key",
+        "website",
+        "expectedTranscript",
         "scenario_id",
     ):
         v = obj.get(key)
@@ -258,8 +306,13 @@ def extract_latency_ms(obj: dict[str, Any]) -> float | None:
         "latencyMs",
         "duration_ms",
         "durationMs",
+        "total_execution_time_ms",
+        "totalExecutionTimeMs",
+        "totalTimeMs",
         "elapsed_ms",
         "response_ms",
+        "responseTotalMs",
+        "transcriptionMs",
         "average_latency_ms",
         "avg_duration_ms",
         "average_duration_ms",
@@ -279,6 +332,12 @@ def extract_latency_ms(obj: dict[str, Any]) -> float | None:
             value = _coerce_float(metrics.get(key))
             if value is not None:
                 return value
+    latency = obj.get("latency")
+    if isinstance(latency, dict):
+        for key in ("avg_ms", "average_ms", "median_ms", "p95_ms"):
+            value = _coerce_float(latency.get(key))
+            if value is not None:
+                return value
     return None
 
 
@@ -295,6 +354,15 @@ def iter_turn_objs(path: Path) -> Iterable[dict[str, Any]]:
             except json.JSONDecodeError:
                 continue
             if isinstance(obj, dict):
+                case_result = obj.get("case_result")
+                if isinstance(case_result, dict):
+                    yield case_result
+                    cycles = case_result.get("cycles")
+                    if isinstance(cycles, list):
+                        for cycle in cycles:
+                            if isinstance(cycle, dict):
+                                yield cycle
+                    continue
                 yield obj
         return
 
@@ -309,6 +377,15 @@ def iter_turn_objs(path: Path) -> Iterable[dict[str, Any]]:
                 yield item
         return
     if isinstance(data, dict):
+        case_result = data.get("case_result")
+        if isinstance(case_result, dict):
+            yield case_result
+            cycles = case_result.get("cycles")
+            if isinstance(cycles, list):
+                for item in cycles:
+                    if isinstance(item, dict):
+                        yield item
+            return
         # Common shapes: {"steps":[...]} or {"turns":[...]} or single turn.
         for key in ("steps", "turns", "trajectory", "messages"):
             seq = data.get(key)
@@ -350,6 +427,42 @@ def iter_turn_objs(path: Path) -> Iterable[dict[str, Any]]:
                         continue
                     yield item
             return
+        for key in ("failures", "refusals", "task_results"):
+            seq = data.get(key)
+            if not isinstance(seq, list):
+                continue
+            for item in seq:
+                if isinstance(item, dict):
+                    yield item
+            return
+        for key in ("baseline_results", "tools_only_results", "feedback_only_results", "full_results"):
+            nested = data.get(key)
+            if not isinstance(nested, dict):
+                continue
+            seq = nested.get("task_results")
+            if not isinstance(seq, list):
+                continue
+            for item in seq:
+                if isinstance(item, dict):
+                    yield item
+            return
+        handlers = data.get("handlers")
+        if isinstance(handlers, list):
+            yielded = False
+            for handler in handlers:
+                if not isinstance(handler, dict):
+                    continue
+                scenarios = handler.get("scenarios")
+                if isinstance(scenarios, list):
+                    for scenario in scenarios:
+                        if isinstance(scenario, dict):
+                            yielded = True
+                            yield scenario
+                elif "totalTimeMs" in handler:
+                    yielded = True
+                    yield handler
+            if yielded:
+                return
         reports = data.get("environment_reports")
         if isinstance(reports, dict):
             for item in reports.values():
@@ -371,6 +484,15 @@ def iter_turn_objs(path: Path) -> Iterable[dict[str, Any]]:
                     yield item
             return
         scenarios = data.get("scenarios")
+        if isinstance(scenarios, dict):
+            yielded = False
+            for scenario_id, scenario in scenarios.items():
+                if isinstance(scenario, dict):
+                    scenario.setdefault("scenario_id", str(scenario_id))
+                    yielded = True
+                    yield scenario
+            if yielded:
+                return
         if isinstance(scenarios, list):
             for scenario in scenarios:
                 if not isinstance(scenario, dict):
@@ -417,6 +539,8 @@ def discover_trajectories(run_dir: Path) -> list[Path]:
         "**/vending-bench-results-*.json",
         "**/vending-bench-detailed-*.json",
         "**/summary.json",
+        "**/*.jsonl",
+        "**/*.json",
     )
     seen: set[Path] = set()
     out: list[Path] = []
