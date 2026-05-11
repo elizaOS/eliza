@@ -80,7 +80,10 @@ function makeFixtureJsonl(): string {
             type: "tool_use",
             id: "toolu-grep-1",
             name: "Grep",
-            input: { pattern: "openExternalUrl", output_mode: "files_with_matches" },
+            input: {
+              pattern: "openExternalUrl",
+              output_mode: "files_with_matches",
+            },
           },
         ],
         stop_reason: "tool_use",
@@ -133,14 +136,14 @@ function makeFixtureJsonl(): string {
       sessionId: "session-fixture-1",
     },
   ];
-  return lines.map((l) => JSON.stringify(l)).join("\n") + "\n{not json}\n";
+  return `${lines.map((l) => JSON.stringify(l)).join("\n")}\n{not json}\n`;
 }
 
 describe("session-log-reader: path resolution", () => {
   it("encodes Claude Code project dir paths (/ and . → -)", () => {
-    expect(
-      encodeClaudeCodeProjectDir("/Users/x/.milady/workspaces/abc"),
-    ).toBe("-Users-x--milady-workspaces-abc");
+    expect(encodeClaudeCodeProjectDir("/Users/x/.milady/workspaces/abc")).toBe(
+      "-Users-x--milady-workspaces-abc",
+    );
   });
 
   it("returns both canonical and workspace-local candidates", () => {
@@ -175,12 +178,22 @@ describe("session-log-reader: path resolution", () => {
       encodeClaudeCodeProjectDir(workdir),
     );
     await mkdir(projectsDir, { recursive: true });
-    const older = join(projectsDir, "00000000-0000-0000-0000-000000000001.jsonl");
-    const newer = join(projectsDir, "00000000-0000-0000-0000-000000000002.jsonl");
+    const older = join(
+      projectsDir,
+      "00000000-0000-0000-0000-000000000001.jsonl",
+    );
+    const newer = join(
+      projectsDir,
+      "00000000-0000-0000-0000-000000000002.jsonl",
+    );
     await writeFile(older, "");
     await new Promise((r) => setTimeout(r, 10));
     await writeFile(newer, "");
-    const located = await findClaudeCodeSessionLogFile(workdir, undefined, home);
+    const located = await findClaudeCodeSessionLogFile(
+      workdir,
+      undefined,
+      home,
+    );
     expect(located?.filePath).toBe(newer);
   });
 });
@@ -302,7 +315,9 @@ describe("session-log-reader: normalization", () => {
         ],
       },
     });
-    const events = [parseSessionLogLine(raw)!];
+    const parsed = parseSessionLogLine(raw);
+    if (!parsed) throw new Error("expected session log event");
+    const events = [parsed];
     const steps = normalizeSessionEvents(events, "p");
     expect(steps).toHaveLength(1);
     expect(steps[0].toolError).toBe(true);

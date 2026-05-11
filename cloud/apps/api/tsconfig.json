@@ -2,7 +2,7 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2023", "WebWorker", "DOM.Iterable"],
+    "lib": ["ES2023", "WebWorker", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "noEmit": true,
@@ -21,6 +21,8 @@
       "@/types/*": ["../../packages/types/*"],
       "@/api/*": ["./*"],
       "@elizaos/billing": ["../../packages/billing/src/index.ts"],
+      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
       "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../../../plugins/plugin-sql/node_modules/drizzle-orm/*"],

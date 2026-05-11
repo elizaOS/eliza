@@ -4,6 +4,7 @@
     "module": "ESNext",
     "lib": ["ESNext", "DOM"],
     "moduleResolution": "bundler",
+    "rootDir": "../..",
     "outDir": "dist",
     "strict": true,
     "esModuleInterop": true,
@@ -21,7 +22,7 @@
     "allowArbitraryExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../../packages/core/dist"]
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"]
     },
     "noUnusedLocals": false,
     "noUnusedParameters": false,
