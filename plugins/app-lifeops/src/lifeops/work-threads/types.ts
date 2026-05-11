@@ -32,6 +32,14 @@ export interface WorkThread {
   workflowRunId?: string | null;
   approvalId?: string | null;
   lastMessageMemoryId?: string | null;
+  /**
+   * Optimistic-concurrency version. Incremented on every persisted UPDATE.
+   * Callers that want atomic compare-and-set semantics pass the last-known
+   * value into `upsertWorkThread` via `expectedVersion`; the SQL UPDATE
+   * filters on it and the upsert throws {@link import("../sql.js").OptimisticLockError}
+   * when 0 rows match. Default `1` on insert.
+   */
+  version: number;
   createdAt: string;
   updatedAt: string;
   lastActivityAt: string;

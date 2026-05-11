@@ -158,6 +158,7 @@
   "workspaces": [
     "packages/*",
     "packages/benchmarks/lib",
+    "packages/benchmarks/interrupt-bench",
     "packages/examples/*",
     "packages/examples/*/*",
     "packages/examples/*/*/*",

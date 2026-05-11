@@ -126,3 +126,254 @@ The AOSP distro tree exists under `packages/os/android/vendor/eliza`, imports `E
 ## Changed paths
 
 - `launchdocs/07-android-qa.md`
+
+## AI QA Pass 2026-05-11 (static analysis)
+
+Scope: Android-specific mobile-surface audit per `23-ai-qa-master-plan.md` Workstream 5.
+No emulator/Cuttlefish available; this is a static read of the source tree on the
+`worktree-agent-aba26969ab7dba910` branch off `develop`, plus a review of what the
+simulator smoke harness actually asserts.
+
+### Re-verification of prior P1 — preSeedAndroidLocalRuntimeIfFresh wiring
+
+The 2026-05-10 `01-onboarding-setup-qa.md:76` P1 finding was that
+`preSeedAndroidLocalRuntimeIfFresh()` was documented and tested but not actually
+called from `packages/app/src/main.tsx`. **Status: RESOLVED.** Current code:
+
+- Import at `packages/app/src/main.tsx:63`:
+  `preSeedAndroidLocalRuntimeIfFresh,` (from `@elizaos/ui`).
+- Call at `packages/app/src/main.tsx:255-257`:
+
+  ```ts
+  if (isElizaOS() && !hasRuntimePickerOverride()) {
+    preSeedAndroidLocalRuntimeIfFresh();
+  }
+  ```
+
+  This runs at top-level module scope, before `mountReactApp()` (called from
+  `main()` at line 996). The gating is correct per the helper's contract — it only
+  fires on the AOSP ElizaOS build (detected via the `ElizaOS/<tag>` user-agent
+  suffix at `packages/ui/src/platform/init.ts:62-66`), and the `?runtime=picker`
+  override at `:211-218` lets a user explicitly re-pick from the chooser.
+- The helper definition at
+  `packages/ui/src/onboarding/pre-seed-local-runtime.ts:112` exists and is tested.
+- `RuntimeGate.tsx:770` comment still references `apps/app/src/main.tsx` (stale path
+  — actual path is `packages/app/src/main.tsx`), but the contract holds.
+
+Recommendation: still no static guard or integration test proving `main.tsx`
+imports/calls the helper. A `grep` check in CI or a "main.tsx wires
+preSeedAndroidLocalRuntimeIfFresh" unit test would prevent regression. This is the
+Codex-fixable mitigation the original finding called for.
+
+### Bugs/risks P0-P3 (this pass)
+
+#### P0
+
+- None found in this bounded static review.
+
+#### P1
+
+- **Android Activity is missing `windowSoftInputMode="adjustResize"` despite Capacitor
+  Keyboard config declaring `resize: "body"`.** The MainActivity entry in
+  `packages/app-core/platforms/android/app/src/main/AndroidManifest.xml:16-22` declares:
+
+  ```xml
+  <activity
+      android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+      android:name=".MainActivity"
+      android:label="@string/title_activity_main"
+      android:theme="@style/AppTheme.NoActionBarLaunch"
+      android:launchMode="singleTask"
+      android:exported="true">
+  ```
+
+  No `android:windowSoftInputMode` attribute. `packages/app/capacitor.config.ts:26-29`
+  configures the Capacitor Keyboard plugin with `resize: "body"` and
+  `resizeOnFullScreen: true`, but Capacitor's `body` resize mode requires the
+  underlying Activity to be in `adjustResize` mode. Android's default
+  `adjustUnspecified` resolves to `adjustResize` for most layouts but is not
+  guaranteed across OEMs (Samsung One UI, MIUI, EMUI). I did not find any code in
+  `packages/app-core/scripts/run-mobile-build.mjs` that rewrites the activity tag to
+  add `adjustResize`. Setting it explicitly is the documented Capacitor best
+  practice and prevents OEM-specific keyboard-overlap regressions. Confidence: high.
+
+- **Capacitor `Keyboard` plugin event listeners are only registered after platform
+  init runs — there is a race with the React mount.**
+  `packages/app/src/main.tsx:403-422` shows the keyboard listeners only register
+  inside `initializeKeyboard()`, which `initializePlatform()` (`:359`) awaits AFTER
+  `mountReactApp()` (`:996-997`). Between `mountReactApp()` resolving and
+  `initializePlatform()` finishing, any input the user could focus would not have a
+  `keyboardWillShow` listener installed, so `--keyboard-height` would stay 0 and
+  the composer would not lift. In practice the keyboard takes a beat to appear, so
+  this rarely manifests, but on a fast SSD-backed phone it can. Move
+  `initializeKeyboard()` ahead of `mountReactApp()` or hoist the listeners to a
+  pre-mount step. Confidence: medium.
+
+#### P2
+
+- **Phone / Messages / Contacts tab is shown on ALL Android builds, but the
+  underlying Phone/Contacts overlay apps are gated on `isElizaOS()`.**
+  `packages/ui/src/navigation/index.ts:115-129` defines
+  `isAndroidPhoneSurfaceEnabled` as `isNative && platform === "android"`, which
+  matches every Android Capacitor build, not just the ElizaOS AOSP build. But
+  `packages/app/src/main.tsx:117-127` documents that the phone/contacts/wifi
+  overlay apps register themselves only when `isElizaOS()` is true.
+  `packages/ui/src/App.tsx:483-509` renders `PhonePageView`, `MessagesPageView`, and
+  `ContactsPageView` when `androidPhoneSurfaceEnabled` is true. The components live
+  in `packages/ui/src/components/pages/ElizaOsAppsView.tsx:297-1300` and they call
+  into `getPlugins().contacts.plugin.listContacts(...)` (e.g.
+  `ElizaOsAppsView.tsx:1199-1204`). On a vanilla Android Play Store APK (no
+  ElizaOS user-agent suffix), those plugin entry points are unavailable, so
+  `Contacts`/`Phone`/`Messages` will render with a hard error
+  (`"ElizaContacts plugin is unavailable"`) rather than a graceful "not available
+  on this device" state. Either gate `isAndroidPhoneSurfaceEnabled` to ElizaOS, or
+  ship a clean unavailable state in those page views. Confidence: high.
+
+- **Activity `configChanges` swallows orientation, screenSize, etc. with no Compose
+  / React notification path.**
+  `packages/app-core/platforms/android/app/src/main/AndroidManifest.xml:17`
+  declares
+  `android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"`.
+  This is fine for Capacitor (no native config recreation), but it means orientation
+  changes do NOT regenerate the Activity. The WebView still receives a CSS resize
+  event, but if any React effect relies on Android Activity lifecycle to re-init
+  (e.g. the StatusBar.setOverlaysWebView call at `packages/app/src/main.tsx:394-396`),
+  it will not re-run on rotation. Re-verify rotation behavior on a tablet emulator.
+  Confidence: medium.
+
+- **Two mobile breakpoints disagree by 1 pixel.** Same as the iOS doc:
+  `packages/ui/src/components/shell/Header.tsx:33` uses `(max-width: 819px)`;
+  `packages/ui/src/App.tsx:78` defines `CHAT_MOBILE_BREAKPOINT_PX = 820`. Likely
+  intentional; cross-platform finding worth resolving once.
+
+- **GameViewOverlay has hardcoded `w-[480px]` without a responsive cap.** Same as
+  iOS doc — applies to Android too at most phone widths.
+  `packages/ui/src/components/apps/GameViewOverlay.tsx:158`. Confidence: high.
+
+- **`AndroidManifest.xml` requests `ACCESS_BACKGROUND_LOCATION` but no rationale
+  surfaces in the app today.**
+  `packages/app-core/platforms/android/app/src/main/AndroidManifest.xml:80` declares
+  `android.permission.ACCESS_BACKGROUND_LOCATION`. Play Console rejects apps that
+  request `ACCESS_BACKGROUND_LOCATION` without an explicit background-location
+  feature justification and Play Console form submission. If launch does not ship
+  a real always-on location feature, drop this permission to avoid Play review
+  friction. (Native location plugin
+  `packages/native-plugins/location/android/src/main/AndroidManifest.xml:3` only
+  declares `ACCESS_FINE_LOCATION` — so the background variant is only declared at
+  the app level.) Confidence: medium-high.
+
+- **Phone navigation route catalog has /phone, /messages, /contacts but only on
+  Android.** `packages/ui/src/navigation/index.ts:291-322` (`TAB_PATHS`) registers
+  routes for `phone`/`messages`/`contacts`. On iOS or web the user could deep-link
+  to `/phone` via `tabFromPath` (line 395-456), which would map to the `phone` tab
+  and then App.tsx `:486-509` would fall through to `<ChatView />` — fine. But the
+  TabGroups builder at `:248-289` excludes the Phone tab on non-Android; the route
+  still resolves. End state is "lands on phone tab silently rendering ChatView"
+  which is acceptable but worth confirming with a Playwright probe on /phone
+  /messages /contacts on the web build. Confidence: medium.
+
+#### P3
+
+- **`allowBackup="true"` in AndroidManifest can let backups include the on-device
+  local-agent token.**
+  `packages/app-core/platforms/android/app/src/main/AndroidManifest.xml:9` sets
+  `android:allowBackup="true"`. The local-agent bearer token lives at
+  `files/auth/local-agent-token` (per `mobile-local-chat-smoke.mjs:271` and
+  `ElizaAgentService.java:623-669`). If Android Backup Service is enabled, those
+  files could be backed up to Google Drive. Add `android:fullBackupContent` or
+  `android:dataExtractionRules` to exclude the auth directory. Confidence: low-medium.
+
+- **`isElizaOS()` detection relies entirely on user-agent suffix.**
+  `packages/ui/src/platform/init.ts:62-66`. A non-Eliza Android app could spoof
+  the user-agent and trigger the auto-local pre-seed path. Not a P1 because the
+  spoof has no privilege gain (it just bypasses the runtime picker), but worth a
+  note. Confidence: low.
+
+- **WebView `webContentsDebuggingEnabled: false`** in
+  `packages/app/capacitor.config.ts:70` is correct for release but blocks Chrome
+  DevTools inspection. The mobile-local-chat-smoke harness has no equivalent
+  debug-only path documented. If launch QA needs in-the-wild debugging, expose a
+  build-mode flag. Confidence: low.
+
+### What the simulator smoke (`mobile-local-chat-smoke.mjs`) actually asserts for Android
+
+The harness at `packages/app/scripts/mobile-local-chat-smoke.mjs` does the
+following for `--platform=android`:
+
+1. **Discovers an Android device/emulator** via `adb devices` (`:164-177`). Fails
+   with a clear error if `--require-installed`; otherwise warns.
+2. **Checks the app is installed** via `adb shell pm path <appId>` (`:198`). Warns
+   if missing.
+3. **Launches the app** via
+   `adb shell am start -n <appId>/.MainActivity` (`:207-211`) and fires the
+   `elizaos://chat` deep link via `adb shell am start -a android.intent.action.VIEW
+   -d elizaos://chat <appId>` (`:212-223`).
+4. **Optionally taps through the Local-runtime first-run picker** (with
+   `--android-select-local`, `:301-314`):
+   - Reads physical screen size via `adb shell wm size`.
+   - Taps the "I want to run it myself" tile at ratio (0.5, 0.695).
+   - Loops up to 6 times tapping "Use Local" at ratio (0.29, 0.675) until the
+     auth token file appears.
+5. **Waits for the Android local-agent API to come up** (`:316-396`):
+   - Reads `files/auth/local-agent-token` via `adb run-as cat`.
+   - Forwards a random local port to device `tcp:31337` via `adb forward`.
+   - Hits `/api/health` and `/api/status` with `Authorization: Bearer <token>` to
+     prove the local agent is healthy.
+   - Recovers if the token is rotated mid-test.
+   - 240 attempts at 2s = up to 8 minutes total.
+6. **Optionally runs the background-task harness** (with `--android-background`,
+   `:546-706`):
+   - Sends app to home screen via `adb shell input keyevent HOME`.
+   - Waits for both `ElizaAgentService` and `GatewayConnectionService` to be
+     `isForeground=true` via `adb shell dumpsys activity services <appId>`.
+   - Finds the JobScheduler periodic job IDs via `adb shell dumpsys jobscheduler`.
+   - Force-fires each job via `cmd jobscheduler run -f <appId> <jobId>`.
+   - Polls `/api/health` for `lastWakeFiredAt` advance.
+   - Falls back to `POST /api/background/run-due-tasks` on older builds.
+   - Takes pre/post screenshots.
+7. **Runs `runLocalInferenceApiSmoke`** against the forwarded loopback (`:1034`):
+   - `GET /api/health`.
+   - `POST /api/conversations` with `title: "Simulator local chat smoke"`.
+   - `POST /api/conversations/<id>/greeting`.
+   - Rejects if greeting contains `"I'm running locally"` (stale-string guard).
+   - `POST /api/conversations/<id>/messages` with
+     `{"text":"download the default local model"}`.
+   - `GET /api/local-inference/hub` — accepts `ready` or any of
+     `queued/downloading/verifying/complete` downloads. Rejects `error` state.
+8. **Always** runs two Vitest specs at the end (`:1061-1072`):
+   `packages/ui/src/api/ios-local-agent-kernel.local-inference.test.ts` and
+   `packages/ui/src/onboarding/auto-download-recommended.test.ts`.
+
+**Coverage gaps the smoke leaves:**
+
+- The first-run picker tap-through (`--android-select-local`) uses hard-coded
+  pixel ratios. Any redesign of the RuntimeGate picker breaks the smoke silently.
+  Better: use accessibility selectors or a deterministic UI automator hook.
+- The bottom nav is never tapped. No verification that each tab (chat / phone /
+  apps / character / wallet / settings) resolves to its route.
+- The Phone / Messages / Contacts tab gating (the P2 finding above) is not
+  exercised — and on a vanilla Android emulator without the ElizaOS marker, the
+  smoke would hit the broken state described in that finding.
+- Safe-area insets are not asserted. Screenshots are full-screen but never diffed
+  against a reference.
+- Keyboard handling is not exercised — no input focus, no `--keyboard-height`
+  assertion.
+- `windowSoftInputMode` (P1 finding) is not verifiable from the smoke; needs a
+  physical emulator probe focusing a composer and inspecting WebView resize.
+- The background-runner harness force-fires JobScheduler periodic jobs but does
+  NOT prove the BackgroundRunner Capacitor plugin label (`eliza-tasks` per
+  `capacitor.config.ts:38`) is the JobScheduler job — it discovers job IDs by
+  package and assumes any periodic job for the package is the right one.
+- `ACCESS_BACKGROUND_LOCATION` (P2 finding above) is never exercised, so Play
+  Console rejection risk is not surfaced by smoke.
+- AOSP-specific paths (`AOSP_BUILD=true` Gradle property, system-app install,
+  default-roles assignment from `packages/os/android/vendor/eliza/...`) are not
+  reachable from this smoke at all — they require a Cuttlefish run.
+
+### Severity counts (this pass)
+
+- P0: 0
+- P1: 2 (`windowSoftInputMode` missing; keyboard-listener race with React mount)
+- P2: 6 (Phone tab on vanilla Android; configChanges rotation; breakpoint off-by-one;
+  GameViewOverlay width; `ACCESS_BACKGROUND_LOCATION`; phone routes on non-Android)
+- P3: 3 (`allowBackup` true; UA-based ElizaOS detection; debug-disabled in dev too)

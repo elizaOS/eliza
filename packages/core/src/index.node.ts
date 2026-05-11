@@ -170,6 +170,7 @@ export {
 	normalizeActionName,
 	type RuntimeActionLike,
 } from "./runtime/action-catalog";
+export * from "./runtime/builtin-field-evaluators";
 export * from "./runtime/cleanup-scope";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";

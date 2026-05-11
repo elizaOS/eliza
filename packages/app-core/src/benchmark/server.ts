@@ -45,8 +45,86 @@ import {
 } from "./server-utils.js";
 
 // Load environment variables BEFORE anything else
-// This ensures API keys are available when plugins initialize
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+// This ensures API keys are available when plugins initialize.
+// `dotenv.config({ path: cwd/.env })` only finds the file when the bench server
+// is started from the repo root. When `ElizaServerManager` spawns us with
+// `cwd=packages/app-core`, there is no `.env` next to that directory — so the
+// repo-root `.env` is invisible and `CEREBRAS_API_KEY` arrives unset. Walk
+// upward looking for the first `.env` so the bench server works regardless of
+// where the parent process happened to anchor cwd.
+function loadEnvFromAncestors(startDir: string): string | null {
+  let current = path.resolve(startDir);
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = path.join(current, ".env");
+    if (
+      // node:fs is heavy at top-level for a single existence check; use dotenv's
+      // own behavior — it silently no-ops on missing files. We still need to
+      // know *which* path matched so we can log it and stop walking.
+      dotenv.config({ path: candidate, override: false }).parsed !== undefined
+    ) {
+      return candidate;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return null;
+}
+const _loadedEnvPath = loadEnvFromAncestors(process.cwd());
+if (_loadedEnvPath) {
+  elizaLogger.debug(`[bench] Loaded env from ${_loadedEnvPath}`);
+}
+
+// Cerebras auto-wiring. The `.env` in this repo typically defines
+// `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` / `CEREBRAS_MODEL` but does NOT set
+// `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `MILADY_PROVIDER` — the keys the
+// @elizaos/plugin-openai code path actually reads. Without those, the openai
+// plugin is skipped at load time (see the `hasOpenAiCompatibleKey` guard
+// below), no TEXT_LARGE / TEXT_SMALL handler is registered, and every
+// benchmark turn falls back to the "no LLM provider configured" stub.
+// Auto-promote when ALL of these hold:
+//   - CEREBRAS_API_KEY is set
+//   - no competing OpenAI-compat key is present (`OPENAI_API_KEY` /
+//     `OPENAI_BASE_URL` / `MILADY_PROVIDER` are all unset)
+// We never overwrite an existing OPENAI_* or MILADY_PROVIDER value.
+function autoWireCerebras(): void {
+  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
+  if (!cerebrasKey) return;
+  const hasOpenAiKey = !!process.env.OPENAI_API_KEY?.trim();
+  const hasOpenAiBase = !!process.env.OPENAI_BASE_URL?.trim();
+  const hasMiladyProvider = !!process.env.MILADY_PROVIDER?.trim();
+  if (hasOpenAiKey || hasOpenAiBase || hasMiladyProvider) return;
+
+  const cerebrasBase =
+    process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+  process.env.OPENAI_BASE_URL = cerebrasBase;
+  process.env.OPENAI_API_KEY = cerebrasKey;
+  process.env.MILADY_PROVIDER = "cerebras";
+
+  // Pin both model tiers to the Cerebras-published id when the operator has
+  // not already set them. The @elizaos/plugin-openai client uses Cerebras's
+  // OpenAI-compatible `/v1/chat/completions` (see `models/text.ts` which
+  // calls `openai.chat(modelName)`), which is the only endpoint Cerebras
+  // exposes. The `/v1/responses` Responses API does not exist on Cerebras,
+  // so pinning a chat-completions-friendly model id and letting the plugin
+  // route through `openai.chat()` is the right behavior.
+  const cerebrasModel =
+    process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
+  if (!process.env.OPENAI_LARGE_MODEL?.trim()) {
+    process.env.OPENAI_LARGE_MODEL = cerebrasModel;
+  }
+  if (!process.env.OPENAI_SMALL_MODEL?.trim()) {
+    process.env.OPENAI_SMALL_MODEL = cerebrasModel;
+  }
+
+  elizaLogger.info(
+    `[bench] Auto-wired Cerebras: OPENAI_BASE_URL=${cerebrasBase}, ` +
+      `MILADY_PROVIDER=cerebras, OPENAI_LARGE_MODEL=${process.env.OPENAI_LARGE_MODEL}, ` +
+      `OPENAI_SMALL_MODEL=${process.env.OPENAI_SMALL_MODEL}`,
+  );
+}
+autoWireCerebras();
+
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 
@@ -296,6 +374,20 @@ export async function startBenchmarkServer() {
     "@elizaos/plugin-elizacloud", // Requires elizaOS cloud auth, conflicts with local LLM
   ]);
 
+  // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
+  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-lite-0_6b`
+  //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
+  //   spams a 401 from HuggingFace.
+  // - Benchmarks don't score on semantic retrieval, so a deterministic
+  //   zero-vector handler is a fine stand-in.
+  // - Opt-out by setting `MILADY_BENCH_SKIP_EMBEDDING=0` (e.g. for a benchmark
+  //   that genuinely depends on real embeddings).
+  const skipEmbeddingPlugin =
+    (process.env.MILADY_BENCH_SKIP_EMBEDDING ?? "1") !== "0";
+  if (skipEmbeddingPlugin) {
+    skipPlugins.add("@elizaos/plugin-local-embedding");
+  }
+
   const skipCorePlugins = process.env.ELIZA_BENCH_SKIP_CORE_PLUGINS === "true";
   const corePluginsToLoad = skipCorePlugins
     ? ["@elizaos/plugin-sql"]
@@ -384,6 +476,36 @@ export async function startBenchmarkServer() {
   } catch (error: unknown) {
     elizaLogger.error(
       `[bench] Failed to load benchmark plugin: ${formatUnknownError(error)}`,
+    );
+  }
+
+  // Register a zero-vector TEXT_EMBEDDING stand-in when local-embedding is
+  // skipped. The runtime calls `useModel(TEXT_EMBEDDING, ...)` for every
+  // persisted memory; without ANY handler, those calls throw and abort the
+  // turn. The benchmarks don't score retrieval, so a deterministic
+  // 1024-dim zero vector is the right stub. Dimensions match the local-
+  // embedding default (eliza-1-lite-0_6b → 1024) so downstream code that
+  // assumes that shape (vector columns sized at boot) still works.
+  if (skipEmbeddingPlugin) {
+    const EMBEDDING_DIMENSIONS = 1024;
+    const benchEmbeddingPlugin: Plugin = {
+      name: "@elizaos/bench-stub-embedding",
+      description:
+        "Benchmark-mode zero-vector TEXT_EMBEDDING handler. Replaces " +
+        "@elizaos/plugin-local-embedding so we never download the gated " +
+        "HuggingFace GGUF on every turn.",
+      // Higher than local-embedding's `priority: 10` so we win even if a
+      // CORE_PLUGINS race were to register a competing handler later.
+      priority: 100,
+      models: {
+        TEXT_EMBEDDING: async () =>
+          new Array<number>(EMBEDDING_DIMENSIONS).fill(0),
+      },
+    };
+    plugins.push(toPlugin(benchEmbeddingPlugin, "bench-stub-embedding"));
+    elizaLogger.info(
+      `[bench] Registered zero-vector TEXT_EMBEDDING stub (dim=${EMBEDDING_DIMENSIONS}); ` +
+        "set MILADY_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
   }
 

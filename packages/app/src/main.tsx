@@ -59,6 +59,8 @@ import {
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
+  NETWORK_STATUS_CHANGE_EVENT,
+  type NetworkStatusChangeDetail,
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
   resolveWindowShellRoute,
@@ -201,6 +203,8 @@ const BACKGROUND_RUNNER_CONFIG_RETRY_MS = 5_000;
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
 let mobileRuntimeModeListenerInstalled = false;
+let lifecycleListenersRegistered = false;
+let networkStatusListenerRegistered = false;
 
 function isDesktopPlatform(): boolean {
   return isElectrobunRuntime();
@@ -365,6 +369,7 @@ async function initializePlatform(): Promise<void> {
     await initializeKeyboard();
     initializeAppLifecycle();
     initializeMobileRuntimeModeListener();
+    void initializeNetworkListener();
     void initializeMobileDeviceBridge();
   }
 
@@ -422,6 +427,12 @@ async function initializeKeyboard(): Promise<void> {
 }
 
 function initializeAppLifecycle(): void {
+  // Each Capacitor listener fires its handler N times if added N times.
+  // Vite HMR and any redundant initialization paths re-invoke this function,
+  // so guard against duplicate registrations.
+  if (lifecycleListenersRegistered) return;
+  lifecycleListenersRegistered = true;
+
   void Promise.resolve(
     CapacitorApp.addListener("appStateChange", ({ isActive }) => {
       if (isActive) {
@@ -461,6 +472,31 @@ function initializeAppLifecycle(): void {
     .catch((error) => {
       logNativePluginUnavailable("App", error);
     });
+}
+
+/**
+ * Listen to {@link Network.addListener "networkStatusChange"} and bridge it
+ * to {@link NETWORK_STATUS_CHANGE_EVENT} so renderer-side consumers (notably
+ * the WebSocket reconnect scheduler in `client-base.ts`) can stop burning
+ * backoff attempts during airplane mode.
+ *
+ * Idempotent: HMR or repeated `initializePlatform()` invocations no-op past
+ * the first call (each Capacitor listener fires its handler N times if added
+ * N times).
+ */
+async function initializeNetworkListener(): Promise<void> {
+  if (networkStatusListenerRegistered) return;
+  networkStatusListenerRegistered = true;
+  try {
+    const { Network } = await import("@capacitor/network");
+    await Network.addListener("networkStatusChange", (status) => {
+      const detail: NetworkStatusChangeDetail = { connected: status.connected };
+      dispatchAppEvent(NETWORK_STATUS_CHANGE_EVENT, detail);
+    });
+  } catch (error) {
+    networkStatusListenerRegistered = false;
+    logNativePluginUnavailable("Network", error);
+  }
 }
 
 function handleDeepLink(url: string): void {

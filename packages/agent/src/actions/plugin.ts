@@ -136,8 +136,8 @@ interface DisconnectResponse {
 }
 
 const CONNECTOR_DISCONNECT_PATHS: Record<string, string> = {
-  telegram: "/api/telegram-account/disconnect",
-  "telegram-account": "/api/telegram-account/disconnect",
+  telegram: "/api/setup/telegram-account/cancel",
+  "telegram-account": "/api/setup/telegram-account/cancel",
   whatsapp: "/api/whatsapp/disconnect",
   signal: "/api/signal/disconnect",
   "discord-local": "/api/discord-local/disconnect",

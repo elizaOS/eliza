@@ -3,21 +3,25 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
-  ResponseHandlerEvaluatorContext,
+  ResponseHandlerFieldContext,
+  ResponseHandlerResult,
   State,
 } from "@elizaos/core";
 import { ChannelType, setEntityRole, stringToUuid } from "@elizaos/core";
-import { afterEach, describe, expect, it, setDefaultTimeout } from "bun:test";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { workThreadAction } from "../src/actions/work-thread.ts";
 import { processDueScheduledTasks } from "../src/lifeops/scheduled-task/scheduler.ts";
+import {
+  type ThreadOp,
+  threadOpsFieldEvaluator,
+} from "../src/lifeops/work-threads/field-evaluator-thread-ops.ts";
 import { createWorkThreadStore } from "../src/lifeops/work-threads/store.ts";
-import { workThreadResponseHandlerEvaluator } from "../src/lifeops/work-threads/response-handler-evaluator.ts";
 import { workThreadsProvider } from "../src/providers/work-threads.ts";
 import { createMockedTestRuntime } from "../../../test/mocks/helpers/mock-runtime.ts";
 
 let cleanupRuntime: (() => Promise<void>) | undefined;
 
-setDefaultTimeout(120_000);
+vi.setConfig({ testTimeout: 120_000 });
 
 afterEach(async () => {
   await cleanupRuntime?.();
@@ -130,32 +134,46 @@ function operationResults(result: ActionResult): Array<Record<string, unknown>> 
   return operations as Array<Record<string, unknown>>;
 }
 
-function evaluatorContext(
+function fieldContext(
   runtime: IAgentRuntime,
   msg: Memory,
-): ResponseHandlerEvaluatorContext {
+): ResponseHandlerFieldContext {
   return {
     runtime,
     message: msg,
     state: { values: {}, data: {}, text: "" } as State,
-    messageHandler: {
-      processMessage: "RESPOND",
-      thought: "",
-      plan: {
-        contexts: [],
-        requiresTool: false,
-        simple: true,
-        contextSlices: [],
-        candidateActions: [],
-        parentActionHints: [],
-      },
-    },
-    availableContexts: [
-      { id: "tasks" },
-      { id: "messaging" },
-      { id: "automation" },
-    ],
+    senderRole: "OWNER",
+    turnSignal: new AbortController().signal,
   };
+}
+
+function responseHandlerResult(): ResponseHandlerResult {
+  return {
+    shouldRespond: "RESPOND",
+    contexts: [],
+    intents: [],
+    candidateActionNames: [],
+    replyText: "",
+    facts: [],
+    relationships: [],
+    addressedTo: [],
+  };
+}
+
+async function applyThreadOpsField(
+  runtime: IAgentRuntime,
+  msg: Memory,
+  ops: ThreadOp[],
+): Promise<ResponseHandlerResult> {
+  const parsed = responseHandlerResult();
+  parsed.threadOps = ops;
+  const effect = await threadOpsFieldEvaluator.handle?.({
+    ...fieldContext(runtime, msg),
+    value: ops,
+    parsed,
+  });
+  effect?.mutateResult?.(parsed);
+  return parsed;
 }
 
 describe("LifeOps work threads", () => {
@@ -164,9 +182,7 @@ describe("LifeOps work threads", () => {
     const idleRoom = message(runtime, "room-idle", "hello there");
     expect(await workThreadAction.validate?.(runtime, idleRoom)).toBe(false);
     expect(
-      await workThreadResponseHandlerEvaluator.shouldRun(
-        evaluatorContext(runtime, idleRoom),
-      ),
+      await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, idleRoom)),
     ).toBe(false);
     const idleProviderResult = await workThreadsProvider.get(
       runtime,
@@ -201,15 +217,19 @@ describe("LifeOps work threads", () => {
     expect(providerResult.text).toContain("mutable-current-channel");
 
     expect(
-      await workThreadResponseHandlerEvaluator.shouldRun(
-        evaluatorContext(runtime, roomA),
-      ),
+      await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, roomA)),
     ).toBe(true);
-    const patch = await workThreadResponseHandlerEvaluator.evaluate(
-      evaluatorContext(runtime, roomA),
+    const staged = await applyThreadOpsField(runtime, roomA, [
+      {
+        type: "steer",
+        workThreadId: threadId,
+        instruction: "Keep the renewal moving.",
+      },
+    ]);
+    expect(staged.candidateActionNames).toContain("work_thread");
+    expect(staged.contexts).toEqual(
+      expect.arrayContaining(["tasks", "messaging", "automation"]),
     );
-    expect(patch?.requiresTool).toBe(true);
-    expect(patch?.addCandidateActions).toContain("LIFEOPS_THREAD_CONTROL");
 
     const crossChannelSteer = await runThreadAction(runtime, roomB, [
       {
@@ -269,9 +289,7 @@ describe("LifeOps work threads", () => {
     }
     expect(await workThreadAction.validate?.(runtime, roomA)).toBe(true);
     expect(
-      await workThreadResponseHandlerEvaluator.shouldRun(
-        evaluatorContext(runtime, roomA),
-      ),
+      await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, roomA)),
     ).toBe(true);
     const providerWithNoise = await workThreadsProvider.get(
       runtime,
@@ -607,9 +625,7 @@ describe("LifeOps work threads", () => {
     const userMessage = sharedMessageUser("continue this thread");
     expect(await workThreadAction.validate?.(runtime, userMessage)).toBe(false);
     expect(
-      await workThreadResponseHandlerEvaluator.shouldRun(
-        evaluatorContext(runtime, userMessage),
-      ),
+      await threadOpsFieldEvaluator.shouldRun?.(fieldContext(runtime, userMessage)),
     ).toBe(false);
     const userProvider = await workThreadsProvider.get(runtime, userMessage, state);
     expect(userProvider.values?.workThreadCount).toBe(0);

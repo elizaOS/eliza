@@ -181,6 +181,13 @@
           "required": ["median", "passed"],
           "properties": {
             "median": { "type": "number", "minimum": 0 },
+            "boundaryMs": { "type": "number", "minimum": 0 },
+            "endpointMs": { "type": "number", "minimum": 0 },
+            "falseBargeInRate": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
             "passed": { "type": "boolean" }
           }
         },

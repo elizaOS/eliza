@@ -100,17 +100,20 @@ const telegramPlugin: ConnectorPluginFixture = {
 };
 
 const telegramAccountStatus = {
-  available: true,
-  status: "idle",
-  configured: false,
-  sessionExists: false,
-  serviceConnected: false,
-  restartRequired: false,
-  hasAppCredentials: false,
-  phone: null,
-  isCodeViaApp: false,
-  account: null,
-  error: null,
+  connector: "telegram-account",
+  state: "idle",
+  detail: {
+    status: "idle",
+    configured: false,
+    sessionExists: false,
+    serviceConnected: false,
+    restartRequired: false,
+    hasAppCredentials: false,
+    phone: null,
+    isCodeViaApp: false,
+    account: null,
+    error: null,
+  },
 };
 
 const discordLocalStatus = {
@@ -141,7 +144,7 @@ async function installConnectorRoutes(
     });
   });
 
-  await page.route("**/api/telegram-account/status", async (route) => {
+  await page.route("**/api/setup/telegram-account/status", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -206,7 +209,7 @@ async function installConnectorRoutes(
 }
 
 async function openConnectors(page: Page): Promise<void> {
-  await openAppPath(page, "/connectors");
+  await openAppPath(page, "/apps/plugins");
   await expect(page.getByTestId("connectors-settings-content")).toBeVisible({
     timeout: 30_000,
   });

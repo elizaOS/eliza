@@ -94,13 +94,24 @@ export {
   createInMemoryScheduledTaskStore,
   createScheduledTaskRunner,
   TestNoopScheduledTaskDispatcher,
+  type ScheduledTaskClaimResult,
   type ScheduledTaskDispatcher,
   type ScheduledTaskDispatchRecord,
+  type ScheduledTaskFireResult,
   type ScheduledTaskRunnerDeps,
   type ScheduledTaskRunnerExtras,
   type ScheduledTaskRunnerHandle,
   type ScheduledTaskStore,
+  type ScheduledTaskUpsertOptions,
 } from "./runner.js";
+
+export {
+  getScheduledTaskRunner,
+  ScheduledTaskRunnerService,
+  type GetScheduledTaskRunnerOptions,
+} from "./service.js";
+
+export { computeNextFireAt } from "./next-fire-at.js";
 
 export {
   expectedReplyKindForTask,
@@ -113,10 +124,14 @@ export {
   type ScheduledTaskDueDecision,
 } from "./due.js";
 
+// `ScheduledTaskFireResult` (the runner's fire-attempt discriminated union) is
+// re-exported above from `./runner.js`. The scheduler module defines a separate
+// processing-summary shape under the same name; it is consumed via
+// `ProcessDueScheduledTasksResult.fires` and does not need a separate symbol on
+// this barrel.
 export {
   processDueScheduledTasks,
   type ProcessDueScheduledTasksRequest,
   type ProcessDueScheduledTasksResult,
-  type ScheduledTaskFireResult,
   type ScheduledTaskProcessingError,
 } from "./scheduler.js";

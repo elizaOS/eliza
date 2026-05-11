@@ -38,7 +38,7 @@ def test_openclaw_registry_command_and_result_locator(tmp_path: Path) -> None:
     command = entry.build_command(tmp_path, ModelSpec(provider="groq", model="kimi-k2"), {})
     assert "--output-dir" in command
     assert str(tmp_path) in command
-    assert command[command.index("--mode") + 1] == "conceptual"
+    assert command[command.index("--mode") + 1] == "execution"
     assert command[command.index("--model") + 1] == "kimi-k2"
 
     result_path = tmp_path / "openclaw_setup_concept_123.json"

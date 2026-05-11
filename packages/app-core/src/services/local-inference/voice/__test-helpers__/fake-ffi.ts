@@ -18,11 +18,16 @@ export function fakeFfi(
     ttsSamples?: number;
     ttsStreamSupported?: boolean;
     asrStreamSupported?: boolean;
+    vadSupported?: boolean;
+    vadProbs?: readonly number[];
   } = {},
 ): ElizaInferenceFfi {
   const ttsSamples = opts.ttsSamples ?? 8;
   const ttsStreamSupported = opts.ttsStreamSupported ?? true;
   const asrStreamSupported = opts.asrStreamSupported ?? false;
+  const vadSupported = opts.vadSupported ?? false;
+  const vadProbs = opts.vadProbs ?? [0];
+  let vadIdx = 0;
   return {
     libraryPath: "/fake/libelizainference.so",
     libraryAbiVersion: "2",
@@ -48,6 +53,16 @@ export function fakeFfi(
     },
     cancelTts: () => {},
     setVerifierCallback: () => ({ close: () => {} }),
+    vadSupported: () => vadSupported,
+    vadOpen: () => 2n,
+    vadProcess: ({ pcm }) => {
+      if (pcm.length !== 512) throw new Error("fake VAD expected 512 samples");
+      const p = vadProbs[vadIdx] ?? vadProbs[vadProbs.length - 1] ?? 0;
+      vadIdx++;
+      return p;
+    },
+    vadReset: () => {},
+    vadClose: () => {},
     asrStreamSupported: () => asrStreamSupported,
     asrStreamOpen: () => 1n,
     asrStreamFeed: () => {},

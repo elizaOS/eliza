@@ -1,5 +1,5 @@
 /*
- * libelizainference FFI ABI v1.
+ * libelizainference FFI ABI v3.
  *
  * Single source of truth for the C-callable surface that the fused
  * omnivoice + llama.cpp build (`libelizainference.{dylib,so,dll}`)
@@ -36,6 +36,12 @@
  * streaming path. The batch `eliza_inference_asr_transcribe` and
  * `eliza_inference_tts_synthesize` stay for one-shot callers.
  *
+ * ABI v3 adds the native Silero VAD surface:
+ *   - the "vad" mmap region for VAD weights / runtime pages;
+ *   - `eliza_inference_vad_supported/open/process/reset/close`, matching
+ *     the JS Silero contract: 16 kHz, 512-sample windows, one speech
+ *     probability per window.
+ *
  * Errors are propagated via heap-allocated `char *` strings written to
  * `out_error` arguments; callers MUST free them with
  * `eliza_inference_free_string`. A NULL `out_error` parameter is a
@@ -61,9 +67,9 @@ extern "C" {
 /* Bump on any breaking shape change. The Node loader checks the value
  * returned by `eliza_inference_abi_version()` against this constant on
  * load and refuses to bind if they disagree. */
-#define ELIZA_INFERENCE_ABI_VERSION 2
+#define ELIZA_INFERENCE_ABI_VERSION 3
 
-/* Returns a static, NUL-terminated string of the form "2" matching
+/* Returns a static, NUL-terminated string of the form "3" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -110,6 +116,7 @@ void eliza_inference_destroy(EliInferenceContext * ctx);
  *   - "asr"  : ASR weights (mmap of asr/...)
  *   - "text" : text+vision weights (kept hot — always acquired)
  *   - "dflash" : drafter weights (kept hot — always acquired)
+ *   - "vad" : Silero VAD weights / runtime pages
  *
  * Returns ELIZA_OK on success, negative on failure with
  * `*out_error` populated. Eviction is a hint to the OS (madvise
@@ -242,6 +249,49 @@ int eliza_inference_set_verifier_callback(
     eliza_verifier_cb cb,
     void * user_data,
     char ** out_error);
+
+/* ---- Native VAD (ABI v3) ------------------------------------------ *
+ *
+ * Native Silero VAD backend. The shape intentionally mirrors
+ * `voice/vad.ts::SileroVad`: 16 kHz mono fp32 PCM, 512-sample windows,
+ * one probability in [0, 1] per call, and recurrent state reset at
+ * utterance boundaries. The JS binding chooses this backend when
+ * `eliza_inference_vad_supported() == 1`; otherwise it falls back to the
+ * ONNX runtime path unchanged.
+ */
+
+/* Capability probe: 1 when this build implements native VAD, 0 when it
+ * does not (stub / VAD-disabled build). */
+int eliza_inference_vad_supported(void);
+
+/* Opaque native VAD session. One per detector. */
+typedef struct EliVad EliVad;
+
+/* Open a VAD session anchored to `ctx`. `sample_rate_hz` must be 16000
+ * for the Silero v5-compatible ABI. Returns NULL on failure with
+ * `*out_error` populated. */
+EliVad * eliza_inference_vad_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error);
+
+/* Process exactly one 512-sample fp32 mono window and write its speech
+ * probability into `*out_probability`. Returns ELIZA_OK on success or a
+ * negative ELIZA_* code on failure. */
+int eliza_inference_vad_process(
+    EliVad * vad,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error);
+
+/* Clear recurrent model state at utterance boundaries. */
+int eliza_inference_vad_reset(
+    EliVad * vad,
+    char ** out_error);
+
+/* Close + free a native VAD session. Idempotent on NULL. */
+void eliza_inference_vad_close(EliVad * vad);
 
 /* ---- ASR transcription (synchronous) ------------------------------- */
 

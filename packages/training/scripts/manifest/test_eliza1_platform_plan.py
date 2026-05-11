@@ -26,11 +26,14 @@ def test_platform_plan_is_json_serializable_and_covers_all_tiers() -> None:
     json.dumps(data, sort_keys=True)
 
 
-def test_vad_is_sidecar_not_gguf_but_asr_is_gguf() -> None:
+def test_vad_is_native_ggml_not_gguf_but_asr_is_gguf() -> None:
     plan = build_plan()
     for tier_plan in plan.values():
-        assert "vad/silero-vad-int8.onnx" in tier_plan.required_files
+        assert "vad/silero-vad-v5.1.2.ggml.bin" in tier_plan.required_files
+        assert "vad/silero-vad-int8.onnx" not in tier_plan.required_files
         assert "vad/silero-vad-int8.gguf" not in tier_plan.required_files
+        assert "vad/silero-vad-v5.1.2.gguf" not in tier_plan.required_files
+        assert tier_plan.optional_files == ("vad/silero-vad-int8.onnx",)
         assert "asr/eliza-1-asr.gguf" in tier_plan.required_files
         assert "asr/eliza-1-asr-mmproj.gguf" in tier_plan.required_files
 
@@ -57,16 +60,21 @@ def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     plan = build_plan()
     root = tmp_path / "bundles"
     (root / "eliza-1-9b" / "vad").mkdir(parents=True)
-    (root / "eliza-1-9b" / "vad" / "silero-vad-int8.onnx").write_bytes(b"vad")
+    (root / "eliza-1-9b" / "vad" / "silero-vad-v5.1.2.ggml.bin").write_bytes(
+        b"vad"
+    )
     missing = missing_files(root, plan)
-    assert "vad/silero-vad-int8.onnx" not in missing["9b"]
+    assert "vad/silero-vad-v5.1.2.ggml.bin" not in missing["9b"]
     assert "text/eliza-1-9b-64k.gguf" in missing["9b"]
     assert "evidence/platform/linux-x64-rocm.json" in missing["9b"]
 
 
-def test_readiness_mentions_vad_sidecar_caveat() -> None:
+def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     text = render_readiness(build_plan(), missing=None)
-    assert "VAD is intentionally a sidecar ONNX artifact" in text
+    assert "VAD is a native GGML artifact" in text
+    assert "It is not GGUF" in text
+    assert "vad/silero-vad-int8.onnx" in text
+    assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
     # v1 release shape is documented in the readiness ledger.
     assert "releaseState=base-v1" in text
@@ -122,7 +130,7 @@ def test_release_status_blockers_accept_base_v1_evidence(tmp_path: Path) -> None
                     "text": {"repo": "Qwen/Qwen3-1.7B-GGUF"},
                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
-                    "vad": {"repo": "onnx-community/silero-vad"},
+                    "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
                     "drafter": {"repo": "elizaos/eliza-1-1_7b"},
                 },

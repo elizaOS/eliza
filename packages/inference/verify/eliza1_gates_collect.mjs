@@ -9,6 +9,7 @@
  *
  * Sources scanned (newest file wins, by mtime):
  *   - dflash bench           — packages/inference/reports/dflash-bench/dflash-bench-*.json
+ *   - VAD quality            — packages/inference/reports/vad/vad-quality-*.json
  *   - barge-in latency       — packages/inference/reports/bargein/bargein-latency-*.json
  *   - 30-turn endurance      — packages/inference/reports/endurance/thirty-turn-endurance-*.json
  *   - mobile peak RSS        — packages/inference/reports/mobile-rss/mobile-peak-rss-*.json
@@ -149,6 +150,10 @@ async function main() {
     path.join(REPORTS_ROOT, "dflash-bench"),
     "dflash-bench-",
   );
+  const vadQuality = newestReport(
+    path.join(REPORTS_ROOT, "vad"),
+    "vad-quality-",
+  );
   const bargein = newestReport(
     path.join(REPORTS_ROOT, "bargein"),
     "bargein-latency-",
@@ -165,6 +170,13 @@ async function main() {
   const dflashAcceptance =
     dflashBench?.data?.summary?.dflashAcceptanceRate ?? null;
   const dflashSpeedup = dflashBench?.data?.summary?.dflashSpeedup ?? null;
+  const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;
+  const vadBoundaryMaeMs =
+    vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
+  const vadEndpointP95Ms =
+    vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
+  const vadFalseBargeInPerHour =
+    vadQuality?.data?.summary?.vadFalseBargeInPerHour ?? null;
   const bargeInCancelMs = bargein?.data?.summary?.bargeInCancelMs ?? null;
   const thirtyTurnOk = endurance?.data?.summary?.thirtyTurnOk ?? null;
   const e2eLoopOk = endurance?.data?.summary?.e2eLoopOk ?? null;
@@ -176,14 +188,17 @@ async function main() {
     mobileRss?.data?.summary?.thermalThrottlePct ?? null;
 
   // Map metric name → measured value. Names that have no W11-owned source
-  // (text_eval, voice_rtf, asr_wer, vad_latency_ms, first_token_latency_ms,
+  // (text_eval, voice_rtf, asr_wer, first_token_latency_ms,
   // first_audio_latency_ms, expressive_*) stay null here — they come from
   // the training-side eval blob, not from these harnesses.
   const measured = {
     text_eval: null,
     voice_rtf: null,
     asr_wer: null,
-    vad_latency_ms: null,
+    vad_latency_ms: vadLatencyMs,
+    vad_boundary_mae_ms: vadBoundaryMaeMs,
+    vad_endpoint_p95_ms: vadEndpointP95Ms,
+    vad_false_bargein_per_hour: vadFalseBargeInPerHour,
     first_token_latency_ms: null,
     first_audio_latency_ms: null,
     barge_in_cancel_ms: bargeInCancelMs,
@@ -236,6 +251,36 @@ async function main() {
     // side keeps whatever it had / treats it as not-ready.
     ...(thirtyTurnOk !== null ? { thirtyTurnOk } : {}),
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
+    ...(vadLatencyMs !== null
+      ? {
+          vadLatencyMs: {
+            median: vadLatencyMs,
+            passed: results.some(
+              (r) => r.name === "vad_latency_ms" && r.status === "pass",
+            ),
+          },
+        }
+      : {}),
+    ...(vadBoundaryMaeMs !== null ||
+    vadEndpointP95Ms !== null ||
+    vadFalseBargeInPerHour !== null
+      ? {
+          vadQuality: {
+            boundaryMaeMs: vadBoundaryMaeMs,
+            endpointP95Ms: vadEndpointP95Ms,
+            falseBargeInPerHour: vadFalseBargeInPerHour,
+            passed: results
+              .filter((r) =>
+                [
+                  "vad_boundary_mae_ms",
+                  "vad_endpoint_p95_ms",
+                  "vad_false_bargein_per_hour",
+                ].includes(r.name),
+              )
+              .every((r) => r.status === "pass"),
+          },
+        }
+      : {}),
     dflash: dflashEval,
   };
 
@@ -248,6 +293,9 @@ async function main() {
     sources: {
       dflashBench: dflashBench
         ? path.relative(process.cwd(), dflashBench.path)
+        : null,
+      vadQuality: vadQuality
+        ? path.relative(process.cwd(), vadQuality.path)
         : null,
       bargein: bargein ? path.relative(process.cwd(), bargein.path) : null,
       endurance: endurance

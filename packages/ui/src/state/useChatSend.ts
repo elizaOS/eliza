@@ -23,6 +23,7 @@ import {
 } from "../chat";
 import type { Tab } from "../navigation";
 import { isConversationRecord } from "./chat-conversation-guards";
+import { clearChatDraft } from "./ChatComposerContext";
 import {
   formatSearchBullet,
   type LoadConversationMessagesResult,
@@ -949,6 +950,11 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatPendingImagesRef.current = [];
       setChatInput("");
       setChatPendingImages([]);
+      // The composer draft for this conversation is now stale — the
+      // user just sent it. Clear before the debounce window so a
+      // background-app pause cannot snapshot the empty-then-restored
+      // value back to storage.
+      clearChatDraft(activeConversationIdRef.current);
 
       await sendChatText(claimedInput, {
         channelType,

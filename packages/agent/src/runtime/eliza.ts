@@ -355,6 +355,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginBackgroundRunner,
       pluginElizacloud,
       pluginOllama,
+      pluginMlx,
       pluginAnthropic,
       pluginOpenai,
     ] = await Promise.all([
@@ -368,6 +369,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       getOptionalPlugin("@elizaos/plugin-background-runner"),
       getOptionalPlugin("@elizaos/plugin-elizacloud"),
       getOptionalPlugin("@elizaos/plugin-ollama"),
+      getOptionalPlugin("@elizaos/plugin-mlx"),
       getOptionalPlugin("@elizaos/plugin-anthropic"),
       getOptionalPlugin("@elizaos/plugin-openai"),
     ]);
@@ -396,6 +398,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
         : {}),
       ...(pluginOllama ? { "@elizaos/plugin-ollama": pluginOllama } : {}),
+      ...(pluginMlx ? { "@elizaos/plugin-mlx": pluginMlx } : {}),
       ...(pluginElizacloud
         ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
         : {}),

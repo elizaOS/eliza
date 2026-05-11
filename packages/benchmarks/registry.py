@@ -2617,6 +2617,96 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _lifeops_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
 
+    # --- Hermes-native envs (tblite / terminalbench_2 / yc_bench / hermes_swe_env) ---
+    # The four envs share one subprocess shim and one score extractor; only the
+    # short env-id arg and the result-glob differ between them.
+
+    hermes_run_env_cli = repo("benchmarks/hermes-adapter/run_env_cli.py")
+
+    def _hermes_env_cmd(
+        env_arg: str,
+        output_dir: Path,
+        model: ModelSpec,
+        extra: Mapping[str, JSONValue],
+    ) -> list[str]:
+        args = [
+            python,
+            hermes_run_env_cli,
+            "--env",
+            env_arg,
+            "--output",
+            str(output_dir),
+            "--model",
+            (model.model or "gpt-oss-120b"),
+        ]
+        if model.provider:
+            args.extend(["--provider", model.provider])
+        base_url = extra.get("base_url")
+        if isinstance(base_url, str) and base_url.strip():
+            args.extend(["--base-url", base_url.strip()])
+        max_tasks = extra.get("max_tasks")
+        if isinstance(max_tasks, int) and max_tasks > 0:
+            args.extend(["--max-tasks", str(max_tasks)])
+        task_filter = extra.get("task_filter")
+        if isinstance(task_filter, str) and task_filter.strip():
+            args.extend(["--task-filter", task_filter.strip()])
+        repo_path = extra.get("repo_path")
+        if isinstance(repo_path, str) and repo_path.strip():
+            args.extend(["--repo-path", repo_path.strip()])
+        timeout_s = extra.get("timeout_seconds")
+        if isinstance(timeout_s, (int, float)) and not isinstance(timeout_s, bool) and timeout_s > 0:
+            args.extend(["--timeout-seconds", str(float(timeout_s))])
+        if extra.get("force") is True:
+            args.append("--force")
+        return args
+
+    def _hermes_tblite_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        return _hermes_env_cmd("tblite", output_dir, model, extra)
+
+    def _hermes_terminalbench_2_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        return _hermes_env_cmd("terminalbench_2", output_dir, model, extra)
+
+    def _hermes_yc_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        return _hermes_env_cmd("yc_bench", output_dir, model, extra)
+
+    def _hermes_swe_env_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        return _hermes_env_cmd("hermes_swe_env", output_dir, model, extra)
+
+    def _hermes_tblite_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="hermes_tblite_*.json")
+
+    def _hermes_terminalbench_2_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="hermes_terminalbench_2_*.json")
+
+    def _hermes_yc_bench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="hermes_yc_bench_*.json")
+
+    def _hermes_swe_env_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="hermes_hermes_swe_env_*.json")
+
+    def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
+        root = expect_dict(data, ctx="hermes_env:root")
+        score_raw = get_required(root, "score", ctx="hermes_env:root")
+        score = expect_float(score_raw, ctx="hermes_env:score")
+        higher_raw = get_optional(root, "higher_is_better")
+        higher = bool(higher_raw) if isinstance(higher_raw, bool) else True
+        metrics_raw = get_optional(root, "metrics")
+        metrics_dict: dict[str, JSONValue] = {}
+        if isinstance(metrics_raw, dict):
+            metrics_dict.update(metrics_raw)
+        env_id_public = get_optional(root, "env_id_public") or get_optional(root, "env_id")
+        if env_id_public is not None:
+            metrics_dict["env_id"] = env_id_public
+        duration = get_optional(root, "duration_s")
+        if duration is not None:
+            metrics_dict["duration_s"] = duration
+        return ScoreExtraction(
+            score=score,
+            unit="ratio",
+            higher_is_better=higher,
+            metrics=metrics_dict,
+        )
+
     return [
         BenchmarkDefinition(
             id="solana",
@@ -3275,6 +3365,78 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_trajectory_replay_cmd,
             locate_result=_trajectory_replay_result,
             extract_score=_score_from_trajectory_replay_json,
+        ),
+        BenchmarkDefinition(
+            id="hermes_tblite",
+            display_name="Hermes TBlite",
+            description=(
+                "Hermes-agent's TBlite environment (100 calibrated terminal tasks). "
+                "Fastest of the four hermes-native envs — preferred for smoke loops."
+            ),
+            cwd_rel="benchmarks/hermes-adapter",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY",),
+                paths=("benchmarks/hermes-adapter",),
+                notes=(
+                    "Runs hermes-agent's tblite_env evaluate flow via run_env_cli.py. "
+                    "Defaults are smoke-friendly (max_tasks=5). Override via extra: "
+                    "max_tasks, task_filter, base_url, repo_path, force, timeout_seconds."
+                ),
+            ),
+            build_command=_hermes_tblite_cmd,
+            locate_result=_hermes_tblite_result,
+            extract_score=_score_from_hermes_env_json,
+        ),
+        BenchmarkDefinition(
+            id="hermes_terminalbench_2",
+            display_name="Hermes TerminalBench 2",
+            description="Hermes-agent's terminalbench_2 environment (89 terminal tasks).",
+            cwd_rel="benchmarks/hermes-adapter",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY",),
+                paths=("benchmarks/hermes-adapter",),
+                notes=(
+                    "Runs hermes-agent's terminalbench_2 env via run_env_cli.py. "
+                    "Same extra-config knobs as hermes_tblite."
+                ),
+            ),
+            build_command=_hermes_terminalbench_2_cmd,
+            locate_result=_hermes_terminalbench_2_result,
+            extract_score=_score_from_hermes_env_json,
+        ),
+        BenchmarkDefinition(
+            id="hermes_yc_bench",
+            display_name="Hermes YC-Bench",
+            description="Hermes-agent's yc_bench environment (long-horizon strategic tasks).",
+            cwd_rel="benchmarks/hermes-adapter",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY",),
+                paths=("benchmarks/hermes-adapter",),
+                notes=(
+                    "Runs hermes-agent's yc_bench env via run_env_cli.py. "
+                    "Long-horizon — set max_tasks low for smoke runs."
+                ),
+            ),
+            build_command=_hermes_yc_bench_cmd,
+            locate_result=_hermes_yc_bench_result,
+            extract_score=_score_from_hermes_env_json,
+        ),
+        BenchmarkDefinition(
+            id="hermes_swe_env",
+            display_name="Hermes SWE Env",
+            description="Hermes-agent's SWE-bench-style hermes_swe_env environment.",
+            cwd_rel="benchmarks/hermes-adapter",
+            requirements=BenchmarkRequirements(
+                env_vars=("CEREBRAS_API_KEY",),
+                paths=("benchmarks/hermes-adapter",),
+                notes=(
+                    "Runs hermes-agent's hermes_swe_env evaluate flow via run_env_cli.py. "
+                    "SWE-bench style; expect long per-task runtime."
+                ),
+            ),
+            build_command=_hermes_swe_env_cmd,
+            locate_result=_hermes_swe_env_result,
+            extract_score=_score_from_hermes_env_json,
         ),
     ]
 

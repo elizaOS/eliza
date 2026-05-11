@@ -21,6 +21,8 @@ export interface DesktopBrandConfig {
 	urlScheme: string;
 	/** Base URL for release/update artifacts. */
 	releaseUrl: string;
+	/** Distribution build variant. Store builds must not self-update. */
+	buildVariant: "direct" | "store";
 	/** Config export file name. */
 	configExportFileName: string;
 	/** User-facing description. */
@@ -100,6 +102,7 @@ const DEFAULT_CONFIG: DesktopBrandConfig = {
 	appId: "ai.elizaos.app",
 	urlScheme: "elizaos",
 	releaseUrl: "",
+	buildVariant: "direct",
 	configExportFileName: "eliza-config.json",
 	appDescription: "AI agents for the desktop",
 	namespace: "eliza",
@@ -155,6 +158,11 @@ function resolveBrandConfig(): DesktopBrandConfig {
 			envFallback("ELIZA_RELEASE_URL", "ELIZA_RELEASE_URL") ||
 			fileConfig.releaseUrl ||
 			DEFAULT_CONFIG.releaseUrl,
+		buildVariant:
+			envFallback("MILADY_BUILD_VARIANT", "ELIZA_BUILD_VARIANT") === "store" ||
+			fileConfig.buildVariant === "store"
+				? "store"
+				: "direct",
 		configExportFileName:
 			fileConfig.configExportFileName ??
 			`${appName.toLowerCase().replace(/\s+/g, "-")}-config.json`,

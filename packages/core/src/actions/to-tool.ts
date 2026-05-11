@@ -191,17 +191,21 @@ const PLAN_ACTIONS_DESCRIPTION =
  */
 export function createHandleResponseTool(options?: {
 	directMessage?: boolean;
+	parameters?: JSONSchema;
+	description?: string;
 }): ToolDefinition {
 	return {
 		name: HANDLE_RESPONSE_TOOL_NAME,
-		description: options?.directMessage
-			? HANDLE_RESPONSE_DIRECT_DESCRIPTION
-			: HANDLE_RESPONSE_DESCRIPTION,
+		description:
+			options?.description ??
+			(options?.directMessage
+				? HANDLE_RESPONSE_DIRECT_DESCRIPTION
+				: HANDLE_RESPONSE_DESCRIPTION),
 		type: "function",
 		strict: true,
-		parameters: options?.directMessage
+		parameters: options?.parameters ?? (options?.directMessage
 			? HANDLE_RESPONSE_DIRECT_SCHEMA
-			: HANDLE_RESPONSE_SCHEMA,
+			: HANDLE_RESPONSE_SCHEMA),
 	};
 }
 

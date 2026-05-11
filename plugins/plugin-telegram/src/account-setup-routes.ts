@@ -1,16 +1,22 @@
 /**
  * Telegram account (user-account) auth HTTP routes.
  *
- * Provides a multi-step login flow for linking a personal Telegram account
- * (as opposed to a bot token) using the `telegram` library (GramJS):
+ * Implements the shared connector setup contract
+ * (`eliza/packages/app-core/src/api/setup-contract.ts`) with one extra
+ * connector-specific route for the two-step login flow used by the
+ * `telegram` library (GramJS):
  *
- *   GET  /api/telegram-account/status        current auth/connection status
- *   POST /api/telegram-account/auth/start    begin login (phone + optional app creds)
- *   POST /api/telegram-account/auth/submit   submit provisioning code, telegram code, or 2FA password
- *   POST /api/telegram-account/disconnect    tear down session + clear saved credentials
+ *   GET  /api/setup/telegram-account/status        current auth/connection status
+ *   POST /api/setup/telegram-account/start         begin login (phone + optional app creds)
+ *   POST /api/setup/telegram-account/submit-code   submit provisioning code, telegram code, or 2FA password
+ *   POST /api/setup/telegram-account/cancel        tear down session + clear saved credentials
  *
- * These routes are registered with `rawPath: true` so they mount at their
- * legacy paths without the plugin-name prefix.
+ * The `submit-code` route is connector-specific. The contract requires
+ * `status`/`start`/`cancel` but does not forbid additional routes under the
+ * same `/api/setup/<connector>/...` prefix.
+ *
+ * These routes are registered with `rawPath: true` so they mount at the
+ * canonical `/api/setup/telegram-account/*` paths without the plugin-name prefix.
  */
 
 import type {
@@ -58,6 +64,15 @@ function getSetupService(runtime: IAgentRuntime): ConnectorSetupService | null {
   return isConnectorSetupService(service) ? service : null;
 }
 
+function sendSetupError(
+  res: RouteResponse,
+  status: number,
+  code: string,
+  message: string,
+): void {
+  res.status(status).json({ error: { code, message } });
+}
+
 // ── Module-level auth session state ────────────────────────────────────
 
 let telegramAccountAuthSession: TelegramAccountAuthSessionLike | null = null;
@@ -88,8 +103,14 @@ type TelegramAccountRuntimeServiceLike = {
   stop?: () => Promise<void>;
 };
 
-type TelegramAccountStatusResponse = {
-  available: true;
+/** Canonical setup state matching `SetupState` in app-core setup-contract.ts. */
+type SetupState = "idle" | "configuring" | "paired" | "error";
+
+interface TelegramAccountDetail {
+  /**
+   * Connector-internal flow status, retained verbatim so the UI can drive
+   * its multi-step login wizard. Distinct from the canonical `state`.
+   */
   status: string;
   configured: boolean;
   sessionExists: boolean;
@@ -100,7 +121,13 @@ type TelegramAccountStatusResponse = {
   isCodeViaApp: boolean;
   account: TelegramAccountAuthSnapshot["account"];
   error: string | null;
-};
+}
+
+interface TelegramAccountStatusResponse {
+  connector: "telegram-account";
+  state: SetupState;
+  detail: TelegramAccountDetail;
+}
 
 // ── Config helpers ─────────────────────────────────────────────────────
 
@@ -179,6 +206,26 @@ function isServiceConnected(
   return withFlags.connected === true;
 }
 
+function setupStateFromFlow(
+  flowStatus: string,
+  configured: boolean,
+  sessionExists: boolean,
+  serviceConnected: boolean,
+): SetupState {
+  if (flowStatus === "error") return "error";
+  if (serviceConnected || flowStatus === "connected") return "paired";
+  if (
+    flowStatus === "waiting_for_provisioning_code" ||
+    flowStatus === "waiting_for_telegram_code" ||
+    flowStatus === "waiting_for_password" ||
+    configured ||
+    sessionExists
+  ) {
+    return "configuring";
+  }
+  return "idle";
+}
+
 function statusFromState(
   runtime: IAgentRuntime,
   config: Record<string, unknown>,
@@ -195,7 +242,7 @@ function statusFromState(
       : null;
   const fallbackPhone = resolveConfiguredPhone(runtime, connectorConfig);
 
-  let status =
+  let flowStatus =
     authSnapshot?.status ??
     (serviceConnected
       ? "connected"
@@ -203,27 +250,37 @@ function statusFromState(
         ? "configured"
         : "idle");
 
-  if (serviceConnected && status === "configured") {
-    status = "connected";
+  if (serviceConnected && flowStatus === "configured") {
+    flowStatus = "connected";
   }
 
-  return {
-    available: true,
-    status,
+  const state = setupStateFromFlow(
+    flowStatus,
     configured,
-    sessionExists: sessExists,
+    sessExists,
     serviceConnected,
-    restartRequired: status === "configured" && !serviceConnected,
-    hasAppCredentials: Boolean(
-      (typeof connectorConfig.appId === "string" ||
-        typeof connectorConfig.appId === "number") &&
-        typeof connectorConfig.appHash === "string" &&
-        connectorConfig.appHash.trim().length > 0,
-    ),
-    phone: authSnapshot?.phone ?? fallbackPhone,
-    isCodeViaApp: authSnapshot?.isCodeViaApp ?? false,
-    account: authSnapshot?.account ?? serviceAccount ?? null,
-    error: authSnapshot?.error ?? null,
+  );
+
+  return {
+    connector: "telegram-account",
+    state,
+    detail: {
+      status: flowStatus,
+      configured,
+      sessionExists: sessExists,
+      serviceConnected,
+      restartRequired: flowStatus === "configured" && !serviceConnected,
+      hasAppCredentials: Boolean(
+        (typeof connectorConfig.appId === "string" ||
+          typeof connectorConfig.appId === "number") &&
+          typeof connectorConfig.appHash === "string" &&
+          connectorConfig.appHash.trim().length > 0,
+      ),
+      phone: authSnapshot?.phone ?? fallbackPhone,
+      isCodeViaApp: authSnapshot?.isCodeViaApp ?? false,
+      account: authSnapshot?.account ?? serviceAccount ?? null,
+      error: authSnapshot?.error ?? null,
+    },
   };
 }
 
@@ -294,7 +351,7 @@ async function handleStatus(
   res.status(200).json(statusFromState(runtime, config));
 }
 
-async function handleAuthStart(
+async function handleStart(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime,
@@ -308,7 +365,12 @@ async function handleAuthStart(
     (typeof body.phone === "string" && body.phone.trim()) ||
     resolveConfiguredPhone(runtime, connectorConfig);
   if (!phone) {
-    res.status(400).json({ error: "telegram phone number is required" });
+    sendSetupError(
+      res,
+      400,
+      "bad_request",
+      "telegram phone number is required",
+    );
     return;
   }
 
@@ -336,17 +398,19 @@ async function handleAuthStart(
         Object.assign(ensureConnectorBlock(cfg), resolved);
       });
     }
-    // Re-read config after potential update
     const freshConfig = setupService?.getConfig() ?? config;
     res.status(200).json(statusFromState(runtime, freshConfig));
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : String(error),
-    });
+  } catch (err) {
+    sendSetupError(
+      res,
+      500,
+      "internal_error",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
-async function handleAuthSubmit(
+async function handleSubmitCode(
   req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime,
@@ -359,16 +423,13 @@ async function handleAuthSubmit(
   const setupService = getSetupService(runtime);
   const config = setupService?.getConfig() ?? {};
 
-  if (!ensureAuthSession(config)) {
-    res
-      .status(400)
-      .json({ error: "telegram login session has not been started" });
-    return;
-  }
-  if (!telegramAccountAuthSession) {
-    res
-      .status(400)
-      .json({ error: "telegram login session has not been started" });
+  if (!ensureAuthSession(config) || !telegramAccountAuthSession) {
+    sendSetupError(
+      res,
+      400,
+      "bad_request",
+      "telegram login session has not been started",
+    );
     return;
   }
 
@@ -382,14 +443,17 @@ async function handleAuthSubmit(
     }
     const freshConfig = setupService?.getConfig() ?? config;
     res.status(200).json(statusFromState(runtime, freshConfig));
-  } catch (error) {
-    res.status(500).json({
-      error: error instanceof Error ? error.message : String(error),
-    });
+  } catch (err) {
+    sendSetupError(
+      res,
+      500,
+      "internal_error",
+      err instanceof Error ? err.message : String(err),
+    );
   }
 }
 
-async function handleDisconnect(
+async function handleCancel(
   _req: RouteRequest,
   res: RouteResponse,
   runtime: IAgentRuntime,
@@ -415,41 +479,39 @@ async function handleDisconnect(
   }
 
   const config = setupService?.getConfig() ?? {};
-  res.status(200).json({
-    ok: true,
-    ...statusFromState(runtime, config),
-  });
+  res.status(200).json(statusFromState(runtime, config));
 }
 
 // ── Exported route definitions ─────────────────────────────────────────
 
 /**
  * Plugin routes for Telegram account (user-account) auth.
- * Registered with `rawPath: true` to preserve legacy `/api/telegram-account/*` paths.
+ * Registered with `rawPath: true` to expose the canonical
+ * `/api/setup/telegram-account/*` surface without the plugin-name prefix.
  */
 export const telegramAccountRoutes: Route[] = [
   {
     type: "GET",
-    path: "/api/telegram-account/status",
+    path: "/api/setup/telegram-account/status",
     handler: handleStatus,
     rawPath: true,
   },
   {
     type: "POST",
-    path: "/api/telegram-account/auth/start",
-    handler: handleAuthStart,
+    path: "/api/setup/telegram-account/start",
+    handler: handleStart,
     rawPath: true,
   },
   {
     type: "POST",
-    path: "/api/telegram-account/auth/submit",
-    handler: handleAuthSubmit,
+    path: "/api/setup/telegram-account/submit-code",
+    handler: handleSubmitCode,
     rawPath: true,
   },
   {
     type: "POST",
-    path: "/api/telegram-account/disconnect",
-    handler: handleDisconnect,
+    path: "/api/setup/telegram-account/cancel",
+    handler: handleCancel,
     rawPath: true,
   },
 ];
