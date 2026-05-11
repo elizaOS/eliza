@@ -36,7 +36,13 @@
     "LICENSE",
     "docs"
   ],
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/register-routes.ts",
+    "./src/register-routes.js",
+    "./dist/index.js",
+    "./dist/node/index.node.js",
+    "./dist/cjs/index.node.cjs"
+  ],
   "keywords": [
     "elizaos",
     "plugin",
