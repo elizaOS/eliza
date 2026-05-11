@@ -331,6 +331,14 @@ export function parseEvaluatorOutput(
  * entirely or substitutes a neutral phrase, then collapses any
  * doubled whitespace.
  */
+// Orchestrator auto-generated task labels always have at least two
+// hyphen-separated word segments before the trailing index (e.g.
+// "count-py-files-projects-1", "write-arxiv-grab-py-1"). Requiring
+// `{2,}` segments here is what keeps the sanitizer from eating
+// legitimate parentheticals the LLM might write — "(bug-42)",
+// "(phase-1)", "(rfc-2616)", "(attempt-3)" — none of which match.
+const AUTO_LABEL = /(?:[a-z][a-z0-9]*-){2,}\d+/.source;
+
 const INTERNAL_MECHANIC_PATTERNS: ReadonlyArray<{
 	pattern: RegExp;
 	replacement: string;
@@ -340,19 +348,22 @@ const INTERNAL_MECHANIC_PATTERNS: ReadonlyArray<{
 		pattern: /\s*\((?:session(?:[- _]?id)?\s*[:=]?\s*)?pty-\d+-[A-Za-z0-9]+\)/g,
 		replacement: "",
 	},
-	// Bare session IDs "pty-1778500471501-4cf0e3a6" anywhere in the message
-	{ pattern: /\s+pty-\d+-[A-Za-z0-9]+/g, replacement: "" },
+	// Bare session IDs "pty-1778500471501-4cf0e3a6" anywhere in the
+	// message — `\s*` so the strip still fires at position 0.
+	{ pattern: /\s*pty-\d+-[A-Za-z0-9]+/g, replacement: "" },
 	// "(session write-arxiv-grab-py-1)" / "(write-arxiv-grab-py-1)" /
 	// "(count-py-files-projects-1 and count-ts-files-iqlabs-1)" —
 	// auto-generated labels in parens.
 	{
-		pattern:
-			/\s*\((?:session\s*[:=]?\s*|sessions?\s+)?(?:[a-z][a-z0-9]*-)+\d+(?:\s+and\s+(?:[a-z][a-z0-9]*-)+\d+)*\)/g,
+		pattern: new RegExp(
+			`\\s*\\((?:session\\s*[:=]?\\s*|sessions?\\s+)?${AUTO_LABEL}(?:\\s+and\\s+${AUTO_LABEL})*\\)`,
+			"g",
+		),
 		replacement: "",
 	},
 	// "session write-arxiv-grab-py-1" inline (no parens).
 	{
-		pattern: /\s+session\s+(?:[a-z][a-z0-9]*-)+\d+/g,
+		pattern: new RegExp(`\\s+session\\s+${AUTO_LABEL}`, "g"),
 		replacement: "",
 	},
 	// "task-agent / task_agent / subagent" mechanic phrases that
@@ -360,7 +371,7 @@ const INTERNAL_MECHANIC_PATTERNS: ReadonlyArray<{
 	// a label. Drop the prefix; keep "agent" in the natural-language
 	// sense by mapping to "agent" only when the label follows.
 	{
-		pattern: /\b(?:task[-_]agent|subagent)\s+(?:[a-z][a-z0-9]*-)+\d+/g,
+		pattern: new RegExp(`\\b(?:task[-_]agent|subagent)\\s+${AUTO_LABEL}`, "g"),
 		replacement: "agent",
 	},
 ];
