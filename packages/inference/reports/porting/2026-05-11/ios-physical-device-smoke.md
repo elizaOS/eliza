@@ -8,16 +8,17 @@
 
 **PASS** — on-device XCTest succeeded on iPhone 15 Pro (iPhone16,1), iOS 26.3.1.
 
-Executed 2 XCTest case(s), 0 failure(s):
+Executed 3 XCTest case(s), 0 failure(s):
+- `testLibElizaInferenceAbiV1CallsMatchHeader` — passed (0.001s)
 - `testLlamaKernelAndVoiceSymbolsResolve` — passed (0.001s)
-- `testMetalDeviceIsAvailableOnPhysicalIos` — passed (0.004s)
+- `testMetalDeviceIsAvailableOnPhysicalIos` — passed (0.005s)
 
 ## Run Metadata
 
-- Device: iPhone 15 Pro (iPhone16,1) — id `C9130C48-48F1-5DC3-98E9-8BACE231D047`, state `available (paired)`
+- Device: iPhone 15 Pro (iPhone16,1) — id `00008130-001955E91EF8001C`, state `n/a`
 - iOS: 26.3.1
 - Xcode / xctrace: Xcode 26.4.1 / Build version 17E202; xctrace xctrace version 16.0 (17E202)
-- Started: 2026-05-11 05:12:01Z · Finished: 2026-05-11 05:16:09Z · 248s wall (most of it waiting for the device to be unlocked)
+- Started: 2026-05-11 09:20:10Z · Finished: 2026-05-11 09:20:59Z · 49s wall (most of it waiting for the device to be unlocked)
 - xcframework device slice: `ios-arm64` (arm64), `LlamaCpp.framework`
 - xcodebuild exit status: 0
 
@@ -40,10 +41,11 @@ connected, unlocked, trusted iPhone/iPad is available. Fail-closed flags in this
 
 ## What This Smoke Actually Verified
 
-On the physical device, the XCTest runner asserted that:
+On the physical device, the XCTest runner asserted (one bullet per case that ran):
 
 - `MTLCreateSystemDefaultDevice()` returns a non-nil Metal device with a non-empty name (`testMetalDeviceIsAvailableOnPhysicalIos`).
 - Every required Eliza-1 runtime symbol resolves via `dlsym(RTLD_DEFAULT, …)` at runtime (`testLlamaKernelAndVoiceSymbolsResolve`) — the LlamaCpp bridge symbols, the QJL / PolarQuant kernel symbols, and the `libelizainference` ABI v1 voice symbols.
+- The `libelizainference` ABI v1 entrypoints are callable with the header-declared shapes against an empty temp bundle, and report a clean ABI-version handshake (`testLibElizaInferenceAbiV1CallsMatchHeader`). This is an ABI-shape smoke, not a real-weights synthesis run.
 - The same `LlamaCpp.xcframework` consumed by `llama-cpp-capacitor` (`ios-arm64` slice) links into the hosted XCTest runner and survives code-signing + on-device launch.
 
 Required-symbol manifest used by the run:

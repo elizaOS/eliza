@@ -64,8 +64,19 @@ function durationSeconds(a, b) {
   return ((Date.parse(b) - Date.parse(a)) / 1000).toFixed(0);
 }
 
+// Apple device-identifier prefixes (the leading 8 hex of the ECID-derived UDID
+// on A12+ devices). Only the handsets seen in these smokes need an entry.
+const APPLE_UDID_PREFIX_MODEL = {
+  "00008130": "iPhone 15 Pro (iPhone16,1)",
+};
+
 const dev = data.device ?? {};
-const model = dev.model ?? "unknown device";
+const udidPrefix = typeof dev.id === "string" ? dev.id.slice(0, 8) : null;
+const model =
+  dev.model ??
+  (udidPrefix && APPLE_UDID_PREFIX_MODEL[udidPrefix]
+    ? APPLE_UDID_PREFIX_MODEL[udidPrefix]
+    : dev.name ?? "unknown device");
 const iosVersion = dev.version ?? dev.matchedFromOfflineDevice?.version ?? "unknown";
 const xcodeVer = (data?.toolchain?.xcodebuild?.stdout ?? "").trim().replace(/\n/g, " / ") || "unknown";
 const dur = durationSeconds(data.startedAt, data.finishedAt);
@@ -131,14 +142,24 @@ for (const [k, v] of Object.entries(data.failClosed ?? {})) {
 lines.push("");
 lines.push("## What This Smoke Actually Verified");
 lines.push("");
-lines.push("On the physical device, the XCTest runner asserted that:");
+lines.push("On the physical device, the XCTest runner asserted (one bullet per case that ran):");
 lines.push("");
-lines.push(
-  "- `MTLCreateSystemDefaultDevice()` returns a non-nil Metal device with a non-empty name (`testMetalDeviceIsAvailableOnPhysicalIos`).",
-);
-lines.push(
-  "- Every required Eliza-1 runtime symbol resolves via `dlsym(RTLD_DEFAULT, …)` at runtime (`testLlamaKernelAndVoiceSymbolsResolve`) — the LlamaCpp bridge symbols, the QJL / PolarQuant kernel symbols, and the `libelizainference` ABI v1 voice symbols.",
-);
+const ran = new Set(summary.cases.filter((c) => c.result === "passed").map((c) => c.name));
+if (ran.has("testMetalDeviceIsAvailableOnPhysicalIos")) {
+  lines.push(
+    "- `MTLCreateSystemDefaultDevice()` returns a non-nil Metal device with a non-empty name (`testMetalDeviceIsAvailableOnPhysicalIos`).",
+  );
+}
+if (ran.has("testLlamaKernelAndVoiceSymbolsResolve")) {
+  lines.push(
+    "- Every required Eliza-1 runtime symbol resolves via `dlsym(RTLD_DEFAULT, …)` at runtime (`testLlamaKernelAndVoiceSymbolsResolve`) — the LlamaCpp bridge symbols, the QJL / PolarQuant kernel symbols, and the `libelizainference` ABI v1 voice symbols.",
+  );
+}
+if (ran.has("testLibElizaInferenceAbiV1CallsMatchHeader")) {
+  lines.push(
+    "- The `libelizainference` ABI v1 entrypoints are callable with the header-declared shapes against an empty temp bundle, and report a clean ABI-version handshake (`testLibElizaInferenceAbiV1CallsMatchHeader`). This is an ABI-shape smoke, not a real-weights synthesis run.",
+  );
+}
 lines.push(
   "- The same `LlamaCpp.xcframework` consumed by `llama-cpp-capacitor` (`ios-arm64` slice) links into the hosted XCTest runner and survives code-signing + on-device launch.",
 );
