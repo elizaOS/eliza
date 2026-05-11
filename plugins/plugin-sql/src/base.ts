@@ -138,6 +138,35 @@ import {
 
 const v4 = () => crypto.randomUUID();
 
+/**
+ * Detects whether an error is a postgres `unique_violation` (SQLState 23505),
+ * walking the Error.cause chain because drizzle-orm rewraps the underlying
+ * node-postgres / pglite error and the SQLState code lives on `error.cause`,
+ * not on the outer Error. Also matches the legacy human-readable patterns
+ * for callers that fabricate generic Errors.
+ */
+function isDuplicateKeyError(error: unknown): boolean {
+  const seen = new Set<unknown>();
+  let current: unknown = error;
+  while (current && typeof current === "object" && !seen.has(current)) {
+    seen.add(current);
+    const layer = current as {
+      code?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (layer.code === "23505") return true;
+    if (
+      typeof layer.message === "string" &&
+      /duplicate key|already exists/i.test(layer.message)
+    ) {
+      return true;
+    }
+    current = layer.cause;
+  }
+  return false;
+}
+
 import type { DatabaseMigrationService } from "./migration-service";
 import { DIMENSION_MAP, type EmbeddingDimensionColumn } from "./schema/embedding";
 import {
@@ -573,19 +602,6 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    * @returns {Promise<boolean>} A promise that resolves to a boolean indicating the success of the operation.
    */
   async createAgent(agent: Agent): Promise<boolean> {
-    const _isDuplicateKeyError = (error: unknown): boolean => {
-      if (!error || typeof error !== "object") return false;
-
-      const maybeError = error as { code?: unknown; message?: unknown };
-      if (maybeError.code === "23505") return true;
-
-      if (typeof maybeError.message === "string") {
-        return /duplicate key|already exists/i.test(maybeError.message);
-      }
-
-      return false;
-    };
-
     return this.withDatabase(async () => {
       try {
         // Check for existing agent with the same ID only (names can be duplicated)
@@ -628,7 +644,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         return true;
       } catch (error) {
-        if (_isDuplicateKeyError(error)) {
+        if (isDuplicateKeyError(error)) {
           logger.warn(
             { src: "plugin:sql", agentId: agent.id },
             "Attempted to create agent with duplicate ID"
@@ -986,30 +1002,38 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
    */
   async createEntities(entities: Entity[]): Promise<UUID[]> {
     return this.withDatabase(async () => {
+      // Pre-assign IDs so we can recover existing rows on a duplicate-key
+      // collision (treat duplicates as already-created → success).
+      const normalizedEntities = entities.map((entity) => {
+        const { names, metadata, ...normalizedEntity } = entity as Entity & {
+          names?: unknown;
+          metadata?: Metadata;
+        };
+        const id = (entity.id || v4()) as UUID;
+        return {
+          ...normalizedEntity,
+          id,
+          agentId: this.agentId,
+          names: this.normalizeEntityNames(names),
+          metadata: metadata || {},
+        };
+      });
+
       try {
         return await this.db.transaction(async (tx) => {
-          // Normalize entity data to ensure names is a proper array
-          const normalizedEntities = entities.map((entity) => {
-            const { names, metadata, ...normalizedEntity } = entity as Entity & {
-              names?: unknown;
-              metadata?: Metadata;
-            };
-            const id = (entity.id || v4()) as UUID;
-
-            return {
-              ...normalizedEntity,
-              id,
-              agentId: this.agentId,
-              names: this.normalizeEntityNames(names),
-              metadata: metadata || {},
-            };
-          });
-
           await tx.insert(entityTable).values(normalizedEntities);
-
           return normalizedEntities.map((entity) => entity.id as UUID);
         });
       } catch (error) {
+        if (isDuplicateKeyError(error)) {
+          // Entities with these IDs already exist — return them so callers
+          // see this as a successful (idempotent) create.
+          logger.warn(
+            { src: "plugin:sql", entityId: entities[0]?.id },
+            "Entities already exist; returning existing IDs"
+          );
+          return normalizedEntities.map((entity) => entity.id as UUID);
+        }
         logger.error(
           {
             src: "plugin:sql",
