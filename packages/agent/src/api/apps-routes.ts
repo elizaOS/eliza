@@ -799,7 +799,7 @@ export async function handleAppsRoutes(
 
     if (method === "PUT") {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -828,7 +828,7 @@ export async function handleAppsRoutes(
       return true;
     }
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -855,7 +855,7 @@ export async function handleAppsRoutes(
   // Dashboard heartbeat for overlay apps (companion, etc.) — no AppManager run.
   if (method === "POST" && pathname === "/api/apps/overlay-presence") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostOverlayPresenceRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -939,7 +939,7 @@ export async function handleAppsRoutes(
       }
 
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed =
         subroute === "message"
           ? PostRunMessageRequestSchema.safeParse(rawBody)
@@ -1005,7 +1005,7 @@ export async function handleAppsRoutes(
   if (method === "POST" && pathname === "/api/apps/launch") {
     try {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -1034,7 +1034,7 @@ export async function handleAppsRoutes(
   if (method === "POST" && pathname === "/api/apps/install") {
     try {
       const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-      if (rawBody === null || rawBody === undefined) return true;
+      if (rawBody === null) return true;
       const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
@@ -1098,7 +1098,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/stop") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostStopAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1208,7 +1208,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/relaunch") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1344,7 +1344,7 @@ export async function handleAppsRoutes(
     // the zod schema in @elizaos/shared so the wire shape is the
     // single source of truth (see contracts/app-permissions-routes.ts).
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1376,7 +1376,7 @@ export async function handleAppsRoutes(
     // The schema handles the required check, the absolute-path check,
     // and rejects extra unknown fields via .strict().
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
@@ -1512,7 +1512,7 @@ export async function handleAppsRoutes(
 
   if (method === "POST" && pathname === "/api/apps/create") {
     const rawBody = await readJsonBody<Record<string, unknown>>(req, res);
-    if (rawBody === null || rawBody === undefined) return true;
+    if (rawBody === null) return true;
     const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
