@@ -247,6 +247,7 @@ export function resolveBundleId(execPath = process.execPath): string {
  *   - checkScreenRecordingPermission / requestScreenRecordingPermission
  *   - checkMicrophonePermission / requestMicrophonePermission
  *   - checkCameraPermission / requestCameraPermission
+ *   - checkNotificationPermission / requestNotificationPermission
  *
  * We re-use it rather than ship a parallel implementation. If the dylib
  * isn't present (e.g. running in CI or a tree where the native build hasn't
@@ -261,6 +262,8 @@ interface NativePermissionsLib {
   checkScreenRecordingPermission: () => boolean;
   checkMicrophonePermission: () => number;
   checkCameraPermission: () => number;
+  checkNotificationPermission: () => number;
+  requestNotificationPermission: () => number;
   requestCameraPermission: () => void;
   requestMicrophonePermission: () => void;
 }
@@ -296,6 +299,8 @@ export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
         checkScreenRecordingPermission: { args: [], returns: FFIType.bool },
         checkMicrophonePermission: { args: [], returns: FFIType.i32 },
         checkCameraPermission: { args: [], returns: FFIType.i32 },
+        checkNotificationPermission: { args: [], returns: FFIType.i32 },
+        requestNotificationPermission: { args: [], returns: FFIType.i32 },
         requestCameraPermission: { args: [], returns: FFIType.void },
         requestMicrophonePermission: { args: [], returns: FFIType.void },
       });
@@ -310,6 +315,14 @@ export async function getNativeDylib(): Promise<NativePermissionsLib | null> {
 
 /** Map AVCaptureDevice authorizationStatus values to PermissionStatus. */
 export function mapAVAuthStatus(value: number): PermissionStatus {
+  if (value === 2) return "granted";
+  if (value === 1) return "denied";
+  if (value === 3) return "restricted";
+  return "not-determined";
+}
+
+/** Map native UNUserNotificationCenter status values to PermissionStatus. */
+export function mapUNAuthStatus(value: number): PermissionStatus {
   if (value === 2) return "granted";
   if (value === 1) return "denied";
   if (value === 3) return "restricted";

@@ -414,6 +414,45 @@ def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
     assert rc == EXIT_MISSING_FILE
 
 
+def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evidence" / "release.json").unlink()
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_bad_checksum_manifest_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    checksum_path = bundle / "checksums" / "SHA256SUMS"
+    checksum_path.write_text(
+        checksum_path.read_text().replace("0", "1", 1)
+    )
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_missing_runtime_dispatch_evidence_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "metal_dispatch.json").unlink()
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_MISSING_FILE
+
+
+def test_symbol_only_dispatch_evidence_blocks_publish(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    (bundle / "evals" / "metal_dispatch.json").write_text(
+        json.dumps({"backend": "metal", "status": "pass", "runtimeReady": False})
+    )
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
 # ---------------------------------------------------------------------------
 # (c) Failing eval gate
 # ---------------------------------------------------------------------------

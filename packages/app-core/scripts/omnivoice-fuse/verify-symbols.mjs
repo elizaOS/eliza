@@ -82,9 +82,27 @@ function dumpSymbols({ tool, file }) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain both /llama_/ and /omnivoice_/
  *     symbol families.
+ *   - The library MUST export every `eliza_inference_*` ABI v1 symbol
+ *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
+ *     half-fused artifact and only fail later at voice activation.
  *
  * Returns a small report so the caller can record it in CAPABILITIES.json.
  */
+export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
+  "eliza_inference_abi_version",
+  "eliza_inference_create",
+  "eliza_inference_destroy",
+  "eliza_inference_mmap_acquire",
+  "eliza_inference_mmap_evict",
+  "eliza_inference_tts_synthesize",
+  "eliza_inference_asr_transcribe",
+  "eliza_inference_free_string",
+]);
+
+function hasExportedSymbol(symbols, name) {
+  return new RegExp(`\\b_?${name}\\b`).test(symbols);
+}
+
 export function verifyFusedSymbols({ outDir, target }) {
   const lib = locateFusedLibrary({ outDir, target });
   if (!lib) {
@@ -107,6 +125,14 @@ export function verifyFusedSymbols({ outDir, target }) {
   if (omnivoiceCount === 0) {
     throw new Error(
       `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} has no omnivoice_* exports — TTS is missing from the fused artifact`,
+    );
+  }
+  const missingAbiSymbols = REQUIRED_ELIZA_INFERENCE_SYMBOLS.filter(
+    (name) => !hasExportedSymbol(symbols, name),
+  );
+  if (missingAbiSymbols.length > 0) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: libelizainference at ${lib} is missing ABI v1 symbol(s): ${missingAbiSymbols.join(", ")}. Rebuild the fused target against packages/app-core/scripts/omnivoice-fuse/ffi.h.`,
     );
   }
 
@@ -133,6 +159,8 @@ export function verifyFusedSymbols({ outDir, target }) {
     tool: `${tool.cmd} ${tool.args.join(" ")}`,
     llamaSymbolCount: llamaCount,
     omnivoiceSymbolCount: omnivoiceCount,
+    abiSymbolCount: REQUIRED_ELIZA_INFERENCE_SYMBOLS.length,
+    abiSymbols: [...REQUIRED_ELIZA_INFERENCE_SYMBOLS],
     server: serverReport,
   };
 }
