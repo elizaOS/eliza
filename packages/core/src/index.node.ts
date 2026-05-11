@@ -188,6 +188,7 @@ export {
 	type ResolveOwnerLocaleOptions,
 	type SupportedLocale,
 } from "./runtime/locale-detection";
+export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
 export * from "./runtime/response-handler-field-registry";

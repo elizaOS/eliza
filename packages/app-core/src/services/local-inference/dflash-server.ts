@@ -380,8 +380,8 @@ function dflashMetalAutoEnabled(): boolean {
 /**
  * Refuse a `--cache-type-k/v` value when the installed llama-server binary
  * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
- * is no longer static: `kernel-patches/{metal,vulkan}-kernels.mjs` compile the
- * `turbo*`, qjl, and polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
+ * is no longer static: `kernel-patches/[metal,vulkan]-kernels.mjs` compile the
+ * turbo / qjl / polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
  * records which ones actually shipped under `kernels.*`. So a Metal binary
  * built with the kernel patches enabled passes; one without them is refused
  * with an actionable "rebuild your fork" message. When `CAPABILITIES.json` is
@@ -632,10 +632,35 @@ function maybeRepairDflashDrafter(
   targetModelPath: string,
   drafterModelPath: string,
 ): string {
-  if (readBool("ELIZA_DFLASH_REPAIR_DISABLED")) return drafterModelPath;
-  if (!fs.existsSync(targetModelPath) || !fs.existsSync(drafterModelPath)) {
-    return drafterModelPath;
+  return maybeRepairGgufMerges(binaryPath, targetModelPath, drafterModelPath);
+}
+
+/**
+ * If `strippedGgufPath` ships without `tokenizer.ggml.merges` metadata,
+ * copy the merges from `sourceWithMergesPath` (a GGUF that *does* carry
+ * them — the text backbone in this lineage; all five Eliza-1 components
+ * share the 151,936-token Qwen vocab, B1's finding) into a sidecar
+ * `<name>.repaired.gguf` and return that path; otherwise return the
+ * original path unchanged. Used for the DFlash drafter and — per B1's
+ * handoff — generalized to ASR and embedding GGUFs that ship the same
+ * stripped tokenizer. A no-op when `ELIZA_DFLASH_REPAIR_DISABLED` is set,
+ * when either input is missing, when Python/gguf-py isn't available, or
+ * when the stripped GGUF already has merges.
+ */
+export function maybeRepairGgufMerges(
+  binaryPath: string,
+  sourceWithMergesPath: string,
+  strippedGgufPath: string,
+): string {
+  if (readBool("ELIZA_DFLASH_REPAIR_DISABLED")) return strippedGgufPath;
+  if (
+    !fs.existsSync(sourceWithMergesPath) ||
+    !fs.existsSync(strippedGgufPath)
+  ) {
+    return strippedGgufPath;
   }
+  const targetModelPath = sourceWithMergesPath;
+  const drafterModelPath = strippedGgufPath;
 
   const repairedPath = drafterModelPath.replace(/\.gguf$/i, ".repaired.gguf");
   if (repairedPath === drafterModelPath) return drafterModelPath;
@@ -1195,6 +1220,53 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
   currentModelPath(): string | null {
     return this.loadedPlan?.targetModelPath ?? null;
+  }
+
+  /**
+   * Path of the DFlash drafter GGUF the running server was launched with
+   * (`-md`), or null when no server is loaded. The drafter is co-resident
+   * with the target the whole time the server runs — there is no separate
+   * "load drafter" step; `start()` passes `-md` and the fork mmaps both.
+   * The voice shared-resource registry wraps this in a `DflashDrafterHandle`
+   * so the lifecycle can refcount it alongside the text weights (AGENTS.md
+   * §4 — the drafter is always wired and shared by text + voice modes).
+   */
+  loadedDrafterModelPath(): string | null {
+    return this.loadedPlan?.drafterModelPath ?? null;
+  }
+
+  /** Loopback base URL of the running server, or null. Used by tests/diagnostics. */
+  currentBaseUrl(): string | null {
+    return this.baseUrl;
+  }
+
+  /**
+   * Merged HTTP route descriptor for the fused build (`packages/inference/
+   * AGENTS.md` §4 + remaining-work-ledger P0 #3): when the installed
+   * `llama-server` binary is the omnivoice-fused build it serves
+   * `/v1/audio/speech` *itself*, so there is no compat `llama-omnivoice-
+   * server` process. Returns the route info (loopback base URL + the
+   * `/v1/audio/speech` path) only when a fused server is running; returns
+   * `null` for a stock llama-server (text/DFlash only — TTS goes through
+   * the FFI `ttsSynthesize` path instead) or when no server is up.
+   *
+   * "Fused" is detected from `CAPABILITIES.json` next to the binary: the
+   * fused build's `binaries` list includes `llama-omnivoice-server` /
+   * `libelizainference`, which only the omnivoice-graft target produces.
+   */
+  audioSpeechRoute(): {
+    baseUrl: string;
+    speechPath: "/v1/audio/speech";
+    fused: true;
+  } | null {
+    if (!this.baseUrl || !this.hasLoadedModel()) return null;
+    const caps = readDflashBinaryCapabilities();
+    if (!caps) return null;
+    const fused = caps.binaries.some(
+      (b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
+    );
+    if (!fused) return null;
+    return { baseUrl: this.baseUrl, speechPath: "/v1/audio/speech", fused: true };
   }
 
   /**

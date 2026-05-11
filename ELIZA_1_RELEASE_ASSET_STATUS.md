@@ -1,12 +1,30 @@
 # Eliza-1 Release Asset Status
 
-Generated on 2026-05-11 after local iOS smoke, source acquisition, and
-all-tier local bundle completion.
+Generated on 2026-05-11 after local iOS smoke, source acquisition,
+all-tier local bundle completion, native-Linux-Vulkan graph-dispatch PASS,
+the new platform-target / `27b-1m`-tier expansion, and the fused-attention
+fixture landing.
 
 This is a release-prep ledger, not a release approval. The local bundles now
 have the full release-shaped layout, but `evidence/release.json` in every tier
 is intentionally `releaseState=local-standin`, `publishEligible=false`, and
 `final.weights=false`. The publish orchestrator must still reject them.
+
+Kernel/contract state moved forward since the last revision: native Linux
+Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe (Mesa ANV) —
+`vulkan-dispatch-smoke` 6/6 PASS, `kernel-contract.json` `runtimeStatus.vulkan`
+= `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` — evidence
+`packages/inference/verify/vulkan-runtime-dispatch-evidence.json` +
+`packages/inference/verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`.
+The contract also tracks 23 build targets now (`linux-aarch64-{cpu,cuda}`,
+`windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` added,
+all `needs-hardware`), a `27b-1m` (1M-context, CUDA-only-backend) tier, and a
+new `fusedAttn` section (capability key `fused_attn`, `needs-runtime-smoke` for
+vulkan/metal, `needs-hardware` for cuda). The manifest schema gained optional
+`kernels.verifiedBackends.*.{device,caveat}` provenance and a
+`kernels.recipeManifest` block fed from the quantization recipes'
+`kernel_manifest` sidecar fragments (`codebookHash` / `perBlockTolerance` /
+`blockLayoutVersion`).
 
 ## Local Bundle Roots
 
@@ -124,8 +142,17 @@ route yet.
 - Local checksum manifests exist and validate, but final release checksums and
   release-reviewed license attestations must be regenerated from the final
   trained bytes.
-- Final platform evidence is incomplete across native Linux Vulkan, Android
-  graph dispatch, CUDA, ROCm, GH200/H200, native Windows, and weight-backed iOS.
+- Final platform evidence is still incomplete: native Linux Vulkan graph
+  dispatch now PASSES on Intel-ANV, but AMD-native and NVIDIA-native Vulkan,
+  Android Adreno/Mali graph dispatch, CUDA (no NVIDIA host run yet — dGPU on
+  this box is in D3cold), ROCm, GH200/H200 (incl. the `27b-1m` tier), native
+  Windows (x64 + arm64), Intel/AMD Mac, and weight-backed iOS all remain open.
+- Fused-attention (`GGML_OP_FUSED_ATTN_QJL_TBQ` + Polar-V variant) has a
+  bit-exact C reference + JSON fixtures + contract docs, but no Metal/Vulkan
+  fused compute kernel and no `cases`-array harness yet, so the `fused_attn`
+  capability is `needs-runtime-smoke` for vulkan/metal and is not a required
+  manifest kernel. The fused HTTP route (one process serving text/DFlash +
+  `/v1/audio/speech`) is also still open.
 - `elizaos` Hugging Face upload evidence is still absent. Upload is blocked
   by non-final release evidence and, separately, requires a token with write
   permission to `elizaos`. Current Hub auth probe resolved user

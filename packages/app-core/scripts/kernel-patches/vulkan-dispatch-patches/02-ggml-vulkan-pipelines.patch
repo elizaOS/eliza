@@ -47,6 +47,17 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     vk_pipeline pipeline_milady_polar;
     vk_pipeline pipeline_milady_polar_preht;
     vk_pipeline pipeline_milady_polar_get_rows;
+    // Multi-block-per-workgroup score variants (constant_id=0 spec constant
+    // BLOCKS_PER_WG / TOKENS_PER_WG set at create time) — long-context /
+    // non-voice scoring amortises launch tax across several KV indices.
+    vk_pipeline pipeline_milady_turbo3_multi;
+    vk_pipeline pipeline_milady_turbo4_multi;
+    vk_pipeline pipeline_milady_turbo3_tcq_multi;
+    vk_pipeline pipeline_milady_qjl_multi;
+    // Fused attention (QJL-K score + V-mix, online softmax, score never
+    // materialised) — GGML_OP_FUSED_ATTN_QJL_TBQ + Polar V-mix variant.
+    vk_pipeline pipeline_milady_fused_attn_qjl_tbq;
+    vk_pipeline pipeline_milady_fused_attn_qjl_polar;
     // MILADY-VK-DISPATCH-PATCH-V1 END
 
 ---INJECT-END---
@@ -84,6 +95,18 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar_preht,    "milady_polar_preht",    milady_polar_preht_len,    milady_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar_get_rows, "milady_polar_get_rows", milady_polar_get_rows_len, milady_polar_get_rows_data, "main", 2, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    // Multi-block variants. constant_id=0 (BLOCKS_PER_WG for the turbo* score
+    // kernels, TOKENS_PER_WG for qjl) — a conservative 4 amortises launch tax
+    // without over-serialising on small grids; sweep per device later.
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_multi,     "milady_turbo3_multi",     milady_turbo3_multi_len,     milady_turbo3_multi_data,     "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo4_multi,     "milady_turbo4_multi",     milady_turbo4_multi_len,     milady_turbo4_multi_data,     "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_tcq_multi, "milady_turbo3_tcq_multi", milady_turbo3_tcq_multi_len, milady_turbo3_tcq_multi_data, "main", 4, 5 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_multi,        "milady_qjl_multi",        milady_qjl_multi_len,        milady_qjl_multi_data,        "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
+    // Fused attention: 4 storage buffers (q_sketch, packed_k, packed_v, out).
+    //   fused_attn_qjl_tbq  : 6*u32 push (n_heads, n_kv_heads, n_tokens, q_pos, sm_scale_bits, kv_tile)
+    //   fused_attn_qjl_polar: 7*u32 push (… + v_use_qjl before kv_tile)
+    ggml_vk_create_pipeline(device, device->pipeline_milady_fused_attn_qjl_tbq,   "milady_fused_attn_qjl_tbq",   milady_fused_attn_qjl_tbq_len,   milady_fused_attn_qjl_tbq_data,   "main", 4, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_fused_attn_qjl_polar, "milady_fused_attn_qjl_polar", milady_fused_attn_qjl_polar_len, milady_fused_attn_qjl_polar_data, "main", 4, 7 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     // MILADY-VK-DISPATCH-PATCH-V1 END
 
 ---INJECT-END---

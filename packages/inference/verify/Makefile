@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -172,6 +172,22 @@ vulkan-verify-fallbacks: vulkan_verify vulkan-spirv reference-test
 	@echo "[kernels/verify] vulkan polar_get_rows use_qjl=1 (informational on ANV)..."
 	-./vulkan_verify ../vulkan/polar_get_rows.spv fixtures/polar_qjl.json
 
+# Fused-attention (QJL-K + TBQ-V / Polar-V) Vulkan gate. vulkan/fused_attn_qjl_tbq.comp
+# and vulkan/fused_attn_qjl_polar.comp port GGML_OP_FUSED_ATTN_QJL_TBQ + the Polar
+# V-mix variant: one-pass FlashAttention-style online softmax per head, the score
+# vector never materialized, a driver-portable 32-thread shared-memory reduction
+# (no subgroup assumptions). vulkan_verify's run_fused_attn() parses the
+# `cases`-array fixture schema (n_kv ∈ {64, 512, 256, 128} standing in for the
+# 4k/32k/128k/256k regimes, GQA fanouts 1/2/4) and diffs against the C reference
+# (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar). 1e-3 absolute tolerance.
+# Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
+# Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
+vulkan-verify-fused: vulkan_verify vulkan-spirv reference-test
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + TBQ3-V..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_tbq.spv   fixtures/fused_attn_qjl_tbq.json
+	@echo "[kernels/verify] vulkan fused-attn QJL-K + Q4_POLAR-V (use_qjl=1)..."
+	./vulkan_verify ../vulkan/fused_attn_qjl_polar.spv fixtures/fused_attn_qjl_polar.json
+
 # Native Linux end-to-end smoke for the Vulkan backend. This first runs the
 # standalone fixture verifier, then builds the patched fork target and runs the
 # graph-dispatch smoke below. It writes hardware-results evidence, rejects
@@ -232,6 +248,21 @@ metal-verify-multiblock: metal_verify reference-test
 	  echo "[kernels/verify] metal qjl multi $$n..." && \
 	  ./metal_verify ../metal/qjl.metal kernel_attn_score_qjl1_256_multi fixtures/qjl.json --multi $$n || exit 1; \
 	done
+
+# Fused-attention (QJL-K + TBQ-V / Polar-V) Metal gate. Same status as the
+# Vulkan target above: the C reference + fixtures are landed and self-tested,
+# but no fused metallib kernel (metal/fused_attn*.metal) and no cases-array
+# parser in metal_verify yet, so this target fails on purpose — the fused
+# capability is needs-runtime-smoke for Metal until the kernel + harness land.
+# Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
+# Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
+metal-verify-fused: reference-test
+	@echo "[kernels/verify] fused-attn fixtures sanity-checked via gen_fixture --self-test:"
+	@echo "  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_polar.json fixtures/polar_preht.json"
+	@echo "[metal-verify-fused] No Metal fused-attention kernel (metal/fused_attn*.metal) or"
+	@echo "  metal_verify cases-array parser yet — fused capability is needs-runtime-smoke for Metal."
+	@echo "  See reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md for the threadgroup plan."
+	@false
 
 # Metal performance harness (macOS only). Sibling of metal_verify; measures
 # end-to-end GPU latency, CPU wait, and bandwidth utilisation per kernel at
@@ -313,7 +344,9 @@ VULKAN_SHADERS = \
     ../vulkan/turbo3_multi.spv \
     ../vulkan/turbo4_multi.spv \
     ../vulkan/turbo3_tcq_multi.spv \
-    ../vulkan/qjl_multi.spv
+    ../vulkan/qjl_multi.spv \
+    ../vulkan/fused_attn_qjl_tbq.spv \
+    ../vulkan/fused_attn_qjl_polar.spv
 
 vulkan-spirv: $(VULKAN_SHADERS)
 

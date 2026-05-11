@@ -19,6 +19,8 @@
  *     fused build's mmap of the weight files.
  *   - tts_synthesize — needs OmniVoice.
  *   - asr_transcribe — needs the ASR backend.
+ *   - asr_stream_open / _feed / _partial / _finish (ABI v2) — need the
+ *     streaming ASR decoder; `_close` is a safe no-op.
  *
  * Per `packages/inference/AGENTS.md` §3 + §9: the stub does NOT
  * fabricate fake outputs, does NOT log, does NOT pretend success.
@@ -211,6 +213,88 @@ int eliza_inference_asr_transcribe(
     set_error(out_error,
         "[libelizainference-stub] asr_transcribe: not implemented in stub — fused build required");
     return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+/* ----------------------------------------------------------------- */
+/* Streaming ASR (ABI v2)                                            */
+/* ----------------------------------------------------------------- */
+
+struct EliAsrStream {
+    int sample_rate_hz;
+};
+
+int eliza_inference_asr_stream_supported(void) {
+    return 0; /* stub has no streaming ASR decoder */
+}
+
+EliAsrStream * eliza_inference_asr_stream_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error)
+{
+    (void)sample_rate_hz;
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] asr_stream_open: ctx is NULL");
+        return NULL;
+    }
+    set_error(out_error,
+        "[libelizainference-stub] asr_stream_open: not implemented in stub — fused build required");
+    return NULL;
+}
+
+int eliza_inference_asr_stream_feed(
+    EliAsrStream * stream,
+    const float * pcm,
+    size_t n_samples,
+    char ** out_error)
+{
+    (void)stream;
+    (void)pcm;
+    (void)n_samples;
+    set_error(out_error,
+        "[libelizainference-stub] asr_stream_feed: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_asr_stream_partial(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error)
+{
+    (void)stream;
+    (void)out_text;
+    (void)max_text_bytes;
+    (void)out_tokens;
+    (void)io_n_tokens;
+    set_error(out_error,
+        "[libelizainference-stub] asr_stream_partial: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_asr_stream_finish(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error)
+{
+    (void)stream;
+    (void)out_text;
+    (void)max_text_bytes;
+    (void)out_tokens;
+    (void)io_n_tokens;
+    set_error(out_error,
+        "[libelizainference-stub] asr_stream_finish: not implemented in stub — fused build required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_asr_stream_close(EliAsrStream * stream) {
+    if (stream) free(stream);
 }
 
 /* ----------------------------------------------------------------- */

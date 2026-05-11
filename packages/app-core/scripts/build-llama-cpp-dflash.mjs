@@ -49,7 +49,12 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import {
+  patchCpuSimdKernels as patchCpuSimdKernelsImpl,
+  QJL_GGML_BASE_LINK_FILES,
+} from "./kernel-patches/cpu-simd-kernels.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
+import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
 import {
   appendCmakeGraft,
@@ -212,6 +217,23 @@ function tryRun(cmd, args, opts = {}) {
     env: { ...process.env, ...opts.env },
     encoding: "utf8",
   });
+}
+
+// Does the *build host's* CPU expose 256-bit AVX-VNNI (Alder Lake / Arrow Lake
+// and newer)? Used to pass -DGGML_AVX_VNNI=ON for native x86_64-Linux builds so
+// the fork's ggml-cpu CMakeLists adds -mavxvnni + defines GGML_AVX_VNNI /
+// __AVXVNNI__, which the QJL int8-sketch score kernel
+// (qjl_score_qk_i8_avxvnni / qjl_score_avxvnni.c) keys off. cpuid leaf 7,
+// sub-leaf 1, EAX[4]. Linux-only probe via /proc/cpuinfo (lscpu's "avx_vnni"
+// flag is the kernel's name for this bit).
+function hostHasAvxVnni() {
+  if (process.platform !== "linux" || process.arch !== "x64") return false;
+  try {
+    const cpuinfo = fs.readFileSync("/proc/cpuinfo", "utf8");
+    return /\bflags\b.*\bavx_vnni\b/.test(cpuinfo);
+  } catch {
+    return false;
+  }
 }
 
 function has(cmd) {
@@ -561,6 +583,9 @@ function patchGgmlBaseForWindowsQjl(cacheDir) {
         `Windows shared-lib builds will fail to link QJL symbols into ggml-base.dll.`,
     );
   }
+  const qjlFileLines = QJL_GGML_BASE_LINK_FILES.map((f) => `            ${f}`).join(
+    "\n",
+  );
   const replacement = `            polar_centroids.h
             gguf.cpp
             ${sentinel}
@@ -568,16 +593,9 @@ function patchGgmlBaseForWindowsQjl(cacheDir) {
             # link time; the QJL definitions in ggml-cpu/qjl/ are referenced
             # from ggml.c (ggml-base), so on Windows shared-lib builds they
             # must also live in ggml-base. Linux/macOS use the original
-            # ggml-cpu placement and ignore this duplicate.
-            ggml-cpu/qjl/quants-qjl.c
-            ggml-cpu/qjl/qjl_dispatch.c
-            ggml-cpu/qjl/qjl_projection.c
-            ggml-cpu/qjl/qjl_quantize_ref.c
-            ggml-cpu/qjl/qjl_quantize_avx2.c
-            ggml-cpu/qjl/qjl_quantize_neon.c
-            ggml-cpu/qjl/qjl_score_ref.c
-            ggml-cpu/qjl/qjl_score_avx2.c
-            ggml-cpu/qjl/qjl_score_neon.c)
+            # ggml-cpu placement and ignore this duplicate. The list mirrors
+            # QJL_GGML_BASE_LINK_FILES in kernel-patches/cpu-simd-kernels.mjs.
+${qjlFileLines})
 target_include_directories(ggml-base PRIVATE ggml-cpu ggml-cpu/qjl ggml-cpu/qjl/include)`;
   fs.writeFileSync(
     cmakeListsPath,
@@ -827,6 +845,15 @@ function cmakeFlagsForTarget(target, ctx) {
     // any third-party CMake `if (... aarch64 ...)` checks honest. The CUDA
     // arch list (cudaArchListFlag) already leads with 90a for GH200/Hopper.
     flags.push("-DCMAKE_SYSTEM_PROCESSOR=aarch64");
+  } else if (platform === "linux" && arch === "x64" && hostHasAvxVnni()) {
+    // CPU-AGENT: native x86_64-Linux build on an Alder Lake / Arrow Lake (or
+    // newer) host — turn on GGML_AVX_VNNI so the fork's ggml-cpu CMakeLists adds
+    // -mavxvnni and defines GGML_AVX_VNNI / __AVXVNNI__. -march=native already
+    // gives the compiler the ISA, but the explicit flag is what gates the QJL
+    // int8-sketch score path (qjl_score_qk_i8_avxvnni) and any GGML_AVX_VNNI
+    // `#if` blocks. Cross-builds keep it off — you can't sniff -march for a
+    // different ABI, and AVX-VNNI is not the de-facto x86_64 baseline yet.
+    flags.push("-DGGML_AVX_VNNI=ON");
   } else if (platform === "darwin" && arch === "x64") {
     // Intel-Mac build (`darwin-x64-metal`). Pin the slice explicitly so a
     // build that runs on an Apple-Silicon host (via the x86_64 toolchain)
@@ -1249,11 +1276,29 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
+  // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
+  // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
+  // on every target — the fork's checkout is reset --hard'd per build, so the
+  // mirror is the only way the new TUs reach the shipped lib, and every
+  // target that compiles ggml-cpu (i.e. all of them) benefits. Idempotent.
+  patchCpuSimdKernelsImpl(cacheDir, { dryRun });
   if (backend === "metal") {
     patchMetalKernelsImpl(cacheDir, { dryRun });
   }
   if (backend === "vulkan") {
     patchVulkanKernelsImpl(cacheDir, { dryRun, target });
+  }
+  // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
+  // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
+  // continue_final_message are present in the fork's server.cpp (upstream
+  // features — hard-fail if the fork drifted to an older base), and add the
+  // `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime parses
+  // for rollback-safe TTS. Idempotent via the
+  // `// MILADY-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
+  // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
+  if (!target || !target.startsWith("ios-")) {
+    patchServerStructuredOutputImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
   // dequantize_row_qjl1_256 / quantize_row_qjl1_256_ref, which live in

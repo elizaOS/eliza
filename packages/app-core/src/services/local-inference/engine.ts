@@ -23,7 +23,7 @@ import type {
   LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { findCatalogModel } from "./catalog";
+import { type Eliza1TierId, findCatalogModel } from "./catalog";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -45,16 +45,29 @@ import {
 } from "./session-pool";
 import { resolveGrammarForParams } from "./structured-output";
 import {
+  buildLocalEmbeddingRoute,
+  type LocalEmbeddingRoute,
+} from "./voice/embedding";
+import {
   EngineVoiceBridge,
   type EngineVoiceBridgeOptions,
   VoiceStartupError,
 } from "./voice/engine-bridge";
+import type { VoicePipelineEvents } from "./voice/pipeline";
+import { dflashTextRunner } from "./voice/pipeline-impls";
 import type {
   RejectedTokenRange,
   TextToken,
   TranscriptionAudio,
   VerifierStreamEvent,
 } from "./voice/types";
+
+/**
+ * Default DFlash draft window per round for voice turns. Small (≤8) so a
+ * rollback is cheap (AGENTS.md §4 — "small chunk = low latency cost on
+ * rollback"). Overridable per call via `runVoiceTurn({ maxDraftTokens })`.
+ */
+const DEFAULT_VOICE_MAX_DRAFT_TOKENS = 8;
 
 // Re-exported from backend.ts so consumers can keep importing GenerateArgs
 // from engine.ts without churn. backend.ts owns the canonical shape,
@@ -504,6 +517,8 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
         const tail = await session.prompt(promptText, promptOpts);
         return prefill + tail;
       }
+      // No callbacks were supplied (the `if` above returned otherwise) — plain
+      // string return, no per-token fan-out.
       const tail = await session.prompt(promptText, promptOpts);
       return prefill + tail;
     };
@@ -1011,6 +1026,61 @@ export class LocalInferenceEngine {
   }
 
   /**
+   * Run one fused mic→speech voice turn through the overlapped
+   * `VoicePipeline` (`packages/inference/AGENTS.md` §4): ASR → {DFlash
+   * drafts ∥ target verifies} → phrase chunker → OmniVoice → PCM ring
+   * buffer, with rollback-on-reject and barge-in cancel. The drafter and
+   * verifier are wired against the running DFlash llama-server; the ASR is
+   * the fused ABI's ASR. Requires `startVoice()` + `armVoice()` first.
+   *
+   * Resolves with the turn's exit reason (`done` / `token-cap` /
+   * `cancelled`). A missing ASR region in voice mode surfaces as a
+   * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
+   */
+  async runVoiceTurn(
+    audio: TranscriptionAudio,
+    opts: {
+      maxDraftTokens?: number;
+      maxGeneratedTokens?: number;
+      events?: VoicePipelineEvents;
+    } = {},
+  ): Promise<"done" | "token-cap" | "cancelled"> {
+    const bridge = this.requireVoiceBridge("run a voice turn");
+    return bridge.runVoiceTurn(
+      audio,
+      dflashTextRunner(dflashLlamaServer),
+      {
+        maxDraftTokens: opts.maxDraftTokens ?? DEFAULT_VOICE_MAX_DRAFT_TOKENS,
+        maxGeneratedTokens: opts.maxGeneratedTokens,
+      },
+      opts.events,
+    );
+  }
+
+  /**
+   * Build the local-embedding route for an activated Eliza-1 bundle.
+   * On `0_6b` the embedding model is the text backbone with `--pooling
+   * last` (no separate GGUF); on `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
+   * dedicated 1024-dim Matryoshka `embedding/` region is used. See
+   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_6b` tier is
+   * missing its dedicated region — no fallback to pooled text (which would
+   * regress the dimension contract).
+   */
+  localEmbeddingRoute(args: {
+    bundleRoot: string;
+    tierId: Eliza1TierId;
+    textModelPath?: string;
+  }): LocalEmbeddingRoute {
+    const textModelPath =
+      args.textModelPath ?? this.currentModelPath() ?? "";
+    return buildLocalEmbeddingRoute({
+      bundleRoot: args.bundleRoot,
+      tierId: args.tierId,
+      textModelPath,
+    });
+  }
+
+  /**
    * Active voice bridge, or null when voice mode is not running.
    * Callers (router, UI, agent runtime) read this to decide whether to
    * forward verifier events. Voice is mandatory for Eliza-1 tiers but
@@ -1141,6 +1211,33 @@ export class LocalInferenceEngine {
    */
   async pushAcceptedTokens(tokens: ReadonlyArray<TextToken>): Promise<void> {
     await this.pushVerifierEvent({ kind: "accept", tokens: [...tokens] });
+  }
+
+  /**
+   * Real `DflashDrafterHandle` backed by the running llama-server's `-md`
+   * drafter, or null when no llama-server is running with a drafter
+   * configured (node-llama-cpp has no drafter — text-only, no speculative
+   * decoding). The voice lifecycle wraps this in its shared-resource
+   * registry so the drafter is refcounted alongside the text weights
+   * (AGENTS.md §4 — the drafter is always wired and shared by text + voice
+   * modes). The engine doesn't cache the handle: `createDflashDrafterHandle`
+   * is cheap and the registry deduplicates by id.
+   */
+  async dflashDrafterHandle(): Promise<
+    import("./voice/shared-resources").DflashDrafterHandle | null
+  > {
+    if (this.activeBackendId() !== "llama-server") return null;
+    const drafterPath = dflashLlamaServer.loadedDrafterModelPath();
+    if (!drafterPath) return null;
+    const installed = await listInstalledModels();
+    const drafter = installed.find((m) => m.path === drafterPath);
+    const { createDflashDrafterHandle } = await import(
+      "./voice/shared-resources"
+    );
+    return createDflashDrafterHandle({
+      drafterModelId: drafter?.id ?? drafterPath,
+      drafterModelPath: drafterPath,
+    });
   }
 
   /**

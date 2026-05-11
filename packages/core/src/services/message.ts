@@ -73,6 +73,7 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import { buildResponseGrammar } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
 	type ResponseHandlerPatch,
@@ -2713,6 +2714,74 @@ function renderMessageHandlerModelInput(
 	};
 }
 
+/**
+ * Render only the *stable* part of the Stage-1 (`HANDLE_RESPONSE`) model
+ * input for a given room — the system prompt + tool/action schema block +
+ * the stable provider blocks. This is the prefix that does NOT depend on
+ * the user's turn, so it is the exact text the local-inference KV cache
+ * should be pre-warmed with the instant a voice session opens or VAD
+ * detects speech onset (item I1/C1 of the voice swarm).
+ *
+ * The returned string is byte-identical to the `messages[0].content`
+ * (the "system" message) that `renderMessageHandlerModelInput` would
+ * produce for the first turn of a fresh conversation in that room — the
+ * unstable tail (recent dialogue, the current user message) is dropped.
+ * Pre-warming with this string lands the system prefix in the slot's KV
+ * so the real request only forward-passes the user tokens.
+ *
+ * Best-effort by construction: composing state may hit providers that
+ * query the DB; a synthetic empty message is used so a brand-new room
+ * with no history still renders. Callers that fail to render should just
+ * skip the pre-warm (the real request cold-prefills, which is the
+ * pre-pre-warm behaviour).
+ */
+export async function renderMessageHandlerStablePrefix(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<string> {
+	const syntheticMessage: Memory = {
+		id: asUUID(v4()),
+		entityId: (runtime.agentId ?? asUUID(v4())) as UUID,
+		agentId: runtime.agentId,
+		roomId,
+		createdAt: Date.now(),
+		content: {
+			text: "",
+			source: "voice-prewarm",
+			channelType: ChannelType.VOICE_DM,
+		},
+	};
+	const senderRole = await resolveStage1SenderRole(runtime, syntheticMessage);
+	const availableContexts = listAvailableContextsForRole(
+		runtime.contexts,
+		senderRole,
+	);
+	const state = await composeResponseState(runtime, syntheticMessage, true);
+	const context = await createV5MessageContextObject({
+		runtime,
+		message: syntheticMessage,
+		state,
+		userRoles: [senderRole],
+		availableContexts,
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+	});
+	const rendered = renderContextObject(context);
+	const stableSegments = rendered.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const instructions = renderMessageHandlerInstructions(
+		runtime,
+		availableContexts,
+		{ directMessage: true },
+	);
+	return normalizePromptSegments([
+		...stableSegments,
+		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+	])
+		.map(segmentBlock)
+		.join("\n\n");
+}
+
 function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		if (typeof value !== "string") {
@@ -4300,6 +4369,32 @@ export async function runV5MessageRuntimeStage1(args: {
 			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
 			.catch(() => {});
 
+		// Per-turn structure forcing. `buildResponseGrammar` composes the
+		// HANDLE_RESPONSE envelope skeleton (fixed key order + the `contexts`
+		// element enum from the available context ids + any registered Stage-1
+		// field evaluators, single-value enums collapsed to literals) and a
+		// precise GBNF grammar. The local llama-server engine (W4) constrains the
+		// envelope with it so the model never spends tokens on the scaffold; the
+		// prompt text stays byte-stable, only the grammar varies per turn. Cloud
+		// adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
+		// equivalent (unforced) contract for them.
+		const responseGrammar = buildResponseGrammar(
+			{
+				actions: args.runtime.actions ?? [],
+				responseHandlerFields:
+					args.runtime.responseHandlerFieldRegistry?.list() ?? [],
+				responseHandlerFieldSignature:
+					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+			},
+			{
+				contexts: availableContexts.map((definition) => String(definition.id)),
+				channelType:
+					typeof args.message.content?.channelType === "string"
+						? args.message.content.channelType
+						: undefined,
+			},
+		);
+
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -4314,6 +4409,8 @@ export async function runV5MessageRuntimeStage1(args: {
 				// TTS the instant that field opens. Cloud adapters ignore the flag and
 				// return the result whole.
 				streamStructured: true,
+				responseSkeleton: responseGrammar.responseSkeleton,
+				grammar: responseGrammar.grammar,
 				providerOptions: messageHandlerProviderOptions,
 			},
 		)) as string | GenerateTextResult;

@@ -1,0 +1,269 @@
+// Fused attention: QJL-K score + TBQ3-V mix, online softmax that never
+// materializes the per-token score vector. Vulkan compute shader (GLSL 450,
+// SPIR-V 1.3 / Vulkan 1.1). Ports GGML_OP_FUSED_ATTN_QJL_TBQ — see the
+// backend-neutral contract in
+// reports/porting/2026-05-11/fused-attn-op-contract.md and the C reference
+// eliza_fused_attn_qjl_tbq3() in packages/inference/verify/qjl_polar_ref.c
+// (bit-exact to fused_attn_qjl_tbq_ref in the milady-llama-cpp fork's
+// ggml/src/ggml-cpu/fused-attn-qjl-tbq.c).
+//
+// Per workgroup: one (q_head, q_pos). 32 invocations cooperate. No subgroup
+// assumptions — the per-token QJL score reduction and the TBQ Hadamard-32 use
+// driver-portable shared-memory primitives (the same fix that took the turbo*
+// kernels from 0/8 to 8/8 on Intel ARL / lavapipe).
+//
+// Geometry (binding): head_dim 128 (= 4*QK_TBQ), proj_dim 256 (QJL sketch dim,
+// NOT head_dim), QK_TBQ 32 (4 TBQ3 blocks per V row).
+//
+// K side — block_qjl1_256 (34 B/token):  uint8 qs[32]; uint16 norm_bf16
+// V side — block_tbq3_0   (14 B/token, 4 per token = 56 B):
+//          uint16 d (fp16 block RMS); uint8 qs[12]  (32 3-bit codes, LSB-first)
+//   decode: d * TBQ3_CODEBOOK[code]  ->  Hadamard-32 (x 0.17677...)  ->  x ±1 sign vector
+//   (the "uncondition" step — the fused V-mix needs the *real* head-dim V, not
+//   the rotated representation, unlike the standalone turbo*_dot score path.)
+//
+// Online softmax: pass 1 walks the KV tokens once, the whole 32-thread workgroup
+// cooperating per token (thread tid owns byte tid of the 32-byte QJL sign vector
+// and 8 of the 256 sketch elements), maintaining a thread-uniform running (m, l)
+// — every thread updates identically since they all see the per-token raw score.
+// Pass 2 walks the tokens again, re-deriving w_t = exp(raw_t - m)/l and FMAing
+// the decoded V block into the shared output accumulator. Because (m, l) are
+// known before pass 2 the running rescale factor is always 1.0 — the same
+// simplification the reference uses. Algebraically identical to the
+// FlashAttention rescaling form and to the reference's score->softmax->V-mix.
+//
+// kv_tile (push constant): KV positions per online-softmax tile. 0 == whole
+// range; the verify path passes 0 and walks the full range — matching the C
+// reference. A nonzero kv_tile (voice barge-in cancellation granularity) would
+// subdivide pass 1/2 over [t0, t0+kv_tile); not yet wired (the current runtime
+// treats 0 == n_tokens).
+
+#version 450
+#extension GL_EXT_shader_16bit_storage  : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8  : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+// q_sketch: (n_q_pos, n_heads, proj_dim=256) fp32, host pre-projected (Pi*q).
+layout(std430, binding = 0) readonly buffer QSketch { float q_sketch[]; };
+// packed_k: (n_kv_heads, n_tokens) tightly packed 34-byte block_qjl1_256.
+layout(std430, binding = 1) readonly buffer KPacked { uint k_packed[]; };
+// packed_v: (n_kv_heads, n_tokens, 4) tightly packed 14-byte block_tbq3_0.
+layout(std430, binding = 2) readonly buffer VPacked { uint v_packed[]; };
+// out: (n_q_pos, n_heads, head_dim=128) fp32.
+layout(std430, binding = 3) writeonly buffer AttnOut { float out_attn[]; };
+
+layout(push_constant) uniform Push {
+    uint n_heads;
+    uint n_kv_heads;     // n_heads / n_kv_heads = GQA factor (>= 1)
+    uint n_tokens;
+    uint q_pos;          // query position index (selects the q_sketch / out row)
+    uint sm_scale_bits;  // float bit pattern of the pre-softmax temperature
+    uint kv_tile;        // KV positions per online-softmax tile; 0 == whole range
+} push;
+
+const uint  QJL_PROJECTION_DIM = 256u;
+const uint  QJL_PACKED_BYTES   = 32u;
+const uint  QJL_BLOCK_BYTES    = 34u;
+const uint  HEAD_DIM           = 128u;
+const uint  QK_TBQ             = 32u;
+const uint  TBQ_PER_TOKEN      = 4u;     // HEAD_DIM / QK_TBQ
+const uint  TBQ3_BLOCK_BYTES   = 14u;    // uint16 d + uint8 qs[12]
+const uint  TBQ_TOKEN_BYTES    = TBQ_PER_TOKEN * TBQ3_BLOCK_BYTES;  // 56
+
+// sqrt(pi/2) / proj_dim — the canonical QJL paper score scalar; kept separate
+// from sm_scale (the model's pre-softmax temperature) per the contract §5.
+const float QJL_SCORE_SCALE = 1.2533141373155003 / 256.0;
+// Hadamard-32 normalization (1 / sqrt(32)), folded into the inverse rotation.
+const float TBQ_HADAMARD_NORM = 0.1767766952966369;
+
+// TBQ3 codebook (8 centroids) — bit-identical to ELIZA_TBQ3_CODEBOOK.
+const float TBQ3_CODEBOOK[8] = float[8](
+    -2.1519457, -1.3439093, -0.7560053, -0.2450942,
+     0.2450942,  0.7560053,  1.3439093,  2.1519457
+);
+// Fixed ±1 sign vector for the TBQ uncondition step (ELIZA_TBQ_SIGNS_32_FORK).
+const float TBQ_SIGNS_32[32] = float[32](
+     1.0, -1.0,  1.0,  1.0, -1.0,  1.0, -1.0, -1.0,
+     1.0,  1.0, -1.0,  1.0, -1.0, -1.0,  1.0, -1.0,
+    -1.0,  1.0,  1.0, -1.0,  1.0, -1.0, -1.0,  1.0,
+     1.0, -1.0,  1.0, -1.0, -1.0,  1.0, -1.0,  1.0
+);
+
+uint read_byte_k(uint b) { uint w = k_packed[b >> 2]; return (w >> ((b & 3u) * 8u)) & 0xFFu; }
+uint read_u16_k(uint b)  { return read_byte_k(b) | (read_byte_k(b + 1u) << 8u); }
+uint read_byte_v(uint b) { uint w = v_packed[b >> 2]; return (w >> ((b & 3u) * 8u)) & 0xFFu; }
+uint read_u16_v(uint b)  { return read_byte_v(b) | (read_byte_v(b + 1u) << 8u); }
+
+float bf16_to_fp32(uint b16) { return uintBitsToFloat(b16 << 16); }
+float fp16_to_fp32(uint h16) {
+    uint sign = (h16 & 0x8000u) << 16;
+    uint exp  = (h16 >> 10) & 0x1Fu;
+    uint mant = h16 & 0x3FFu;
+    uint u;
+    if (exp == 0u) {
+        if (mant == 0u) { u = sign; }
+        else {
+            uint e = 1u;
+            while ((mant & 0x400u) == 0u) { mant <<= 1; e += 1u; }
+            mant &= 0x3FFu;
+            u = sign | ((127u - 15u - e + 1u) << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        u = sign | 0x7F800000u | (mant << 13);
+    } else {
+        u = sign | ((exp + 127u - 15u) << 23) | (mant << 13);
+    }
+    return uintBitsToFloat(u);
+}
+
+shared float reduce_scratch[32];
+shared float acc_o[128];           // running attention-output accumulator
+shared float tbq_buf[128];         // 4 chunks x 32 decoded V floats, staged/token
+
+// Sum one value v across all 32 threads; every thread gets the result.
+float reduce_sum_32(float v, uint tid) {
+    reduce_scratch[tid] = v;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1) {
+        if (tid < stride) reduce_scratch[tid] += reduce_scratch[tid + stride];
+        barrier();
+    }
+    float r = reduce_scratch[0];
+    barrier();
+    return r;
+}
+
+// 32-thread cooperative QJL score for token `t` of kv-head `h_k`, query head
+// `h_q`, query position `q_pos`. Thread tid owns byte tid (8 sign bits / 8
+// sketch elements). Collective: ALL 32 threads must call together for the SAME
+// token. Returns the per-token raw score to every thread.
+float qjl_score_one_token(uint h_q, uint q_pos, uint h_k, uint t, float sm_scale, uint tid) {
+    uint blk_off = (h_k * push.n_tokens + t) * QJL_BLOCK_BYTES;
+    uint bits  = read_byte_k(blk_off + tid);
+    uint base  = tid * 8u;
+    uint q_off = (q_pos * push.n_heads + h_q) * QJL_PROJECTION_DIM + base;
+    vec4 q0 = vec4(q_sketch[q_off + 0u], q_sketch[q_off + 1u],
+                   q_sketch[q_off + 2u], q_sketch[q_off + 3u]);
+    vec4 q1 = vec4(q_sketch[q_off + 4u], q_sketch[q_off + 5u],
+                   q_sketch[q_off + 6u], q_sketch[q_off + 7u]);
+    vec4 s0 = vec4(float(int(((bits >> 0) & 1u) << 1) - 1),
+                   float(int(((bits >> 1) & 1u) << 1) - 1),
+                   float(int(((bits >> 2) & 1u) << 1) - 1),
+                   float(int(((bits >> 3) & 1u) << 1) - 1));
+    vec4 s1 = vec4(float(int(((bits >> 4) & 1u) << 1) - 1),
+                   float(int(((bits >> 5) & 1u) << 1) - 1),
+                   float(int(((bits >> 6) & 1u) << 1) - 1),
+                   float(int(((bits >> 7) & 1u) << 1) - 1));
+    vec4 acc4 = fma(q0, s0, fma(q1, s1, vec4(0.0)));
+    float acc = acc4.x + acc4.y + acc4.z + acc4.w;
+    float dot = reduce_sum_32(acc, tid);
+    uint norm16 = read_u16_k(blk_off + QJL_PACKED_BYTES);
+    return QJL_SCORE_SCALE * bf16_to_fp32(norm16) * dot * sm_scale;
+}
+
+// 3-bit code lookup inside the 12-byte LSB-first qs[] of a block_tbq3_0.
+uint tbq3_get_code(uint qs_byte_off, uint idx) {
+    uint bit  = idx * 3u;
+    uint byte = bit >> 3u;
+    uint shift = bit & 7u;
+    uint v = read_byte_v(qs_byte_off + byte) >> shift;
+    if (shift > 5u && byte + 1u < 12u) v |= read_byte_v(qs_byte_off + byte + 1u) << (8u - shift);
+    return v & 7u;
+}
+
+// Decode one token's 4 block_tbq3_0 chunks into 128 unconditioned (real
+// head-dim) V values and FMA them into acc_o:  acc_o[d] = acc_o[d]*corr + w*dec[d].
+// Collective; barriers around the shared tbq_buf use. Caller barriers before/after.
+void tbq3_decode_token_into_acc(uint v_token_byte_off, float w, float corr, uint tid) {
+    // Phase 1: codebook lookup, one element per thread per chunk (4 chunks).
+    for (uint c = 0u; c < TBQ_PER_TOKEN; c++) {
+        uint blk_off = v_token_byte_off + c * TBQ3_BLOCK_BYTES;
+        float d = fp16_to_fp32(read_u16_v(blk_off));
+        tbq_buf[c * 32u + tid] = d * TBQ3_CODEBOOK[tbq3_get_code(blk_off + 2u, tid)];
+    }
+    barrier();
+    // Phase 2: Hadamard-32 on each chunk; threads [8c .. 8c+7] handle chunk c
+    // (32 threads / 4 chunks = 8 threads/chunk; 16 butterfly pairs / 8 = 2 each).
+    {
+        uint chunk = tid >> 3u;          // 0..3
+        uint lane  = tid & 7u;           // 0..7
+        uint base  = chunk * 32u;
+        for (uint len = 1u; len < 32u; len <<= 1u) {
+            for (uint p = lane; p < 16u; p += 8u) {
+                uint blk2 = (p / len) * (len << 1u);
+                uint ofs  = p - (p / len) * len;
+                uint j    = base + blk2 + ofs;
+                float a = tbq_buf[j];
+                float b = tbq_buf[j + len];
+                tbq_buf[j]       = a + b;
+                tbq_buf[j + len] = a - b;
+            }
+            barrier();
+        }
+    }
+    // Phase 3: ±1 sign flip + folded (1/sqrt(32)), then FMA into acc_o.
+    for (uint i = tid; i < HEAD_DIM; i += 32u) {
+        float dec = tbq_buf[i] * TBQ_HADAMARD_NORM * TBQ_SIGNS_32[i & 31u];
+        acc_o[i] = acc_o[i] * corr + w * dec;
+    }
+    barrier();
+}
+
+void main() {
+    uint tid  = gl_LocalInvocationID.x;
+    uint h_q  = gl_WorkGroupID.x;
+    if (h_q >= push.n_heads) return;
+    uint q_pos = push.q_pos;
+    float sm_scale = uintBitsToFloat(push.sm_scale_bits);
+
+    uint gqa = push.n_heads / push.n_kv_heads;
+    uint h_k = h_q / gqa;
+    uint out_base = (q_pos * push.n_heads + h_q) * HEAD_DIM;
+
+    // Empty cache -> out = 0 (matches the reference memset on degenerate input).
+    if (push.n_tokens == 0u) {
+        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
+        return;
+    }
+
+    // --- Pass 1: running (m, l) over the KV tokens (all threads cooperate
+    //     per token; the running stats are thread-uniform). ---
+    float m = -1.0e30;
+    float l = 0.0;
+    for (uint t = 0u; t < push.n_tokens; t++) {
+        float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
+        float new_m = max(m, raw);
+        l = l * exp(m - new_m) + exp(raw - new_m);
+        m = new_m;
+    }
+    float inv_l = (l > 0.0) ? (1.0 / l) : 0.0;
+    // NaN or no finite score -> out = 0.
+    if (!(m == m) || m <= -1.0e29 || !(l > 0.0)) {
+        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
+        return;
+    }
+
+    // --- Pass 2: V-mix. w_t = exp(raw_t - m)/l; running rescale corr == 1.0. ---
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0;
+    barrier();
+    for (uint t = 0u; t < push.n_tokens; t++) {
+        float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
+        float w = exp(raw - m) * inv_l;
+        barrier();   // tbq_buf is reused per token; settle before reuse
+        uint v_token_byte_off = (h_k * push.n_tokens + t) * TBQ_TOKEN_BYTES;
+        tbq3_decode_token_into_acc(v_token_byte_off, w, 1.0, tid);
+    }
+
+    // --- Write out. Thread 0 writes all 128 elements serially. Mesa ANV
+    // (Arrow Lake / Xe-LPG) intermittently reads back 0 from the all-threads
+    // strided/parallel SSBO-store codegen path (same fingerprint as the
+    // qjl_get_rows / polar_get_rows fallbacks; the reliable qjl.comp /
+    // polar.comp standalones write a single scalar from tid==0). The
+    // shared-mem accumulator is fully settled by the decode helper's
+    // trailing barrier; a single-thread store is bulletproof everywhere.
+    if (tid == 0u) {
+        for (uint i = 0u; i < HEAD_DIM; i++) out_attn[out_base + i] = acc_o[i];
+    }
+}

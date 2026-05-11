@@ -1,17 +1,24 @@
-"""Local SFT on Qwen/Qwen3.5-2B using TRL + APOLLO.
+"""Local SFT on a Qwen3 dense base model using TRL + APOLLO.
 
 Single-GPU, bf16, completion-only loss (only the assistant turn contributes
 to the loss). Checkpoints land under `training/checkpoints/<run_name>/`.
 
+The base model is resolved from `--registry-key` (see
+`training/model_registry.py`); pass `--model <hf-id>` to override. With no
+registry key the default is `Qwen/Qwen3-0.6B` — the smallest published
+eliza-1 target.
+
 Usage:
-    # Smoke test
+    # Smoke test on the smallest eliza-1 tier
     uv run --extra train python scripts/train_local.py \
-        --max-samples 256 --epochs 1 --run-name qwen35-smoke
+        --registry-key qwen3-0.6b \
+        --max-samples 256 --epochs 1 --run-name eliza-1-0_6b-smoke
 
     # Real run
     uv run --extra train python scripts/train_local.py \
+        --registry-key qwen3-0.6b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
-        --run-name qwen35-eliza-native-v1
+        --run-name eliza-1-0_6b-eliza-native-v1
 """
 
 from __future__ import annotations
@@ -159,7 +166,7 @@ def build_dataset(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.5-2B")
+    ap.add_argument("--model", default="Qwen/Qwen3-0.6B")
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))
@@ -224,6 +231,19 @@ def main() -> int:
     from training.model_registry import get as _registry_get  # noqa: E402
     if args.registry_key:
         entry = _registry_get(args.registry_key)
+        if (
+            entry.unverified_base
+            and args.model == ap.get_default("model")
+            and os.environ.get("MILADY_ALLOW_UNVERIFIED_BASE") != "1"
+        ):
+            raise SystemExit(
+                f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
+                "is an UNVERIFIED placeholder with no published checkpoint as of "
+                "2026-05; loading it will fail. Use a real key "
+                "(qwen3-0.6b / qwen3-1.7b / qwen3-4b → eliza-1-0_6b / eliza-1-1_7b / "
+                "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
+                "MILADY_ALLOW_UNVERIFIED_BASE=1 to override."
+            )
         if args.model == ap.get_default("model"):
             args.model = entry.hf_id
         if args.batch_size == ap.get_default("batch_size"):
