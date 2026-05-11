@@ -2753,9 +2753,11 @@ function looksLikeMessageHandlerToolArguments(
 	return (
 		args.plan !== undefined ||
 		args.processMessage !== undefined ||
+		args.shouldRespond !== undefined ||
 		args.action !== undefined ||
 		args.contexts !== undefined ||
 		args.reply !== undefined ||
+		args.replyText !== undefined ||
 		args.thought !== undefined ||
 		args.extract !== undefined
 	);
@@ -4295,6 +4297,12 @@ export async function runV5MessageRuntimeStage1(args: {
 				tools: messageHandlerTools,
 				toolChoice: "required",
 				maxTokens: 1024,
+				// Streamed structured generation: the local engine (W4) streams the
+				// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
+				// / `contexts` route the moment they are known and `replyText` flows to
+				// TTS the instant that field opens. Cloud adapters ignore the flag and
+				// return the result whole.
+				streamStructured: true,
 				providerOptions: messageHandlerProviderOptions,
 			},
 		)) as string | GenerateTextResult;
@@ -4423,6 +4431,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (route.type === "final_reply") {
+			// `replyText` (→ `route.reply`) is part of the HANDLE_RESPONSE envelope
+			// and is `required` in the schema, so the direct-reply path normally
+			// emits it inline with no extra model call. `generateDirectReplyOnce`
+			// only runs as a degenerate fallback when Stage-1 produced no usable
+			// reply text at all (malformed output that even the tolerant parser
+			// could not recover a reply from).
 			const reply =
 				route.reply ||
 				(await generateDirectReplyOnce({

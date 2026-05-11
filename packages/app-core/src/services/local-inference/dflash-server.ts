@@ -46,6 +46,11 @@ import {
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
 import { resolveRamBudget } from "./ram-budget";
+import {
+  grammarRequestFields,
+  resolveGrammarForParams,
+  type StructuredGenerateParams,
+} from "./structured-output";
 import type {
   CatalogModel,
   InstalledModel,
@@ -80,7 +85,7 @@ export interface DflashServerPlan {
 
 export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
 
-export interface DflashGenerateArgs {
+export interface DflashGenerateArgs extends StructuredGenerateParams {
   prompt: string;
   stopSequences?: string[];
   maxTokens?: number;
@@ -149,16 +154,34 @@ export interface DflashRuntimeStatus {
 
 const DEFAULT_HOST = "127.0.0.1";
 const DEFAULT_START_TIMEOUT_MS = 120_000;
-const METAL_UNSUPPORTED_CACHE_TYPES = new Set([
-  "turbo2",
-  "turbo3",
-  "turbo4",
-  "turbo2_0",
-  "turbo3_0",
-  "turbo4_0",
-  "turbo2_tcq",
-  "turbo3_tcq",
-]);
+
+/**
+ * Map a llama-server `--cache-type-k/v` value to the `CAPABILITIES.json`
+ * kernel bit that must be `true` in the installed binary for that cache type
+ * to be safe. Cache types not in this map (`f16`, `q8_0`, …) are stock and
+ * always allowed. Used by `assertCacheTypeSupportedOnBackend` so the refusal
+ * keys off the *real* shipped-kernel set, not a static "decorative-only"
+ * blocklist (L1 — the kernel-patches now do real work; see
+ * `packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`).
+ */
+const CACHE_TYPE_REQUIRED_KERNEL: Record<
+  string,
+  keyof DflashBinaryCapabilities["kernels"]
+> = {
+  turbo3: "turbo3",
+  turbo3_0: "turbo3",
+  turbo4: "turbo4",
+  turbo4_0: "turbo4",
+  turbo3_tcq: "turbo3_tcq",
+  // turbo2* are the older naming for the same families — gate on turbo3.
+  turbo2: "turbo3",
+  turbo2_0: "turbo3",
+  turbo2_tcq: "turbo3_tcq",
+  qjl1_256: "qjl_full",
+  qjl_full: "qjl_full",
+  polar: "polarquant",
+  polarquant: "polarquant",
+};
 
 const DFLASH_METRIC_ALIASES = {
   decoded: ["llamacpp:n_decode_total", "llamacpp:n_decode"],
@@ -354,23 +377,26 @@ function dflashMetalAutoEnabled(): boolean {
   );
 }
 
+/**
+ * Refuse a `--cache-type-k/v` value when the installed llama-server binary
+ * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
+ * is no longer static: `kernel-patches/{metal,vulkan}-kernels.mjs` compile the
+ * turbo*/qjl/polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
+ * records which ones actually shipped under `kernels.*`. So a Metal binary
+ * built with the kernel patches enabled passes; one without them is refused
+ * with an actionable "rebuild your fork" message. When `CAPABILITIES.json` is
+ * absent (older / hand-built binaries) we trust the request and let the load
+ * attempt clarify — same policy as the dispatcher's `unsatisfiedKernels`.
+ */
 function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
-  if (
-    isMetalDflashRuntime() &&
-    METAL_UNSUPPORTED_CACHE_TYPES.has(value.toLowerCase())
-  ) {
-    // Wave-3 hardware-verified all 5 Metal kernels 8/8 PASS on Apple M4 Max
-    // via the JIT harness, but the patch coverage audit (2026-05-10) found
-    // the standalones do NOT actually ship in the v0.4.0-milady binary —
-    // build-llama-cpp-dflash.mjs's patchMetal* hooks are decorative-only.
-    // Until the shader-shipping work lands AND the shipped binary itself
-    // is re-verified, the runtime correctly refuses these cache types on
-    // Metal. Once capabilities.kernels.turbo3 etc. flip to true via a real
-    // build, gate this on the capability instead of the static set.
-    throw new Error(
-      `${name}=${value} is not yet shipped in the Metal binary. Wave-3 verified the kernels in a JIT harness but the build pipeline doesn't compile them into the shipped artifact. Use f16 KV on Metal until the kernel-shipping work lands.`,
-    );
-  }
+  const requiredKernel = CACHE_TYPE_REQUIRED_KERNEL[value.toLowerCase()];
+  if (!requiredKernel) return; // stock cache type (f16/q8_0/...) — always ok
+  const caps = readDflashBinaryCapabilities();
+  if (!caps) return; // no capability probe — trust the request, load clarifies
+  if (caps.kernels[requiredKernel] === true) return; // shipped — allow
+  throw new Error(
+    `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or use a stock KV cache type (f16/q8_0).`,
+  );
 }
 
 export function dflashEnabled(): boolean {
@@ -813,6 +839,7 @@ async function fetchStreamingChatCompletion(
     onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
   },
   externalSignal?: AbortSignal,
+  startIndex = 0,
 ): Promise<string> {
   const controller = new AbortController();
   const abort = () => controller.abort(externalSignal?.reason);
@@ -835,7 +862,7 @@ async function fetchStreamingChatCompletion(
     const reader = res.body.getReader();
     let buffer = "";
     let text = "";
-    let nextIndex = 0;
+    let nextIndex = startIndex;
     const consumeEvent = async (raw: string): Promise<void> => {
       const dataLines = raw
         .split(/\r?\n/)
@@ -1412,16 +1439,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     appendKvSpillFlags(args, plan.kvSpillPlan);
 
     const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
-    if (extra && isMetalDflashRuntime()) {
-      for (const cacheType of METAL_UNSUPPORTED_CACHE_TYPES) {
-        if (extra.toLowerCase().split(/\s+/).includes(cacheType)) {
-          throw new Error(
-            `ELIZA_DFLASH_LLAMA_ARGS includes ${cacheType}, but that KV cache type is not production-safe on Metal in the DFlash fork. Use f16 KV on Metal or run this variant on CUDA/ROCm.`,
-          );
+    if (extra) {
+      // Apply the same capability gate to any kernel cache type passed via
+      // the raw-args escape hatch: a `--cache-type-k turbo3` here must be
+      // backed by the shipped `turbo3` kernel just like the env-var path.
+      const tokens = extra.split(/\s+/).filter(Boolean);
+      for (let i = 0; i < tokens.length; i += 1) {
+        if (
+          (tokens[i] === "--cache-type-k" || tokens[i] === "--cache-type-v") &&
+          i + 1 < tokens.length
+        ) {
+          assertCacheTypeSupportedOnBackend(tokens[i], tokens[i + 1]);
         }
       }
+      args.push(...tokens);
     }
-    if (extra) args.push(...extra.split(/\s+/).filter(Boolean));
 
     fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
     this.stderrTail = [];
@@ -1704,26 +1736,29 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       typeof dflashArgs.slotId === "number" && dflashArgs.slotId >= -1
         ? dflashArgs.slotId
         : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
-    const payload: Record<string, unknown> = {
-      model: "local-dflash",
-      messages: [{ role: "user", content: args.prompt }],
-      max_tokens: args.maxTokens ?? 2048,
-      temperature: args.temperature ?? 0.7,
-      top_p: args.topP ?? 0.9,
-      stop: args.stopSequences,
-      stream: Boolean(args.onTextChunk || dflashArgs.onVerifierEvent),
-      // `cache_prompt: true` is always safe — the worst case is the
-      // server matches no prefix tokens and the request behaves like a
-      // cold call. Pinning by `slot_id` only happens when the runtime
-      // gave us a stable cache key.
-      cache_prompt: true,
-      slot_id: slotId,
-    };
+    const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
+    const prefill =
+      typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
+        ? dflashArgs.prefill
+        : "";
+    const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
     let text: string;
-    if (args.onTextChunk || dflashArgs.onVerifierEvent) {
-      text = await fetchStreamingChatCompletion(
+    if (streaming) {
+      // When the assistant turn is prefilled, the model only streams the
+      // continuation — surface the full assistant message (prefill + tail)
+      // and fire the prefill chunk through the callbacks first so the voice
+      // bridge / structured-field tracker sees a complete envelope.
+      let idx = 0;
+      if (prefill.length > 0) {
+        await dflashArgs.onVerifierEvent?.({
+          kind: "accept",
+          tokens: [{ index: idx++, text: prefill }],
+        });
+        await args.onTextChunk?.(prefill);
+      }
+      const tail = await fetchStreamingChatCompletion(
         `${baseUrl}/v1/chat/completions`,
         {
           method: "POST",
@@ -1736,7 +1771,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           onVerifierEvent: dflashArgs.onVerifierEvent,
         },
         args.signal,
+        idx,
       );
+      text = prefill + tail;
     } else {
       json = (await fetchJson(
         `${baseUrl}/v1/chat/completions`,
@@ -1748,12 +1785,61 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         60_000,
         args.signal,
       )) as Record<string, unknown>;
-      text = extractCompletionText(json);
+      text = prefill + extractCompletionText(json);
     }
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
     return { text, usage, slotId };
+  }
+
+  /**
+   * Materialize the KV cache for `promptPrefix` on the slot a conversation
+   * is pinned to, before the real request arrives. Fires a `max_tokens: 1`
+   * chat completion with `cache_prompt: true` against the deterministic
+   * slot, so the system-prompt / provider-context / tool-schema prefix is
+   * already in the slot's KV when the user's tokens land. Idempotent and
+   * cheap to call repeatedly — `cache_prompt` reuses the prefix so a second
+   * call is a no-op forward pass over the same tokens.
+   *
+   * No-op when the server isn't running (returns false). W6 calls this from
+   * the cache-precache path; W4 exposes it through the engine.
+   */
+  async prewarmConversation(
+    promptPrefix: string,
+    opts: { slotId?: number; cacheKey?: string } = {},
+  ): Promise<boolean> {
+    const baseUrl = this.baseUrl;
+    if (!baseUrl) return false;
+    if (!promptPrefix || promptPrefix.length === 0) return false;
+    const slotId =
+      typeof opts.slotId === "number" && opts.slotId >= -1
+        ? opts.slotId
+        : deriveSlotId(opts.cacheKey ?? "", this.cacheParallel);
+    const payload: Record<string, unknown> = {
+      model: "local-dflash",
+      messages: [{ role: "user", content: promptPrefix }],
+      max_tokens: 1,
+      temperature: 0,
+      cache_prompt: true,
+      slot_id: slotId,
+    };
+    try {
+      await fetchJson(
+        `${baseUrl}/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(payload),
+        },
+        30_000,
+      );
+      return true;
+    } catch {
+      // Pre-warm is best-effort by definition — a failure just means the
+      // real request cold-prefills, which is the pre-prewarm behaviour.
+      return false;
+    }
   }
 
   private captureLog(chunk: Buffer | string): void {
@@ -1801,6 +1887,60 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 }
 
 export const dflashLlamaServer = new DflashLlamaServer();
+
+/**
+ * Build the `/v1/chat/completions` request body for a generation call,
+ * folding in the structured-output extensions:
+ *   - `prefill`        → a trailing partial assistant message + the fork's
+ *     `continue_final_message: true` so the model continues it rather than
+ *     starting a fresh assistant turn (recent llama.cpp/Jinja chat templates
+ *     honour this; older builds simply ignore the extra message and the
+ *     prefill is still re-prepended client-side).
+ *   - `grammar` / `responseSkeleton` → `grammar` (+ `grammar_lazy` /
+ *     `grammar_triggers` when the compiled skeleton is lazy).
+ *
+ * `cache_prompt: true` is always safe — the worst case is the server matches
+ * no prefix tokens and the request behaves like a cold call. Pinning by
+ * `slot_id` only happens when the runtime gave us a stable cache key.
+ */
+export function buildChatCompletionBody(
+  args: DflashGenerateArgs,
+  slotId: number,
+  streaming: boolean,
+): Record<string, unknown> {
+  const messages: Array<{ role: string; content: string }> = [
+    { role: "user", content: args.prompt },
+  ];
+  const prefill =
+    typeof args.prefill === "string" && args.prefill.length > 0
+      ? args.prefill
+      : "";
+  if (prefill.length > 0) {
+    messages.push({ role: "assistant", content: prefill });
+  }
+  const payload: Record<string, unknown> = {
+    model: "local-dflash",
+    messages,
+    max_tokens: args.maxTokens ?? 2048,
+    temperature: args.temperature ?? 0.7,
+    top_p: args.topP ?? 0.9,
+    stop: args.stopSequences,
+    stream: streaming,
+    cache_prompt: true,
+    slot_id: slotId,
+  };
+  if (prefill.length > 0) {
+    // Continue the partial assistant turn instead of opening a new one.
+    payload.continue_final_message = true;
+    // Some fork builds spell it `add_generation_prompt: false` instead.
+    payload.add_generation_prompt = false;
+  }
+  const grammar = resolveGrammarForParams(args);
+  if (grammar) {
+    Object.assign(payload, grammarRequestFields(grammar));
+  }
+  return payload;
+}
 
 /**
  * Extract the assistant text from a llama-server `/v1/chat/completions`

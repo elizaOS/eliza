@@ -1,142 +1,86 @@
 /**
- * Structured-output / forced-span / prefill contract for the local-inference
+ * Structured-output / forced-span / prefill plumbing for the local-inference
  * engine path.
  *
  * The canonical contract lives in `@elizaos/core` `GenerateTextParams`
- * (`prefill`, `forcedSpans` / `responseSkeleton`, `grammar`,
- * `streamStructured`) — W3 owns those field definitions and threads them
- * through `useModel` → router. This module defines the local-inference-layer
- * mirror of that contract plus the GBNF compilation that turns a
- * `ResponseSkeleton` into a *lazy* grammar so the model only ever samples the
- * free positions of the response envelope (single-value enums collapse to
- * literals — no tokens spent on the scaffold).
+ * (`prefill`, `responseSkeleton`, `grammar`, `streamStructured`) — W3 owns
+ * those field definitions and threads them through `useModel` → router. This
+ * module is the local-inference-layer mirror of the relevant subset plus the
+ * GBNF compilation that turns a `ResponseSkeleton` into a *lazy* grammar so
+ * the model only ever samples the free positions of the response envelope
+ * (single-value enums collapse to literals — no tokens spent on the scaffold).
  *
- * Nothing here is local-model-specific in shape; the cloud adapters simply
- * never read these fields. There is no fallback path — adapters that can't
- * honour `grammar` / `prefill` / `forcedSpans` ignore them, full stop.
+ * Nothing here is local-model-specific in shape; cloud adapters never read
+ * these fields. There is no fallback path — adapters that can't honour
+ * `grammar` / `prefill` / `responseSkeleton` ignore them, full stop.
  */
 
-/**
- * A single element of a forced response skeleton. `literal` spans are emitted
- * verbatim with no generation. `free` spans are the positions the model
- * actually samples — optionally constrained by an inline GBNF fragment, an
- * enum, or a JSON-Schema-ish leaf type.
- */
-export type ResponseSkeletonSpan =
-  | {
-      kind: "literal";
-      /** Raw text spliced into the output as-is (envelope keys, `": "`, `,\n`, etc.). */
-      text: string;
-    }
-  | {
-      kind: "free";
-      /** Diagnostic name (e.g. `replyText`, `contexts`) — never emitted. */
-      name: string;
-      /**
-       * Optional GBNF rule body constraining this span. When absent the span
-       * is `root ::= [^"]*` (a free string value position) unless `enum` or
-       * `leafType` narrows it.
-       */
-      grammar?: string;
-      /**
-       * Closed value set for this span. A single-element enum is collapsed to
-       * a `literal` span at compile time (C4 — single-value enum/option skip).
-       */
-      enum?: readonly string[];
-      /** JSON leaf shape when the span is a typed scalar value. */
-      leafType?: "string" | "number" | "integer" | "boolean";
-      /**
-       * When true the span is emitted as a quoted JSON string (`"<value>"`);
-       * otherwise the raw token sequence (numbers/booleans/object fragments).
-       */
-      quoted?: boolean;
-    };
+import type { ResponseSkeleton, ResponseSkeletonSpan } from "@elizaos/core";
+
+export type { ResponseSkeleton, ResponseSkeletonSpan };
 
 /**
- * The forced response envelope. `spans` are concatenated in order; `literal`
- * spans cost zero generation, `free` spans are the only positions the model
- * decodes. Carrying *all* evaluator parameters as `free` spans (with default
- * literals around them) is what guarantees post-turn evaluators always have
- * their fields (C5).
- */
-export interface ResponseSkeleton {
-  spans: readonly ResponseSkeletonSpan[];
-  /**
-   * Optional human label for diagnostics / telemetry (`response`,
-   * `should_respond`, …).
-   */
-  label?: string;
-}
-
-/**
- * GBNF grammar source. Either a full grammar string (`root ::= …`) or a
- * "lazy" grammar that only kicks in after a trigger word/sequence appears in
- * the stream (llama.cpp's `grammar_lazy` + `grammar_triggers`). Lazy grammars
- * let the model free-run the prose prefix (`replyText`) and only constrain the
- * structured scaffold once the envelope boundary is reached.
+ * GBNF grammar fragment ready for a llama-server request body. `lazy` grammars
+ * only kick in once a trigger word/sequence appears in the stream
+ * (llama.cpp's `grammar_lazy` + `grammar_triggers`) — that lets the model
+ * free-run the prose `replyText` and only constrain the structured scaffold
+ * once the envelope boundary is reached.
  */
 export interface GbnfGrammar {
   /** GBNF source. */
   source: string;
-  /**
-   * When true, the server applies the grammar lazily — generation runs
-   * unconstrained until a trigger fires. Maps to llama-server's
-   * `grammar_lazy: true`.
-   */
+  /** When true, the server applies the grammar lazily (`grammar_lazy: true`). */
   lazy?: boolean;
-  /**
-   * Trigger sequences that activate a lazy grammar. Plain strings (or
-   * `{ word }` objects) — maps to llama-server's `grammar_triggers`.
-   */
-  triggers?: ReadonlyArray<string | { word: string }>;
+  /** Trigger words that activate a lazy grammar (`grammar_triggers`). */
+  triggers?: ReadonlyArray<string>;
 }
 
 /**
  * Local-inference mirror of the structured-output extensions on
  * `GenerateTextParams`. Threaded `useModel` → router → local handler →
- * engine → dflash-server. Kept structurally compatible with the canonical
- * core contract; reconcile field names with W3 when that lands.
+ * engine → dflash-server.
  */
 export interface StructuredGenerateParams {
   /**
    * Assistant-turn prefill — a partial assistant message the model should
    * *continue* rather than start fresh. On llama-server this is sent as a
-   * trailing assistant message with `continue_final_message: true` (Jinja
-   * chat template prefix) or, on the raw `/completion` path, appended to the
-   * applied template before the model decodes.
+   * trailing assistant message with `continue_final_message` / the
+   * `assistant` chat-template prefix; the node-llama-cpp path seeds the
+   * prompt text and re-prepends the prefill to the result.
    */
   prefill?: string;
   /**
    * Forced response skeleton. When set the engine compiles it to a lazy GBNF
    * (single-value enums → literals) so the model only samples the free
-   * positions of the envelope (C2/C3/C4). The multi-call infill loop is the
-   * fallback when a grammar can't express the skeleton.
+   * positions of the envelope.
    */
   responseSkeleton?: ResponseSkeleton;
-  /** Alias for `responseSkeleton` — W3's contract names it `forcedSpans`. */
-  forcedSpans?: ResponseSkeleton;
-  /** Explicit GBNF grammar (overrides the compiled skeleton grammar). */
-  grammar?: GbnfGrammar;
+  /**
+   * Explicit GBNF grammar string. When both `grammar` and `responseSkeleton`
+   * are present, the explicit `grammar` wins (W3 contract).
+   */
+  grammar?: string;
   /**
    * When true, the engine streams per-token chunks back via `onTextChunk`
-   * (and the structured-field events) instead of returning the whole string
-   * in one shot.
+   * (and structured-field events) instead of returning the whole string in
+   * one shot.
    */
   streamStructured?: boolean;
 }
 
-/** Resolve the skeleton from either field name. */
-export function resolveResponseSkeleton(
-  params: StructuredGenerateParams | undefined,
-): ResponseSkeleton | undefined {
-  if (!params) return undefined;
-  return params.responseSkeleton ?? params.forcedSpans ?? undefined;
+/** True when `kind` is a span the model actually samples. */
+function isFreeSpan(span: ResponseSkeletonSpan): boolean {
+  return (
+    span.kind === "free-string" ||
+    span.kind === "free-json" ||
+    (span.kind === "enum" &&
+      Array.isArray(span.enumValues) &&
+      span.enumValues.length > 1)
+  );
 }
 
 /**
- * Escape a string for use inside a GBNF double-quoted literal. GBNF literals
- * use C-style escapes; `"` and `\` must be escaped, and control chars become
- * `\xNN`.
+ * Escape a string for use inside a GBNF double-quoted literal (C-style escapes).
  */
 function gbnfEscapeLiteral(text: string): string {
   let out = "";
@@ -154,108 +98,139 @@ function gbnfEscapeLiteral(text: string): string {
 }
 
 /**
- * Collapse a skeleton: any `free` span whose `enum` has exactly one value (or
- * whose constraint is otherwise degenerate) becomes a `literal` span. This is
- * C4 — when only one value is possible given current state, the model spends
- * zero tokens on it. Adjacent literals are merged.
+ * Collapse a skeleton: `enum` spans with exactly one value (or zero values)
+ * become `literal` spans (C4). Adjacent literals stay separate spans — the
+ * compiler merges them in the root rule.
  */
 export function collapseSkeleton(skeleton: ResponseSkeleton): ResponseSkeleton {
   const out: ResponseSkeletonSpan[] = [];
-  const pushLiteral = (text: string): void => {
-    if (text.length === 0) return;
-    const last = out[out.length - 1];
-    if (last && last.kind === "literal") last.text += text;
-    else out.push({ kind: "literal", text });
-  };
   for (const span of skeleton.spans) {
-    if (span.kind === "literal") {
-      pushLiteral(span.text);
-      continue;
-    }
-    if (span.enum && span.enum.length === 1) {
-      const value = span.enum[0];
-      pushLiteral(span.quoted ? `"${value}"` : value);
+    if (
+      span.kind === "enum" &&
+      Array.isArray(span.enumValues) &&
+      span.enumValues.length <= 1
+    ) {
+      const value = span.enumValues[0] ?? span.value ?? "";
+      out.push({ kind: "literal", key: span.key, value });
       continue;
     }
     out.push(span);
   }
-  return { spans: out, label: skeleton.label };
+  return { spans: out, id: skeleton.id };
 }
 
-/** GBNF leaf-type rule bodies. */
-const GBNF_LEAF_RULES: Record<string, string> = {
-  string: '"\\"" ([^"\\\\] | "\\\\" .)* "\\""',
-  number: '"-"? [0-9]+ ("." [0-9]+)? ([eE] [-+]? [0-9]+)?',
-  integer: '"-"? [0-9]+',
-  boolean: '"true" | "false"',
-};
+/**
+ * GBNF rule body for a quoted JSON string value.
+ */
+const GBNF_JSON_STRING = '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""';
+/**
+ * GBNF rule body for a JSON value (object/array/string/number/bool/null) —
+ * the canonical recursive `json-value` grammar, inlined so a `free-json` span
+ * is self-contained without a shared `json` import.
+ */
+const GBNF_JSON_VALUE = [
+  "jsonvalue ::= jsonobject | jsonarray | jsonstring | jsonnumber | \"true\" | \"false\" | \"null\"",
+  'jsonobject ::= "{" ws ( jsonstring ws ":" ws jsonvalue ( ws "," ws jsonstring ws ":" ws jsonvalue )* )? ws "}"',
+  'jsonarray ::= "[" ws ( jsonvalue ( ws "," ws jsonvalue )* )? ws "]"',
+  `jsonstring ::= ${GBNF_JSON_STRING}`,
+  'jsonnumber ::= "-"? ( [0-9] | [1-9] [0-9]* ) ( "." [0-9]+ )? ( [eE] [-+]? [0-9]+ )?',
+  'ws ::= [ \\t\\n\\r]*',
+].join("\n");
 
 /**
  * Compile a `ResponseSkeleton` to a *lazy* GBNF grammar. The grammar's `root`
  * rule is the concatenation of every span:
- *   - `literal` spans become GBNF string literals,
- *   - `free` spans become a named sub-rule (their inline `grammar`, or an
- *     `enum` alternation, or a leaf-type rule, or a default free-string),
- * and the grammar runs *lazily* — generation free-runs until the first
- * literal of the skeleton is reached (the trigger), then the grammar pins the
- * rest of the envelope. That keeps the prose `replyText` unconstrained while
- * forcing the JSON scaffold (C2/C3/C5/C6).
+ *   - `literal` spans → GBNF string literals (the JSON key/glue scaffold),
+ *   - `enum` spans (≥2 values) → an alternation of quoted-string literals,
+ *   - `free-string` spans → a quoted JSON string rule,
+ *   - `free-json` spans → the recursive JSON-value rule.
  *
- * Returns `null` when the skeleton is fully literal (nothing for the model to
+ * The grammar runs *lazily* when the skeleton opens with a literal (the
+ * trigger word) — generation free-runs until that literal is seen, then the
+ * grammar pins the rest of the envelope. That keeps the prose prefix
+ * unconstrained while forcing the JSON scaffold.
+ *
+ * Returns `null` when the skeleton has no free spans (nothing for the model to
  * sample — the caller should just emit the literal text and skip generation).
  */
 export function compileSkeletonToGbnf(
   skeletonInput: ResponseSkeleton,
 ): GbnfGrammar | null {
   const skeleton = collapseSkeleton(skeletonInput);
-  const hasFree = skeleton.spans.some((s) => s.kind === "free");
-  if (!hasFree) return null;
+  if (!skeleton.spans.some(isFreeSpan)) return null;
 
-  const rules: string[] = [];
+  const rules = new Map<string, string>();
   const rootParts: string[] = [];
   let freeIdx = 0;
-  // The lazy-trigger is the leading literal (if any). When the skeleton opens
-  // with a `free` span there's no trigger word and the grammar is non-lazy.
+  let needsJsonValue = false;
   let triggerWord: string | null = null;
 
   for (let i = 0; i < skeleton.spans.length; i += 1) {
     const span = skeleton.spans[i];
     if (span.kind === "literal") {
-      if (i === 0 && span.text.length > 0) triggerWord = span.text;
-      rootParts.push(`"${gbnfEscapeLiteral(span.text)}"`);
+      const text = span.value ?? "";
+      if (i === 0 && text.length > 0) triggerWord = text;
+      rootParts.push(`"${gbnfEscapeLiteral(text)}"`);
       continue;
     }
-    const ruleName = `free${freeIdx++}`;
-    let body: string;
-    if (span.grammar && span.grammar.trim().length > 0) {
-      body = span.grammar.trim();
-    } else if (span.enum && span.enum.length > 0) {
-      const alts = span.enum.map((v) => {
-        const value = span.quoted ? `"${v}"` : v;
-        return `"${gbnfEscapeLiteral(value)}"`;
-      });
-      body = alts.join(" | ");
-    } else if (span.leafType) {
-      const leaf = GBNF_LEAF_RULES[span.leafType];
-      body = span.quoted && span.leafType !== "string"
-        ? `"\\"" (${leaf}) "\\""`
-        : leaf;
-    } else {
-      // Default: a free (unquoted-content) JSON string body. The skeleton's
-      // surrounding literals supply the quotes when `quoted` would have.
-      body = span.quoted
-        ? '"\\"" ([^"\\\\] | "\\\\" .)* "\\""'
-        : '([^"\\\\] | "\\\\" .)*';
+    if (span.kind === "enum") {
+      const values =
+        Array.isArray(span.enumValues) && span.enumValues.length > 0
+          ? span.enumValues
+          : [span.value ?? ""];
+      if (values.length === 1) {
+        // collapseSkeleton already lowered single-value enums; this is a
+        // defensive fallback for a producer that didn't.
+        rootParts.push(`"${gbnfEscapeLiteral(`"${values[0]}"`)}"`);
+        continue;
+      }
+      const ruleName = span.rule ?? `enum${freeIdx++}`;
+      const alts = values.map((v) => `"${gbnfEscapeLiteral(`"${v}"`)}"`);
+      rules.set(ruleName, alts.join(" | "));
+      rootParts.push(ruleName);
+      continue;
     }
-    rules.push(`${ruleName} ::= ${body}`);
+    if (span.kind === "free-string") {
+      const ruleName = span.rule ?? `freestr${freeIdx++}`;
+      if (!rules.has(ruleName)) rules.set(ruleName, GBNF_JSON_STRING);
+      rootParts.push(ruleName);
+      continue;
+    }
+    // free-json
+    const ruleName = span.rule ?? "jsonvalue";
+    needsJsonValue = needsJsonValue || ruleName === "jsonvalue";
+    if (ruleName !== "jsonvalue" && !rules.has(ruleName)) {
+      // A producer-named rule with no inline body falls back to a JSON value.
+      rules.set(ruleName, "jsonvalue");
+      needsJsonValue = true;
+    }
     rootParts.push(ruleName);
   }
 
-  const source = [`root ::= ${rootParts.join(" ")}`, ...rules].join("\n");
-  if (triggerWord) {
-    return { source, lazy: true, triggers: [{ word: triggerWord }] };
-  }
+  const lines = [`root ::= ${rootParts.join(" ")}`];
+  for (const [name, body] of rules) lines.push(`${name} ::= ${body}`);
+  if (needsJsonValue) lines.push(GBNF_JSON_VALUE);
+  const source = lines.join("\n");
+  if (triggerWord) return { source, lazy: true, triggers: [triggerWord] };
   return { source, lazy: false };
+}
+
+/**
+ * Resolve the GBNF grammar to apply for a generation call. Precedence: an
+ * explicit `grammar` string on the params, then a compiled `responseSkeleton`.
+ * Returns null when neither is set.
+ */
+export function resolveGrammarForParams(
+  params: StructuredGenerateParams | undefined,
+): GbnfGrammar | null {
+  if (!params) return null;
+  if (typeof params.grammar === "string" && params.grammar.trim().length > 0) {
+    return { source: params.grammar, lazy: false };
+  }
+  if (params.responseSkeleton) {
+    return compileSkeletonToGbnf(params.responseSkeleton);
+  }
+  return null;
 }
 
 /**
@@ -271,28 +246,29 @@ export function grammarRequestFields(
   if (grammar.lazy) {
     out.grammar_lazy = true;
     if (grammar.triggers && grammar.triggers.length > 0) {
-      out.grammar_triggers = grammar.triggers.map((t) =>
-        typeof t === "string" ? { type: "word", value: t } : { type: "word", value: t.word },
-      );
+      out.grammar_triggers = grammar.triggers.map((value) => ({
+        type: "word",
+        value,
+      }));
     }
   }
   return out;
 }
 
 /**
- * Split a `ResponseSkeleton` into the leading literal prefix (suitable for an
- * assistant-turn prefill) plus the remaining spans. Useful for the multi-call
- * infill fallback: emit the prefix as a prefill, generate the first free span,
- * then loop.
+ * Split a skeleton's leading literal run off as an assistant-turn prefill
+ * candidate, returning that prefix plus the remaining spans. Used by the
+ * multi-call infill fallback (emit prefix as a prefill, generate the first
+ * free span, then loop).
  */
 export function splitSkeletonAtFirstFree(skeleton: ResponseSkeleton): {
   prefixLiteral: string;
-  rest: readonly ResponseSkeletonSpan[];
+  rest: ResponseSkeletonSpan[];
 } {
   let prefixLiteral = "";
   let idx = 0;
   while (idx < skeleton.spans.length && skeleton.spans[idx].kind === "literal") {
-    prefixLiteral += (skeleton.spans[idx] as { text: string }).text;
+    prefixLiteral += skeleton.spans[idx].value ?? "";
     idx += 1;
   }
   return { prefixLiteral, rest: skeleton.spans.slice(idx) };

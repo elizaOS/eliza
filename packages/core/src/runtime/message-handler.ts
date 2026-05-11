@@ -27,12 +27,28 @@ export type MessageHandlerRoute =
 
 /**
  * Identifier used by the messageHandler to mark a direct reply that needs no
- * tools or context providers. When `plan.contexts` is exactly `[SIMPLE_CONTEXT_ID]`
- * the runtime takes the shortcut and emits `plan.reply` (or generates one)
- * without invoking the planner.
+ * tools or context providers. When `contexts` is exactly `[SIMPLE_CONTEXT_ID]`
+ * (or empty) the runtime takes the shortcut and emits `replyText` without
+ * invoking the planner.
  */
 export const SIMPLE_CONTEXT_ID = "simple";
 
+/**
+ * Parse a HANDLE_RESPONSE payload into the internal {@link MessageHandlerResult}.
+ *
+ * Accepts two on-the-wire shapes:
+ *  - the canonical flat envelope `{ shouldRespond, thought?, replyText, contexts,
+ *    contextSlices?, candidateActions?, parentActionHints?, requiresTool?, extract? }`
+ *    (what Eliza-1 / the current `HANDLE_RESPONSE_SCHEMA` emit), and
+ *  - the legacy nested form `{ processMessage, thought, plan:{ contexts, reply,
+ *    requiresTool?, simple?, ... }, extract? }` (older trajectories, older tool
+ *    callers).
+ *
+ * Mapping: `shouldRespond`↔`processMessage`, `replyText`↔`plan.reply`,
+ * `contexts`↔`plan.contexts`. `plan.simple === true` (or root `simple === true`)
+ * with no contexts folds into `contexts: ["simple"]`. The internal result still
+ * carries the `plan` sub-object so the rest of the message pipeline is unchanged.
+ */
 export function parseMessageHandlerOutput(
 	raw: string,
 ): V5MessageHandlerOutput | null {
@@ -41,32 +57,43 @@ export function parseMessageHandlerOutput(
 		return null;
 	}
 
-	const plan =
-		parsed.plan && typeof parsed.plan === "object"
+	// Flat envelope keeps its hint/control fields at the top level; legacy
+	// callers nest them under `plan`. Read from `plan` when present, else root.
+	const legacyPlan =
+		parsed.plan && typeof parsed.plan === "object" && !Array.isArray(parsed.plan)
 			? (parsed.plan as Record<string, unknown>)
-			: parsed;
+			: undefined;
+	const fields = legacyPlan ?? parsed;
 	const processMessage = normalizeMessageHandlerAction(
-		parsed.processMessage ?? parsed.action,
+		parsed.shouldRespond ?? parsed.processMessage ?? parsed.action,
 	);
-	const rawContexts = Array.isArray(plan.contexts)
-		? plan.contexts.map((context) => String(context).trim()).filter(Boolean)
+	const rawContexts = Array.isArray(fields.contexts)
+		? fields.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
-	const reply = typeof plan.reply === "string" ? plan.reply : undefined;
+	// Canonical field is `replyText`; legacy nested form used `plan.reply`.
+	const replyRaw =
+		typeof parsed.replyText === "string"
+			? parsed.replyText
+			: typeof fields.reply === "string"
+				? (fields.reply as string)
+				: typeof fields.replyText === "string"
+					? (fields.replyText as string)
+					: undefined;
+	const reply = replyRaw;
 	const requiresTool =
-		typeof plan.requiresTool === "boolean" ? plan.requiresTool : undefined;
+		typeof fields.requiresTool === "boolean" ? fields.requiresTool : undefined;
 	const simple =
-		typeof plan.simple === "boolean"
-			? plan.simple
+		typeof fields.simple === "boolean"
+			? (fields.simple as boolean)
 			: typeof (parsed as { simple?: unknown }).simple === "boolean"
 				? ((parsed as { simple?: boolean }).simple as boolean)
 				: undefined;
-	const contextSlices = normalizeStringHints(plan.contextSlices, 12);
-	const candidateActions = normalizeStringHints(plan.candidateActions, 12);
-	const parentActionHints = normalizeStringHints(plan.parentActionHints, 6);
+	const contextSlices = normalizeStringHints(fields.contextSlices, 12);
+	const candidateActions = normalizeStringHints(fields.candidateActions, 12);
+	const parentActionHints = normalizeStringHints(fields.parentActionHints, 6);
 
-	// Backward-compatibility shim: legacy `plan.simple === true` (or root-level
-	// `simple: true`) with empty contexts is treated as `["simple"]`. New
-	// callers should emit `contexts: ["simple"]` directly.
+	// Legacy `simple === true` with empty contexts → `["simple"]`. New callers
+	// emit `contexts: ["simple"]` directly.
 	const contexts =
 		rawContexts.length === 0 && simple === true
 			? [SIMPLE_CONTEXT_ID]
