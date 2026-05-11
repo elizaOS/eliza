@@ -20,7 +20,7 @@ const SAVED_MEETING_PREFERENCES = {
       endLocal: "13:30",
     },
   ],
-} as const;
+};
 
 export default scenario({
   id: "calendar.scheduling-with-others.ask-preferences",

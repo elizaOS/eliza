@@ -112,8 +112,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--concurrency",
         type=int,
-        default=4,
-        help="Max concurrent scenario evaluations (default: 4)",
+        default=2,
+        help=(
+            "Max concurrent scenario evaluations (default: 2). The default was "
+            "lowered from 4 after W2-9 observed Cerebras 429s at concurrency=4 "
+            "on the hermes suite. Raise back to 4+ for non-Cerebras providers."
+        ),
     )
     parser.add_argument(
         "--seeds",

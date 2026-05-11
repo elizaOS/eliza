@@ -11,12 +11,14 @@
  */
 
 import type {
+  Action,
   ActionParameter,
   ActionResult,
   HandlerCallback,
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -361,7 +363,7 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
 export async function runScreenTimeHandler(
   runtime: IAgentRuntime,
   message: Memory,
-  state: unknown,
+  state: State | undefined,
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {

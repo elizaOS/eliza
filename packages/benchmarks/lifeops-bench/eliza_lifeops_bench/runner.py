@@ -146,7 +146,9 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "CALENDAR": (
         "Read or mutate calendar state. Use subaction=create_event, update_event, "
         "delete_event, propose_times, search_events, check_availability, next_event, "
-        "or update_preferences."
+        "or update_preferences. Also use CALENDAR.create_event to carve out time "
+        "on the calendar — focus blocks, deep-work blocks, and any 'block out N "
+        "hours for X' request are calendar events, NOT BLOCK actions."
     ),
     "MESSAGE": (
         "Send, draft, search, triage, or manage messages and email. Use operation=send, "
@@ -178,13 +180,18 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "authorized cancellation."
     ),
     "BOOK_TRAVEL": "Search or prepare travel options without booking.",
-    "BLOCK": "Route a focus-blocking action.",
-    "BLOCK_BLOCK": "Create a focus block for apps or websites.",
-    "BLOCK_UNBLOCK": "Remove a focus block for apps or websites.",
-    "BLOCK_LIST_ACTIVE": "List active focus blocks.",
-    "BLOCK_RELEASE": "Release a focus block.",
-    "BLOCK_STATUS": "Read focus-block status.",
-    "BLOCK_REQUEST_PERMISSION": "Request permission to create or change a focus block.",
+    "BLOCK": (
+        "Block or unblock specific phone apps and desktop websites only. "
+        "NOT for carving out blocks of time on the calendar — for calendar "
+        "time-blocks (e.g. 'block 2 hours for deep work'), use CALENDAR with "
+        "subaction=create_event."
+    ),
+    "BLOCK_BLOCK": "Block specific phone apps or desktop websites (not calendar time-blocks).",
+    "BLOCK_UNBLOCK": "Unblock specific phone apps or desktop websites.",
+    "BLOCK_LIST_ACTIVE": "List active app/website blocks.",
+    "BLOCK_RELEASE": "Release an app/website block.",
+    "BLOCK_STATUS": "Read app/website block status.",
+    "BLOCK_REQUEST_PERMISSION": "Request permission to create or change an app/website block.",
     "SCHEDULED_TASK_CREATE": (
         "Create a scheduled task. Include kind, trigger, promptInstructions, and "
         "other structured task fields when known."

@@ -21,16 +21,33 @@
 
 import type {
   Action,
-  AgentRuntime,
-  HandlerCallback,
-  Memory,
+  Handler,
   Plugin,
-  State,
 } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const HANG_ACTION_NAME = "SCENARIO_HANG";
+
+const hangHandler: Handler = async (
+  _runtime,
+  _message,
+  _state,
+  _options,
+  callback,
+) => {
+  // Never-resolving promise. The runtime's per-action timeout (default
+  // 30s) must trip and surface an error.
+  await new Promise<never>(() => {
+    /* never resolves */
+  });
+  if (callback) {
+    await callback({
+      text: "this should never run",
+    });
+  }
+  return { success: false, text: "this should never return" };
+};
 
 const hangAction: Action = {
   name: HANG_ACTION_NAME,
@@ -39,25 +56,7 @@ const hangAction: Action = {
     "Test-only action that intentionally hangs forever to exercise the action-timeout path. Used by the lifeops.planner.action-timeout scenario.",
   validate: async () => true,
   examples: [],
-  handler: async (
-    _runtime: AgentRuntime,
-    _message: Memory,
-    _state: State | undefined,
-    _options: Record<string, unknown> | undefined,
-    callback?: HandlerCallback,
-  ) => {
-    // Never-resolving promise. The runtime's per-action timeout (default
-    // 30s) must trip and surface an error.
-    await new Promise<never>(() => {
-      /* never resolves */
-    });
-    if (callback) {
-      await callback({
-        text: "this should never run",
-      });
-    }
-    return { success: false, text: "this should never return" };
-  },
+  handler: hangHandler,
 };
 
 const hangPlugin: Plugin = {

@@ -335,6 +335,20 @@
         "vitest": "^4.0.18",
       },
       "optionalDependencies": {
+        "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
+        "@elizaos/capacitor-camera": "2.0.0-beta.1",
+        "@elizaos/capacitor-canvas": "2.0.0-beta.1",
+        "@elizaos/capacitor-contacts": "2.0.0-beta.1",
+        "@elizaos/capacitor-gateway": "2.0.0-beta.1",
+        "@elizaos/capacitor-location": "2.0.0-beta.1",
+        "@elizaos/capacitor-messages": "2.0.0-beta.1",
+        "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
+        "@elizaos/capacitor-phone": "2.0.0-beta.1",
+        "@elizaos/capacitor-screencapture": "2.0.0-beta.1",
+        "@elizaos/capacitor-swabble": "2.0.0-beta.1",
+        "@elizaos/capacitor-system": "2.0.0-beta.1",
+        "@elizaos/capacitor-talkmode": "2.0.0-beta.1",
+        "@elizaos/capacitor-websiteblocker": "2.0.0-beta.1",
         "node-llama-cpp": "3.18.1",
         "onnxruntime-node": "1.24.3",
         "sharp": "^0.34.5",
@@ -1310,6 +1324,22 @@
       "version": "2.0.0-beta.1",
       "devDependencies": {
         "@capacitor/cli": "^8.0.0",
+        "@capacitor/core": "^8.3.1",
+        "rimraf": "^6.0.0",
+        "rollup": "^4.60.2",
+        "typescript": "^6.0.3",
+      },
+      "peerDependencies": {
+        "@capacitor/core": "^8.3.1",
+      },
+    },
+    "packages/native-plugins/bun-runtime": {
+      "name": "@elizaos/capacitor-bun-runtime",
+      "version": "0.1.0",
+      "dependencies": {
+        "@capacitor/core": "^8.0.0",
+      },
+      "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "rimraf": "^6.0.0",
         "rollup": "^4.60.2",
@@ -4151,6 +4181,8 @@
     "@elizaos/capacitor-agent": ["@elizaos/capacitor-agent@workspace:packages/native-plugins/agent"],
 
     "@elizaos/capacitor-appblocker": ["@elizaos/capacitor-appblocker@workspace:packages/native-plugins/appblocker"],
+
+    "@elizaos/capacitor-bun-runtime": ["@elizaos/capacitor-bun-runtime@workspace:packages/native-plugins/bun-runtime"],
 
     "@elizaos/capacitor-calendar": ["@elizaos/capacitor-calendar@workspace:packages/native-plugins/calendar"],
 

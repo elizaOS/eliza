@@ -10,8 +10,10 @@ import {
 	type PersonalitySlot,
 } from "../types.ts";
 
-const AGENT_ID = "00000000-0000-4000-8000-000000000001" as `${string}-${string}-${string}-${string}-${string}`;
-const USER_ID = "00000000-0000-4000-8000-000000000002" as `${string}-${string}-${string}-${string}-${string}`;
+const AGENT_ID =
+	"00000000-0000-4000-8000-000000000001" as `${string}-${string}-${string}-${string}-${string}`;
+const USER_ID =
+	"00000000-0000-4000-8000-000000000002" as `${string}-${string}-${string}-${string}-${string}`;
 
 function userSlot(overrides: Partial<PersonalitySlot> = {}): PersonalitySlot {
 	return { ...emptyPersonalitySlot(USER_ID, AGENT_ID), ...overrides };

@@ -24,7 +24,11 @@
  *                                                    openclaw | cerebras-direct.
  *   - MILADY_BENCH_LIMIT        (default "25")       Scenarios per agent.
  *   - MILADY_BENCH_MODEL        (default "gpt-oss-120b")  Cerebras model id.
- *   - MILADY_BENCH_CONCURRENCY  (default "4")        Python concurrency.
+ *   - MILADY_BENCH_CONCURRENCY  (default "2")        Python concurrency
+ *                                                    (lowered from 4 after
+ *                                                    Cerebras 429s under load;
+ *                                                    raise back to 4+ for
+ *                                                    non-Cerebras providers).
  *   - MILADY_BENCH_SEEDS        (default "1")        Repetitions per scenario.
  *   - MILADY_BENCH_SKIP_JS      (default "")         Set to "1" to skip the
  *                                                    JS scenario-runner step.
@@ -119,7 +123,7 @@ function envBoolish(name, fallback) {
 const cliAgent = envStr("MILADY_BENCH_AGENT", "all");
 const scenarioLimit = envInt("MILADY_BENCH_LIMIT", 25);
 const model = envStr("MILADY_BENCH_MODEL", "gpt-oss-120b");
-const concurrency = envInt("MILADY_BENCH_CONCURRENCY", 4);
+const concurrency = envInt("MILADY_BENCH_CONCURRENCY", 2);
 const seeds = envInt("MILADY_BENCH_SEEDS", 1);
 const useMockoon = envBoolish("LIFEOPS_USE_MOCKOON", true);
 const skipJsScenarios = envBoolish("MILADY_BENCH_SKIP_JS", false);

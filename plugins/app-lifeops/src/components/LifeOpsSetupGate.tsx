@@ -10,10 +10,10 @@
  */
 import {
   Button,
-  dispatchFocusConnector,
   Input,
   useApp,
 } from "@elizaos/ui";
+import { dispatchFocusConnector } from "@elizaos/ui/events";
 import { CalendarDays, MessageCircle, SkipForward } from "lucide-react";
 import { useCallback, useState } from "react";
 import { useGoogleLifeOpsConnector } from "../hooks/useGoogleLifeOpsConnector.js";

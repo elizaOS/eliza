@@ -117,64 +117,45 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       const optimizer = parsed.optimizer ?? "instruction-search";
       const task: TrajectoryTrainingTask = parsed.task ?? "should_respond";
       const baselinePrompt = await loadBaselinePrompt(parsed);
-      // Pick the adapter:
-      //   - When TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER), route
-      //     scoring + variant generation through the real Cerebras
-      //     gpt-oss-120b client (lifeops-eval-model.ts). This is the path
-      //     `bun run lifeops:optimize` exercises against captured
-      //     trajectories.
-      //   - Otherwise fall back to the deterministic stub that echoes the
-      //     user prompt — useful as a smoke test of the optimizer
-      //     plumbing without an LLM provider.
+      // Real-model adapter: scoring + variant generation run through the
+      // Cerebras gpt-oss-120b client (lifeops-eval-model.ts). This is the path
+      // `bun run lifeops:optimize` exercises against captured trajectories.
       const trainProvider =
         process.env.TRAIN_MODEL_PROVIDER?.trim() ??
         process.env.TRAINING_PROVIDER?.trim();
-      let adapter: {
-        complete: (input: {
+      if (trainProvider !== "cerebras") {
+        console.error(
+          "[train] TRAIN_MODEL_PROVIDER=cerebras (or TRAINING_PROVIDER=cerebras) is required. " +
+            "The native backend has no offline stub; set the env var and rerun.",
+        );
+        return 1;
+      }
+      const helperPath =
+        "../../../app-lifeops/test/helpers/lifeops-eval-model.ts";
+      const { getTrainingUseModelAdapter } = (await import(
+        helperPath
+      )) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+      const useModel = getTrainingUseModelAdapter();
+      const adapter = {
+        async complete(input: {
           system?: string;
           user: string;
           temperature?: number;
           maxTokens?: number;
-        }) => Promise<string>;
+        }): Promise<string> {
+          const prompt = input.system
+            ? `${input.system}\n\n${input.user}`
+            : input.user;
+          return await useModel({
+            prompt,
+            temperature: input.temperature,
+            maxTokens: input.maxTokens,
+          });
+        },
       };
-      let useModel: (input: {
-        prompt: string;
-        temperature?: number;
-        maxTokens?: number;
-      }) => Promise<string>;
-      if (trainProvider === "cerebras") {
-        const helperPath =
-          "../../../app-lifeops/test/helpers/lifeops-eval-model.ts";
-        const { getTrainingUseModelAdapter } = (await import(
-          helperPath
-        )) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
-        useModel = getTrainingUseModelAdapter();
-        adapter = {
-          async complete(input) {
-            const prompt = input.system
-              ? `${input.system}\n\n${input.user}`
-              : input.user;
-            return await useModel({
-              prompt,
-              temperature: input.temperature,
-              maxTokens: input.maxTokens,
-            });
-          },
-        };
-        console.log(
-          "[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)",
-        );
-      } else {
-        adapter = {
-          async complete(input) {
-            return input.user;
-          },
-        };
-        useModel = async () => "";
-        console.log(
-          "[train] adapter: stub (echoes user prompt). Set TRAIN_MODEL_PROVIDER=cerebras for real scoring.",
-        );
-      }
+      console.log(
+        "[train] adapter: cerebras gpt-oss-120b (TRAIN_MODEL_PROVIDER=cerebras)",
+      );
       const result = await runNativeBackend({
         datasetPath: parsed.dataset,
         task,

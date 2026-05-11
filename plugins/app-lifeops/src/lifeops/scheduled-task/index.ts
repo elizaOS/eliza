@@ -124,10 +124,14 @@ export {
   type ScheduledTaskDueDecision,
 } from "./due.js";
 
+// `ScheduledTaskFireResult` (the runner's fire-attempt discriminated union) is
+// re-exported above from `./runner.js`. The scheduler module defines a separate
+// processing-summary shape under the same name; it is consumed via
+// `ProcessDueScheduledTasksResult.fires` and does not need a separate symbol on
+// this barrel.
 export {
   processDueScheduledTasks,
   type ProcessDueScheduledTasksRequest,
   type ProcessDueScheduledTasksResult,
-  type ScheduledTaskFireResult,
   type ScheduledTaskProcessingError,
 } from "./scheduler.js";

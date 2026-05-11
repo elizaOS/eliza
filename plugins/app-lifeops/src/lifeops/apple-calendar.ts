@@ -1,3 +1,4 @@
+/// <reference types="bun-types" />
 import { existsSync } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
@@ -532,7 +533,11 @@ export async function getNativeAppleCalendarFeed(args: {
   runtime?: IAgentRuntime | null;
 }): Promise<FeatureResult<LifeOpsCalendarFeed>> {
   const result = await listNativeAppleCalendarEvents(args);
-  if (!result.ok) return result;
+  if (result.ok === false) {
+    // FeatureResult failure variants don't reference T; re-typed by widening.
+    const failure: FeatureResult<LifeOpsCalendarFeed> = result;
+    return failure;
+  }
   return {
     ok: true,
     data: {

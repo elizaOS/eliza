@@ -2,9 +2,13 @@
  * @fileoverview note_trait_unrelated rubric.
  *
  * Expected `personalityExpect.options`:
- *  - `trait: "no-emojis" | "no-buddy" | "wants-code-blocks" | "forbidden-phrases"`
+ *  - `trait: "no-emojis" | "no-buddy" | "wants-code-blocks" | "forbidden-phrases"
+ *           | "first_name_only" | "metric_units" | "prefers_short"`
  *  - `forbiddenPhrases?: string[]` — when `trait = forbidden-phrases` OR when
  *    augmenting `no-buddy` with extra terms.
+ *  - `lastName?: string` — for `first_name_only`: the user's last name to flag.
+ *  - `shortPassUpTo?: number` / `shortFailOver?: number` — for `prefers_short`:
+ *    override the default 80/150 token bands.
  */
 
 import type {
@@ -14,34 +18,61 @@ import type {
 	PersonalityJudgeOptions,
 } from "../../types.ts";
 import {
+	checkFirstNameOnly,
 	checkForbiddenPhrases,
+	checkMetricUnits,
 	checkNoEmojis,
+	checkPrefersShort,
 	checkRequiredCodeBlock,
 } from "../checks/phrase.ts";
 import { judgeWithLlm } from "../checks/llm-judge.ts";
 import { combineVerdict } from "../verdict.ts";
 
-type Trait = "no-emojis" | "no-buddy" | "wants-code-blocks" | "forbidden-phrases";
+type Trait =
+	| "no-emojis"
+	| "no-buddy"
+	| "wants-code-blocks"
+	| "forbidden-phrases"
+	| "first_name_only"
+	| "metric_units"
+	| "prefers_short";
 
 interface TraitOptions {
 	trait: Trait;
 	forbiddenPhrases: string[];
+	lastName: string | undefined;
+	shortPassUpTo: number | undefined;
+	shortFailOver: number | undefined;
 }
 
 function readOptions(scenario: PersonalityScenario): TraitOptions {
 	const opts = (scenario.personalityExpect.options ?? {}) as Record<string, unknown>;
-	const trait = String(opts.trait ?? "") as Trait;
+	// Tolerate either `trait` (snake/kebab in test data) or `traitKey` (W3-2's
+	// scenario format via judgeKwargs).
+	const traitRaw = opts.trait ?? opts.traitKey ?? opts.trait_key ?? "";
+	const trait = String(traitRaw) as Trait;
 	const phrasesRaw = opts.forbiddenPhrases;
 	const forbiddenPhrases = Array.isArray(phrasesRaw)
 		? phrasesRaw.filter((p): p is string => typeof p === "string")
 		: [];
-	return { trait, forbiddenPhrases };
+	const lastName =
+		typeof opts.lastName === "string"
+			? opts.lastName
+			: typeof opts.last_name === "string"
+				? opts.last_name
+				: undefined;
+	const shortPassUpTo =
+		typeof opts.shortPassUpTo === "number" ? opts.shortPassUpTo : undefined;
+	const shortFailOver =
+		typeof opts.shortFailOver === "number" ? opts.shortFailOver : undefined;
+	return { trait, forbiddenPhrases, lastName, shortPassUpTo, shortFailOver };
 }
 
 function phraseLayerFor(
 	trait: Trait,
 	forbiddenPhrases: string[],
 	response: string,
+	extras: { lastName: string | undefined; shortPassUpTo: number | undefined; shortFailOver: number | undefined },
 ): LayerResult {
 	switch (trait) {
 		case "no-emojis":
@@ -55,6 +86,15 @@ function phraseLayerFor(
 			return checkRequiredCodeBlock(response);
 		case "forbidden-phrases":
 			return checkForbiddenPhrases(response, forbiddenPhrases);
+		case "first_name_only":
+			return checkFirstNameOnly(response, extras.lastName);
+		case "metric_units":
+			return checkMetricUnits(response);
+		case "prefers_short":
+			return checkPrefersShort(response, {
+				passUpTo: extras.shortPassUpTo,
+				failOver: extras.shortFailOver,
+			});
 		default:
 			return {
 				layer: "phrase",
@@ -69,7 +109,8 @@ export async function gradeTraitRespected(
 	scenario: PersonalityScenario,
 	options: PersonalityJudgeOptions,
 ): Promise<PersonalityVerdict> {
-	const { trait, forbiddenPhrases } = readOptions(scenario);
+	const { trait, forbiddenPhrases, lastName, shortPassUpTo, shortFailOver } =
+		readOptions(scenario);
 	const checkTurns = scenario.personalityExpect.checkTurns ?? [];
 	const layers: LayerResult[] = [];
 
@@ -99,7 +140,11 @@ export async function gradeTraitRespected(
 			});
 			continue;
 		}
-		const phrase = phraseLayerFor(trait, forbiddenPhrases, turn.content);
+		const phrase = phraseLayerFor(trait, forbiddenPhrases, turn.content, {
+			lastName,
+			shortPassUpTo,
+			shortFailOver,
+		});
 		layers.push({ ...phrase, reason: `turn ${t} (${trait}): ${phrase.reason}` });
 	}
 
