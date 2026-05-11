@@ -7,7 +7,6 @@ export type DetachedSurfaceTab =
   | "release"
   | "triggers"
   | "plugins"
-  | "connectors"
   | "cloud";
 
 export type WindowShellRoute =
@@ -17,7 +16,7 @@ export type WindowShellRoute =
 
 export interface DetachedShellTarget {
   settingsSection?: string;
-  tab: "browser" | "chat" | "connectors" | "plugins" | "settings" | "triggers";
+  tab: "browser" | "chat" | "plugins" | "settings" | "triggers";
 }
 
 export function parseWindowShellRoute(search: string): WindowShellRoute {
@@ -37,7 +36,6 @@ export function parseWindowShellRoute(search: string): WindowShellRoute {
       tab === "release" ||
       tab === "triggers" ||
       tab === "plugins" ||
-      tab === "connectors" ||
       tab === "cloud"
     ) {
       return { mode: "surface", tab };
@@ -87,8 +85,6 @@ export function resolveDetachedShellTarget(
       return { tab: "triggers" };
     case "plugins":
       return { tab: "plugins" };
-    case "connectors":
-      return { tab: "connectors" };
     case "cloud":
       return { tab: "settings", settingsSection: "cloud" };
   }

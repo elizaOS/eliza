@@ -54,7 +54,6 @@ export * from "./pages/BrowserWorkspaceView";
 export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
 export * from "./pages/ConfigPageView";
-export * from "./pages/ConnectorsPageView";
 export * from "./pages/DatabasePageView";
 export * from "./pages/DatabaseView";
 export * from "./pages/DocumentsView";
