@@ -30,6 +30,7 @@ export * from "./relationships-routes.js";
 export * from "./service-routing.js";
 export * from "./skills-routes.js";
 export * from "./subscription-routes.js";
+export * from "./tail-routes.js";
 export * from "./verification.js";
 export * from "./wallet.js";
 export * from "./wallet-routes.js";
