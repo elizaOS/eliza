@@ -44,9 +44,9 @@ The script invocation:
 # Default fork (spiritbuun/buun-llama-cpp master):
 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target windows-x64-cpu
 
-# milady-ai/llama.cpp v0.1.0-milady (the fork the AOSP path consumes; this
+# elizaOS/llama.cpp v0.1.0-milady (the fork the AOSP path consumes; this
 # is what the CI matrix uses so the symbols match downstream consumers):
-ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/milady-ai/llama.cpp.git" \
+ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/elizaOS/llama.cpp.git" \
   node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
     --target windows-x64-cpu \
     --ref v0.1.0-milady
@@ -73,7 +73,7 @@ cmake --build <cache>/build/windows-x64-cpu \
 
 Build wall time on a 16-core dev box: ~110s clean, ~25s cached. CI is allotted 30 minutes which is conservative.
 
-## Artifacts (milady-ai/llama.cpp v0.1.0-milady, commit edd55d8)
+## Artifacts (elizaOS/llama.cpp v0.1.0-milady, commit edd55d8)
 
 Output dir: `$ELIZA_STATE_DIR/local-inference/bin/dflash/windows-x64-cpu/`.
 
@@ -134,7 +134,7 @@ The CI workflow re-runs the same checks via the `Verify exported symbols` step a
 
 ## Known limitations + follow-up work
 
-1. **PE/COFF QJL link-time fix is a build-side patch, not a fork-side fix.** `patchGgmlBaseForWindowsQjl()` mutates `ggml/src/CMakeLists.txt` in the cached checkout to compile `ggml-cpu/qjl/*.c` into `ggml-base.dll`. The right fix lives upstream in `milady-ai/llama.cpp`: either move the QJL definitions into ggml-base (matches where TBQ already lives), or wire the type-traits table through a registration callback that ggml-cpu fills in at backend-load time. When that lands, the patch becomes a no-op and can be removed. Tracker: `TODO(milady-ai/llama.cpp)` comment in the patch function.
+1. **PE/COFF QJL link-time fix is a build-side patch, not a fork-side fix.** `patchGgmlBaseForWindowsQjl()` mutates `ggml/src/CMakeLists.txt` in the cached checkout to compile `ggml-cpu/qjl/*.c` into `ggml-base.dll`. The right fix lives upstream in `elizaOS/llama.cpp`: either move the QJL definitions into ggml-base (matches where TBQ already lives), or wire the type-traits table through a registration callback that ggml-cpu fills in at backend-load time. When that lands, the patch becomes a no-op and can be removed. Tracker: `TODO(elizaOS/llama.cpp)` comment in the patch function.
 2. **mingw-w64 11.0 vs Win10 SDK gap.** The shim header (`milady-mingw-win-shim.h`) papers over `THREAD_POWER_THROTTLING_STATE`. If a future fork rev pulls in another Win10-only API the shim doesn't cover, the build will fail loud and the shim needs an addition. Documented inline.
 3. **CUDA path still unwired.** `windows-x64-cuda` remains "host-only or MINGW_TOOLCHAIN_FILE" in `targetCompatibility()`. Cross-CUDA from Linux is theoretically possible (nvcc + cudart_static.lib + the Windows kernel32 import lib) but not in scope here.
 4. **wine smoke is opt-in.** `ubuntu-24.04` doesn't ship `wine-stable` and installing it bloats the runtime by ~5min. The job uploads artifacts unconditionally; consumers can wine-test downstream. To turn the smoke on, set `ELIZA_DFLASH_RUN_WINE_SMOKE=1` on the workflow (and add `apt-get install wine64` to the install step).

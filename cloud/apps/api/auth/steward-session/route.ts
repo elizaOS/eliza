@@ -5,7 +5,11 @@
 
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
-import { type StewardVerifyEnv, verifyStewardTokenCached } from "@/lib/auth/steward-client";
+import { cookieDomainForHost } from "@/lib/auth/cookie-domain";
+import {
+  type StewardVerifyEnv,
+  verifyStewardTokenCached,
+} from "@/lib/auth/steward-client";
 import { syncUserFromSteward } from "@/lib/steward-sync";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -48,7 +52,10 @@ app.post("/", async (c) => {
       // so the client doesn't treat it as a revocation and wipe localStorage.
       logStewardAuth("server-secret-missing", null);
       return c.json(
-        { error: "Steward verification not configured on server", code: "server_secret_missing" },
+        {
+          error: "Steward verification not configured on server",
+          code: "server_secret_missing",
+        },
         503,
       );
     }
@@ -69,12 +76,18 @@ app.post("/", async (c) => {
       });
     } catch (error) {
       logStewardAuth("sync-failed", null);
-      console.error("[steward-auth] Failed to sync Steward user before setting cookie", {
-        stewardUserId: claims.userId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      console.error(
+        "[steward-auth] Failed to sync Steward user before setting cookie",
+        {
+          stewardUserId: claims.userId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       return c.json(
-        { error: "Could not sync Steward user", code: "steward_user_sync_failed" },
+        {
+          error: "Could not sync Steward user",
+          code: "steward_user_sync_failed",
+        },
         500,
       );
     }
@@ -84,12 +97,14 @@ app.post("/", async (c) => {
       : null;
 
     const secure = c.env.NODE_ENV === "production";
+    const domain = cookieDomainForHost(c.req.header("host"));
 
     setCookie(c, "steward-token", token, {
       httpOnly: true,
       secure,
       sameSite: "Lax",
       path: "/",
+      ...(domain ? { domain } : {}),
       ...(typeof ttl === "number" ? { maxAge: ttl } : {}),
     });
 
@@ -99,6 +114,7 @@ app.post("/", async (c) => {
         secure,
         sameSite: "Lax",
         path: "/",
+        ...(domain ? { domain } : {}),
         maxAge: STEWARD_REFRESH_COOKIE_MAX_AGE,
       });
     }
@@ -108,11 +124,16 @@ app.post("/", async (c) => {
       secure,
       sameSite: "Lax",
       path: "/",
+      ...(domain ? { domain } : {}),
       maxAge: 60 * 60 * 24 * 7,
     });
 
     logStewardAuth("ok", ttl);
-    return c.json({ ok: true, userId: cloudUser.id, stewardUserId: claims.userId });
+    return c.json({
+      ok: true,
+      userId: cloudUser.id,
+      stewardUserId: claims.userId,
+    });
   } catch {
     logStewardAuth("error", null);
     return c.json({ error: "Internal error" }, 500);
@@ -120,9 +141,11 @@ app.post("/", async (c) => {
 });
 
 app.delete("/", (c) => {
-  deleteCookie(c, "steward-token", { path: "/" });
-  deleteCookie(c, "steward-refresh-token", { path: "/" });
-  deleteCookie(c, "steward-authed", { path: "/" });
+  const domain = cookieDomainForHost(c.req.header("host"));
+  const opts = domain ? { path: "/", domain } : { path: "/" };
+  deleteCookie(c, "steward-token", opts);
+  deleteCookie(c, "steward-refresh-token", opts);
+  deleteCookie(c, "steward-authed", opts);
   logStewardAuth("deleted", null);
   return c.json({ ok: true });
 });

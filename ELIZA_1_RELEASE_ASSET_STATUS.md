@@ -1,12 +1,30 @@
 # Eliza-1 Release Asset Status
 
-Generated on 2026-05-11 after local iOS smoke, source acquisition, and
-all-tier local bundle completion.
+Generated on 2026-05-11 after local iOS smoke, source acquisition,
+all-tier local bundle completion, native-Linux-Vulkan graph-dispatch PASS,
+the new platform-target / `27b-1m`-tier expansion, and the fused-attention
+fixture landing.
 
 This is a release-prep ledger, not a release approval. The local bundles now
 have the full release-shaped layout, but `evidence/release.json` in every tier
 is intentionally `releaseState=local-standin`, `publishEligible=false`, and
 `final.weights=false`. The publish orchestrator must still reject them.
+
+Kernel/contract state moved forward since the last revision: native Linux
+Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe (Mesa ANV) —
+`vulkan-dispatch-smoke` 6/6 PASS, `kernel-contract.json` `runtimeStatus.vulkan`
+= `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` — evidence
+`packages/inference/verify/vulkan-runtime-dispatch-evidence.json` +
+`packages/inference/verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`.
+The contract also tracks 23 build targets now (`linux-aarch64-{cpu,cuda}`,
+`windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` added,
+all `needs-hardware`), a `27b-1m` (1M-context, CUDA-only-backend) tier, and a
+new `fusedAttn` section (capability key `fused_attn`, `needs-runtime-smoke` for
+vulkan/metal, `needs-hardware` for cuda). The manifest schema gained optional
+`kernels.verifiedBackends.*.{device,caveat}` provenance and a
+`kernels.recipeManifest` block fed from the quantization recipes'
+`kernel_manifest` sidecar fragments (`codebookHash` / `perBlockTolerance` /
+`blockLayoutVersion`).
 
 ## Local Bundle Roots
 
@@ -124,8 +142,17 @@ route yet.
 - Local checksum manifests exist and validate, but final release checksums and
   release-reviewed license attestations must be regenerated from the final
   trained bytes.
-- Final platform evidence is incomplete across native Linux Vulkan, Android
-  graph dispatch, CUDA, ROCm, GH200/H200, native Windows, and weight-backed iOS.
+- Final platform evidence is still incomplete: native Linux Vulkan graph
+  dispatch now PASSES on Intel-ANV, but AMD-native and NVIDIA-native Vulkan,
+  Android Adreno/Mali graph dispatch, CUDA (no NVIDIA host run yet — dGPU on
+  this box is in D3cold), ROCm, GH200/H200 (incl. the `27b-1m` tier), native
+  Windows (x64 + arm64), Intel/AMD Mac, and weight-backed iOS all remain open.
+- Fused-attention (`GGML_OP_FUSED_ATTN_QJL_TBQ` + Polar-V variant) has a
+  bit-exact C reference + JSON fixtures + contract docs, but no Metal/Vulkan
+  fused compute kernel and no `cases`-array harness yet, so the `fused_attn`
+  capability is `needs-runtime-smoke` for vulkan/metal and is not a required
+  manifest kernel. The fused HTTP route (one process serving text/DFlash +
+  `/v1/audio/speech`) is also still open.
 - `elizaos` Hugging Face upload evidence is still absent. Upload is blocked
   by non-final release evidence and, separately, requires a token with write
   permission to `elizaos`. Current Hub auth probe resolved user
@@ -133,6 +160,38 @@ route yet.
   namespace is visible in this shell. A live Hub scan currently finds
   `elizaos/eliza-1-assets`, but no publishable per-tier
   `elizaos/eliza-1-*` release repos with final evidence.
+
+## Publish Pipeline / Downloader State (2026-05-11, this checkout)
+
+- `packages/training/scripts/publish_all_eliza1.sh` now prints the per-tier
+  publish summary and propagates the orchestrator's structured exit code on
+  the first failing tier (so callers can tell `EXIT_RELEASE_EVIDENCE_FAIL`
+  = `16` from `EXIT_BUNDLE_LAYOUT_FAIL` = `10`, etc.). The
+  abort-on-first-failure behavior from §6 is unchanged.
+- Dry-run was executed against a hand-built `releaseState=upload-candidate`
+  stand-in bundle for the `0_6b` tier (`final.weights=false`): the
+  orchestrator rejects it at stage 2 (`exit 16`, `EXIT_RELEASE_EVIDENCE_FAIL`)
+  — exactly as the contract requires. **No tier would publish; all are
+  blocked by non-final release evidence.** This checkout's state dir contains
+  no staged Eliza-1 bundle; producing one requires the asset/source staging
+  scripts (`stage_eliza1_bundle_assets.py`, `stage_eliza1_source_weights.py`,
+  `stage_local_eliza1_bundle.py`) which need HF network access and real
+  text/DFlash weights.
+- No `HF_TOKEN` / `HUGGINGFACE_TOKEN` / `HUGGINGFACE_HUB_TOKEN` is present
+  in this environment and `huggingface-cli` is not installed. **No upload
+  was performed.** `defaultEligible` and `publishEligible` stay `false` for
+  every tier.
+- §7 device-side downloader contract hardened (see
+  `packages/app-core/src/services/local-inference/downloader.ts`): the
+  manifest is read first, then RAM budget and verified-backend availability
+  are checked against the device **before any weight byte is fetched**
+  (abort → structured `BundleIncompatibleError` → `failed` download event);
+  schema version is enforced by `parseManifestOrThrow`; per-file sha256 +
+  resume already existed; a new injectable `verifyOnDevice` hook (load →
+  1-token text → 1-phrase voice → barge-in cancel) gates readiness and
+  default-slot fill, recorded via `InstalledModel.bundleVerifiedAt`. Tests
+  added in `downloader.test.ts`. Wiring the hook from the engine in
+  `service.ts` is the remaining gap.
 
 ## Next Release Actions
 

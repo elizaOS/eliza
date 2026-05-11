@@ -37,6 +37,7 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
     "27b-256k": "Q4_K_M",
+    "27b-1m": "Q4_K_M",
 }
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -45,6 +46,7 @@ CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("64k", "128k"),
     "27b": ("128k", "256k"),
     "27b-256k": ("256k",),
+    "27b-1m": ("1m",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -62,7 +64,11 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.vad",
         "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
-        *(("licenses/LICENSE.vision",) if tier in {"9b", "27b", "27b-256k"} else ()),
+        *(
+            ("licenses/LICENSE.vision",)
+            if tier in {"9b", "27b", "27b-256k", "27b-1m"}
+            else ()
+        ),
     )
     for tier in ELIZA_1_TIERS
 }
@@ -122,6 +128,9 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-vulkan",
         "linux-x64-cpu",
     ),
+    # 1M context is GH200-class only — Grace-Hopper aarch64+CUDA is the
+    # only platform with the memory to hold the KV cache at that window.
+    "27b-1m": ("linux-aarch64-cuda",),
 }
 
 
@@ -143,8 +152,13 @@ class TierGgufPlan:
 
 
 def text_artifact_name(tier: str, ctx: str) -> str:
+    # The dedicated long-context tiers (27b-256k, 27b-1m) carry the context
+    # in the tier id itself, so the file is `eliza-1-<tier>.gguf` rather than
+    # `eliza-1-<tier>-<ctx>.gguf` (which would double up the context token).
     if tier == "27b-256k" and ctx == "256k":
         return "text/eliza-1-27b-256k.gguf"
+    if tier == "27b-1m" and ctx == "1m":
+        return "text/eliza-1-27b-1m.gguf"
     return f"text/eliza-1-{tier}-{ctx}.gguf"
 
 

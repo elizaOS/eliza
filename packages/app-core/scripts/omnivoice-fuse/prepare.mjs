@@ -9,7 +9,7 @@
  *   const { commit, ggmlSubmoduleCommit, sourceCount } =
  *     prepareOmnivoiceFusion({
  *       cacheRoot: "...", // ~/.cache/eliza-dflash
- *       llamaCppRoot: "...", // path to milady-ai/llama.cpp checkout
+ *       llamaCppRoot: "...", // path to elizaOS/llama.cpp checkout
  *       omnivoiceRef: "38f824023d…",
  *     });
  *
@@ -458,7 +458,10 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
-    return "1";
+    // ABI v2 adds the streaming-ASR session API (eliza_inference_asr_stream_*).
+    // Keep in lockstep with ELIZA_INFERENCE_ABI_VERSION in
+    // packages/app-core/src/services/local-inference/voice/ffi-bindings.ts.
+    return "2";
 }
 
 EliInferenceContext * eliza_inference_create(
@@ -728,6 +731,141 @@ int eliza_inference_asr_transcribe(
     std::memcpy(out_text, transcript.data(), transcript.size());
     out_text[transcript.size()] = '\\0';
     return (int) transcript.size();
+}
+
+/* ---- Streaming ASR (ABI v2) ---------------------------------------- *
+ *
+ * The fused build ships the v1 batch \`eliza_inference_asr_transcribe\`
+ * decoder above; the windowed streaming-session decoder is not yet wired
+ * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
+ * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
+ * pick the batch path (or the whisper.cpp interim adapter) instead of
+ * opening a session that would only return ELIZA_ERR_NOT_IMPLEMENTED.
+ * These symbols exist so the ABI surface is complete and the loader's
+ * version check (ffi-bindings.ts expects v2) succeeds.
+ */
+
+int eliza_inference_asr_stream_supported(void) {
+    return 0;
+}
+
+EliAsrStream * eliza_inference_asr_stream_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error) {
+    (void) ctx;
+    (void) sample_rate_hz;
+    eliza_set_error(out_error,
+        "[libelizainference] streaming ASR session API is not implemented in this build "
+        "(eliza_inference_asr_stream_supported() == 0); use the batch transcribe path");
+    return nullptr;
+}
+
+int eliza_inference_asr_stream_feed(
+    EliAsrStream * stream,
+    const float * pcm,
+    size_t n_samples,
+    char ** out_error) {
+    (void) stream;
+    (void) pcm;
+    (void) n_samples;
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_asr_stream_partial(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error) {
+    (void) stream;
+    (void) out_text;
+    (void) max_text_bytes;
+    (void) out_tokens;
+    if (io_n_tokens) *io_n_tokens = 0;
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_asr_stream_finish(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error) {
+    (void) stream;
+    (void) out_text;
+    (void) max_text_bytes;
+    (void) out_tokens;
+    if (io_n_tokens) *io_n_tokens = 0;
+    eliza_set_error(out_error, "[libelizainference] streaming ASR is not implemented in this build");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_asr_stream_close(EliAsrStream * stream) {
+    (void) stream;
+}
+
+/* ---- Streaming TTS + DFlash verifier callback (ABI v2) ------------- *
+ *
+ * The batch \`eliza_inference_tts_synthesize\` above is the implemented TTS
+ * path. The chunk-streaming entry, hard-cancel, and the native DFlash
+ * verifier-event callback are W7 fused-runtime work — until then
+ * \`eliza_inference_tts_stream_supported()\` returns 0 so EngineVoiceBridge
+ * uses the batch path / synthesizes verifier events from llama-server SSE
+ * deltas, exactly as it does today. We do NOT fake these (AGENTS.md §3);
+ * they exist so the ABI surface ffi-bindings.ts expects is complete.
+ */
+
+int eliza_inference_tts_stream_supported(void) {
+    return 0;
+}
+
+int eliza_inference_tts_synthesize_stream(
+    EliInferenceContext * ctx,
+    const char * text,
+    size_t text_len,
+    const char * speaker_preset_id,
+    eliza_tts_chunk_cb on_chunk,
+    void * user_data,
+    char ** out_error) {
+    (void) ctx;
+    (void) text;
+    (void) text_len;
+    (void) speaker_preset_id;
+    (void) on_chunk;
+    (void) user_data;
+    eliza_set_error(out_error,
+        "[libelizainference] streaming TTS is not implemented in this build "
+        "(eliza_inference_tts_stream_supported() == 0); use the batch synthesize path");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_cancel_tts(
+    EliInferenceContext * ctx,
+    char ** out_error) {
+    (void) ctx;
+    (void) out_error;
+    // Cancelling nothing is not an error; there is no in-flight streaming
+    // forward pass in this build (streaming TTS is not implemented).
+    return ELIZA_OK;
+}
+
+int eliza_inference_set_verifier_callback(
+    EliInferenceContext * ctx,
+    eliza_verifier_cb cb,
+    void * user_data,
+    char ** out_error) {
+    (void) ctx;
+    (void) cb;
+    (void) user_data;
+    eliza_set_error(out_error,
+        "[libelizainference] native DFlash verifier callback is not implemented in this build; "
+        "the JS scheduler synthesizes verifier events from llama-server streaming deltas");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
 }
 
 void eliza_inference_free_string(char * str) {

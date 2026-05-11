@@ -91,6 +91,33 @@ export interface CheckpointInfo {
   eval_summary: Record<string, unknown> | null;
 }
 
+/**
+ * Running cost snapshot for one Vast.ai job.
+ *
+ * Shape matches the JSON emitted by `scripts/lib/vast_budget.py snapshot
+ * --json`. Mapped 1:1 to the React panel field-set so we don't need a
+ * separate DTO.
+ */
+export interface VastJobBudget {
+  job_id: string;
+  instance_id: number | null;
+  pipeline: string;
+  run_name: string;
+  gpu_name: string;
+  num_gpus: number;
+  gpu_sku: string;
+  state: string;
+  uptime_seconds: number;
+  uptime_pretty: string;
+  dph_total: number;
+  total_so_far_usd: number;
+  soft_cap_usd: number | null;
+  hard_cap_usd: number | null;
+  over_soft: boolean;
+  over_hard: boolean;
+  fetched_at: number;
+}
+
 export interface VastTrainingServiceOptions {
   /** Override the training package root used to locate `scripts/...`. */
   trainingRoot?: string;
@@ -495,6 +522,61 @@ export class VastTrainingService {
     return true;
   }
 
+  /**
+   * Read a per-job budget snapshot via `scripts.lib.vast_budget snapshot
+   * --json`. Returns `null` when the job has no provisioned instance
+   * yet (the UI shows a "not provisioned" placeholder in that case).
+   *
+   * The python module is the single source of truth — it both renders
+   * the watcher's status line and answers this endpoint, so the UI and
+   * the watcher never disagree about the budget state.
+   */
+  async getJobBudget(jobId: string): Promise<VastJobBudget | null> {
+    const job = await this.store.get(jobId);
+    if (!job) throw new VastServiceError("Job not found", 404);
+    const instanceIdRaw = job.vast_instance_id;
+    if (!instanceIdRaw) return null;
+    const instanceId = Number(instanceIdRaw);
+    if (!Number.isFinite(instanceId) || instanceId <= 0) return null;
+    const dumpScript = "-m";
+    let stdout: string;
+    try {
+      stdout = await this.runCapture(
+        this.python.command,
+        [
+          ...this.python.preArgs,
+          dumpScript,
+          "scripts.lib.vast_budget",
+          "snapshot",
+          String(instanceId),
+          "--pipeline",
+          job.registry_key,
+          "--run-name",
+          job.run_name,
+          "--json",
+        ],
+        { cwd: this.trainingRoot },
+      );
+    } catch (err) {
+      // Treat any backend error (vastai unreachable, instance destroyed)
+      // as "snapshot unavailable" — the UI shows a stale-data marker
+      // rather than failing the whole panel.
+      logger.warn(
+        `[VastTrainingService] budget snapshot failed for ${jobId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return null;
+    }
+    const trimmed = stdout.trim();
+    if (!trimmed) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      return null;
+    }
+    return narrowBudgetSnapshot(parsed, jobId);
+  }
+
   async getInferenceStats(
     label: string | null,
     lastMinutes: number,
@@ -702,6 +784,87 @@ function narrowRegistryEntry(value: unknown): VastRegistryEntry | null {
     };
   }
   return null;
+}
+
+function narrowBudgetSnapshot(
+  raw: unknown,
+  jobId: string,
+): VastJobBudget | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  const num = (k: string): number | null => {
+    const v = obj[k];
+    if (typeof v !== "number" || !Number.isFinite(v)) return null;
+    return v;
+  };
+  const str = (k: string): string | null => {
+    const v = obj[k];
+    return typeof v === "string" ? v : null;
+  };
+  const bool = (k: string): boolean | null => {
+    const v = obj[k];
+    return typeof v === "boolean" ? v : null;
+  };
+  const instanceId = num("instance_id");
+  const pipeline = str("pipeline");
+  const runName = str("run_name");
+  const gpuName = str("gpu_name");
+  const gpuSku = str("gpu_sku");
+  const state = str("state");
+  const uptime = num("uptime_seconds");
+  const uptimePretty = str("uptime_pretty");
+  const dph = num("dph_total");
+  const total = num("total_so_far_usd");
+  const fetchedAt = num("fetched_at");
+  const numGpus = num("num_gpus");
+  const overSoft = bool("over_soft");
+  const overHard = bool("over_hard");
+  if (
+    instanceId === null ||
+    !pipeline ||
+    runName === null ||
+    !gpuName ||
+    !gpuSku ||
+    !state ||
+    uptime === null ||
+    !uptimePretty ||
+    dph === null ||
+    total === null ||
+    fetchedAt === null ||
+    numGpus === null ||
+    overSoft === null ||
+    overHard === null
+  ) {
+    return null;
+  }
+  // Caps may legitimately be null when MILADY_VAST_MAX_USD is unset.
+  const softRaw = obj.soft_cap_usd;
+  const hardRaw = obj.hard_cap_usd;
+  const soft = typeof softRaw === "number" && Number.isFinite(softRaw)
+    ? softRaw
+    : null;
+  const hard = typeof hardRaw === "number" && Number.isFinite(hardRaw)
+    ? hardRaw
+    : null;
+  return {
+    job_id: jobId,
+    instance_id: instanceId,
+    pipeline,
+    run_name: runName,
+    gpu_name: gpuName,
+    num_gpus: numGpus,
+    gpu_sku: gpuSku,
+    state,
+    uptime_seconds: uptime,
+    uptime_pretty: uptimePretty,
+    dph_total: dph,
+    total_so_far_usd: total,
+    soft_cap_usd: soft,
+    hard_cap_usd: hard,
+    over_soft: overSoft,
+    over_hard: overHard,
+    fetched_at: fetchedAt,
+  };
 }
 
 function isSafeRelativePath(p: string): boolean {

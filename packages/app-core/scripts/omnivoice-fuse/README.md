@@ -1,4 +1,4 @@
-# omnivoice-fuse: source-level fusion of omnivoice.cpp into milady-ai/llama.cpp
+# omnivoice-fuse: source-level fusion of omnivoice.cpp into elizaOS/llama.cpp
 
 This directory contains the helpers + patch material that the build script
 `packages/app-core/scripts/build-llama-cpp-dflash.mjs` invokes when one of
@@ -15,13 +15,13 @@ contract from `packages/inference/AGENTS.md` §4.
 | ---------------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | omnivoice.cpp    | `https://github.com/ServeurpersoCom/omnivoice.cpp`    | `38f824023d12b21a7c324651b18bd90f16d8bb86` (master HEAD 2026-05-10) |
 | omnivoice ggml   | `https://github.com/ServeurpersoCom/ggml.git`         | `0e3980ef205ea3639650f59e54cfeecd7d947700` (its `ggml` submodule)  |
-| milady llama.cpp | `https://github.com/milady-ai/llama.cpp.git`          | `v0.4.0-milady` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
+| milady llama.cpp | `https://github.com/elizaOS/llama.cpp.git`          | `v0.4.0-milady` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
 
 ## GGML pin reconciliation strategy
 
 omnivoice.cpp ships its own ggml fork as a git submodule (commit
 `0e3980ef…`), and pulls it into the build with `add_subdirectory(ggml)`.
-The milady-ai/llama.cpp fork ships its own ggml in-tree (at
+The elizaOS/llama.cpp fork ships its own ggml in-tree (at
 `ggml/`, NOT a submodule) with the TurboQuant + QJL + PolarQuant + DFlash
 patches that the kernels in `packages/inference/{metal,vulkan}` are
 verified against.
@@ -38,7 +38,7 @@ and lose half the contract.
 **Strategy chosen: graft, not submodule swap.** When we prepare the
 fused checkout we:
 
-1. Clone the milady-ai/llama.cpp fork as the build root (same as the
+1. Clone the elizaOS/llama.cpp fork as the build root (same as the
    non-fused build does today).
 2. Clone omnivoice.cpp at its pin into a sibling directory.
 3. **Discard omnivoice's `ggml/` subdirectory entirely.** No
@@ -108,7 +108,7 @@ address space — same problem, masked.
      `omnivoice_context_*`, `omnivoice_generate_*`, `omnivoice_load_*`.
    - changes to `src/maskgit-tts.h` / `dac-decoder.h` / `hubert-enc.h`
      that touch the ggml graph builders — those must stay compatible
-     with the ggml exposed by milady-ai/llama.cpp at the build pin.
+     with the ggml exposed by elizaOS/llama.cpp at the build pin.
    - new files added under `src/` or `tools/` — extend
      `CMAKE_GRAFT_SOURCES` in `omnivoice-fuse/cmake-graft.mjs`.
 3. Bring up the new omnivoice ggml pin and `git diff` against the
@@ -121,11 +121,11 @@ address space — same problem, masked.
    ```
    For each commit that touches the ggml C API used by omnivoice's
    `src/`, decide:
-   - is it already in milady-ai/llama.cpp's vendored ggml? (skip)
+   - is it already in elizaOS/llama.cpp's vendored ggml? (skip)
    - is it a kernel/quant change conflicting with milady's TurboQuant /
      QJL / PolarQuant work? (HARD STOP — escalate before bumping)
    - is it an additive API call omnivoice now uses? (cherry-pick into
-     milady-ai/llama.cpp's `ggml/`, then bump that fork's tag, then
+     elizaOS/llama.cpp's `ggml/`, then bump that fork's tag, then
      bump omnivoice here)
 4. Update the pin table at the top of this README. Update the constants
    `OMNIVOICE_REF` / `OMNIVOICE_GGML_REF` in
@@ -178,7 +178,7 @@ fallback" path.
                        omnivoice or ggml commit drifts. Each patch is
                        applied with `git apply --check` first; a failed
                        apply is a hard error.
-- `ffi.h`            — C ABI v1 for `libelizainference`. Single source
+- `ffi.h`            — C ABI v2 for `libelizainference`. Single source
                        of truth for the symbol set the fused build
                        exposes. Consumed by the Bun FFI loader at
                        `src/services/local-inference/voice/ffi-bindings.ts`
@@ -187,14 +187,21 @@ fallback" path.
                        `libelizainference_stub.{dylib,so}`. Lifecycle
                        (`create`/`destroy`) works; every entry that
                        requires the real fused build returns
-                       `ELIZA_ERR_NOT_IMPLEMENTED`. Used by
-                       `ffi-bindings.test.ts` for end-to-end loader
-                       validation without the fused dylib.
+                       `ELIZA_ERR_NOT_IMPLEMENTED` (`*_supported` → 0,
+                       `cancel_tts` → OK, `set_verifier_callback` → OK
+                       no-op). Used by `ffi-bindings.test.ts` for
+                       end-to-end loader validation without the fused
+                       dylib. The stub library itself is a build
+                       artifact (`make`-produced, `.gitignore`d) — not
+                       checked in; CI/tests that need it run `make`
+                       first or skip.
 - `Makefile`         — Builds the stub. `make` produces the
                        platform-default artifact; `make verify` lists
-                       the exported `eliza_inference_*` symbols.
+                       the exported `eliza_inference_*` symbols;
+                       `make verify-stub-rejected` confirms the real
+                       symbol verifier rejects the stub.
 
-## C ABI v1 (`ffi.h`)
+## C ABI v2 (`ffi.h`)
 
 The fused build (and the stub) export exactly these symbols. Bump
 `ELIZA_INFERENCE_ABI_VERSION` in `ffi.h` AND
@@ -203,18 +210,64 @@ The fused build (and the stub) export exactly these symbols. Bump
 in lockstep on any breaking shape change — the loader checks the
 version at `dlopen` time and refuses to bind a mismatched library.
 
-| Symbol                              | Purpose                                                     |
-| ----------------------------------- | ----------------------------------------------------------- |
-| `eliza_inference_abi_version`       | Returns the static ABI version string ("1" today).          |
-| `eliza_inference_create`            | Allocate a per-engine `EliInferenceContext` from a bundle.  |
-| `eliza_inference_destroy`           | Free a context (idempotent on NULL).                        |
-| `eliza_inference_mmap_acquire`      | Lazy-page weights for a region (`tts`/`asr`/`text`/`dflash`). |
-| `eliza_inference_mmap_evict`        | Release a voice-only region; backends may madvise pages or unload ASR/TTS state. |
-| `eliza_inference_tts_synthesize`    | Synchronous OmniVoice forward → fp32 PCM @ 24 kHz.          |
-| `eliza_inference_asr_transcribe`    | Synchronous ASR forward → UTF-8 transcript.                 |
-| `eliza_inference_free_string`       | Free heap strings the library handed back (errors, future transcript buffers). |
+| Symbol                                    | Purpose                                                     |
+| ----------------------------------------- | ----------------------------------------------------------- |
+| `eliza_inference_abi_version`             | Returns the static ABI version string ("2").                |
+| `eliza_inference_create` / `_destroy`     | Allocate / free a per-engine `EliInferenceContext`.         |
+| `eliza_inference_mmap_acquire` / `_evict` | Lazy-page / release weights for a region (`tts`/`asr`/`text`/`dflash`). |
+| `eliza_inference_tts_synthesize`          | Synchronous OmniVoice forward → fp32 PCM @ 24 kHz (batch).  |
+| `eliza_inference_tts_stream_supported`    | 1 when this build implements streaming TTS, else 0.         |
+| `eliza_inference_tts_synthesize_stream`   | Chunked OmniVoice forward → PCM segments via `eliza_tts_chunk_cb` + a final `is_final` tail; chunk cb returns non-zero to cancel. |
+| `eliza_inference_cancel_tts`              | Hard-cancel any in-flight TTS forward pass on the context.  |
+| `eliza_inference_set_verifier_callback`   | Register the native DFlash speculative-step callback (`EliVerifierEvent` accepted / rejected-range / corrected token ids); `cb == NULL` clears it. |
+| `eliza_inference_asr_transcribe`          | Synchronous ASR forward → UTF-8 transcript (batch).         |
+| `eliza_inference_asr_stream_supported`    | 1 when this build implements streaming ASR, else 0.         |
+| `eliza_inference_asr_stream_open` / `_feed` / `_partial` / `_finish` / `_close` | Streaming ASR session: feed PCM frames, read a running partial transcript (+ optional text-model token ids), force-finalize, close. |
+| `eliza_inference_free_string`             | Free heap strings the library handed back (errors).         |
 
-Implementation note: ABI v1 completes real TTS and ASR on macOS Metal.
+ABI v2 status codes add `ELIZA_ERR_CANCELLED` (-7), returned by the
+streaming TTS entry when the chunk callback (or `cancel_tts`) requested
+a stop. The JS binding surfaces it as `{ cancelled: true }`, not a throw.
+
+### Unified one-process HTTP server (status: scoped — placeholder build)
+
+§4 of `packages/inference/AGENTS.md` calls for ONE process serving
+`/v1/chat/completions` (+ DFlash), `/v1/audio/speech`, and an ASR route.
+The shared **library** (`libelizainference`, ABI v2 above) is the
+production seam for that today — mobile loads it directly; the unified
+voice server is meant to mount the same call surface over HTTP. The
+fused build currently links a **placeholder** `llama-omnivoice-server`
+(`cmake-graft.mjs`, links `omnivoice/tools/omnivoice-tts.cpp`) that
+exists only so the symbol verifier confirms `llama_*` + `ov_*` are
+co-resident in an executable. Landing the real unified server is a
+follow-up:
+  1. `/v1/audio/speech` → `eliza_inference_tts_synthesize_stream` /
+     `ov_synthesize` (streaming response body).
+  2. `/v1/chat/completions` + DFlash → the existing dflash `llama-server`
+     core (`server.cpp` routes) in the **same** process, with the native
+     verifier callback (`eliza_inference_set_verifier_callback`) emitting
+     the accept/reject events directly instead of the SSE side-channel
+     patch (`kernel-patches/server-structured-output.mjs`), which stays
+     as the non-fused desktop text fallback.
+  3. An ASR route over the streaming ASR session API.
+Until then the **desktop text path keeps using `llama-server` over
+loopback** (the `DflashLlamaServer` backend); the fused library is the
+path for mobile + (eventually) the unified server. Do NOT mark
+`eliza_inference_tts_synthesize` / `eliza_inference_asr_transcribe`
+("done") as the streaming story — they are the batch one-shot fallbacks;
+the within-a-tick handoff AGENTS.md §4 needs is the `*_stream` /
+verifier-callback surface above.
+
+Implementation note: ABI v2 completes real streaming TTS, streaming ASR,
+and the verifier-callback registration on macOS Metal (TTS + batch ASR
+land per the v1 note below; streaming TTS chunks the OmniVoice forward
+result into ~120 ms 24 kHz segments — finer per-frame streaming awaits
+an omnivoice.cpp internal hook; the streaming ASR session runs windowed
+re-decode passes over the accumulated PCM; the verifier callback is
+registered on the context and fired by the in-process speculative loop —
+which lands with the unified server above).
+
+Implementation note (v1, still in force): TTS and ASR on macOS Metal.
 TTS keeps the OmniVoice LM / MaskGIT path on the selected accelerator. On
 Apple Metal, the audio tokenizer / DAC codec region is pinned to a CPU-only
 scheduler inside the same process; this avoids the previously observed
@@ -295,8 +348,9 @@ node packages/app-core/scripts/omnivoice-fuse/verify-symbols.mjs \
 ```
 
 The verifier rejects stub-only artifacts, missing `llama_*` exports
-unless Darwin re-exports `libllama.dylib`, missing ABI v1
-`eliza_inference_*` entries, and missing concrete OmniVoice entries
+unless Darwin re-exports `libllama.dylib`, any missing ABI v2
+`eliza_inference_*` entry (the full streaming-voice + verifier-callback
+surface in the table above), and missing concrete OmniVoice entries
 such as `ov_init`, `ov_synthesize`, and `ov_audio_free`. A failed probe
 exits non-zero and leaves `OMNIVOICE_FUSE_VERIFY.json` in the output
 directory for build reports.

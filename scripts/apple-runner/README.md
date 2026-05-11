@@ -2,7 +2,7 @@
 
 Cold-runnable scripts for an Apple Silicon Mac that:
 
-1. Build `milady-ai/llama.cpp` for `darwin-arm64-metal` and run the five
+1. Build `elizaOS/llama.cpp` for `darwin-arm64-metal` and run the five
    Metal kernel verifiers (`turbo3`, `turbo4`, `turbo3_tcq`, `qjl`,
    `polar`) against the JSON fixtures in
    `local-inference/kernels/verify/fixtures/`.

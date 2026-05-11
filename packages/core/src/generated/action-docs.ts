@@ -3361,7 +3361,22 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
-			similes: ["CALENDAR", "SCHEDULE", "MEETING"],
+			similes: [
+				"CALENDAR",
+				"SCHEDULE",
+				"MEETING",
+				"CALENDAR_LIST_UPCOMING",
+				"CALENDAR_FIND_AVAILABILITY",
+				"CALENDAR_CREATE_EVENT",
+				"CALENDAR_CREATE_RECURRING_BLOCK",
+				"CALENDAR_RESCHEDULE_EVENT",
+				"CALENDAR_CANCEL_EVENT",
+				"CALENDAR_PROPOSE_TIMES",
+				"CALENDAR_PROTECT_WINDOW",
+				"CALENDAR_BUNDLE_MEETINGS",
+				"CALENDAR_ADD_PREP_BUFFER",
+				"CALENDAR_ADD_TRAVEL_BUFFER",
+			],
 			exampleCalls: [
 				{
 					user: "Use CALENDAR with the provided parameters.",
@@ -3833,6 +3848,7 @@ export const allActionsSpec = {
 				"DISCONNECT_SERVICE",
 				"CHECK_CONNECTION",
 				"SERVICE_STATUS",
+				"NOTIFICATION_RESOLVE_ENDPOINTS",
 			],
 			exampleCalls: [
 				{
@@ -3978,6 +3994,171 @@ export const allActionsSpec = {
 							itemId: "example",
 							limit: 1,
 							confirmed: false,
+						},
+					},
+				},
+			],
+		},
+		{
+			name: "DOC",
+			description:
+				"Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+			parameters: [
+				{
+					name: "subaction",
+					description:
+						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: [
+							"request_signature",
+							"request_approval",
+							"track_deadline",
+							"upload_asset",
+							"collect_id",
+							"close_request",
+						],
+					},
+					descriptionCompressed:
+						"Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+				},
+				{
+					name: "documentRequestId",
+					description:
+						"Existing DocumentRequest id. Required for track_deadline and close_request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Existing DocumentRequest id. Required for track_deadline and close_request.",
+				},
+				{
+					name: "requesteeEntityId",
+					description:
+						"Entity id of the person we are asking. Required for request_signature and collect_id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Entity id of the person we are asking. Required for request_signature and collect_id.",
+				},
+				{
+					name: "documentTitle",
+					description: "Short human-readable label for the document.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Short human-readable label for the document.",
+				},
+				{
+					name: "deadline",
+					description: "ISO-8601 deadline for the request.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "ISO-8601 deadline for the request.",
+				},
+				{
+					name: "portalUrl",
+					description:
+						"Portal endpoint for upload_asset and (optionally) collect_id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Portal endpoint for upload_asset and (optionally) collect_id.",
+				},
+				{
+					name: "assetPath",
+					description:
+						"Local path or URL of the asset to upload. Required for upload_asset.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Local path or URL of the asset to upload. Required for upload_asset.",
+				},
+				{
+					name: "assetKind",
+					description:
+						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+				},
+				{
+					name: "signatureUrl",
+					description:
+						"Optional signing portal URL (DocuSign / HelloSign / etc.).",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional signing portal URL (DocuSign/HelloSign/etc.).",
+				},
+				{
+					name: "approvalReason",
+					description: "Reason label for request_approval.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed: "Reason label for request_approval.",
+				},
+				{
+					name: "note",
+					description: "Free-form note recorded on the DocumentRequest.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Free-form note recorded on the DocumentRequest.",
+				},
+				{
+					name: "resolution",
+					description:
+						"close_request only: completed | expired | cancelled. Defaults to completed.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["completed", "expired", "cancelled"],
+					},
+					descriptionCompressed:
+						"close_request only: completed | expired | cancelled. Defaults to completed.",
+				},
+			],
+			descriptionCompressed:
+				"docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+			exampleCalls: [
+				{
+					user: "Use DOC with the provided parameters.",
+					actions: ["DOC"],
+					params: {
+						DOC: {
+							subaction: "request_signature",
+							documentRequestId: "example",
+							requesteeEntityId: "example",
+							documentTitle: "example",
+							deadline: "example",
+							portalUrl: "example",
+							assetPath: "example",
+							assetKind: "example",
+							signatureUrl: "example",
+							approvalReason: "example",
+							note: "example",
+							resolution: "completed",
 						},
 					},
 				},
@@ -5909,6 +6090,11 @@ export const allActionsSpec = {
 				"SCHEDULING_NEGOTIATION",
 				"SIGN_DOCUMENT",
 				"DOCUSIGN",
+				"TRAVEL_CAPTURE_PREFERENCES",
+				"TRAVEL_BOOK_FLIGHT",
+				"TRAVEL_BOOK_HOTEL",
+				"TRAVEL_SYNC_ITINERARY_TO_CALENDAR",
+				"TRAVEL_REBOOK_AFTER_CONFLICT",
 			],
 			exampleCalls: [
 				{
@@ -6817,24 +7003,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"scheduled tasks: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
-			similes: [
-				"TASKS",
-				"SCHEDULED_TASK",
-				"REMINDER_TASK",
-				"SCHEDULED_REMINDER",
-				"SCHEDULED_FOLLOWUP",
-				"TASK_SNOOZE",
-				"TASK_COMPLETE",
-				"TASK_ACKNOWLEDGE",
-				"TASK_DISMISS",
-				"ADD_FOLLOW_UP",
-				"COMPLETE_FOLLOW_UP",
-				"FOLLOW_UP_LIST",
-				"DAYS_SINCE",
-				"LIST_OVERDUE_FOLLOWUPS",
-				"MARK_FOLLOWUP_DONE",
-				"SET_FOLLOWUP_THRESHOLD",
-			],
 			exampleCalls: [
 				{
 					user: "Use SCHEDULED_TASKS with the provided parameters.",
@@ -8447,13 +8615,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"work-thread lifecycle: create|steer|stop|mark_waiting|mark_completed|merge|attach_source|schedule_followup",
-			similes: [
-				"THREAD_CONTROL",
-				"STEER_THREAD",
-				"STOP_THREAD",
-				"CREATE_THREAD",
-				"SCHEDULE_THREAD_FOLLOWUP",
-			],
 			exampleCalls: [
 				{
 					user: "Use WORK_THREAD with the provided parameters.",

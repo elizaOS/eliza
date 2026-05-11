@@ -66,6 +66,13 @@ export function classifyLocalError(err: unknown): {
     if (name === "AbortError") {
       return { fallback: false, reason: "local-aborted-pre-completion" };
     }
+    // KV-cache spill cannot meet the latency budget on this device — this is
+    // a deliberate hard-fail (packages/inference/AGENTS.md §3): the engine
+    // surfaces it to the UI as a structured error. There is no silent
+    // rotation to cloud and no "load anyway, slowly".
+    if (name === "KvSpillUnsupportedError") {
+      return { fallback: false, reason: "local-error" };
+    }
     if (
       msg.includes("no bundled") ||
       msg.includes("not installed in this build") ||

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-ios.sh — Apple Silicon Mac runner: build the iOS xcframework for
-# milady-ai/llama.cpp, drop it into the patched llama-cpp-capacitor plugin,
+# elizaOS/llama.cpp, drop it into the patched llama-cpp-capacitor plugin,
 # and run a Capacitor instrumentation smoke test that loads Eliza-1 mobile
 # and generates ten tokens.
 #
@@ -11,7 +11,7 @@
 #   APPLE_RUNNER_ELIZA1_GGUF=/abs/path bash scripts/apple-runner/run-ios.sh
 #
 # Env knobs (all optional):
-#   APPLE_RUNNER_REPO          fork remote (default: milady-ai/llama.cpp)
+#   APPLE_RUNNER_REPO          fork remote (default: elizaOS/llama.cpp)
 #   APPLE_RUNNER_REF           tag/branch/SHA (default: v0.1.0-milady)
 #   APPLE_RUNNER_FALLBACK_REF  fallback ref (default: master)
 #   APPLE_RUNNER_ELIZA1_GGUF   absolute path to Eliza-1 mobile GGUF
@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
-APPLE_RUNNER_REPO="${APPLE_RUNNER_REPO:-https://github.com/milady-ai/llama.cpp.git}"
+APPLE_RUNNER_REPO="${APPLE_RUNNER_REPO:-https://github.com/elizaOS/llama.cpp.git}"
 APPLE_RUNNER_REF="${APPLE_RUNNER_REF:-v0.1.0-milady}"
 APPLE_RUNNER_FALLBACK_REF="${APPLE_RUNNER_FALLBACK_REF:-master}"
 APPLE_RUNNER_SIM_DEVICE="${APPLE_RUNNER_SIM_DEVICE:-iPhone 15}"

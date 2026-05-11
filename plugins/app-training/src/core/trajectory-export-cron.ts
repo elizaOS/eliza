@@ -9,7 +9,7 @@
  * and any subsequent cloud upload.
  */
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
 import { resolveStateDir } from "@elizaos/core";
@@ -21,12 +21,18 @@ import {
 import {
   type AnonymizerLookup,
   applyPrivacyFilter,
+  createHashAnonymizer,
   type FilterableTrajectory,
 } from "./privacy-filter.js";
 import {
   exportTrajectoryTaskDatasets,
   type TrajectoryTaskDatasetExport,
 } from "./trajectory-task-datasets.js";
+import {
+  type HfUploadResult,
+  resolveHfUploadConfig,
+  uploadTrajectoryJsonlToHuggingFace,
+} from "./trajectory-hf-upload.js";
 import { waitForService } from "./wait-for-service.js";
 
 const EXPORT_EVENT_NAME = "TRACK_C_TRAJECTORY_EXPORT";
@@ -81,6 +87,10 @@ export interface NightlyExportReport {
   anonymizationCount: number;
   exportSummary: TrajectoryTaskDatasetExport["summary"];
   exportPaths: TrajectoryTaskDatasetExport["paths"];
+  /** Path to the single consolidated sanitized JSONL written alongside the per-task files. */
+  sanitizedJsonlPath: string;
+  /** Outcome of the HuggingFace upload, when configured. `null` when HF is not configured. */
+  huggingFaceUpload: HfUploadResult | null;
 }
 
 export async function runNightlyTrajectoryExport(
@@ -114,10 +124,11 @@ export async function runNightlyTrajectoryExport(
   }
 
   // Privacy filter is REQUIRED here — the downstream export writes JSONL
-  // datasets to disk, and they must not contain raw user secrets or
-  // un-anonymized handles. The filter runs before any write path below.
+  // datasets to disk (and may upload them), and they must not contain raw
+  // user secrets or un-anonymized handles. The filter runs before any write
+  // path below. The default anonymizer maps handles to stable opaque ids.
   const filtered = applyPrivacyFilter(trajectories, {
-    anonymizer: options.anonymizer,
+    anonymizer: options.anonymizer ?? createHashAnonymizer(),
   });
 
   const stateDir = options.outputRoot ?? resolveStateDir();
@@ -129,6 +140,32 @@ export async function runNightlyTrajectoryExport(
     filtered.trajectories,
     outputDir,
   );
+
+  // Single consolidated sanitized JSONL — the artifact uploaded to HuggingFace.
+  const sanitizedJsonlPath = join(outputDir, "trajectories.sanitized.jsonl");
+  const sanitizedJsonl =
+    filtered.trajectories.length === 0
+      ? ""
+      : `${filtered.trajectories
+          .map((trajectory) => JSON.stringify(trajectory))
+          .join("\n")}\n`;
+  await writeFile(sanitizedJsonlPath, sanitizedJsonl);
+
+  let huggingFaceUpload: HfUploadResult | null = null;
+  const hfConfig = resolveHfUploadConfig();
+  if (hfConfig) {
+    const pathInRepo = `trajectories/${todaySegment()}.jsonl`;
+    huggingFaceUpload = await uploadTrajectoryJsonlToHuggingFace(
+      sanitizedJsonlPath,
+      pathInRepo,
+      hfConfig,
+    );
+    log.info(
+      huggingFaceUpload.uploaded
+        ? `[TrajectoryExportCron] uploaded sanitized trajectories to ${hfConfig.repo}/${pathInRepo}`
+        : `[TrajectoryExportCron] HuggingFace upload skipped: ${huggingFaceUpload.error ?? "unknown"}`,
+    );
+  }
 
   log.info(
     `[TrajectoryExportCron] exported ${filtered.trajectories.length} trajectories to ${outputDir} (dropped ${filtered.dropped.length}, redacted ${filtered.redactionCount}, anonymized ${filtered.anonymizationCount})`,
@@ -143,6 +180,8 @@ export async function runNightlyTrajectoryExport(
     anonymizationCount: filtered.anonymizationCount,
     exportSummary: summary.summary,
     exportPaths: summary.paths,
+    sanitizedJsonlPath,
+    huggingFaceUpload,
   };
 }
 

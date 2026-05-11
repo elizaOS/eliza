@@ -1,20 +1,29 @@
 /**
  * Privacy filter for trajectory exports.
  *
- * Four jobs:
+ * Jobs:
  *   1. Anonymize cross-platform handles by mapping them to opaque entity IDs
  *      (the caller supplies a lookup callback so app-training does not have
- *      to depend on the relationships service directly).
+ *      to depend on the relationships service directly). `createHashAnonymizer`
+ *      provides a stable, dependency-free default.
  *   2. Honor `ContactPreferences.privacyLevel` — drop entire trajectories if
  *      the participating entity is `private`.
  *   3. Strip credential references — env-var name patterns from process.env,
- *      plus the usual API key shapes (`sk-…`, `Bearer …`).
+ *      plus the usual API key shapes (`sk-ant-…`, `sk-…`, `Bearer …`).
  *   4. Strip geo coordinates — bare decimal pairs, labeled `lat:`/`lng:`
  *      values, and JSON `"coords":{"latitude":..,"longitude":..}` blocks
  *      from the Location plugin — replaced with `[REDACTED_GEO]`.
+ *   5. Strip PII — email addresses (`[REDACTED_EMAIL]`), phone numbers
+ *      (`[REDACTED_PHONE]`), and street/PO-box/city-state-ZIP addresses
+ *      (`[REDACTED_ADDRESS]`).
+ *
+ * Walks every string in `steps[].llmCalls[].{systemPrompt,userPrompt,response}`,
+ * `steps[].providerAccesses[].data`, and the top-level `metadata` object.
  *
  * Run automatically before any export to disk; required for any cloud upload.
  */
+
+import { createHash } from "node:crypto";
 
 export type PrivacyLevel = "public" | "limited" | "private";
 
@@ -54,6 +63,9 @@ export interface FilterableTrajectory {
       userPrompt?: string;
       response?: string;
     }>;
+    providerAccesses?: Array<{
+      data?: unknown;
+    }>;
   }>;
   metadata?: Record<string, unknown>;
   [key: string]: unknown;
@@ -81,8 +93,10 @@ const DEFAULT_PLATFORMS = [
 const HANDLE_PATTERN = /(@[a-zA-Z0-9_.-]{2,})/g;
 
 const DEFAULT_CREDENTIAL_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
-  { label: "openai-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
+  // `sk-ant-…` must be matched before the generic `sk-…` so the more specific
+  // Anthropic label wins.
   { label: "anthropic-key", pattern: /\bsk-ant-[A-Za-z0-9_-]{16,}\b/g },
+  { label: "openai-key", pattern: /\bsk-[A-Za-z0-9_-]{16,}\b/g },
   {
     label: "bearer",
     pattern: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/g,
@@ -95,6 +109,56 @@ const DEFAULT_CREDENTIAL_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
     label: "aws-access-key",
     pattern: /\bAKIA[0-9A-Z]{16}\b/g,
   },
+];
+
+/**
+ * PII redaction (email / phone / address). Applied in the order
+ * email → address → phone so phone-like number runs inside an address tail
+ * (e.g. ZIP codes) are consumed by the address pass first, and bare digit
+ * runs without separators survive.
+ */
+const EMAIL_REPLACEMENT = "[REDACTED_EMAIL]";
+const PHONE_REPLACEMENT = "[REDACTED_PHONE]";
+const ADDRESS_REPLACEMENT = "[REDACTED_ADDRESS]";
+
+const EMAIL_PATTERN =
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+
+const STREET_SUFFIXES =
+  "St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Ln|Lane|Dr|Drive|Ct|Court|Pl|Place|Way|Pkwy|Parkway|Ter|Terrace|Cir|Circle|Hwy|Highway|Sq|Square|Trl|Trail|Loop";
+const UNIT_DESIGNATORS =
+  "Apt|Apartment|Suite|Ste|Unit|Bldg|Building|Fl|Floor|Rm|Room|#";
+const US_STATES =
+  "AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC";
+
+const DEFAULT_ADDRESS_PATTERNS: RegExp[] = [
+  // 1. Numbered street + suffix + optional unit, optionally followed by a
+  //    city, state, ZIP tail: `1600 Amphitheatre Parkway, Suite 200,
+  //    Mountain View, CA 94043`.
+  new RegExp(
+    String.raw`\b\d{1,6}\s+(?:[A-Za-z0-9.'-]+\s+){0,4}(?:${STREET_SUFFIXES})\b` +
+      String.raw`(?:\s*,?\s*(?:${UNIT_DESIGNATORS})\.?\s*[A-Za-z0-9-]+)?` +
+      String.raw`(?:\s*,\s*[A-Za-z .'-]+,?\s*(?:${US_STATES})\s+\d{5}(?:-\d{4})?)?`,
+    "gi",
+  ),
+  // 2. `PO Box 4242` / `P.O. Box 4242`.
+  /\bP\.?\s?O\.?\s?Box\s+\d{1,7}\b/gi,
+  // 3. Standalone city, state, ZIP tail: `Mountain View, CA 94043`.
+  new RegExp(
+    String.raw`\b[A-Za-z .'-]+,\s*(?:${US_STATES})\s+\d{5}(?:-\d{4})?\b`,
+    "g",
+  ),
+];
+
+const DEFAULT_PHONE_PATTERNS: RegExp[] = [
+  // 1. E.164 / international with leading `+`: `+44 20 7946 0958`,
+  //    `+1-415-555-0123`, `+442079460958`.
+  /\+\d{1,3}(?:[\s.-]?\d{1,4}){1,5}\b/g,
+  // 2. NANP with explicit separators (a separator is REQUIRED between groups
+  //    so bare 10-digit runs survive): `(415) 555-0123`, `415-555-0123`,
+  //    `415.555.0123`, `415 555 0123`. No leading `\b` before `(` — there is
+  //    no word boundary between a space and `(`.
+  /(?:\(\d{3}\)[\s.-]?|\b\d{3}[\s.-])\d{3}[\s.-]\d{4}\b/g,
 ];
 
 /**
@@ -184,6 +248,28 @@ function redactGeo(value: string, state: InternalState): string {
   return out;
 }
 
+function redactPii(value: string, state: InternalState): string {
+  let out = value;
+  // email → address → phone (see note on DEFAULT_PHONE_PATTERNS / addresses).
+  out = out.replace(EMAIL_PATTERN, () => {
+    state.redactionCount += 1;
+    return EMAIL_REPLACEMENT;
+  });
+  for (const pattern of DEFAULT_ADDRESS_PATTERNS) {
+    out = out.replace(pattern, () => {
+      state.redactionCount += 1;
+      return ADDRESS_REPLACEMENT;
+    });
+  }
+  for (const pattern of DEFAULT_PHONE_PATTERNS) {
+    out = out.replace(pattern, () => {
+      state.redactionCount += 1;
+      return PHONE_REPLACEMENT;
+    });
+  }
+  return out;
+}
+
 function anonymizeHandles(
   value: string,
   options: PrivacyFilterOptions,
@@ -227,9 +313,61 @@ function transformText(
     credentialValues,
     state,
   );
-  const { result, entityHits } = anonymizeHandles(credRedacted, options, state);
+  const piiRedacted = redactPii(credRedacted, state);
+  const { result, entityHits } = anonymizeHandles(piiRedacted, options, state);
   for (const entityId of entityHits) collectedEntities.add(entityId);
   return result;
+}
+
+/**
+ * Recursively transform every string contained in `value` (objects, arrays,
+ * and nested combinations). Returns the same shape with strings rewritten.
+ */
+function transformDeep(
+  value: unknown,
+  options: PrivacyFilterOptions,
+  credentialValues: string[],
+  credentialPatterns: Array<{ label: string; pattern: RegExp }>,
+  state: InternalState,
+  collectedEntities: Set<string>,
+): unknown {
+  if (typeof value === "string") {
+    return transformText(
+      value,
+      options,
+      credentialValues,
+      credentialPatterns,
+      state,
+      collectedEntities,
+    );
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) =>
+      transformDeep(
+        entry,
+        options,
+        credentialValues,
+        credentialPatterns,
+        state,
+        collectedEntities,
+      ),
+    );
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = transformDeep(
+        entry,
+        options,
+        credentialValues,
+        credentialPatterns,
+        state,
+        collectedEntities,
+      );
+    }
+    return out;
+  }
+  return value;
 }
 
 /**
@@ -293,6 +431,29 @@ export function applyPrivacyFilter<T extends FilterableTrajectory>(
           );
         }
       }
+      for (const access of step.providerAccesses ?? []) {
+        if (access.data !== undefined) {
+          access.data = transformDeep(
+            access.data,
+            options,
+            credentialValues,
+            credentialPatterns,
+            state,
+            trajectoryEntities,
+          );
+        }
+      }
+    }
+
+    if (cloned.metadata && typeof cloned.metadata === "object") {
+      cloned.metadata = transformDeep(
+        cloned.metadata,
+        options,
+        credentialValues,
+        credentialPatterns,
+        state,
+        trajectoryEntities,
+      ) as Record<string, unknown>;
     }
 
     // Drop the whole trajectory if any participating entity is private.
@@ -322,5 +483,24 @@ export function applyPrivacyFilter<T extends FilterableTrajectory>(
     dropped,
     redactionCount: state.redactionCount,
     anonymizationCount: state.anonymizationCount,
+  };
+}
+
+/**
+ * Stable, dependency-free anonymizer: maps a `(platform, handle)` pair to a
+ * 16-hex-character opaque id via `SHA-256(salt:platform:handle)`. The same
+ * handle always resolves to the same id (for a given salt), so cross-message
+ * references stay linkable in the exported corpus while the real handle is
+ * gone. Returns the id for every handle (never `null`), so all `@mentions`
+ * get anonymized.
+ */
+export function createHashAnonymizer(salt = ""): AnonymizerLookup {
+  return {
+    resolveEntityId(platform: string, handle: string): string {
+      return createHash("sha256")
+        .update(`${salt}:${platform.toLowerCase()}:${handle.toLowerCase()}`)
+        .digest("hex")
+        .slice(0, 16);
+    },
   };
 }

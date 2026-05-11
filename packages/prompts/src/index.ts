@@ -656,23 +656,25 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 
 export const MEMORY_CONTEXT_QA_TEMPLATE = memoryContextQaTemplate;
 
-export const messageHandlerTemplate = `task: {{#if directMessage}}Decide the plan for this direct message{{else}}Decide processMessage and the plan for this message{{/if}}.
+export const messageHandlerTemplate = `task: {{#if directMessage}}Decide the plan for this direct message{{else}}Decide shouldRespond and the plan for this message{{/if}}.
 
 available_contexts:
 {{availableContexts}}
 
-{{#if directMessage}}- this is a direct message; processMessage is hardcoded to RESPOND
-- do not include processMessage; only choose plan and thought
-{{else}}processMessage:
+{{#if directMessage}}- this is a direct message; shouldRespond is hardcoded to RESPOND
+- do not include shouldRespond; only write replyText, contexts, and thought
+{{else}}shouldRespond:
 - RESPOND: agent should answer or do work
 - IGNORE: skip this message
 - STOP: user asked agent to disengage
 {{/if}}
-plan.contexts: list of ids drawn from available_contexts (calendar, email, ...). Never invent ids.
+replyText: the user-facing reply text. Always write it. On the simple path it is the whole answer; on the planning path it is a brief acknowledgement and the planner produces the final message.
 
-plan.requiresTool=true when message needs tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Otherwise false.
+contexts (directly after replyText): list of ids drawn from available_contexts (calendar, email, ...). Never invent ids. ["simple"] or [] = direct reply, no planner.
 
-simple shortcut — choose plan.contexts=["simple"] only when ALL hold:
+requiresTool=true when message needs tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Otherwise false.
+
+simple shortcut — choose contexts=["simple"] only when ALL hold:
 - purely conversational, greeting, or factual question answerable from training
 - no external data, state, person, document, file, schedule, calendar, email, memory, or provider mentioned or implied
 - no action verbs (search/find/get/fetch/save/send/create/update/delete/run/execute/call)
@@ -704,12 +706,12 @@ Domain routing (when context is available):
 - LifeOps browser bridge/companion/extension/tab/settings -> browser; settings/connectors as secondary when configuration/connection state is asked
 - durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory; add PROFILE as a parent action hint when possible; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
 
-Otherwise: list every relevant context id; planning will run and tools will be selected from those contexts. If only general is available and a tool is still needed, use plan.contexts=["general"]. Include plan.reply only on the simple path.
+Otherwise: list every relevant context id; planning will run and tools will be selected from those contexts. If only general is available and a tool is still needed, use contexts=["general"].
 
-Optional plan fields:
-- plan.candidateActions: up to 12 action-like retrieval hints inferred from the request ("send_email", "calendar_create_event", "search_documents", "play_music"). Speculative BM25/regex hints, not tool calls.
-- plan.parentActionHints: up to 6 parent action names only when explicit or highly likely. Omit over guess.
-- plan.contextSlices: up to 12 stable retrieval slice ids visible in the provided context. Never invent slice ids.
+Optional fields:
+- candidateActions: up to 12 action-like retrieval hints inferred from the request ("send_email", "calendar_create_event", "search_documents", "play_music"). Speculative BM25/regex hints, not tool calls.
+- parentActionHints: up to 6 parent action names only when explicit or highly likely. Omit over guess.
+- contextSlices: up to 12 stable retrieval slice ids visible in the provided context. Never invent slice ids.
 
 thought is internal rationale, not shown to user.
 
@@ -721,7 +723,7 @@ extract is OPTIONAL. Populate ONLY when the user states a durable fact about the
 - extract.addressedTo: OPTIONAL entity UUIDs (preferred) or participant names this message is directed at. Agent's id/name when user talks to the agent; another participant's id/name when addressed by name or @-mention. Empty/omit when broadcast or unclear. Do not guess.
 - omit extract entirely when nothing durable was stated and no addressee identified. Never invent.
 
-Call {{handleResponseToolName}} exactly once with the plan. Do not answer in plain text.
+Call {{handleResponseToolName}} exactly once with the envelope. Do not answer in plain text.
 
 return:
 Use the {{handleResponseToolName}} tool. Do not return JSON as message text.

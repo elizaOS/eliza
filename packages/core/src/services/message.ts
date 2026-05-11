@@ -19,7 +19,10 @@ import { looksLikeNonActionableChatter } from "../features/basic-capabilities/pr
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
 import { checkSenderRole } from "../roles";
-import { buildActionCatalog } from "../runtime/action-catalog";
+import {
+	buildActionCatalog,
+	type LocalizedActionExampleResolver,
+} from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";
@@ -49,6 +52,7 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	parseMessageHandlerOutput,
 	routeMessageHandlerOutput,
@@ -69,6 +73,7 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
+import { buildResponseGrammar } from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
 	type ResponseHandlerPatch,
@@ -1698,6 +1703,11 @@ function buildV5PlannerActionSurface(params: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	logger?: IAgentRuntime["logger"];
+	// Optional locale-aware example swapper. Resolved by the caller (which
+	// has async access to `OwnerFactStore.locale`) and passed through to
+	// `buildActionCatalog` so the planner sees localized `ActionExample`
+	// pairs at catalog-build time.
+	localizedExamples?: LocalizedActionExampleResolver;
 }): V5PlannerActionSurface {
 	const candidateActions = getMessageHandlerCandidateActions(
 		params.messageHandler,
@@ -1718,7 +1728,9 @@ function buildV5PlannerActionSurface(params: {
 	}
 
 	const toolSearchStartedAt = Date.now();
-	const catalog = buildActionCatalog([...params.actions]);
+	const catalog = buildActionCatalog([...params.actions], {
+		localizedExamples: params.localizedExamples,
+	});
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -2702,6 +2714,74 @@ function renderMessageHandlerModelInput(
 	};
 }
 
+/**
+ * Render only the *stable* part of the Stage-1 (`HANDLE_RESPONSE`) model
+ * input for a given room — the system prompt + tool/action schema block +
+ * the stable provider blocks. This is the prefix that does NOT depend on
+ * the user's turn, so it is the exact text the local-inference KV cache
+ * should be pre-warmed with the instant a voice session opens or VAD
+ * detects speech onset (item I1/C1 of the voice swarm).
+ *
+ * The returned string is byte-identical to the `messages[0].content`
+ * (the "system" message) that `renderMessageHandlerModelInput` would
+ * produce for the first turn of a fresh conversation in that room — the
+ * unstable tail (recent dialogue, the current user message) is dropped.
+ * Pre-warming with this string lands the system prefix in the slot's KV
+ * so the real request only forward-passes the user tokens.
+ *
+ * Best-effort by construction: composing state may hit providers that
+ * query the DB; a synthetic empty message is used so a brand-new room
+ * with no history still renders. Callers that fail to render should just
+ * skip the pre-warm (the real request cold-prefills, which is the
+ * pre-pre-warm behaviour).
+ */
+export async function renderMessageHandlerStablePrefix(
+	runtime: IAgentRuntime,
+	roomId: UUID,
+): Promise<string> {
+	const syntheticMessage: Memory = {
+		id: asUUID(v4()),
+		entityId: (runtime.agentId ?? asUUID(v4())) as UUID,
+		agentId: runtime.agentId,
+		roomId,
+		createdAt: Date.now(),
+		content: {
+			text: "",
+			source: "voice-prewarm",
+			channelType: ChannelType.VOICE_DM,
+		},
+	};
+	const senderRole = await resolveStage1SenderRole(runtime, syntheticMessage);
+	const availableContexts = listAvailableContextsForRole(
+		runtime.contexts,
+		senderRole,
+	);
+	const state = await composeResponseState(runtime, syntheticMessage, true);
+	const context = await createV5MessageContextObject({
+		runtime,
+		message: syntheticMessage,
+		state,
+		userRoles: [senderRole],
+		availableContexts,
+		extraProviderExclusions: STAGE1_EXTRA_PROVIDER_EXCLUSIONS,
+	});
+	const rendered = renderContextObject(context);
+	const stableSegments = rendered.promptSegments.filter(
+		(segment) => segment.stable,
+	);
+	const instructions = renderMessageHandlerInstructions(
+		runtime,
+		availableContexts,
+		{ directMessage: true },
+	);
+	return normalizePromptSegments([
+		...stableSegments,
+		{ content: `message_handler_stage:\n${instructions}`, stable: true },
+	])
+		.map(segmentBlock)
+		.join("\n\n");
+}
+
 function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	if (!value || typeof value !== "object" || Array.isArray(value)) {
 		if (typeof value !== "string") {
@@ -2753,9 +2833,11 @@ function looksLikeMessageHandlerToolArguments(
 	return (
 		args.plan !== undefined ||
 		args.processMessage !== undefined ||
+		args.shouldRespond !== undefined ||
 		args.action !== undefined ||
 		args.contexts !== undefined ||
 		args.reply !== undefined ||
+		args.replyText !== undefined ||
 		args.thought !== undefined ||
 		args.extract !== undefined
 	);
@@ -4287,6 +4369,32 @@ export async function runV5MessageRuntimeStage1(args: {
 			.runActionsByMode("RESPONSE_HANDLER_DURING", args.message, args.state)
 			.catch(() => {});
 
+		// Per-turn structure forcing. `buildResponseGrammar` composes the
+		// HANDLE_RESPONSE envelope skeleton (fixed key order + the `contexts`
+		// element enum from the available context ids + any registered Stage-1
+		// field evaluators, single-value enums collapsed to literals) and a
+		// precise GBNF grammar. The local llama-server engine (W4) constrains the
+		// envelope with it so the model never spends tokens on the scaffold; the
+		// prompt text stays byte-stable, only the grammar varies per turn. Cloud
+		// adapters ignore `responseSkeleton` / `grammar` — `tools` carries the
+		// equivalent (unforced) contract for them.
+		const responseGrammar = buildResponseGrammar(
+			{
+				actions: args.runtime.actions ?? [],
+				responseHandlerFields:
+					args.runtime.responseHandlerFieldRegistry?.list() ?? [],
+				responseHandlerFieldSignature:
+					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+			},
+			{
+				contexts: availableContexts.map((definition) => String(definition.id)),
+				channelType:
+					typeof args.message.content?.channelType === "string"
+						? args.message.content.channelType
+						: undefined,
+			},
+		);
+
 		const rawMessageHandler = (await args.runtime.useModel(
 			ModelType.RESPONSE_HANDLER,
 			{
@@ -4295,6 +4403,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				tools: messageHandlerTools,
 				toolChoice: "required",
 				maxTokens: 1024,
+				// Streamed structured generation: the local engine (W4) streams the
+				// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
+				// / `contexts` route the moment they are known and `replyText` flows to
+				// TTS the instant that field opens. Cloud adapters ignore the flag and
+				// return the result whole.
+				streamStructured: true,
+				responseSkeleton: responseGrammar.responseSkeleton,
+				grammar: responseGrammar.grammar,
 				providerOptions: messageHandlerProviderOptions,
 			},
 		)) as string | GenerateTextResult;
@@ -4423,6 +4539,12 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 
 		if (route.type === "final_reply") {
+			// `replyText` (→ `route.reply`) is part of the HANDLE_RESPONSE envelope
+			// and is `required` in the schema, so the direct-reply path normally
+			// emits it inline with no extra model call. `generateDirectReplyOnce`
+			// only runs as a degenerate fallback when Stage-1 produced no usable
+			// reply text at all (malformed output that even the tolerant parser
+			// could not recover a reply from).
 			const reply =
 				route.reply ||
 				(await generateDirectReplyOnce({
@@ -4478,6 +4600,14 @@ export async function runV5MessageRuntimeStage1(args: {
 			selectedContexts,
 			userRoles: [senderRole],
 		});
+		const localizedExamplesProvider = getLocalizedExamplesProvider(
+			args.runtime,
+		);
+		const localizedExamples = localizedExamplesProvider
+			? await localizedExamplesProvider({
+					recentMessage: getUserMessageText(args.message),
+				})
+			: null;
 		const actionSurface = buildV5PlannerActionSurface({
 			actions: plannerCandidateActions,
 			message: args.message,
@@ -4487,6 +4617,7 @@ export async function runV5MessageRuntimeStage1(args: {
 			recorder,
 			trajectoryId,
 			logger: args.runtime.logger,
+			localizedExamples: localizedExamples ?? undefined,
 		});
 		const exposedPlannerActions = plannerCandidateActions.filter((action) =>
 			actionSurface.exposedActionNames.has(

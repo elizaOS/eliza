@@ -54,6 +54,10 @@ import {
 } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react";
 import {
+  FOCUS_CONNECTOR_EVENT,
+  type FocusConnectorEventDetail,
+} from "./events";
+import {
   BugReportProvider,
   useBugReportState,
   useContextMenu,
@@ -62,10 +66,6 @@ import {
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
-import {
-  FOCUS_CONNECTOR_EVENT,
-  type FocusConnectorEventDetail,
-} from "./events";
 import {
   APPS_ENABLED,
   isAndroidPhoneSurfaceEnabled,

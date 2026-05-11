@@ -10,7 +10,10 @@
  */
 
 import type { StreamChunkCallback } from "../types/components";
-import type { IStreamExtractor } from "../types/streaming";
+import type {
+	IStreamExtractor,
+	StructuredFieldEventCallbacks,
+} from "../types/streaming";
 
 // ============================================================================
 // StreamError - Standardized error handling for streaming
@@ -180,7 +183,8 @@ export type FieldState =
 /**
  * Configuration for StructuredFieldStreamExtractor.
  */
-export interface StructuredFieldStreamExtractorConfig {
+export interface StructuredFieldStreamExtractorConfig
+	extends StructuredFieldEventCallbacks {
 	/** Validation level (0-3). Level 2+ buffers until flush. */
 	level: 0 | 1 | 2 | 3;
 	/** Schema rows with field definitions */
@@ -235,6 +239,17 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	private fieldStates: Map<string, FieldState> = new Map();
 	private state: ExtractorState = "streaming";
 	private readonly streamFieldSet: Set<string>;
+	/**
+	 * The top-level field whose value bytes are currently arriving — tracked for
+	 * ALL fields (not just streamed ones) so per-field start/done events have a
+	 * correct decoded value. `currentField` (above) is the narrower "currently
+	 * streamed to onChunk" pointer.
+	 */
+	private currentTrackedField: string | null = null;
+	/** Fields for which `onFieldStart` has already fired (dedupe). */
+	private startedFields: Set<string> = new Set();
+	/** Fields for which `onFieldDone` has already fired (dedupe). */
+	private doneFields: Set<string> = new Set();
 
 	constructor(private readonly config: StructuredFieldStreamExtractorConfig) {
 		this.streamFieldSet = new Set(config.streamFields);
@@ -285,6 +300,7 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			}
 		}
 
+		this.closeCurrentTrackedField();
 		this.state = "complete";
 		this.emitEvent({ eventType: "complete", timestamp: Date.now() });
 		return "";
@@ -293,6 +309,9 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 	reset(): void {
 		this.lineBuffer = "";
 		this.currentField = null;
+		this.currentTrackedField = null;
+		this.startedFields.clear();
+		this.doneFields.clear();
 		this.fieldContents.clear();
 		this.emittedContent.clear();
 		this.validatedFields.clear();
@@ -387,14 +406,21 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 
 		if (fieldMatch) {
 			this.completeCurrentField();
+			this.closeCurrentTrackedField();
 			const rawKey = fieldMatch[1] ?? "";
 			const field = this.baseStructuredFieldName(rawKey);
 			const rawValue = fieldMatch[2] ?? "";
 			this.fieldStates.set(field, "partial");
+			this.emitFieldStart(field);
+			this.currentTrackedField = field;
 
 			if (!this.streamFieldSet.has(field)) {
-				this.fieldStates.set(field, rawValue.trim() ? "complete" : "partial");
 				this.currentField = null;
+				if (rawValue.trim().length > 0) {
+					this.appendFieldContent(field, this.parseInlineValue(rawValue));
+					this.fieldStates.set(field, "complete");
+					this.closeCurrentTrackedField();
+				}
 				return;
 			}
 
@@ -402,15 +428,20 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			if (rawValue.trim().length > 0) {
 				this.appendFieldContent(field, this.parseInlineValue(rawValue));
 				this.completeCurrentField();
+				this.closeCurrentTrackedField();
 			}
 			return;
 		}
 
-		if (this.currentField && this.streamFieldSet.has(this.currentField)) {
+		if (this.currentTrackedField) {
 			this.appendFieldContent(
-				this.currentField,
+				this.currentTrackedField,
 				this.normalizeContinuationLine(line),
 			);
+			if (this.currentField && this.streamFieldSet.has(this.currentField)) {
+				// emitFieldContent diffing happens on completeCurrentField for
+				// level <= 1; nothing additional needed per continuation line.
+			}
 		}
 	}
 
@@ -429,6 +460,24 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			}
 		}
 		this.currentField = null;
+	}
+
+	private emitFieldStart(field: string): void {
+		if (this.startedFields.has(field)) {
+			return;
+		}
+		this.startedFields.add(field);
+		this.config.onFieldStart?.(field);
+	}
+
+	private closeCurrentTrackedField(): void {
+		const field = this.currentTrackedField;
+		this.currentTrackedField = null;
+		if (!field || this.doneFields.has(field)) {
+			return;
+		}
+		this.doneFields.add(field);
+		this.config.onFieldDone?.(field, this.fieldContents.get(field) ?? "");
 	}
 
 	private appendFieldContent(field: string, value: string): void {

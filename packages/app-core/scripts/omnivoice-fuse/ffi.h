@@ -10,12 +10,31 @@
  *
  * All entry points are `extern "C"` (no name mangling) so any FFI
  * loader (bun:ffi, node-ffi, koffi, JNI, Swift, Rust, Python) sees the
- * same symbol set. The shape is intentionally small + synchronous in
+ * same symbol set. The shape was intentionally small + synchronous in
  * v1 to match Wave-4-C's lifecycle contract:
  *   - opaque context pointer, created from a bundle root
  *   - mmap acquire/evict for voice on/off
- *   - synchronous TTS / ASR forward passes (streaming graph upgrades
- *     are deferred to v2 — bump ELIZA_INFERENCE_ABI_VERSION when added).
+ *   - synchronous TTS / ASR forward passes.
+ *
+ * ABI v2 is the streaming voice surface. It adds:
+ *   - the streaming ASR session API
+ *     (`eliza_inference_asr_stream_open/feed/partial/finish/close`) so a
+ *     `StreamingTranscriber` (see voice/transcriber.ts) can feed PCM
+ *     frames and read a running partial transcript without buffering the
+ *     whole utterance JS-side;
+ *   - streaming TTS (`eliza_inference_tts_synthesize_stream` +
+ *     `eliza_inference_cancel_tts` + `eliza_inference_tts_stream_supported`)
+ *     so OmniVoice emits PCM chunks as they decode and the JS scheduler
+ *     can phrase-chunk → TTS within one scheduler tick and hard-cancel an
+ *     in-flight forward pass on barge-in (AGENTS.md §4);
+ *   - the native DFlash verifier callback
+ *     (`eliza_inference_set_verifier_callback`) so the JS scheduler drives
+ *     phrase-chunking + rollback off exact native accept/reject events
+ *     from the fork's speculative loop, not synthesized SSE deltas.
+ * All ABI v2 additions are *additive symbols* — a v1 caller is
+ * unaffected — but the version bumps so loaders can require v2 for the
+ * streaming path. The batch `eliza_inference_asr_transcribe` and
+ * `eliza_inference_tts_synthesize` stay for one-shot callers.
  *
  * Errors are propagated via heap-allocated `char *` strings written to
  * `out_error` arguments; callers MUST free them with
@@ -42,9 +61,9 @@ extern "C" {
 /* Bump on any breaking shape change. The Node loader checks the value
  * returned by `eliza_inference_abi_version()` against this constant on
  * load and refuses to bind if they disagree. */
-#define ELIZA_INFERENCE_ABI_VERSION 1
+#define ELIZA_INFERENCE_ABI_VERSION 2
 
-/* Returns a static, NUL-terminated string of the form "1" matching
+/* Returns a static, NUL-terminated string of the form "2" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -60,6 +79,7 @@ const char * eliza_inference_abi_version(void);
 #define ELIZA_ERR_FFI_FAULT       -4   /* mmap/madvise/syscall failure */
 #define ELIZA_ERR_OOM             -5   /* allocation failure */
 #define ELIZA_ERR_ABI_MISMATCH    -6   /* loader vs library disagree */
+#define ELIZA_ERR_CANCELLED       -7   /* caller requested cancellation (chunk cb / cancel_tts) */
 
 /* ---- Lifecycle ------------------------------------------------------ */
 
@@ -128,6 +148,101 @@ int eliza_inference_tts_synthesize(
     size_t max_samples,
     char ** out_error);
 
+/* ---- Streaming TTS (ABI v2) --------------------------------------- *
+ *
+ * Chunked synthesis: the library decodes the codec frames for `text` and
+ * invokes `on_chunk` with each decoded PCM segment as it becomes
+ * available (24 kHz fp32 mono, same rate as `eliza_inference_tts_synthesize`),
+ * then once more with `is_final == 1` and a zero-length tail to mark the
+ * end of the utterance. This lets the JS phrase-chunker hand a phrase to
+ * TTS and start playback before the whole forward pass finishes
+ * (AGENTS.md §4 — phrase-chunk → TTS within one scheduler tick).
+ *
+ * `on_chunk` returning non-zero requests cancellation: the library stops
+ * the decode at the next kernel boundary and returns
+ * ELIZA_ERR_CANCELLED. It is still called once more with `is_final == 1`
+ * (n_samples may be 0) so the consumer can release per-utterance state.
+ * The `pcm` pointer is owned by the library and is only valid for the
+ * duration of the `on_chunk` call — copy it out before returning.
+ *
+ * `speaker_preset_id` may be NULL to use the bundle default. Returns
+ * ELIZA_OK on a clean finish, ELIZA_ERR_CANCELLED when `on_chunk`
+ * requested a stop, or a negative ELIZA_* code on failure with
+ * `*out_error` populated. */
+typedef int (*eliza_tts_chunk_cb)(
+    const float * pcm,
+    size_t n_samples,
+    int is_final,
+    void * user_data);
+
+/* Capability probe: 1 when this build implements streaming TTS, 0 when
+ * it does not (stub / TTS-disabled build). Mirrors
+ * `eliza_inference_asr_stream_supported`. Callers pick the streaming
+ * path vs the batch `eliza_inference_tts_synthesize` off this flag —
+ * they do not have to call the streaming entry and catch
+ * ELIZA_ERR_NOT_IMPLEMENTED. */
+int eliza_inference_tts_stream_supported(void);
+
+int eliza_inference_tts_synthesize_stream(
+    EliInferenceContext * ctx,
+    const char * text,
+    size_t text_len,
+    const char * speaker_preset_id,
+    eliza_tts_chunk_cb on_chunk,
+    void * user_data,
+    char ** out_error);
+
+/* Hard-cancel any TTS forward pass currently in flight on `ctx` (the
+ * one started by `eliza_inference_tts_synthesize` /
+ * `eliza_inference_tts_synthesize_stream` on another thread). The
+ * in-flight call returns ELIZA_ERR_CANCELLED at the next kernel
+ * boundary. Returns ELIZA_OK whether or not a forward pass was running
+ * (cancelling nothing is not an error). */
+int eliza_inference_cancel_tts(
+    EliInferenceContext * ctx,
+    char ** out_error);
+
+/* ---- DFlash verifier callback (ABI v2) ---------------------------- *
+ *
+ * The fused runtime hosts the dflash drafter in-process (`-md <drafter>`)
+ * and runs the fork's speculative accept/reject loop directly. Register
+ * a callback here and the runtime fires `ev` for every speculative step:
+ *   - `accepted_token_ids` / `n_accepted` — the draft tokens the target
+ *     verified this step (committed to the sequence);
+ *   - `rejected_from` / `rejected_to` — the half-open token-index range
+ *     of the draft tail the verifier rejected this step (both -1 when
+ *     nothing was rejected this step);
+ *   - `corrected_token_ids` / `n_corrected` — the target's resampled
+ *     tokens that replace the rejected tail (empty when nothing was
+ *     rejected).
+ * Token-index domain is the *output* stream (token 0 = first generated
+ * token), matching the `RejectedTokenRange` the JS rollback queue uses.
+ * The `*_token_ids` arrays are owned by the library and only valid for
+ * the duration of the callback — copy out before returning.
+ *
+ * Passing `cb == NULL` clears a previously-registered callback. Only one
+ * callback is active per context; re-registering replaces it. The
+ * callback is invoked on the generation thread, synchronously between
+ * decode steps — keep it cheap (enqueue, don't block). */
+typedef struct {
+    const int * accepted_token_ids;
+    size_t n_accepted;
+    int rejected_from;
+    int rejected_to;
+    const int * corrected_token_ids;
+    size_t n_corrected;
+} EliVerifierEvent;
+
+typedef void (*eliza_verifier_cb)(
+    const EliVerifierEvent * ev,
+    void * user_data);
+
+int eliza_inference_set_verifier_callback(
+    EliInferenceContext * ctx,
+    eliza_verifier_cb cb,
+    void * user_data,
+    char ** out_error);
+
 /* ---- ASR transcription (synchronous) ------------------------------- */
 
 /* Transcribe `n_samples` fp32 PCM samples (mono) at `sample_rate_hz`.
@@ -144,6 +259,79 @@ int eliza_inference_asr_transcribe(
     char * out_text,
     size_t max_text_bytes,
     char ** out_error);
+
+/* ---- Streaming ASR (ABI v2) --------------------------------------- *
+ *
+ * A streaming ASR session: feed PCM frames as they arrive (post-VAD-gate)
+ * and read a running partial transcript between feeds. The library owns
+ * the internal audio buffer + decoder state and runs windowed decode
+ * passes; the JS side never re-submits earlier audio.
+ *
+ *   open  → feed* → partial* → finish → close
+ *
+ * `finish` force-finalizes (drains buffered audio, last decode pass) and
+ * yields the final transcript; the session must still be `close`d after.
+ * All calls return >= 0 on success or a negative ELIZA_* code with
+ * `*out_error` populated. The token-id out-params (`out_tokens` /
+ * `io_n_tokens`) are OPTIONAL — pass NULL to skip; when supplied, the
+ * library writes up to `*io_n_tokens` text-model token ids for the
+ * current transcript (the fused build shares the text vocabulary, so
+ * these feed STT-finish token injection without re-tokenization) and
+ * updates `*io_n_tokens` to the count actually written.
+ */
+
+/* Capability probe: returns 1 when this build has a working streaming ASR
+ * decoder, 0 when it does not (stub / ASR-disabled build). Callers use
+ * this to choose the streaming path vs an interim adapter WITHOUT having
+ * to open a session and catch ELIZA_ERR_NOT_IMPLEMENTED. */
+int eliza_inference_asr_stream_supported(void);
+
+/* Opaque streaming-ASR session. One per active speech segment. */
+typedef struct EliAsrStream EliAsrStream;
+
+/* Open a streaming ASR session anchored to `ctx`. `sample_rate_hz` is the
+ * rate of the PCM the caller will feed (the library resamples as needed).
+ * Returns NULL on failure with `*out_error` populated. */
+EliAsrStream * eliza_inference_asr_stream_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    char ** out_error);
+
+/* Feed `n_samples` fp32 mono PCM samples at the session's sample rate.
+ * Returns the number of samples consumed (>= 0) on success, negative
+ * ELIZA_* on failure. */
+int eliza_inference_asr_stream_feed(
+    EliAsrStream * stream,
+    const float * pcm,
+    size_t n_samples,
+    char ** out_error);
+
+/* Read the current running partial transcript. Writes a UTF-8
+ * NUL-terminated string into `out_text` (up to `max_text_bytes - 1`
+ * bytes + terminator); optionally writes token ids into `out_tokens`
+ * (see header note). Returns the number of text bytes written (excluding
+ * the terminator) on success, negative ELIZA_* on failure. */
+int eliza_inference_asr_stream_partial(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error);
+
+/* Drain remaining buffered audio, run a final decode pass, and write the
+ * final transcript (same out args as `_partial`). The session is still
+ * valid until `_close`. Returns text bytes written or negative ELIZA_*. */
+int eliza_inference_asr_stream_finish(
+    EliAsrStream * stream,
+    char * out_text,
+    size_t max_text_bytes,
+    int * out_tokens,
+    size_t * io_n_tokens,
+    char ** out_error);
+
+/* Close + free a streaming ASR session. Idempotent on NULL. */
+void eliza_inference_asr_stream_close(EliAsrStream * stream);
 
 /* ---- Memory ownership helpers -------------------------------------- */
 

@@ -20,9 +20,9 @@ export {
   MODEL_CATALOG,
 } from "./catalog";
 export {
-  classifyLocalError,
   type CloudCandidate,
   type CloudFallbackOptions,
+  classifyLocalError,
   type FallbackReason,
   findCloudCandidate,
   type LocalGenerateOutcome,
@@ -30,6 +30,39 @@ export {
 } from "./cloud-fallback";
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
+export {
+  estimateQuantizedKvBytesPerToken,
+  KV_SPILL_MIN_CONTEXT,
+  type KvGeometry,
+  type KvRestoreClass,
+  type KvSpillPlan,
+  KvSpillUnsupportedError,
+  planKvSpill,
+} from "./kv-spill";
+export {
+  buildVoiceLatencyDevPayload,
+  EndToEndLatencyTracer,
+  endVoiceLatencyTurn,
+  type HistogramSummary,
+  LATENCY_DERIVED_KEYS,
+  type LatencyCheckpoint,
+  type LatencyDerived,
+  type LatencyDerivedKey,
+  type LatencyTrace,
+  markVoiceLatency,
+  type TracerOptions,
+  VOICE_CHECKPOINTS,
+  type VoiceCheckpoint,
+  type VoiceLatencyDevPayload,
+  voiceLatencyTracer,
+} from "./latency-trace";
+export {
+  diffSnapshots,
+  fetchMetricsSnapshot,
+  type LlamaServerMetricSnapshot,
+  type LocalUsageBlock,
+  parsePrometheusMetrics,
+} from "./llama-server-metrics";
 export { buildTextGenerationReadiness } from "./readiness";
 export {
   assessCatalogModelFit,

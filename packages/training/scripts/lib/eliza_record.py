@@ -1,32 +1,31 @@
-"""Canonical eliza record — matches scambench `eliza` config exactly.
+"""DEPRECATED flat ElizaRecord intermediate.
 
-Shape:
+This module defines the legacy flat `ElizaRecord` shape the old multi-dataset
+normalizer emitted (`scripts/normalize.py` -> `scripts/pack_dataset.py` ->
+`scripts/format_for_training.py` legacy fallback). It is NOT the canonical
+Eliza-1 corpus record. The canonical corpus record is `eliza_native_v1` — one
+row per Vercel AI SDK model boundary — described in
+`packages/training/docs/dataset/CANONICAL_RECORD.md`. No new code should target
+this shape; it is kept only so the existing bulk corpus keeps loading.
+
+Flat shape (one row = one supervised example):
     {
       "roomName":         "string",
       "agentId":          "string",
       "memoryEntries":    [{"role","speaker","content","channel"}],
       "currentMessage":   {"role","speaker","content","channel"},
-      "expectedResponse": "string  (TOON for structured tasks, plain text for replies)",
-      "availableActions": ["RESPOND" | "IGNORE" | "STOP" | "REPLY"
-                            | "SHELL_COMMAND" | "TASK_CALL"
-                            | "MUTE_ROOM" | "UNMUTE_ROOM"
-                            | "FOLLOW_ROOM" | "UNFOLLOW_ROOM"
-                            | ... custom strings ...],
+      "expectedResponse": "string  (JSON planner doc for structured tasks, plain text for replies)",
+      "availableActions": ["RESPOND" | "IGNORE" | "STOP"   (shouldRespond decision)
+                            | "REPLY" | "SHELL" | "TASKS"
+                            | "USE_SKILL" | ... custom strings ...],
       "metadata":         {...source-specific extras (task_type, toolSpecs,
                               language, scenario_category, ...)}
     }
 
 No extra top-level fields. Every adapter-specific extra rides under
-`metadata`.
-
-The supervised target is `expectedResponse`. For structured tasks (routing,
-tool calls, shell commands, multi-step decisions) the trainer expects
-`expectedResponse` to be a TOON document; for plain replies it's the
-assistant text directly.
-
-`metadata.task_type` selects the prompt template the trainer renders into
-the system message at training time. See
-`scripts/format_for_training.py`.
+`metadata`. The supervised target is `expectedResponse`. `metadata.task_type`
+selects the prompt template the trainer renders into the system message at
+training time (see `scripts/format_for_training.py`).
 """
 
 from __future__ import annotations
@@ -37,18 +36,29 @@ from dataclasses import dataclass
 from typing import Any
 
 
-# Canonical action vocabulary. Adapters MAY emit other action strings (custom
-# tool/skill names) but routing/shell/task-call decisions must use these.
-ACTION_RESPOND = "RESPOND"
-ACTION_IGNORE = "IGNORE"
-ACTION_STOP = "STOP"
+# Current canonical action names (mirror packages/core/src/generated/action-docs.ts;
+# see packages/training/docs/dataset/CANONICAL_RECORD.md). Adapters MAY emit other
+# action strings (custom tool/skill names) but core decisions must use these.
 ACTION_REPLY = "REPLY"
-ACTION_SHELL_COMMAND = "SHELL_COMMAND"
-ACTION_TASK_CALL = "TASK_CALL"
-ACTION_MUTE_ROOM = "MUTE_ROOM"
-ACTION_UNMUTE_ROOM = "UNMUTE_ROOM"
-ACTION_FOLLOW_ROOM = "FOLLOW_ROOM"
-ACTION_UNFOLLOW_ROOM = "UNFOLLOW_ROOM"
+ACTION_IGNORE = "IGNORE"
+ACTION_NONE = "NONE"
+ACTION_SHELL = "SHELL"
+ACTION_TASKS = "TASKS"
+ACTION_USE_SKILL = "USE_SKILL"
+ACTION_SKILL = "SKILL"
+ACTION_APP = "APP"
+ACTION_GENERATE_MEDIA = "GENERATE_MEDIA"
+ACTION_CHOOSE_OPTION = "CHOOSE_OPTION"
+
+# shouldRespond decision values (the message handler's RESPOND/IGNORE/STOP gate),
+# not actions. Distinct from ACTION_* above; kept for the legacy routing adapters.
+ACTION_RESPOND = "RESPOND"
+ACTION_STOP = "STOP"
+
+# Back-compat aliases for scripts that still import the old names. They now
+# resolve to the canonical values.
+ACTION_SHELL_COMMAND = ACTION_SHELL
+ACTION_TASK_CALL = ACTION_TASKS
 
 ROUTING_ACTIONS = [ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP]
 REPLY_ACTIONS = [ACTION_REPLY, ACTION_IGNORE]

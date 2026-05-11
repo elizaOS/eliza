@@ -59,10 +59,12 @@
   },
   "optionalDependencies": {
     "node-llama-cpp": "3.18.1",
+    "onnxruntime-node": "1.24.3",
     "sharp": "^0.34.5"
   },
   "trustedDependencies": [
-    "node-llama-cpp"
+    "node-llama-cpp",
+    "onnxruntime-node"
   ],
   "dependencies": {
     "@capacitor-community/sqlite": "^7.0.0",

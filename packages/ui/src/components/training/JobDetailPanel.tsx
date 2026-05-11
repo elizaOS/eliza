@@ -1,6 +1,7 @@
 import { Button } from "@elizaos/ui";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { BudgetPanel } from "./BudgetPanel";
 import {
   useCancelTrainingJob,
   useEvalTrainingJob,
@@ -294,6 +295,13 @@ export function JobDetailPanel({ jobId, onClose }: JobDetailPanelProps) {
           {cancelLoading && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
           Cancel
         </Button>
+      </div>
+
+      <div className="space-y-2">
+        <div className="text-xs font-semibold text-txt-strong">
+          Running Cost
+        </div>
+        <BudgetPanel jobId={jobId} />
       </div>
 
       <div className="space-y-2">

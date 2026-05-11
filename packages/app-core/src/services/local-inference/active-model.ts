@@ -17,9 +17,20 @@ import {
   findCatalogModel,
 } from "./catalog";
 import { localInferenceEngine } from "./engine";
+import { probeHardware } from "./hardware";
+import {
+  assessRamFit,
+  pickFittingContextVariant,
+  type RamFitOptions,
+} from "./ram-budget";
 import { recommendForFirstRun } from "./recommendation";
 import { listInstalledModels, touchElizaModel } from "./registry";
-import type { ActiveModelState, CatalogModel, InstalledModel } from "./types";
+import type {
+  ActiveModelState,
+  CatalogModel,
+  HardwareProbe,
+  InstalledModel,
+} from "./types";
 
 export {
   ELIZA_1_PLACEHOLDER_IDS,
@@ -58,7 +69,7 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  *                            enum slots 43/44/46/47). Whether the C++
  *                            kernel for those types actually runs depends
  *                            on the loaded `@node-llama-cpp/<platform>`
- *                            binary: the milady-ai/llama.cpp prebuild
+ *                            binary: the elizaOS/llama.cpp prebuild
  *                            implements them; the upstream prebuild
  *                            forwards an unknown enum int to ggml and
  *                            errors at the kernel layer.
@@ -114,7 +125,7 @@ export interface LocalInferenceLoadArgs {
  * (v3.18.1-milady.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
  * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
  * aliases below. Whether the C++ kernel actually runs depends on the
- * loaded `@node-llama-cpp/<platform>` binary — the milady-ai/llama.cpp
+ * loaded `@node-llama-cpp/<platform>` binary — the elizaOS/llama.cpp
  * prebuild ships the kernels; upstream's prebuild does not.
  *
  * `validateLocalInferenceLoadArgs({ allowFork: false })` (the route-layer
@@ -189,7 +200,7 @@ export function validateLocalInferenceLoadArgs(
     }
     if (!allowFork && isForkOnlyKvCacheType(value)) {
       throw new Error(
-        `${field}="${value}" requires the milady-ai/llama.cpp kernel from the milady fork. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the milady-ai/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
+        `${field}="${value}" requires the elizaOS/llama.cpp kernel from the milady fork. The milady-ai/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the elizaOS/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
       );
     }
     if (!allowFork && !isStockKvCacheType(value)) {
@@ -423,6 +434,82 @@ export async function resolveLocalInferenceLoadArgs(
   return args;
 }
 
+const MB_PER_GB = 1024;
+
+export class ModelDoesNotFitError extends Error {
+  readonly modelId: string;
+  readonly requiredMb: number;
+  readonly usableMb: number;
+  readonly hostRamMb: number;
+  readonly fittingVariantId: string | null;
+
+  constructor(args: {
+    modelId: string;
+    requiredMb: number;
+    usableMb: number;
+    hostRamMb: number;
+    fittingVariantId: string | null;
+  }) {
+    const variantHint = args.fittingVariantId
+      ? args.fittingVariantId === args.modelId
+        ? ""
+        : ` The largest context variant of this tier that would fit is "${args.fittingVariantId}".`
+      : " No context variant of this tier fits this host.";
+    super(
+      `[local-inference] Model "${args.modelId}" needs ~${args.requiredMb} MB RAM to boot, but only ~${args.usableMb} MB are usable on this host (${args.hostRamMb} MB total, after the OS/runtime headroom reserve). Refusing to load it.${variantHint} Pick a smaller tier in Settings → Model Hub, or set ELIZA_LOCAL_RAM_HEADROOM_MB lower if you accept running closer to the limit.`,
+    );
+    this.name = "ModelDoesNotFitError";
+    this.modelId = args.modelId;
+    this.requiredMb = args.requiredMb;
+    this.usableMb = args.usableMb;
+    this.hostRamMb = args.hostRamMb;
+    this.fittingVariantId = args.fittingVariantId;
+  }
+}
+
+/**
+ * Admission gate: refuse a model load when the host can't fit the bundle's
+ * boot floor. `hostRamMb` is the host's total RAM in megabytes. `installed`
+ * is forwarded to `assessRamFit` so a manifest-declared `ramBudgetMb` wins
+ * over the catalog scalar. Throws `ModelDoesNotFitError` on no-fit; returns
+ * the (advisory) fit decision otherwise so callers can log a `tight` warning.
+ *
+ * Models with no catalog entry (external HF blobs) are not gated — the
+ * catalog has no RAM budget for them, so we trust the operator's explicit
+ * pick (the dispatcher's load-time error surfaces if it genuinely OOMs).
+ */
+export function assertModelFitsHost(
+  installed: InstalledModel,
+  hostRamMb: number,
+  options: RamFitOptions = {},
+): { level: "fits" | "tight"; minMb: number; recommendedMb: number } {
+  const catalog = findCatalogModel(installed.id);
+  if (!catalog) return { level: "fits", minMb: 0, recommendedMb: 0 };
+  const fit = assessRamFit(catalog, hostRamMb, { ...options, installed });
+  if (fit.fits) {
+    return {
+      level: fit.level === "wontfit" ? "tight" : fit.level,
+      minMb: fit.budget.minMb,
+      recommendedMb: fit.budget.recommendedMb,
+    };
+  }
+  const fitting = pickFittingContextVariant(catalog, hostRamMb, {
+    ...options,
+    installed,
+  });
+  throw new ModelDoesNotFitError({
+    modelId: installed.id,
+    requiredMb: fit.budget.minMb,
+    usableMb: fit.usableMb,
+    hostRamMb,
+    fittingVariantId: fitting?.id ?? null,
+  });
+}
+
+function hostRamMbFromProbe(probe: HardwareProbe): number {
+  return Math.round(probe.totalRamGb * MB_PER_GB);
+}
+
 function isLoader(value: unknown): value is LocalInferenceLoader {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<LocalInferenceLoader>;
@@ -479,6 +566,7 @@ export class ActiveModelCoordinator {
     runtime: AgentRuntime | null,
     installed: InstalledModel,
     overrides?: LocalInferenceLoadOverrides,
+    opts: { hardware?: HardwareProbe } = {},
   ): Promise<ActiveModelState> {
     this.state = {
       modelId: installed.id,
@@ -494,6 +582,20 @@ export class ActiveModelCoordinator {
     const loader = this.getLoader(runtime);
 
     try {
+      // RAM-budget admission control (W10 / J1): refuse a model that won't
+      // fit this host *before* touching the loader, so we never half-load
+      // and OOM. `assertModelFitsHost` throws `ModelDoesNotFitError` with
+      // the specific numbers + the largest fitting variant of the tier.
+      const probe = opts.hardware ?? (await probeHardware());
+      const admission = assertModelFitsHost(
+        installed,
+        hostRamMbFromProbe(probe),
+      );
+      if (admission.level === "tight") {
+        console.warn(
+          `[local-inference] Loading "${installed.id}" with tight RAM headroom (~${admission.minMb} MB floor, ${admission.recommendedMb} MB recommended; ${hostRamMbFromProbe(probe)} MB host). Expect swapping under sustained load.`,
+        );
+      }
       const resolved = await resolveLocalInferenceLoadArgs(
         installed,
         overrides,

@@ -3,6 +3,7 @@ import type {
   CreateJobRequest,
   InferenceEndpoint,
   InferenceStats,
+  TrainingBudget,
   TrainingJob,
   TrainingJobDetail,
   TrainingModel,
@@ -354,6 +355,54 @@ export function useJobLogs(jobId: string, tail: number = 200) {
   }, [fetchLogs]);
 
   return { ...state, refetch: fetchLogs };
+}
+
+/**
+ * Polls `/api/training/vast/jobs/:id/budget` for the running cost
+ * snapshot of one job. Returns `data: null` when the job has no
+ * provisioned instance yet (the panel shows a placeholder) and an
+ * `error` message when the request itself fails.
+ */
+export function useTrainingBudget(jobId: string, pollIntervalMs: number = 15000) {
+  const [state, setState] = useState<ApiState<TrainingBudget | null>>({
+    data: null,
+    loading: true,
+    error: null,
+  });
+  const mountedRef = useRef(true);
+  const pollTimerRef = useRef<NodeJS.Timeout | undefined>(undefined);
+
+  const fetchBudget = useCallback(async () => {
+    try {
+      const data = await apiCall<{ budget: TrainingBudget | null }>(
+        `/api/training/vast/jobs/${encodeURIComponent(jobId)}/budget`,
+      );
+      if (!mountedRef.current) return;
+      setState({ data: data.budget, loading: false, error: null });
+    } catch (err) {
+      if (!mountedRef.current) return;
+      setState({
+        data: null,
+        loading: false,
+        error:
+          err instanceof Error ? err.message : "Failed to fetch budget",
+      });
+    }
+  }, [jobId]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    fetchBudget();
+    pollTimerRef.current = setInterval(fetchBudget, pollIntervalMs);
+    return () => {
+      mountedRef.current = false;
+      if (pollTimerRef.current !== undefined) {
+        clearInterval(pollTimerRef.current);
+      }
+    };
+  }, [fetchBudget, pollIntervalMs]);
+
+  return { ...state, refetch: fetchBudget };
 }
 
 export function useDeleteInferenceEndpoint() {

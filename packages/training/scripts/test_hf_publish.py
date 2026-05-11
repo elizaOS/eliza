@@ -356,7 +356,7 @@ def _make_milady_bundle(model_dir: Path, *, fused: bool, kind: str = "milady-opt
             "kvV": "TBQ4_0",
             "speculativeDecode": "DFlash",
             "kernels": ["q4_polar", "qjl1_256", "tbq3_0", "tbq4_0", "dflash"],
-            "requiresFork": "milady-ai/llama.cpp@v0.1.0-milady",
+            "requiresFork": "elizaOS/llama.cpp@v0.1.0-milady",
         },
         "pipeline": {
             "publishedAt": "2026-05-10T00:00:00Z",

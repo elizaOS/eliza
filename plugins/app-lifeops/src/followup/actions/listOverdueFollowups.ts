@@ -28,6 +28,9 @@ export const listOverdueFollowupsAction: Action = {
     "WHO_HAVEN_T_I_TALKED_TO",
     "LIST_FOLLOWUPS",
     "FOLLOWUP_LIST",
+    // PRD action-catalog alias.
+    // See packages/docs/action-prd-map.md.
+    "FOLLOWUP_LIST_OVERDUE",
   ],
   description:
     "List contacts whose last-contacted-at timestamp exceeds their follow-up threshold. " +

@@ -3,17 +3,22 @@ import http from "node:http";
 import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendKvOffloadFlags,
   appendOptimizationFlags,
+  dflashDevDisabled,
   dflashEnabled,
   dflashLlamaServer,
   extractStreamingChatDelta,
+  extractVerifierRejectRange,
+  findBundleOmnivoiceAssets,
   getDflashRuntimeStatus,
+  logDflashDevDisabledWarning,
   parseDflashMetrics,
   resolveDflashBinary,
   resolveDflashKvOffload,
+  resolveFusedDflashBinary,
 } from "./dflash-server";
 
 const originalEnv = { ...process.env };
@@ -137,6 +142,172 @@ describe("DFlash runtime discovery", () => {
   });
 });
 
+describe("fused-vs-two-process spawn selection", () => {
+  function fusedBackendKey(): string {
+    const backend = process.platform === "darwin" ? "metal" : "cpu";
+    return `${process.platform}-${process.arch}-${backend}-fused`;
+  }
+  function makeFusedBinary(
+    root: string,
+    caps: Record<string, unknown> = {},
+  ): { dir: string; bin: string } {
+    const dir = path.join(
+      root,
+      "local-inference",
+      "bin",
+      "dflash",
+      fusedBackendKey(),
+    );
+    fs.mkdirSync(dir, { recursive: true });
+    const bin = path.join(dir, "llama-server");
+    fs.writeFileSync(bin, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(bin, 0o755);
+    fs.writeFileSync(
+      path.join(dir, "CAPABILITIES.json"),
+      JSON.stringify({
+        target: fusedBackendKey(),
+        platform: process.platform,
+        arch: process.arch,
+        backend: process.platform === "darwin" ? "metal" : "cpu",
+        builtAt: new Date().toISOString(),
+        fork: "elizaOS/llama.cpp",
+        forkCommit: "test",
+        kernels: {
+          dflash: true,
+          turbo3: true,
+          turbo4: true,
+          turbo3_tcq: false,
+          qjl_full: false,
+          polarquant: false,
+          lookahead: true,
+          ngramDraft: true,
+        },
+        binaries: ["llama-cli", "llama-omnivoice-server", "llama-server"],
+        fused: true,
+        omnivoice: { commit: "test" },
+        ...caps,
+      }),
+      "utf8",
+    );
+    return { dir, bin };
+  }
+  function clearEnv() {
+    delete process.env.ELIZA_DFLASH_ENABLED;
+    delete process.env.ELIZA_DFLASH_DISABLED;
+    delete process.env.ELIZA_DFLASH_METAL_AUTO;
+    delete process.env.ELIZA_DFLASH_METAL_ENABLED;
+    delete process.env.ELIZA_DFLASH_DISABLE_FUSED_SERVER;
+    delete process.env.ELIZA_DFLASH_LLAMA_SERVER;
+    delete process.env.HIP_VISIBLE_DEVICES;
+    delete process.env.ROCR_VISIBLE_DEVICES;
+    delete process.env.CUDA_VISIBLE_DEVICES;
+  }
+
+  it("prefers the fused llama-server when a fused build is installed", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fused-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    clearEnv();
+    const { bin } = makeFusedBinary(root);
+    expect(resolveFusedDflashBinary()).toBe(bin);
+    // resolveDflashBinary() should pick the fused binary over the (absent)
+    // stock binary, so the spawn layer launches the single fused server.
+    expect(resolveDflashBinary()).toBe(bin);
+  });
+
+  it("falls back to the stock two-process path when no fused build exists", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fused-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    clearEnv();
+    const stock = makeManagedBinary(root);
+    expect(resolveFusedDflashBinary()).toBe(null);
+    expect(resolveDflashBinary()).toBe(stock);
+  });
+
+  it("ignores a fused dir whose CAPABILITIES.json does not advertise fusion", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fused-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    clearEnv();
+    makeFusedBinary(root, { fused: false, omnivoice: null, binaries: ["llama-server"] });
+    expect(resolveFusedDflashBinary()).toBe(null);
+  });
+
+  it("ELIZA_DFLASH_DISABLE_FUSED_SERVER forces the stock path", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fused-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    clearEnv();
+    makeFusedBinary(root);
+    makeManagedBinary(root);
+    process.env.ELIZA_DFLASH_DISABLE_FUSED_SERVER = "1";
+    expect(resolveFusedDflashBinary()).toBe(null);
+  });
+
+  it("ELIZA_DFLASH_LLAMA_SERVER override wins over the fused binary", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-fused-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    clearEnv();
+    makeFusedBinary(root);
+    const explicitDir = path.join(root, "explicit");
+    fs.mkdirSync(explicitDir, { recursive: true });
+    const explicit = path.join(explicitDir, "llama-server");
+    fs.writeFileSync(explicit, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(explicit, 0o755);
+    process.env.ELIZA_DFLASH_LLAMA_SERVER = explicit;
+    expect(resolveDflashBinary()).toBe(explicit);
+  });
+
+  it("findBundleOmnivoiceAssets resolves tts/ GGUFs from the text model path", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bundle-test-"));
+    const bundle = path.join(root, "eliza-1-1_7b.bundle");
+    fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
+    fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
+    fs.writeFileSync(path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"), "x");
+    fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.6b.gguf"), "x");
+    fs.writeFileSync(path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"), "x");
+    const assets = findBundleOmnivoiceAssets(
+      path.join(bundle, "text", "eliza-1-1_7b-32k.gguf"),
+    );
+    expect(assets).not.toBeNull();
+    expect(assets?.modelPath).toBe(path.join(bundle, "tts", "omnivoice-0.6b.gguf"));
+    expect(assets?.codecPath).toBe(
+      path.join(bundle, "tts", "omnivoice-tokenizer-0.6b.gguf"),
+    );
+    // A non-bundle layout (no text/ parent) returns null.
+    expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
+  });
+});
+
+describe("MILADY_DFLASH_DISABLE developer kill-switch", () => {
+  it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
+    delete process.env.MILADY_DFLASH_DISABLE;
+    process.env.ELIZA_DFLASH_ENABLED = "1";
+    expect(dflashDevDisabled()).toBe(false);
+    expect(dflashEnabled()).toBe(true);
+
+    process.env.MILADY_DFLASH_DISABLE = "1";
+    expect(dflashDevDisabled()).toBe(true);
+    expect(dflashEnabled()).toBe(false);
+    expect(getDflashRuntimeStatus().reason).toContain("MILADY_DFLASH_DISABLE");
+  });
+
+  it("logs a loud warning when active and is silent otherwise", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      delete process.env.MILADY_DFLASH_DISABLE;
+      logDflashDevDisabledWarning();
+      expect(warn).not.toHaveBeenCalled();
+
+      process.env.MILADY_DFLASH_DISABLE = "1";
+      logDflashDevDisabledWarning();
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain(
+        "MILADY_DFLASH_DISABLE=1",
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
 describe("parseDflashMetrics", () => {
   it("parses Prometheus counters with label sets and _total suffix", () => {
     const text = `# HELP llamacpp:n_decode_total Number of tokens decoded by the model.
@@ -217,6 +388,40 @@ describe("extractStreamingChatDelta", () => {
   });
 });
 
+describe("extractVerifierRejectRange", () => {
+  it("returns null when the chunk has no verifier extension", () => {
+    expect(
+      extractVerifierRejectRange({ choices: [{ delta: { content: "hi" } }] }),
+    ).toBeNull();
+    expect(extractVerifierRejectRange(null)).toBeNull();
+    expect(extractVerifierRejectRange({ verifier: {} })).toBeNull();
+  });
+
+  it("parses a well-formed inclusive reject range", () => {
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [3, 5] } }),
+    ).toEqual([3, 5]);
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [0, 0] } }),
+    ).toEqual([0, 0]);
+  });
+
+  it("rejects malformed ranges", () => {
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [5, 3] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [1] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [-1, 2] } }),
+    ).toBeNull();
+    expect(
+      extractVerifierRejectRange({ verifier: { rejected: [1.5, 2] } }),
+    ).toBeNull();
+  });
+});
+
 describe("DFlash streaming callbacks", () => {
   it("synthesizes verifier accept events from streamed OpenAI deltas", async () => {
     const mock = await startStreamingMockServer();
@@ -233,14 +438,14 @@ describe("DFlash streaming callbacks", () => {
     const textChunks: string[] = [];
     const verifierChunks: Array<{ index: number; text: string }> = [];
     try {
-		const result = await dflashLlamaServer.generateWithUsage({
-			prompt: "say hello",
-			onTextChunk: (chunk) => {
-				textChunks.push(chunk);
-			},
-			onVerifierEvent: (event) => {
-				expect(event.kind).toBe("accept");
-				verifierChunks.push(...event.tokens);
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "say hello",
+        onTextChunk: (chunk) => {
+          textChunks.push(chunk);
+        },
+        onVerifierEvent: (event) => {
+          expect(event.kind).toBe("accept");
+          verifierChunks.push(...event.tokens);
         },
       });
 
@@ -254,6 +459,77 @@ describe("DFlash streaming callbacks", () => {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
       await mock.close();
+    }
+  });
+});
+
+describe("DflashLlamaServer.prewarmConversation", () => {
+  it("fires a 1-token cache_prompt request against the given slot", async () => {
+    const seen: Array<Record<string, unknown>> = [];
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        seen.push(JSON.parse(await readBody(req)) as Record<string, unknown>);
+        res.statusCode = 200;
+        res.end(JSON.stringify({ choices: [{ message: { content: "" } }] }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const port = (server.address() as AddressInfo).port;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+      lastPrewarmBySlot: Map<number, { prefix: string; touchedAtMs: number }>;
+    };
+    const prev = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = `http://127.0.0.1:${port}`;
+    target.cacheParallel = 4;
+    target.lastPrewarmBySlot.clear();
+    try {
+      const warmed = await dflashLlamaServer.prewarmConversation(
+        "system you are helpful",
+        { slotId: 2 },
+      );
+      expect(warmed).toBe(true);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toMatchObject({
+        max_tokens: 1,
+        temperature: 0,
+        cache_prompt: true,
+        slot_id: 2,
+      });
+      // The prefix is tracked for the keep-alive sweep, keyed by slot.
+      expect(target.lastPrewarmBySlot.get(2)?.prefix).toBe(
+        "system you are helpful",
+      );
+    } finally {
+      target.baseUrl = prev.baseUrl;
+      target.cacheParallel = prev.cacheParallel;
+      target.lastPrewarmBySlot.clear();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+
+  it("returns false (no throw) when the server is not running", async () => {
+    const target = dflashLlamaServer as unknown as { baseUrl: string | null };
+    const prev = target.baseUrl;
+    target.baseUrl = null;
+    try {
+      await expect(
+        dflashLlamaServer.prewarmConversation("anything", { slotId: 0 }),
+      ).resolves.toBe(false);
+      await expect(
+        dflashLlamaServer.prewarmConversation("", { slotId: 0 }),
+      ).resolves.toBe(false);
+    } finally {
+      target.baseUrl = prev;
     }
   });
 });

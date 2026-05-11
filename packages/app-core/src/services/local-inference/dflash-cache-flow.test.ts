@@ -429,6 +429,48 @@ describe("conversation handle API: single conversation hits cache 95%+", () => {
   });
 });
 
+describe("prewarmConversation → first real request hits cache", () => {
+  it("pre-warming the stable prefix makes the first generate a cache hit", async () => {
+    const handle = engine.openConversation({
+      conversationId: "prewarm-room",
+      modelId: "mock-model",
+    });
+
+    // 4000-token stable prefix (system + tools + provider blocks).
+    const stablePrefix = Array.from({ length: 4000 }, (_, i) => `p${i}`).join(
+      " ",
+    );
+
+    // Pre-warm the slot with the stable prefix BEFORE any real request.
+    const warmed = await engine.prewarmConversation(handle, stablePrefix);
+    expect(warmed).toBe(true);
+
+    // First real request appends the user turn to the same prefix. Because
+    // the prefix is already cached on this slot, only the user tokens are
+    // freshly prefilled.
+    const result = await engine.generateInConversation(handle, {
+      prompt: `${stablePrefix} hello there what is up`,
+    });
+    expect(result.slotId).toBe(handle.slotId);
+    expect(result.usage.cache_read_input_tokens).toBeGreaterThanOrEqual(4000);
+    // The fresh-prefill portion is just the appended user words (~5 tokens).
+    expect(result.usage.cache_creation_input_tokens).toBeLessThan(50);
+  });
+
+  it("prewarmConversation by room id resolves a handle on the current model", async () => {
+    // The string overload opens (or reuses) a handle keyed on the engine's
+    // current model path — with the patched engine that's "/mock/target.gguf".
+    const warmed = await engine.prewarmConversation(
+      "prewarm-by-id-room",
+      "system you are helpful and concise",
+    );
+    expect(warmed).toBe(true);
+    const modelId = engine.currentModelPath() ?? "default-local-model";
+    const handle = engine.conversation("prewarm-by-id-room", modelId);
+    expect(handle).not.toBeNull();
+  });
+});
+
 describe("KV save/restore across process restarts", () => {
   it("close persists; reopen + first generate restores", async () => {
     const handle = engine.openConversation({

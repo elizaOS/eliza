@@ -1,4 +1,5 @@
 import type { Action, ActionParameter, ActionParameterSchema } from "../types";
+import type { JSONSchema } from "../types/model";
 
 export type JsonSchemaPrimitiveType =
 	| "string"
@@ -335,4 +336,65 @@ export function actionToJsonSchema(action: Action): ActionParametersJsonSchema {
 	return actionParametersToJsonSchema(action.parameters ?? [], {
 		allowAdditionalProperties: action.allowAdditionalParameters === true,
 	});
+}
+
+// ---------------------------------------------------------------------------
+// Normalization to the core `JSONSchema` shape
+// ---------------------------------------------------------------------------
+//
+// `actionToJsonSchema` emits the LOCAL `JsonSchema` type (defined above). The
+// runtime's grammar / structured-output plumbing speaks the core `JSONSchema`
+// type from `types/model.ts` — a structurally-broader index-signature type
+// whose `type` may be `string | string[]`. The two are *almost* assignable but
+// TypeScript rejects the implicit conversion (the index signature, the wider
+// `type`). `normalizeActionJsonSchema` walks the local schema and re-emits it
+// as a core `JSONSchema` so an action's `parameters` schema can feed
+// `compileSkeletonToGbnf` / `LlamaJsonSchemaGrammar` / the planner grammar
+// without an unsafe cast. It is the single source of truth for "an action's
+// parameter shape as a core JSON Schema".
+
+function jsonSchemaFromLocal(local: JsonSchema): JSONSchema {
+	const out: JSONSchema = {};
+	if (local.type !== undefined) out.type = local.type;
+	if (local.description !== undefined) out.description = local.description;
+	if (local.enum !== undefined) out.enum = local.enum;
+	if (local.default !== undefined)
+		out.default = local.default as JSONSchema["default"];
+	if (local.minimum !== undefined) out.minimum = local.minimum;
+	if (local.maximum !== undefined) out.maximum = local.maximum;
+	if (local.pattern !== undefined) out.pattern = local.pattern;
+	if (local.required !== undefined) out.required = local.required;
+	if (local.properties) {
+		const properties: Record<string, JSONSchema> = {};
+		for (const [name, child] of Object.entries(local.properties)) {
+			properties[name] = jsonSchemaFromLocal(child);
+		}
+		out.properties = properties;
+	}
+	if (local.items) out.items = jsonSchemaFromLocal(local.items);
+	if (local.additionalProperties !== undefined) {
+		out.additionalProperties =
+			typeof local.additionalProperties === "boolean"
+				? local.additionalProperties
+				: jsonSchemaFromLocal(local.additionalProperties);
+	}
+	if (local.oneOf) out.oneOf = local.oneOf.map(jsonSchemaFromLocal);
+	if (local.anyOf) out.anyOf = local.anyOf.map(jsonSchemaFromLocal);
+	return out;
+}
+
+/**
+ * An action's `parameters` schema as a core {@link JSONSchema} (object schema
+ * with `properties` / `required` / `additionalProperties`). Authoritative for
+ * tool-calling, GBNF grammar generation, and post-hoc argument validation —
+ * `Action` carries no `outputSchema`; `parameters` is the contract.
+ */
+export function normalizeActionJsonSchema(
+	action: Pick<Action, "parameters" | "allowAdditionalParameters">,
+): JSONSchema {
+	return jsonSchemaFromLocal(
+		actionParametersToJsonSchema(action.parameters ?? [], {
+			allowAdditionalProperties: action.allowAdditionalParameters === true,
+		}),
+	);
 }

@@ -46,9 +46,14 @@ import type {
   TextGenerationSlot,
 } from "./types";
 import { type VerifyResult, verifyInstalledModel } from "./verify";
+import { verifyBundleOnDevice } from "./verify-on-device";
 
 export class LocalInferenceService {
-  private readonly downloader = new Downloader();
+  // The downloader runs the engine-backed on-device verify pass
+  // (`packages/inference/AGENTS.md` §7: load → 1-token text → 1-phrase voice
+  // → barge-in cancel) after a bundle's bytes check out; a bundle that does
+  // not pass does not auto-fill an empty default slot.
+  private readonly downloader = new Downloader({ verifyOnDevice: verifyBundleOnDevice });
   private readonly activeModel = new ActiveModelCoordinator();
   private bundledBootstrap: Promise<void> | null = null;
 

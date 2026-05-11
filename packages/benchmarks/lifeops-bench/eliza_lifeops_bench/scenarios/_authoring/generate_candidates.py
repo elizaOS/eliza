@@ -40,7 +40,7 @@ SPEC_LIVE_PATH = Path(__file__).parent / "spec_live.md"
 
 def _load_existing_live_examples(domain: Domain, count: int) -> list[dict[str, Any]]:
     """Load up to ``count`` hand-authored LIVE scenarios from the target domain."""
-    from .live import LIVE_SCENARIOS_BY_DOMAIN
+    from ..live import LIVE_SCENARIOS_BY_DOMAIN
 
     existing = LIVE_SCENARIOS_BY_DOMAIN.get(domain, [])[:count]
     out: list[dict[str, Any]] = []

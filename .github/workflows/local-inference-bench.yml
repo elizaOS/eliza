@@ -335,7 +335,7 @@ jobs:
     # Cross-build the Windows x86_64 DLLs + llama-server.exe from a Linux
     # host using x86_64-w64-mingw32. This is the same code path
     # `packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
-    # windows-x64-cpu` runs locally; CI exercises it so a milady-ai/llama.cpp
+    # windows-x64-cpu` runs locally; CI exercises it so a elizaOS/llama.cpp
     # fork bump (or an Ubuntu mingw-w64 update) doesn't silently break the
     # Windows distribution shape.
     #
@@ -379,11 +379,11 @@ jobs:
 
       - name: Cross-build windows-x64-cpu
         env:
-          # Override the dflash fork to milady-ai/llama.cpp v0.1.0-milady so
+          # Override the dflash fork to elizaOS/llama.cpp v0.1.0-milady so
           # CI exercises the symbols downstream consumers actually expect.
           # Operators that want to test against the spiritbuun upstream can
           # leave this unset.
-          ELIZA_DFLASH_LLAMA_CPP_REMOTE: "https://github.com/milady-ai/llama.cpp.git"
+          ELIZA_DFLASH_LLAMA_CPP_REMOTE: "https://github.com/elizaOS/llama.cpp.git"
         run: |
           set -euo pipefail
           node packages/app-core/scripts/build-llama-cpp-dflash.mjs \

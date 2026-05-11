@@ -170,7 +170,8 @@ export function ConnectorsSection() {
       row.open = true;
       row.scrollIntoView({ block: "center", behavior: "smooth" });
       const summary = row.querySelector("summary");
-      if (summary instanceof HTMLElement) summary.focus({ preventScroll: true });
+      if (summary instanceof HTMLElement)
+        summary.focus({ preventScroll: true });
       clearPendingFocusConnector(connectorId);
       return true;
     };

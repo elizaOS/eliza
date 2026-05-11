@@ -3,12 +3,15 @@
 Status as of 2026-05-11 on this workspace:
 
 - macOS/Metal desktop graph dispatch has runtime evidence in `packages/inference/verify/metal-runtime-dispatch-evidence.json`.
-- Standalone Vulkan SPIR-V fixtures pass on this Apple Silicon host through MoltenVK, including TurboQuant, QJL, PolarQuant, and Polar+QJL residual.
-- Built-fork Vulkan graph dispatch source wiring now exists for `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_ATTN_SCORE_TBQ` (`turbo3`, `turbo4`, `turbo3_tcq`), and `GGML_OP_ATTN_SCORE_POLAR` (`use_qjl=0/1`), but runtime-ready capability bits stay false until native Vulkan graph smoke passes on physical hardware.
-- `adb devices -l` currently shows only `emulator-5554`; emulator Vulkan is diagnostic only and is not recordable Eliza-1 hardware evidence.
+- **Native Linux Vulkan graph dispatch now PASSES on real hardware** (Intel Arc/Xe via Mesa ANV). `vulkan-dispatch-smoke` reported 6/6 graph routes pass against `libggml-vulkan` built from the milady-llama-cpp fork; evidence `packages/inference/verify/vulkan-runtime-dispatch-evidence.json` (`runtimeReady: true`, all 5 kernels, `maxDiff` 2.7e-7…1.9e-6) + `packages/inference/verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`. `kernel-contract.json`'s `runtimeStatus.vulkan` is `runtime-ready` for turbo3/turbo4/turbo3_tcq/qjl/polar; `make -C packages/inference/verify kernel-contract` is green. Standalone Vulkan SPIR-V fixtures also still pass on Apple Silicon through MoltenVK.
+- `adb devices -l` currently shows only `emulator-5554`; emulator Vulkan is diagnostic only and is not recordable Eliza-1 hardware evidence. Adreno/Mali/AMD/NVIDIA-native Vulkan graph dispatch still needed.
 - Physical iOS XCFramework smoke now passes on `Shaw's iPhone (26.3.1)` / iPhone 15 Pro UDID `00008130-001955E91EF8001C`; simulator results remain non-recordable for release bundle evidence.
-- CUDA, ROCm, GH200, and native Windows runners are present and fail closed, but this Mac cannot provide recordable target hardware evidence.
-- Local release-shaped Eliza-1 bundles exist for all five tiers with source/candidate stand-ins, quantization sidecars, checksums, manifests, and fail-closed `evidence/release.json`; no final Eliza-1 release bundle exists yet with final weights, passing evals, release licenses, platform evidence, and Hugging Face upload evidence.
+- CUDA, ROCm, GH200, and native Windows runners are present and fail closed, but no host in this workspace can provide recordable target hardware evidence (the dGPU on this box is in D3cold with no kmod / nvcc; pending-evidence stub at `packages/inference/verify/hardware-results/cuda-linux-thismachine-2026-05-11.pending.json`).
+- New `SUPPORTED_TARGETS` / `kernel-contract.json` platform targets (23 total): `linux-aarch64-{cpu,cuda}`, `windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` with cmake plumbing + CUDA arch pins (incl. Blackwell `sm_120`, GH200 `sm_90a`). All `needs-hardware`.
+- CPU: AVX-VNNI int8-QJL path (5.25× on this box) + Polar pre-Hadamard SIMD + ARM dotprod variants landed in `qjl-cpu`/`polarquant-cpu`; bench `packages/inference/verify/bench_results/cpu_avxvnni_2026-05-11.json`, baseline `packages/inference/verify/hardware-results/linux-thismachine-cpu-baseline-2026-05-11.json`.
+- Fused-attention foundation: C reference (`eliza_fused_attn_qjl_tbq3`, bit-exact to the fork's CPU op) + fixtures `verify/fixtures/{fused_attn_qjl_tbq.json,fused_attn_qjl_polar.json,polar_preht.json}` + contract doc `reports/porting/2026-05-11/fused-attn-op-contract.md`. Registered in `kernel-contract.json`'s `fusedAttn` section with `fused_attn` capability key (`needs-runtime-smoke` for vulkan/metal — no fused shader+harness path yet; `needs-hardware` for cuda — `cuda_verify` parses the fixture but no NVIDIA host has run it). NOT yet a `requiredRuntimeCapabilityKey`/`manifestKernelName`.
+- A `27b-1m` (1M-context, CUDA-only-backend) tier is now in the catalog/schema/Python manifest/platform-plan; needs real GH200 verify before `defaultEligible`.
+- Local release-shaped Eliza-1 bundles exist for all five shipping tiers with source/candidate stand-ins, quantization sidecars, checksums, manifests, and fail-closed `evidence/release.json`; no final Eliza-1 release bundle exists yet with final weights, passing evals, release licenses, platform evidence, and Hugging Face upload evidence.
 
 ## Pass Criteria
 
@@ -43,9 +46,9 @@ Expected: rejects emulator/software Vulkan by default, cross-compiles the standa
 
 Current Vulkan blockers:
 
-- Need physical Linux Intel/AMD/NVIDIA Vulkan smoke, not MoltenVK.
-- Need physical Android Adreno and Mali smoke.
-- This Mac cannot produce the native `libggml-vulkan.so` graph runtime evidence; `make -C packages/inference/verify vulkan-dispatch-smoke` is expected to fail closed here until run on physical Linux Vulkan hardware or supplied with real Android graph evidence.
+- **DONE for native Linux Intel-ANV:** `vulkan-dispatch-smoke` 6/6 PASS on Intel Arc/Xe (Mesa ANV); evidence `packages/inference/verify/vulkan-runtime-dispatch-evidence.json` + `hardware-results/linux-vulkan-smoke-20260511T145056Z.log`. `kernel-contract.json` `runtimeStatus.vulkan` = `runtime-ready` for the 5 score kernels.
+- Still need: native AMD and NVIDIA desktop Vulkan smoke (Intel-ANV is one device class), and physical Android Adreno + Mali graph dispatch.
+- Fused-attention on Vulkan/Metal: no fused compute shader + `cases`-array harness path yet — `make -C packages/inference/verify vulkan-verify-fused` / `metal-verify-fused` fail by design; `fusedAttn.runtimeStatus.{vulkan,metal}` = `needs-runtime-smoke`. CUDA: `cuda_verify` parses `fused_attn_qjl_tbq.json` but needs an NVIDIA host (`cuda-verify` gated behind `cuda_runner.sh`).
 - Current graph source patch advertises only the single-batch contiguous shapes covered by `vulkan_dispatch_smoke.cpp`; batched `ne[2]/ne[3]` support needs a separate graph smoke before it can be enabled.
 - Android graph evidence must cover all six routes or the five runtime capability keys with finite `maxDiff`.
 
@@ -232,3 +235,25 @@ are complete enough for runtime-layout smoke: every tier has required local
 `checksums/SHA256SUMS` has been revalidated. They are not recordable release
 artifacts because `evidence/release.json` is intentionally
 `releaseState=local-standin` and `publishEligible=false`.
+
+Note (this checkout / Linux x64, 2026-05-11): no staged Eliza-1 bundle exists
+in this checkout's state dir and no HF write token is present, so no upload
+was attempted. A publish dry-run against a hand-built
+`releaseState=upload-candidate` stand-in bundle exits `16`
+(`EXIT_RELEASE_EVIDENCE_FAIL`) at stage 2 — the orchestrator correctly
+refuses it. The publish-pipeline machinery is covered by
+`pytest packages/training/scripts/{test_hf_publish.py,publish/test_orchestrator.py,manifest/test_eliza1_*.py,manifest/test_stage_local_eliza1_bundle.py}`
+(97 passed, 1 skipped).
+
+### Device-side downloader contract (§7)
+
+The §7 device-side download contract is exercised by
+`bun test packages/app-core/src/services/local-inference/downloader.test.ts`:
+manifest-first read, schema-version rejection (via `parseManifestOrThrow`),
+RAM-budget abort before any weight byte, no-overlapping-verified-backend
+abort before any weight byte, per-file sha256 + resume, and the
+`verifyOnDevice` hook gating readiness / default-slot fill. Remaining:
+the engine has not yet wired the real `verifyOnDevice` smoke (load →
+1-token text → 1-phrase voice → barge-in cancel) into `service.ts`, and the
+recommendation engine does not yet call `canSetAsDefault` against the
+device's available backends.

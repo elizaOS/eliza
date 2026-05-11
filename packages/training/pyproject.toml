@@ -19,6 +19,10 @@ dependencies = [
   "tiktoken>=0.8.0",
   "argostranslate>=1.11.0",
   "httpx>=0.27.0",
+  # Property-based testing for the privacy filter contract. Lightweight
+  # pure-Python dep; pinned only at the floor to match the rest of the
+  # test stack (pytest>=8).
+  "hypothesis>=6.100.0",
 ]
 
 [project.optional-dependencies]
@@ -62,6 +66,23 @@ train = [
   # vocab=248k makes this dominant) so we can push local training seq_len
   # from ~2k to ~8k on the same 16 GB budget.
   "liger-kernel>=0.5.0",
+  # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
+  # The wrapper prefers a vendored stock llama.cpp checkout under
+  # packages/training/vendor/llama.cpp (run scripts/vendor_llama_cpp.sh),
+  # but the llama-cpp-python wheel also ships a usable `gguf` python module
+  # so the HF→f16 GGUF convert step works without the vendored checkout.
+  # The Q4_K_M *quantize* step still needs the `llama-quantize` binary the
+  # vendor script builds. NOTE: the custom GGML types Q4_POLAR/QJL1_256/
+  # TurboQuant are NOT in this wheel — those need the elizaOS/llama.cpp
+  # fork via $LLAMA_CPP_DIR.
+  "llama-cpp-python>=0.3.0",
+  # convert_hf_to_gguf.py (vendored stock llama.cpp) imports `gguf` AND
+  # `mistral_common` at module load — both must be installed or the
+  # HF→GGUF convert step dies on import. The vendor script also installs
+  # these from requirements/requirements-convert_hf_to_gguf.txt, but pin
+  # them here so `uv run --extra train` works standalone.
+  "gguf>=0.10.0",
+  "mistral_common>=1.8.3",
   # pytest is consumed by the pre-flight gate (scripts/preflight.sh) and
   # by the CPU-only unit tests it sweeps.
   "pytest>=8.0.0",
@@ -117,7 +138,7 @@ serve = [
 # alone is not enough. `pythonpath = ["."]` makes the repo importable from
 # every test invocation, including the pre-flight gate (scripts/preflight.sh).
 pythonpath = ["."]
-testpaths = ["scripts"]
+testpaths = ["scripts", "benchmarks"]
 addopts = "-q"
 
 [tool.uv]

@@ -448,7 +448,7 @@ export function createCerebrasTeacher(runtime?: IAgentRuntime): TeacherModel {
           };
           return await recordLlmCall(runtime, details, async () => {
             const { getTrainingModelClient } = await import(
-              "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+              "./cerebras-eval-model.js"
             );
             const client = getTrainingModelClient();
             const result = await client({

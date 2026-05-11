@@ -38,8 +38,9 @@ def build_hermes_agent(
     direct endpoint experiments, but it requires ``HERMES_BASE_URL`` and
     bypasses the source harness setup.
     """
-    del base_url, api_key, temperature, reasoning_effort, max_tokens
+    del temperature, reasoning_effort, max_tokens
     try:
+        from hermes_adapter.client import HermesClient
         from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
     except ImportError as exc:  # pragma: no cover - import-only branch
         raise SystemExit(
@@ -47,7 +48,21 @@ def build_hermes_agent(
             "(packages/benchmarks/hermes-adapter). Install it in the active env."
         ) from exc
 
+    # Use in_process mode by default: the parent Python already has openai
+    # installed (the bench depends on litellm/openai), so we can drive the
+    # OpenAI-compatible Cerebras endpoint directly without requiring a
+    # hermes-agent venv subprocess.
+    client_kwargs: dict[str, Any] = {"mode": "in_process"}
+    if model:
+        client_kwargs["model"] = model
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    if api_key:
+        client_kwargs["api_key"] = api_key
+    client = HermesClient(**client_kwargs)
+
     return build_lifeops_bench_agent_fn(
+        client=client,
         model_name=model,
         system_prompt=(
             "You are running LifeOpsBench. Use the supplied tools exactly "

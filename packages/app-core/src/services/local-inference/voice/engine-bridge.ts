@@ -30,9 +30,11 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { localInferenceRoot } from "../paths";
+import { VoiceStartupError } from "./errors";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
+  NativeVerifierEvent,
 } from "./ffi-bindings";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
 import {
@@ -40,7 +42,25 @@ import {
   VoiceLifecycleError,
   type VoiceLifecycleLoaders,
 } from "./lifecycle";
-import { type CachedPhraseAudio, PhraseCache } from "./phrase-cache";
+import {
+  type CachedPhraseAudio,
+  DEFAULT_PHRASE_CACHE_SEED,
+  FIRST_AUDIO_FILLERS,
+  PhraseCache,
+} from "./phrase-cache";
+import {
+  VoicePipeline,
+  type VoicePipelineConfig,
+  type VoicePipelineDeps,
+  type VoicePipelineEvents,
+} from "./pipeline";
+import {
+  type DflashTextRunner,
+  LlamaServerDraftProposer,
+  LlamaServerTargetVerifier,
+  MissingAsrTranscriber,
+  StreamingTranscriberTokenStreamer,
+} from "./pipeline-impls";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
   type MmapRegionHandle,
@@ -50,44 +70,93 @@ import {
   DEFAULT_VOICE_PRESET_REL_PATH,
   SpeakerPresetCache,
 } from "./speaker-preset-cache";
+import {
+  AsrUnavailableError,
+  createStreamingTranscriber,
+  FfiStreamingTranscriber,
+  ffiSupportsStreamingAsr,
+} from "./transcriber";
 import type {
   AudioChunk,
   AudioSink,
   OmniVoiceBackend,
-  OmniVoiceTranscriber,
   Phrase,
   RejectedTokenRange,
   SchedulerConfig,
   SpeakerPreset,
+  StreamingTranscriber,
   TextToken,
   TranscriptionAudio,
+  VadEventSource,
 } from "./types";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
-const PHRASE_MAX_TOKENS_DEFAULT = 8;
+const PHRASE_MAX_TOKENS_DEFAULT = 30;
 const STUB_PCM_MS_PER_PHRASE = 100;
+const STUB_PCM_STREAM_CHUNKS = 4;
+
+/** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
+export { VoiceStartupError };
 
 /**
- * Structured startup failure. The engine MUST throw one of these when
- * voice mode is requested but cannot start (missing FFI, missing speaker
- * preset, missing fused build, manifest mismatch). The runtime then
- * refuses to activate the model — never silently degrades to text-only.
+ * One PCM segment delivered to a `StreamingTtsBackend.synthesizeStream`
+ * consumer (W9's scheduler) as TTS decodes it. `isFinal` marks the
+ * zero-length tail chunk that closes the phrase.
  */
-export class VoiceStartupError extends Error {
-  readonly code:
-    | "missing-ffi"
-    | "missing-speaker-preset"
-    | "missing-bundle-root"
-    | "missing-fused-build"
-    | "already-started"
-    | "not-started";
+export interface TtsPcmChunk {
+  pcm: Float32Array;
+  sampleRate: number;
+  isFinal: boolean;
+}
 
-  constructor(code: VoiceStartupError["code"], message: string) {
-    super(message);
-    this.name = "VoiceStartupError";
-    this.code = code;
-  }
+/**
+ * Streaming-TTS seam between the fused `libelizainference` runtime and
+ * W9's voice scheduler. The scheduler calls `synthesizeStream(...)` for
+ * a phrase and writes each delivered `pcm` segment into the
+ * `PcmRingBuffer` on the same scheduler tick (AGENTS.md §4 —
+ * phrase-chunk → TTS within one scheduler tick); returning `true` from
+ * `onChunk` (or flipping `cancelSignal.cancelled`) hard-cancels the
+ * in-flight forward pass at the next kernel boundary (barge-in /
+ * DFlash-rejected tail).
+ *
+ * Both `OmniVoiceBackend` implementations in this module satisfy it:
+ *   - `FfiOmniVoiceBackend` forwards to
+ *     `eliza_inference_tts_synthesize_stream` when the loaded build
+ *     advertises streaming TTS (`tts_stream_supported() == 1`), else it
+ *     synthesizes whole and emits the result as one body chunk + a final
+ *     tail (no silent "streaming" lie — the chunk count just collapses
+ *     to one when the build is non-streaming);
+ *   - `StubOmniVoiceBackend` emits deterministic synthetic PCM split
+ *     into a fixed number of chunks so scheduler tests can observe the
+ *     incremental handoff without a real model.
+ */
+export interface StreamingTtsBackend {
+  /**
+   * Synthesize `phrase` with `preset` and deliver PCM in chunks. The
+   * scheduler owns the ring-buffer write inside `onChunk`. Resolves with
+   * `cancelled: true` if `onChunk` requested a stop (or `cancelSignal`
+   * was set), `false` on a clean finish. The final `onChunk` call always
+   * has `isFinal: true` (possibly a zero-length `pcm`) so the consumer
+   * can settle per-phrase state.
+   */
+  synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }>;
+}
+
+/** True when `backend` implements the `StreamingTtsBackend` seam. */
+export function isStreamingTtsBackend(
+  backend: OmniVoiceBackend,
+): backend is OmniVoiceBackend & StreamingTtsBackend {
+  return (
+    typeof (backend as Partial<StreamingTtsBackend>).synthesizeStream ===
+    "function"
+  );
 }
 
 /**
@@ -96,10 +165,13 @@ export class VoiceStartupError extends Error {
  * cancel signal honoured at the kernel-tick boundary so barge-in tests
  * observe cancellation without waiting on a real model.
  */
-export class StubOmniVoiceBackend implements OmniVoiceBackend {
+export class StubOmniVoiceBackend
+  implements OmniVoiceBackend, StreamingTtsBackend
+{
   readonly id = "stub" as const;
   private readonly sampleRate: number;
   calls = 0;
+  streamCalls = 0;
 
   constructor(sampleRate = SAMPLE_RATE_DEFAULT) {
     this.sampleRate = sampleRate;
@@ -125,6 +197,47 @@ export class StubOmniVoiceBackend implements OmniVoiceBackend {
       sampleRate: this.sampleRate,
     };
   }
+
+  async synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }> {
+    this.streamCalls++;
+    const totalSamples = Math.floor(
+      (this.sampleRate * STUB_PCM_MS_PER_PHRASE) / 1000,
+    );
+    const perChunk = Math.max(
+      1,
+      Math.ceil(totalSamples / STUB_PCM_STREAM_CHUNKS),
+    );
+    let cancelled = false;
+    for (let off = 0; off < totalSamples; off += perChunk) {
+      args.onKernelTick?.();
+      if (args.cancelSignal.cancelled) {
+        cancelled = true;
+        break;
+      }
+      const n = Math.min(perChunk, totalSamples - off);
+      const want = args.onChunk({
+        pcm: new Float32Array(n),
+        sampleRate: this.sampleRate,
+        isFinal: false,
+      });
+      if (want === true || args.cancelSignal.cancelled) {
+        cancelled = true;
+        break;
+      }
+    }
+    args.onChunk({
+      pcm: new Float32Array(0),
+      sampleRate: this.sampleRate,
+      isFinal: true,
+    });
+    return { cancelled };
+  }
 }
 
 /**
@@ -142,7 +255,9 @@ export class StubOmniVoiceBackend implements OmniVoiceBackend {
  * the engine layer's startup-error taxonomy stays unified. No silent
  * fallback (AGENTS.md §3 + §9).
  */
-export class FfiOmniVoiceBackend implements OmniVoiceBackend {
+export class FfiOmniVoiceBackend
+  implements OmniVoiceBackend, StreamingTtsBackend
+{
   readonly id = "ffi" as const;
   private readonly ffi: ElizaInferenceFfi;
   private readonly getContext: () => ElizaInferenceContextHandle;
@@ -172,6 +287,21 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
     this.maxSecondsPerPhrase = args.maxSecondsPerPhrase ?? 6;
   }
 
+  /** True when the loaded `libelizainference` advertises streaming TTS. */
+  supportsStreamingTts(): boolean {
+    return this.ffi.ttsStreamSupported();
+  }
+
+  /**
+   * One-shot synthesis returning the whole phrase as an `AudioChunk`.
+   * When the loaded build advertises streaming TTS this routes through
+   * `eliza_inference_tts_synthesize_stream` and concatenates the
+   * delivered chunks (so the chunk-aware native path is exercised even
+   * for whole-phrase callers); otherwise it uses the batch
+   * `eliza_inference_tts_synthesize` symbol. `cancelSignal` is honoured
+   * at chunk boundaries — a cancelled stream returns whatever was
+   * synthesized so far.
+   */
   async synthesize(args: {
     phrase: Phrase;
     preset: SpeakerPreset;
@@ -180,6 +310,36 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
   }): Promise<AudioChunk> {
     args.onKernelTick?.();
     const ctx = this.getContext();
+    if (this.ffi.ttsStreamSupported()) {
+      const parts: Float32Array[] = [];
+      let total = 0;
+      this.ffi.ttsSynthesizeStream({
+        ctx,
+        text: args.phrase.text,
+        speakerPresetId: args.preset.voiceId,
+        onChunk: ({ pcm, isFinal }) => {
+          args.onKernelTick?.();
+          if (!isFinal && pcm.length > 0) {
+            parts.push(pcm);
+            total += pcm.length;
+          }
+          return args.cancelSignal.cancelled === true;
+        },
+      });
+      const merged = new Float32Array(total);
+      let off = 0;
+      for (const part of parts) {
+        merged.set(part, off);
+        off += part.length;
+      }
+      return {
+        phraseId: args.phrase.id,
+        fromIndex: args.phrase.fromIndex,
+        toIndex: args.phrase.toIndex,
+        pcm: merged,
+        sampleRate: this.sampleRate,
+      };
+    }
     const out = new Float32Array(this.sampleRate * this.maxSecondsPerPhrase);
     const samples = this.ffi.ttsSynthesize({
       ctx,
@@ -196,7 +356,109 @@ export class FfiOmniVoiceBackend implements OmniVoiceBackend {
     };
   }
 
+  /**
+   * Streaming synthesis: forwards to `eliza_inference_tts_synthesize_stream`
+   * when the build advertises a streaming decoder. When it does NOT
+   * (`tts_stream_supported() == 0`), this still satisfies the seam — but
+   * with exactly one body chunk + one final tail (the batch synthesis
+   * result), so the caller never mistakes a non-streaming build for a
+   * streaming one (no fallback sludge — the chunk count is the honest
+   * signal). The native side checks `ctx->tts_cancel` (set via
+   * `eliza_inference_cancel_tts`) on top of the `onChunk` return value,
+   * so a barge-in `cancelTts` interrupts the in-flight forward pass even
+   * if the JS callback hasn't been reached yet.
+   */
+  async synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }> {
+    const ctx = this.getContext();
+    if (this.ffi.ttsStreamSupported()) {
+      const { cancelled } = this.ffi.ttsSynthesizeStream({
+        ctx,
+        text: args.phrase.text,
+        speakerPresetId: args.preset.voiceId,
+        onChunk: ({ pcm, isFinal }) => {
+          args.onKernelTick?.();
+          if (args.cancelSignal.cancelled) return true;
+          const want = args.onChunk({
+            pcm,
+            sampleRate: this.sampleRate,
+            isFinal,
+          });
+          // Re-read the (mutable) cancel flag — the chunk callback or a
+          // concurrent barge-in may have flipped it.
+          return want === true || args.cancelSignal.cancelled;
+        },
+      });
+      return { cancelled };
+    }
+    // Non-streaming build: one batch forward pass, surfaced as a single
+    // body chunk + final tail.
+    args.onKernelTick?.();
+    const out = new Float32Array(this.sampleRate * this.maxSecondsPerPhrase);
+    const samples = this.ffi.ttsSynthesize({
+      ctx,
+      text: args.phrase.text,
+      speakerPresetId: args.preset.voiceId,
+      out,
+    });
+    let cancelled = args.cancelSignal.cancelled === true;
+    if (!cancelled && samples > 0) {
+      const want = args.onChunk({
+        pcm: out.subarray(0, samples),
+        sampleRate: this.sampleRate,
+        isFinal: false,
+      });
+      cancelled = want === true || args.cancelSignal.cancelled === true;
+    }
+    args.onChunk({
+      pcm: new Float32Array(0),
+      sampleRate: this.sampleRate,
+      isFinal: true,
+    });
+    return { cancelled };
+  }
+
+  /** Hard-cancel any in-flight TTS forward pass on this backend's context. */
+  cancelTts(): void {
+    this.ffi.cancelTts(this.getContext());
+  }
+
+  /**
+   * Batch transcription. Routes to the fused streaming ASR ABI (the
+   * final path) when the loaded library advertises a working decoder
+   * (`eliza_inference_asr_stream_supported() == 1`): a one-shot run
+   * feeds the whole buffer as a single frame and `flush()`es. When the
+   * library does not yet implement streaming ASR, falls through to the
+   * v1 batch `eliza_inference_asr_transcribe` symbol — which is itself a
+   * stub returning `ELIZA_ERR_NOT_IMPLEMENTED` until W7's fused build —
+   * so the failure is a real, surfaced error, not a silent empty
+   * transcript. (The whisper.cpp interim adapter lives a layer up in
+   * `EngineVoiceBridge.transcribePcm` / `createStreamingTranscriber`,
+   * which has the bundle context to choose it.)
+   */
   async transcribe(args: TranscriptionAudio): Promise<string> {
+    if (ffiSupportsStreamingAsr(this.ffi)) {
+      const transcriber = new FfiStreamingTranscriber({
+        ffi: this.ffi,
+        getContext: this.getContext,
+      });
+      try {
+        transcriber.feed({
+          pcm: args.pcm,
+          sampleRate: args.sampleRate,
+          timestampMs: 0,
+        });
+        const final = await transcriber.flush();
+        return final.partial;
+      } finally {
+        transcriber.dispose();
+      }
+    }
     return this.ffi.asrTranscribe({
       ctx: this.getContext(),
       pcm: args.pcm,
@@ -223,7 +485,7 @@ export interface EngineVoiceBridgeOptions {
   sampleRate?: number;
   /** Override ring buffer capacity (samples). Defaults to 4 s @ 24 kHz. */
   ringBufferCapacity?: number;
-  /** Phrase chunker `maxTokensPerPhrase`. Defaults to env or 8. */
+  /** Phrase chunker `maxTokensPerPhrase`. Defaults to env or 30. */
   maxTokensPerPhrase?: number;
   /** Max concurrent TTS phrase dispatches. Defaults to env or scheduler default. */
   maxInFlightPhrases?: number;
@@ -282,6 +544,12 @@ export class EngineVoiceBridge {
   private readonly ffiContextRef: FfiContextRef | null;
   readonly asrAvailable: boolean;
   private readonly bundleRoot: string;
+  /** The phrase cache the scheduler dispatches against — held so the bridge
+   *  can answer "is phrase X cached" for the first-audio filler and seed the
+   *  idle-time auto-prewarm. */
+  private readonly phraseCache: PhraseCache;
+  /** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
+  private activePipeline: VoicePipeline | null = null;
 
   private constructor(
     scheduler: VoiceScheduler,
@@ -291,6 +559,7 @@ export class EngineVoiceBridge {
     ffi: ElizaInferenceFfi | null,
     ffiContextRef: FfiContextRef | null,
     asrAvailable: boolean,
+    phraseCache: PhraseCache,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
@@ -299,6 +568,7 @@ export class EngineVoiceBridge {
     this.ffi = ffi;
     this.ffiContextRef = ffiContextRef;
     this.asrAvailable = asrAvailable;
+    this.phraseCache = phraseCache;
   }
 
   get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -460,7 +730,18 @@ export class EngineVoiceBridge {
       ffiHandle,
       ffiContextRef,
       asrAvailable,
+      phraseCache,
     );
+  }
+
+  /**
+   * True when this bridge runs against a TTS backend that produces real
+   * audio — i.e. anything but the `StubOmniVoiceBackend` (which yields
+   * zeros and is tests-only). The prewarm + first-audio-filler paths gate
+   * on this so the cache never holds silence (AGENTS.md §3 — no fake data).
+   */
+  hasRealTtsBackend(): boolean {
+    return !(this.backend instanceof StubOmniVoiceBackend);
   }
 
   /**
@@ -519,6 +800,13 @@ export class EngineVoiceBridge {
    * within one kernel tick).
    */
   triggerBargeIn(): void {
+    // Cancel the text side first (stop ASR / drafter / verifier at the next
+    // kernel boundary), then the audio side (ring-buffer drain + chunker
+    // flush + in-flight TTS cancel). The pipeline also wires its own
+    // barge-in listener onto the scheduler, so `onMicActive()` alone would
+    // suffice — calling `cancel()` first just stops the next HTTP body
+    // sooner.
+    this.activePipeline?.cancel();
     this.scheduler.bargeIn.onMicActive();
   }
 
@@ -538,6 +826,73 @@ export class EngineVoiceBridge {
     return encodeMonoPcm16Wav(chunk.pcm, chunk.sampleRate);
   }
 
+  /**
+   * The streaming-TTS seam W9's scheduler drives: returns the active
+   * backend as a `StreamingTtsBackend` (`FfiOmniVoiceBackend` against the
+   * fused build, `StubOmniVoiceBackend` for tests). The scheduler calls
+   * `synthesizeStream(...)` for each phrase and writes the delivered PCM
+   * segments into its `PcmRingBuffer` on the same scheduler tick. Returns
+   * null when an injected `backendOverride` does not implement the seam.
+   */
+  streamingTtsBackend(): StreamingTtsBackend | null {
+    return isStreamingTtsBackend(this.backend) ? this.backend : null;
+  }
+
+  /**
+   * True when the loaded fused `libelizainference` runs the DFlash
+   * speculative loop in-process and can emit native accept/reject
+   * verifier events. When true, callers (W9's turn controller /
+   * `dflash-server.ts` wiring) should subscribe via
+   * `subscribeNativeVerifier()` and SKIP the `llama-server` SSE
+   * `{"verifier":{"rejected":[a,b]}}` side-channel — the SSE path stays
+   * only as the non-fused desktop text fallback. False whenever there is
+   * no FFI handle or the build pre-dates the verifier callback.
+   */
+  hasNativeVerifier(): boolean {
+    return this.ffi !== null && this.ffiCtx !== null;
+  }
+
+  /**
+   * Register the native DFlash verifier callback on the fused runtime
+   * and adapt each `NativeVerifierEvent` into the rollback-queue domain:
+   * accepted/corrected token-id ranges become `VerifierStreamEvent`s and
+   * rejected ranges become `RejectedTokenRange`s fed to `pushRejectedRange`.
+   * The returned handle MUST be `close()`d (clears the native callback +
+   * frees the bun:ffi `JSCallback`). Throws if no fused runtime is loaded.
+   *
+   * `onEvent` (optional) also receives the raw `NativeVerifierEvent` for
+   * callers that want the accepted-token stream (W9's phrase-chunker can
+   * commit accepted draft tokens directly off this instead of round-trip
+   * SSE deltas).
+   */
+  subscribeNativeVerifier(onEvent?: (event: NativeVerifierEvent) => void): {
+    close(): void;
+  } {
+    if (!this.ffi) {
+      throw new VoiceStartupError(
+        "missing-ffi",
+        "[voice] subscribeNativeVerifier requires a loaded fused libelizainference handle",
+      );
+    }
+    const ctx = this.ffiContextRef
+      ? this.ffiContextRef.ensure()
+      : (() => {
+          throw new VoiceStartupError(
+            "missing-ffi",
+            "[voice] subscribeNativeVerifier: no FFI context provider",
+          );
+        })();
+    return this.ffi.setVerifierCallback(ctx, (event) => {
+      onEvent?.(event);
+      if (event.rejectedFrom >= 0 && event.rejectedTo >= event.rejectedFrom) {
+        void this.pushRejectedRange({
+          fromIndex: event.rejectedFrom,
+          toIndex: event.rejectedTo,
+        });
+      }
+    });
+  }
+
   async prewarmPhrases(
     texts: ReadonlyArray<string>,
     opts: { concurrency?: number } = {},
@@ -546,21 +901,175 @@ export class EngineVoiceBridge {
     return this.scheduler.prewarmPhrases(texts, opts);
   }
 
+  /**
+   * Idle-time auto-prewarm hook: synthesize the canonical phrase-cache seed
+   * (`DEFAULT_PHRASE_CACHE_SEED`) so common openers/acks are cached before
+   * the next turn. The voice bridge / connector calls this when the loop is
+   * idle. No-op (returns `{ warmed: 0, cached: 0 }`) unless a real TTS
+   * backend is present and voice is armed — we never cache the stub's zeros
+   * (AGENTS.md §3).
+   */
+  async prewarmIdlePhrases(
+    opts: { concurrency?: number } = {},
+  ): Promise<{ warmed: number; cached: number }> {
+    if (!this.hasRealTtsBackend()) return { warmed: 0, cached: 0 };
+    if (this.lifecycle.current().kind !== "voice-on") {
+      return { warmed: 0, cached: 0 };
+    }
+    return this.scheduler.prewarmPhrases(DEFAULT_PHRASE_CACHE_SEED, opts);
+  }
+
+  /**
+   * First-audio filler (AGENTS.md §4 / H4): the instant W1's VAD fires
+   * `speech-start`, play a short cached acknowledgement ("one sec", "okay",
+   * …) into the audio sink to mask first-token latency. W9's turn controller
+   * owns the call site (it gets the `speech-start` event and the cutover to
+   * real `replyText` audio); this method is the seam.
+   *
+   * It only ever plays audio that is *already in the phrase cache* — it does
+   * not synthesize. Returns the filler text that was played, or `null` if no
+   * filler was played (no real TTS backend, voice not armed, or none of the
+   * filler phrases are cached). When real reply audio is ready, W9 cuts over
+   * by writing it through the scheduler as usual (a `triggerBargeIn()` or a
+   * direct `ringBuffer.drain()` truncates any still-playing filler first).
+   */
+  playFirstAudioFiller(): string | null {
+    if (!this.hasRealTtsBackend()) return null;
+    if (this.lifecycle.current().kind !== "voice-on") return null;
+    for (const text of FIRST_AUDIO_FILLERS) {
+      const cached = this.phraseCache.get(text);
+      if (!cached || cached.pcm.length === 0) continue;
+      this.scheduler.ringBuffer.write(cached.pcm);
+      this.scheduler.ringBuffer.flushToSink();
+      return cached.text;
+    }
+    return null;
+  }
+
+  /**
+   * Construct a `StreamingTranscriber` for live ASR — the contract the
+   * voice turn controller (W9) feeds mic frames into and the barge-in
+   * word-confirm gate (W1) listens to. Resolves the adapter chain:
+   *   fused `libelizainference` streaming ASR (final path, gated on a
+   *   working decoder AND a bundled ASR model) → whisper.cpp interim
+   *   adapter → `AsrUnavailableError`.
+   *
+   * Pass W1's `vad` event stream to gate decoding to active speech
+   * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
+   */
+  createStreamingTranscriber(opts?: {
+    vad?: VadEventSource;
+  }): StreamingTranscriber {
+    this.assertVoiceOn("create streaming transcriber");
+    const contextRef = this.ffiContextRef;
+    return createStreamingTranscriber({
+      ffi: this.ffi,
+      getContext: contextRef ? () => contextRef.ensure() : undefined,
+      asrBundlePresent: this.asrAvailable,
+      vad: opts?.vad,
+    });
+  }
+
+  /**
+   * Batch transcription: one-shot over a whole PCM buffer. Drives a
+   * `StreamingTranscriber` (fused streaming ASR or whisper.cpp interim)
+   * — feeds the buffer as a single frame, `flush()`es, returns the final
+   * transcript. Throws `AsrUnavailableError` when no ASR backend is
+   * available — never a silent empty string.
+   */
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     this.assertVoiceOn("transcribe audio");
-    if (!this.asrAvailable) {
-      throw new VoiceStartupError(
-        "missing-fused-build",
-        `[voice] Local transcription is unavailable for this bundle: no ASR model files were installed under ${path.join(this.bundleRoot, "asr")}.`,
-      );
+    const transcriber = this.createStreamingTranscriber();
+    try {
+      transcriber.feed({
+        pcm: args.pcm,
+        sampleRate: args.sampleRate,
+        timestampMs: 0,
+      });
+      const final = await transcriber.flush();
+      return final.partial;
+    } finally {
+      transcriber.dispose();
     }
-    if (!isTranscriber(this.backend)) {
-      throw new VoiceStartupError(
-        "missing-fused-build",
-        `[voice] Local transcription requires the fused omnivoice FFI backend; current backend does not expose ASR.`,
-      );
+  }
+
+  /**
+   * Run one fused mic→speech turn through the overlapped `VoicePipeline`
+   * (AGENTS.md §4): ASR streams; the instant its last token lands the
+   * DFlash drafter and the target verifier kick off concurrently, accepted
+   * tokens flow into this bridge's phrase chunker → TTS → ring buffer on
+   * the same tick, rejected draft tails roll back not-yet-spoken audio, and
+   * a mic-VAD barge-in cancels everything at the next kernel boundary.
+   *
+   * The drafter + verifier are wired against the running DFlash llama-server
+   * (`textRunner`); the transcriber is the fused ABI's ASR when this bridge
+   * was started with the FFI backend and the bundle ships an `asr/` region.
+   * In voice mode a missing ASR region is a hard `VoiceStartupError` — no
+   * silent cloud fallback (AGENTS.md §3 + §7).
+   *
+   * Resolves with the turn's exit reason. Throws if no turn is wired or one
+   * is already in flight. The created pipeline is held until the turn ends
+   * so `bargeIn()` can cancel it.
+   */
+  async runVoiceTurn(
+    audio: TranscriptionAudio,
+    textRunner: DflashTextRunner,
+    config: VoicePipelineConfig,
+    events?: VoicePipelineEvents,
+  ): Promise<"done" | "token-cap" | "cancelled"> {
+    this.assertVoiceOn("run a voice turn");
+    const pipeline = this.buildPipeline(textRunner, config, events);
+    this.activePipeline = pipeline;
+    try {
+      return await pipeline.run(audio);
+    } finally {
+      if (this.activePipeline === pipeline) this.activePipeline = null;
     }
-    return this.backend.transcribe(args);
+  }
+
+  /** Construct the `VoicePipeline` for this bridge (no-run). Exposed for tests. */
+  buildPipeline(
+    textRunner: DflashTextRunner,
+    config: VoicePipelineConfig,
+    events?: VoicePipelineEvents,
+  ): VoicePipeline {
+    const transcriber = this.resolveTranscriber();
+    const deps: VoicePipelineDeps = {
+      scheduler: this.scheduler,
+      transcriber,
+      drafter: new LlamaServerDraftProposer(textRunner),
+      verifier: new LlamaServerTargetVerifier(textRunner),
+    };
+    return new VoicePipeline(deps, config, events);
+  }
+
+  /**
+   * Resolve the pipeline's ASR backend: a real `StreamingTranscriber`
+   * (fused `eliza_inference_asr_stream_*` decoder when the loaded build
+   * advertises one and the bundle ships an `asr/` region, else the
+   * whisper.cpp interim adapter) adapted onto the pipeline's batch
+   * token-iterator (`StreamingTranscriberTokenStreamer`). When no ASR
+   * backend is available the failure is surfaced as a `MissingAsrTranscriber`
+   * that throws on first use — AGENTS.md §3, no silent cloud fallback.
+   */
+  private resolveTranscriber():
+    | StreamingTranscriberTokenStreamer
+    | MissingAsrTranscriber {
+    const ctxRef = this.ffiContextRef;
+    let streaming: StreamingTranscriber;
+    try {
+      streaming = createStreamingTranscriber({
+        ffi: this.ffi,
+        getContext: ctxRef ? () => ctxRef.ensure() : undefined,
+        asrBundlePresent: this.asrAvailable,
+      });
+    } catch (err) {
+      if (err instanceof AsrUnavailableError) {
+        return new MissingAsrTranscriber(err.message);
+      }
+      throw err;
+    }
+    return new StreamingTranscriberTokenStreamer(streaming);
   }
 
   /** Diagnostic accessor — bundle root the bridge is wired against. */
@@ -579,14 +1088,6 @@ export class EngineVoiceBridge {
       `[voice] Cannot ${action} while lifecycle is ${state.kind}. Call armVoice() and wait for voice-on first.`,
     );
   }
-}
-
-function isTranscriber(
-  backend: OmniVoiceBackend,
-): backend is OmniVoiceBackend & OmniVoiceTranscriber {
-  return (
-    typeof (backend as Partial<OmniVoiceTranscriber>).transcribe === "function"
-  );
 }
 
 export function encodeMonoPcm16Wav(

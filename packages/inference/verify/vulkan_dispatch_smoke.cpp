@@ -379,6 +379,118 @@ static bool run_polar_smoke(bool use_qjl, float * max_err_out) {
     return ok;
 }
 
+// GGML_OP_FUSED_ATTN_QJL_TBQ — fused QJL-K score + TBQ3-V mix, online softmax.
+// Numeric comparison against eliza_fused_attn_qjl_tbq3() (the backend-neutral C
+// reference; bit-exact to the fork's CPU op). Output is [head_dim=128, n_heads]
+// fp32 for q_pos = 0. Self-contained graph build (compute_graph above is
+// score-shaped); mirrors the same backend-init / supports-op / compute flow.
+static bool run_fused_attn_smoke(float * max_err_out) {
+    constexpr int PROJ_DIM = ELIZA_QJL_PROJECTION_DIM;  // 256
+    static_assert(PROJ_DIM == QJL_PROJ_DIM, "QJL sketch dim mismatch");
+    const float sm_scale = 1.0f / std::sqrt((float) HEAD_DIM);
+
+    const size_t k_row_size = ggml_row_size(GGML_TYPE_QJL1_256, HEAD_DIM);
+    const size_t v_row_size = ggml_row_size(GGML_TYPE_TBQ3_0, HEAD_DIM);
+    if (k_row_size != sizeof(eliza_block_qjl1_256) ||
+        v_row_size != sizeof(eliza_block_tbq3_0) * ELIZA_FUSED_TBQ_PER_TOKEN) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] FusedAttn row-size mismatch: k ggml=%zu local=%zu, v ggml=%zu local=%zu*%d\n",
+            k_row_size, sizeof(eliza_block_qjl1_256), v_row_size,
+            sizeof(eliza_block_tbq3_0), ELIZA_FUSED_TBQ_PER_TOKEN);
+        return false;
+    }
+
+    std::vector<float> k_rows(N_TOKENS * N_KV_HEADS * HEAD_DIM);
+    std::vector<float> v_rows(N_TOKENS * N_KV_HEADS * HEAD_DIM);
+    std::vector<float> q_sketch(N_HEADS * PROJ_DIM);
+    fill_k_rows(k_rows);
+    for (int row = 0; row < N_TOKENS * N_KV_HEADS; ++row) {
+        for (int i = 0; i < HEAD_DIM; ++i) {
+            v_rows[row * HEAD_DIM + i] =
+                0.45f * std::cos(0.013f * (float) (row * HEAD_DIM + i)) -
+                0.25f * std::sin(0.059f * (float) (i + 5 * row));
+        }
+    }
+    for (int h = 0; h < N_HEADS; ++h) {
+        for (int j = 0; j < PROJ_DIM; ++j) {
+            q_sketch[h * PROJ_DIM + j] =
+                std::cos(0.021f * (float) (h * PROJ_DIM + j)) -
+                0.27f * std::sin(0.043f * (float) j);
+        }
+    }
+
+    std::vector<uint8_t> packed_k(k_row_size * N_TOKENS * N_KV_HEADS);
+    std::vector<uint8_t> packed_v(v_row_size * N_TOKENS * N_KV_HEADS);
+    const size_t wk = ggml_quantize_chunk(GGML_TYPE_QJL1_256, k_rows.data(), packed_k.data(),
+                                          0, N_TOKENS * N_KV_HEADS, HEAD_DIM, nullptr);
+    const size_t wv = ggml_quantize_chunk(GGML_TYPE_TBQ3_0, v_rows.data(), packed_v.data(),
+                                          0, N_TOKENS * N_KV_HEADS, HEAD_DIM, nullptr);
+    if (wk != packed_k.size() || wv != packed_v.size()) {
+        std::fprintf(stderr, "[vulkan_dispatch_smoke] FusedAttn quantize wrote k=%zu/%zu v=%zu/%zu\n",
+                     wk, packed_k.size(), wv, packed_v.size());
+        return false;
+    }
+
+    std::vector<float> expected(N_HEADS * HEAD_DIM);
+    eliza_fused_attn_qjl_tbq3(
+        q_sketch.data(),
+        reinterpret_cast<const eliza_block_qjl1_256 *>(packed_k.data()),
+        reinterpret_cast<const eliza_block_tbq3_0 *>(packed_v.data()),
+        N_HEADS, N_KV_HEADS, N_TOKENS, sm_scale, expected.data());
+
+    ggml_context * ctx = ggml_init({ 16 * 1024 * 1024, nullptr, true });
+    if (!ctx) return false;
+    ggml_tensor * q  = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, PROJ_DIM, N_HEADS, 1, 1);
+    ggml_tensor * pk = ggml_new_tensor_4d(ctx, GGML_TYPE_QJL1_256, HEAD_DIM, N_TOKENS, N_KV_HEADS, 1);
+    ggml_tensor * pv = ggml_new_tensor_4d(ctx, GGML_TYPE_TBQ3_0, HEAD_DIM, N_TOKENS, N_KV_HEADS, 1);
+    ggml_tensor * out = ggml_fused_attn_qjl_tbq(ctx, q, pk, pv, N_KV_HEADS, sm_scale);
+    ggml_cgraph * gf = ggml_new_graph(ctx);
+    ggml_build_forward_expand(gf, out);
+
+    ggml_backend_t backend = ggml_backend_vk_init(0);
+    if (!backend) { ggml_free(ctx); return false; }
+    if (!ggml_backend_supports_op(backend, out)) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] ggml-vulkan does not advertise support for GGML_OP_FUSED_ATTN_QJL_TBQ\n");
+        ggml_backend_free(backend);
+        ggml_free(ctx);
+        return false;
+    }
+    ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
+    if (!buf) { ggml_backend_free(backend); ggml_free(ctx); return false; }
+    ggml_backend_tensor_set(q, q_sketch.data(), 0, q_sketch.size() * sizeof(float));
+    ggml_backend_tensor_set(pk, packed_k.data(), 0, packed_k.size());
+    ggml_backend_tensor_set(pv, packed_v.data(), 0, packed_v.size());
+    const ggml_status st = ggml_backend_graph_compute(backend, gf);
+    bool ok = st == GGML_STATUS_SUCCESS;
+    if (!ok) {
+        std::fprintf(stderr, "[vulkan_dispatch_smoke] FusedAttn graph_compute status=%d\n", (int) st);
+    }
+    std::vector<float> got(N_HEADS * HEAD_DIM, 0.0f);
+    if (ok) ggml_backend_tensor_get(out, got.data(), 0, got.size() * sizeof(float));
+    ggml_backend_buffer_free(buf);
+    ggml_backend_free(backend);
+    ggml_free(ctx);
+    if (!ok) return false;
+
+    float max_err = 0.0f;
+    for (int h = 0; h < N_HEADS; ++h) {
+        for (int d = 0; d < HEAD_DIM; ++d) {
+            const int idx = h * HEAD_DIM + d;
+            const float err = std::fabs(expected[idx] - got[idx]);
+            if (!std::isfinite(got[idx]) || err > TOL) {
+                std::fprintf(stderr,
+                    "[vulkan_dispatch_smoke] FusedAttn FAIL h=%d d=%d expected=%+.6f got=%+.6f diff=%.3e\n",
+                    h, d, expected[idx], got[idx], err);
+                return false;
+            }
+            if (err > max_err) max_err = err;
+        }
+    }
+    *max_err_out = max_err;
+    return true;
+}
+
 } // namespace
 
 int main() {
@@ -401,31 +513,33 @@ int main() {
     struct Case {
         const char * label;
         bool (*run)(float *);
+        int count;
     };
 
     const Case cases[] = {
-        { "GGML_OP_ATTN_SCORE_QJL", run_qjl_smoke },
+        { "GGML_OP_ATTN_SCORE_QJL", run_qjl_smoke, N_HEADS * N_TOKENS },
         { "GGML_OP_ATTN_SCORE_TBQ/turbo3", [](float * e) {
             return run_tbq_smoke<eliza_block_turbo3_0>(
                 "TurboQuant3", GGML_TYPE_TBQ3_0,
                 quantize_turbo3_adapter, dot_turbo3_adapter, 4, e);
-        }},
+        }, N_HEADS * N_TOKENS },
         { "GGML_OP_ATTN_SCORE_TBQ/turbo4", [](float * e) {
             return run_tbq_smoke<eliza_block_turbo4_0>(
                 "TurboQuant4", GGML_TYPE_TBQ4_0,
                 quantize_turbo4_adapter, dot_turbo4_adapter, 4, e);
-        }},
+        }, N_HEADS * N_TOKENS },
         { "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq", [](float * e) {
             return run_tbq_smoke<eliza_block_turbo3_tcq>(
                 "TurboQuant3_TCQ", GGML_TYPE_TBQ3_TCQ,
                 quantize_turbo3_tcq_adapter, dot_turbo3_tcq_adapter, 1, e);
-        }},
+        }, N_HEADS * N_TOKENS },
         { "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0", [](float * e) {
             return run_polar_smoke(false, e);
-        }},
+        }, N_HEADS * N_TOKENS },
         { "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1", [](float * e) {
             return run_polar_smoke(true, e);
-        }},
+        }, N_HEADS * N_TOKENS },
+        { "GGML_OP_FUSED_ATTN_QJL_TBQ", run_fused_attn_smoke, N_HEADS * HEAD_DIM },
     };
 
     int failures = 0;
@@ -436,8 +550,8 @@ int main() {
             ++failures;
             continue;
         }
-        std::printf("[vulkan_dispatch_smoke] PASS %s: %d scores, max diff %.3e\n",
-                    c.label, N_HEADS * N_TOKENS, max_err);
+        std::printf("[vulkan_dispatch_smoke] PASS %s: %d outputs, max diff %.3e\n",
+                    c.label, c.count, max_err);
     }
 
     if (failures != 0) {

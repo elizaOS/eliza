@@ -54,17 +54,97 @@ export interface TranscriptionAudio {
   sampleRate: number;
 }
 
-export interface OmniVoiceTranscriber {
-  transcribe(args: TranscriptionAudio): Promise<string>;
+/* -------------------------------------------------------------------- *
+ * Streaming ASR — frame-fed transcription with incremental partials.
+ *
+ * Owned jointly by the transcriber adapters (`voice/transcriber.ts`), the
+ * VAD gating + barge-in word-confirm (`voice/vad.ts`, `voice/barge-in.ts`),
+ * and the turn controller / speculative-on-pause path. The
+ * `StreamingTranscriber` below is the meeting-point contract; the two
+ * adapters (fused Qwen3-ASR via libelizainference, interim whisper.cpp)
+ * implement it in `voice/transcriber.ts`. It consumes the canonical
+ * `PcmFrame` (defined below in the audio front-end section) off a
+ * `MicSource` and is gated by the `VadEvent` stream.
+ *
+ * NOTE on the older `pipeline.ts::AsrTokenStreamer`: that one models a
+ * *batch-buffer → token iterator* (the overlapped `VoicePipeline` scaffold).
+ * This one models a *live PCM-frame feed → partial-transcript events*. They
+ * are different layers; `pipeline-impls.ts` adapts a `StreamingTranscriber`
+ * onto `AsrTokenStreamer` for the pipeline.
+ * -------------------------------------------------------------------- */
+
+/** A running or final transcript snapshot from a `StreamingTranscriber`. */
+export interface TranscriptUpdate {
+  /** The full running transcript (not a delta) at this point. */
+  partial: string;
+  /** True for the snapshot emitted by `flush()` / on `speech-end`. */
+  isFinal: boolean;
+  /**
+   * Text-model token ids for `partial`, when the backend can supply them
+   * cheaply (fused Qwen3-ASR shares the text vocabulary). Absent for the
+   * whisper.cpp interim adapter (different tokenizer — re-tokenization is
+   * the LLM stage's job there).
+   */
+  tokens?: number[];
+}
+
+/** Events a `StreamingTranscriber` emits while consuming PCM frames. */
+export type TranscriberEvent =
+  | { kind: "partial"; update: TranscriptUpdate }
+  | { kind: "final"; update: TranscriptUpdate }
+  /**
+   * Fired the first instant ≥1 real word is recognized in the current
+   * speech segment. Wired to W1's barge-in word-confirm gate
+   * (`onWordsDetected`) so the agent hard-stops TTS + aborts in-flight
+   * LLM/drafter generation only on real speech, not a blip.
+   */
+  | { kind: "words"; words: string[] };
+
+export type TranscriberEventListener = (event: TranscriberEvent) => void;
+
+/**
+ * Live transcription. `feed()` is called per PCM frame off a `MicSource`.
+ * The adapter runs windowed decode passes internally and emits `partial`
+ * events as the running transcript grows; `flush()` force-finalizes (call
+ * it when the VAD reports `speech-end`). Implementations gate on the VAD
+ * event stream — they only decode while the VAD is in `speech-active`.
+ *
+ * No silent degrade: a transcriber whose backend is unavailable throws on
+ * construction (or on first `feed`), it does not quietly produce empty
+ * transcripts.
+ */
+export interface StreamingTranscriber {
+  /** Feed one PCM frame. Frames received while VAD is not active are buffered/ignored per the VAD-gating policy. */
+  feed(frame: PcmFrame): void;
+  /**
+   * Force-finalize: drain any buffered audio, run a final decode pass,
+   * emit the `final` event, and resolve with the final transcript. Safe
+   * to call when no audio is buffered (resolves with an empty final).
+   * After `flush()` the transcriber is reset and ready for the next
+   * speech segment.
+   */
+  flush(): Promise<TranscriptUpdate>;
+  /** Subscribe to transcriber events. Returns an unsubscribe fn. */
+  on(listener: TranscriberEventListener): () => void;
+  /** Release any held native resources (FFI stream handle, temp files). Idempotent. */
+  dispose(): void;
 }
 
 export interface PhraseChunkerConfig {
-  maxTokensPerPhrase: number;
+  /**
+   * Hard word cap before a phrase is force-flushed even without a
+   * `, . ! ?` boundary. Defaults to 30 (the brief's A6 "first 30 words").
+   */
+  maxTokensPerPhrase?: number;
+  /**
+   * Characters that close a phrase. Default `, . ! ?` — a comma is a
+   * boundary so the first clause reaches TTS without waiting for a
+   * sentence-final mark.
+   */
   sentenceTerminators?: ReadonlySet<string>;
   /**
    * Where the chunker emits a phrase boundary.
-   *   'punctuation'    — default. Wait for sentence-final punctuation or
-   *                      the max-token cap.
+   *   'punctuation'    — default. Wait for `, . ! ?` or the max-token cap.
    *   'phoneme-stream' — additionally emit a sub-phrase chunk every
    *                      `phonemesPerChunk` phonemes. Cuts first-audio
    *                      latency by handing partial phrases to TTS at
@@ -78,6 +158,154 @@ export interface PhraseChunkerConfig {
 export interface VerifierStreamEvent {
   kind: "accept" | "reject";
   tokens: TextToken[];
+}
+
+// ---------------------------------------------------------------------------
+// Audio front-end contract (mic capture · VAD · barge-in).
+//
+// Shared by W1 (this module), W2 (`StreamingTranscriber`), and W9 (the voice
+// turn controller / scheduler). Two-tier design:
+//
+//   1. The cheap always-on RMS energy gate is the *fast* path. It only
+//      decides "is there acoustic activity right now". A rising edge wakes
+//      the response pipeline (KV-prefill, drafter preload, first-filler
+//      pre-generation) speculatively.
+//   2. The Silero int8 ONNX VAD is the *authoritative* speech/no-speech
+//      signal. It gates ASR (skip silent frames) and drives turn-taking.
+//
+// Both run on every mic frame. The RMS gate never substitutes for Silero —
+// if the ONNX runtime is unavailable that is a hard "VAD unavailable" error,
+// never a silent downgrade (AGENTS.md §3).
+// ---------------------------------------------------------------------------
+
+/** A fixed-size block of mono PCM samples in [-1, 1] at a known sample rate. */
+export interface PcmFrame {
+  pcm: Float32Array;
+  sampleRate: number;
+  /**
+   * Monotonic timestamp (ms, `performance.now()` domain) of the *first*
+   * sample in this frame. Used to age VAD events and barge-in latency.
+   */
+  timestampMs: number;
+}
+
+/**
+ * Event emitted by `VadDetector` on the authoritative (Silero) timeline.
+ *
+ *   - `speech-start`  — speech onset (a run of speech frames crossed the
+ *                       onset threshold). Carries the probability of the
+ *                       triggering frame.
+ *   - `speech-active` — a periodic heartbeat while speech is ongoing. The
+ *                       barge-in controller uses this to pause TTS.
+ *   - `speech-pause`  — speech has been quiet for `pauseStartedMs..now`
+ *                       but not long enough to count as end-of-utterance.
+ *                       The turn controller uses this to kick a speculative
+ *                       response off the partial transcript.
+ *   - `speech-end`    — end of utterance (silence held past the hangover
+ *                       window). Carries the total speech duration.
+ *   - `blip`          — a short burst of energy that the Silero VAD rejected
+ *                       (or that was too short to be speech). The barge-in
+ *                       controller treats this as "resume TTS".
+ */
+export type VadEvent =
+  | { type: "speech-start"; timestampMs: number; probability: number }
+  | {
+      type: "speech-active";
+      timestampMs: number;
+      probability: number;
+      speechDurationMs: number;
+    }
+  | { type: "speech-pause"; timestampMs: number; pauseDurationMs: number }
+  | { type: "speech-end"; timestampMs: number; speechDurationMs: number }
+  | { type: "blip"; timestampMs: number; durationMs: number; peakRms: number };
+
+/** Cheap RMS energy gate event — the fast pre-warm path. Distinct timeline
+ *  from `VadEvent`; this fires with sub-frame latency and never blocks on a
+ *  model forward pass. */
+export type EnergyGateEvent =
+  | { type: "energy-rise"; timestampMs: number; rms: number }
+  | { type: "energy-fall"; timestampMs: number; quietMs: number };
+
+export type VadEventListener = (event: VadEvent) => void;
+export type EnergyGateListener = (event: EnergyGateEvent) => void;
+
+/**
+ * Subscribable VAD event stream. `VadDetector` (`voice/vad.ts`) is the
+ * concrete implementation; the streaming transcriber and the barge-in
+ * controller take this structural view so they don't pull in the optional
+ * `onnxruntime-node` surface.
+ */
+export interface VadEventSource {
+  onVadEvent(listener: VadEventListener): () => void;
+}
+
+/**
+ * Source of mic PCM. The desktop/Electrobun impl in `mic-source.ts` is the
+ * first concrete implementation; Discord / Telegram / mobile connectors
+ * implement the same interface so the rest of the voice loop is source-
+ * agnostic. A `MicSource` produces fixed-size mono frames at a fixed sample
+ * rate and tees them to any number of consumers (the VAD, the ring buffer
+ * the ASR reads from, instrumentation taps).
+ */
+export interface MicSource {
+  /** Nominal sample rate of every emitted frame (Hz). */
+  readonly sampleRate: number;
+  /** Samples per emitted frame. */
+  readonly frameSamples: number;
+  /** True once `start()` has resolved and frames are flowing. */
+  readonly running: boolean;
+  /** Begin capture. Resolves when the underlying device is producing audio.
+   *  Throws (never silently no-ops) when no mic backend is available. */
+  start(): Promise<void>;
+  /** Stop capture and release the device. Idempotent. */
+  stop(): Promise<void>;
+  /** Subscribe to PCM frames. Returns an unsubscribe function. */
+  onFrame(listener: (frame: PcmFrame) => void): () => void;
+  /** Subscribe to fatal capture errors (device lost, process died). The
+   *  source is no longer `running` after one of these. */
+  onError(listener: (error: Error) => void): () => void;
+}
+
+/**
+ * Cancellation token threaded from the barge-in controller down through the
+ * voice scheduler (TTS) *and* the engine layer (in-flight LLM / DFlash
+ * drafter generation). `cancelled` is a plain boolean so the synthesis loop
+ * and the SSE-consuming generate loop can both poll it cheaply at a kernel
+ * boundary; `reason` records *why* for diagnostics; `signal` is the standard
+ * `AbortSignal` the engine's HTTP/stream layer aborts on.
+ *
+ * (W1 owns the controller; W9 threads `signal` into `dispatcher.generate`.)
+ */
+export interface BargeInCancelToken {
+  cancelled: boolean;
+  reason: "barge-in-words" | "manual" | null;
+  readonly signal: AbortSignal;
+}
+
+/** Signal emitted by `BargeInController` to the scheduler / engine. */
+export type BargeInSignal =
+  | { type: "pause-tts"; timestampMs: number }
+  | { type: "resume-tts"; timestampMs: number }
+  | { type: "hard-stop"; timestampMs: number; token: BargeInCancelToken };
+
+export type BargeInSignalListener = (signal: BargeInSignal) => void;
+
+/**
+ * Contract the ASR layer (W2's `StreamingTranscriber`) calls into the
+ * barge-in controller with. When the transcriber has parsed at least one
+ * real word from the user's barge-in audio, it calls `onWordsDetected` with
+ * the running word count; the controller promotes a `pause-tts` into a
+ * `hard-stop`. This is the *authoritative* blip-vs-words gate — the energy-
+ * duration heuristic is only a fast provisional guess until ASR confirms.
+ */
+export interface WordsDetectedSink {
+  onWordsDetected(args: {
+    /** Number of parsed words observed so far in this barge-in segment. */
+    wordCount: number;
+    /** Best partial transcript so far (may be empty). */
+    partialText: string;
+    timestampMs: number;
+  }): void;
 }
 
 export interface SchedulerConfig {

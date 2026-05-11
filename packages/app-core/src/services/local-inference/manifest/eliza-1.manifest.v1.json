@@ -25,7 +25,7 @@
     "id": { "type": "string", "minLength": 1 },
     "tier": {
       "type": "string",
-      "enum": ["0_6b", "1_7b", "9b", "27b", "27b-256k"]
+      "enum": ["0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m"]
     },
     "version": {
       "type": "string",
@@ -110,6 +110,21 @@
             "rocm": { "$ref": "#/$defs/backendStatus" },
             "cpu": { "$ref": "#/$defs/backendStatus" }
           }
+        },
+        "recipeManifest": {
+          "description": "Recipe-level kernel layout pins folded in from the quantization recipes' kernel_manifest sidecar fragments (packages/training/scripts/quantization/_kernel_manifest.py). Keyed by recipe kernel-target name (turbo3 / turbo4 / turbo3_tcq / qjl1_256 / polar_q4), NOT the manifest-level capability names in kernelName.",
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["blockLayoutVersion", "codebookHash", "perBlockTolerance"],
+            "properties": {
+              "blockLayoutVersion": { "type": "string", "minLength": 1 },
+              "codebookHash": { "type": "string", "minLength": 1 },
+              "perBlockTolerance": { "type": "number", "exclusiveMinimum": 0 }
+            }
+          }
         }
       }
     },
@@ -178,6 +193,20 @@
             "tagFaithfulness": { "type": "number", "minimum": 0, "maximum": 1 },
             "mosExpressive": { "type": "number", "minimum": 0 },
             "tagLeakage": { "type": "number", "minimum": 0 },
+            "passed": { "type": "boolean" }
+          }
+        },
+        "dflash": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["acceptanceRate", "speedup", "passed"],
+          "properties": {
+            "acceptanceRate": {
+              "type": ["number", "null"],
+              "minimum": 0,
+              "maximum": 1
+            },
+            "speedup": { "type": ["number", "null"], "minimum": 0 },
             "passed": { "type": "boolean" }
           }
         }
@@ -257,7 +286,9 @@
       "properties": {
         "status": { "type": "string", "enum": ["pass", "fail", "skipped"] },
         "atCommit": { "type": "string", "minLength": 1 },
-        "report": { "type": "string", "minLength": 1 }
+        "report": { "type": "string", "minLength": 1 },
+        "device": { "type": "string", "minLength": 1 },
+        "caveat": { "type": "string", "minLength": 1 }
       }
     }
   }

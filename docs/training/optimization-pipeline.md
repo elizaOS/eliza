@@ -3,7 +3,7 @@
 End-to-end recipe for taking a base HuggingFace causal-LM, applying every
 Milady inference optimization (PolarQuant Q4 weights, QJL K-cache
 projection, TurboQuant V-cache, DFlash speculative decoding) on top of
-the `milady-ai/llama.cpp` v0.4.0-milady fork, and publishing the
+the `elizaOS/llama.cpp` v0.4.0-milady fork, and publishing the
 resulting GGUF + manifest to an `elizaos/eliza-1-<tier>`
 HuggingFace repo so phones can download it via the existing in-app
 downloader.
@@ -38,7 +38,7 @@ on Eliza-1 lite / RTX 5080 Laptop unless noted).
 | QJL 1-bit    | K-cache (runtime)         | 7.53× K reduction at proj_dim=256 (head_dim=128) | needs CUDA kernel for prod inference |
 | TurboQuant   | V-cache (runtime)         | 3.52× V reduction (114,688 → 32,608 B/token) | pure-PyTorch path is 5× slower than bf16; Triton kernel recovers it |
 | DFlash       | speculative decoding     | 1.5–2.5× tok/s on matched-vocab drafter pairs | requires drafter + `llama-server --spec-type dflash` |
-| Combined     | weights + KV + decode    | ~4× whole-model KV reduction, ~38% on-disk size, ~1.8× decode | runtime needs the milady-ai/llama.cpp fork |
+| Combined     | weights + KV + decode    | ~4× whole-model KV reduction, ~38% on-disk size, ~1.8× decode | runtime needs the elizaOS/llama.cpp fork |
 
 Source: `packages/training/scripts/quantization/README.md` and
 `docs/porting/unified-fork-strategy.md` §D.
@@ -74,7 +74,7 @@ stage-polarquant/  (HF ckpt + polarquant_artifacts.safetensors)
 stage-qjl/         (HF ckpt + qjl_config.json)
     ↓  turboquant_apply.py
 stage-turboquant/  (HF ckpt + turboquant.json)
-    ↓  convert_hf_to_gguf.py (milady-ai/llama.cpp v0.4.0-milady)
+    ↓  convert_hf_to_gguf.py (elizaOS/llama.cpp v0.4.0-milady)
 gguf/<name>-milady-Q4_POLAR.gguf + milady_manifest.json + README.md
     ↓  push_model_to_hf.py --milady-manifest
 HuggingFace: elizaos/eliza-1-<tier>
@@ -118,7 +118,7 @@ Production runs need:
 
 - A GPU with CUDA for the TurboQuant calibration pass and (optionally)
   the QJL CUDA kernel build under `scripts/quantization/qjl/csrc/`.
-- A local checkout of `milady-ai/llama.cpp` at tag `v0.4.0-milady`
+- A local checkout of `elizaOS/llama.cpp` at tag `v0.4.0-milady`
   (commit `08032d57e15574f2a7ca19fc3f29510c8673d590`) at
   `$LLAMA_CPP_DIR`. The fork is the only place `convert_hf_to_gguf.py`
   understands `--outtype q4_polar`.
@@ -222,7 +222,7 @@ The dry-run on this CPU-only Linux x86_64 box validates:
 - **Fused TurboQuant** (`fused_turboquant_apply.py`): Triton-kernel
   path. GPU-only.
 - **GGUF conversion**: pure Python, but the converter must come from
-  the `milady-ai/llama.cpp` fork (upstream `convert_hf_to_gguf.py`
+  the `elizaOS/llama.cpp` fork (upstream `convert_hf_to_gguf.py`
   rejects `--outtype q4_polar`).
 
 For a CPU-only smoke run on this Linux x86_64 dev box, the orchestrator
@@ -236,9 +236,9 @@ TurboQuant calibration produces a real `skip_layers` profile.
 
 | Component                      | Pin |
 |--------------------------------|-----|
-| `milady-ai/llama.cpp` tag      | `v0.4.0-milady` |
-| `milady-ai/llama.cpp` commit   | `08032d57e15574f2a7ca19fc3f29510c8673d590` |
-| `milady-ai/llama.cpp` remote   | https://github.com/milady-ai/llama.cpp.git |
+| `elizaOS/llama.cpp` tag      | `v0.4.0-milady` |
+| `elizaOS/llama.cpp` commit   | `08032d57e15574f2a7ca19fc3f29510c8673d590` |
+| `elizaOS/llama.cpp` remote   | https://github.com/elizaOS/llama.cpp.git |
 | AOSP build script              | `packages/app-core/scripts/aosp/compile-libllama.mjs` |
 | Host build script              | `packages/app-core/scripts/build-llama-cpp-dflash.mjs` |
 | `apothic/llama.cpp-1bit-turboquant` (TBQ origin) | `b2b5273e8b27` (cherry-picked into fork) |
