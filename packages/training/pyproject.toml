@@ -76,6 +76,13 @@ train = [
   # TurboQuant are NOT in this wheel — those need the elizaOS/llama.cpp
   # fork via $LLAMA_CPP_DIR.
   "llama-cpp-python>=0.3.0",
+  # convert_hf_to_gguf.py (vendored stock llama.cpp) imports `gguf` AND
+  # `mistral_common` at module load — both must be installed or the
+  # HF→GGUF convert step dies on import. The vendor script also installs
+  # these from requirements/requirements-convert_hf_to_gguf.txt, but pin
+  # them here so `uv run --extra train` works standalone.
+  "gguf>=0.10.0",
+  "mistral_common>=1.8.3",
   # pytest is consumed by the pre-flight gate (scripts/preflight.sh) and
   # by the CPU-only unit tests it sweeps.
   "pytest>=8.0.0",
