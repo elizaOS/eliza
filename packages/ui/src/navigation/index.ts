@@ -47,7 +47,6 @@ export type BuiltinTab =
   | "character-select"
   | "inventory"
   | "documents"
-  | "connectors"
   | "triggers"
   | "plugins"
   | "skills"
@@ -176,7 +175,7 @@ export function getWindowNavigationPath(
 export const ALL_TAB_GROUPS: TabGroup[] = [
   {
     label: "Chat",
-    tabs: ["chat", "connectors"],
+    tabs: ["chat"],
     icon: MessageSquare,
     description:
       "Conversations with your agent, inbound messages from every connector, and connector management",
@@ -306,7 +305,6 @@ const TAB_PATHS: Record<BuiltinTab, string> = {
   triggers: "/automations",
   inventory: "/wallet",
   documents: "/character/documents",
-  connectors: "/connectors",
   plugins: "/apps/plugins",
   skills: "/apps/skills",
   advanced: "/apps/fine-tuning",
@@ -446,10 +444,12 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // /settings/<sub> — resolve nested settings paths
   if (normalized.startsWith("/settings/")) {
     const sub = normalized.slice("/settings/".length);
-    if (sub === "connectors") return "connectors";
     if (sub === "voice") return "settings";
     return "settings";
   }
+
+  // Legacy /connectors — redirect into Settings → Connectors.
+  if (normalized === "/connectors") return "settings";
 
   // Check current paths first, then legacy redirects
   return PATH_TO_TAB.get(normalized) ?? null;
@@ -517,8 +517,6 @@ export function titleForTab(tab: Tab): string {
       return "Wallet";
     case "documents":
       return "Knowledge";
-    case "connectors":
-      return "Connectors";
     case "plugins":
       return "Plugins";
     case "skills":

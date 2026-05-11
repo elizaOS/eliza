@@ -3,7 +3,6 @@ export * from "./action-notice";
 export * from "./agent-profiles";
 export * from "./ChatComposerContext";
 export * from "./CompanionSceneConfigContext";
-export * from "./connector-deeplink";
 export * from "./PtySessionsContext";
 export * from "./parsers";
 export * from "./persistence";
