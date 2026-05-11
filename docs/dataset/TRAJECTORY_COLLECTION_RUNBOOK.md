@@ -3,8 +3,10 @@
 `packages/training/scripts/collect_trajectories.py` is a development
 orchestrator for collecting trajectories through existing entry points. It is
 provider/model agnostic: provider and model values are recorded as labels, and
-the collector only exports a model-specific env var where an existing backend
-already has one (`CEREBRAS_MODEL` for the Cerebras dev adapter).
+the collector only exports known model override env vars for the selected
+provider (`CEREBRAS_MODEL`, `OPENAI_MODEL`/`OPENAI_LARGE_MODEL`, or
+`ANTHROPIC_MODEL`/`ANTHROPIC_LARGE_MODEL`) when the operator explicitly passes
+`--model`.
 
 ## What It Runs
 
@@ -23,8 +25,8 @@ Supported suites:
 Every invocation writes `<output-dir>/<run-id>/collection-manifest.json`,
 including dry-runs. The manifest records commands, env requirements, env
 overrides, expected output paths, provider labels, cost-cap handling, git
-metadata, and the downstream prepare command. Run it with the training package
-Python environment (`>=3.11`).
+metadata, app trajectory export references, and the downstream prepare command.
+Run it with the training package Python environment (`>=3.11`).
 
 The stable top-level manifest contract is:
 
@@ -32,12 +34,20 @@ The stable top-level manifest contract is:
 - `provider_label` and nullable `provider_model`
 - `suites`, `commands`, `expected_outputs`, and `cost_caps`
 - `git` and `worktree`
+- `downstream_inputs.app_trajectory_export`, including the native JSONL export
+  endpoint/body and a suggested output path
 - `downstream_inputs.prepare_eliza1_trajectory_dataset`, including
-  `input_paths`, `output_dir`, and a ready-to-run prepare command
+  `input_paths`, `ready_input_paths`, `pending_input_paths`, `output_dir`, and
+  the prepare command
 
 The collector is manifest-only unless `--execute` is present. Use `--dry-run`
 when you want that intent to be visible in command history; otherwise omitting
 `--execute` has the same no-run behavior.
+
+The run id is always exported as `MILADY_COLLECTION_RUN_ID` and
+`MILADY_LIFEOPS_RUN_ID`. Entry points with a native run-id flag also receive
+`--runId <run-id>` or `--run-id <run-id>` so recorder files, reports, and
+aggregation filters line up.
 
 ## Provider Labels
 
@@ -57,7 +67,10 @@ For `--provider anthropic`, pass an explicit non-Opus `--model`; the collector
 blocks `--execute` Anthropic runs without one to avoid falling through to an
 Opus default configured elsewhere. Opus labels can be prepared in a dry-run
 manifest, but `--execute` runs with an active or judge model containing `opus`
-are blocked before any suite starts.
+are blocked before any suite starts. The execute path also refuses known
+model-selection environment variables containing `opus` (for example
+`ANTHROPIC_LARGE_MODEL` or `JUDGE_MODEL`) unless the collector's own explicit
+non-Opus override replaces them.
 
 The older action-trajectory harness under
 `packages/training/scripts/harness/` is also provider/model configurable. Run
@@ -122,7 +135,9 @@ python3 packages/training/scripts/collect_trajectories.py \
 
 The benchmark wrapper does not expose a native cost cap. The collector records
 the cap in the manifest for accounting, but only LifeOpsBench enforces
-`--max-cost-usd`.
+`--max-cost-usd`. If no cap is passed, LifeOpsBench still receives its
+collector default of `$10`; the manifest records that as the suite's effective
+cap. Non-positive caps are rejected before execution.
 
 ## Direct Scenario Runner
 
@@ -173,6 +188,13 @@ handoff. It points at the collection outputs that can become prepare inputs and
 writes the prepared splits under
 `packages/training/data/trajectory-runs/<run-id>/`.
 
+Raw recorder directories such as `<run-dir>/trajectories/` are audit artifacts,
+not direct Eliza-1 prep inputs. The manifest lists those under
+`source_raw_trajectory_paths`. Convert or export them to `eliza_native_v1`
+JSONL first; the suggested target path is recorded in
+`downstream_inputs.app_trajectory_export.suggested_output_path` and repeated in
+`prepare_eliza1_trajectory_dataset.pending_input_paths`.
+
 Example:
 
 ```bash
@@ -183,6 +205,31 @@ jq -r '.downstream_inputs.prepare_eliza1_trajectory_dataset.command | @sh' \
 Review the listed `input_paths` and run privacy review before staging a dataset
 candidate. The prepare command includes `--strict-privacy`; keep it unless a
 reviewed synthetic-only bundle needs a documented exception.
+
+Before running the candidate publisher for real-user data, keep the reviewed
+source manifest or privacy attestation next to the reviewed split files. The
+publisher auto-discovers `manifest.json` beside the three split files or one
+directory above them, and records a path reference plus SHA-256 in the candidate
+manifest. For strict privacy attestations, use
+`schema: eliza.privacy_filter_attestation.v1`, `version: 1`, matching
+input/output counts, zero residual findings, and a ledger artifact with
+`raw_sensitive_values: false`.
+
+## App Trajectory Export
+
+For app/runtime trajectories, export native training rows from the Trajectories
+view with **Export -> JSONL Native Training**, or call the API directly:
+
+```bash
+curl -sS -X POST http://localhost:3000/api/trajectories/export \
+  -H 'content-type: application/json' \
+  --data '{"format":"jsonl","includePrompts":true,"jsonShape":"eliza_native_v1"}' \
+  > artifacts/trajectory-collection/<run-id>/exports/app-trajectories.eliza-native.jsonl
+```
+
+Run privacy filtering/review on that JSONL before passing it to the prepare or
+SFT splitter commands. Do not use the raw recorder JSON directory as a
+stand-in for the native export.
 
 ## Privacy And Training
 
@@ -195,3 +242,9 @@ python3 packages/training/scripts/trajectories_to_sft.py \
   --input <redacted-eliza-native-json-or-jsonl> \
   --output-dir packages/training/data/sft-trajectories
 ```
+
+Candidate staging is still a separate step. Run
+`packages/training/scripts/publish_eliza1_dataset_candidate.py` first without
+`--write` to dry-run schema, split, repair-row, and privacy-manifest checks.
+Only add `--write` after the dry-run passes, and only add `--push
+--allow-hf-push` when the remote candidate repo and token are intentional.

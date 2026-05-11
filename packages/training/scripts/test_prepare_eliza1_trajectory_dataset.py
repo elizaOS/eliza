@@ -4,6 +4,8 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -210,3 +212,104 @@ def test_prepare_lifeops_result_uses_scores_and_alias_prefixes(tmp_path: Path) -
     assert repair[0]["actions"][0]["name"] == "BLOCK_RELEASE"
     assert repair[0]["quality"]["success"] is False
     assert repair[0]["split"] == "repair_eval"
+
+
+def test_prepare_preserves_and_canonicalizes_request_history_tool_calls(tmp_path: Path) -> None:
+    source = tmp_path / "native-history.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "format": "eliza_native_v1",
+                "boundary": "vercel_ai_sdk.generateText",
+                "request": {
+                    "messages": [
+                        {"role": "user", "content": "Check the cwd."},
+                        {
+                            "role": "assistant",
+                            "content": "",
+                            "tool_calls": [
+                                {
+                                    "id": "hist_1",
+                                    "type": "function",
+                                    "function": {
+                                        "name": "SHELL_COMMAND",
+                                        "arguments": "{\"command\":\"pwd\"}",
+                                    },
+                                }
+                            ],
+                        },
+                        {"role": "tool", "tool_call_id": "hist_1", "content": "/tmp/project"},
+                        {"role": "user", "content": "List files now."},
+                    ]
+                },
+                "response": {
+                    "tool_calls": [
+                        {
+                            "id": "call_2",
+                            "function": {
+                                "name": "RUN_COMMAND",
+                                "arguments": {"command": "ls"},
+                            },
+                        }
+                    ]
+                },
+                "metadata": {"source_dataset": "unit_native"},
+            }
+        ],
+    )
+    out_dir = tmp_path / "out"
+
+    code = prepare_main(
+        [
+            "--input",
+            str(source),
+            "--output-dir",
+            str(out_dir),
+            "--val-ratio",
+            "0",
+            "--test-ratio",
+            "0",
+        ]
+    )
+
+    assert code == 0
+    train = _read_jsonl(out_dir / "train.jsonl")
+    trajectory_train = _read_jsonl(out_dir / "trajectory_records" / "train.jsonl")
+    formatted = format_record(train[0])
+
+    assert train[0]["request"]["messages"][1]["tool_calls"][0]["function"]["name"] == "SHELL"
+    assert train[0]["response"]["toolCalls"][0]["toolName"] == "SHELL"
+    assert train[0]["request"]["tools"][0]["function"]["name"] == "SHELL"
+    assert trajectory_train[0]["messages"][1]["tool_calls"][0]["function"] == {
+        "name": "SHELL",
+        "arguments": {"command": "pwd"},
+    }
+    assert formatted is not None
+    assert formatted["messages"][1]["tool_calls"][0]["function"]["name"] == "SHELL"
+
+
+def test_prepare_strict_privacy_fails_on_any_redaction(tmp_path: Path) -> None:
+    source = tmp_path / "native-private.jsonl"
+    _write_jsonl(
+        source,
+        [
+            {
+                "format": "eliza_native_v1",
+                "boundary": "vercel_ai_sdk.generateText",
+                "request": {"prompt": "My location: 37.7749, -122.4194"},
+                "response": {"text": "I cannot store that."},
+            }
+        ],
+    )
+
+    with pytest.raises(SystemExit, match="strict privacy filter found redaction"):
+        prepare_main(
+            [
+                "--input",
+                str(source),
+                "--output-dir",
+                str(tmp_path / "out"),
+                "--strict-privacy",
+            ]
+        )

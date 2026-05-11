@@ -23,11 +23,11 @@ each entry is tagged `local | workstation | cloud`. Default optimizer is
 **APOLLO** (full-parameter SFT, low-memory projected optimizer state,
 arXiv:2412.05270), not LoRA.
 
-| eliza release | base               | tier        | trains on             | optimizer    |
-|---------------|--------------------|-------------|-----------------------|--------------|
-| eliza-1-2b    | Qwen/Qwen3.5-2B    | local       | RTX 5080 16 GB        | apollo_mini  |
-| eliza-1-9b    | Qwen/Qwen3.5-9B    | workstation | Nebius H200-1×        | apollo       |
-| eliza-1-27b   | Qwen/Qwen3.6-27B   | cloud       | Nebius H200-2× (FSDP) | apollo_mini  |
+| registry key | eliza release | base               | tier        | default training target             | optimizer    |
+|--------------|---------------|--------------------|-------------|-------------------------------------|--------------|
+| qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B    | local       | 16 GB consumer GPU                  | apollo_mini  |
+| qwen3.5-9b   | eliza-1-9b    | Qwen/Qwen3.5-9B    | workstation | Vast 1× RTX Pro 6000 Blackwell      | apollo       |
+| qwen3.6-27b  | eliza-1-27b   | Qwen/Qwen3.6-27B   | cloud       | Vast 2× B200 with FSDP              | apollo_mini  |
 
 After training, two **post-training quantization** passes run:
 **PolarQuant** (4-bit weights via Hadamard rotation, arXiv:2603.29078) and
@@ -71,8 +71,8 @@ data/raw/* ──▶ normalize.py ──▶ data/normalized/<slug>.jsonl
                                   │
                        ┌──────────┴──────────┐
                        ▼                     ▼
-              train_local.py        train_nebius.sh / train_vast.sh
-              (APOLLO, 2B local)    (APOLLO, 9B / 27B on H200 or Blackwell)
+              train_local.py        train_vast.sh
+              (APOLLO, 2B local)    (APOLLO, 9B / 27B on Vast)
                                   │
                                   ▼
               ┌─────────────┬─────┴─────┬─────────────┐
@@ -152,10 +152,10 @@ uv run --extra train python scripts/run_pipeline.py \
 uv run --extra train python scripts/run_pipeline.py \
     --registry-key qwen3.5-2b --epochs 3
 
-# Cloud pipeline (eliza-1-9b on 1× H200, eliza-1-27b on 2× H200)
-NEBIUS_PROJECT_ID=... HUGGING_FACE_HUB_TOKEN=... \
-    REGISTRY_KEY=qwen3.6-27b \
-    bash scripts/train_nebius.sh full
+# Cloud pipeline (Vast active path: 9B on 1× Blackwell, 27B on 2× B200)
+VAST_API_KEY=... HUGGING_FACE_HUB_TOKEN=... \
+    bash scripts/train_vast.sh provision-and-train \
+    --registry-key qwen3.6-27b --epochs 1 --bootstrap hf
 
 # Push the trained checkpoint to elizaos/eliza-1-27b
 HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \
@@ -167,20 +167,20 @@ See `RL_STRATEGY.md` for the post-SFT plan (DPO + GRPO via verl).
 
 ### Renting GPUs
 
-The cloud-tier sizes (`eliza-1-9b`, `eliza-1-27b`) train on **Nebius H200**
-via `scripts/train_nebius.sh` (subcommands: `provision`, `sync`, `run`,
-`quantize`, `bench`, `fetch`, `teardown`, `full`):
+The cloud-tier sizes (`eliza-1-9b`, `eliza-1-27b`) train on **Vast.ai** via
+`scripts/train_vast.sh` (subcommands: `search`, `provision`, `sync`, `run`,
+`quantize`, `bench`, `fetch`, `status`, `pull-checkpoints`,
+`kill-and-teardown`, `teardown`, `provision-and-train`). The script
+auto-picks the GPU target from `REGISTRY_KEY`:
 
-- `eliza-1-9b` → single H200 SXM (`NEBIUS_VM_PRESET=gpu-h200x1`).
-- `eliza-1-27b` → 2× H200 SXM with FSDP (`NEBIUS_VM_PRESET=gpu-h200x2`,
-  default).
+- `qwen3.5-9b` / `eliza-1-9b` → 1× RTX Pro 6000 Blackwell by default.
+- `qwen3.6-27b` / `eliza-1-27b` → 2× B200 with FSDP by default.
 
-For Vast.ai (alternate provider with cheaper Blackwell GPUs), use
-`scripts/train_vast.sh` — same subcommand set, auto-picks the GPU target
-from `REGISTRY_KEY`. Lower-level helpers live in `scripts/lib/vast.py`
-(searchable via `python -m scripts.lib.vast pick blackwell6000-2x`).
-`scripts/day0_smoke.sh` uses the same helpers for its day-0 verification
-run.
+Lower-level helpers live in `scripts/lib/vast.py` (searchable via
+`python -m scripts.lib.vast pick blackwell6000-2x`). `scripts/day0_smoke.sh`
+uses the same helpers for its day-0 verification run. `scripts/train_nebius.sh`
+is kept only as an emergency fallback if Vast capacity is unavailable; do not
+extend the Nebius path.
 
 ### Implementation details
 
@@ -206,11 +206,11 @@ run.
 
 ## Uniform chat format
 
-Every trajectory-training record is an `eliza_native_v1` boundary row. The
-renderer reads `request.messages` or `request.prompt`, appends the supervised
-assistant turn from `response.text` and/or `response.toolCalls`, and passes
-`request.tools` into `tokenizer.apply_chat_template(..., tools=...)` when the
-tokenizer supports native tool rendering.
+The primary trajectory-training record is an `eliza_native_v1` boundary row.
+The renderer reads `request.messages` or `request.prompt`, appends the
+supervised assistant turn from `response.text` and/or `response.toolCalls`, and
+passes `request.tools` into `tokenizer.apply_chat_template(..., tools=...)`
+when the tokenizer supports native tool rendering.
 
 ```
 {
@@ -223,6 +223,15 @@ tokenizer supports native tool rendering.
 The same chat template is applied at benchmark time with
 `add_generation_prompt=True`, so the model sees the same request structure at
 training and generation time.
+
+For handoff compatibility, `scripts/format_for_training.py` also accepts
+trainable `eliza.eliza1_trajectory_record.v1` message rows, already-rendered
+chat-message rows with a final assistant turn, and legacy flat `ElizaRecord`
+rows from `pack_dataset.py`. It rejects `repair_eval` / failed-quality rows.
+Remote Vast bootstrap expects root split names
+`data/final/{train,val,test}.jsonl`; candidate repos use
+`data/validation.jsonl`, so stage or rename that split to `val.jsonl` before
+using it as the remote root dataset.
 
 ## System prerequisites
 
@@ -279,7 +288,8 @@ uv run --extra train python scripts/run_pipeline.py \
     --registry-key qwen3.5-2b --epochs 3
 ```
 
-For cloud-tier runs see `scripts/train_nebius.sh` and `scripts/train_vast.sh`.
+For cloud-tier runs see `scripts/train_vast.sh` and `scripts/CLOUD_VAST.md`.
+`scripts/train_nebius.sh` is emergency fallback only.
 For inference see `scripts/inference/serve_vllm.py` (vLLM serve launcher) and
 `scripts/inference/serve_local.py`.
 

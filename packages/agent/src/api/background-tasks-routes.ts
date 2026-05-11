@@ -22,9 +22,7 @@ export interface BackgroundTasksRouteContext {
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
 }
 
-function isTaskServiceLike(
-  service: unknown,
-): service is TaskServiceLike {
+function isTaskServiceLike(service: unknown): service is TaskServiceLike {
   return (
     service !== null &&
     typeof service === "object" &&
@@ -58,7 +56,10 @@ export async function handleBackgroundTasksRoute({
   json,
   res,
 }: BackgroundTasksRouteContext): Promise<boolean> {
-  if (method.toUpperCase() !== "POST" || pathname !== "/api/background/run-due-tasks") {
+  if (
+    method.toUpperCase() !== "POST" ||
+    pathname !== "/api/background/run-due-tasks"
+  ) {
     return false;
   }
 

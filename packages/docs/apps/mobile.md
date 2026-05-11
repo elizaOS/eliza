@@ -27,9 +27,11 @@ local-agent URL is routed through the in-process ITTP kernel until the shared
 iOS route kernel/backend port lands.
 The kernel exposes `GET /api/local-agent/capabilities` so the app can show the
 truth about what is local today: foreground chat/model-management routes are
-ITTP, the full Node/Bun AgentRuntime is not mounted, plugin/app managers are
-not mounted, and the `ScheduledTask` service is unavailable in background
-runner JSContexts. Background wakes in this mode are recorded as an explicit
+ITTP, native `Agent.request` / `Agent.chat` can bridge into that WebView kernel
+while the app is foregrounded, the full Node/Bun AgentRuntime is not mounted,
+plugin/app managers are not mounted, and the `ScheduledTask` service is
+unavailable in background runner JSContexts. Background wakes in this mode are
+recorded as an explicit
 `ios_ittp_route_kernel_unavailable_in_background_jscontext` skip instead of
 probing a fake TCP endpoint.
 

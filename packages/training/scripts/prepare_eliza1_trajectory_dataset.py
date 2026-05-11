@@ -183,9 +183,13 @@ class ActionAliases:
         normalized = normalize_action_name(name)
         if not normalized:
             return ""
-        exact = self.aliases.get(normalized)
-        if exact:
-            return exact
+        seen: set[str] = set()
+        while normalized and normalized not in seen:
+            seen.add(normalized)
+            exact = self.aliases.get(normalized)
+            if not exact:
+                break
+            normalized = exact
         for src, dst in self.prefix_aliases:
             if normalized.startswith(src):
                 return f"{dst}{normalized[len(src):]}"
@@ -352,7 +356,7 @@ def normalize_role(value: Any) -> str:
     return "user"
 
 
-def normalize_message(raw: Any) -> dict[str, Any] | None:
+def normalize_message(raw: Any, aliases: ActionAliases | None = None) -> dict[str, Any] | None:
     if not isinstance(raw, dict):
         return None
     msg: dict[str, Any] = {
@@ -363,6 +367,15 @@ def normalize_message(raw: Any) -> dict[str, Any] | None:
         msg["name"] = raw["name"]
     if isinstance(raw.get("tool_call_id"), str):
         msg["tool_call_id"] = raw["tool_call_id"]
+    raw_calls = raw.get("tool_calls", raw.get("toolCalls"))
+    if aliases is not None and isinstance(raw_calls, list):
+        tool_calls: list[dict[str, Any]] = []
+        for idx, item in enumerate(raw_calls):
+            normalized = normalize_tool_call(item, aliases, fallback_index=idx)
+            if normalized is not None:
+                tool_calls.append(normalized[0])
+        if tool_calls:
+            msg["tool_calls"] = tool_calls
     return msg
 
 
@@ -447,12 +460,18 @@ def normalize_tools(raw_tools: Any, aliases: ActionAliases) -> dict[str, dict[st
     if isinstance(raw_tools, dict):
         items = raw_tools.items()
         for name, spec in items:
-            canonical = aliases.canonicalize(name)
+            spec_obj = spec if isinstance(spec, dict) else {}
+            fn = spec_obj.get("function") if isinstance(spec_obj.get("function"), dict) else spec_obj
+            raw_name = fn.get("name") if isinstance(fn, dict) and isinstance(fn.get("name"), str) else name
+            canonical = aliases.canonicalize(raw_name)
             if not canonical:
                 continue
-            spec_obj = spec if isinstance(spec, dict) else {}
-            desc = spec_obj.get("description", "")
-            params = spec_obj.get("parameters", spec_obj.get("inputSchema", spec_obj.get("schema")))
+            desc = fn.get("description", "") if isinstance(fn, dict) else ""
+            params = (
+                fn.get("parameters", fn.get("inputSchema", fn.get("schema")))
+                if isinstance(fn, dict)
+                else None
+            )
             tools[canonical] = tool_definition(canonical, str(desc or ""), params)
         return tools
 
@@ -487,6 +506,37 @@ def finalize_tools(
         else:
             out[name] = tool_definition(name)
     return [out[name] for name in sorted(out)]
+
+
+def actions_from_message_tool_calls(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    for message in messages:
+        raw_calls = message.get("tool_calls")
+        if not isinstance(raw_calls, list):
+            continue
+        for raw in raw_calls:
+            if not isinstance(raw, dict):
+                continue
+            fn = raw.get("function") if isinstance(raw.get("function"), dict) else {}
+            name = fn.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            actions.append(
+                {
+                    "name": name,
+                    "originalName": normalize_action_name(name),
+                    "arguments": coerce_arguments(fn.get("arguments")),
+                }
+            )
+    return actions
+
+
+def raw_response_tool_calls(response: dict[str, Any]) -> list[Any]:
+    for key in ("toolCalls", "tool_calls", "toolcalls"):
+        calls = response.get(key)
+        if isinstance(calls, list):
+            return calls
+    return []
 
 
 # ---------------------------------------------------------------------------
@@ -537,10 +587,10 @@ def _has_request_payload(request: dict[str, Any]) -> bool:
 def _has_response_payload(response: dict[str, Any]) -> bool:
     if isinstance(response.get("text"), str) and response["text"].strip():
         return True
-    return isinstance(response.get("toolCalls"), list) and bool(response["toolCalls"])
+    return bool(raw_response_tool_calls(response))
 
 
-def messages_from_native_request(request: dict[str, Any]) -> list[dict[str, Any]]:
+def messages_from_native_request(request: dict[str, Any], aliases: ActionAliases) -> list[dict[str, Any]]:
     messages: list[dict[str, Any]] = []
     system = request.get("system")
     if isinstance(system, str) and system.strip():
@@ -548,7 +598,7 @@ def messages_from_native_request(request: dict[str, Any]) -> list[dict[str, Any]
     raw_messages = request.get("messages")
     if isinstance(raw_messages, list) and raw_messages:
         for raw in raw_messages:
-            msg = normalize_message(raw)
+            msg = normalize_message(raw, aliases)
             if msg is not None:
                 messages.append(msg)
     else:
@@ -649,11 +699,12 @@ def build_native_record(
     if not _has_request_payload(request) or not _has_response_payload(response):
         return None
 
-    messages = messages_from_native_request(request)
-    if not messages:
+    messages = messages_from_native_request(request, aliases)
+    if not messages or not any(message.get("role") == "user" for message in messages):
         return None
 
-    raw_tool_calls = response.get("toolCalls") if isinstance(response.get("toolCalls"), list) else []
+    context_actions = actions_from_message_tool_calls(messages)
+    raw_tool_calls = raw_response_tool_calls(response)
     tool_calls: list[dict[str, Any]] = []
     actions: list[dict[str, Any]] = []
     for idx, raw in enumerate(raw_tool_calls):
@@ -673,7 +724,7 @@ def build_native_record(
     messages.append(assistant)
 
     tools = normalize_tools(request.get("tools"), aliases)
-    tools_list = finalize_tools(tools, actions, manifest_tools)
+    tools_list = finalize_tools(tools, [*context_actions, *actions], manifest_tools)
 
     metadata = _as_record(row.get("metadata")) or {}
     task = infer_native_task_type(row)
@@ -955,10 +1006,42 @@ class PrepStats:
     produced: int = 0
     skipped: int = 0
     privacy_redactions: int = 0
+    privacy_anonymizations: int = 0
     credential_hits: Counter[str] = field(default_factory=Counter)
     source_counts: Counter[str] = field(default_factory=Counter)
     task_counts: Counter[str] = field(default_factory=Counter)
     action_counts: Counter[str] = field(default_factory=Counter)
+
+
+def _stats_int(stats: Any, *names: str) -> int:
+    total = 0
+    for name in names:
+        value = getattr(stats, name, 0)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            total += int(value)
+    return total
+
+
+def _stats_counter(stats: Any, *names: str) -> Counter[str]:
+    out: Counter[str] = Counter()
+    for name in names:
+        value = getattr(stats, name, None)
+        if isinstance(value, dict):
+            for key, count in value.items():
+                if isinstance(count, (int, float)) and not isinstance(count, bool):
+                    out[str(key)] += int(count)
+    return out
+
+
+def _credential_hits(stats: Any) -> Counter[str]:
+    direct = _stats_counter(stats, "credential_hits")
+    if direct:
+        return direct
+    by_category = _stats_counter(stats, "redactions_by_category")
+    secret_count = by_category.get("secret", 0)
+    if secret_count:
+        return Counter({"secret": secret_count})
+    return Counter()
 
 
 def split_success_record(record: dict[str, Any], *, seed: str, val_ratio: float, test_ratio: float) -> str:
@@ -1159,13 +1242,17 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
                 stats.skipped += 1
                 continue
             cleaned, privacy_stats = apply_privacy_filter(raw)
-            stats.privacy_redactions += int(getattr(privacy_stats, "redaction_count", 0))
-            for label, count in getattr(privacy_stats, "credential_hits", {}).items():
-                stats.credential_hits[label] += int(count)
-            if args.strict_privacy and getattr(privacy_stats, "credential_hits", {}):
+            redactions = _stats_int(privacy_stats, "redaction_count", "redactions_total")
+            anonymizations = _stats_int(privacy_stats, "anonymization_count", "anonymizations_total")
+            credential_hits = _credential_hits(privacy_stats)
+            stats.privacy_redactions += redactions
+            stats.privacy_anonymizations += anonymizations
+            stats.credential_hits.update(credential_hits)
+            if args.strict_privacy and (redactions or anonymizations or credential_hits):
                 raise SystemExit(
-                    f"privacy filter found credential(s) in {path}:{row_index}: "
-                    f"{sorted(getattr(privacy_stats, 'credential_hits', {}).keys())}"
+                    f"strict privacy filter found redaction(s) in {path}:{row_index}: "
+                    f"redactions={redactions} anonymizations={anonymizations} "
+                    f"credential_hits={sorted(credential_hits)}"
                 )
 
             produced: list[dict[str, Any]] = []
@@ -1280,6 +1367,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         "actionCounts": dict(sorted(stats.action_counts.items())),
         "privacy": {
             "redactions": stats.privacy_redactions,
+            "anonymizations": stats.privacy_anonymizations,
             "credentialHits": dict(sorted(stats.credential_hits.items())),
             "strict": bool(args.strict_privacy),
         },

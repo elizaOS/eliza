@@ -25,6 +25,7 @@ evidence from MoltenVK and prior Intel/lavapipe turbo runs.
   - `packages/inference/vulkan/qjl_get_rows.comp`
   - `packages/inference/vulkan/qjl_mul_mv.comp`
   - `packages/inference/vulkan/polar.comp`
+  - `packages/inference/vulkan/polar_preht.comp`
   - `packages/inference/vulkan/polar_get_rows.comp`
 - CPU plugin paths:
   - `packages/native-plugins/qjl-cpu/src/qjl_score_{neon,avx2}.c`
@@ -78,7 +79,7 @@ Acceptance:
   128k, and 256k contexts.
 - Voice mode remains cancellable at one small kernel/tile boundary.
 
-### P0 - Runtime policy must use Metal multi-block kernels for non-voice bulk work
+### P0 - Metal multi-block runtime policy - MOSTLY LANDED
 
 The Metal source already has multi-block variants:
 
@@ -97,13 +98,22 @@ win still available to runtime routing:
 | Turbo3-TCQ | 4 | 106.00 us | 2.09x |
 | QJL | 8 | 55.33 us | 4.26x |
 
-Recommendation:
+Current state:
 
-- Route non-voice, long-context scoring through the verified multi-block entry
-  points.
-- Use a backend/device heuristic table, initially:
-  - M4 Max non-voice: `turbo3=8`, `turbo4=32`, `turbo3_tcq=4`, `qjl=8`.
-  - Voice: force `N=1` unless an end-to-end barge-in benchmark proves otherwise.
+- Metal graph-dispatch evidence already records Turbo3, Turbo4, Turbo3-TCQ,
+  and QJL routing through the `_multi` entrypoints.
+- This pass changed the patcher policy from a single Turbo value (`N=8`) to
+  the measured M4 Max family-specific table:
+  `turbo3=8`, `turbo4=32`, `turbo3_tcq=4`.
+- The idempotent repair path in
+  `packages/app-core/scripts/kernel-patches/metal-kernels.mjs` also updates
+  older cached forks when the sentinel is already present.
+
+Remaining recommendation:
+
+- Add a higher-level voice/non-voice scheduler override so voice can force
+  `N=1` when barge-in latency dominates. The kernel patcher does not currently
+  know whether the graph was launched by voice mode.
 - Persist the chosen N in benchmark evidence so release artifacts can be
   reproduced.
 
@@ -112,9 +122,9 @@ already pushes worst-case cancellation around 0.8-1.4 ms for the small kernels
 and higher for Polar. That violates the voice loop's low-latency cancellation
 goal even when throughput improves.
 
-### P1 - PolarQuant still pays avoidable decode-to-scratch cost
+### P1 - PolarQuant pre-Hadamard hot path - LANDED for Metal/Vulkan standalone
 
-Metal and Vulkan Polar both materialize a full 128-float decoded block into
+Original finding: Metal and Vulkan Polar both materialized a full 128-float decoded block into
 threadgroup scratch, run a 7-stage Hadamard, then dot against `q`. CPU NEON and
 AVX2 do the same at a row level: `polar_dot_*` calls `dequantize_row_*` into a
 128-float buffer, then dots.
@@ -137,19 +147,48 @@ block can:
 That removes the per-K-row 7-stage Hadamard and most scratch traffic in the hot
 score path. Keep `kernel_get_rows_q4_polar` as the exact decode fallback.
 
-Recommendation:
+Implemented in this pass:
 
-- Add `kernel_attn_score_q4_polar_preht_f32` for Metal and Vulkan.
-- Add CPU `ggml_vec_dot_q4_polar_q8_0_{neon,avx2,avx512}_preht` variants.
-- Store a manifest/runtime bit stating whether `q` has been pre-Hadamarded.
-  Hard-fail if the wrong variant is selected.
-- Benchmark both `use_qjl=0` and `use_qjl=1`.
+- Added `kernel_mul_mv_q4_polar_preht_f32` in
+  `packages/inference/metal/polar.metal`.
+- Added `packages/inference/vulkan/polar_preht.comp`.
+- Updated `metal_verify` and `vulkan_verify` so the same Polar fixtures can
+  verify the pre-Hadamard path by transforming fixture `q` to `H*q` before
+  binding it.
+- Added `polar_qjl.json` coverage for both normal and pre-Hadamard paths.
+- Removed the remaining serial xorshift residual fill from the Vulkan Polar
+  matvec/get-rows shaders by using the same literal xorshift32(seed=42) sign
+  table as Metal.
+- Added CPU reference API `ggml_vec_dot_q4_polar_preht_f32_ref()` plus
+  `polar_preht_dot_test`, proving the same `dot(H*x, q) == dot(x, H*q)` path
+  matches dequantize-then-dot for both `use_qjl=0` and `use_qjl=1`.
 
-Expected impact:
+Verification run on 2026-05-11:
 
-- Polar is the slowest current Metal kernel (`651.88 us` median in the latest
-  default bench, versus about `300 us` for QJL/Turbo). Removing the per-row
-  Hadamard should be the largest remaining Polar-specific win.
+- `make -C packages/inference/verify metal-verify`: all eight Metal checks pass,
+  including Polar pre-Hadamard with and without QJL residual.
+- `make -C packages/inference/verify vulkan-verify` on Apple M4 Max via
+  MoltenVK: all eight Vulkan checks pass, including `polar_preht.spv` with and
+  without QJL residual.
+- Direct CPU smoke build:
+  `polar_preht_dot_test` max relative diff `3.6e-7` versus
+  dequantize-then-dot.
+
+Benchmark note:
+
+- Short M4 Max Metal run (`./metal_bench --iters 160 --warmup 20 --runs 1`):
+  `polar` median `586.52 us`; `polar_preht` median `284.88 us`.
+  This is a 2.06x speedup for the standalone Polar score kernel and moves
+  Polar into the same launch-floor cluster as Turbo/QJL.
+
+Remaining production work:
+
+- CPU SIMD pre-Hadamard variants are still open; scalar reference is landed.
+- Runtime graph dispatch must pass `H*q`; do not replace the raw-q Polar route
+  with the pre-Hadamard kernel until the query pretransform is present and
+  verified.
+- A manifest/runtime bit should state whether `q` has been pre-Hadamarded, and
+  dispatch must hard-fail on a mismatched variant.
 
 ### P1 - Vulkan lacks multi-block variants and device-specialized routing
 
@@ -176,7 +215,7 @@ Acceptance:
 - Native Linux `vulkan-dispatch-smoke`, not MoltenVK only.
 - Android physical-device evidence for at least one Adreno and one Mali.
 
-### P1 - QJL should gain an integer-dot path
+### P1 - QJL integer-dot path - CPU reference experiment LANDED
 
 Current QJL hot paths expand sign bits to `+/-1` fp32 and FMA against fp32
 `q_sketch`. The Metal path vectorizes `q_sketch` as two `float4` loads per lane,
@@ -201,13 +240,25 @@ GPU targets can use:
 - int8 sketch plus packed signs on CUDA/Hopper where tensor-core or DP4A
   patterns can be used profitably.
 
-Recommendation:
+Implemented in this pass:
 
-- Add a second fixture family for quantized QJL sketch. Keep fp32 fixtures for
-  exact reference parity.
-- Require end-to-end perplexity/attention-score tolerance before enabling by
-  default.
-- Keep the current fp32 path as the verification baseline.
+- Added experimental `qjl_i8_sketch_256` to
+  `packages/native-plugins/qjl-cpu/include/qjl/qjl.h`.
+- Added `qjl_quantize_sketch_i8_ref()` and `qjl_score_qk_i8_ref()` in
+  `packages/native-plugins/qjl-cpu/src/qjl_score_i8_ref.c`.
+- Added `qjl_int8_smoke` to the qjl-cpu CMake build plus standalone C smoke
+  coverage under `packages/native-plugins/qjl-cpu/test/qjl_int8_smoke.c`.
+- Local direct `cc` build/run on Apple arm64 passed:
+  `max_abs=0.001207 max_rel=0.001207 failures=0`.
+
+Remaining before default-on:
+
+- Add NEON dot-product/i8mm and AVX512/VNNI implementations; the new path is
+  scalar reference only.
+- Add a fixture family and end-to-end model tolerance gates. The current fp32
+  QJL path remains the exact verification baseline.
+- Add Metal/Vulkan/CUDA variants only after device-specific tolerance and
+  throughput evidence prove the int8 sketch is a net win.
 
 ### P1 - CUDA/H200 should start from fused attention, not standalone parity only
 
@@ -228,26 +279,40 @@ Recommendation for NVIDIA:
 - Benchmark 4k, 32k, 128k, and 256k contexts on H100/H200 before promoting any
   default.
 
-### P2 - Turbo3/Turbo4 micro-optimizations are secondary
+### P2 - Turbo3/Turbo4/TCQ Metal float4 micro-optimization - LANDED
 
 Turbo3, Turbo4, TCQ, and QJL cluster near the same Metal latency because they
 are launch-bound at the current dispatch shape. Micro-tuning their inner loops
 will not beat multi-block dispatch or fused attention.
 
-Still-worthwhile small changes:
+Implemented in this pass:
 
-- Load each thread's four contiguous `q` values as `float4` in Turbo3/Turbo4/TCQ
-  and reduce locally. This may reduce scalar load instructions, but it is a
-  small gain under current launch-bound conditions.
-- For Turbo4, precompute the four local centroid values into a `float4` before
-  the dot.
+- `turbo3.metal`, `turbo4.metal`, and `turbo3_tcq.metal` now load each lane's
+  four contiguous query values as one `float4`.
+- The decoded centroid values are assembled into a local `float4` and reduced
+  with `dot(qv, kv)` for both single-block and multi-block entrypoints.
+- `make -C packages/inference/verify metal-verify` and
+  `make -C packages/inference/verify metal-verify-multiblock` pass after the
+  change.
+
+Short M4 Max Metal benchmark note (`./metal_bench --iters 160 --warmup 20 --runs 1`):
+
+| Kernel | Median after change |
+| --- | ---: |
+| Turbo3 | `243.17 us` |
+| Turbo4 | `245.08 us` |
+| Turbo3-TCQ | `242.88 us` |
+| Polar pre-Hadamard | `238.77 us` |
+
+Remaining small experiments:
+
 - For Vulkan, consider aligned GPU staging layouts for packed blocks. The
   current raw-byte reads preserve packed cache storage, but native drivers may
   benefit from 4-byte-aligned GPU-only staging for QJL/Polar if the memory
   budget allows it.
 
-Do not prioritize these ahead of fused attention, runtime multi-block routing,
-or Polar pre-Hadamard dot.
+Do not prioritize more centroid micro-tuning ahead of fused attention or
+runtime multi-block/pre-Hadamard routing.
 
 ### P2 - TCQ codebook inlining is low confidence
 
@@ -328,6 +393,8 @@ Shared policy:
 1. Port fused attention score/softmax/V mix to Metal and CUDA.
 2. Wire Metal multi-block runtime policy for non-voice paths.
 3. Add Polar pre-Hadamard-query score kernels for Metal, Vulkan, CPU.
+   - Metal/Vulkan standalone: done and verified.
+   - CPU/runtime graph route: still open.
 4. Add Vulkan multi-block variants and specialization-constant routing.
 5. Add QJL quantized-sketch/int-dot experiment with exact fp32 fallback.
 6. Add AVX512/VNNI and ARM dot-product dispatch tiers.
@@ -353,4 +420,3 @@ mostly not more centroid micro-tuning. The highest leverage changes are:
 4. Add integer-dot QJL paths for CPU and server GPUs.
 5. Close device-specific routing with physical evidence on Adreno, Mali,
    Windows, Linux Vulkan, and CUDA/H200.
-

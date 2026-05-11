@@ -2656,7 +2656,178 @@ export async function handleIosLocalAgentRequest(
       triggers: [],
       todos: [],
       autonomy: { enabled: false, thinking: false, lastEventAt: null },
+      summary: {
+        totalTasks: 0,
+        completedTasks: 0,
+        totalTriggers: 0,
+        activeTriggers: 0,
+        totalTodos: 0,
+        completedTodos: 0,
+      },
+      tasksAvailable: false,
+      triggersAvailable: false,
+      todosAvailable: false,
     });
+  }
+
+  if (
+    method === "GET" &&
+    (pathname === "/api/workbench/tasks" ||
+      pathname === "/api/workbench/todos")
+  ) {
+    return json(pathname.endsWith("/todos") ? { todos: [] } : { tasks: [] });
+  }
+
+  if (
+    method !== "GET" &&
+    (pathname === "/api/workbench/tasks" ||
+      pathname.startsWith("/api/workbench/tasks/") ||
+      pathname === "/api/workbench/todos" ||
+      pathname.startsWith("/api/workbench/todos/"))
+  ) {
+    return unavailableLocalBackendRoute("task_service_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/triggers") {
+    return json({ triggers: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/triggers/health") {
+    return json({
+      ok: true,
+      triggersEnabled: false,
+      workflowAvailable: false,
+      reason: "The AgentRuntime trigger service is not mounted in iOS local mode.",
+    });
+  }
+
+  if (
+    pathname.startsWith("/api/triggers/") ||
+    (method !== "GET" && pathname === "/api/triggers")
+  ) {
+    return unavailableLocalBackendRoute("task_service_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/documents/stats") {
+    return json({
+      totalDocuments: 0,
+      totalFragments: 0,
+      totalBytes: 0,
+      bySource: {},
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/documents") {
+    return json({
+      documents: [],
+      total: 0,
+      limit: integerFromUnknown(url.searchParams.get("limit")) ?? 100,
+      offset: integerFromUnknown(url.searchParams.get("offset")) ?? 0,
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/documents/search") {
+    return json({ documents: [], results: [], total: 0 });
+  }
+
+  if (method === "GET" && pathname.startsWith("/api/documents/")) {
+    if (pathname.endsWith("/fragments")) {
+      const documentId = decodeURIComponent(
+        pathname.slice("/api/documents/".length, -"/fragments".length),
+      );
+      return json({ documentId, fragments: [], count: 0 });
+    }
+    return json({ error: "Document not found" }, 404);
+  }
+
+  if (pathname.startsWith("/api/documents")) {
+    return unavailableLocalBackendRoute("document_store_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/memories/stats") {
+    return json({ total: 0, byType: {}, recent: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/mcp/config") {
+    return json({ servers: {} });
+  }
+
+  if (method === "GET" && pathname === "/api/mcp/status") {
+    return json({ servers: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/mcp/marketplace/search") {
+    return json({ results: [] });
+  }
+
+  if (pathname.startsWith("/api/mcp/")) {
+    return unavailableLocalBackendRoute("mcp_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/manager/backends") {
+    return json({
+      backends: [
+        {
+          id: "in-house",
+          label: "Local (encrypted)",
+          available: false,
+          signedIn: false,
+          detail: "Secrets manager backend is not mounted in iOS local mode.",
+          authMode: null,
+        },
+      ],
+    });
+  }
+
+  if (pathname === "/api/secrets/manager/preferences") {
+    return json({ preferences: { enabled: ["in-house"], routing: {} } });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/manager/install/methods") {
+    return json({ methods: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/inventory") {
+    return json({ entries: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/routing") {
+    return json({ rules: [] });
+  }
+
+  if (method === "GET" && pathname === "/api/secrets/logins") {
+    return json({ logins: [] });
+  }
+
+  if (pathname.startsWith("/api/secrets/")) {
+    return unavailableLocalBackendRoute("secrets_manager_unavailable");
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/config") {
+    return json({ enabled: false });
+  }
+
+  if (method === "GET" && pathname === "/api/training/auto/status") {
+    return json({ enabled: false, running: false, jobs: [] });
+  }
+
+  if (
+    method === "GET" &&
+    (pathname === "/api/training/status" ||
+      pathname === "/api/training/datasets" ||
+      pathname === "/api/training/jobs" ||
+      pathname === "/api/training/models" ||
+      pathname === "/api/training/inference/endpoints")
+  ) {
+    if (pathname.endsWith("/status")) return json({ available: false });
+    if (pathname.endsWith("/datasets")) return json({ datasets: [] });
+    if (pathname.endsWith("/jobs")) return json({ jobs: [] });
+    if (pathname.endsWith("/models")) return json({ models: [] });
+    return json({ endpoints: [] });
+  }
+
+  if (pathname.startsWith("/api/training/")) {
+    return unavailableLocalBackendRoute("training_service_unavailable");
   }
 
   if (

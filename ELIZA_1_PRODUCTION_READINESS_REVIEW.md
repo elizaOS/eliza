@@ -40,6 +40,11 @@ are `releaseState=local-standin`, `publishEligible=false`, and
   ABI check enabled.
 - Vulkan built-fork source dispatch wiring exists and fail-closed smoke runners
   exist for Linux, Android, Windows, CUDA, ROCm, and GH200-class hosts.
+- Voice streaming now has a bounded LRU phrase-audio cache for repeated
+  generated utterances, direct TTS reuse, and verifier-event plumbing through
+  the DFlash SSE path without duplicate text delivery.
+- The iOS in-process local-agent fetch bridge preserves `fetch.preconnect`
+  when present, so the bridge typechecks under both DOM and Bun fetch typings.
 
 ## Hard Blockers
 
@@ -92,6 +97,10 @@ are `releaseState=local-standin`, `publishEligible=false`, and
   installing the declared training-test dependencies into the active Python.
 - App catalog test: 17/17 pass.
 - App manifest validator test: 27/27 pass.
+- Focused local-inference optimization tests: 86/86 pass across backend,
+  DFlash streaming, voice scheduler, and engine voice integration.
+- iOS local-agent transport test: 4/4 pass.
+- `packages/app-core` and `packages/ui` typechecks: pass.
 - HF auth/scan: authenticated user has `elizaos`; only `elizaos/eliza-1-assets`
   was found for the Eliza-1 namespace scan.
 
@@ -101,4 +110,3 @@ Current state is **release-prep ready and fail-closed**, not production-ready.
 The safe deployment posture is to ship code paths and hidden/offline staging
 tools, but keep Eliza-1 tier bundles non-default and unpublished until final
 weights plus platform evidence exist.
-

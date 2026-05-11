@@ -749,10 +749,7 @@ async function gitCloneInstall(
     const pm = await detectPackageManager();
     await execFileAsync(pm, ["install", "--ignore-scripts"], { cwd: tempDir });
 
-    const registrySourceDir = resolveRegistrySourceDir(
-      tempDir,
-      info.directory,
-    );
+    const registrySourceDir = resolveRegistrySourceDir(tempDir, info.directory);
     if (registrySourceDir !== tempDir) {
       try {
         await execFileAsync(pm, ["run", "build"], { cwd: registrySourceDir });
@@ -813,7 +810,9 @@ function resolveRegistrySourceDir(
   const resolved = path.resolve(tempDir, rawDirectory);
   const relative = path.relative(tempDir, resolved);
   if (relative.startsWith("..") || path.isAbsolute(relative)) {
-    throw new Error(`Refusing registry directory outside clone: ${rawDirectory}`);
+    throw new Error(
+      `Refusing registry directory outside clone: ${rawDirectory}`,
+    );
   }
   return resolved;
 }

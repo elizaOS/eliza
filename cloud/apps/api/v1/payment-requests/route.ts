@@ -5,8 +5,8 @@
  * GET   /api/v1/payment-requests        List payment requests for the caller's org.
  *
  * The unified surface fronts the underlying provider implementations
- * (stripe, oxapay, x402, crypto). Existing app-charge / crypto-payments /
- * x402 routes remain unchanged.
+ * (stripe, oxapay, x402, wallet-native). Existing app-charge /
+ * crypto-payments / x402 routes remain unchanged.
  */
 
 import { Hono } from "hono";
@@ -14,13 +14,13 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getPaymentRequestsService } from "@/lib/services/payment-requests";
+import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "crypto"]);
+const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "wallet_native"]);
 const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
-const StatusSchema = z.enum(["pending", "settled", "expired", "cancelled", "failed"]);
+const StatusSchema = z.enum(["pending", "delivered", "settled", "expired", "canceled", "failed"]);
 
 const CreatePaymentRequestSchema = z.object({
   provider: ProviderSchema,
@@ -38,6 +38,10 @@ const CreatePaymentRequestSchema = z.object({
   callbackSecret: z.string().min(8).max(256).optional(),
   payerIdentityId: z.string().min(1).max(256).optional(),
   agentId: z.string().min(1).max(256).optional(),
+  successUrl: z.string().url().optional(),
+  cancelUrl: z.string().url().optional(),
+  success_url: z.string().url().optional(),
+  cancel_url: z.string().url().optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -53,6 +57,26 @@ const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
+function paymentContext(value: z.infer<typeof PaymentContextSchema>) {
+  return value === "verified_payer"
+    ? ({ kind: "verified_payer", scope: "owner_or_linked_identity" } as const)
+    : ({ kind: "any_payer" } as const);
+}
+
+function paymentMetadata(input: z.infer<typeof CreatePaymentRequestSchema>) {
+  const successUrl = input.successUrl ?? input.success_url;
+  const cancelUrl = input.cancelUrl ?? input.cancel_url;
+  return {
+    successUrl,
+    cancelUrl,
+    metadata: {
+      ...(input.metadata ?? {}),
+      ...(successUrl ? { success_url: successUrl } : {}),
+      ...(cancelUrl ? { cancel_url: cancelUrl } : {}),
+    },
+  };
+}
+
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
@@ -66,21 +90,32 @@ app.post("/", async (c) => {
       );
     }
 
+    const { successUrl, cancelUrl, metadata } = paymentMetadata(parsed.data);
+    if (parsed.data.provider === "stripe" && (!successUrl || !cancelUrl)) {
+      return c.json(
+        {
+          success: false,
+          error: "Stripe payment requests require successUrl and cancelUrl",
+        },
+        400,
+      );
+    }
+
     const service = getPaymentRequestsService(c.env);
     const result = await service.create({
       organizationId: user.organization_id,
-      creatorUserId: user.id,
       provider: parsed.data.provider,
       amountCents: parsed.data.amountCents,
       currency: parsed.data.currency,
-      paymentContext: parsed.data.paymentContext,
+      paymentContext: paymentContext(parsed.data.paymentContext),
       reason: parsed.data.reason,
       expiresInMs: parsed.data.expiresInMs,
       callbackUrl: parsed.data.callbackUrl,
       callbackSecret: parsed.data.callbackSecret,
       payerIdentityId: parsed.data.payerIdentityId,
+      payerUserId: user.id,
       agentId: parsed.data.agentId,
-      metadata: parsed.data.metadata,
+      metadata,
     });
 
     return c.json({
@@ -106,10 +141,7 @@ app.get("/", async (c) => {
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
-      return c.json(
-        { success: false, error: "Invalid query", details: parsed.error.issues },
-        400,
-      );
+      return c.json({ success: false, error: "Invalid query", details: parsed.error.issues }, 400);
     }
 
     const service = getPaymentRequestsService(c.env);

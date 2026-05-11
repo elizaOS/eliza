@@ -16,6 +16,7 @@ set(POLARQUANT_SRCS
     src/polar_quantize_ref.c
     src/polar_dequantize_ref.c
     src/polar_dot_ref.c
+    src/polar_dot_preht_ref.c
     src/polar_dispatch.c
 )
 
@@ -75,6 +76,10 @@ add_test(NAME polar_roundtrip COMMAND polar_roundtrip_test)
 add_executable(polar_dot_test test/polar_dot_test.c)
 target_link_libraries(polar_dot_test PRIVATE polarquant)
 add_test(NAME polar_dot COMMAND polar_dot_test)
+
+add_executable(polar_preht_dot_test test/polar_preht_dot_test.c)
+target_link_libraries(polar_preht_dot_test PRIVATE polarquant)
+add_test(NAME polar_preht_dot COMMAND polar_preht_dot_test)
 
 add_executable(polar_simd_parity_test test/polar_simd_parity_test.c)
 target_link_libraries(polar_simd_parity_test PRIVATE polarquant)

@@ -32,6 +32,7 @@ from typing import Any, Iterable, TextIO
 INPUT_SUFFIXES = {".json", ".jsonl", ".ndjson"}
 CONTAINER_KEYS = ("rows", "records", "examples", "data")
 GEO_REPLACEMENT = "[REDACTED_GEO]"
+ALLOWED_SOURCE_KINDS = ("public", "synthetic", "user_export")
 STATS_SCHEMA = "eliza.privacy_filter_stats.v1"
 STATS_VERSION = 1
 ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"
@@ -68,6 +69,16 @@ SAFE_BACKEND_LABEL_TERMS = (
     "token",
     "user",
 )
+LATITUDE_KEYS = {"lat", "latitude"}
+LONGITUDE_KEYS = {"lng", "lon", "long", "longitude"}
+COORDINATE_CONTAINER_KEYS = {
+    "coords",
+    "coordinates",
+    "currentlocation",
+    "geo",
+    "geolocation",
+    "location",
+}
 
 
 class PrivacyFilterError(RuntimeError):
@@ -81,6 +92,14 @@ class PatternSpec:
     pattern: re.Pattern[str]
     replacement: str
     high_risk: bool = True
+
+
+STRUCTURED_GEO_SPEC = PatternSpec(
+    "geo",
+    "structured-coordinates",
+    re.compile("$^"),
+    GEO_REPLACEMENT,
+)
 
 
 @dataclass(frozen=True)
@@ -122,8 +141,15 @@ class FilterStats:
         if len(self.residual_samples) < 25:
             self.residual_samples.append(sample)
 
-    def to_jsonable(self, *, input_paths: list[str], strict: bool) -> dict[str, Any]:
+    def to_jsonable(
+        self,
+        *,
+        input_paths: list[str],
+        strict: bool,
+        source_kind: str,
+    ) -> dict[str, Any]:
         categories = _counter_json(self.redactions_by_category, include=KNOWN_CATEGORIES)
+        input_path_refs = [_safe_ref(path) for path in input_paths]
         residual_findings = {
             "count": self.residual_total,
             "by_label": dict(sorted(self.residual_by_label.items())),
@@ -132,7 +158,13 @@ class FilterStats:
         return {
             "schema": STATS_SCHEMA,
             "version": STATS_VERSION,
-            "input_paths": input_paths,
+            "sourceKind": source_kind,
+            "source": {
+                "kind": source_kind,
+                "realUserExport": source_kind == "user_export",
+            },
+            "input_paths": input_path_refs,
+            "input_path_refs": input_path_refs,
             "strict": strict,
             "input_count": self.records_read,
             "output_count": self.records_written,
@@ -390,6 +422,108 @@ def _path_for_key(path: str, key: str) -> str:
     return f"{path}[key:{_hash_value(key)[:12]}]"
 
 
+def _normalized_structural_key(value: Any) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).lower())
+
+
+def _coordinate_number(value: Any, *, latitude: bool | None = None) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        number = float(value)
+    elif isinstance(value, str) and re.fullmatch(r"-?\d+(?:\.\d+)?", value.strip()):
+        number = float(value.strip())
+    else:
+        return None
+
+    if latitude is True and not -90 <= number <= 90:
+        return None
+    if latitude is False and not -180 <= number <= 180:
+        return None
+    return number
+
+
+def _coordinate_pair_from_list(value: Any) -> tuple[Any, Any] | None:
+    if not isinstance(value, list) or len(value) < 2:
+        return None
+    if _coordinate_number(value[0], latitude=True) is None:
+        return None
+    if _coordinate_number(value[1], latitude=False) is None:
+        return None
+    return value[0], value[1]
+
+
+def _structured_coordinate_field_pairs(value: dict[str, Any]) -> list[tuple[str, str]]:
+    by_normalized_key = {
+        _normalized_structural_key(key): key
+        for key in value
+        if isinstance(key, str)
+    }
+    pairs: list[tuple[str, str]] = []
+    for lat_key_name in sorted(LATITUDE_KEYS):
+        lat_key = by_normalized_key.get(lat_key_name)
+        if lat_key is None:
+            continue
+        if _coordinate_number(value.get(lat_key), latitude=True) is None:
+            continue
+        for lon_key_name in sorted(LONGITUDE_KEYS):
+            lon_key = by_normalized_key.get(lon_key_name)
+            if lon_key is None:
+                continue
+            if _coordinate_number(value.get(lon_key), latitude=False) is None:
+                continue
+            pairs.append((lat_key, lon_key))
+            break
+    return pairs
+
+
+def _write_structured_geo_redaction(
+    *,
+    match_text: str,
+    path: str,
+    location: SourceLocation,
+    stats: FilterStats,
+    ledger: TextIO,
+) -> None:
+    stats.note_redaction(STRUCTURED_GEO_SPEC, "structural")
+    _write_ledger(
+        ledger,
+        source="structural",
+        spec=STRUCTURED_GEO_SPEC,
+        match_text=match_text,
+        replacement=GEO_REPLACEMENT,
+        start=0,
+        end=len(match_text),
+        path=path,
+        location=location,
+    )
+
+
+def _note_structured_geo_residual(
+    *,
+    match_text: str,
+    path: str,
+    location: SourceLocation,
+    stats: FilterStats,
+) -> None:
+    stats.note_residual(
+        STRUCTURED_GEO_SPEC,
+        {
+            "category": STRUCTURED_GEO_SPEC.category,
+            "label": STRUCTURED_GEO_SPEC.label,
+            "path": path,
+            "start": 0,
+            "end": len(match_text),
+            "value_sha256": _hash_value(match_text),
+            "value_length": len(match_text),
+            "file": _safe_ref(location.file),
+            "line": location.line,
+            "record_index": location.record_index,
+            "record_id": _safe_ref(location.record_id),
+        },
+    )
+
+
 def _write_ledger(
     ledger: TextIO,
     *,
@@ -468,7 +602,7 @@ def _apply_backend_spans(text: str, response: dict[str, Any]) -> tuple[str, list
         end = raw.get("end")
         if not isinstance(start, int) or not isinstance(end, int):
             continue
-        if start < 0 or end < start or end > len(text):
+        if start < 0 or end <= start or end > len(text):
             continue
         label = _safe_backend_label(raw.get("label"))
         replacement = raw.get("replacement")
@@ -485,10 +619,21 @@ def _apply_backend_spans(text: str, response: dict[str, Any]) -> tuple[str, list
             }
         )
 
+    merged_spans: list[dict[str, Any]] = []
+    for span in sorted(spans, key=lambda item: (item["start"], item["end"])):
+        if not merged_spans or span["start"] >= merged_spans[-1]["end"]:
+            merged_spans.append(span)
+            continue
+        previous = merged_spans[-1]
+        previous["end"] = max(previous["end"], span["end"])
+        previous["label"] = "backend-overlap"
+        previous["replacement"] = "<REDACTED:backend-overlap>"
+        previous["match_text"] = text[previous["start"] : previous["end"]]
+
     out = text
-    for span in sorted(spans, key=lambda item: item["start"], reverse=True):
+    for span in sorted(merged_spans, key=lambda item: item["start"], reverse=True):
         out = out[: span["start"]] + span["replacement"] + out[span["end"] :]
-    return out, sorted(spans, key=lambda item: item["start"])
+    return out, sorted(merged_spans, key=lambda item: item["start"])
 
 
 def _apply_backend_redaction(
@@ -675,6 +820,32 @@ def filter_json_value(
                 key_counts[filtered_key] += 1
                 deduped_key = f"{filtered_key}__{key_counts[filtered_key]}"
             child_path = _path_for_key(path, deduped_key)
+            coordinate_pair = _coordinate_pair_from_list(raw_child)
+            if (
+                coordinate_pair is not None
+                and _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
+            ):
+                _write_structured_geo_redaction(
+                    match_text=f"{coordinate_pair[0]},{coordinate_pair[1]}",
+                    path=child_path,
+                    location=location,
+                    stats=stats,
+                    ledger=ledger,
+                )
+                out[deduped_key] = [
+                    GEO_REPLACEMENT
+                    if index < 2
+                    else filter_json_value(
+                        item,
+                        path=f"{child_path}[{index}]",
+                        location=location,
+                        stats=stats,
+                        ledger=ledger,
+                        config=config,
+                    )
+                    for index, item in enumerate(raw_child)
+                ]
+                continue
             out[deduped_key] = filter_json_value(
                 raw_child,
                 path=child_path,
@@ -683,6 +854,18 @@ def filter_json_value(
                 ledger=ledger,
                 config=config,
             )
+        for lat_key, lon_key in _structured_coordinate_field_pairs(out):
+            match_text = f"{out[lat_key]},{out[lon_key]}"
+            redaction_path = f"{path}<geo:{_hash_value(lat_key + '|' + lon_key)[:12]}>"
+            _write_structured_geo_redaction(
+                match_text=match_text,
+                path=redaction_path,
+                location=location,
+                stats=stats,
+                ledger=ledger,
+            )
+            out[lat_key] = GEO_REPLACEMENT
+            out[lon_key] = GEO_REPLACEMENT
         return out
     return value
 
@@ -727,7 +910,26 @@ def scan_residual_high_risk(
             )
         return
     if isinstance(value, dict):
+        for lat_key, lon_key in _structured_coordinate_field_pairs(value):
+            match_text = f"{value[lat_key]},{value[lon_key]}"
+            _note_structured_geo_residual(
+                match_text=match_text,
+                path=f"{path}<geo:{_hash_value(lat_key + '|' + lon_key)[:12]}>",
+                location=location,
+                stats=stats,
+            )
         for key, child in value.items():
+            coordinate_pair = _coordinate_pair_from_list(child)
+            if (
+                coordinate_pair is not None
+                and _normalized_structural_key(key) in COORDINATE_CONTAINER_KEYS
+            ):
+                _note_structured_geo_residual(
+                    match_text=f"{coordinate_pair[0]},{coordinate_pair[1]}",
+                    path=_path_for_key(path, str(key)),
+                    location=location,
+                    stats=stats,
+                )
             scan_residual_high_risk(
                 key,
                 path=f"{path}<key:{_hash_value(str(key))[:12]}>",
@@ -877,8 +1079,10 @@ def build_privacy_attestation(
     stats_json: Path,
     stats: FilterStats,
     strict: bool,
+    source_kind: str,
 ) -> dict[str, Any]:
     categories = _counter_json(stats.redactions_by_category, include=KNOWN_CATEGORIES)
+    input_path_refs = [_safe_ref(path) for path in input_paths]
     residual_findings = {
         "count": stats.residual_total,
         "by_label": dict(sorted(stats.residual_by_label.items())),
@@ -887,17 +1091,20 @@ def build_privacy_attestation(
         strict
         and stats.invalid_json == 0
         and stats.backend_failures == 0
+        and stats.backend_skipped_too_long == 0
         and stats.residual_total == 0
         and stats.records_read == stats.records_written
     )
     artifacts = {
         "redacted_jsonl": {
-            "path": str(output_jsonl),
+            "path": output_jsonl.name,
+            "path_ref": _safe_ref(str(output_jsonl)),
             "sha256": _sha256_file(output_jsonl),
             "rows": stats.records_written,
         },
         "ledger_jsonl": {
-            "path": str(ledger_jsonl),
+            "path": ledger_jsonl.name,
+            "path_ref": _safe_ref(str(ledger_jsonl)),
             "sha256": _sha256_file(ledger_jsonl),
             "entries": stats.redactions_total,
             "raw_sensitive_values": False,
@@ -905,13 +1112,15 @@ def build_privacy_attestation(
             "replacement_fields": ["replacement", "replacement_sha256", "replacement_length"],
         },
         "stats_json": {
-            "path": str(stats_json),
+            "path": stats_json.name,
+            "path_ref": _safe_ref(str(stats_json)),
             "sha256": _sha256_file(stats_json),
         },
     }
     gate = {
         "passed": passed,
         "strict": strict,
+        "sourceKind": source_kind,
         "input_count": stats.records_read,
         "output_count": stats.records_written,
         "redaction_count": stats.redactions_total,
@@ -920,6 +1129,7 @@ def build_privacy_attestation(
         "backend_model": stats.backend_model,
         "invalid_json": stats.invalid_json,
         "backend_failures": stats.backend_failures,
+        "backend_skipped_too_long": stats.backend_skipped_too_long,
         "residual_findings": residual_findings,
         "residual_findings_count": stats.residual_total,
     }
@@ -929,15 +1139,27 @@ def build_privacy_attestation(
         "generated_at": _utc_now(),
         "passed": passed,
         "strict": strict,
+        "sourceKind": source_kind,
+        "source": {
+            "kind": source_kind,
+            "realUserExport": source_kind == "user_export",
+            "inputPathRefs": input_path_refs,
+        },
+        "privacy": {
+            "reviewed": passed,
+            "realUserExport": source_kind == "user_export",
+            "attestationType": "privacy_filter",
+        },
         "input_count": stats.records_read,
         "output_count": stats.records_written,
         "redaction_count": stats.redactions_total,
         "categories": categories,
         "backend_name": stats.backend_name,
         "backend_model": stats.backend_model,
+        "backend_skipped_too_long": stats.backend_skipped_too_long,
         "residual_findings": residual_findings,
         "residual_findings_count": stats.residual_total,
-        "input_path_refs": [_safe_ref(path) for path in input_paths],
+        "input_path_refs": input_path_refs,
         "artifacts": artifacts,
         "gate": gate,
         "ledger_policy": {
@@ -956,11 +1178,16 @@ def filter_paths(
     stats_json: Path,
     attestation_json: Path | None = None,
     strict: bool = False,
+    source_kind: str = "user_export",
     on_invalid_json: str = "error",
     max_records: int = 0,
     suffixes: set[str] | None = None,
     config: RuntimeConfig | None = None,
 ) -> FilterStats:
+    if source_kind not in ALLOWED_SOURCE_KINDS:
+        raise PrivacyFilterError(
+            f"source_kind must be one of {', '.join(ALLOWED_SOURCE_KINDS)}"
+        )
     if suffixes is None:
         suffixes = INPUT_SUFFIXES
     if config is None:
@@ -999,6 +1226,7 @@ def filter_paths(
                     record_index=stats.records_read,
                     record_id=_record_id(original),
                 )
+                backend_skipped_before_record = stats.backend_skipped_too_long
                 cleaned = filter_json_value(
                     original,
                     path="$",
@@ -1007,6 +1235,7 @@ def filter_paths(
                     ledger=ledger_f,
                     config=config,
                 )
+                residual_before_record = stats.residual_total
                 scan_residual_high_risk(
                     cleaned,
                     path="$",
@@ -1014,13 +1243,22 @@ def filter_paths(
                     stats=stats,
                     patterns=config.patterns,
                 )
+                if strict and (
+                    stats.residual_total > residual_before_record
+                    or stats.backend_skipped_too_long > backend_skipped_before_record
+                ):
+                    continue
                 out_f.write(_json_dumps_line(cleaned))
                 out_f.write("\n")
                 stats.records_written += 1
             if max_records and stats.records_read >= max_records:
                 break
 
-    stats_payload = stats.to_jsonable(input_paths=input_paths, strict=strict)
+    stats_payload = stats.to_jsonable(
+        input_paths=input_paths,
+        strict=strict,
+        source_kind=source_kind,
+    )
     stats_json.write_text(
         json.dumps(stats_payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
@@ -1033,6 +1271,7 @@ def filter_paths(
             stats_json=stats_json,
             stats=stats,
             strict=strict,
+            source_kind=source_kind,
         )
         attestation_json.write_text(
             json.dumps(attestation_payload, ensure_ascii=False, indent=2, sort_keys=True)
@@ -1042,6 +1281,11 @@ def filter_paths(
     if strict and stats.residual_total:
         raise PrivacyFilterError(
             f"strict privacy check failed: {stats.residual_total} residual high-risk pattern(s)"
+        )
+    if strict and stats.backend_skipped_too_long:
+        raise PrivacyFilterError(
+            "strict privacy check failed: "
+            f"backend skipped {stats.backend_skipped_too_long} string(s)"
         )
     return stats
 
@@ -1086,6 +1330,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--strict",
         action="store_true",
         help="Exit non-zero if residual high-risk patterns remain after filtering.",
+    )
+    ap.add_argument(
+        "--source-kind",
+        choices=ALLOWED_SOURCE_KINDS,
+        default="user_export",
+        help=(
+            "Source kind recorded in stats/attestation. Defaults to user_export "
+            "so real-user exports cannot be downgraded during publisher handoff."
+        ),
     )
     ap.add_argument(
         "--on-invalid-json",
@@ -1188,6 +1441,7 @@ def main(argv: list[str] | None = None) -> int:
             stats_json=stats_json,
             attestation_json=attestation_json,
             strict=args.strict,
+            source_kind=args.source_kind,
             on_invalid_json=args.on_invalid_json,
             max_records=args.max_records,
             suffixes=suffixes,
@@ -1195,7 +1449,8 @@ def main(argv: list[str] | None = None) -> int:
         )
     except PrivacyFilterError as exc:
         print(f"privacy filter failed: {exc}", file=sys.stderr)
-        return 2 if args.strict and "residual high-risk" in str(exc) else 1
+        strict_gate_error = "residual high-risk" in str(exc) or "backend skipped" in str(exc)
+        return 2 if args.strict and strict_gate_error else 1
 
     print(
         f"privacy filter wrote {stats.records_written} record(s), "

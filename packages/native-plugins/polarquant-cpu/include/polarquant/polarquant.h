@@ -114,6 +114,23 @@ void ggml_vec_dot_q4_polar_q8_0_ref(
     const struct block_q8_0 * y,
     int use_qjl);
 
+/* Pre-Hadamard-query fp32 dot path:
+ *
+ *   dot(dequant_q4_polar(block), q)
+ *     == norm/QK_POLAR * dot(centroid_or_residual_vector, H*q)
+ *
+ * Caller supplies q_preht = H*q using polar_hadamard_inplace()'s unnormalised
+ * convention. This avoids the per-block inverse Hadamard in attention-score
+ * paths where one query is reused across many cached K rows. Passing raw q to
+ * this function is incorrect.
+ */
+void ggml_vec_dot_q4_polar_preht_f32_ref(
+    int n,
+    float * s,
+    const block_q4_polar * x,
+    const float * q_preht,
+    int use_qjl);
+
 /* Generate the per-block random +/-1 sign vector used by the QJL
  * correction.  Encoder and decoder must agree byte-for-byte; we use a
  * simple xorshift32 PRNG seeded with POLAR_QJL_SEED so the output is

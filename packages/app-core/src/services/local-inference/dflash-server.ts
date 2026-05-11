@@ -36,6 +36,7 @@ import {
 } from "./llama-server-metrics";
 import { localInferenceRoot } from "./paths";
 import type { LocalRuntimeOptimizations } from "./types";
+import type { VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
   targetModelPath: string;
@@ -46,8 +47,11 @@ export interface DflashServerPlan {
   draftMax: number;
   gpuLayers: number | "auto";
   draftGpuLayers: number | "auto";
+  kvOffload?: DflashKvOffloadMode;
   disableThinking: boolean;
 }
+
+export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
 
 export interface DflashGenerateArgs {
   prompt: string;
@@ -72,6 +76,13 @@ export interface DflashGenerateArgs {
   signal?: AbortSignal;
   /** Incremental accepted text chunks from streaming chat completions. */
   onTextChunk?: (chunk: string) => void | Promise<void>;
+  /**
+   * Speculative verifier event stream. Today this backend synthesizes
+   * accept events from OpenAI streaming deltas; native DFlash builds can
+   * replace that with exact accept/reject token ranges without changing
+   * callers.
+   */
+  onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
 
 /**
@@ -398,12 +409,42 @@ function resolveDflashGpuLayers(
   if (typeof overrides?.gpuLayers === "number") return overrides.gpuLayers;
   if (overrides?.gpuLayers === "auto") return "auto";
   if (overrides?.gpuLayers === "max") return "auto";
-  if (overrides?.kvOffload !== undefined) {
+  if (
+    overrides?.kvOffload !== undefined &&
+    typeof overrides.kvOffload === "object"
+  ) {
     const mapped = gpuLayersForKvOffload(overrides.kvOffload);
     return mapped === "max" ? "auto" : mapped;
   }
   if (overrides?.useGpu === false) return 0;
   return fallback;
+}
+
+function normalizeDflashKvOffloadMode(
+  value: string | undefined,
+): DflashKvOffloadMode | null {
+  const mode = value?.trim().toLowerCase();
+  if (mode === "cpu" || mode === "gpu" || mode === "split") return mode;
+  return null;
+}
+
+export function resolveDflashKvOffload(
+  overrides: BackendPlan["overrides"] | null | undefined,
+): DflashKvOffloadMode | null {
+  if (typeof overrides?.kvOffload === "string") {
+    return normalizeDflashKvOffloadMode(overrides.kvOffload);
+  }
+  return normalizeDflashKvOffloadMode(process.env.ELIZA_LOCAL_KV_OFFLOAD);
+}
+
+export function appendKvOffloadFlags(
+  args: string[],
+  mode: DflashKvOffloadMode | null,
+): string[] {
+  if (mode === "cpu") {
+    args.push("--no-kv-offload");
+  }
+  return args;
 }
 
 function findPython(): string | null {
@@ -586,7 +627,10 @@ async function fetchStreamingChatCompletion(
   url: string,
   init: RequestInit,
   timeoutMs: number,
-  onTextChunk: (chunk: string) => void | Promise<void>,
+  callbacks: {
+    onTextChunk?: (chunk: string) => void | Promise<void>;
+    onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
+  },
   externalSignal?: AbortSignal,
 ): Promise<string> {
   const controller = new AbortController();
@@ -610,6 +654,7 @@ async function fetchStreamingChatCompletion(
     const reader = res.body.getReader();
     let buffer = "";
     let text = "";
+    let nextIndex = 0;
     const consumeEvent = async (raw: string): Promise<void> => {
       const dataLines = raw
         .split(/\r?\n/)
@@ -622,7 +667,13 @@ async function fetchStreamingChatCompletion(
       const chunk = extractStreamingChatDelta(JSON.parse(data));
       if (!chunk) return;
       text += chunk;
-      await onTextChunk(chunk);
+      if (callbacks.onVerifierEvent) {
+        await callbacks.onVerifierEvent({
+          kind: "accept",
+          tokens: [{ index: nextIndex++, text: chunk }],
+        });
+      }
+      await callbacks.onTextChunk?.(chunk);
     };
 
     for (;;) {
@@ -694,6 +745,15 @@ function resolveParallel(catalogParallel?: number): number {
  *                                    else conservative defaults)
  *   ELIZA_LOCAL_PARALLEL=N         → --parallel N (handled by resolveParallel
  *                                    at the call site, not here)
+ *   ELIZA_LOCAL_CACHE_REUSE=N      → --cache-reuse N
+ *   ELIZA_LOCAL_CACHE_RAM_MB=N     → --cache-ram N
+ *   ELIZA_LOCAL_BATCH_SIZE=N       → --batch-size N
+ *   ELIZA_LOCAL_UBATCH_SIZE=N      → --ubatch-size N
+ *   ELIZA_LOCAL_CONT_BATCHING=0|1  → --cont-batching / --no-cont-batching
+ *   ELIZA_LOCAL_KV_UNIFIED=0|1     → --kv-unified / --no-kv-unified
+ *   ELIZA_LOCAL_OP_OFFLOAD=0|1     → --op-offload / --no-op-offload
+ *   ELIZA_LOCAL_KV_OFFLOAD=cpu     → --no-kv-offload (handled by
+ *                                    appendKvOffloadFlags at start)
  *   ELIZA_LOCAL_MOE_OFFLOAD=cpu    → -ot ".*=CPU"
  *   ELIZA_LOCAL_MLOCK=1            → --mlock
  *   ELIZA_LOCAL_NO_MMAP=1          → --no-mmap
@@ -711,6 +771,38 @@ function readBoolFlag(name: string): boolean | undefined {
     return false;
   }
   return undefined;
+}
+
+function readPositiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name]?.trim();
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function appendPositiveIntFlag(
+  args: string[],
+  flag: string,
+  value: number | undefined,
+): void {
+  if (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value > 0
+  ) {
+    args.push(flag, String(value));
+  }
+}
+
+function appendBooleanFlag(
+  args: string[],
+  enabledFlag: string,
+  disabledFlag: string,
+  value: boolean | undefined,
+): void {
+  if (value === true) args.push(enabledFlag);
+  if (value === false) args.push(disabledFlag);
 }
 
 export function appendOptimizationFlags(
@@ -744,6 +836,45 @@ export function appendOptimizationFlags(
     args.push("--draft-max", String(ngramEffective.max));
     args.push("--draft-min-prob", String(ngramEffective.minProb));
   }
+
+  appendPositiveIntFlag(
+    args,
+    "--cache-reuse",
+    readPositiveIntEnv("ELIZA_LOCAL_CACHE_REUSE") ?? optimizations?.cacheReuse,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--cache-ram",
+    readPositiveIntEnv("ELIZA_LOCAL_CACHE_RAM_MB") ?? optimizations?.cacheRamMb,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--batch-size",
+    readPositiveIntEnv("ELIZA_LOCAL_BATCH_SIZE") ?? optimizations?.batchSize,
+  );
+  appendPositiveIntFlag(
+    args,
+    "--ubatch-size",
+    readPositiveIntEnv("ELIZA_LOCAL_UBATCH_SIZE") ?? optimizations?.ubatchSize,
+  );
+  appendBooleanFlag(
+    args,
+    "--cont-batching",
+    "--no-cont-batching",
+    readBoolFlag("ELIZA_LOCAL_CONT_BATCHING") ?? optimizations?.contBatching,
+  );
+  appendBooleanFlag(
+    args,
+    "--kv-unified",
+    "--no-kv-unified",
+    readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvUnified,
+  );
+  appendBooleanFlag(
+    args,
+    "--op-offload",
+    "--no-op-offload",
+    readBoolFlag("ELIZA_LOCAL_OP_OFFLOAD") ?? optimizations?.opOffload,
+  );
 
   // -ot ".*=CPU" — MoE expert offload to CPU.
   const moeEnv = process.env.ELIZA_LOCAL_MOE_OFFLOAD?.trim().toLowerCase();
@@ -925,6 +1056,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         ? overrides.contextSize
         : dflash.contextSize;
     const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
+    const kvOffload = resolveDflashKvOffload(overrides);
 
     await this.start(
       {
@@ -936,6 +1068,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         draftMax: dflash.draftMax,
         gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
+        kvOffload: kvOffload ?? undefined,
         disableThinking: dflash.disableThinking,
       },
       optimizations,
@@ -975,12 +1108,13 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
     const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
     const parallel = resolveParallel(optimizations?.parallel);
+    const kvOffload = plan.kvOffload ?? resolveDflashKvOffload(null);
     const modelHash = buildModelHash({
       targetModelPath: plan.targetModelPath,
       drafterModelPath,
       cacheTypeK: cacheTypeK ?? null,
       cacheTypeV: cacheTypeV ?? null,
-      extra: `ctx=${plan.contextSize};parallel=${parallel}`,
+      extra: `ctx=${plan.contextSize};parallel=${parallel};kv=${kvOffload ?? "default"}`,
     });
     const slotDir = slotSavePath(modelHash);
     // llama-server's slot API treats `filename` as a basename relative to
@@ -1056,6 +1190,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       args.push("--cache-type-v", cacheTypeV);
     }
 
+    appendKvOffloadFlags(args, kvOffload);
     appendOptimizationFlags(args, optimizations ?? null);
 
     const extra = process.env.ELIZA_DFLASH_LLAMA_ARGS?.trim();
@@ -1358,7 +1493,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       temperature: args.temperature ?? 0.7,
       top_p: args.topP ?? 0.9,
       stop: args.stopSequences,
-      stream: Boolean(args.onTextChunk),
+      stream: Boolean(args.onTextChunk || dflashArgs.onVerifierEvent),
       // `cache_prompt: true` is always safe — the worst case is the
       // server matches no prefix tokens and the request behaves like a
       // cold call. Pinning by `slot_id` only happens when the runtime
@@ -1369,7 +1504,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
     let text: string;
-    if (args.onTextChunk) {
+    if (args.onTextChunk || dflashArgs.onVerifierEvent) {
       text = await fetchStreamingChatCompletion(
         `${baseUrl}/v1/chat/completions`,
         {
@@ -1378,7 +1513,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           body: JSON.stringify(payload),
         },
         60_000,
-        args.onTextChunk,
+        {
+          onTextChunk: args.onTextChunk,
+          onVerifierEvent: dflashArgs.onVerifierEvent,
+        },
         args.signal,
       );
     } else {

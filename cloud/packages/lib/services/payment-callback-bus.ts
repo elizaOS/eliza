@@ -8,6 +8,7 @@ export type PaymentCallbackEvent =
       paymentRequestId: string;
       provider: PaymentProvider;
       txRef?: string;
+      providerEventId?: string;
       amountCents?: number;
       currency?: string;
       payerIdentityId?: string;
@@ -18,15 +19,15 @@ export type PaymentCallbackEvent =
       name: "PaymentFailed";
       paymentRequestId: string;
       provider: PaymentProvider;
+      txRef?: string;
       error: string;
+      providerEventId?: string;
       failedAt: Date;
     };
 
 export type PaymentCallbackEventName = PaymentCallbackEvent["name"];
 
-export type PaymentCallbackListener = (
-  event: PaymentCallbackEvent,
-) => void | Promise<void>;
+export type PaymentCallbackListener = (event: PaymentCallbackEvent) => void | Promise<void>;
 
 export interface PaymentCallbackFilter {
   paymentRequestId?: string;
@@ -40,14 +41,9 @@ export interface PaymentCallbackWaitFilter {
 
 export interface PaymentCallbackBus {
   publish(event: PaymentCallbackEvent): Promise<void>;
-  subscribe(
-    filter: PaymentCallbackFilter,
-    listener: PaymentCallbackListener,
-  ): () => void;
-  waitFor(
-    filter: PaymentCallbackWaitFilter,
-    timeoutMs: number,
-  ): Promise<PaymentCallbackEvent>;
+  subscribe(filter: PaymentCallbackFilter, listener: PaymentCallbackListener): () => void;
+  waitFor(filter: PaymentCallbackWaitFilter, timeoutMs: number): Promise<PaymentCallbackEvent>;
+  recordProviderEvent(provider: PaymentProvider, providerEventId: string): boolean;
 }
 
 export interface CreatePaymentCallbackBusDeps {
@@ -59,24 +55,17 @@ interface Subscription {
   listener: PaymentCallbackListener;
 }
 
-function matches(
-  filter: PaymentCallbackFilter,
-  event: PaymentCallbackEvent,
-): boolean {
+function matches(filter: PaymentCallbackFilter, event: PaymentCallbackEvent): boolean {
   if (filter.name && filter.name !== event.name) return false;
-  if (
-    filter.paymentRequestId &&
-    filter.paymentRequestId !== event.paymentRequestId
-  ) {
+  if (filter.paymentRequestId && filter.paymentRequestId !== event.paymentRequestId) {
     return false;
   }
   return true;
 }
 
-export function createPaymentCallbackBus(
-  deps?: CreatePaymentCallbackBusDeps,
-): PaymentCallbackBus {
+export function createPaymentCallbackBus(deps?: CreatePaymentCallbackBusDeps): PaymentCallbackBus {
   const subscriptions = new Set<Subscription>();
+  const providerEvents = new Set<string>();
   const record = deps?.record;
 
   return {
@@ -110,10 +99,7 @@ export function createPaymentCallbackBus(
       );
     },
 
-    subscribe(
-      filter: PaymentCallbackFilter,
-      listener: PaymentCallbackListener,
-    ): () => void {
+    subscribe(filter: PaymentCallbackFilter, listener: PaymentCallbackListener): () => void {
       const sub: Subscription = { filter, listener };
       subscriptions.add(sub);
       return () => {
@@ -121,10 +107,7 @@ export function createPaymentCallbackBus(
       };
     },
 
-    waitFor(
-      filter: PaymentCallbackWaitFilter,
-      timeoutMs: number,
-    ): Promise<PaymentCallbackEvent> {
+    waitFor(filter: PaymentCallbackWaitFilter, timeoutMs: number): Promise<PaymentCallbackEvent> {
       return new Promise<PaymentCallbackEvent>((resolve, reject) => {
         const names = new Set<PaymentCallbackEventName>(filter.names);
         let unsubscribe: (() => void) | null = null;
@@ -137,16 +120,22 @@ export function createPaymentCallbackBus(
           );
         }, timeoutMs);
 
-        unsubscribe = this.subscribe(
-          { paymentRequestId: filter.paymentRequestId },
-          (event) => {
-            if (!names.has(event.name)) return;
-            clearTimeout(timer);
-            if (unsubscribe) unsubscribe();
-            resolve(event);
-          },
-        );
+        unsubscribe = this.subscribe({ paymentRequestId: filter.paymentRequestId }, (event) => {
+          if (!names.has(event.name)) return;
+          clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+          resolve(event);
+        });
       });
+    },
+
+    recordProviderEvent(provider: PaymentProvider, providerEventId: string): boolean {
+      const key = `${provider}:${providerEventId}`;
+      if (providerEvents.has(key)) return false;
+      providerEvents.add(key);
+      return true;
     },
   };
 }
+
+export const paymentCallbackBus = createPaymentCallbackBus();

@@ -155,6 +155,38 @@ describe("handleIosLocalAgentRequest", () => {
     });
   });
 
+  it("serves stable empty contracts for dashboard subsystems that are not mounted locally", async () => {
+    await expect(getJson("/api/workbench/overview")).resolves.toMatchObject({
+      tasks: [],
+      triggers: [],
+      todos: [],
+      tasksAvailable: false,
+      triggersAvailable: false,
+      todosAvailable: false,
+    });
+    await expect(getJson("/api/triggers")).resolves.toEqual({ triggers: [] });
+    await expect(getJson("/api/documents")).resolves.toMatchObject({
+      documents: [],
+      total: 0,
+    });
+    await expect(getJson("/api/mcp/status")).resolves.toEqual({
+      servers: [],
+    });
+    await expect(getJson("/api/secrets/manager/backends")).resolves.toMatchObject(
+      {
+        backends: [
+          {
+            id: "in-house",
+            available: false,
+          },
+        ],
+      },
+    );
+    await expect(getJson("/api/training/status")).resolves.toEqual({
+      available: false,
+    });
+  });
+
   it("serves empty local wallet contracts instead of 404s", async () => {
     await expect(getJson("/api/wallet/addresses")).resolves.toEqual({
       evmAddress: null,

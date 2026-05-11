@@ -71,7 +71,10 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  *                            in-process backend translates `cpu` →
  *                            `gpuLayers: 0`, `gpu` → `gpuLayers: "max"`,
  *                            `split` → `gpuLayers: "auto"`, and
- *                            `{gpuLayers}` → that exact integer.
+ *                            `{gpuLayers}` → that exact integer. The
+ *                            llama-server backend keeps this separate:
+ *                            `cpu` maps to `--no-kv-offload`, while
+ *                            `{gpuLayers}` remains a layer-placement override.
  */
 export interface LocalInferenceLoadArgs {
   modelPath: string;

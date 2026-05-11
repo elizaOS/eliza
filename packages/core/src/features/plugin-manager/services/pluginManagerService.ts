@@ -925,10 +925,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		}
 
 		if (info.directory) {
-			const tempDir = path.join(
-				path.dirname(targetDir),
-				`temp-${Date.now()}`,
-			);
+			const tempDir = path.join(path.dirname(targetDir), `temp-${Date.now()}`);
 			await fs.ensureDir(tempDir);
 			try {
 				onProgress?.({

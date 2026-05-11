@@ -1,11 +1,15 @@
 # Vast.ai operator runbook (eliza-1)
 
-Vast.ai is the **canonical and only active** cloud for eliza-1 training and
-inference. Nebius is deprecated.
+Vast.ai is the **canonical active** cloud for eliza-1 training and inference.
+Nebius is deprecated and is retained only as an emergency fallback.
 
 `train_vast.sh` will refuse to run if any `NEBIUS_*` env var is set — that
 prevents stale `.env` files from cross-contaminating runs. If you genuinely
 need the Nebius emergency fallback, invoke `train_nebius.sh` directly.
+
+Commands below assume the pipeline root as the working directory:
+`packages/training` in a monorepo checkout, or `training` after downloading
+`elizaos/eliza-1-pipeline`.
 
 ---
 
@@ -57,13 +61,33 @@ instance unless `.vast_instance_id` already points at a live one (set
 
 | Size | Command | Default GPU | Wall (1B tokens) | Cost |
 |------|---------|-------------|------------------|------|
-| 2B   | `bash training/scripts/train_vast.sh provision-and-train --registry-key qwen3.5-2b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~31 h | ~$41 |
-| 9B   | `bash training/scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~139 h | ~$186 |
-| 27B  | `bash training/scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1` | 2x B200 (366 GB) | ~33 h | ~$253 |
+| 2B   | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-2b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~31 h | ~$41 |
+| 9B   | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1` | 1x Blackwell 6000 (96 GB) | ~139 h | ~$186 |
+| 27B  | `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1` | 2x B200 (366 GB) | ~33 h | ~$253 |
 
 Faster alternatives are documented in the script header (e.g. 9B on 2x B200
 is ~11 h / ~$84). Override the GPU target with
 `VAST_GPU_TARGET=b200-2x bash ... provision-and-train ...`.
+
+### Training split contract
+
+Remote training uses the same root split names as local training:
+
+```text
+data/final/train.jsonl
+data/final/val.jsonl
+data/final/test.jsonl
+```
+
+`sync` copies only those active root files plus the final manifest/README.
+`bootstrap-from-hf` downloads the same names to `/workspace/training/data/final/`.
+Candidate directories use `data/validation.jsonl`; promote or copy that split
+to `data/final/val.jsonl` before starting a Vast run.
+
+`train_local.py` accepts `eliza_native_v1`, trainable
+`eliza.eliza1_trajectory_record.v1` message rows, already-rendered chat-message
+rows with a final assistant turn, and legacy flat `ElizaRecord` rows. It
+rejects `repair_eval` and failed-quality rows.
 
 After provisioning, save the instance id for later commands:
 
@@ -79,7 +103,7 @@ makes it available to other tools and to the watcher.)
 In a separate shell, start the liveness watcher:
 
 ```bash
-bash training/scripts/vast-watcher.sh &
+bash scripts/vast-watcher.sh &
 ```
 
 The watcher polls `train_vast.sh status` every 60 s and writes incident
@@ -90,7 +114,7 @@ Logs land at `~/.milady/vast-watcher.log` (rotated at 10 MB).
 Tail training output directly:
 
 ```bash
-bash training/scripts/train_vast.sh tail-logs
+bash scripts/train_vast.sh tail-logs
 ```
 
 ---
@@ -101,13 +125,13 @@ Cron-style snippet — pull only the latest checkpoint every 30 min so you
 have something to evaluate or fall back to if the instance dies:
 
 ```cron
-*/30 * * * * cd /home/shaw/milady && bash training/scripts/train_vast.sh pull-checkpoints --latest-only >> ~/.milady/vast-pull.log 2>&1
+*/30 * * * * cd /home/shaw/milady/training && bash scripts/train_vast.sh pull-checkpoints --latest-only >> ~/.milady/vast-pull.log 2>&1
 ```
 
 To pull every checkpoint (slower, more bandwidth, complete history):
 
 ```bash
-bash training/scripts/train_vast.sh pull-checkpoints
+bash scripts/train_vast.sh pull-checkpoints
 ```
 
 `CheckpointSyncAgent` owns the periodic-pull loop with eval gating
@@ -152,7 +176,7 @@ KV bytes/token placeholder, GPU cache usage). The richer
 Graceful (recommended):
 
 ```bash
-bash training/scripts/train_vast.sh kill-and-teardown --yes
+bash scripts/train_vast.sh kill-and-teardown --yes
 ```
 
 This sends `SIGTERM` to `accelerate launch` and `train_local.py`, waits
@@ -163,7 +187,7 @@ on disk before destruction.
 Immediate (skips graceful shutdown):
 
 ```bash
-bash training/scripts/train_vast.sh teardown --yes
+bash scripts/train_vast.sh teardown --yes
 ```
 
 Both subcommands require `--yes` (or `CONFIRM_TEARDOWN=1`) to actually
@@ -178,12 +202,12 @@ whatever job number) once you're done.
 ## Nebius migration
 
 `train_nebius.sh` is kept on disk as an emergency fallback only. **Do not
-extend it. Do not add new Nebius features. Do not document Nebius as an
-option in user-facing material.** All new training and inference work goes
-through `train_vast.sh` and the Vast PyWorker template. The Nebius script
-stays in the tree solely so an operator can recover capacity if Vast is
-fully unavailable for an extended outage; even then, prefer waiting on
-Vast over building anything new on Nebius.
+extend it. Do not add new Nebius features. Do not present Nebius as a normal
+operator path.** All new training and inference work goes through
+`train_vast.sh` and the Vast PyWorker template. The Nebius script stays in the
+tree solely so an operator can recover capacity if Vast is fully unavailable
+for an extended outage; even then, prefer waiting on Vast over building
+anything new on Nebius.
 
 Anything previously documented as a Nebius workflow (the
 `provision/sync/run/quantize/bench/fetch/teardown` lifecycle, the

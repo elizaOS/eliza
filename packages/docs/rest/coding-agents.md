@@ -205,13 +205,20 @@ POST /api/cloud/coding-containers/:containerId/sync
     "projectId": "demo-app",
     "baseRevision": "snapshot-id"
   },
-  "changedFiles": [],
+  "changedFiles": [
+    { "path": "src/index.ts", "contents": "export {};\n", "encoding": "utf-8" }
+  ],
   "deletedFiles": [],
   "patches": []
 }
 ```
 
-**Response** (200)
+`changedFiles` and `deletedFiles` are applied by the Cloud container control
+plane. `pull` and `roundtrip` responses include exported workspace files with
+`encoding=base64`. Patch application is intentionally rejected until the Cloud
+runtime has a real patch applier; callers should send full changed files.
+
+**Response** (202)
 
 ```json
 {
@@ -219,14 +226,16 @@ POST /api/cloud/coding-containers/:containerId/sync
   "data": {
     "syncId": "sync-id",
     "containerId": "container-id",
-    "status": "accepted",
+    "status": "ready",
     "direction": "roundtrip",
     "target": {
       "sourceKind": "project",
       "projectId": "demo-app",
       "baseRevision": "snapshot-id"
     },
-    "changedFiles": [],
+    "changedFiles": [
+      { "path": "src/index.ts", "contents": "ZXhwb3J0IHt9Owo=", "encoding": "base64" }
+    ],
     "deletedFiles": [],
     "patches": [],
     "createdAt": "2026-05-11T16:00:00.000Z"

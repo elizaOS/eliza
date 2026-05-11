@@ -9,10 +9,10 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse, ApiError } from "@/lib/api/cloud-worker-errors";
+import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { getPaymentRequestsService } from "@/lib/services/payment-requests";
+import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,7 +39,7 @@ app.post("/", async (c) => {
 
     const after = await service.get(id, user.organization_id);
     if (!after) {
-      throw new ApiError("Payment request vanished after expire", 500);
+      throw new ApiError(500, "internal_error", "Payment request vanished after expire");
     }
 
     return c.json({

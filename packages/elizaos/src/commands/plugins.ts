@@ -1,8 +1,8 @@
-import * as clack from "@clack/prompts";
 import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import * as clack from "@clack/prompts";
 import type { Command } from "commander";
 import pc from "picocolors";
 
@@ -40,8 +40,7 @@ interface ThirdPartyMetadata {
   app?: Record<string, unknown>;
 }
 
-const PACKAGE_NAME_RE =
-  /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
+const PACKAGE_NAME_RE = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const VALID_KINDS = new Set(["plugin", "connector", "app"]);
 
@@ -60,7 +59,10 @@ export function registerPluginsCommand(program: Command): void {
       "elizaos-plugins/registry",
     )
     .option("--base <branch>", "Registry base branch", "main")
-    .option("--dry-run", "Print generated metadata without writing or opening a PR")
+    .option(
+      "--dry-run",
+      "Print generated metadata without writing or opening a PR",
+    )
     .option("--no-pr", "Create and push the branch but do not open a PR")
     .option("-y, --yes", "Skip confirmation prompts")
     .option("--skip-validation", "Skip npm and GitHub existence checks")
@@ -80,7 +82,9 @@ export async function submitPluginToRegistry(
   const relativeRegistryPath = path.join("entries", "third-party", fileName);
 
   if (options.dryRun) {
-    console.log(JSON.stringify({ path: relativeRegistryPath, metadata }, null, 2));
+    console.log(
+      JSON.stringify({ path: relativeRegistryPath, metadata }, null, 2),
+    );
     return;
   }
 
@@ -112,7 +116,11 @@ export async function submitPluginToRegistry(
     const ghUser = capture("gh", ["api", "user", "--jq", ".login"]).trim();
     ensureFork(options.registry);
 
-    run("git", ["clone", `https://github.com/${options.registry}.git`, checkoutDir]);
+    run("git", [
+      "clone",
+      `https://github.com/${options.registry}.git`,
+      checkoutDir,
+    ]);
     run("git", ["checkout", "-b", branchName], { cwd: checkoutDir });
 
     const targetFile = path.join(checkoutDir, relativeRegistryPath);
@@ -131,12 +139,7 @@ export async function submitPluginToRegistry(
     const repoName = options.registry.split("/")[1];
     run(
       "git",
-      [
-        "remote",
-        "add",
-        "fork",
-        `https://github.com/${ghUser}/${repoName}.git`,
-      ],
+      ["remote", "add", "fork", `https://github.com/${ghUser}/${repoName}.git`],
       { cwd: checkoutDir },
     );
     run("git", ["push", "-u", "fork", branchName], { cwd: checkoutDir });
@@ -175,13 +178,17 @@ export async function submitPluginToRegistry(
   }
 }
 
-export function createThirdPartyMetadata(projectDir: string): ThirdPartyMetadata {
+export function createThirdPartyMetadata(
+  projectDir: string,
+): ThirdPartyMetadata {
   const packageJsonPath = path.join(projectDir, "package.json");
   if (!fs.existsSync(packageJsonPath)) {
     throw new Error(`No package.json found at ${packageJsonPath}`);
   }
 
-  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as PackageJson;
+  const pkg = JSON.parse(
+    fs.readFileSync(packageJsonPath, "utf8"),
+  ) as PackageJson;
   const packageName = pkg.name?.trim();
   if (!packageName || !PACKAGE_NAME_RE.test(packageName)) {
     throw new Error(`Invalid or missing package name in ${packageJsonPath}`);
@@ -232,7 +239,9 @@ export function createThirdPartyMetadata(projectDir: string): ThirdPartyMetadata
   return metadata;
 }
 
-export function normalizeGithubRepo(value: string | null | undefined): string | null {
+export function normalizeGithubRepo(
+  value: string | null | undefined,
+): string | null {
   if (!value) {
     return null;
   }

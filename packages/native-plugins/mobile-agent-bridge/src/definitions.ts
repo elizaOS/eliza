@@ -86,9 +86,7 @@ export interface MobileAgentBridgePlugin {
    * Start (or restart) the inbound tunnel. Idempotent; calling with
    * the same options while already registered is a no-op.
    */
-  startInboundTunnel(
-    options: MobileAgentBridgeStartOptions,
-  ): Promise<MobileAgentTunnelStatus>;
+  startInboundTunnel(options: MobileAgentBridgeStartOptions): Promise<MobileAgentTunnelStatus>;
 
   /**
    * Stop the tunnel and release resources. Safe to call when no

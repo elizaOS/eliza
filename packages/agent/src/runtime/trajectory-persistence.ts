@@ -44,22 +44,6 @@ export {
 // ---------------------------------------------------------------------------
 export { loadPersistedTrajectoryRows } from "./trajectory-query.ts";
 // ---------------------------------------------------------------------------
-// Storage — write operations
-// ---------------------------------------------------------------------------
-export {
-  annotateTrajectoryStep,
-  clearPersistedTrajectoryRows,
-  completeTrajectoryStepInDatabase,
-  createDatabaseTrajectoryLogger,
-  DatabaseTrajectoryLogger,
-  deletePersistedTrajectoryRows,
-  flushTrajectoryWrites,
-  installDatabaseTrajectoryLogger,
-  pruneOldTrajectories,
-  startTrajectoryStepInDatabase,
-} from "./trajectory-storage.ts";
-
-// ---------------------------------------------------------------------------
 // Steps — CQRS reader/writer for the dedicated trajectory_steps table
 // ---------------------------------------------------------------------------
 export {
@@ -75,6 +59,21 @@ export {
   replaceStepsForTrajectory,
   upsertStep,
 } from "./trajectory-steps-writer.ts";
+// ---------------------------------------------------------------------------
+// Storage — write operations
+// ---------------------------------------------------------------------------
+export {
+  annotateTrajectoryStep,
+  clearPersistedTrajectoryRows,
+  completeTrajectoryStepInDatabase,
+  createDatabaseTrajectoryLogger,
+  DatabaseTrajectoryLogger,
+  deletePersistedTrajectoryRows,
+  flushTrajectoryWrites,
+  installDatabaseTrajectoryLogger,
+  pruneOldTrajectories,
+  startTrajectoryStepInDatabase,
+} from "./trajectory-storage.ts";
 
 // ---------------------------------------------------------------------------
 // Export — archive operations (available via "./trajectory-export" for

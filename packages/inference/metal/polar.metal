@@ -16,13 +16,18 @@
 //   With residual:    82*8 / 128 = 5.125 bpw
 //   Without residual: 66*8 / 128 = 4.125 bpw  (qjl[] left at zero)
 //
-// Two kernels:
+// Three kernels:
 //   - kernel_get_rows_q4_polar     : decode one 128-element block to fp32
 //                                    (LUT lookup + optional QJL residual + inverse
 //                                    Hadamard + per-block L2 rescale).
 //   - kernel_mul_mv_q4_polar_f32   : dot-product against an fp32 activation
 //                                    chunk (n must be a positive multiple of
 //                                    QK_POLAR; one threadgroup per block).
+//   - kernel_mul_mv_q4_polar_preht_f32:
+//                                    hot path for attention-score dispatches
+//                                    that can pass H*q; avoids the per-row
+//                                    Hadamard butterfly by using
+//                                    dot(H*x, q) == dot(x, H*q).
 
 #include <metal_stdlib>
 using namespace metal;
@@ -114,10 +119,8 @@ static inline void polar_hadamard_inplace_tg32(threadgroup float * x, uint tid) 
 // ---------- get_rows: decode one 128-element block to fp32 ----------
 //
 // Dispatch: one threadgroup per block. Threadgroup size = 32 (one Apple
-// SIMD-group). Threads cooperate on the unpack and the per-element rescale;
-// the butterfly itself is run sequentially by tid==0 against a threadgroup-
-// shared scratch (this is the "head_dim=128 butterfly per thread, no
-// cross-thread reduction" tradeoff called out in the porting plan).
+// SIMD-group). Threads cooperate on the unpack, optional residual,
+// Hadamard butterfly, and per-element rescale.
 
 kernel void kernel_get_rows_q4_polar(
         device const block_q4_polar    * blk        [[buffer(0)]],   // single block
@@ -138,9 +141,8 @@ kernel void kernel_get_rows_q4_polar(
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Step 3: optional QJL residual. Sign-vector generation is sequential
-    // (xorshift32 chain) so tid==0 fills a threadgroup-shared buffer; the
-    // per-element add is then parallel across all 32 threads.
+    // Step 3: optional QJL residual. The xorshift32(seed=42) sign vector is a
+    // literal constant table, so all 32 threads can apply it directly.
     if (args.use_qjl != 0u) {
         float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
         uint  bit  = (uint)(blk->qjl[0] & 1u);
@@ -205,9 +207,7 @@ kernel void kernel_mul_mv_q4_polar_f32(
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // Step 3: optional QJL residual. Same parallelization as get_rows: the
-    // sequential xorshift32 sign chain runs on tid==0 into shared scratch,
-    // then all 32 threads do the per-element add in parallel.
+    // Step 3: optional QJL residual. Same constant-table path as get_rows.
     if (args.use_qjl != 0u) {
         float mag = POLAR_QJL_CORRECTION_MAGNITUDE * POLAR_QJL_INV_SQRT_QK;
         uint  bit  = (uint)(blk->qjl[0] & 1u);

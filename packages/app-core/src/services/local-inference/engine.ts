@@ -434,6 +434,10 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       }
       const text = await session.prompt(args.prompt, promptOpts);
       if (text.length > 0) {
+        await args.onVerifierEvent?.({
+          kind: "accept",
+          tokens: [{ index: 0, text }],
+        });
         await args.onTextChunk?.(text);
       }
       return text;
@@ -933,11 +937,23 @@ export class LocalInferenceEngine {
 
     let nextIndex = 0;
     let streamedAny = false;
+    let verifierHandled = false;
     const callerOnTextChunk = args.onTextChunk;
+    const callerOnVerifierEvent = args.onVerifierEvent;
     const wrapped = {
       ...args,
+      onVerifierEvent: async (event: VerifierStreamEvent) => {
+        verifierHandled = true;
+        if (event.kind === "accept" && event.tokens.length > 0) {
+          streamedAny = true;
+          const last = event.tokens[event.tokens.length - 1];
+          nextIndex = Math.max(nextIndex, last.index + 1);
+        }
+        await this.pushVerifierEvent(event);
+        await callerOnVerifierEvent?.(event);
+      },
       onTextChunk: async (chunk: string) => {
-        if (chunk.length > 0) {
+        if (chunk.length > 0 && !verifierHandled) {
           streamedAny = true;
           const token: TextToken = { index: nextIndex++, text: chunk };
           await bridge.pushAcceptedToken(token);
@@ -950,7 +966,10 @@ export class LocalInferenceEngine {
       args: wrapped,
       finish: async (finalText: string) => {
         if (!streamedAny && finalText.length > 0) {
-          await bridge.pushAcceptedToken({ index: nextIndex++, text: finalText });
+          await bridge.pushAcceptedToken({
+            index: nextIndex++,
+            text: finalText,
+          });
         }
         await bridge.settle();
       },

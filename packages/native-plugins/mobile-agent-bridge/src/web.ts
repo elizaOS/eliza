@@ -13,10 +13,7 @@ import type {
  * status and reject `startInboundTunnel` so callers see an honest
  * failure mode rather than a silent no-op.
  */
-export class MobileAgentBridgeWeb
-  extends WebPlugin
-  implements MobileAgentBridgePlugin
-{
+export class MobileAgentBridgeWeb extends WebPlugin implements MobileAgentBridgePlugin {
   private status: MobileAgentTunnelStatus = {
     state: "idle",
     relayUrl: null,
@@ -31,8 +28,7 @@ export class MobileAgentBridgeWeb
       state: "error",
       relayUrl: options.relayUrl,
       deviceId: options.deviceId,
-      lastError:
-        "MobileAgentBridge.startInboundTunnel is only available on iOS and Android.",
+      lastError: "MobileAgentBridge.startInboundTunnel is only available on iOS and Android.",
     };
     this.notifyListeners("stateChange", {
       state: "error",
