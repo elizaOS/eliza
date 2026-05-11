@@ -246,6 +246,38 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
   }
 
+  // base-v1 provenance coverage. A `base-v1` manifest (the upstream base
+  // models, GGUF-converted + fully optimized, NOT fine-tuned) MUST record
+  // where every shipped component comes from — that is the whole point of
+  // the release state.
+  if (m.provenance) {
+    if (
+      m.provenance.releaseState === "base-v1" &&
+      m.provenance.finetuned !== false
+    ) {
+      errors.push(
+        "provenance.finetuned: must be false for releaseState=base-v1",
+      );
+    }
+    if (m.provenance.releaseState === "base-v1") {
+      const requiredSlots: Array<keyof typeof m.provenance.sourceModels> = [
+        "text",
+        "voice",
+        "drafter",
+      ];
+      for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
+        if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
+      }
+      for (const slot of requiredSlots) {
+        if (!m.provenance.sourceModels[slot]) {
+          errors.push(
+            `provenance.sourceModels.${slot}: required for releaseState=base-v1 (component is in files.${slot})`,
+          );
+        }
+      }
+    }
+  }
+
   // DFlash bench. The `dflash` eval is shape-checked by the Zod schema; here
   // we only enforce internal consistency — if `passed: true` is claimed, the
   // bench must have actually produced numbers (a null acceptanceRate/speedup
