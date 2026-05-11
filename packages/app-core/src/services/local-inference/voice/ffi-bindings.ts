@@ -43,6 +43,7 @@ export const ELIZA_ERR_BUNDLE_INVALID = -3;
 export const ELIZA_ERR_FFI_FAULT = -4;
 export const ELIZA_ERR_OOM = -5;
 export const ELIZA_ERR_ABI_MISMATCH = -6;
+export const ELIZA_ERR_CANCELLED = -7;
 
 /**
  * Region names the lifecycle hands to `mmap_acquire` / `mmap_evict`.
@@ -56,6 +57,33 @@ export type ElizaInferenceRegion = "tts" | "asr" | "text" | "dflash";
  * side beyond passing it back through the binding.
  */
 export type ElizaInferenceContextHandle = bigint;
+
+/**
+ * One streaming-TTS chunk delivered to the `onChunk` callback passed to
+ * `ttsSynthesizeStream`. `pcm` is a *view* over the library's buffer —
+ * valid only for the duration of the callback; copy it before
+ * returning. `isFinal` marks the zero-length tail chunk that closes the
+ * utterance. The callback returning `true` requests cancellation at the
+ * next kernel boundary.
+ */
+export interface TtsStreamChunk {
+  pcm: Float32Array;
+  isFinal: boolean;
+}
+
+/**
+ * A native DFlash speculative-step event from
+ * `eliza_inference_set_verifier_callback`. Token-index domain is the
+ * generated-output stream (token 0 = first generated token), matching
+ * `RejectedTokenRange`. `rejectedFrom`/`rejectedTo` are -1 when nothing
+ * was rejected this step.
+ */
+export interface NativeVerifierEvent {
+  acceptedTokenIds: number[];
+  rejectedFrom: number;
+  rejectedTo: number;
+  correctedTokenIds: number[];
+}
 
 /**
  * Typed handle returned by `loadElizaInferenceFfi`. Each method maps
@@ -109,6 +137,48 @@ export interface ElizaInferenceFfi {
     sampleRateHz: number;
     maxTextBytes?: number;
   }): string;
+
+  /* ---- Streaming TTS + verifier callback (ABI v2) --------------- */
+
+  /**
+   * True when this build implements streaming TTS (false for the stub /
+   * a TTS-disabled build). Callers pick the streaming path vs the batch
+   * `ttsSynthesize` off this flag — no probe-and-catch.
+   */
+  ttsStreamSupported(): boolean;
+  /**
+   * Chunked synthesis. `onChunk` is invoked for each decoded PCM segment
+   * as it arrives, then once more with `isFinal: true` (zero-length
+   * tail). Returning `true` from `onChunk` requests cancellation; the
+   * call then resolves with `cancelled: true` after the final-chunk
+   * callback. Any negative library return is a thrown `VoiceLifecycleError`.
+   */
+  ttsSynthesizeStream(args: {
+    ctx: ElizaInferenceContextHandle;
+    text: string;
+    speakerPresetId: string | null;
+    onChunk: (chunk: TtsStreamChunk) => boolean | undefined;
+  }): { cancelled: boolean };
+  /**
+   * Hard-cancel any in-flight TTS forward pass on `ctx` (started on
+   * another thread by `ttsSynthesize` / `ttsSynthesizeStream`). The
+   * in-flight call returns `ELIZA_ERR_CANCELLED` at the next kernel
+   * boundary. Cancelling nothing is not an error.
+   */
+  cancelTts(ctx: ElizaInferenceContextHandle): void;
+  /**
+   * Register (or, with `cb: null`, clear) the native DFlash verifier
+   * callback. The runtime fires `cb` for every speculative accept/reject
+   * step from the in-process drafter↔target loop. The returned
+   * `JSCallbackHandle` MUST be kept alive for as long as the callback is
+   * registered and `.close()`d when it's cleared (or on dispose) — Bun's
+   * `JSCallback` is GC'd otherwise and the native side dereferences a
+   * dead pointer.
+   */
+  setVerifierCallback(
+    ctx: ElizaInferenceContextHandle,
+    cb: ((event: NativeVerifierEvent) => void) | null,
+  ): { close(): void };
 
   /* ---- Streaming ASR (ABI v2) ----------------------------------- */
 
@@ -220,6 +290,23 @@ interface BunFfiSymbols {
     maxTextBytes: bigint | number,
     outErr: unknown,
   ) => number;
+  eliza_inference_tts_stream_supported: () => number;
+  eliza_inference_tts_synthesize_stream: (
+    ctx: bigint,
+    text: unknown,
+    textLen: bigint | number,
+    speaker: unknown,
+    onChunk: unknown,
+    userData: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_cancel_tts: (ctx: bigint, outErr: unknown) => number;
+  eliza_inference_set_verifier_callback: (
+    ctx: bigint,
+    cb: unknown,
+    userData: bigint | number,
+    outErr: unknown,
+  ) => number;
   eliza_inference_asr_stream_supported: () => number;
   eliza_inference_asr_stream_open: (
     ctx: bigint,
@@ -257,12 +344,30 @@ interface BunFfiLib {
   close(): void;
 }
 
+interface BunFfiJSCallback {
+  readonly ptr: bigint | number;
+  close(): void;
+}
+
 interface BunFfiModule {
   dlopen(path: string, defs: Record<string, unknown>): BunFfiLib;
   FFIType: Record<string, number>;
   ptr(value: ArrayBufferView): unknown;
   CString: new (ptr: unknown) => { toString(): string };
-  read: { ptr(buf: unknown, offset?: number): bigint };
+  read: {
+    ptr(buf: unknown, offset?: number): bigint;
+    i32(buf: unknown, offset?: number): number;
+    u64(buf: unknown, offset?: number): bigint;
+  };
+  toArrayBuffer(
+    ptr: bigint | number,
+    byteOffset?: number,
+    byteLength?: number,
+  ): ArrayBuffer;
+  JSCallback: new (
+    fn: (...args: never[]) => unknown,
+    def: { args: number[]; returns: number },
+  ) => BunFfiJSCallback;
 }
 
 /**
@@ -331,6 +436,23 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
       },
       eliza_inference_asr_transcribe: {
         args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.usize, T.ptr],
+        returns: T.i32,
+      },
+      // Streaming TTS + native verifier callback (ABI v2). The
+      // function-pointer args are passed as raw pointer values
+      // (`JSCallback.ptr`, or 0n to clear) so this binding owns the
+      // JSCallback lifetime explicitly — see `ttsSynthesizeStream` /
+      // `setVerifierCallback` below.
+      eliza_inference_tts_stream_supported: { args: [], returns: T.i32 },
+      eliza_inference_tts_synthesize_stream: {
+        // ctx, text, text_len, speaker, on_chunk (fn ptr), user_data, out_error
+        args: [T.ptr, T.ptr, T.usize, T.ptr, T.usize, T.usize, T.ptr],
+        returns: T.i32,
+      },
+      eliza_inference_cancel_tts: { args: [T.ptr, T.ptr], returns: T.i32 },
+      eliza_inference_set_verifier_callback: {
+        // ctx, cb (fn ptr — 0 to clear), user_data, out_error
+        args: [T.ptr, T.usize, T.usize, T.ptr],
         returns: T.i32,
       },
       // Streaming ASR (ABI v2).
@@ -535,6 +657,124 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
       );
     },
 
+    /* ---- Streaming TTS + verifier callback (ABI v2) ------------ */
+
+    ttsStreamSupported(): boolean {
+      return lib.symbols.eliza_inference_tts_stream_supported() === 1;
+    },
+
+    ttsSynthesizeStream({ ctx, text, speakerPresetId, onChunk }) {
+      const err = makeOutErr();
+      const textArg = cstr(text);
+      const speakerArg = cstr(speakerPresetId);
+      // (pcm: ptr, n_samples: usize, is_final: i32, user_data: ptr) -> i32
+      const cb = new ffi.JSCallback(
+        ((pcmPtr: bigint, nSamples: bigint, isFinal: number) => {
+          const n = Number(nSamples);
+          // Bun delivers the C pointer as a bigint; copy the floats out
+          // before returning — the buffer is the library's, valid only
+          // for this call.
+          const pcm =
+            n > 0 && pcmPtr !== 0n
+              ? new Float32Array(ffi.toArrayBuffer(pcmPtr, 0, n * 4).slice(0))
+              : new Float32Array(0);
+          const requestCancel = onChunk({ pcm, isFinal: isFinal !== 0 });
+          return requestCancel === true ? 1 : 0;
+        }) as unknown as (...args: never[]) => unknown,
+        {
+          args: [T.ptr, T.usize, T.i32, T.ptr],
+          returns: T.i32,
+        },
+      );
+      try {
+        const rc = lib.symbols.eliza_inference_tts_synthesize_stream(
+          ctx,
+          textArg.ptr,
+          BigInt(textArg.bytes),
+          speakerArg.ptr,
+          BigInt(cb.ptr),
+          0n,
+          err.ptr,
+        );
+        if (rc === ELIZA_ERR_CANCELLED) return { cancelled: true };
+        if (rc < 0) {
+          const message =
+            takeError(err.buf) ??
+            `[ffi-bindings] eliza_inference_tts_synthesize_stream rc=${rc}`;
+          throw new VoiceLifecycleError(failureCode(rc), message);
+        }
+        return { cancelled: false };
+      } finally {
+        cb.close();
+      }
+    },
+
+    cancelTts(ctx) {
+      const err = makeOutErr();
+      const rc = lib.symbols.eliza_inference_cancel_tts(ctx, err.ptr);
+      if (rc !== ELIZA_OK) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_cancel_tts rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+    },
+
+    setVerifierCallback(ctx, cbFn) {
+      const err = makeOutErr();
+      if (cbFn === null) {
+        const rc = lib.symbols.eliza_inference_set_verifier_callback(
+          ctx,
+          0n,
+          0n,
+          err.ptr,
+        );
+        if (rc !== ELIZA_OK) {
+          const message =
+            takeError(err.buf) ??
+            `[ffi-bindings] eliza_inference_set_verifier_callback(clear) rc=${rc}`;
+          throw new VoiceLifecycleError(failureCode(rc), message);
+        }
+        return { close: () => {} };
+      }
+      // (ev: ptr to EliVerifierEvent, user_data: ptr) -> void
+      const cb = new ffi.JSCallback(
+        ((evPtr: bigint) => {
+          cbFn(readVerifierEvent(evPtr, ffi));
+        }) as unknown as (...args: never[]) => unknown,
+        { args: [T.ptr, T.ptr], returns: T.void },
+      );
+      const rc = lib.symbols.eliza_inference_set_verifier_callback(
+        ctx,
+        BigInt(cb.ptr),
+        0n,
+        err.ptr,
+      );
+      if (rc !== ELIZA_OK) {
+        cb.close();
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_set_verifier_callback rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+      return {
+        close: () => {
+          // Clear the native registration FIRST, then free the
+          // JSCallback — order matters so the native side never
+          // dereferences a closed callback.
+          const clearErr = makeOutErr();
+          lib.symbols.eliza_inference_set_verifier_callback(
+            ctx,
+            0n,
+            0n,
+            clearErr.ptr,
+          );
+          takeError(clearErr.buf);
+          cb.close();
+        },
+      };
+    },
+
     /* ---- Streaming ASR (ABI v2) -------------------------------- */
 
     asrStreamSupported(): boolean {
@@ -661,6 +901,45 @@ function formatFfiError(err: unknown): string {
     return err.message;
   }
   return String(err);
+}
+
+/**
+ * Read an `EliVerifierEvent` (see `ffi.h`) from a C struct pointer.
+ * Layout on 64-bit (8-byte aligned, default packing):
+ *   off 0  : const int* accepted_token_ids   (8)
+ *   off 8  : size_t      n_accepted           (8)
+ *   off 16 : int         rejected_from        (4)
+ *   off 20 : int         rejected_to          (4)
+ *   off 24 : const int*  corrected_token_ids  (8)
+ *   off 32 : size_t      n_corrected          (8)
+ */
+function readVerifierEvent(
+  evPtr: bigint,
+  ffi: BunFfiModule,
+): NativeVerifierEvent {
+  const acceptedPtr = ffi.read.ptr(evPtr, 0);
+  const nAccepted = Number(ffi.read.u64(evPtr, 8));
+  const rejectedFrom = ffi.read.i32(evPtr, 16);
+  const rejectedTo = ffi.read.i32(evPtr, 20);
+  const correctedPtr = ffi.read.ptr(evPtr, 24);
+  const nCorrected = Number(ffi.read.u64(evPtr, 32));
+  return {
+    acceptedTokenIds: readInt32Array(acceptedPtr, nAccepted, ffi),
+    rejectedFrom,
+    rejectedTo,
+    correctedTokenIds: readInt32Array(correctedPtr, nCorrected, ffi),
+  };
+}
+
+function readInt32Array(
+  ptr: bigint,
+  count: number,
+  ffi: BunFfiModule,
+): number[] {
+  if (ptr === 0n || count <= 0) return [];
+  // Copy out — the array is the library's, valid only for the callback.
+  const view = new Int32Array(ffi.toArrayBuffer(ptr, 0, count * 4).slice(0));
+  return Array.from(view);
 }
 
 /**
