@@ -302,7 +302,7 @@ export interface SubjectStoreView {
  * tasks with `respectsGlobalPause: true` skip with `reason = "global_pause"`.
  */
 export interface GlobalPauseView {
-  current(): Promise<{
+  current(now?: Date): Promise<{
     active: boolean;
     startIso?: string;
     endIso?: string;

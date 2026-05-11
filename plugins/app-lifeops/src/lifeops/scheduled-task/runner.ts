@@ -399,7 +399,7 @@ export function createScheduledTaskRunner(
     task: ScheduledTask,
   ): Promise<{ paused: boolean; reason?: string }> {
     if (task.respectsGlobalPause === false) return { paused: false };
-    const pause = await deps.globalPause.current();
+    const pause = await deps.globalPause.current(now());
     if (!pause.active) return { paused: false };
     return {
       paused: true,

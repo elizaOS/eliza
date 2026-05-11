@@ -340,6 +340,7 @@ export interface CreateRuntimeRunnerOptions {
   globalPause?: GlobalPauseView;
   activity?: ActivitySignalBusView;
   subjectStore?: SubjectStoreView;
+  now?: () => Date;
 }
 
 export function createRuntimeScheduledTaskRunner(
@@ -385,6 +386,7 @@ export function createRuntimeScheduledTaskRunner(
     globalPause,
     activity,
     subjectStore,
+    now: opts.now,
     channelKeys: () => {
       const registry = getChannelRegistry(opts.runtime);
       if (!registry) return new Set();

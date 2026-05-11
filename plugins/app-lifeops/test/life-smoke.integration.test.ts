@@ -257,18 +257,20 @@ describe("LIFE action smoke tests -- BRD acceptance criteria", () => {
   }, 60_000);
 
   // -- AC-5: Calendar query --
-  // Calendar depends on Google connector which we don't have in test.
-  // The handler should gracefully report "not connected".
+  // Calendar depends on Apple Calendar or Google Calendar access, neither of
+  // which is configured in this integration test. The handler should report
+  // the current calendar-access failure without relying on legacy wording.
 
-  it("AC-5: calendar reports not connected when Google is not configured", async () => {
+  it("AC-5: calendar reports unavailable access when calendar is not configured", async () => {
     const result = await send({
       action: "calendar",
       intent: "what's on my calendar today",
     });
 
-    // Without Google connector, we expect a graceful "not connected" message
     expect(result).toMatchObject({ success: false });
-    expect((result as { text: string }).text).toMatch(/not connected/i);
+    expect((result as { text: string }).text).toMatch(
+      /calendar access is not available/i,
+    );
   }, 60_000);
 
   // -- AC-7: Email query --
@@ -331,7 +333,7 @@ describe("LIFE action -- robustness scenarios", () => {
     });
     expect(result).toMatchObject({
       success: false,
-      text: expect.stringContaining("not connected"),
+      text: expect.stringMatching(/calendar access is not available/i),
     });
   }, 60_000);
 
@@ -370,11 +372,11 @@ describe("LIFE action -- robustness scenarios", () => {
       action: "calendar",
       intent: "review the calendar",
     });
-    // Calendar without Google should fail with "not connected",
+    // Calendar without access should fail with calendar unavailable,
     // proving action param was used (not review_goal)
     expect(result).toMatchObject({
       success: false,
-      text: expect.stringContaining("not connected"),
+      text: expect.stringMatching(/calendar access is not available/i),
     });
   }, 60_000);
 });
