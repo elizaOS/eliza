@@ -210,6 +210,39 @@ The lowest-duplication design is lazy regional loading from one bundle:
 - Upload only to `elizaos/eliza-1-*` repos. Any red gate forces
   `defaultEligible=false`.
 
+### Done in this pass (publish pipeline + downloader contract)
+
+- `publish_all_eliza1.sh` now prints the per-tier publish summary and
+  propagates the orchestrator's structured exit code on the first failure
+  (e.g. `16` for `EXIT_RELEASE_EVIDENCE_FAIL`) instead of dying before the
+  summary under `set -e`. The no-continue-on-error behaviour from §6 is
+  unchanged — the matrix walk still aborts at the first failing tier.
+- Dry-run verified against a hand-built `releaseState=upload-candidate`
+  stand-in bundle (`final.weights=false`): the orchestrator rejects it at
+  stage 2 with exit `16` — every tier is still publish-blocked by non-final
+  release evidence. No real or stand-in bundle exists in this checkout's
+  state dir (the staging step is `stage_local_eliza1_bundle.py` /
+  `stage_eliza1_bundle_assets.py`, which need HF network and real text/DFlash
+  weights — not produced here).
+- §7 device-side downloader contract hardened: `runBundleJob` now reads the
+  manifest first, then — **before any weight byte is fetched** — checks the
+  RAM budget (`ramBudgetMb.min` vs device RAM) and that at least one of the
+  tier's supported backends with a `pass` verify report is available on this
+  device, aborting with a structured `BundleIncompatibleError` (`failed`
+  download event → UI) if not. Schema-version is already enforced by
+  `parseManifestOrThrow` (Zod literal on `$schema`). After materialize +
+  per-file sha256 verify, an injectable `verifyOnDevice` hook (load → 1-token
+  text gen → 1-phrase voice gen → barge-in cancel) runs before the bundle is
+  treated as ready; a new `InstalledModel.bundleVerifiedAt` records it, and a
+  bundle that has not passed the verify pass does not auto-fill an empty
+  default slot when the hook is wired. Tests in
+  `packages/app-core/src/services/local-inference/downloader.test.ts`.
+- Still open: wire `verifyOnDevice` from the engine in `service.ts` (today
+  the downloader runs without the hook, preserving first-light slot fill);
+  surface `BundleIncompatibleError` distinctly in the UI; have the
+  recommendation engine consult `manifest.kernels.verifiedBackends` against
+  the device (`canSetAsDefault` exists but is not yet called).
+
 ## Known Non-Goals For This Wave
 
 - A literal single GGUF containing text + TTS + ASR + vision + drafter. The
