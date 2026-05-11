@@ -44,7 +44,6 @@ static inline float qjl_bf16_to_fp32(ushort b) {
 
 // sqrt(pi/2) — matches CUDA score kernel line 175 and qjl_score_qk_ref's
 // scl_base = 1.2533141373155003f / proj_dim.
-constant float QJL_SQRT_HALF_PI = 1.2533141373155003f;
 constant float QJL_SCORE_SCALE  = 1.2533141373155003f / float(QJL_PROJECTION_DIM);
 
 // ---------- attention score (hot path) ----------

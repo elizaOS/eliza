@@ -6,7 +6,7 @@ pipeline_tag: text-generation
 tags:
   - eliza
   - elizaos
-  - {qwen_family_tag}
+  - eliza-1
   - apollo
   - sft
   - {quant}
@@ -57,5 +57,5 @@ regression delta.
 ## License
 
 Apache-2.0, inherited from the base
-[`{base_hf_id}`](https://huggingface.co/{base_hf_id}). Same terms as the
+checkpoint recorded in the sibling model metadata. Same terms as the
 [`{base_eliza_repo_id}`](https://huggingface.co/{base_eliza_repo_id}) sibling.

@@ -166,9 +166,9 @@ def _evaluate_contains(
             valid_false_negative=True,
         )
 
-    if _content_words_present(expected_tokens, response_tokens) and not _has_global_negation(
-        response_tokens
-    ):
+    if _content_words_present(
+        expected_tokens, response_tokens
+    ) and not _is_denied_content_answer(expected_tokens, response_tokens):
         return ValidHitResult(
             official,
             1.0,
@@ -286,10 +286,14 @@ def _token_variants(token: str) -> set[str]:
     variants.add(f"{token}s")
     variants.add(f"{token}ed")
     variants.add(f"{token}ing")
+    variants.add(f"{token}ment")
+    variants.add(f"{token}ments")
 
     if token.endswith("e") and len(token) > 2:
         variants.add(f"{token[:-1]}ing")
         variants.add(f"{token[:-1]}ed")
+        variants.add(f"{token[:-1]}ation")
+        variants.add(f"{token[:-1]}ations")
     if token.endswith("y") and len(token) > 2:
         variants.add(f"{token[:-1]}ies")
     if token.endswith("ies") and len(token) > 3:
@@ -309,19 +313,33 @@ def _should_double_final_consonant(token: str) -> bool:
     return a not in _VOWELS and b in _VOWELS and c not in _VOWELS and c not in {"w", "x", "y"}
 
 
-def _has_global_negation(response_tokens: list[str]) -> bool:
-    return any(token in {"no", "not", "never"} for token in response_tokens)
-
-
 def _is_negated_mention(response_tokens: list[str], phrase_start: int) -> bool:
-    before = response_tokens[max(0, phrase_start - 8) : phrase_start]
+    before = response_tokens[max(0, phrase_start - 14) : phrase_start]
     after = response_tokens[phrase_start : phrase_start + 12]
     window = before + after
     if any(token in _NEGATION_CUES for token in window):
         return True
     # Common CompactBench answer shape: "No, X is not still the plan."
     joined_after = " ".join(after)
+    if response_tokens[:1] == ["no"] and (
+        "responsible" in joined_after or "responsibility" in joined_after
+    ):
+        return True
     return "not still" in joined_after or "not the plan" in joined_after
+
+
+def _is_denied_content_answer(
+    expected_tokens: list[str], response_tokens: list[str]
+) -> bool:
+    content = [token for token in expected_tokens if token not in _STOPWORDS]
+    first_match = None
+    for index, token in enumerate(response_tokens):
+        if any(_tokens_match(expected, token) for expected in content):
+            first_match = index
+            break
+    if first_match is None:
+        return False
+    return _is_denied_contains_answer(response_tokens, first_match)
 
 
 def _is_denied_contains_answer(response_tokens: list[str], phrase_start: int) -> bool:

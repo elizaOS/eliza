@@ -69,23 +69,6 @@ static inline float polar_qjl_sign(uint i, thread uint & state) {
     return (state & 1u) ? 1.0f : -1.0f;
 }
 
-// In-place 128-element Walsh-Hadamard butterfly. Sequential variant — kept
-// as a reference for single-thread execution; the threadgroup hot path uses
-// polar_hadamard_inplace_tg32 below.
-static inline void polar_hadamard_inplace_tg(threadgroup float * x) {
-    // 7 stages: h = 1, 2, 4, 8, 16, 32, 64.
-    for (uint h = 1; h < QK_POLAR; h <<= 1) {
-        for (uint i = 0; i < QK_POLAR; i += (h << 1)) {
-            for (uint j = i; j < i + h; ++j) {
-                float a = x[j];
-                float b = x[j + h];
-                x[j]     = a + b;
-                x[j + h] = a - b;
-            }
-        }
-    }
-}
-
 // Threadgroup-cooperative 128-element Walsh-Hadamard butterfly. Each of
 // 32 threads owns 2 of the 64 (a+b, a-b) butterfly pairs per stage. Pair
 // index `p` maps to (j, j+h) with j = (p / h) * (2*h) + (p % h); within

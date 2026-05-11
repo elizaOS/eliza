@@ -72,6 +72,10 @@ logging.basicConfig(
 log = logging.getLogger("push_model")
 
 
+def _published_registry_names() -> list[str]:
+    return sorted(e.eliza_short_name for e in REGISTRY.values() if e.eliza_short_name)
+
+
 # ---------------------------------------------------------------------------
 # Config + helpers
 # ---------------------------------------------------------------------------
@@ -118,13 +122,14 @@ def resolve_repo_id(
     """
     if override:
         return override
-    if registry_key not in REGISTRY:
+    try:
+        entry = registry_get(registry_key)
+    except KeyError as exc:
         raise SystemExit(
             f"--registry-key {registry_key!r} is not in the registry; "
             "either pass --repo-id explicitly (e.g. for milady-ai/* repos) "
-            f"or pick one of: {sorted(REGISTRY.keys())}"
-        )
-    entry = registry_get(registry_key)
+            f"or pick one of: {_published_registry_names()}"
+        ) from exc
     if variant == "abliterated":
         base = entry.abliteration_repo_id
         if not base:
@@ -751,7 +756,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument(
         "--registry-key", required=True,
-        help=f"One of: {sorted(REGISTRY.keys())}",
+        help=(
+            f"One of: {_published_registry_names()}. "
+            "Internal upstream keys are accepted as aliases."
+        ),
     )
     ap.add_argument(
         "--checkpoint", type=Path, required=True,

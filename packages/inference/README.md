@@ -84,7 +84,7 @@
 >     capabilities**. `patchMetalKernels()` ships all five standalones in
 >     desktop `default.metallib` and iOS embedded metallib. Metal now has a
 >     dedicated, numerically smoke-tested `GGML_OP_ATTN_SCORE_QJL` bridge to
->     `kernel_attn_score_qjl1_256`, so `CAPABILITIES.json` may report
+>     `kernel_attn_score_qjl1_256_multi`, so `CAPABILITIES.json` may report
 >     `kernels.qjl_full=true` when that symbol is present. The helper still
 >     deliberately refuses the old generic `MUL_MAT`/`GET_ROWS` patch route:
 >     routing the standalones through generic ggml ops is either semantically
@@ -290,6 +290,17 @@ Each shader file annotates the CUDA function it ports. Key correspondences:
 
 ## Hardware verification protocol
 
+Before running backend-specific hardware checks, run the executable contract
+gate. It verifies that the manifest kernel names
+(`turboquant_q3`/`turboquant_q4`/`qjl`/`polarquant`/`dflash`/`turbo3_tcq`),
+the build-script capability keys (`turbo3`/`turbo4`/`turbo3_tcq`/`qjl_full`),
+the fixture set, and every supported build target's platform gate are still
+in sync:
+
+```bash
+make -C packages/inference/verify kernel-contract
+```
+
 ### Mac (Apple Silicon)
 
 ```bash
@@ -331,35 +342,29 @@ bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs \
 
 ```bash
 # Host-side: build SPIR-V from the .comp files using glslc from the Vulkan
-# SDK (https://vulkan.lunarg.com/sdk/home).
-glslc -fshader-stage=compute packages/inference/vulkan/turbo3.comp     -o turbo3.spv
-glslc -fshader-stage=compute packages/inference/vulkan/turbo4.comp     -o turbo4.spv
-glslc -fshader-stage=compute packages/inference/vulkan/turbo3_tcq.comp -o turbo3_tcq.spv
-
-# Or with glslangValidator if you don't have glslc:
-glslangValidator -V -S comp packages/inference/vulkan/turbo3.comp -o turbo3.spv
+# SDK (https://vulkan.lunarg.com/sdk/home) or the Android NDK shader tools.
+cd packages/inference/verify
+make reference-test
+make vulkan-spirv
 
 # 1) On a workstation with a Vulkan-capable GPU (NVIDIA / AMD / Intel),
 #    run the host harness:
-cd packages/inference/verify
 VULKAN_SDK=/opt/vulkan-sdk make vulkan
-./vulkan_verify ../vulkan/turbo3.spv     fixtures/turbo3.json
-./vulkan_verify ../vulkan/turbo4.spv     fixtures/turbo4.json
-./vulkan_verify ../vulkan/turbo3_tcq.spv fixtures/turbo3_tcq.json
+make vulkan-verify
 
 # 2) On-device (Android) verification: cross-compile the harness against
 #    the Android NDK Vulkan headers and push to a Vulkan-capable handset
 #    (Adreno 6xx+, Mali-G7x+). Same SPIR-V, same fixtures.
-adb push turbo3.spv turbo4.spv turbo3_tcq.spv /data/local/tmp/eliza-kernels/
+adb push ../vulkan/*.spv /data/local/tmp/eliza-kernels/
 adb push fixtures/   /data/local/tmp/eliza-kernels/fixtures/
 adb push vulkan_verify /data/local/tmp/eliza-kernels/
 adb shell "cd /data/local/tmp/eliza-kernels && \
            ./vulkan_verify turbo3.spv fixtures/turbo3.json"
 
 # 3) End-to-end via llama-server: the patch hook `patchVulkanKernels` is
-#    default-on after Wave-4 hardware verification. To silence the log:
-ELIZA_DFLASH_PATCH_VULKAN_KERNELS=0 \
-  bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
+#    default-on. The build still refuses publishable artifacts until graph
+#    dispatch capabilities are runtime-ready, not merely symbol-shipped.
+bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
 ```
 
 ## Verification matrix (verified locally vs needs hardware)
@@ -531,8 +536,8 @@ For the current blocker ledger and platform/device gap list, see
 `reports/porting/2026-05-11/remaining-work-ledger.md`.
 
 Metal has one verified graph route today: `GGML_OP_ATTN_SCORE_QJL`
-dispatches `GGML_TYPE_QJL1_256` packed K-cache blocks through
-`kernel_attn_score_qjl1_256`. `make -C packages/inference/verify
+dispatches `GGML_TYPE_QJL1_256` packed K-cache blocks through the
+launch-tax-amortized `kernel_attn_score_qjl1_256_multi` path. `make -C packages/inference/verify
 dispatch-smoke` links against the built fork libraries, executes the
 actual Metal backend path, and compares 32 scores against a local
 packed-QJL reference with max diff `2.384e-07` on Apple M4 Max. This is

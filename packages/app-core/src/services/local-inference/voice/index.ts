@@ -42,6 +42,8 @@ export {
   StubOmniVoiceBackend,
   FfiOmniVoiceBackend,
   VoiceStartupError,
+  decodeMonoPcm16Wav,
+  encodeMonoPcm16Wav,
   type EngineVoiceBridgeOptions,
 } from "./engine-bridge";
 export {

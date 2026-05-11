@@ -50,6 +50,7 @@ import {
 import type {
   RejectedTokenRange,
   TextToken,
+  TranscriptionAudio,
   VerifierStreamEvent,
 } from "./voice/types";
 
@@ -835,6 +836,16 @@ export class LocalInferenceEngine {
     await bridge.settle();
   }
 
+  async synthesizeSpeech(text: string): Promise<Uint8Array> {
+    return this.requireVoiceBridge("synthesize speech").synthesizeTextToWav(
+      text,
+    );
+  }
+
+  async transcribePcm(args: TranscriptionAudio): Promise<string> {
+    return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
+  }
+
   /**
    * Active voice bridge, or null when voice mode is not running.
    * Callers (router, UI, agent runtime) read this to decide whether to
@@ -844,6 +855,17 @@ export class LocalInferenceEngine {
    */
   voice(): EngineVoiceBridge | null {
     return this.voiceBridge;
+  }
+
+  private requireVoiceBridge(action: string): EngineVoiceBridge {
+    const bridge = this.voiceBridge;
+    if (!bridge) {
+      throw new VoiceStartupError(
+        "not-started",
+        `[voice] Cannot ${action}: no voice session active. Call startVoice() and armVoice() first.`,
+      );
+    }
+    return bridge;
   }
 
   /**

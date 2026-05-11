@@ -56,6 +56,8 @@ ELIZA_1_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "emotion-tags",
     "singing",
 )
+ELIZA_1_VOICE_MANIFEST_VERSION: Final[str] = "1"
+VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "lite-0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
@@ -480,6 +482,19 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
         if not _is_object(voice):
             errors.append("voice: must be an object when present")
         else:
+            version = voice.get("version")
+            if not isinstance(version, str) or not version:
+                errors.append("voice.version: must be a non-empty string")
+            if voice.get("frozen") is not True:
+                errors.append("voice.frozen: must be true")
+            cache = voice.get("cache")
+            if not _is_object(cache):
+                errors.append("voice.cache: must be an object")
+            else:
+                for field in ("speakerPreset", "phraseCacheSeed"):
+                    value = cache.get(field)
+                    if not isinstance(value, str) or not value:
+                        errors.append(f"voice.cache.{field}: must be a non-empty string")
             capabilities = voice.get("capabilities")
             if not isinstance(capabilities, list):
                 errors.append("voice.capabilities: must be an array")
@@ -509,6 +524,25 @@ def validate_manifest(manifest: Mapping[str, Any]) -> tuple[str, ...]:
         errors.append(
             "kernels.required: text variant with ctx > 64k requires turbo3_tcq"
         )
+
+    # ── §4 contract: frozen voice cache artifacts ───────────────────────
+    cache_paths = {
+        f.get("path")
+        for f in files["cache"]
+        if _is_object(f) and isinstance(f.get("path"), str)
+    }
+    if VOICE_PRESET_CACHE_PATH not in cache_paths:
+        errors.append(
+            f"files.cache: missing required frozen voice cache {VOICE_PRESET_CACHE_PATH}"
+        )
+    if _is_object(manifest.get("voice")) and _is_object(manifest["voice"].get("cache")):
+        voice_cache = manifest["voice"]["cache"]
+        for field in ("speakerPreset", "phraseCacheSeed"):
+            path = voice_cache.get(field)
+            if isinstance(path, str) and path not in cache_paths:
+                errors.append(
+                    f"voice.cache.{field}: {path!r} is not present in files.cache"
+                )
 
     # ── §3/§6 contract: every supported backend is pass ─────────────────
     for b in SUPPORTED_BACKENDS_BY_TIER[tier]:
@@ -623,6 +657,10 @@ def build_manifest(
     expressive_tag_leakage: float | None = None,
     expressive_passed: bool | None = None,
     voice_capabilities: Sequence[str] | None = None,
+    voice_version: str = ELIZA_1_VOICE_MANIFEST_VERSION,
+    voice_frozen: bool = True,
+    voice_cache_speaker_preset: str = VOICE_PRESET_CACHE_PATH,
+    voice_cache_phrase_seed: str = VOICE_PRESET_CACHE_PATH,
     bundle_id: str | None = None,
 ) -> dict[str, Any]:
     """Assemble a manifest dict from typed inputs and validate it.
@@ -717,7 +755,15 @@ def build_manifest(
         "defaultEligible": default_eligible,
     }
     if voice_capabilities is not None:
-        manifest["voice"] = {"capabilities": list(voice_capabilities)}
+        manifest["voice"] = {
+            "version": voice_version,
+            "frozen": voice_frozen,
+            "cache": {
+                "speakerPreset": voice_cache_speaker_preset,
+                "phraseCacheSeed": voice_cache_phrase_seed,
+            },
+            "capabilities": list(voice_capabilities),
+        }
 
     errors = validate_manifest(manifest)
     if errors:

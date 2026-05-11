@@ -51,6 +51,15 @@ not match the device's verified backends.
 Required kernels: `{{ kernels_required_str }}`
 Optional kernels: `{{ kernels_optional_str }}`
 
+## Voice
+
+| Field | Value |
+|-------|-------|
+| Frozen voice section | v{{ manifest.voice.version }} |
+| Capabilities | {{ voice_capabilities_str }} |
+| Speaker preset | `{{ voice_cache.speakerPreset }}` |
+| Phrase cache seed | `{{ voice_cache.phraseCacheSeed }}` |
+
 ## Eval gates
 
 Every required gate for tier `{{ tier }}` was applied via
@@ -63,6 +72,10 @@ publish.
 | textEval.passed            | {{ "yes" if manifest.evals.textEval.passed else "no" }} |
 | voiceRtf.rtf               | {{ "%.3f"|format(manifest.evals.voiceRtf.rtf) }} |
 | voiceRtf.passed            | {{ "yes" if manifest.evals.voiceRtf.passed else "no" }} |
+| expressive.tagFaithfulness | {{ "%.3f"|format(manifest.evals.expressive.tagFaithfulness) }} |
+| expressive.mosExpressive   | {{ "%.3f"|format(manifest.evals.expressive.mosExpressive) }} |
+| expressive.tagLeakage      | {{ "%.3f"|format(manifest.evals.expressive.tagLeakage) }} |
+| expressive.passed          | {{ "yes" if manifest.evals.expressive.passed else "no" }} |
 | e2eLoopOk                  | {{ "yes" if manifest.evals.e2eLoopOk else "no" }} |
 | thirtyTurnOk               | {{ "yes" if manifest.evals.thirtyTurnOk else "no" }} |
 

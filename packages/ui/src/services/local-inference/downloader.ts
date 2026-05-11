@@ -26,6 +26,7 @@ import {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   findCatalogModel,
+  isDefaultEligibleId,
 } from "./catalog";
 import {
   downloadsStagingDir,
@@ -598,11 +599,13 @@ export class Downloader {
       };
       await upsertElizaModel(installed);
 
-      // First-light convenience: assign the freshly-installed model to any
-      // empty slot so chat works without a Settings detour. Idempotent —
-      // ignores slots the user has already configured. See
-      // assignments.ts#ensureDefaultAssignment for the per-slot policy.
-      if (catalogEntry.runtimeRole !== "dflash-drafter") {
+      // First-light convenience: only default-eligible Eliza-1 downloads
+      // can fill empty slots. Ad-hoc Hugging Face downloads remain
+      // explicit opt-in even though Eliza owns the downloaded file.
+      if (
+        catalogEntry.runtimeRole !== "dflash-drafter" &&
+        isDefaultEligibleId(installed.id)
+      ) {
         await ensureDefaultAssignment(installed.id);
       }
 
@@ -786,7 +789,9 @@ export class Downloader {
       });
     }
 
-    await ensureDefaultAssignment(installed.id);
+    if (isDefaultEligibleId(installed.id)) {
+      await ensureDefaultAssignment(installed.id);
+    }
 
     this.updateState(record, "completed");
     record.job.received = completedBytes;

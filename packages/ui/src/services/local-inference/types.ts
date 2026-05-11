@@ -123,6 +123,7 @@ export interface CatalogModel {
   bundleManifestFile?: string;
   params:
     | "360M"
+    | "0.6B"
     | "1B"
     | "1.7B"
     | "2B"

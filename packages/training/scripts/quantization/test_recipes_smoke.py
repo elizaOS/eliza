@@ -208,6 +208,7 @@ def test_push_model_resolves_repo_id_with_quant_suffix():
     from push_model_to_hf import resolve_repo_id
 
     assert resolve_repo_id("qwen3.5-2b", None, "default", None) == "elizalabs/eliza-1-2b"
+    assert resolve_repo_id("eliza-1-2b", None, "default", None) == "elizalabs/eliza-1-2b"
     assert resolve_repo_id("qwen3.5-2b", "polarquant", "default", None) == (
         "elizalabs/eliza-1-2b-polarquant"
     )

@@ -85,12 +85,15 @@ const LOCAL_PROVIDER: ProviderDefinition = {
   label: "Eliza-1 local runtime",
   kind: "local",
   description:
-    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves the TEXT_EMBEDDING slot from the same runtime.",
+    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves TEXT_EMBEDDING; the voice bridge registers TEXT_TO_SPEECH and TRANSCRIPTION handlers when local runtime handlers are installed.",
   // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
   // registers its own model handler against the runtime. We advertise the
   // slot here so the providers panel reports it as supported by the local
   // path; actual handler-presence is reflected in `registeredSlots` via
   // `getRegisteredSlotsForProvider`.
+  // The shared `AgentModelSlot` type does not include voice model types yet,
+  // so TEXT_TO_SPEECH / TRANSCRIPTION support is reported through
+  // `registeredSlots` rather than this UI-facing slot list.
   supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
   async getEnableState(): Promise<ProviderEnableState> {
     // Enabled when at least one model file lives under our root and the

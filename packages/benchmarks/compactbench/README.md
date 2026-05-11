@@ -110,6 +110,17 @@ case id. It can also lower a `forbidden_absent` item when the official scorer
 misses a morphological forbidden paraphrase such as "committing directly to the
 main branch".
 
+For one command that writes the official run and then performs the response
+capture pass:
+
+```bash
+python run_cerebras.py \
+  --method "$(pwd)/eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor" \
+  --suite starter \
+  --score \
+  --analyze-valid-hits
+```
+
 ## Tests
 
 ```bash
