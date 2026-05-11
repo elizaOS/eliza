@@ -122,6 +122,10 @@
 #   MILADY_VAST_DISK_GB           # default 200; aliases VAST_DISK_GB.
 #   MILADY_VAST_INSTANCE_ID       # set after provision; aliases VAST_INSTANCE_ID.
 #                                   Persisted to .vast_instance_id in repo root.
+#   MILADY_VAST_MAX_USD           # per-job soft budget cap in USD. Crossing it
+#                                   triggers a warn event from the watcher.
+#                                   The hard cap (auto-teardown) is 1.5× this
+#                                   value. Unset => no enforcement.
 
 set -euo pipefail
 
@@ -743,9 +747,10 @@ EOF
 }
 
 status() {
-  # Print: instance id, GPU type, uptime, training step, ETA. Returns
-  # exit 0 with a "no instance" message if nothing is provisioned yet —
-  # this is what the watcher polls.
+  # Print: instance id, GPU type, uptime, training step, ETA, plus the
+  # M9 cost surface (pipeline, GPU SKU, run-duration, $/hr,
+  # total-so-far). Returns exit 0 with a "no instance" message if
+  # nothing is provisioned yet — this is what the watcher polls.
   if [ -z "${VAST_INSTANCE_ID:-}" ] && [ -f "$INSTANCE_ID_FILE" ]; then
     VAST_INSTANCE_ID="$(cat "$INSTANCE_ID_FILE")"
     export VAST_INSTANCE_ID
@@ -762,10 +767,22 @@ status() {
     return 1
   fi
 
-  # Pull a one-line summary from `vastai show instance`.
-  local summary
-  summary="$(vastai show instance "$VAST_INSTANCE_ID" --raw 2>/dev/null \
-    | python3 -c "
+  # Cost surface (M9): pipeline + GPU SKU + run-duration + $/hr + total.
+  # vast_budget pulls dph_total via `vastai show instance` and computes
+  # total-so-far = dph_total * uptime_hours. The same module is what the
+  # watcher invokes for soft/hard-cap enforcement.
+  local cost_summary
+  cost_summary="$( cd "$ROOT" && \
+    REGISTRY_KEY="$REGISTRY_KEY" RUN_NAME="$RUN_NAME" \
+    python3 -m scripts.lib.vast_budget snapshot "$VAST_INSTANCE_ID" 2>/dev/null )"
+  if [ -n "$cost_summary" ]; then
+    log "status: $cost_summary"
+  else
+    # Fall back to the original GPU+uptime summary if the cost path
+    # fails (e.g. vastai returns a partial payload during boot).
+    local summary
+    summary="$(vastai show instance "$VAST_INSTANCE_ID" --raw 2>/dev/null \
+      | python3 -c "
 import json, sys, datetime
 d=json.load(sys.stdin)
 gpu=d.get('gpu_name','?')
@@ -780,7 +797,8 @@ except Exception:
     pass
 print(f'gpu={gpu}x{ngpu} status={status} uptime={uptime}')
 " 2>/dev/null || echo "unavailable")"
-  log "status: $summary"
+    log "status: $summary"
+  fi
 
   # Pull current training step + ETA from instrumentation.jsonl on remote.
   # The training loop appends one JSON object per step. Last line wins.

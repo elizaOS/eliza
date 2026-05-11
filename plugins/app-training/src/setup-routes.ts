@@ -252,6 +252,7 @@ const VAST_ROUTES: Array<{ type: string; path: string }> = [
   { type: "POST", path: "/api/training/vast/jobs/:id/cancel" },
   { type: "POST", path: "/api/training/vast/jobs/:id/eval" },
   { type: "GET", path: "/api/training/vast/jobs/:id/logs" },
+  { type: "GET", path: "/api/training/vast/jobs/:id/budget" },
   { type: "GET", path: "/api/training/vast/models" },
   { type: "GET", path: "/api/training/vast/models/:short_name/checkpoints" },
   { type: "GET", path: "/api/training/vast/inference/endpoints" },
