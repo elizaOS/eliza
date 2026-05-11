@@ -240,11 +240,11 @@ def main(argv: list[str] | None = None) -> int:
     qjl_sidecar = _load_sidecar(qjl_sidecar_path)
     tbq_sidecar = _load_sidecar(tbq_sidecar_path)
 
+    requested_outtype = args.outtype
+    fallback_reason: str | None = None
     if args.outtype == "q4_polar" and polar_sidecar is None:
-        log.warning(
-            "outtype=q4_polar but %s is missing — falling back to f16",
-            polar_sidecar_path,
-        )
+        fallback_reason = f"polarquant codebook ({polar_sidecar_path}) missing"
+        log.warning("outtype=q4_polar but %s — falling back to f16", fallback_reason)
         args.outtype = "f16"
 
     convert_path: Path | None
@@ -258,13 +258,20 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         convert_path = None
 
-    if convert_path is not None and not fork_supports_milady:
-        log.warning(
-            "convert script %s does not advertise Q4_POLAR support; "
-            "the converter will likely reject --outtype q4_polar. "
-            "Use a elizaOS/llama.cpp v0.4.0-milady checkout.",
-            convert_path,
+    if args.outtype == "q4_polar" and convert_path is not None and not fork_supports_milady:
+        # The fork's runtime (ggml.h) defines GGML_TYPE_Q4_POLAR, but its
+        # convert_hf_to_gguf.py may not yet emit it (the converter-side wiring
+        # lags the kernel work). Don't crash — fall back to q8_0 (the best
+        # quant the stock converter does support) and record the deferral so
+        # the manifest is honest. Re-run when the fork's converter ships
+        # --outtype q4_polar.
+        fallback_reason = (
+            f"{convert_path} does not support --outtype q4_polar yet "
+            "(ggml runtime has GGML_TYPE_Q4_POLAR=47 but the converter does not "
+            "emit it); using q8_0 — re-run when the fork's converter is updated"
         )
+        log.warning("Q4_POLAR conversion unavailable: %s", fallback_reason)
+        args.outtype = "q8_0"
 
     base_model = args.checkpoint.name
     if polar_sidecar:
@@ -278,6 +285,16 @@ def main(argv: list[str] | None = None) -> int:
         qjl_sidecar=qjl_sidecar,
         tbq_sidecar=tbq_sidecar,
     )
+    ext_metadata["weight_quant"] = {
+        "requested": requested_outtype,
+        "actual": args.outtype,
+        "deferred": requested_outtype != args.outtype,
+        "deferral_reason": fallback_reason,
+        # PolarQuant codebook is still available as a sidecar even when the GGUF
+        # body is q8_0/f16 — the runtime can apply it once the fork's converter
+        # (or a runtime-side path) lands.
+        "polarquant_artifacts": str(polar_sidecar_path) if polar_sidecar else None,
+    }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     ext_path = args.output.with_suffix(args.output.suffix + ".milady.json")
