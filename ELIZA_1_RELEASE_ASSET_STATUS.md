@@ -16,9 +16,10 @@ Vulkan graph dispatch is now runtime-ready on Intel Arc/Xe (Mesa ANV) —
 = `runtime-ready` for `turbo3`/`turbo4`/`turbo3_tcq`/`qjl`/`polar` — evidence
 `packages/inference/verify/vulkan-runtime-dispatch-evidence.json` +
 `packages/inference/verify/hardware-results/linux-vulkan-smoke-20260511T145056Z.log`.
-The contract also tracks 23 build targets now (`linux-aarch64-{cpu,cuda}`,
-`windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan`, `darwin-x64-metal` added,
-all `needs-hardware`), a `27b-1m` (1M-context, CUDA-only-backend) tier, and a
+The contract also tracks the added build targets `linux-aarch64-{cpu,cuda}`,
+`windows-arm64-{cpu,vulkan}`, `windows-x64-vulkan` (all `needs-hardware`; Intel
+Macs / `darwin-x64-metal` are no longer a supported target), a `27b-1m`
+(1M-context, CUDA-only-backend) tier, and a
 new `fusedAttn` section (capability key `fused_attn`, `needs-runtime-smoke` for
 vulkan/metal, `needs-hardware` for cuda). The manifest schema gained optional
 `kernels.verifiedBackends.*.{device,caveat}` provenance and a
