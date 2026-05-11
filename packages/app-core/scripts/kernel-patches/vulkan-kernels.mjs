@@ -83,15 +83,31 @@ export const VULKAN_KERNEL_FILES = [
 // specialization constant (constant_id 0) the consumer sets at pipeline-create
 // time, so the same blob tunes per device without recompilation. They are
 // verified by `make -C packages/inference/verify vulkan-verify-multiblock`.
-// Not staged into the fork yet: the runtime hot path uses the single-block
-// kernels, and wiring vulkan-shaders-gen + ggml-vulkan dispatch for the multi
-// variants is a follow-up once the runtime picks a per-device launch-tax
-// amortization factor.
+// Staged into the fork alongside the single-block kernels; the runtime routes
+// non-voice / long-context scoring (large n_kv) through them with a
+// device-tuned spec constant (BLOCKS_PER_WG / TOKENS_PER_WG = 4 default).
 export const VULKAN_MULTIBLOCK_KERNEL_FILES = [
   "turbo3_multi.comp",
   "turbo4_multi.comp",
   "turbo3_tcq_multi.comp",
   "qjl_multi.comp",
+];
+
+// Fused-attention compute shaders (QJL-K score + V-mix, online softmax, score
+// never materialised). One workgroup per (q_head); q_pos is a push constant.
+// Verified standalone by `make -C packages/inference/verify vulkan-verify-fused`.
+// Staged into the fork; the runtime wires GGML_OP_FUSED_ATTN_QJL_TBQ (and the
+// Polar V-mix variant) graph dispatch onto these pipelines.
+export const VULKAN_FUSED_KERNEL_FILES = [
+  "fused_attn_qjl_tbq.comp",
+  "fused_attn_qjl_polar.comp",
+];
+
+// Everything staged into the fork's vulkan-shaders/ directory.
+const VULKAN_ALL_STAGED_FILES = [
+  ...VULKAN_KERNEL_FILES,
+  ...VULKAN_MULTIBLOCK_KERNEL_FILES,
+  ...VULKAN_FUSED_KERNEL_FILES,
 ];
 
 const SHADER_SENTINEL = "// MILADY-VK-DISPATCH-PATCH-V1";
@@ -122,7 +138,7 @@ const PATCH_TARGETS = [
 
 function assertStandalonesPresent() {
   const missing = [];
-  for (const name of VULKAN_KERNEL_FILES) {
+  for (const name of VULKAN_ALL_STAGED_FILES) {
     const src = path.join(STANDALONE_VULKAN_DIR, name);
     if (!fs.existsSync(src)) {
       missing.push(src);
@@ -162,7 +178,7 @@ function copyStandalonesIntoFork(cacheDir, { dryRun }) {
     );
   }
   const copied = [];
-  for (const name of VULKAN_KERNEL_FILES) {
+  for (const name of VULKAN_ALL_STAGED_FILES) {
     const src = path.join(STANDALONE_VULKAN_DIR, name);
     const dst = path.join(targetDir, name);
     if (dryRun) {
@@ -457,6 +473,24 @@ struct milady_vk_polar_score_push {
     uint32_t y_offset;
 };
 
+struct milady_vk_fused_attn_push {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t q_pos;
+    uint32_t sm_scale_bits;
+    uint32_t kv_tile;
+};
+
+// Long-context / non-voice scoring amortises the per-dispatch launch tax by
+// folding several KV indices (resp. tokens) into one workgroup via the
+// constant_id=0 spec constant (BLOCKS_PER_WG / TOKENS_PER_WG) baked into the
+// _multi pipeline at create time (= MILADY_VK_MULTIBLOCK_FACTOR). Voice /
+// small-n_kv stays single-block (factor 1). The threshold and factor are a
+// conservative default — sweep on real devices later.
+static const uint32_t MILADY_VK_MULTIBLOCK_FACTOR    = 4u;
+static const int64_t  MILADY_VK_MULTIBLOCK_THRESHOLD = 2048;
+
 static const float k_milady_tbq3_tcq_codebook[512] = {
 ${codebook}
 };
@@ -467,6 +501,15 @@ static vk_pipeline milady_vk_pipeline_for_tbq(ggml_backend_vk_context * ctx, ggm
         case GGML_TYPE_TBQ4_0:   return ctx->device->pipeline_milady_turbo4;
         case GGML_TYPE_TBQ3_TCQ: return ctx->device->pipeline_milady_turbo3_tcq;
         default: GGML_ABORT("milady_vk_pipeline_for_tbq: unsupported type");
+    }
+}
+
+static vk_pipeline milady_vk_pipeline_for_tbq_multi(ggml_backend_vk_context * ctx, ggml_type type) {
+    switch (type) {
+        case GGML_TYPE_TBQ3_0:   return ctx->device->pipeline_milady_turbo3_multi;
+        case GGML_TYPE_TBQ4_0:   return ctx->device->pipeline_milady_turbo4_multi;
+        case GGML_TYPE_TBQ3_TCQ: return ctx->device->pipeline_milady_turbo3_tcq_multi;
+        default: GGML_ABORT("milady_vk_pipeline_for_tbq_multi: unsupported type");
     }
 }
 
@@ -500,13 +543,18 @@ static void ggml_vk_milady_attn_score_qjl(ggml_backend_vk_context * ctx, vk_cont
     GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    vk_pipeline pipeline = ctx->device->pipeline_milady_qjl;
+    const bool multi = (int64_t) n_tokens >= MILADY_VK_MULTIBLOCK_THRESHOLD;
+    vk_pipeline pipeline = multi ? ctx->device->pipeline_milady_qjl_multi
+                                 : ctx->device->pipeline_milady_qjl;
+    const uint32_t grid_y = multi
+        ? (n_tokens + MILADY_VK_MULTIBLOCK_FACTOR - 1u) / MILADY_VK_MULTIBLOCK_FACTOR
+        : n_tokens;
     ggml_pipeline_request_descriptor_sets(ctx, pipeline, 1);
     const milady_vk_qjl_score_push pc = { n_heads, n_kv_heads, n_tokens, 256u };
     ggml_vk_dispatch_pipeline(
         ctx, subctx, pipeline,
         { ggml_vk_tensor_subbuffer(ctx, q), ggml_vk_tensor_subbuffer(ctx, pk), ggml_vk_tensor_subbuffer(ctx, dst) },
-        pc, { n_heads, n_tokens, 1 });
+        pc, { n_heads, grid_y, 1 });
 }
 
 static void ggml_vk_milady_attn_score_tbq(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
@@ -533,7 +581,12 @@ static void ggml_vk_milady_attn_score_tbq(ggml_backend_vk_context * ctx, vk_cont
     GGML_ASSERT(pk->nb[1] == ggml_row_size(pk->type, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    vk_pipeline pipeline = milady_vk_pipeline_for_tbq(ctx, pk->type);
+    const bool multi = (int64_t) n_tokens >= MILADY_VK_MULTIBLOCK_THRESHOLD;
+    vk_pipeline pipeline = multi ? milady_vk_pipeline_for_tbq_multi(ctx, pk->type)
+                                 : milady_vk_pipeline_for_tbq(ctx, pk->type);
+    const uint32_t grid_x = multi
+        ? (n_tokens + MILADY_VK_MULTIBLOCK_FACTOR - 1u) / MILADY_VK_MULTIBLOCK_FACTOR
+        : n_tokens;
     const vk_subbuffer q_buf   = ggml_vk_tensor_subbuffer(ctx, q);
     const vk_subbuffer pk_buf  = ggml_vk_tensor_subbuffer(ctx, pk);
     const vk_subbuffer dst_buf = ggml_vk_tensor_subbuffer(ctx, dst);
@@ -553,9 +606,9 @@ static void ggml_vk_milady_attn_score_tbq(ggml_backend_vk_context * ctx, vk_cont
             (uint32_t) head_offset,
         };
         if (is_tcq) {
-            ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, dst_buf, codebook_buf }, pc, { n_tokens, 1, 1 });
+            ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, dst_buf, codebook_buf }, pc, { grid_x, 1, 1 });
         } else {
-            ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, dst_buf }, pc, { n_tokens, 1, 1 });
+            ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, dst_buf }, pc, { grid_x, 1, 1 });
         }
     }
 }
@@ -609,6 +662,65 @@ static void ggml_vk_milady_attn_score_polar(ggml_backend_vk_context * ctx, vk_co
     }
 }
 
+// GGML_OP_FUSED_ATTN_QJL_TBQ — fused QJL-K score + TBQ3-V mix, online softmax,
+// the per-token score vector never materialised. Mirrors the C reference
+// eliza_fused_attn_qjl_tbq3() / fused_attn_qjl_tbq_ref() and the op contract
+// reports/porting/2026-05-11/fused-attn-op-contract.md §3/§6:
+//   src[0] = q          F32      [proj_dim=256, n_heads, n_q_pos, ne3]  (pre-projected QJL sketch)
+//   src[1] = packed_k   QJL1_256 [head_dim=128, n_kv, n_kv_heads, ne3]  (nb[1] == 34)
+//   src[2] = packed_v   TBQ3_0   [head_dim=128, n_kv, n_kv_heads, ne3]  (nb[1] == 56, 4 chunks/token)
+//   dst    = out        F32      [head_dim=128, n_heads, n_q_pos, ne3]
+//   op_params[0] = n_kv_heads, [1] = sm_scale (float bits), [2] = v_use_qjl (TBQ ignores it), [3] = kv_tile
+// One workgroup per (q_head); q_pos is a push constant, so n_q_pos > 1 is a
+// loop of dispatches (decode = 1). Conservative shape (ne3 == 1) matching the
+// other milady graph routes; the unfused score → softmax → V-mix path covers
+// the wider shapes (AGENTS.md §3 — no silent degradation).
+static void ggml_vk_milady_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+    const ggml_tensor * q  = dst->src[0];
+    const ggml_tensor * pk = dst->src[1];
+    const ggml_tensor * pv = dst->src[2];
+    GGML_ASSERT(q != nullptr && pk != nullptr && pv != nullptr);
+    GGML_ASSERT(q->type == GGML_TYPE_F32);
+    GGML_ASSERT(pk->type == GGML_TYPE_QJL1_256);
+    GGML_ASSERT(pv->type == GGML_TYPE_TBQ3_0);
+    GGML_ASSERT(dst->type == GGML_TYPE_F32);
+    GGML_ASSERT(q->ne[0] == 256 && pk->ne[0] == 128 && pv->ne[0] == 128 && dst->ne[0] == 128);
+    GGML_ASSERT(q->ne[3] == 1 && pk->ne[3] == 1 && pv->ne[3] == 1 && dst->ne[3] == 1);
+    GGML_ASSERT(ggml_is_contiguous(q));
+    GGML_ASSERT(ggml_is_contiguous(pk));
+    GGML_ASSERT(ggml_is_contiguous(pv));
+    GGML_ASSERT(ggml_is_contiguous(dst));
+
+    const int32_t * params = (const int32_t *) dst->op_params;
+    const uint32_t n_heads    = (uint32_t) q->ne[1];
+    const uint32_t n_kv_heads = (uint32_t) params[0];
+    const uint32_t sm_bits    = (uint32_t) params[1];
+    const uint32_t kv_tile    = (uint32_t) params[3];
+    const uint32_t n_tokens   = (uint32_t) pk->ne[1];
+    const int64_t  n_q_pos    = q->ne[2];
+    GGML_ASSERT(n_kv_heads > 0 && (n_heads % n_kv_heads) == 0);
+    GGML_ASSERT(pk->ne[2] == (int64_t) n_kv_heads && pv->ne[2] == (int64_t) n_kv_heads);
+    GGML_ASSERT(dst->ne[1] == (int64_t) n_heads && dst->ne[2] == n_q_pos);
+    GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
+    GGML_ASSERT(pv->nb[1] == ggml_row_size(GGML_TYPE_TBQ3_0, 128));
+    GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
+    GGML_ASSERT(pv->nb[2] == (size_t) n_tokens * pv->nb[1]);
+
+    vk_pipeline pipeline = ctx->device->pipeline_milady_fused_attn_qjl_tbq;
+    const vk_subbuffer q_buf   = ggml_vk_tensor_subbuffer(ctx, q);
+    const vk_subbuffer pk_buf  = ggml_vk_tensor_subbuffer(ctx, pk);
+    const vk_subbuffer pv_buf  = ggml_vk_tensor_subbuffer(ctx, pv);
+    const vk_subbuffer dst_buf = ggml_vk_tensor_subbuffer(ctx, dst);
+
+    ggml_pipeline_request_descriptor_sets(ctx, pipeline, (uint32_t) n_q_pos);
+    for (int64_t p = 0; p < n_q_pos; ++p) {
+        const milady_vk_fused_attn_push pc = {
+            n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile,
+        };
+        ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, pv_buf, dst_buf }, pc, { n_heads, 1, 1 });
+    }
+}
+
 `;
     patched = patched.replace(helperAnchor, helper + helperAnchor);
 
@@ -633,6 +745,10 @@ static void ggml_vk_milady_attn_score_polar(ggml_backend_vk_context * ctx, vk_co
         break;
     case GGML_OP_ATTN_SCORE_POLAR:
         ggml_vk_milady_attn_score_polar(ctx, compute_ctx, node);
+
+        break;
+    case GGML_OP_FUSED_ATTN_QJL_TBQ:
+        ggml_vk_milady_fused_attn_qjl_tbq(ctx, compute_ctx, node);
 
         break;
 
@@ -696,6 +812,26 @@ ${switchAnchor}`,
                    ggml_is_contiguous_rows(op) &&
                    ggml_is_contiguous_rows(op->src[0]) &&
                    ggml_is_contiguous_rows(op->src[1]);
+        case GGML_OP_FUSED_ATTN_QJL_TBQ:
+            return op->type == GGML_TYPE_F32 &&
+                   op->src[0] != nullptr &&
+                   op->src[1] != nullptr &&
+                   op->src[2] != nullptr &&
+                   op->src[0]->type == GGML_TYPE_F32 &&
+                   op->src[1]->type == GGML_TYPE_QJL1_256 &&
+                   op->src[2]->type == GGML_TYPE_TBQ3_0 &&
+                   op->src[0]->ne[0] == 256 &&
+                   op->src[1]->ne[0] == 128 &&
+                   op->src[2]->ne[0] == 128 &&
+                   op->ne[0] == 128 &&
+                   op->src[0]->ne[3] == 1 &&
+                   op->src[1]->ne[3] == 1 &&
+                   op->src[2]->ne[3] == 1 &&
+                   op->ne[3] == 1 &&
+                   ggml_is_contiguous(op) &&
+                   ggml_is_contiguous(op->src[0]) &&
+                   ggml_is_contiguous(op->src[1]) &&
+                   ggml_is_contiguous(op->src[2]);
 
 `;
     patched = patched.replace(supportsAnchor, supports + supportsAnchor);
