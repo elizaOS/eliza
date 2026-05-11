@@ -105,12 +105,21 @@ jobs:
         env:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
           HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured — skipping Worker deploy. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions to enable." >> "$GITHUB_STEP_SUMMARY"
+            MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              # PRs from forks legitimately lack access to repo secrets.
+              echo "::warning::$MSG Skipping Worker deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$MSG Refusing to silently skip Worker deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$MSG Refusing to silently skip Worker deploy on $EVENT_NAME event."
+              exit 1
+            fi
           fi
 
       - name: Deploy to Cloudflare Workers
@@ -179,12 +188,21 @@ jobs:
         env:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
           HAS_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ACCOUNT" = "true" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured — skipping Pages deploy. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions to enable." >> "$GITHUB_STEP_SUMMARY"
+            MSG="CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID not configured. Add them at https://github.com/elizaOS/eliza/settings/secrets/actions."
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              # PRs from forks legitimately lack access to repo secrets.
+              echo "::warning::$MSG Skipping Pages deploy (PR event)." >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event." >> "$GITHUB_STEP_SUMMARY"
+              echo "::error::$MSG Refusing to silently skip Pages deploy on $EVENT_NAME event."
+              exit 1
+            fi
           fi
 
       - name: Deploy to Cloudflare Pages
