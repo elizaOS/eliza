@@ -1,0 +1,4 @@
+[submodule "packages/inference/llama.cpp"]
+	path = packages/inference/llama.cpp
+	url = https://github.com/elizaOS/llama.cpp.git
+	branch = eliza/main

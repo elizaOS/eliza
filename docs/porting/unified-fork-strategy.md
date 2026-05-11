@@ -11,12 +11,26 @@
 
 ## A. Executive summary
 
-**Status (2026-05-09, post Wave-3-A):** AOSP and host build paths now
-both pin `elizaOS/llama.cpp @ v0.2.0-milady`, which composes TBQ + QJL
-+ Q4_POLAR + Metal kernels (v0.1.0-milady) + DFlash speculative-decoding
-CLI surface (this release). The `spiritbuun/buun-llama-cpp` pin is
-retired. Stock desktop still runs `node-llama-cpp@3.18.1` — that's the
-remaining non-unified consumer; see §F for the migration plan.
+**Status (2026-05-11, post Eliza-1 voice swarm):** the fork ships in-tree as a
+git submodule at `packages/inference/llama.cpp` — `elizaOS/llama.cpp @
+v1.0.0-eliza` (commit `08032d57`; `git submodule update --init --recursive`,
+which `bun install` runs). It composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL
+(`block_qjl1_256`, `GGML_OP_ATTN_SCORE_QJL`, `GGML_OP_FUSED_ATTN_QJL_TBQ`) +
+Q4_POLAR (`Q4_POLAR=47`) + the milady Metal/Vulkan/CUDA kernels + DFlash
+spec-decode (`--spec-type dflash`, the `dflash-draft` GGUF arch) + the
+post-refactor `llama-server` (`server-task.cpp` / `server-common.cpp` with
+`grammar_lazy` / `json_schema` / `response_format` / `prefill_assistant`), on
+upstream b8198. Both build paths (`build-llama-cpp-dflash.mjs` desktop/server,
+`aosp/compile-libllama.mjs` Android) default to the submodule checkout;
+`ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir` / `--src-dir`) force
+a standalone clone for fork bisects. The `spiritbuun/buun-llama-cpp` pin is
+retired. Stock desktop still runs `node-llama-cpp@3.18.1` — that's the remaining
+non-unified consumer; see §F for the migration plan. (`v1.0.0-eliza` is the same
+tree as the prior `v0.4.0-milady` / `v0.2.0-milady`-lineage tags, re-tagged on
+the elizaOS rename. A full rebase onto a recent upstream llama.cpp remains a
+follow-up — the conflict-prone surfaces are the quant-slot enums in
+`ggml-common.h` / `ggml.h` and upstream's incompatible redefinition of the
+`Q1_0` block layout.)
 
 **Original problem (resolved for the AOSP+host paths, kept for context):**
 Milady previously built against three different llama.cpp trees and a
