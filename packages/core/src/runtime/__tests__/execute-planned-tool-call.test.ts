@@ -329,6 +329,32 @@ describe("executePlannedToolCall", () => {
 			expect(result.success).toBe(true);
 			expect(handler).toHaveBeenCalledOnce();
 		});
+
+		it("ignores policy entries with unrecognized roles instead of granting access", async () => {
+			process.env.ACTION_ROLE_POLICY = JSON.stringify({ GATED: "MODERATOR" });
+			_resetActionRolePolicyCacheForTests();
+			const handler = vi.fn(async () => ({ success: true }));
+			const action = makeAction({
+				name: "GATED",
+				contextGate: { anyOf: ["admin"] },
+				roleGate: { minRole: "OWNER" },
+				handler,
+			});
+
+			const result = await executePlannedToolCall(
+				makeRuntime([action]),
+				{
+					message: makeMessage(),
+					activeContexts: ["general"],
+					userRoles: ["GUEST"],
+				},
+				{ name: "GATED", params: {} },
+			);
+
+			expect(result.success).toBe(false);
+			expect(String(result.error)).toContain("not allowed");
+			expect(handler).not.toHaveBeenCalled();
+		});
 	});
 
 	it("denies execution when connector account policy is not satisfied", async () => {
