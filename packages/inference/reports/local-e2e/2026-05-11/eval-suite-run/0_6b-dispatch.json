@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "backend": "cpu",
+  "status": "pass",
+  "runtimeReady": true,
+  "atCommit": "037fc5437b6aad11ba729d738cc250438ef44f32",
+  "generatedAt": "2026-05-11T16:24:12Z",
+  "report": "packages/inference/verify (make kernel-contract reference-test)",
+  "kernelSet": [
+    "turbo3",
+    "turbo4",
+    "qjl",
+    "polarquant",
+    "dflash"
+  ],
+  "kernelFamilies": [
+    "turbo3",
+    "turbo4",
+    "qjl",
+    "polarquant"
+  ],
+  "targets": [
+    "kernel-contract",
+    "reference-test"
+  ],
+  "logs": [
+    "$ make -C /home/shaw/milady/eliza/packages/inference/verify kernel-contract  [rc=0]",
+    "make: Entering directory '/home/shaw/milady/eliza/packages/inference/verify'",
+    "node check_kernel_contract.mjs",
+    "[kernel-contract] OK kernels=6 targets=23 manifestNames=6",
+    "make: Leaving directory '/home/shaw/milady/eliza/packages/inference/verify'",
+    "$ make -C /home/shaw/milady/eliza/packages/inference/verify reference-test  [rc=0]",
+    "make: Entering directory '/home/shaw/milady/eliza/packages/inference/verify'",
+    "[kernels/verify] reference vs reference (fixture sanity)...",
+    "./gen_fixture --self-test",
+    "[self-test] turbo3=-2.501480 turbo4=-23.721790 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053 polar_qjl=-1.438744 (all finite; fused-attn + tbq V-cache parity OK)",
+    "make: Leaving directory '/home/shaw/milady/eliza/packages/inference/verify'"
+  ],
+  "note": "C-reference + kernel-contract verification only \u2014 full graph dispatch against a real GGUF needs the fused build and a host with the target backend (Metal/Vulkan/CUDA)"
+}
