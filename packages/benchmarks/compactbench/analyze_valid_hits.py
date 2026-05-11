@@ -53,8 +53,10 @@ class CycleAnalysis:
     cycle_number: int
     official_score: float
     adjusted_score: float
+    adjusted_score_excluding_invalid: float | None
     official_penalized_score: float
     adjusted_penalized_score: float
+    adjusted_penalized_score_excluding_invalid: float | None
     contradiction_rate: float
     compression_ratio: float
     latency_ms: int
@@ -166,6 +168,7 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     official_case_scores: list[float] = []
     adjusted_case_scores: list[float] = []
+    adjusted_case_scores_excluding_invalid: list[float] = []
     total_items = 0
     valid_false_negatives = 0
     semantic_false_positives = 0
@@ -224,8 +227,18 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                 adjusted_case_score = _mean(
                     [cycle.adjusted_penalized_score for cycle in case_cycles]
                 )
+                adjusted_case_score_excluding_invalid = _mean_optional(
+                    [
+                        cycle.adjusted_penalized_score_excluding_invalid
+                        for cycle in case_cycles
+                    ]
+                )
                 official_case_scores.append(official_case_score)
                 adjusted_case_scores.append(adjusted_case_score)
+                if adjusted_case_score_excluding_invalid is not None:
+                    adjusted_case_scores_excluding_invalid.append(
+                        adjusted_case_score_excluding_invalid
+                    )
                 case_valid_false_negatives = sum(
                     1 for cycle in case_cycles for item in cycle.items if item.valid_false_negative
                 )
@@ -270,6 +283,12 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
                         "ground_truth": case.ground_truth.model_dump(),
                         "official_case_score": official_case_score,
                         "adjusted_case_score": adjusted_case_score,
+                        "adjusted_case_score_excluding_invalid": (
+                            adjusted_case_score_excluding_invalid
+                        ),
+                        "benchmark_quality_case_score": (
+                            adjusted_case_score_excluding_invalid
+                        ),
                         "valid_false_negatives": case_valid_false_negatives,
                         "semantic_false_positives": case_semantic_false_positives,
                         "failures_remaining": case_failures_remaining,
@@ -287,7 +306,13 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
             "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "official_overall_score": _mean(official_case_scores),
             "adjusted_overall_score": _mean(adjusted_case_scores),
+            "adjusted_overall_score_excluding_invalid": _mean(
+                adjusted_case_scores_excluding_invalid
+            ),
+            "benchmark_quality_score": _mean(adjusted_case_scores_excluding_invalid),
             "score_delta": _mean(adjusted_case_scores) - _mean(official_case_scores),
+            "score_delta_excluding_invalid": _mean(adjusted_case_scores_excluding_invalid)
+            - _mean(official_case_scores),
             "total_items": total_items,
             "valid_false_negatives": valid_false_negatives,
             "semantic_false_positives": semantic_false_positives,
@@ -298,6 +323,7 @@ async def _run_analysis(args: argparse.Namespace) -> dict[str, Any]:
             "notes": [
                 "official scores are unmodified CompactBench scores",
                 "adjusted scores use response-local valid-hit analysis only",
+                "benchmark_quality_score excludes impossible generated checks where the same value is both required and forbidden",
             ],
         }
         _write_event(fh, summary)
@@ -350,14 +376,31 @@ async def _execute_case_with_analysis(
             invalid_expected_values=_ground_truth_conflict_values(case.ground_truth),
         )
         adjusted_score = _weighted_score(items, attr="adjusted_score")
+        adjusted_score_excluding_invalid = _weighted_score_excluding_invalid(
+            items, attr="adjusted_score"
+        )
         adjusted_penalized = max(0.0, min(1.0, adjusted_score * (1.0 - scorecard.contradiction_rate)))
+        adjusted_penalized_excluding_invalid = (
+            None
+            if adjusted_score_excluding_invalid is None
+            else max(
+                0.0,
+                min(
+                    1.0,
+                    adjusted_score_excluding_invalid
+                    * (1.0 - scorecard.contradiction_rate),
+                ),
+            )
+        )
         cycles.append(
             CycleAnalysis(
                 cycle_number=cycle_num,
                 official_score=scorecard.cycle_score,
                 adjusted_score=adjusted_score,
+                adjusted_score_excluding_invalid=adjusted_score_excluding_invalid,
                 official_penalized_score=scorecard.penalized_cycle_score,
                 adjusted_penalized_score=adjusted_penalized,
+                adjusted_penalized_score_excluding_invalid=adjusted_penalized_excluding_invalid,
                 contradiction_rate=scorecard.contradiction_rate,
                 compression_ratio=scorecard.compression_ratio,
                 latency_ms=int((time.perf_counter() - started) * 1000),
@@ -431,8 +474,22 @@ def _weighted_score(items: list[ItemAnalysis], *, attr: str) -> float:
     return sum(item.weight * float(getattr(item, attr)) for item in items) / total_weight
 
 
+def _weighted_score_excluding_invalid(
+    items: list[ItemAnalysis], *, attr: str
+) -> float | None:
+    valid_items = [item for item in items if not item.invalid_expected_conflict]
+    if not valid_items:
+        return None
+    return _weighted_score(valid_items, attr=attr)
+
+
 def _mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
+
+
+def _mean_optional(values: list[float | None]) -> float | None:
+    present = [value for value in values if value is not None]
+    return _mean(present) if present else None
 
 
 def _suite_version(templates: list[Any]) -> str:
@@ -445,8 +502,12 @@ def _cycle_to_dict(cycle: CycleAnalysis) -> dict[str, Any]:
         "cycle_number": cycle.cycle_number,
         "official_score": cycle.official_score,
         "adjusted_score": cycle.adjusted_score,
+        "adjusted_score_excluding_invalid": cycle.adjusted_score_excluding_invalid,
         "official_penalized_score": cycle.official_penalized_score,
         "adjusted_penalized_score": cycle.adjusted_penalized_score,
+        "adjusted_penalized_score_excluding_invalid": (
+            cycle.adjusted_penalized_score_excluding_invalid
+        ),
         "contradiction_rate": cycle.contradiction_rate,
         "compression_ratio": cycle.compression_ratio,
         "latency_ms": cycle.latency_ms,
@@ -464,6 +525,7 @@ def _write_event(fh: Any, event: dict[str, Any]) -> None:
 def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
     official_case_scores: list[float] = []
     adjusted_case_scores: list[float] = []
+    adjusted_case_scores_excluding_invalid: list[float] = []
     total_items = 0
     valid_false_negatives = 0
     semantic_false_positives = 0
@@ -487,6 +549,9 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
             rescored = _rescore_case_event(event)
             official_case_scores.append(float(rescored["official_case_score"]))
             adjusted_case_scores.append(float(rescored["adjusted_case_score"]))
+            excluding_invalid = rescored.get("adjusted_case_score_excluding_invalid")
+            if excluding_invalid is not None:
+                adjusted_case_scores_excluding_invalid.append(float(excluding_invalid))
             valid_false_negatives += int(rescored["valid_false_negatives"])
             semantic_false_positives += int(rescored["semantic_false_positives"])
             failures_remaining += int(rescored["failures_remaining"])
@@ -505,7 +570,13 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
             "completed_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
             "official_overall_score": _mean(official_case_scores),
             "adjusted_overall_score": _mean(adjusted_case_scores),
+            "adjusted_overall_score_excluding_invalid": _mean(
+                adjusted_case_scores_excluding_invalid
+            ),
+            "benchmark_quality_score": _mean(adjusted_case_scores_excluding_invalid),
             "score_delta": _mean(adjusted_case_scores) - _mean(official_case_scores),
+            "score_delta_excluding_invalid": _mean(adjusted_case_scores_excluding_invalid)
+            - _mean(official_case_scores),
             "total_items": total_items,
             "valid_false_negatives": valid_false_negatives,
             "semantic_false_positives": semantic_false_positives,
@@ -516,6 +587,7 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
             "notes": [
                 "official scores are unmodified CompactBench scores",
                 "adjusted scores use response-local valid-hit analysis only",
+                "benchmark_quality_score excludes impossible generated checks where the same value is both required and forbidden",
                 f"rescored from {input_path}",
             ],
         }
@@ -526,6 +598,7 @@ def _rescore_analysis(input_path: Path, output_path: Path) -> dict[str, Any]:
 def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
     updated = copy.deepcopy(event)
     adjusted_cycle_scores: list[float] = []
+    adjusted_cycle_scores_excluding_invalid: list[float] = []
     valid_false_negatives = 0
     semantic_false_positives = 0
     failures_remaining = 0
@@ -556,14 +629,40 @@ def _rescore_case_event(event: dict[str, Any]) -> dict[str, Any]:
             invalid_expected_conflicts += 1 if item["invalid_expected_conflict"] else 0
             judge_refusals += 1 if item["judge_refusal"] else 0
         adjusted_score = _weighted_score_dicts(items, attr="adjusted_score")
+        adjusted_score_excluding_invalid = _weighted_score_dicts_excluding_invalid(
+            items, attr="adjusted_score"
+        )
         cycle["adjusted_score"] = adjusted_score
+        cycle["adjusted_score_excluding_invalid"] = adjusted_score_excluding_invalid
         cycle["adjusted_penalized_score"] = max(
             0.0,
             min(1.0, adjusted_score * (1.0 - float(cycle.get("contradiction_rate", 0.0)))),
         )
+        cycle["adjusted_penalized_score_excluding_invalid"] = (
+            None
+            if adjusted_score_excluding_invalid is None
+            else max(
+                0.0,
+                min(
+                    1.0,
+                    adjusted_score_excluding_invalid
+                    * (1.0 - float(cycle.get("contradiction_rate", 0.0))),
+                ),
+            )
+        )
         adjusted_cycle_scores.append(float(cycle["adjusted_penalized_score"]))
+        if cycle["adjusted_penalized_score_excluding_invalid"] is not None:
+            adjusted_cycle_scores_excluding_invalid.append(
+                float(cycle["adjusted_penalized_score_excluding_invalid"])
+            )
 
     updated["adjusted_case_score"] = _mean(adjusted_cycle_scores)
+    updated["adjusted_case_score_excluding_invalid"] = _mean(
+        adjusted_cycle_scores_excluding_invalid
+    ) if adjusted_cycle_scores_excluding_invalid else None
+    updated["benchmark_quality_case_score"] = updated[
+        "adjusted_case_score_excluding_invalid"
+    ]
     updated["valid_false_negatives"] = valid_false_negatives
     updated["semantic_false_positives"] = semantic_false_positives
     updated["failures_remaining"] = failures_remaining
@@ -598,6 +697,15 @@ def _weighted_score_dicts(items: list[dict[str, Any]], *, attr: str) -> float:
         sum(float(item.get("weight", 0.0)) * float(item.get(attr, 0.0)) for item in items)
         / total_weight
     )
+
+
+def _weighted_score_dicts_excluding_invalid(
+    items: list[dict[str, Any]], *, attr: str
+) -> float | None:
+    valid_items = [item for item in items if not item.get("invalid_expected_conflict")]
+    if not valid_items:
+        return None
+    return _weighted_score_dicts(valid_items, attr=attr)
 
 
 if __name__ == "__main__":

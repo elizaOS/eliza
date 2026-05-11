@@ -374,7 +374,7 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             let capture: NotificationPermissionCapture
             switch settings.authorizationStatus {
-            case .authorized, .provisional:
+            case .authorized, .provisional, .ephemeral:
                 capture = NotificationPermissionCapture(
                     status: "granted",
                     canRequest: false,

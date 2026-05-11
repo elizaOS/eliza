@@ -148,8 +148,9 @@ export function verifyFusedSymbols({ outDir, target }) {
     serverReport = {
       llamaSymbolCount: (serverSyms.match(/\bllama_[A-Za-z_0-9]+/g) || [])
         .length,
-      omnivoiceSymbolCount: (serverSyms.match(/\bomnivoice_[A-Za-z_0-9]+/g) ||
-        []).length,
+      omnivoiceSymbolCount: (
+        serverSyms.match(/\bomnivoice_[A-Za-z_0-9]+/g) || []
+      ).length,
       path: server,
     };
   }

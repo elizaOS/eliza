@@ -50,7 +50,11 @@ export interface MobileSignalsOpenSettingsOptions {
   target?: MobileSignalsSettingsTarget;
 }
 
-export type MobileSignalsPermissionTarget = "all" | "health" | "screenTime";
+export type MobileSignalsPermissionTarget =
+  | "all"
+  | "health"
+  | "screenTime"
+  | "notifications";
 
 export interface MobileSignalsRequestPermissionsOptions {
   target?: MobileSignalsPermissionTarget;

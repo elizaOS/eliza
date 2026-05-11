@@ -56,7 +56,7 @@ const SEED_TARGETS = [
   },
   {
     label: "@elizaos/plugin-sql",
-    dir: path.join(ELIZA_ROOT, "plugins", "plugin-sql", "typescript"),
+    dir: path.join(ELIZA_ROOT, "plugins", "plugin-sql"),
   },
 ];
 

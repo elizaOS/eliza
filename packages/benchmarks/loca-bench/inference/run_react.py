@@ -259,6 +259,60 @@ def setup_mcp_servers(
     return config
 
 
+def _is_cerebras_endpoint(api_url: str) -> bool:
+    return "api.cerebras.ai" in api_url
+
+
+def chat_completions_url(base_url: str) -> str:
+    """Normalize a base URL or a full chat-completions URL."""
+
+    trimmed = base_url.rstrip("/")
+    if trimmed.endswith("/chat/completions"):
+        return trimmed
+    return f"{trimmed}/chat/completions"
+
+
+def _extract_text_field(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(part for part in parts if part)
+    return str(value)
+
+
+def extract_assistant_text(message: Dict[str, Any]) -> str:
+    """Return visible assistant text across OpenAI-compatible response shapes.
+
+    Cerebras ``gpt-oss-120b`` can put the final text in ``message.reasoning``
+    while leaving ``message.content`` empty. LOCA's runner treats empty content
+    as a retryable failure, which turns a valid response into repeated retries.
+    Normalize that provider shape here and keep the rest of the runner provider
+    agnostic.
+    """
+
+    for key in ("content", "reasoning", "reasoning_content"):
+        text = _extract_text_field(message.get(key))
+        if text.strip():
+            return text
+    extra = message.get("model_extra")
+    if isinstance(extra, dict):
+        for key in ("content", "reasoning", "reasoning_content"):
+            text = _extract_text_field(extra.get(key))
+            if text.strip():
+                return text
+    return ""
+
+
 def make_aihubmix_api_request(
     messages: List[Dict],
     model_name: str,
@@ -267,6 +321,7 @@ def make_aihubmix_api_request(
     tools: Optional[List] = None,
     tool_choice: Optional[str] = None,
     max_retries: int = 200,
+    request_timeout: int = 60,
     temperature: float = 1.0,
     top_p: float = 1.0,
     max_tokens: int = 4096,
@@ -339,7 +394,13 @@ def make_aihubmix_api_request(
     if reasoning_max_tokens == "":
         reasoning_max_tokens = None
 
-    if reasoning_effort is not None or reasoning_max_tokens is not None:
+    if _is_cerebras_endpoint(aihubmix_api_url):
+        # Cerebras follows the OpenAI-compatible top-level field for effort.
+        # The nested ``reasoning`` object used by some aggregators is rejected
+        # by Cerebras and can make LOCA retry a request that will never work.
+        if reasoning_effort is not None:
+            json_data["reasoning_effort"] = reasoning_effort
+    elif reasoning_effort is not None or reasoning_max_tokens is not None:
         reasoning_config = {}
 
         # Set reasoning effort or max_tokens
@@ -625,7 +686,7 @@ def make_aihubmix_api_request(
                 aihubmix_api_url,
                 headers=headers,
                 json=json_data,
-                timeout=60
+                timeout=request_timeout
             )
             if verbose:
                 print(f"Response status: {response.status_code}")
@@ -684,7 +745,7 @@ def make_aihubmix_api_request(
                                     print(f"Detected tool_calls in message with finish_reason={finish_reason}")
                             else:
                                 # Normal content response
-                                content = message.get('content', '')
+                                content = extract_assistant_text(message)
 
                                 # Check if content is empty and no tool_calls
                                 if not content or not content.strip():
@@ -692,7 +753,7 @@ def make_aihubmix_api_request(
                                         print(f"Received empty content without tool_calls. Retrying request...")
                                     should_retry = True
                                     break
-                                
+                                message["content"] = content
                                 result.append(content)
                     
                     # If we should retry, continue to the next iteration
@@ -1304,9 +1365,10 @@ def run_single_task(
                 messages=messages,
                 model_name=model,
                 aihubmix_api_keys=api_key,
-                aihubmix_api_url=f"{base_url}/chat/completions",
+                aihubmix_api_url=chat_completions_url(base_url),
                 tools=tools[0] if tools else None,
                 max_retries=max_retries,
+                request_timeout=timeout,
                 temperature=1.0,
                 top_p=1.0,
                 max_tokens=max_tokens,
@@ -1761,9 +1823,10 @@ def run_single_task(
                         messages=messages,
                         model_name=model,
                         aihubmix_api_keys=api_key,
-                        aihubmix_api_url=f"{base_url}/chat/completions",
+                        aihubmix_api_url=chat_completions_url(base_url),
                         tools=None,  # Don't allow tool calls for summary
                         max_retries=max_retries,
+                        request_timeout=timeout,
                         temperature=0.7,
                         top_p=1.0,
                         max_tokens=max_tokens,

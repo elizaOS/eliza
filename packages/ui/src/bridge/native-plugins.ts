@@ -109,7 +109,11 @@ export interface MobileSignalsOpenSettingsResult {
   reason: string | null;
 }
 
-export type MobileSignalsPermissionTarget = "all" | "health" | "screenTime";
+export type MobileSignalsPermissionTarget =
+  | "all"
+  | "health"
+  | "screenTime"
+  | "notifications";
 
 export interface MobileSignalsRequestPermissionsOptions {
   target?: MobileSignalsPermissionTarget;

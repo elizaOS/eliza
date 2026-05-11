@@ -111,6 +111,8 @@ publish_one() {
 
   if [[ -n "${METAL_PATHS[${tier}]:-}" ]]; then
     args+=(--metal-verification "${METAL_PATHS[${tier}]}")
+  elif [[ -f "${bundle_dir}/evals/metal_verify.json" ]]; then
+    args+=(--metal-verification "${bundle_dir}/evals/metal_verify.json")
   fi
 
   echo

@@ -26,8 +26,11 @@ with the status below.
 | Metal built-fork graph dispatch | `GGML_OP_ATTN_SCORE_QJL` is runtime-ready; TurboQuant and PolarQuant are not. | `make -C packages/inference/verify dispatch-smoke` passes 32 QJL scores, max diff `2.384e-07`. |
 | Metal artifact gate | Desktop/iOS artifacts still fail the publish gate. | `CAPABILITIES.json`: `dflash=true`, `qjl_full=true`, `turbo3=false`, `turbo4=false`, `turbo3_tcq=false`, `polarquant=false`; `runtimeDispatch.kernels` records QJL as runtime-ready and Turbo/Polar as symbol-shipped only. |
 | Vulkan standalone shaders | All five pass on Apple M4 Max through MoltenVK; turbo* also passed earlier on Intel ARL + lavapipe. | `make -C packages/inference/verify vulkan-verify`. |
-| Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged, but `ggml-vulkan.cpp` has no milady-native op dispatch. |
+| Vulkan built-fork graph dispatch | Not runtime-ready. | SPIR-V blobs can be staged and CAPABILITIES now records `shippedKernels` diagnostics, but `ggml-vulkan.cpp` has no milady-native op dispatch. `make -C packages/inference/verify vulkan-dispatch-smoke` is the blocking graph gate. |
 | CUDA | API/preprocessor surface exists; no hardware run on this machine. | `nvcc` unavailable on macOS. |
+| CUDA/GH200 hardware runners | Runnable, fail-closed entrypoints now exist for Linux x64 NVIDIA and GH200-like Linux aarch64. | `verify/cuda_runner.sh` requires `nvcc` + `nvidia-smi` + `make cuda-verify` + `ELIZA_DFLASH_SMOKE_MODEL` graph smoke; `verify/gh200_runner.sh` additionally requires arm64 Linux + Hopper/compute-capability-9.x. |
+| ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. |
+| Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. |
 | iOS | Static archives and embedded metallib can be built; a physical-device XCTest smoke entrypoint now exists, but no on-device PASS has been recorded. | `packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs` fails clearly when no connected physical iPhone/iPad is present; graph capability bits still block publish. |
 | Voice fusion | JS lifecycle/FFI scaffold exists; production fused `libelizainference` is not complete. | `voice/ffi-bindings.ts` expects ABI v1; real omnivoice-backed library still needs build/runtime verification. |
 | Eliza-1 bundles | Schema/catalog/publish gates and release-evidence gates exist; real release bundles do not. | `packages/training/scripts/publish/orchestrator.py` now requires `evidence/release.json`, `checksums/SHA256SUMS`, per-backend runtime dispatch reports, and platform evidence before any dry-run/upload path can pass. No checked-in weight-derived manifests or HF upload evidence exist yet. |
@@ -71,6 +74,12 @@ with the status below.
      routing.
    - Smoke tests run on at least Intel/AMD/NVIDIA desktop Vulkan and one
      Android Vulkan device class.
+   - `make -C packages/inference/verify vulkan-native-smoke` passes on native
+     Linux hardware without `ELIZA_ALLOW_SOFTWARE_VULKAN=1`.
+   - `make -C packages/inference/verify android-vulkan-smoke` passes on one
+     Adreno and one Mali device. This Android target proves standalone SPIR-V
+     driver correctness; a separate app/fork graph smoke is still required
+     before runtime capability bits flip.
 
 4. **Fused voice runtime**
 
@@ -146,7 +155,7 @@ The lowest-duplication design is lazy regional loading from one bundle:
 | Android Adreno | Cross-build `android-arm64-vulkan`, run Vulkan verify + runtime smoke via `adb`, collect thermal/RSS. |
 | Android Mali | Same as Adreno; do not transfer Adreno results to Mali without a run. |
 | Linux x64 CUDA | Run `make cuda` / `cuda_verify` on RTX/A100/H100/H200; pin arch flags where needed. |
-| Linux x64 Vulkan | Run native Vulkan graph smoke on Intel/AMD/NVIDIA, not only MoltenVK. |
+| Linux x64 Vulkan | Run `make -C packages/inference/verify vulkan-native-smoke` on Intel/AMD/NVIDIA, not only MoltenVK. |
 | Linux x64 ROCm | Build and run on MI300/MI250/RDNA; HIP parity is unproven. |
 | Linux aarch64 CUDA | Run on GH200-class host for the `27b-256k` tier. |
 | Windows x64 CPU/CUDA/Vulkan | Native Windows smoke and AVX2/driver validation required. |
