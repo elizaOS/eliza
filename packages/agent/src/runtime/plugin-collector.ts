@@ -77,6 +77,7 @@ function isElizaOsAndroidRuntime(): boolean {
  */
 const PLUGIN_PACKAGE_ALIASES: Readonly<Record<string, string>> = {
   "@elizaos/plugin-coding-agent": "@elizaos/plugin-coding-tools",
+  "@homunculuslabs/plugin-zai": "@elizaos/plugin-zai",
 };
 
 export function resolvePluginPackageAlias(packageName: string): string {
@@ -147,7 +148,8 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   AI_GATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
-  ZAI_API_KEY: "@homunculuslabs/plugin-zai",
+  ZAI_API_KEY: "@elizaos/plugin-zai",
+  Z_AI_API_KEY: "@elizaos/plugin-zai",
   // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled
   ELIZAOS_CLOUD_API_KEY: "@elizaos/plugin-elizacloud",
   ELIZAOS_CLOUD_ENABLED: "@elizaos/plugin-elizacloud",

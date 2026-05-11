@@ -14,6 +14,7 @@
         "@elizaos/plugin-ollama": "workspace:*",
         "@elizaos/plugin-openai": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
+        "@elizaos/plugin-zai": "workspace:*",
         "@elysiajs/cors": "^1.4.1",
         "@radix-ui/react-checkbox": "^1.3.3",
         "@radix-ui/react-dialog": "^1.1.15",
@@ -270,6 +271,7 @@
         "@elizaos/plugin-sql": "2.0.0-beta.1",
         "@elizaos/plugin-wechat": "2.0.0-beta.1",
         "@elizaos/plugin-workflow": "2.0.0-beta.1",
+        "@elizaos/plugin-zai": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
         "@elizaos/ui": "2.0.0-beta.1",
         "@elizaos/vault": "2.0.0-beta.1",
@@ -3519,6 +3521,25 @@
         "@elizaos/core": "2.0.0-beta.1",
       },
     },
+    "plugins/plugin-zai": {
+      "name": "@elizaos/plugin-zai",
+      "version": "2.0.0-beta.1",
+      "dependencies": {
+        "@ai-sdk/anthropic": "^3.0.9",
+        "@elizaos/core": "2.0.0-beta.1",
+        "ai": "^6.0.23",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/bun": "^1.3.10",
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
+      },
+      "peerDependencies": {
+        "@elizaos/core": "2.0.0-beta.1",
+      },
+    },
   },
   "trustedDependencies": [
     "@elizaos/plugin-starter",
@@ -4253,6 +4274,8 @@
     "@elizaos/plugin-x402": ["@elizaos/plugin-x402@workspace:plugins/plugin-x402"],
 
     "@elizaos/plugin-xai": ["@elizaos/plugin-xai@workspace:plugins/plugin-xai"],
+
+    "@elizaos/plugin-zai": ["@elizaos/plugin-zai@workspace:plugins/plugin-zai"],
 
     "@elizaos/prompts": ["@elizaos/prompts@workspace:packages/prompts"],
 
