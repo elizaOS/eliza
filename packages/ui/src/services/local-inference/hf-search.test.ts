@@ -13,7 +13,7 @@ describe("searchHuggingFaceGguf", () => {
     vi.unstubAllGlobals();
   });
 
-  it("infers decimal and two-billion parameter tiers without stale labels", async () => {
+  it("uses current sizing buckets while preserving external parameter labels", async () => {
     const details = new Map<string, unknown>([
       [
         "Qwen/Qwen3.5-0.8B-GGUF",
@@ -62,6 +62,11 @@ describe("searchHuggingFaceGguf", () => {
       ["0.8B", "small"],
       ["2B", "small"],
       ["2B", "small"],
+    ]);
+    expect(results.map((result) => result.parameterLabel ?? result.params)).toEqual([
+      "0.8B",
+      "2B",
+      "1.7B",
     ]);
   });
 });

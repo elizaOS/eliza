@@ -11,6 +11,7 @@ import {
   appendOptimizationFlags,
   DEFAULT_CTX_CHECKPOINT_INTERVAL,
   DEFAULT_CTX_CHECKPOINTS,
+  DflashLlamaServer,
   dflashDevDisabled,
   dflashEnabled,
   dflashLlamaServer,
@@ -559,6 +560,84 @@ describe("validateDflashDrafterCompatibility", () => {
     expect(report.compatible).toBe(false);
     expect(report.reason).toContain("dflash-draft");
     expect(report.reason).toContain("does not advertise");
+  });
+
+  it("accepts dflash-draft architecture when CAPABILITIES advertises loader support", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gguf-test-"));
+    const target = path.join(root, "target.gguf");
+    const drafter = path.join(root, "drafter.gguf");
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.writeFileSync(
+      path.join(root, "CAPABILITIES.json"),
+      JSON.stringify({
+        target: "test",
+        platform: process.platform,
+        arch: process.arch,
+        backend: "cpu",
+        builtAt: new Date().toISOString(),
+        fork: "elizaOS/llama.cpp",
+        forkCommit: "test",
+        kernels: {
+          dflash: true,
+          turbo3: true,
+          turbo4: true,
+          turbo3_tcq: true,
+          qjl_full: true,
+          polarquant: true,
+          lookahead: true,
+          ngramDraft: true,
+        },
+        binaries: ["llama-server"],
+        supportedArchitectures: ["dflash-draft"],
+        draftArchitectures: ["dflash-draft"],
+        dflashDraftArchitecture: true,
+      }),
+      "utf8",
+    );
+    writeTinyGguf(target, { architecture: "qwen3" });
+    writeTinyGguf(drafter, { architecture: "dflash-draft" });
+
+    const report = validateDflashDrafterCompatibility({
+      targetModelPath: target,
+      drafterModelPath: drafter,
+      binaryPath: binary,
+    });
+
+    expect(report.compatible).toBe(true);
+    expect(report.reason).toContain("compatible");
+  });
+
+  it("hard-fails startup instead of launching target-only when drafter preflight fails", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gguf-test-"));
+    const target = path.join(root, "target.gguf");
+    const drafter = path.join(root, "drafter.gguf");
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(binary, 0o755);
+    writeTinyGguf(target, { architecture: "qwen3", tokens: ["a", "b", "c"] });
+    writeTinyGguf(drafter, {
+      architecture: "dflash-draft",
+      tokens: ["x", "y", "z"],
+    });
+    process.env.ELIZA_DFLASH_ENABLED = "1";
+    process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
+
+    const server = new DflashLlamaServer();
+    await expect(
+      server.start({
+        targetModelPath: target,
+        drafterModelPath: drafter,
+        contextSize: 128,
+        draftContextSize: 64,
+        draftMin: 1,
+        draftMax: 4,
+        gpuLayers: 0,
+        draftGpuLayers: 0,
+        disableThinking: false,
+      }),
+    ).rejects.toThrow(/refusing to launch target-only/);
+    expect(server.hasLoadedModel()).toBe(false);
   });
 });
 
