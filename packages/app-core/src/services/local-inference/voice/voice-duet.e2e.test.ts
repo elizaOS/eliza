@@ -2,7 +2,7 @@
  * Real-output end-to-end test for the two-agents-talking-endlessly path the
  * `voice:duet` harness drives. Gated behind `it.skipIf(!realBackendPresent)` —
  * the existing probe (catalog kernels advertised + a fused build). When it
- * runs (a macOS-Metal / linux-fused box with `eliza-1-0_6b` staged) it boots
+ * runs (a macOS-Metal / linux-fused box with `eliza-1-2b` staged) it boots
  * two `LocalInferenceEngine`s on the same bundle with two characters, wires the
  * `DuetAudioBridge`, seeds agent A, and lets the duet ping-pong; the assertion
  * is that PCM crossed at least the forward direction, no crash. Don't fake a
@@ -21,7 +21,7 @@
 import { describe, expect, it } from "vitest";
 
 const ASR_RATE = 16_000;
-const realBundleId = "eliza-1-0_6b";
+const realBundleId = "eliza-1-2b";
 
 /** Probe — lazy import so collection stays cheap when nothing is present. */
 async function probeRealBackend(): Promise<boolean> {
@@ -47,7 +47,7 @@ async function probeRealBackend(): Promise<boolean> {
 const realBackendPresent = await probeRealBackend();
 
 describe.skipIf(!realBackendPresent)(
-  "voice:duet — real eliza-1-0_6b + fused TTS",
+  "voice:duet — real eliza-1-2b + fused TTS",
   () => {
     it("boots two engines on the same bundle, wires the duet bridge, and produces audio crossing the loop", async () => {
       const { LocalInferenceEngine } = await import("../engine");
@@ -61,7 +61,7 @@ describe.skipIf(!realBackendPresent)(
       const target = installed.find((m) => m.id === realBundleId);
       expect(target).toBeTruthy();
       if (!target?.bundleRoot) {
-        throw new Error("real eliza-1-0_6b bundle has no bundleRoot");
+        throw new Error("real eliza-1-2b bundle has no bundleRoot");
       }
       const bundleRoot = target.bundleRoot;
       const pushA = new PushMicSource({ sampleRate: ASR_RATE });

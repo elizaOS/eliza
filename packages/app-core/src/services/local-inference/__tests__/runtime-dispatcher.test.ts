@@ -136,12 +136,13 @@ describe("dispatchGenerate (ffi-streaming)", () => {
   });
 
   it("throws when ffi config is missing", async () => {
-    await expect(async () => {
+    const run = async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of dispatchGenerate({ backend: "ffi-streaming" })) {
         /* drain */
       }
-    }).rejects.toThrow(/backend=ffi-streaming but no ffi.runner/);
+    };
+    await expect(run()).rejects.toThrow(/backend=ffi-streaming but no ffi.runner/);
   });
 });
 
@@ -178,7 +179,7 @@ describe("dispatchGenerate (http-server)", () => {
       { chunks: [] },
       { fail: new Error("upstream 500") },
     );
-    await expect(async () => {
+    const run = async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of dispatchGenerate({
         backend: "http-server",
@@ -192,7 +193,8 @@ describe("dispatchGenerate (http-server)", () => {
       })) {
         /* drain */
       }
-    }).rejects.toThrow(/upstream 500/);
+    };
+    await expect(run()).rejects.toThrow(/upstream 500/);
   });
 
   it("forwards native DFlash reject events into the unified stream", async () => {
@@ -231,11 +233,12 @@ describe("dispatchGenerate (http-server)", () => {
   });
 
   it("throws when http config is missing", async () => {
-    await expect(async () => {
+    const run = async () => {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       for await (const _ of dispatchGenerate({ backend: "http-server" })) {
         /* drain */
       }
-    }).rejects.toThrow(/backend=http-server but no http.runner/);
+    };
+    await expect(run()).rejects.toThrow(/backend=http-server but no http.runner/);
   });
 });

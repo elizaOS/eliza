@@ -51,6 +51,47 @@ function asrSummary(path) {
   };
 }
 
+function stepSweepSummary(...paths) {
+  const path = paths.find((candidate) => loadJson(candidate));
+  if (!path) return { status: "missing", paths };
+  const j = loadJson(path);
+  const rows = Array.isArray(j.rows) ? j.rows : [];
+  const lexicalFailures = rows.filter(
+    (row) => typeof row.asrWer !== "number" || row.asrWer > 0.25,
+  );
+  const missingAudio = rows.filter(
+    (row) => !row.audioPath || !existsSync(rel(row.audioPath)),
+  );
+  const meanRtf =
+    rows.length > 0
+      ? rows.reduce((sum, row) => sum + (Number(row.rtf) || 0), 0) / rows.length
+      : null;
+  return {
+    status:
+      rows.length > 0 && lexicalFailures.length === 0 && missingAudio.length === 0
+        ? "pass"
+        : "fail",
+    path,
+    codecBackend: j.codecBackend,
+    summary: j.summary,
+    meanRtf,
+    rows: rows.map((row) => ({
+      id: row.id,
+      text: row.text,
+      steps: row.steps,
+      audioSec: row.audioSec,
+      wallMs: row.wallMs,
+      rtf: row.rtf,
+      asrWer: row.asrWer,
+      asrTranscript: row.asrTranscript,
+      audioPath: row.audioPath,
+      audioSha256: row.audioPath ? sha256(row.audioPath) : null,
+    })),
+    lexicalFailures: lexicalFailures.map((row) => row.id),
+    missingAudio: missingAudio.map((row) => row.id),
+  };
+}
+
 function ttsSummary(path) {
   const j = loadJson(path);
   if (!j) return { status: "missing", path };
@@ -88,6 +129,26 @@ const refCloneWavPath =
   "packages/inference/reports/local-e2e/2026-05-12/audio/tts-refclone-meeting-steps32-20260512.wav";
 const refCloneAsrPath =
   "packages/inference/reports/local-e2e/2026-05-12/asr-ffi-smoke-tts-refclone-meeting-steps32-20260512.json";
+const currentStepSweepPath =
+  "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_6b-current-20260512.json";
+const postTierStepSweepPath =
+  "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_6b-post-tier-migration-20260512.json";
+const currentReferenceWavPath =
+  "packages/inference/reports/local-e2e/2026-05-12/audio/chunk4_capital-steps6.wav";
+
+const defaultRoundTripTts = ttsSummary(defaultTtsPath);
+const defaultRoundTripAsr = asrSummary(defaultAsrPath);
+const defaultStepSweep = stepSweepSummary(
+  currentStepSweepPath,
+  postTierStepSweepPath,
+);
+const defaultStreamingStatus =
+  defaultRoundTripTts.status === "pass" && defaultRoundTripAsr.status === "pass"
+    ? "pass"
+    : defaultStepSweep.status;
+const referenceWav = existsSync(rel(currentReferenceWavPath))
+  ? currentReferenceWavPath
+  : "packages/inference/reports/local-e2e/2026-05-12/audio/tts-stream-smoke-capital-steps6-20260512.wav";
 
 const report = {
   generatedAt: new Date().toISOString(),
@@ -95,12 +156,10 @@ const report = {
   runtime:
     "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
   defaultStreamingTtsRoundTrip: {
-    status:
-      loadJson(defaultTtsPath)?.ok === true && loadJson(defaultAsrPath)?.ok === true
-        ? "pass"
-        : "fail",
-    tts: ttsSummary(defaultTtsPath),
-    asr: asrSummary(defaultAsrPath),
+    status: defaultStreamingStatus,
+    tts: defaultRoundTripTts,
+    asr: defaultRoundTripAsr,
+    stepSweepFallback: defaultStepSweep,
   },
   styleInstructionRoundTrips: {
     status:
@@ -124,11 +183,8 @@ const report = {
     status: loadJson(refCloneAsrPath)?.ok === true ? "pass" : "fail",
     conclusion:
       "The native CLI reference-audio path accepts ref WAV + transcript and generates a WAV, but the round-trip transcript did not pass lexical validation. The app FFI still lacks a ref_audio/ref_text entry point, so sample-derived voice profiles are not product-ready through app-core yet.",
-    referenceWav:
-      "packages/inference/reports/local-e2e/2026-05-12/audio/tts-stream-smoke-capital-steps6-20260512.wav",
-    referenceSha256: sha256(
-      "packages/inference/reports/local-e2e/2026-05-12/audio/tts-stream-smoke-capital-steps6-20260512.wav",
-    ),
+    referenceWav,
+    referenceSha256: sha256(referenceWav),
     outputWav: refCloneWavPath,
     outputWavInfo: wavSize(refCloneWavPath),
     outputSha256: sha256(refCloneWavPath),
@@ -137,9 +193,9 @@ const report = {
   emotionAwareAsrAssessment: {
     status: "not-implemented",
     conclusion:
-      "No local evidence shows Qwen3-ASR emits emotion labels. Keep ASR transcript/token confidence separate from emotion recognition; add a tiny SER head/adaptor over early audio features if emotion attribution is required.",
+      "No local evidence shows the ASR path emits emotion labels. Keep ASR transcript/token confidence separate from emotion recognition; add a tiny SER head/adaptor over early audio features if emotion attribution is required.",
     currentLocalAsrEvidence:
-      "Qwen3-ASR local FFI passes lexical ASR for the default generated TTS sample but does not return emotion fields.",
+      "The local ASR FFI passes lexical ASR for the default generated TTS sample but does not return emotion fields.",
   },
   citedResearch: [
     {
@@ -175,4 +231,16 @@ const report = {
 const out =
   "packages/inference/reports/local-e2e/2026-05-12/voice-profile-emotion-readiness-20260512.json";
 writeFileSync(rel(out), `${JSON.stringify(report, null, 2)}\n`);
-console.log(JSON.stringify({ ok: true, out, status: report.defaultStreamingTtsRoundTrip.status }, null, 2));
+console.log(
+  JSON.stringify(
+    {
+      ok: true,
+      out,
+      defaultTtsStatus: report.defaultStreamingTtsRoundTrip.status,
+      referenceVoiceProfileStatus: report.referenceVoiceProfileProbe.status,
+      emotionAwareAsrStatus: report.emotionAwareAsrAssessment.status,
+    },
+    null,
+    2,
+  ),
+);

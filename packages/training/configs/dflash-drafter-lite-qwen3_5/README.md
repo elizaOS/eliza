@@ -1,4 +1,4 @@
-# dflash-drafter-0_6b-qwen3_5 — from-scratch student config
+# dflash-drafter-lite-qwen3_5 — from-scratch student config
 
 `config.json` here is the **student config** for the ~0.6B-param Qwen3.5-architecture
 DFlash drafter that serves the Qwen3.5/3.6 eliza-1 tiers (`eliza-1-2b`, `eliza-1-9b`,
@@ -11,7 +11,8 @@ it onto `Qwen/Qwen3.5-0.8B-Base`'s logits.
 The Qwen3.5/3.6 text backbones use the **248320-vocab Qwen3.5 tokenizer** and the
 `qwen3_5` hybrid (Gated-DeltaNet linear-attention + periodic full-attention) architecture.
 A speculative-decode drafter must share the target's tokenizer, so a `Qwen3-0.6B` drafter
-(151936 vocab) is wrong. `Qwen/Qwen3.5-0.6B` does not exist on the Hub, so the ~0.6B
+(151936 vocab) is wrong. The smallest published Qwen3.5 backbone is
+`Qwen/Qwen3.5-0.8B`, so this lite
 drafter is produced by KD from `Qwen/Qwen3.5-0.8B` (the smallest published Qwen3.5).
 
 ## Geometry (vs `Qwen/Qwen3.5-0.8B-Base` `text_config`)
@@ -35,10 +36,10 @@ drafter is produced by KD from `Qwen/Qwen3.5-0.8B` (the smallest published Qwen3
 uv run --extra train python scripts/distill_dflash_drafter.py \
   --tier 9b \
   --target-base Qwen/Qwen3.5-0.8B-Base \
-  --student-config configs/dflash-drafter-0_6b-qwen3_5 \
+  --student-config configs/dflash-drafter-lite-qwen3_5 \
   --dataset data/final-eliza1-fullcorpus/train.jsonl \
   --epochs 1 --batch-size 8 --grad-accum 4 --max-seq-len 2048 \
-  --out-dir out/dflash-drafter-0_6b-qwen3_5
+  --out-dir out/dflash-drafter-lite-qwen3_5
 ```
 
 When a fine-tuned `eliza-1-9b`/`eliza-1-27b` text GGUF ships, re-stamp the drafter GGUF

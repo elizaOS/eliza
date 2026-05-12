@@ -403,7 +403,8 @@ export interface VadDetectorConfig {
   offsetThreshold?: number;
   /** Consecutive ms of speech-prob below `offsetThreshold` before the
    *  segment is considered *paused* (kick speculative response). Default
-   *  220 ms. */
+   *  100 ms (lowered from 220ms; further reduction gated on semantic EOT
+   *  classifier V2). Override via `MILADY_PAUSE_HANGOVER_MS`. */
   pauseHangoverMs?: number;
   /**
    * V1 — "fast endpoint" pause hangover, used when `fastEndpointEnabled`
@@ -602,7 +603,10 @@ export class VadDetector {
     this.onsetThreshold = config.onsetThreshold ?? 0.5;
     this.offsetThreshold =
       config.offsetThreshold ?? Math.max(0.1, this.onsetThreshold - 0.15);
-    this.pauseHangoverMs = config.pauseHangoverMs ?? 220;
+    // Lowered from 220ms; further reduction gated on semantic EOT classifier (V2).
+    // Override via MILADY_PAUSE_HANGOVER_MS env var.
+    this.pauseHangoverMs =
+      config.pauseHangoverMs ?? readPauseHangoverMsEnv() ?? 100;
     this.fastPauseHangoverMs = config.fastPauseHangoverMs ?? 100;
     this.fastEndpointEnabled = config.fastEndpointEnabled ?? false;
     this.endHangoverMs = Math.max(
@@ -868,4 +872,15 @@ export async function createVadDetector(
 ): Promise<VadDetector> {
   const { vad } = await resolveVadProvider(opts);
   return new VadDetector(vad, opts.config);
+}
+
+/**
+ * Read `MILADY_PAUSE_HANGOVER_MS` from the environment. Returns a positive
+ * integer when the variable is set and valid, otherwise `undefined`.
+ */
+function readPauseHangoverMsEnv(): number | undefined {
+  const raw = process.env["MILADY_PAUSE_HANGOVER_MS"]?.trim();
+  if (!raw) return undefined;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
 }

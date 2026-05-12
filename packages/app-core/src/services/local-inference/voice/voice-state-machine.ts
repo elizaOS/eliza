@@ -158,7 +158,8 @@ export interface VoiceStateMachineOptions {
   events?: VoiceStateMachineEvents;
 }
 
-const DEFAULT_PAUSE_HANGOVER_MS = 220;
+// Lowered from 220ms; further reduction gated on semantic EOT classifier (V2).
+const DEFAULT_PAUSE_HANGOVER_MS = 100;
 const ROLLBACK_WINDOW_MULTIPLIER = 2;
 const C1_NAME = "pre-draft";
 
