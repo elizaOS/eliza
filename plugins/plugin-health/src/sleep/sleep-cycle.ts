@@ -2,11 +2,9 @@ import type {
   LifeOpsActivitySignal,
   LifeOpsDayBoundary,
   LifeOpsHealthSignal,
-  LifeOpsHealthSignalSource,
   LifeOpsSleepCycle,
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
-  LifeOpsSleepHealthProvider,
 } from "../contracts/health.js";
 import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/health.js";
 import {

@@ -107,7 +107,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const runtime = createFakeRuntime();
     // The plugin handler signature accepts (runtime, input).
-    const result = (await ttsHandler!(
+    const result = (await ttsHandler?.(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
       "hello world",
     )) as Uint8Array;
@@ -140,7 +140,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
       ELEVENLABS_OUTPUT_FORMAT: "pcm_16000",
     });
 
-    await ttsHandler!(
+    await ttsHandler?.(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
       { text: "stream me" },
     );
@@ -164,7 +164,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
     const runtime = createFakeRuntime();
 
-    await ttsHandler!(
+    await ttsHandler?.(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
       { text: "override format", format: "pcm_16000" },
     );
@@ -185,7 +185,7 @@ describe("plugin-elevenlabs TTS streaming", () => {
     const runtime = createFakeRuntime();
 
     await expect(
-      ttsHandler!(
+      ttsHandler?.(
         runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
         "fail me",
       ),

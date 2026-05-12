@@ -103,7 +103,7 @@ describe.skipIf(!realBackendPresent)(
       // `generate` is exercised by voice-duet.test.ts + interactive-session).
       const tok = (i: number, t: string) => ({ index: i, text: t });
       for (let i = 0; i < 5; i++) {
-        await engA.pushAcceptedTokens([tok(i, (i ? " " : "") + "hello")]);
+        await engA.pushAcceptedTokens([tok(i, `${i ? " " : ""}hello`)]);
       }
       await engA.voice()?.settle();
       // Let B hear it; give the loop a couple of seconds.

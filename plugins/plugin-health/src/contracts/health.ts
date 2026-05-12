@@ -69,10 +69,10 @@ export type {
   LifeOpsSleepCycle,
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleEvidenceSource,
-  LifeOpsSleepHealthProvider,
   LifeOpsSleepCycleType,
   LifeOpsSleepDetectedFilters,
   LifeOpsSleepEndedFilters,
+  LifeOpsSleepHealthProvider,
   // Sleep / wake event filters
   LifeOpsSleepOnsetCandidateFilters,
   LifeOpsUnclearReason,

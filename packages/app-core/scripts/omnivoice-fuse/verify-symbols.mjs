@@ -84,7 +84,10 @@ function dumpSymbolsBestEffort({ tool, file }) {
     // the default 1 MB maxBuffer trips ENOBUFS, which would mask the table.
     maxBuffer: 64 * 1024 * 1024,
   });
-  if (result.error || (typeof result.status === "number" && result.status !== 0)) {
+  if (
+    result.error ||
+    (typeof result.status === "number" && result.status !== 0)
+  ) {
     return "";
   }
   return result.stdout || "";

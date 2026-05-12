@@ -103,9 +103,12 @@ def build_hermes_agent(
     import json as _json
     import os as _os
 
+    # P2-6: include BLOCK kwarg shape hint so the model uses bundle_id
+    # (e.g. 'com.apple.Safari') not app_name when emitting BLOCK actions.
     default_system_prompt = (
         "You are running LifeOpsBench. Use the supplied tools exactly "
-        "when they are needed, and keep responses concise."
+        "when they are needed, and keep responses concise. "
+        "For BLOCK actions, use bundle_id (e.g., 'com.apple.Safari') not app_name."
     )
     system_prompt = default_system_prompt
     override_path = _os.environ.get("LIFEOPS_PLANNER_PROMPT_FILE")

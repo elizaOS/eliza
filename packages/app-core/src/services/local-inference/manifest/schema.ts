@@ -50,6 +50,7 @@ export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 // DEPRECATED and no new SFT runs target them — see catalog.ts +
 // packages/training/scripts/training/model_registry.py.
 export const ELIZA_1_TIERS = [
+  "0_8b",
   "0_6b",
   "1_7b",
   "2b",
@@ -143,10 +144,11 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
+  "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-  "4b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -158,6 +160,7 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
+  "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
   "2b": ["metal", "vulkan", "cpu"],

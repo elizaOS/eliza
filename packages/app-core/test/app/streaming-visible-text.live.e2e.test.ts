@@ -192,12 +192,10 @@ async function startHarnessServer(args: {
   port: number;
 }): Promise<Server> {
   const html = makeHarnessHtml(args.apiBase);
-  const server = createServer(
-    (_req: IncomingMessage, res: ServerResponse) => {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(html);
-    },
-  );
+  const server = createServer((_req: IncomingMessage, res: ServerResponse) => {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(html);
+  });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
     server.listen(args.port, "127.0.0.1", () => resolve());
@@ -356,7 +354,10 @@ describeLive("streaming-visible-text live e2e", () => {
           .innerText()
           .catch(() => "");
         if (status === "done" && len > 0) break;
-        if (status.startsWith("create-failed") || status.startsWith("stream-failed")) {
+        if (
+          status.startsWith("create-failed") ||
+          status.startsWith("stream-failed")
+        ) {
           throw new Error(`Harness reported error: ${status}`);
         }
 

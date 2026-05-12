@@ -9,12 +9,12 @@
  * inline rather than retrying silently.
  */
 
+import { System } from "@elizaos/capacitor-system";
 import type {
   ConnectResult,
   WiFiNetwork,
   WifiStateResult,
 } from "@elizaos/capacitor-wifi";
-import { System } from "@elizaos/capacitor-system";
 import { WiFi } from "@elizaos/capacitor-wifi";
 import { Button, type OverlayAppContext } from "@elizaos/ui";
 import {

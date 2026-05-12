@@ -297,7 +297,6 @@ function hasGraphQLMeta(response: unknown): boolean {
 export class SteerLiquidityService extends Service {
   private isRunning = false;
   private supportedChains: number[];
-  private steerClient?: SteerClient;
   private vaultClients: Map<number, VaultClient> = new Map();
   private stakingClients: Map<number, StakingClient> = new Map();
   private cache: Map<string, { data: JsonValue; timestamp: number }> =
@@ -725,15 +724,18 @@ export class SteerLiquidityService extends Service {
 
       // Debug: Log first vault structure to understand the data format
       if (allVaults.length > 0) {
-        logger.log({
-          vaultAddress: allVaults[0].vaultAddress,
-          address: allVaults[0].address,
-          token0: allVaults[0].token0,
-          token1: allVaults[0].token1,
-          token0Type: typeof allVaults[0].token0,
-          token1Type: typeof allVaults[0].token1,
-          pool: allVaults[0].pool,
-        }, `Sample vault structure for chain ${chainId}`);
+        logger.log(
+          {
+            vaultAddress: allVaults[0].vaultAddress,
+            address: allVaults[0].address,
+            token0: allVaults[0].token0,
+            token1: allVaults[0].token1,
+            token0Type: typeof allVaults[0].token0,
+            token1Type: typeof allVaults[0].token1,
+            pool: allVaults[0].pool,
+          },
+          `Sample vault structure for chain ${chainId}`,
+        );
       }
 
       const matchingVaults: SteerVaultDetailInput[] = [];

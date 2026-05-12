@@ -1575,7 +1575,10 @@ export function assertRequiredBundledPackagesLanded(
   const missing: string[] = [];
   for (const name of alwaysBundled) {
     if (!isPackageNameCompatibleWithCurrentPlatform(name)) continue;
-    const pkgJsonPath = path.join(packagePath(name, targetNodeModules), "package.json");
+    const pkgJsonPath = path.join(
+      packagePath(name, targetNodeModules),
+      "package.json",
+    );
     if (!fs.existsSync(pkgJsonPath)) {
       missing.push(name);
     }
@@ -1584,7 +1587,12 @@ export function assertRequiredBundledPackagesLanded(
   throw new Error(
     [
       `[runtime-copy] ${missing.length} required runtime package(s) failed to land in the bundle after copy + prune:`,
-      ...missing.sort().map((n) => `  ${n}  (missing ${path.join(packagePath(n, targetNodeModules), "package.json")})`),
+      ...missing
+        .sort()
+        .map(
+          (n) =>
+            `  ${n}  (missing ${path.join(packagePath(n, targetNodeModules), "package.json")})`,
+        ),
       "This usually means a filter in the transitive-walk or a rule in pruneCopiedPackageDir accidentally excluded a required package. Bundle is unsafe to ship.",
     ].join("\n"),
   );

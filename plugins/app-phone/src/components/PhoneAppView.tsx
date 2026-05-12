@@ -530,7 +530,8 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                   <UserIcon className="mx-auto h-12 w-12 text-muted" />
                   <div className="mt-3 text-sm font-medium text-txt">
                     {t("phone.contacts.unavailable", {
-                      defaultValue: "Contacts are not available on this device.",
+                      defaultValue:
+                        "Contacts are not available on this device.",
                     })}
                   </div>
                   <p className="mt-1 text-xs text-muted">

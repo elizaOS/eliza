@@ -1,5 +1,5 @@
-import http from "node:http";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");

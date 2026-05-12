@@ -470,10 +470,7 @@ export class KaminoService extends Service {
       logger.log(`Found ${reserves.length} reserves`);
       return reserves;
     } catch (error) {
-      logger.error(
-        "Error fetching available reserves:",
-        formatLogError(error),
-      );
+      logger.error("Error fetching available reserves:", formatLogError(error));
       return [];
     }
   }

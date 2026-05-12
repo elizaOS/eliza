@@ -25,7 +25,10 @@ function writePackageJson(name: string): void {
     ? path.join(nodeModulesDir, ...name.split("/"))
     : path.join(nodeModulesDir, name);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "package.json"), JSON.stringify({ name }, null, 2));
+  writeFileSync(
+    path.join(dir, "package.json"),
+    JSON.stringify({ name }, null, 2),
+  );
 }
 
 describe("assertRequiredBundledPackagesLanded", () => {
@@ -109,7 +112,9 @@ describe("assertRequiredBundledPackagesLanded", () => {
   it("only checks package.json — empty dir for a package still counts as missing", () => {
     // Create the package dir but NO package.json (could happen if prune
     // wiped the manifest).
-    mkdirSync(path.join(nodeModulesDir, "@elizaos", "plugin-sql"), { recursive: true });
+    mkdirSync(path.join(nodeModulesDir, "@elizaos", "plugin-sql"), {
+      recursive: true,
+    });
 
     expect(() =>
       assertRequiredBundledPackagesLanded(

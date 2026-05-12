@@ -18,10 +18,7 @@
  * voice scaffold so it can be reused by the fine-tune evaluator script.
  */
 
-import type {
-  KokoroPhonemeSequence,
-  KokoroPhonemizer,
-} from "./types";
+import type { KokoroPhonemeSequence, KokoroPhonemizer } from "./types";
 
 export interface PhonemeStreamWindow {
   /** Cumulative ids since stream start. The runtime can re-tokenise or

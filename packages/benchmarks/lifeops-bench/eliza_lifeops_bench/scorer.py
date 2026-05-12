@@ -966,6 +966,40 @@ def _state_hash_can_promote_action_score(
     return True
 
 
+_MESSAGE_SEND_CONTACT_KEYS: tuple[str, ...] = (
+    "target",
+    "contact_id",
+    "contact",
+    "to",
+    "recipient_id",
+    "recipient",
+)
+
+
+def _message_send_wrong_contact(
+    pred_kwargs: dict[str, Any],
+    gt_kwargs: dict[str, Any],
+) -> bool:
+    """Return True when a MESSAGE/send GT specifies a contact and the agent
+    addressed a different one.
+
+    Looks at the canonical contact-identity keys in priority order. Returns
+    False (no penalty) when GT doesn't specify a contact key or when the agent
+    used the same contact.
+    """
+    for key in _MESSAGE_SEND_CONTACT_KEYS:
+        gt_val = gt_kwargs.get(key)
+        if not isinstance(gt_val, str) or not gt_val:
+            continue
+        pred_val = pred_kwargs.get(key)
+        if not isinstance(pred_val, str) or not pred_val:
+            return True
+        if _normalize_string(pred_val) != _normalize_string(gt_val):
+            return True
+        return False
+    return False
+
+
 def compare_actions(
     predicted: list[Action],
     ground_truth: list[Action],
@@ -977,6 +1011,13 @@ def compare_actions(
     1.0; a name match with mismatched kwargs is worth 0.5; no name match is
     0.0. Spurious extra predicted actions don't subtract — they just don't
     contribute. Result is normalized by `len(ground_truth)` and clamped.
+
+    P2-10 source-mismatch penalty: for MESSAGE/send actions, if the GT
+    specifies a contact (target / contact_id / to / …) and the agent addressed
+    a different one, the name-only partial credit is further multiplied by 0.5
+    (yielding 0.25 instead of 0.5). The agent still tried to send a message —
+    just to the wrong person — so it isn't scored as zero, but partial credit
+    is materially reduced to signal the error.
 
     Edge cases:
     - empty gt and empty predicted → 1.0
@@ -998,7 +1039,18 @@ def compare_actions(
         for idx, gt in enumerate(canon_truth):
             if idx in consumed or gt.name != pred.name:
                 continue
-            value = 1.0 if _kwargs_match(pred.kwargs, gt.kwargs) else 0.5
+            if _kwargs_match(pred.kwargs, gt.kwargs):
+                value = 1.0
+            else:
+                value = 0.5
+                # P2-10: penalize MESSAGE/send with wrong contact address.
+                if (
+                    pred.name == "MESSAGE"
+                    and pred.kwargs.get("operation") == "send"
+                    and gt.kwargs.get("operation") == "send"
+                    and _message_send_wrong_contact(pred.kwargs, gt.kwargs)
+                ):
+                    value *= 0.5
             if value > best_value:
                 best_value = value
                 best_idx = idx
