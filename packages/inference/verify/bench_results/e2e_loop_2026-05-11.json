@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-12T01:50:49.996Z",
+  "generatedAt": "2026-05-12T02:08:45.789Z",
   "runs": [
     {
       "schemaVersion": 1,
@@ -240,6 +240,137 @@
       "status": "needs-build",
       "reason": "no fused cuda build: no fused cuda build dir for linux-x64 under /home/shaw/.eliza/local-inference/bin/dflash (have fused: linux-x64-cpu-fused; pass --bin-dir to override)",
       "e2eLoopOk": false
+    },
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T02:06:21.340Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "1_7b",
+        "backend": "cpu",
+        "turns": 1,
+        "nPredict": 16
+      },
+      "bundle": {
+        "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+        "tier": "1_7b",
+        "ramBudgetMb": {
+          "min": 3500,
+          "recommended": 4500
+        }
+      },
+      "engine": {
+        "dir": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused",
+        "backend": "cpu",
+        "backendMismatch": null,
+        "fused": true,
+        "caps": {
+          "dflash": true,
+          "turbo3": true,
+          "turbo4": true,
+          "turbo3_tcq": false,
+          "qjl_full": false,
+          "polarquant": false,
+          "lookahead": true,
+          "ngramDraft": true
+        }
+      },
+      "status": "ok",
+      "e2eLoopOk": true,
+      "thirtyTurnOk": null,
+      "summary": {
+        "turns": 1,
+        "asrLatencyMsMedian": 4430,
+        "asrWerMean": 1,
+        "asrWerByTurn": [
+          1
+        ],
+        "firstTokenMsMedian": 86.7,
+        "firstTokenMsP50": 86.7,
+        "decodeTokPerSecMedian": 11.96,
+        "dflashAcceptanceRateMean": 0.3333,
+        "dflashDraftedTotal": 6,
+        "dflashAcceptedTotal": 2,
+        "firstAudioFromMicMsMedian": 25305.5,
+        "firstAudioFromTokenMsMedian": 20788.8,
+        "ttsRtfMedian": 10.5138,
+        "ttsRtfMean": 10.5138,
+        "totalTurnMsMedian": 58852.1,
+        "bargeInCancelMs": 0.73,
+        "serverPeakRssMb": 4485,
+        "ramBudgetRecommendedMb": 4500,
+        "ramWithinBudget": true,
+        "leakSuspected": false,
+        "dflashAcceptanceRateOverall": 0.3333
+      },
+      "bargeIn": {
+        "httpAbortMs": 0.73,
+        "nativeCancelMs": 0.03,
+        "nativeCancelRc": 0,
+        "ttsStreamSupported": false,
+        "note": "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in measured as the client/sink-side HTTP abort latency (the PCM-ring-drain surrogate). cancel_tts is a no-op here."
+      },
+      "turns": [
+        {
+          "turn": 1,
+          "asr": {
+            "latencyMs": 4430,
+            "transcript": "[0.",
+            "wer": 1
+          },
+          "gen": {
+            "firstTokenMs": 86.7,
+            "decodeTokPerSec": 11.96,
+            "predictedN": 16,
+            "promptTokPerSec": 40.24,
+            "content": "5, 1.5] is the interval of the sample mean, and"
+          },
+          "dflash": {
+            "drafted": 6,
+            "accepted": 2,
+            "acceptanceRate": 0.3333
+          },
+          "tts": {
+            "phrases": 3,
+            "totalPhrases": 5,
+            "audioSec": 5.04,
+            "wallMs": 52989.4,
+            "rtf": 10.5138,
+            "perPhrase": [
+              {
+                "phrase": "5,",
+                "audioSec": 1.24,
+                "wallMs": 19443.1,
+                "rtf": 15.6799
+              },
+              {
+                "phrase": "1.",
+                "audioSec": 1.24,
+                "wallMs": 11727.6,
+                "rtf": 9.4578
+              },
+              {
+                "phrase": "5] is the interval of the sample mean",
+                "audioSec": 2.56,
+                "wallMs": 21818.5,
+                "rtf": 8.5228
+              }
+            ]
+          },
+          "firstAudioFromMicMs": 25305.5,
+          "firstAudioFromTokenMs": 20788.8,
+          "totalTurnMs": 58852.1,
+          "serverPeakRssMb": 4485
+        }
+      ],
+      "serverLog": "[MaskGIT-Step] 12/32 demask=4 remaining=440\n[MaskGIT-Step] 13/32 demask=4 remaining=436\n[MaskGIT-Step] 14/32 demask=4 remaining=432\n[MaskGIT-Step] 15/32 demask=5 remaining=427\n[MaskGIT-Step] 16/32 demask=5 remaining=422\n[MaskGIT-Step] 17/32 demask=6 remaining=416\n[MaskGIT-Step] 18/32 demask=6 remaining=410\n[MaskGIT-Step] 19/32 demask=7 remaining=403\n[MaskGIT-Step] 20/32 demask=8 remaining=395\n[MaskGIT-Step] 21/32 demask=9 remaining=386\n[MaskGIT-Step] 22/32 demask=10 remaining=376\n[MaskGIT-Step] 23/32 demask=11 remaining=365\n[MaskGIT-Step] 24/32 demask=13 remaining=352\n[MaskGIT-Step] 25/32 demask=16 remaining=336\n[MaskGIT-Step] 26/32 demask=19 remaining=317\n[MaskGIT-Step] 27/32 demask=23 remaining=294\n[MaskGIT-Step] 28/32 demask=29 remaining=265\n[MaskGIT-Step] 29/32 demask=38 remaining=227\n[MaskGIT-Step] 30/32 demask=52 remaining=175\n[MaskGIT-Step] 31/32 demask=74 remaining=101\n[MaskGIT-Step] 32/32 demask=101 remaining=0\n[MaskGIT] Total LM forward: 21104.87 ms across 32 steps (avg 659.53 ms/step)\n[TTS] Decode: K=8 T=59 expected_samples=56640\n[TTS-Long] Post-proc: 56640 -> 61440 samples (2.56s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=326 frames (13.04s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=375 N1=6 N2=43 Sref=0 Stgt=326 c_len=375 u_len=326 denoise=0\n[TTS] Prompt: B'=2 K=8 S=375 c_len=375 u_len=326\n[MaskGIT] Start: T=326 K=8 S=375 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n"
     }
   ]
 }
