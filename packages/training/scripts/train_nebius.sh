@@ -329,6 +329,13 @@ export PATH=\$HOME/.local/bin:\$PATH
 # shells, which makes transformers/accelerate fall back to CPU ("Device 0 seems
 # unavailable"). Pin it so eliza_bench.py / train_local.py use the H200.
 export CUDA_VISIBLE_DEVICES=0
+# accelerate's device_map="auto" mis-detects the H200 on this image and falls
+# back to CPU placement (the model then trains single-threaded on CPU at ~10
+# s/it with the GPU at 0% util holding only unused optimizer states) — tell
+# train_local.py to skip device_map and .to() the GPU explicitly. (eliza_bench.py
+# still runs on CPU here — see the §11 caveat in the 0_6b report; --skip-base-bench
+# from BENCHMARK_AFTER=0 avoids the base pass, the finetuned pass is ~3h CPU.)
+export ELIZA_NO_DEVICE_MAP=1
 export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}

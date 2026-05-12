@@ -370,7 +370,16 @@ def main() -> int:
     # has plenty.) Without this, each rank would push the full 27B to
     # its own GPU before FSDP shards, OOMing at ~95 GB / 96 GB.
     in_distributed = "RANK" in os.environ
-    use_device_map = device == "cuda" and not in_distributed
+    # On some hosts (e.g. the Nebius mk8s cuda12.8 image) accelerate's
+    # `infer_auto_device_map` silently places the whole model on CPU even with a
+    # GPU present ("Device 0 seems unavailable") — the model then trains
+    # single-threaded on CPU at ~10 s/it while the GPU sits at 0% util holding
+    # only the (unused) optimizer states. ELIZA_NO_DEVICE_MAP=1 skips
+    # device_map="auto" and loads to CPU then `.to(device)` explicitly (the
+    # single-GPU 0.6B–9B tiers fit a from_pretrained load fine). The 27B FSDP
+    # path always loads to CPU (in_distributed) so this only affects single-GPU.
+    no_device_map = os.environ.get("ELIZA_NO_DEVICE_MAP", "").strip().lower() in ("1", "true", "yes")
+    use_device_map = device == "cuda" and not in_distributed and not no_device_map
     model_kwargs = dict(
         torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
         trust_remote_code=True,
@@ -381,8 +390,19 @@ def main() -> int:
         model_kwargs["quantization_config"] = quant_cfg
     if use_device_map:
         model_kwargs["device_map"] = "auto"
-    log.info("loading model (in_distributed=%s)", in_distributed)
+    log.info("loading model (in_distributed=%s device_map=%s)", in_distributed, use_device_map)
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
+    # Force the model onto the target device when we didn't use device_map (and
+    # aren't going through accelerate/FSDP, which moves it itself) — and as a
+    # safety net, also move it if device_map="auto" left it on CPU.
+    if device == "cuda" and not in_distributed and quant_cfg is None:
+        try:
+            on_cpu = next(model.parameters()).device.type != "cuda"
+        except StopIteration:
+            on_cpu = False
+        if not use_device_map or on_cpu:
+            log.info("moving model to %s (use_device_map=%s, was_on_cpu=%s)", device, use_device_map, on_cpu)
+            model = model.to(device)
 
     # Apply Liger kernel patches before any forward pass so the chunked
     # cross-entropy + fused RMSNorm/SwiGLU/RoPE replace the HF defaults.
