@@ -45,8 +45,8 @@ VERIFIED_PUBLIC_NAMES = (
 # long-context 27B variant.
 SMALL_KEYS = ("qwen3.5-0.8b",)
 SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
-LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.5-27b", "qwen3.6-27b")
-LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b", "eliza-1-27b")
+LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.6-27b")
+LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b")
 ALL_KEYS = SMALL_KEYS + LARGE_KEYS
 ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
 
