@@ -2335,6 +2335,15 @@ ElizaClient.prototype.getAgentEvents = async function (
 };
 
 ElizaClient.prototype.getExtensionStatus = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<ExtensionStatus>({
+      rpcMethod: "getExtensionStatus",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/extension/status");
 };
 
