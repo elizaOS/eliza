@@ -1279,6 +1279,197 @@ static int run_mode_multiblock(id<MTLDevice> device, id<MTLCommandQueue> queue,
     return 0;
 }
 
+// ---------------------------------------------------------------------------
+// MODE: fused — one full attention-output kernel per dispatch:
+// QJL-compressed K score + online softmax + quantized V decode/mix.
+// ---------------------------------------------------------------------------
+static int run_mode_fused(id<MTLDevice> device, id<MTLCommandQueue> queue,
+                          int iters, int warmup, const char * out_path) {
+    constexpr int n_heads    = 32;
+    constexpr int n_kv_heads = 8;
+    constexpr int n_q_pos    = 1;
+    constexpr int n_kv       = kSeq;
+    constexpr int tbq_v_bytes_per_token   = kTurbo3BlockBytes * kTurbo3BlocksPerKv;
+    constexpr int polar_v_bytes_per_token = kPolarBlockBytes;
+
+    struct FusedBench {
+        std::string name;
+        std::string source_path;
+        std::string kernel_func;
+        id<MTLComputePipelineState> pso = nil;
+        id<MTLBuffer> q_buf = nil;
+        id<MTLBuffer> k_buf = nil;
+        id<MTLBuffer> v_buf = nil;
+        id<MTLBuffer> out_buf = nil;
+        FusedAttnArgs args{};
+        MTLSize threadgroup;
+        MTLSize grid;
+        uint64_t bytes_per_dispatch = 0;
+        std::vector<double> gpu_us;
+        std::vector<double> cpu_us;
+    };
+
+    std::vector<FusedBench> kernels(2);
+    kernels[0].name = "fused_attn_qjl_tbq3";
+    kernels[0].source_path = "../metal/fused_attn_qjl_tbq.metal";
+    kernels[0].kernel_func = "kernel_fused_attn_qjl_tbq3_f32";
+    kernels[1].name = "fused_attn_qjl_polar";
+    kernels[1].source_path = "../metal/fused_attn_qjl_polar.metal";
+    kernels[1].kernel_func = "kernel_fused_attn_qjl_polar_f32";
+
+    for (auto & kb : kernels) {
+        kb.pso = compile_kernel(device, kb.source_path.c_str(), kb.kernel_func.c_str());
+        if (!kb.pso) {
+            std::fprintf(stderr, "[fused] aborting: %s pipeline failed\n", kb.name.c_str());
+            return 1;
+        }
+    }
+
+    std::vector<float>   q_sketch = randn_floats((size_t)n_q_pos * n_heads * kQjlProjDim, 0xF101);
+    std::vector<uint8_t> k_qjl    = rand_bytes((size_t)n_kv_heads * n_kv * kQjlBlockBytes, 0xF102);
+    std::vector<uint8_t> v_tbq    = rand_bytes((size_t)n_kv_heads * n_kv * tbq_v_bytes_per_token, 0xF103);
+    std::vector<uint8_t> v_polar  = rand_bytes((size_t)n_kv_heads * n_kv * polar_v_bytes_per_token, 0xF104);
+
+    auto make_buf = [&](const void * data, size_t bytes) {
+        return [device newBufferWithBytes:data length:bytes options:MTLResourceStorageModeShared];
+    };
+    auto zero_buf = [&](size_t bytes) {
+        id<MTLBuffer> b = [device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
+        std::memset([b contents], 0, [b length]);
+        return b;
+    };
+
+    for (size_t i = 0; i < kernels.size(); i++) {
+        auto & kb = kernels[i];
+        const bool is_polar = (i == 1);
+        const int v_bytes_per_token = is_polar ? polar_v_bytes_per_token : tbq_v_bytes_per_token;
+        kb.q_buf = make_buf(q_sketch.data(), q_sketch.size() * sizeof(float));
+        kb.k_buf = make_buf(k_qjl.data(), k_qjl.size());
+        kb.v_buf = is_polar
+            ? make_buf(v_polar.data(), v_polar.size())
+            : make_buf(v_tbq.data(), v_tbq.size());
+        kb.out_buf = zero_buf((size_t)n_q_pos * n_heads * kHeadDim * sizeof(float));
+        kb.args = FusedAttnArgs{
+            (uint32_t)kHeadDim,
+            (uint32_t)kQjlProjDim,
+            (uint32_t)n_heads,
+            (uint32_t)n_kv_heads,
+            (uint32_t)n_q_pos,
+            (uint32_t)n_kv,
+            0u,
+            is_polar ? 1u : 0u,
+            1.0f / std::sqrt((float)kHeadDim),
+            1u,
+            (uint32_t)(n_kv - 1),
+        };
+        kb.threadgroup = MTLSizeMake(32, 1, 1);
+        kb.grid = MTLSizeMake((NSUInteger)n_heads, (NSUInteger)n_q_pos, 1);
+        // Each query head walks a full KV head. With GQA this intentionally
+        // counts repeated K/V reads across query heads; cache reuse makes the
+        // observed bandwidth lower, but this is the work the kernel requests.
+        kb.bytes_per_dispatch =
+            (uint64_t)q_sketch.size() * sizeof(float)
+            + (uint64_t)n_heads * n_kv * (uint64_t)(kQjlBlockBytes + v_bytes_per_token)
+            + (uint64_t)n_q_pos * n_heads * kHeadDim * sizeof(float);
+    }
+
+    auto encode = [&](FusedBench & kb, double & gpu_us_out, double & cpu_us_out) {
+        @autoreleasepool {
+            id<MTLCommandBuffer> cmd = [queue commandBuffer];
+            id<MTLComputeCommandEncoder> enc = [cmd computeCommandEncoder];
+            [enc setComputePipelineState:kb.pso];
+            [enc setBuffer:kb.q_buf   offset:0 atIndex:0];
+            [enc setBuffer:kb.k_buf   offset:0 atIndex:1];
+            [enc setBuffer:kb.v_buf   offset:0 atIndex:2];
+            [enc setBuffer:kb.out_buf offset:0 atIndex:3];
+            [enc setBytes:&kb.args length:sizeof(kb.args) atIndex:4];
+            [enc dispatchThreadgroups:kb.grid threadsPerThreadgroup:kb.threadgroup];
+            [enc endEncoding];
+
+            struct timespec t0{}, t1{};
+            clock_gettime(CLOCK_MONOTONIC, &t0);
+            [cmd commit];
+            [cmd waitUntilCompleted];
+            clock_gettime(CLOCK_MONOTONIC, &t1);
+
+            gpu_us_out = ([cmd GPUEndTime] - [cmd GPUStartTime]) * 1.0e6;
+            cpu_us_out = (double)(t1.tv_sec - t0.tv_sec) * 1.0e6
+                       + (double)(t1.tv_nsec - t0.tv_nsec) * 1.0e-3;
+        }
+    };
+
+    std::printf("[fused] warming up (%d outer × %zu kernels)...\n", warmup, kernels.size());
+    for (int w = 0; w < warmup; w++) {
+        for (auto & kb : kernels) {
+            double g = 0.0, c = 0.0;
+            encode(kb, g, c);
+        }
+    }
+
+    std::printf("[fused] measuring %d iterations × %zu kernels (interleaved)...\n",
+                iters, kernels.size());
+    for (int it = 0; it < iters; it++) {
+        for (auto & kb : kernels) {
+            double g = 0.0, c = 0.0;
+            encode(kb, g, c);
+            kb.gpu_us.push_back(g);
+            kb.cpu_us.push_back(c);
+        }
+    }
+
+    std::printf("\n%-24s | %12s | %12s | %12s | %12s | %10s\n",
+                "kernel", "gpu_med_us", "gpu_p99_us", "cpu_med_us", "bw_GBs", "bw_pct");
+    std::printf("-------------------------+--------------+--------------+--------------+--------------+------------\n");
+
+    FILE * fp = std::fopen(out_path, "w");
+    if (!fp) { std::fprintf(stderr, "[fused] cannot open %s\n", out_path); return 1; }
+    std::fprintf(fp, "{\n");
+    std::fprintf(fp, "  \"device\": \"%s\",\n", [[device name] UTF8String]);
+    std::fprintf(fp, "  \"date\": \"2026-05-12\",\n");
+    std::fprintf(fp, "  \"mode\": \"fused\",\n");
+    std::fprintf(fp, "  \"iterations\": %d,\n", iters);
+    std::fprintf(fp, "  \"warmup\": %d,\n", warmup);
+    std::fprintf(fp, "  \"workload\": {\n");
+    std::fprintf(fp, "    \"description\": \"single-token decode fused attention, 9B-class GQA\",\n");
+    std::fprintf(fp, "    \"head_dim\": %d, \"proj_dim\": %d, \"n_heads\": %d, \"n_kv_heads\": %d, \"n_q_pos\": %d, \"n_kv\": %d\n",
+                 kHeadDim, kQjlProjDim, n_heads, n_kv_heads, n_q_pos, n_kv);
+    std::fprintf(fp, "  },\n");
+    std::fprintf(fp, "  \"kernels\": [\n");
+    for (size_t i = 0; i < kernels.size(); i++) {
+        auto & kb = kernels[i];
+        double gpu_med = median(kb.gpu_us);
+        double gpu_p50 = percentile(kb.gpu_us, 0.50);
+        double gpu_p99 = percentile(kb.gpu_us, 0.99);
+        double cpu_med = median(kb.cpu_us);
+        double cpu_p99 = percentile(kb.cpu_us, 0.99);
+        double bw_GBs = 0.0, bw_pct = 0.0;
+        if (gpu_med > 0.0) {
+            bw_GBs = ((double)kb.bytes_per_dispatch / (gpu_med * 1.0e-6)) / 1.0e9;
+            bw_pct = 100.0 * bw_GBs / (double)kPeakBwGBs;
+        }
+        std::printf("%-24s | %12.2f | %12.2f | %12.2f | %12.2f | %9.1f%%\n",
+                    kb.name.c_str(), gpu_med, gpu_p99, cpu_med, bw_GBs, bw_pct);
+        std::fprintf(fp, "    {\n");
+        std::fprintf(fp, "      \"name\": \"%s\",\n", kb.name.c_str());
+        std::fprintf(fp, "      \"kernel_function\": \"%s\",\n", kb.kernel_func.c_str());
+        std::fprintf(fp, "      \"bytes_per_dispatch\": %llu,\n", (unsigned long long)kb.bytes_per_dispatch);
+        std::fprintf(fp, "      \"gpu_us\": { \"median\": %.4f, \"p50\": %.4f, \"p99\": %.4f, \"min\": %.4f, \"max\": %.4f },\n",
+                     gpu_med, gpu_p50, gpu_p99,
+                     *std::min_element(kb.gpu_us.begin(), kb.gpu_us.end()),
+                     *std::max_element(kb.gpu_us.begin(), kb.gpu_us.end()));
+        std::fprintf(fp, "      \"cpu_us\": { \"median\": %.4f, \"p99\": %.4f },\n", cpu_med, cpu_p99);
+        std::fprintf(fp, "      \"bandwidth_GBs\": %.4f,\n", bw_GBs);
+        std::fprintf(fp, "      \"bandwidth_pct_of_peak\": %.4f\n", bw_pct);
+        std::fprintf(fp, "    }%s\n", i + 1 == kernels.size() ? "" : ",");
+    }
+    std::fprintf(fp, "  ],\n");
+    std::fprintf(fp, "  \"note\": \"Fused attention walks K once and decodes/mixes V inside the online-softmax recurrence. This measures standalone shader cost only; runtime-ready status still requires built-fork graph dispatch smoke.\"\n");
+    std::fprintf(fp, "}\n");
+    std::fclose(fp);
+    std::printf("\n[fused] wrote %s\n", out_path);
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, const char * argv[]) {
@@ -1329,6 +1520,12 @@ int main(int argc, const char * argv[]) {
             int wm = warmup_override >= 0 ? warmup_override : 30;
             const char * out = out_path ? out_path : "bench_results/m4max_multiblock_2026-05-10.json";
             return run_mode_multiblock(device, queue, it, wm, out);
+        }
+        if (std::strcmp(mode, "fused") == 0) {
+            int it = iters_override > 0 ? iters_override : 50;
+            int wm = warmup_override >= 0 ? warmup_override : 5;
+            const char * out = out_path ? out_path : "bench_results/m4max_fused_2026-05-12.json";
+            return run_mode_fused(device, queue, it, wm, out);
         }
         // Fall through: default mode.
         if (!out_path) out_path = "bench_results/m4max_2026-05-10.json";

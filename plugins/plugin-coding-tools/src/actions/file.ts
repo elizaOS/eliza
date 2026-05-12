@@ -1,11 +1,11 @@
-import {
-  type Action,
-  type ActionResult,
-  type HandlerCallback,
-  type HandlerOptions,
-  type IAgentRuntime,
-  type Memory,
-  type State,
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
 } from "@elizaos/core";
 
 import {
@@ -21,7 +21,14 @@ import { lsHandler } from "./ls.js";
 import { readFileHandler } from "./read.js";
 import { writeFileHandler } from "./write.js";
 
-const FILE_OPERATIONS = ["read", "write", "edit", "grep", "glob", "ls"] as const;
+const FILE_OPERATIONS = [
+  "read",
+  "write",
+  "edit",
+  "grep",
+  "glob",
+  "ls",
+] as const;
 type FileOperation = (typeof FILE_OPERATIONS)[number];
 type FileTarget = "workspace" | "device";
 
@@ -123,22 +130,26 @@ function readFileRouting(
 function getDeviceFilesystemBridge(
   runtime: IAgentRuntime,
 ): DeviceFilesystemBridgeLike | null {
-  const service = runtime.getService(DEVICE_FILESYSTEM_SERVICE_TYPE) as
-    | DeviceFilesystemBridgeLike
-    | null;
-  if (
-    service &&
-    typeof service.read === "function" &&
-    typeof service.write === "function" &&
-    typeof service.list === "function"
-  ) {
-    return service;
+  const service = runtime.getService(DEVICE_FILESYSTEM_SERVICE_TYPE) as unknown;
+  if (service && typeof service === "object") {
+    const candidate = service as Partial<DeviceFilesystemBridgeLike>;
+    if (
+      typeof candidate.read === "function" &&
+      typeof candidate.write === "function" &&
+      typeof candidate.list === "function"
+    ) {
+      return candidate as DeviceFilesystemBridgeLike;
+    }
   }
   return null;
 }
 
-function readDevicePath(options: unknown, operation: FileOperation): string | undefined {
-  const path = readStringParam(options, "path") ?? readStringParam(options, "file_path");
+function readDevicePath(
+  options: unknown,
+  operation: FileOperation,
+): string | undefined {
+  const path =
+    readStringParam(options, "path") ?? readStringParam(options, "file_path");
   if (path !== undefined) return path;
   return operation === "ls" ? "" : undefined;
 }
@@ -150,14 +161,19 @@ function readDeviceEncoding(options: unknown): FileEncoding | undefined {
   return undefined;
 }
 
-function renderDeviceEntries(path: string, entries: DeviceDirectoryEntry[]): string {
+function renderDeviceEntries(
+  path: string,
+  entries: DeviceDirectoryEntry[],
+): string {
   if (entries.length === 0) {
     return `(${path || "."}: empty)`;
   }
   const lines = entries
     .slice()
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((entry) => (entry.type === "directory" ? `${entry.name}/` : entry.name));
+    .map((entry) =>
+      entry.type === "directory" ? `${entry.name}/` : entry.name,
+    );
   return `${path || "."}:\n${lines.join("\n")}`;
 }
 
@@ -323,7 +339,8 @@ export const fileAction: Action = {
     },
     {
       name: "replace_all",
-      description: "For action=edit, replace every occurrence instead of requiring one match.",
+      description:
+        "For action=edit, replace every occurrence instead of requiring one match.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -392,7 +409,8 @@ export const fileAction: Action = {
     },
     {
       name: "show_line_numbers",
-      description: "For action=grep, include 1-based line numbers in content output.",
+      description:
+        "For action=grep, include 1-based line numbers in content output.",
       required: false,
       schema: { type: "boolean" },
     },
@@ -416,7 +434,8 @@ export const fileAction: Action = {
     },
     {
       name: "encoding",
-      description: "For target=device read/write: utf8 or base64. Defaults to utf8.",
+      description:
+        "For target=device read/write: utf8 or base64. Defaults to utf8.",
       required: false,
       schema: { type: "string", enum: ["utf8", "base64"] },
     },
@@ -467,21 +486,26 @@ export const fileAction: Action = {
         content: {
           text: "Read /tmp/app.ts.",
           actions: ["FILE"],
-          thought: "Reading a file maps to FILE with action=read and file_path.",
+          thought:
+            "Reading a file maps to FILE with action=read and file_path.",
         },
       },
     ],
     [
       {
         name: "{{name1}}",
-        content: { text: "Find every TypeScript file under the repo.", source: "chat" },
+        content: {
+          text: "Find every TypeScript file under the repo.",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",
         content: {
           text: "Found matching files.",
           actions: ["FILE"],
-          thought: "File discovery maps to FILE with action=glob, pattern, and path.",
+          thought:
+            "File discovery maps to FILE with action=glob, pattern, and path.",
         },
       },
     ],

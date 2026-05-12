@@ -1405,10 +1405,7 @@ export async function probeToolCall(args: {
   });
   const rawActual = resp.content.trim();
   const actual = extractBenchmarkAnswerText(rawActual);
-  const correct = isIsolatedExactRecallAnswer(
-    actual,
-    args.toolCall.toolValue,
-  );
+  const correct = isIsolatedExactRecallAnswer(actual, args.toolCall.toolValue);
   return {
     factId: args.toolCall.id,
     turn: args.toolCall.turn,
@@ -1467,7 +1464,10 @@ function isExactRecallAnswer(actual: string, expected: string): boolean {
   return true;
 }
 
-function isIsolatedExactRecallAnswer(actual: string, expected: string): boolean {
+function isIsolatedExactRecallAnswer(
+  actual: string,
+  expected: string,
+): boolean {
   if (!isExactRecallAnswer(actual, expected)) return false;
 
   const normalizedActual = normalizeRecallText(actual);

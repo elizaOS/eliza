@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -340,6 +340,14 @@ metal-bench-multiblock: metal_bench
 	@mkdir -p bench_results
 	./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json
 
+# Fused-attention benchmark for the standalone Metal QJL-K + quantized-V
+# kernels. This complements metal-verify-fused: correctness stays in
+# metal_verify, while this target records the one-pass online-softmax kernel
+# cost at a 9B-class single-token decode shape.
+metal-bench-fused: metal_bench
+	@mkdir -p bench_results
+	./metal_bench --mode fused --out bench_results/m4max_fused_2026-05-12.json
+
 # CPU reference baseline. Single-threaded scalar C, no GPU. Same workload
 # constants as metal_bench so the BENCHMARK doc can join the two tables.
 cpu-bench: cpu_bench
@@ -383,7 +391,9 @@ bench: cpu-bench
 	    echo "[bench] running metal_bench --mode fp16ref ..." && \
 	    ./metal_bench --mode fp16ref --out bench_results/m4max_fp16ref_2026-05-10.json && \
 	    echo "[bench] running metal_bench --mode multiblock ..." && \
-	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json ; \
+	    ./metal_bench --mode multiblock --out bench_results/m4max_multiblock_2026-05-10.json && \
+	    echo "[bench] running metal_bench --mode fused ..." && \
+	    ./metal_bench --mode fused --out bench_results/m4max_fused_2026-05-12.json ; \
 	else \
 	    echo "[bench] skipping metal_bench (xcrun not found — macOS only)" ; \
 	fi

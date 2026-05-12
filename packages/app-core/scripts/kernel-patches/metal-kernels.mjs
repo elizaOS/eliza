@@ -590,6 +590,21 @@ static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_
     return id;
 }
 
+static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
+    const char * raw = std::getenv(name);
+    if (raw == nullptr || raw[0] == '\\0') {
+        return fallback;
+    }
+    char * end = nullptr;
+    const unsigned long parsed = std::strtoul(raw, &end, 10);
+    if (end == raw || *end != '\\0' || parsed < min_value || parsed > max_value) {
+        GGML_LOG_WARN("%s: ignoring invalid %s=%s (expected %u..%u)\\n",
+                      __func__, name, raw, min_value, max_value);
+        return fallback;
+    }
+    return (uint32_t) parsed;
+}
+
 int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
     ggml_tensor * op = ctx->node(idx);
 
@@ -822,6 +837,18 @@ export function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
             struct ggml_tensor  * q,
             struct ggml_tensor  * packed_k,
             int                   n_kv_heads,
+            bool                  use_qjl);
+
+    // PolarQuant packed-K attention score with pre-Hadamarded query.
+    // q_preht MUST contain H*q for each query head, where H is the same
+    // unnormalised 128-point Walsh-Hadamard transform used by the PolarQuant
+    // decoder. This is faster than ggml_attn_score_polar() because the backend
+    // can use dot(H*x, q) == dot(x, H*q) and avoid one Hadamard per K row.
+    GGML_API struct ggml_tensor * ggml_attn_score_polar_preht(
+            struct ggml_context * ctx,
+            struct ggml_tensor  * q_preht,
+            struct ggml_tensor  * packed_k,
+            int                   n_kv_heads,
             bool                  use_qjl);`,
     );
     changed = true;
@@ -908,14 +935,15 @@ struct ggml_tensor * ggml_attn_score_tbq(
     return result;
 }
 
-// ggml_attn_score_polar
+// ggml_attn_score_polar_impl
 //
-struct ggml_tensor * ggml_attn_score_polar(
+static struct ggml_tensor * ggml_attn_score_polar_impl(
         struct ggml_context * ctx,
         struct ggml_tensor  * q,
         struct ggml_tensor  * packed_k,
         int                   n_kv_heads,
-        bool                  use_qjl) {
+        bool                  use_qjl,
+        bool                  q_preht) {
     GGML_ASSERT(q != NULL);
     GGML_ASSERT(packed_k != NULL);
     GGML_ASSERT(q->type == GGML_TYPE_F32);
@@ -934,7 +962,7 @@ struct ggml_tensor * ggml_attn_score_polar(
     const int64_t ne[4] = { n_kv_tokens, n_heads, q->ne[2], q->ne[3] };
     struct ggml_tensor * result = ggml_new_tensor(ctx, GGML_TYPE_F32, 4, ne);
 
-    int32_t params[2] = { n_kv_heads, use_qjl ? 1 : 0 };
+    int32_t params[3] = { n_kv_heads, use_qjl ? 1 : 0, q_preht ? 1 : 0 };
     ggml_set_op_params(result, params, sizeof(params));
 
     result->op     = GGML_OP_ATTN_SCORE_POLAR;
@@ -942,6 +970,28 @@ struct ggml_tensor * ggml_attn_score_polar(
     result->src[1] = packed_k;
 
     return result;
+}
+
+// ggml_attn_score_polar
+//
+struct ggml_tensor * ggml_attn_score_polar(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * q,
+        struct ggml_tensor  * packed_k,
+        int                   n_kv_heads,
+        bool                  use_qjl) {
+    return ggml_attn_score_polar_impl(ctx, q, packed_k, n_kv_heads, use_qjl, false);
+}
+
+// ggml_attn_score_polar_preht
+//
+struct ggml_tensor * ggml_attn_score_polar_preht(
+        struct ggml_context * ctx,
+        struct ggml_tensor  * q_preht,
+        struct ggml_tensor  * packed_k,
+        int                   n_kv_heads,
+        bool                  use_qjl) {
+    return ggml_attn_score_polar_impl(ctx, q_preht, packed_k, n_kv_heads, use_qjl, true);
 }
 
 `;
@@ -988,6 +1038,9 @@ struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_scor
         enum ggml_type        type);
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar(
+        ggml_metal_library_t lib);
+
+struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar_preht(
         ggml_metal_library_t lib);`,
   );
   if (!dryRun) fs.writeFileSync(headerPath, patched, "utf8");
@@ -1048,6 +1101,23 @@ ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar
     if (!res.pipeline) {
         GGML_LOG_ERROR("attn_score_polar: kernel '%s' missing from default.metallib\\n", name);
         GGML_ABORT("attn_score_polar: pipeline compile failed");
+    }
+    res.nr0 = 1;
+    res.nr1 = 1;
+    res.nsg = 1;
+    res.smem = 0;
+    return res;
+}
+
+ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_polar_preht(ggml_metal_library_t lib) {
+    const char * name = "kernel_attn_score_q4_polar_preht_f32";
+    ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
+    if (!res.pipeline) {
+        res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
+    }
+    if (!res.pipeline) {
+        GGML_LOG_ERROR("attn_score_polar_preht: kernel '%s' missing from default.metallib\\n", name);
+        GGML_ABORT("attn_score_polar_preht: pipeline compile failed");
     }
     res.nr0 = 1;
     res.nr1 = 1;
