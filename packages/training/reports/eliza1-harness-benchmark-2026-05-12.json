@@ -214,5 +214,105 @@
     "d16k CPU llama-bench sweep \u2014 the 16384-token prompt run took >15 min/model under SFT CPU contention; CUDA -DGGML_CUDA=ON build OOM'd earlier (needs an idle host or wait for the SFT to finish)",
     "real ASR WER \u2014 needs real recorded WAV+.txt pairs AND the tokenizer-fused Qwen3-ASR weights (not the stand-in)",
     "embedding bench on Linux/CPU \u2014 only the Metal/M4Max run exists; the Linux run was skipped"
-  ]
+  ],
+  "fused_build_e2e_loop_bench_2026_05_12": {
+    "added_by": "CUDA-FINISH-4",
+    "addedAt": "2026-05-12T23:55:00Z",
+    "publishGate": {
+      "metric": "voice_rtf",
+      "threshold": 0.5,
+      "operator": "<="
+    },
+    "tiers": ["0_6b"],
+    "results": [
+      {
+        "backend": "linux-x64-cuda-fused",
+        "device": "NVIDIA GeForce RTX 5080 Laptop GPU (sm_120, 15.5 GB)",
+        "cudaToolkit": "12.8.93",
+        "installPath": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused",
+        "forkCommit": "a61c93aaa5899c17bb1bc32b5645ebb4276c2746",
+        "omnivoicePin": "38f824023d12b21a7c324651b18bd90f16d8bb86",
+        "publishable": true,
+        "missingRequiredKernels": [],
+        "fused": true,
+        "kernels": {
+          "dflash": true,
+          "turbo3": true,
+          "turbo4": true,
+          "turbo3_tcq": true,
+          "qjl_full": true,
+          "polarquant": true,
+          "lookahead": true,
+          "ngramDraft": true
+        },
+        "metrics": {
+          "pp_tps_prompt": 111.65,
+          "tg_tps_decode": 64.82,
+          "first_token_ms": 43.3,
+          "voice_rtf": 0.4255,
+          "total_turn_ms": 3073.6,
+          "first_audio_from_mic_ms": 1481.9,
+          "asr_latency_ms": 234.5,
+          "dflash_accept": 1.0,
+          "dflash_drafted": 12,
+          "dflash_accepted": 12,
+          "peak_rss_mb": 2340,
+          "barge_in_cancel_ms": 1.61,
+          "ram_within_budget": true
+        },
+        "publishGateResult": "PASS",
+        "kernelParity": {
+          "cudaVerifyFused": "1920/1920 PASS (max diff 5.066e-07)",
+          "cudaHardware": "all fixture sets PASS against fused install; graph-smoke gated on llama-bench (non-blocking tooling gap)"
+        },
+        "report": "packages/inference/reports/porting/2026-05-12/e2e-loop-cuda-2026-05-12.json",
+        "verifyLog": "packages/inference/verify/logs/cuda-verify-fused-fusedbuild-rtx5080-2026-05-12.log",
+        "hardwareLog": "packages/inference/verify/logs/cuda-hardware-fusedbuild-rtx5080-2026-05-12.log",
+        "e2eLog": "/tmp/e2e-loop-cuda.log"
+      },
+      {
+        "backend": "linux-x64-vulkan-fused",
+        "device": "Intel(R) Graphics (ARL) iGPU, Mesa ANV 25.2.8, API 1.4.318",
+        "installPath": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-vulkan-fused",
+        "forkCommit": "a61c93aaa5899c17bb1bc32b5645ebb4276c2746",
+        "omnivoicePin": "38f824023d12b21a7c324651b18bd90f16d8bb86",
+        "publishable": true,
+        "missingRequiredKernels": [],
+        "fused": true,
+        "kernels": {
+          "dflash": true,
+          "turbo3": true,
+          "turbo4": true,
+          "turbo3_tcq": true,
+          "qjl_full": true,
+          "polarquant": true,
+          "lookahead": true,
+          "ngramDraft": true
+        },
+        "metrics": {
+          "pp_tps_prompt": null,
+          "tg_tps_decode": 12.13,
+          "first_token_ms": 493.4,
+          "voice_rtf": 1.7269,
+          "total_turn_ms": 17163.1,
+          "first_audio_from_mic_ms": 10963.4,
+          "asr_latency_ms": 4800.6,
+          "dflash_accept": 1.0,
+          "dflash_drafted": 31,
+          "dflash_accepted": 31,
+          "peak_rss_mb": 1370,
+          "barge_in_cancel_ms": 2.48,
+          "ram_within_budget": true
+        },
+        "publishGateResult": "FAIL",
+        "publishGateNotes": "Functionally correct (kernel parity, e2e_loop completes). The Intel ARL integrated GPU is below the discrete-GPU performance class the voice_rtf<=0.5 gate targets. Next step for a Vulkan-side voice-rtf number would be a discrete Vulkan-mode card (RDNA3 RX 7800 / RTX 4080 in --device vulkan, etc.).",
+        "kernelParity": {
+          "vulkanVerifyFused": "all PASS on Intel ARL iGPU: fused_attn_qjl_tbq 1920/1920 + 1536/1536 causal; fused_attn_qjl_polar 1920/1920 + 1536/1536 causal; max diff 6.258e-07"
+        },
+        "report": "packages/inference/reports/porting/2026-05-12/e2e-loop-vulkan-2026-05-12.json",
+        "verifyLog": "packages/inference/verify/logs/vulkan-verify-fused-fusedbuild-anv-2026-05-12.log",
+        "e2eLog": "/tmp/e2e-loop-vulkan.log"
+      }
+    ]
+  }
 }

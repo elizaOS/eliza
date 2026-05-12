@@ -550,16 +550,16 @@
       "nextGate": "Run fused libelizainference CPU smoke with voice off/on regions."
     },
     "linux-x64-cuda-fused": {
-      "kernelVerification": "verified",
-      "runtimeDispatch": "verified",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Run the fused CUDA voice/runtime smoke against a full Eliza-1 bundle on the same RTX 5080 host (libelizainference fused build)."
+      "kernelVerification": "runtime-ready",
+      "runtimeDispatch": "runtime-ready",
+      "deviceRun": "verified",
+      "nextGate": "Re-run on additional sm classes (sm_89 / sm_90 / sm_100 datacenter) to confirm no arch regression. 2026-05-12 CUDA-FINISH-4: fused build installed at ~/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused/ (forkCommit a61c93aaa5, omnivoice pin 38f824023d12); cuda-verify-fused 1920/1920 PASS on RTX 5080 sm_120; cuda-hardware 6/6 fixture sets PASS against the fused install; e2e_loop_bench cuda 1-turn voice_rtf 0.4255 (PASS publish gate <= 0.5), tg 64.82 tok/s, first_token 43.3 ms, dflash 12/12, peak RSS 2340 MB, e2eOk true. Reports: packages/inference/reports/porting/2026-05-12/e2e-loop-cuda-2026-05-12.json + packages/training/reports/eliza1-harness-benchmark-2026-05-12.json (fused_build_e2e_loop_bench_2026_05_12 section)."
     },
     "linux-x64-vulkan-fused": {
-      "kernelVerification": "standalone-verified",
-      "runtimeDispatch": "needs-runtime-smoke",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Run fused Vulkan smoke after the non-fused Vulkan graph smoke passes on native hardware."
+      "kernelVerification": "runtime-ready",
+      "runtimeDispatch": "runtime-ready",
+      "deviceRun": "verified",
+      "nextGate": "Re-run e2e_loop_bench on a discrete Vulkan card (RDNA3 / Ada in pure-Vulkan / Intel BMG) to get a Vulkan voice-rtf number under the discrete-GPU class — the iGPU here is below the gate's hardware class. 2026-05-12 CUDA-FINISH-4: fused build installed at ~/.eliza/local-inference/bin/dflash/linux-x64-vulkan-fused/ (forkCommit a61c93aaa5, omnivoice pin 38f824023d12, fused SPIR-V baked in: eliza_fused_attn_qjl_tbq + eliza_fused_attn_qjl_polar); vulkan-verify-fused PASS on Intel ARL iGPU (Mesa ANV 25.2.8) — fused_attn_qjl_tbq 1920/1920 + 1536/1536 causal + fused_attn_qjl_polar 1920/1920 + 1536/1536 causal = 6912 outputs total, max diff 6.26e-07; e2e_loop_bench vulkan 1-turn ran end-to-end with dflash 31/31 and e2eOk true, but iGPU performance keeps voice_rtf at 1.7269 (publish gate FAIL on iGPU class). Reports: packages/inference/reports/porting/2026-05-12/e2e-loop-vulkan-2026-05-12.json."
     },
     "darwin-arm64-metal-fused": {
       "kernelVerification": "standalone-verified",

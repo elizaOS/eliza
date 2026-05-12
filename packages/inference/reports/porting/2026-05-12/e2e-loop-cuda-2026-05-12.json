@@ -1,0 +1,166 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-12T23:46:05.716Z",
+  "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+  "host": {
+    "platform": "linux",
+    "arch": "x64",
+    "cpus": 24,
+    "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+    "totalMemMb": 31440
+  },
+  "request": {
+    "tier": "0_6b",
+    "backend": "cuda",
+    "turns": 1,
+    "nPredict": 40,
+    "ttsSteps": 32,
+    "micTtsSteps": 32,
+    "ttsRoundtripAsr": false,
+    "phraseMaxTokens": 8,
+    "wavs": 0,
+    "refs": 0
+  },
+  "bundle": {
+    "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+    "tier": "0_6b",
+    "ramBudgetMb": {
+      "min": 2500,
+      "recommended": 3700
+    }
+  },
+  "engine": {
+    "dir": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused",
+    "backend": "cuda",
+    "backendMismatch": null,
+    "fused": true,
+    "caps": {
+      "dflash": true,
+      "turbo3": true,
+      "turbo4": true,
+      "turbo3_tcq": true,
+      "qjl_full": true,
+      "polarquant": true,
+      "lookahead": true,
+      "ngramDraft": true
+    }
+  },
+  "status": "ok",
+  "reason": null,
+  "e2eLoopOk": true,
+  "thirtyTurnOk": null,
+  "flowCompletedOk": true,
+  "optimizationReadyOk": true,
+  "requiredOptimizations": {
+    "dflashDraftingActive": true,
+    "streamingTtsActive": true
+  },
+  "summary": {
+    "turns": 1,
+    "asrLatencyMsMedian": 234.5,
+    "asrWerMean": 1,
+    "asrWerByTurn": [
+      1
+    ],
+    "firstTokenMsMedian": 43.3,
+    "firstTokenMsP50": 43.3,
+    "decodeTokPerSecMedian": 64.82,
+    "dflashAcceptanceRateMean": 1,
+    "dflashDraftedTotal": 12,
+    "dflashAcceptedTotal": 12,
+    "firstAudioFromMicMsMedian": 1481.9,
+    "firstAudioFromTokenMsMedian": 1204.1,
+    "ttsRtfMedian": 0.4255,
+    "ttsRtfMean": 0.4255,
+    "ttsRoundTripAsrWerMean": null,
+    "ttsRoundTripAsrWerByTurn": [
+      null
+    ],
+    "totalTurnMsMedian": 3073.6,
+    "bargeInCancelMs": 1.61,
+    "serverPeakRssMb": 2340,
+    "ramBudgetRecommendedMb": 3700,
+    "ramWithinBudget": true,
+    "leakSuspected": false,
+    "dflashAcceptanceRateOverall": 1,
+    "flowCompletedOk": true,
+    "optimizationReadyOk": true,
+    "requiredOptimizations": {
+      "dflashDraftingActive": true,
+      "streamingTtsActive": true
+    },
+    "codecBackend": {
+      "metalCodecFallback": false,
+      "requestedBackend": null,
+      "selectedBackend": "CUDA0",
+      "reason": null,
+      "sampleRate": 24000,
+      "hopLength": 960
+    }
+  },
+  "bargeIn": {
+    "httpAbortMs": 1.61,
+    "nativeCancelMs": 0.02,
+    "nativeCancelRc": 0,
+    "ttsStreamSupported": true,
+    "note": "build implements streaming TTS — cancel_tts hard-stops an in-flight forward pass at the next kernel boundary"
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "asr": {
+        "latencyMs": 234.5,
+        "transcript": ".\n\nand notic",
+        "wer": 1
+      },
+      "gen": {
+        "firstTokenMs": 43.3,
+        "decodeTokPerSec": 64.82,
+        "predictedN": 40,
+        "promptTokPerSec": 111.65,
+        "content": "ably, the first and last terms of the sequence are the same as the first and last terms of the original sequence.\n\nSo, the problem is now to find the number of distinct terms in the original"
+      },
+      "dflash": {
+        "drafted": 12,
+        "accepted": 12,
+        "acceptanceRate": 1
+      },
+      "tts": {
+        "phrases": 3,
+        "totalPhrases": 7,
+        "audioSec": 5.11,
+        "wallMs": 2174.5,
+        "rtf": 0.4255,
+        "roundTripAsrWerMean": null,
+        "perPhrase": [
+          {
+            "phrase": "ably,",
+            "durationHintSec": 0.75,
+            "audioSec": 0.87,
+            "wallMs": 583.2,
+            "rtf": 0.6703
+          },
+          {
+            "phrase": "the first and last terms of the sequence",
+            "durationHintSec": 1.94,
+            "audioSec": 2.12,
+            "wallMs": 792.3,
+            "rtf": 0.3737
+          },
+          {
+            "phrase": "are the same as the first and last",
+            "durationHintSec": 1.94,
+            "audioSec": 2.12,
+            "wallMs": 799,
+            "rtf": 0.3769
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 1481.9,
+      "firstAudioFromTokenMs": 1204.1,
+      "totalTurnMs": 3073.6,
+      "serverPeakRssMb": 2340
+    }
+  ],
+  "serverLog": "srv    load_model: prompt cache is enabled, size limit: 8192 MiB\nsrv    load_model: use `--cache-ram 0` to disable the prompt cache\nsrv    load_model: for more info see https://github.com/ggml-org/llama.cpp/pull/16391\ninit: chat template, example_format: '<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi there<|im_end|>\n<|im_start|>user\nHow are you?<|im_end|>\n<|im_start|>assistant\n'\nsrv          init: init: chat template, thinking = 1\nmain: model loaded\nmain: server is listening on http://127.0.0.1:43296\nmain: starting the main loop...\nsrv  update_slots: all slots are idle\n[OmniVoice] omnivoice.cpp 38f824023d12 (eliza-fused)\n[Load] LM backend: CUDA0 (CPU threads: 12)\n[GGUF] /home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-base-Q4_K_M.gguf: 312 tensors, data at offset 5339136\n[LM-Load] Loaded: 28L H=1024 FFN=3072 Nh=16 Nkv=8 D=128 theta=1000000 eps=1e-06 | audio: K=8 V=1025 mask_id=1024\n[Qwen3] Attn: Q+K fused, V separate\n[Qwen3] MLP: gate+up fused\n[WeightCtx] Loaded 312 tensors, 383.5 MB into backend\n[BPE] Loaded from GGUF: 151676 vocab, 151387 merges, eos_id=151643\n[BPE] Registered 7 OmniVoice special tokens (total specials=8)\n[GGUF] /home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf: 486 tensors, data at offset 43680\n[WeightCtx] Loaded 52 tensors, 11.1 MB into backend\n[DAC] Loaded: 5 blocks, upsample 960x (8*5*4*2*3), 24 kHz mono out, weights 38.7 MB\n[DAC-Enc] Loaded: 5 blocks, downsample 960x (8*5*4*2*3), 24 kHz mono in, weights 98.0 MB\n[Sem-Enc] Loaded: 2 blocks, hidden=768, no temporal downsample, weights 28.1 MB\n[HuBERT-Feat] Loaded: 7 conv layers, cumul stride 320, weights 8.0 MB\n[HuBERT-Proj] Loaded: LN(512) + Linear(512 -> 768), weights 0.2 MB\n[HuBERT-EncInit] Loaded: pos_conv k=128 g=16 + LN(768), weights 9.0 MB\n[HuBERT-Stack] Loaded: 12 layers, hidden=768 heads=12 ffn=3072, weights 47.8 MB\n[PipelineCodec] Loaded codec: sr=24000 hop=960 backend=CUDA0\n[TTS-Long] Single-shot path: T=48 frames (1.92s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=63 N1=6 N2=9 Sref=0 Stgt=48 c_len=63 u_len=48 denoise=0\n[TTS] Prompt: B'=2 K=8 S=63 c_len=63 u_len=48\n[MaskGIT] Start: T=48 K=8 S=63 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=382\n[MaskGIT-Step] 2/32 demask=2 remaining=380\n[MaskGIT-Step] 3/32 demask=2 remaining=378\n[MaskGIT-Step] 4/32 demask=2 remaining=376\n[MaskGIT-Step] 5/32 demask=2 remaining=374\n[MaskGIT-Step] 6/32 demask=2 remaining=372\n[MaskGIT-Step] 7/32 demask=2 remaining=370\n[MaskGIT-Step] 8/32 demask=2 remaining=368\n[MaskGIT-Step] 9/32 demask=3 remaining=365\n[MaskGIT-Step] 10/32 demask=3 remaining=362\n[MaskGIT-Step] 11/32 demask=3 remaining=359\n[MaskGIT-Step] 12/32 demask=3 remaining=356\n[MaskGIT-Step] 13/32 demask=3 remaining=353\n[MaskGIT-Step] 14/32 demask=4 remaining=349\n[MaskGIT-Step] 15/32 demask=4 remaining=345\n[MaskGIT-Step] 16/32 demask=4 remaining=341\n[MaskGIT-Step] 17/32 demask=5 remaining=336\n[MaskGIT-Step] 18/32 demask=5 remaining=331\n[MaskGIT-Step] 19/32 demask=6 remaining=325\n[MaskGIT-Step] 20/32 demask=6 remaining=319\n[MaskGIT-Step] 21/32 demask=7 remaining=312\n[MaskGIT-Step] 22/32 demask=8 remaining=304\n[MaskGIT-Step] 23/32 demask=9 remaining=295\n[MaskGIT-Step] 24/32 demask=11 remaining=284\n[MaskGIT-Step] 25/32 demask=13 remaining=271\n[MaskGIT-Step] 26/32 demask=16 remaining=255\n[MaskGIT-Step] 27/32 demask=19 remaining=236\n[MaskGIT-Step] 28/32 demask=24 remaining=212\n[MaskGIT-Step] 29/32 demask=31 remaining=181\n[MaskGIT-Step] 30/32 demask=42 remaining=139\n[MaskGIT-Step] 31/32 demask=60 remaining=79\n[MaskGIT-Step] 32/32 demask=79 remaining=0\n[MaskGIT] Total LM forward: 589.55 ms across 32 steps (avg 18.42 ms/step)\n[TTS] Decode: K=8 T=48 expected_samples=46080\n[TTS-Long] Post-proc: 46080 -> 50160 samples (2.09s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=66 frames (2.64s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=81 N1=6 N2=9 Sref=0 Stgt=66 c_len=81 u_len=66 denoise=0\n[TTS] Prompt: B'=2 K=8 S=81 c_len=81 u_len=66\n[MaskGIT] Start: T=66 K=8 S=81 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=526\n[MaskGIT-Step] 2/32 demask=2 remaining=524\n[MaskGIT-Step] 3/32 demask=2 remaining=522\n[MaskGIT-Step] 4/32 demask=3 remaining=519\n[MaskGIT-Step] 5/32 demask=3 remaining=516\n[MaskGIT-Step] 6/32 demask=3 remaining=513\n[MaskGIT-Step] 7/32 demask=3 remaining=510\n[MaskGIT-Step] 8/32 demask=3 remaining=507\n[MaskGIT-Step] 9/32 demask=3 remaining=504\n[MaskGIT-Step] 10/32 demask=4 remaining=500\n[MaskGIT-Step] 11/32 demask=4 remaining=496\n[MaskGIT-Step] 12/32 demask=4 remaining=492\n[MaskGIT-Step] 13/32 demask=4 remaining=488\n[MaskGIT-Step] 14/32 demask=5 remaining=483\n[MaskGIT-Step] 15/32 demask=5 remaining=478\n[MaskGIT-Step] 16/32 demask=6 remaining=472\n[MaskGIT-Step] 17/32 demask=6 remaining=466\n[MaskGIT-Step] 18/32 demask=7 remaining=459\n[MaskGIT-Step] 19/32 demask=8 remaining=451\n[MaskGIT-Step] 20/32 demask=9 remaining=442\n[MaskGIT-Step] 21/32 demask=10 remaining=432\n[MaskGIT-Step] 22/32 demask=11 remaining=421\n[MaskGIT-Step] 23/32 demask=13 remaining=408\n[MaskGIT-Step] 24/32 demask=15 remaining=393\n[MaskGIT-Step] 25/32 demask=18 remaining=375\n[MaskGIT-Step] 26/32 demask=21 remaining=354\n[MaskGIT-Step] 27/32 demask=26 remaining=328\n[MaskGIT-Step] 28/32 demask=33 remaining=295\n[MaskGIT-Step] 29/32 demask=43 remaining=252\n[MaskGIT-Step] 30/32 demask=58 remaining=194\n[MaskGIT-Step] 31/32 demask=83 remaining=111\n[MaskGIT-Step] 32/32 demask=111 remaining=0\n[MaskGIT] Total LM forward: 602.59 ms across 32 steps (avg 18.83 ms/step)\n[TTS] Decode: K=8 T=66 expected_samples=63360\n[TTS-Long] Post-proc: 63360 -> 59280 samples (2.47s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=54 frames (2.16s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=71 N1=6 N2=11 Sref=0 Stgt=54 c_len=71 u_len=54 denoise=0\n[TTS] Prompt: B'=2 K=8 S=71 c_len=71 u_len=54\n[MaskGIT] Start: T=54 K=8 S=71 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=430\n[MaskGIT-Step] 2/32 demask=2 remaining=428\n[MaskGIT-Step] 3/32 demask=2 remaining=426\n[MaskGIT-Step] 4/32 demask=2 remaining=424\n[MaskGIT-Step] 5/32 demask=2 remaining=422\n[MaskGIT-Step] 6/32 demask=2 remaining=420\n[MaskGIT-Step] 7/32 demask=3 remaining=417\n[MaskGIT-Step] 8/32 demask=3 remaining=414\n[MaskGIT-Step] 9/32 demask=3 remaining=411\n[MaskGIT-Step] 10/32 demask=3 remaining=408\n[MaskGIT-Step] 11/32 demask=3 remaining=405\n[MaskGIT-Step] 12/32 demask=3 remaining=402\n[MaskGIT-Step] 13/32 demask=4 remaining=398\n[MaskGIT-Step] 14/32 demask=4 remaining=394\n[MaskGIT-Step] 15/32 demask=4 remaining=390\n[MaskGIT-Step] 16/32 demask=5 remaining=385\n[MaskGIT-Step] 17/32 demask=5 remaining=380\n[MaskGIT-Step] 18/32 demask=6 remaining=374\n[MaskGIT-Step] 19/32 demask=6 remaining=368\n[MaskGIT-Step] 20/32 demask=7 remaining=361\n[MaskGIT-Step] 21/32 demask=8 remaining=353\n[MaskGIT-Step] 22/32 demask=9 remaining=344\n[MaskGIT-Step] 23/32 demask=11 remaining=333\n[MaskGIT-Step] 24/32 demask=12 remaining=321\n[MaskGIT-Step] 25/32 demask=14 remaining=307\n[MaskGIT-Step] 26/32 demask=17 remaining=290\n[MaskGIT-Step] 27/32 demask=21 remaining=269\n[MaskGIT-Step] 28/32 demask=27 remaining=242\n[MaskGIT-Step] 29/32 demask=35 remaining=207\n[MaskGIT-Step] 30/32 demask=47 remaining=160\n[MaskGIT-Step] 31/32 demask=68 remaining=92\n[MaskGIT-Step] 32/32 demask=92 remaining=0\n[MaskGIT] Total LM forward: 566.19 ms across 32 steps (avg 17.69 ms/step)\n[TTS] Decode: K=8 T=54 expected_samples=51840\n[TTS-Long] Post-proc: 51840 -> 50400 samples (2.10s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\nsrv  update_slots: all slots are idle\nslot get_availabl: id  3 | task -1 | selected slot by LRU, t_last = -1\nslot launch_slot_: id  3 | task -1 | sampler chain: logits -> ?penalties -> ?dry -> ?top-n-sigma -> top-k -> ?typical -> top-p -> min-p -> ?xtc -> temp-ext -> dist \nslot launch_slot_: id  3 | task 1 | processing task, is_child = 0\nslot update_slots: id  3 | task 1 | new prompt, n_ctx_slot = 2048, n_keep = 0, task.n_tokens = 4\nslot update_slots: id  3 | task 1 | n_tokens = 0, memory_seq_rm [0, end)\nslot init_sampler: id  3 | task 1 | init sampler, took 0.00 ms, tokens: text = 4, total = 4\nslot update_slots: id  3 | task 1 | prompt processing done, n_tokens = 4, batch.n_tokens = 4\nsrv  log_server_r: done request: POST /completion 127.0.0.1 200\nslot print_timing: id  3 | task 1 | \nprompt eval time =      35.83 ms /     4 tokens (    8.96 ms per token,   111.65 tokens per second)\n       eval time =     617.07 ms /    40 tokens (   15.43 ms per token,    64.82 tokens per second)\n      total time =     652.90 ms /    44 tokens\ndraft acceptance rate = 1.00000 (   12 accepted /    12 generated)\nstatistics draft: #calls(b,g,a) = 1 25 4, #gen drafts = 25, #acc drafts = 4, #gen tokens = 33, #acc tokens = 12, dur(b,g,a) = 0.000, 168.391, 0.001 ms\nslot      release: id  3 | task 1 | stop processing: n_tokens = 43, truncated = 0\nsrv  update_slots: all slots are idle\nsrv  update_slots: all slots are idle\n[TTS-Long] Single-shot path: T=18 frames (0.72s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=28 N1=6 N2=4 Sref=0 Stgt=18 c_len=28 u_len=18 denoise=0\n[TTS] Prompt: B'=2 K=8 S=28 c_len=28 u_len=18\n[MaskGIT] Start: T=18 K=8 S=28 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=1 remaining=143\n[MaskGIT-Step] 2/32 demask=1 remaining=142\n[MaskGIT-Step] 3/32 demask=1 remaining=141\n[MaskGIT-Step] 4/32 demask=1 remaining=140\n[MaskGIT-Step] 5/32 demask=1 remaining=139\n[MaskGIT-Step] 6/32 demask=1 remaining=138\n[MaskGIT-Step] 7/32 demask=1 remaining=137\n[MaskGIT-Step] 8/32 demask=1 remaining=136\n[MaskGIT-Step] 9/32 demask=1 remaining=135\n[MaskGIT-Step] 10/32 demask=1 remaining=134\n[MaskGIT-Step] 11/32 demask=1 remaining=133\n[MaskGIT-Step] 12/32 demask=1 remaining=132\n[MaskGIT-Step] 13/32 demask=2 remaining=130\n[MaskGIT-Step] 14/32 demask=2 remaining=128\n[MaskGIT-Step] 15/32 demask=2 remaining=126\n[MaskGIT-Step] 16/32 demask=2 remaining=124\n[MaskGIT-Step] 17/32 demask=2 remaining=122\n[MaskGIT-Step] 18/32 demask=2 remaining=120\n[MaskGIT-Step] 19/32 demask=2 remaining=118\n[MaskGIT-Step] 20/32 demask=3 remaining=115\n[MaskGIT-Step] 21/32 demask=3 remaining=112\n[MaskGIT-Step] 22/32 demask=3 remaining=109\n[MaskGIT-Step] 23/32 demask=4 remaining=105\n[MaskGIT-Step] 24/32 demask=4 remaining=101\n[MaskGIT-Step] 25/32 demask=5 remaining=96\n[MaskGIT-Step] 26/32 demask=6 remaining=90\n[MaskGIT-Step] 27/32 demask=7 remaining=83\n[MaskGIT-Step] 28/32 demask=9 remaining=74\n[MaskGIT-Step] 29/32 demask=12 remaining=62\n[MaskGIT-Step] 30/32 demask=16 remaining=46\n[MaskGIT-Step] 31/32 demask=23 remaining=23\n[MaskGIT-Step] 32/32 demask=23 remaining=0\n[MaskGIT] Total LM forward: 438.43 ms across 32 steps (avg 13.70 ms/step)\n[TTS] Decode: K=8 T=18 expected_samples=17280\n[TTS-Long] Post-proc: 17280 -> 20880 samples (0.87s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=48 frames (1.92s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=64 N1=6 N2=10 Sref=0 Stgt=48 c_len=64 u_len=48 denoise=0\n[TTS] Prompt: B'=2 K=8 S=64 c_len=64 u_len=48\n[MaskGIT] Start: T=48 K=8 S=64 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=382\n[MaskGIT-Step] 2/32 demask=2 remaining=380\n[MaskGIT-Step] 3/32 demask=2 remaining=378\n[MaskGIT-Step] 4/32 demask=2 remaining=376\n[MaskGIT-Step] 5/32 demask=2 remaining=374\n[MaskGIT-Step] 6/32 demask=2 remaining=372\n[MaskGIT-Step] 7/32 demask=2 remaining=370\n[MaskGIT-Step] 8/32 demask=2 remaining=368\n[MaskGIT-Step] 9/32 demask=3 remaining=365\n[MaskGIT-Step] 10/32 demask=3 remaining=362\n[MaskGIT-Step] 11/32 demask=3 remaining=359\n[MaskGIT-Step] 12/32 demask=3 remaining=356\n[MaskGIT-Step] 13/32 demask=3 remaining=353\n[MaskGIT-Step] 14/32 demask=4 remaining=349\n[MaskGIT-Step] 15/32 demask=4 remaining=345\n[MaskGIT-Step] 16/32 demask=4 remaining=341\n[MaskGIT-Step] 17/32 demask=5 remaining=336\n[MaskGIT-Step] 18/32 demask=5 remaining=331\n[MaskGIT-Step] 19/32 demask=6 remaining=325\n[MaskGIT-Step] 20/32 demask=6 remaining=319\n[MaskGIT-Step] 21/32 demask=7 remaining=312\n[MaskGIT-Step] 22/32 demask=8 remaining=304\n[MaskGIT-Step] 23/32 demask=9 remaining=295\n[MaskGIT-Step] 24/32 demask=11 remaining=284\n[MaskGIT-Step] 25/32 demask=13 remaining=271\n[MaskGIT-Step] 26/32 demask=16 remaining=255\n[MaskGIT-Step] 27/32 demask=19 remaining=236\n[MaskGIT-Step] 28/32 demask=24 remaining=212\n[MaskGIT-Step] 29/32 demask=31 remaining=181\n[MaskGIT-Step] 30/32 demask=42 remaining=139\n[MaskGIT-Step] 31/32 demask=60 remaining=79\n[MaskGIT-Step] 32/32 demask=79 remaining=0\n[MaskGIT] Total LM forward: 518.92 ms across 32 steps (avg 16.22 ms/step)\n[TTS] Decode: K=8 T=48 expected_samples=46080\n[TTS-Long] Post-proc: 46080 -> 50880 samples (2.12s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=48 frames (1.92s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=64 N1=6 N2=10 Sref=0 Stgt=48 c_len=64 u_len=48 denoise=0\n[TTS] Prompt: B'=2 K=8 S=64 c_len=64 u_len=48\n[MaskGIT] Start: T=48 K=8 S=64 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/32 demask=2 remaining=382\n[MaskGIT-Step] 2/32 demask=2 remaining=380\n[MaskGIT-Step] 3/32 demask=2 remaining=378\n[MaskGIT-Step] 4/32 demask=2 remaining=376\n[MaskGIT-Step] 5/32 demask=2 remaining=374\n[MaskGIT-Step] 6/32 demask=2 remaining=372\n[MaskGIT-Step] 7/32 demask=2 remaining=370\n[MaskGIT-Step] 8/32 demask=2 remaining=368\n[MaskGIT-Step] 9/32 demask=3 remaining=365\n[MaskGIT-Step] 10/32 demask=3 remaining=362\n[MaskGIT-Step] 11/32 demask=3 remaining=359\n[MaskGIT-Step] 12/32 demask=3 remaining=356\n[MaskGIT-Step] 13/32 demask=3 remaining=353\n[MaskGIT-Step] 14/32 demask=4 remaining=349\n[MaskGIT-Step] 15/32 demask=4 remaining=345\n[MaskGIT-Step] 16/32 demask=4 remaining=341\n[MaskGIT-Step] 17/32 demask=5 remaining=336\n[MaskGIT-Step] 18/32 demask=5 remaining=331\n[MaskGIT-Step] 19/32 demask=6 remaining=325\n[MaskGIT-Step] 20/32 demask=6 remaining=319\n[MaskGIT-Step] 21/32 demask=7 remaining=312\n[MaskGIT-Step] 22/32 demask=8 remaining=304\n[MaskGIT-Step] 23/32 demask=9 remaining=295\n[MaskGIT-Step] 24/32 demask=11 remaining=284\n[MaskGIT-Step] 25/32 demask=13 remaining=271\n[MaskGIT-Step] 26/32 demask=16 remaining=255\n[MaskGIT-Step] 27/32 demask=19 remaining=236\n[MaskGIT-Step] 28/32 demask=24 remaining=212\n[MaskGIT-Step] 29/32 demask=31 remaining=181\n[MaskGIT-Step] 30/32 demask=42 remaining=139\n[MaskGIT-Step] 31/32 demask=60 remaining=79\n[MaskGIT-Step] 32/32 demask=79 remaining=0\n[MaskGIT] Total LM forward: 524.88 ms across 32 steps (avg 16.40 ms/step)\n[TTS] Decode: K=8 T=48 expected_samples=46080\n[TTS-Long] Post-proc: 46080 -> 50880 samples (2.12s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=106 frames (4.24s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=130 N1=6 N2=18 Sref=0 Stgt=106 c_len=130 u_len=106 denoise=0\n[TTS] Prompt: B'=2 K=8 S=130 c_len=130 u_len=106\n[MaskGIT] Start: T=106 K=8 S=130 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n"
+}
