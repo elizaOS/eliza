@@ -33,8 +33,18 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
 )
 
+# `0_8b` and `2b` are the Qwen3.5 small/mid local tiers (the eliza-1 line is
+# Qwen3.5-only per the 2026-05-12 operator directive — the Qwen3 dense bases
+# don't work with the eliza-1 dflash spec-decode path). `0_6b` / `1_7b` /
+# `4b` remain in this list as **deprecated** tier ids — the corresponding
+# elizaos/eliza-1-{0_6b,1_7b,4b} HF repos stay public for existing downloads,
+# but their cards are marked DEPRECATED and no new SFT runs target them.
+# See packages/shared/src/local-inference/catalog.ts +
+# packages/training/scripts/training/model_registry.py.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "0_8b",
+    "0_6b",
+    "1_7b",
     "2b",
     "4b",
     "9b",
@@ -102,15 +112,11 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
+    "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "4b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
+    "4b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -143,8 +149,10 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("metal", "vulkan", "cpu"),
+    "0_6b": ("metal", "vulkan", "cpu"),
+    "1_7b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
-    "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "4b": ("metal", "vulkan", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -157,6 +165,8 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
+    "0_6b": "Q4_K_M",
+    "1_7b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q8_0",

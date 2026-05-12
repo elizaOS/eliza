@@ -11,10 +11,12 @@
 #   * --task train → delegates to ../train_vast.sh provision-and-train
 #
 # Usage:
-#   run-on-cloud.sh --provider vast --task kernel-verify --gpu h100 [--yes-i-will-pay]
-#   run-on-cloud.sh --provider vast --task bench         --gpu rtx4090 --tier 0_8b --yes-i-will-pay
-#   run-on-cloud.sh --provider vast --task train         --gpu b200 --tier 27b --yes-i-will-pay
-#   run-on-cloud.sh --provider vast --task kernel-verify --gpu h100 --dry-run     # no spend
+#   run-on-cloud.sh --provider vast   --task build         --gpu h100 --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 [--yes-i-will-pay]
+#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_8b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task train         --gpu b200 --tier 27b --yes-i-will-pay
+#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_8b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
 #
 # Tasks:
 #   kernel-verify  build linux-x64-cuda, `make -C packages/inference/verify
@@ -29,7 +31,9 @@
 #   h100 | h200 | a100 | a100-80 | rtx4090 | rtx5090 | b200 | l40s | blackwell6000
 #
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
-#   0_8b | 2b | 9b | 27b | 27b-256k | 27b-1m
+#   0_8b | 2b | 4b | 9b | 27b | 27b-256k | 27b-1m
+# The legacy Qwen3 tiers (0_6b / 1_7b) were dropped 2026-05-12 — those bases
+# don't work with the eliza-1 dflash spec-decode path.
 #
 # Required env per provider:
 #   vast    VAST_API_KEY            (or `vastai set api-key <key>` beforehand)
@@ -78,8 +82,8 @@ done
 [[ -n "$PROVIDER" ]] || die "--provider {vast,nebius} is required"
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
-case "$TASK" in kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
-case "$TIER" in 0_8b|2b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
+case "$TIER" in 0_8b|2b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -105,9 +109,20 @@ gpu_to_train_vast_token() {
   esac
 }
 tier_to_registry_key() {
+  # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
+  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash —
+  # the dflash kernels are validated against the Qwen3.5 architecture +
+  # 248320 tokenizer; a Qwen3 base has the wrong vocab + attention shape for
+  # the fused QJL/Polar paths). All entries train from the published -Base
+  # pretrain checkpoints; Qwen/Qwen3.5-27B has no -Base variant — that
+  # release IS the base. The 0_6b/1_7b legacy tier ids in the runtime
+  # manifest stay addressable but no longer route to a registry key.
   case "$1" in
-    0_8b) echo qwen3.5-0.8b ;; 2b) echo qwen3.5-2b ;; 9b) echo qwen3.5-9b ;;
-    27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
+    0_8b) echo qwen3.5-0.8b ;;
+    2b)   echo qwen3.5-2b ;;
+    4b)   echo qwen3.5-4b ;;
+    9b)   echo qwen3.5-9b ;;
+    27b|27b-256k|27b-1m) echo qwen3.5-27b ;;
   esac
 }
 

@@ -61,16 +61,27 @@ REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo}"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
-# Qwen3.6-27B at 144k context training needs 2× H200 SXM with FSDP. Single
-# H200 OOMs even at seq_len=8k (~92% util before activations). Two H200s
-# gives 124-130 GB per-GPU at 144k, a comfortable 44-46% utilization with
-# room for larger micro-batches. For longer training contexts (>262k) go
-# to H200-4x.
-#
-# Qwen3.5-9B fits a single H200 SXM (peak ~80 GB at seq_len=16k); set
-# NEBIUS_VM_PRESET=gpu-h200x1 + FSDP_WORLD_SIZE=1 for that run.
-NEBIUS_VM_PRESET="${NEBIUS_VM_PRESET:-gpu-h200x2}"
-FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-2}"
+PUSH_AFTER="${PUSH_AFTER:-0}"
+SYNC_FULLCORPUS_SOURCES="${SYNC_FULLCORPUS_SOURCES:-0}"
+
+TRAIN_FILE="${TRAIN_FILE:-data/final/train.jsonl}"
+VAL_FILE="${VAL_FILE:-data/final/val.jsonl}"
+TEST_FILE="${TEST_FILE:-data/final/test.jsonl}"
+
+# NEBIUS_VM_PRESET → (platform, preset, default world size). The H200 platform
+# (`gpu-h200-sxm`) has no 2-GPU preset; the only multi-GPU preset is 8×.
+case "$NEBIUS_VM_PRESET" in
+  gpu-h200x1) NEBIUS_PLATFORM="gpu-h200-sxm";  NEBIUS_PRESET="1gpu-16vcpu-200gb";    DEFAULT_WORLD=1 ;;
+  gpu-h200x2) NEBIUS_PLATFORM="gpu-h200-sxm";  NEBIUS_PRESET="8gpu-128vcpu-1600gb";  DEFAULT_WORLD=8 ;;
+  *) echo "[train_nebius] unknown NEBIUS_VM_PRESET '$NEBIUS_VM_PRESET' (gpu-h200x1|gpu-h200x2)" >&2; exit 2 ;;
+esac
+FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
+
+# The transformer decoder-layer class FSDP wraps. Every entry in the
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b + qwen3.6-27b
+# legacy) uses Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which
+# would have used Qwen3DecoderLayer) were dropped on 2026-05-12.
+FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
 
 cmd="${1:-help}"
 
