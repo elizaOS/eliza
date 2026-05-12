@@ -3490,9 +3490,7 @@ function shouldTreatPlannerContactAliasAsLifeReminder(
 	message: Memory,
 ): boolean {
 	const normalizedName = normalizeActionIdentifier(toolCall.name);
-	if (
-		normalizedName !== normalizeActionIdentifier("ADD_CONTACT")
-	) {
+	if (normalizedName !== normalizeActionIdentifier("ADD_CONTACT")) {
 		return false;
 	}
 	const text = (getUserMessageText(message) ?? "").toLowerCase();
@@ -4282,58 +4280,57 @@ async function executeV5PlannedToolCall(
 	const effectiveResolvedName = forceContactReminderToLife
 		? "OWNER_REMINDERS"
 		: forceWebToCalendlyCalendar
-					? "CALENDAR"
-					: forceWebToBookTravel
-						? "PERSONAL_ASSISTANT"
-						: forceBrowserToAutofill
-							? "CREDENTIALS"
-							: forceConnectorToPost
-								? "POST"
-								: forceConnectorToMessage
-									? "MESSAGE"
-									: resolvedName;
-	const toolCallForNormalization =
-		forceContactReminderToLife
+			? "CALENDAR"
+			: forceWebToBookTravel
+				? "PERSONAL_ASSISTANT"
+				: forceBrowserToAutofill
+					? "CREDENTIALS"
+					: forceConnectorToPost
+						? "POST"
+						: forceConnectorToMessage
+							? "MESSAGE"
+							: resolvedName;
+	const toolCallForNormalization = forceContactReminderToLife
+		? {
+				...unwrappedToolCall,
+				params: {
+					action: "create",
+					subaction: "create",
+					intent: getUserMessageText(args.executorCtx.message),
+					details: {
+						contactName: stringParam(unwrappedToolCall.params?.name),
+						relationship: stringParam(unwrappedToolCall.params?.relationship),
+						originalPlannerAction: unwrappedToolCall.name,
+					},
+				},
+			}
+		: forceWebToBookTravel
 			? {
 					...unwrappedToolCall,
+					name: "PERSONAL_ASSISTANT",
 					params: {
-						action: "create",
-						subaction: "create",
+						...(unwrappedToolCall.params &&
+						typeof unwrappedToolCall.params === "object"
+							? unwrappedToolCall.params
+							: {}),
+						action: "book_travel",
 						intent: getUserMessageText(args.executorCtx.message),
-						details: {
-							contactName: stringParam(unwrappedToolCall.params?.name),
-							relationship: stringParam(unwrappedToolCall.params?.relationship),
-							originalPlannerAction: unwrappedToolCall.name,
-						},
 					},
 				}
-			: forceWebToBookTravel
+			: forceBrowserToAutofill
 				? {
 						...unwrappedToolCall,
-						name: "PERSONAL_ASSISTANT",
+						name: "CREDENTIALS",
 						params: {
 							...(unwrappedToolCall.params &&
 							typeof unwrappedToolCall.params === "object"
 								? unwrappedToolCall.params
 								: {}),
-							action: "book_travel",
-							intent: getUserMessageText(args.executorCtx.message),
+							action: "fill",
+							subaction: "fill",
 						},
 					}
-				: forceBrowserToAutofill
-					? {
-							...unwrappedToolCall,
-							name: "CREDENTIALS",
-							params: {
-								...(unwrappedToolCall.params &&
-								typeof unwrappedToolCall.params === "object"
-									? unwrappedToolCall.params
-									: {}),
-								action: "fill",
-								subaction: "fill",
-							},
-						}
-					: unwrappedToolCall;
+				: unwrappedToolCall;
 	const toolCall = normalizeAliasedPlannerToolCall(
 		toolCallForNormalization,
 		effectiveResolvedName,
@@ -6652,9 +6649,9 @@ function _hasSelectedShellCommandAction(
 		responseContent?.actions?.some(
 			(actionName) =>
 				typeof actionName === "string" &&
-				[
-					normalizeActionIdentifier("SHELL"),
-				].includes(normalizeActionIdentifier(actionName)),
+				[normalizeActionIdentifier("SHELL")].includes(
+					normalizeActionIdentifier(actionName),
+				),
 		) ?? false
 	);
 }

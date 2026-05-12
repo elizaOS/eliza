@@ -16,7 +16,10 @@ import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../onboarding/mobile-runtime-mo
 
 function isNativePlatform(): boolean {
   try {
-    return Capacitor.isNativePlatform();
+    const platform = Capacitor.getPlatform();
+    return (
+      Capacitor.isNativePlatform() || platform === "ios" || platform === "android"
+    );
   } catch {
     return false;
   }
@@ -50,6 +53,7 @@ const preferencesCache = new Map<string, string>();
 
 // Flag to track if initial sync has completed
 let initialized = false;
+let storageProxyInstalled = false;
 
 /**
  * Initialize the storage bridge
@@ -63,7 +67,6 @@ export async function initializeStorageBridge(): Promise<void> {
   }
 
   if (!isNativePlatform()) {
-    initialized = true;
     return;
   }
 
@@ -91,6 +94,10 @@ export async function initializeStorageBridge(): Promise<void> {
  * Set up a proxy to intercept localStorage operations
  */
 function setupStorageProxy(): void {
+  if (storageProxyInstalled) {
+    return;
+  }
+
   if (!isNativePlatform()) {
     return;
   }
@@ -136,6 +143,8 @@ function setupStorageProxy(): void {
       });
     }
   };
+
+  storageProxyInstalled = true;
 }
 
 /**

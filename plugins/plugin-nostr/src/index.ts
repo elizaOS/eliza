@@ -13,7 +13,6 @@ import { NostrService } from "./service.js";
 import { DEFAULT_NOSTR_RELAYS } from "./types.js";
 
 export * from "./accounts.js";
-export { publishProfile } from "./actions/index.js";
 // Export types
 export * from "./types.js";
 // Export service / providers / actions

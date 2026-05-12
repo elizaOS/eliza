@@ -118,6 +118,7 @@ function runRipgrep(
         if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
           console.error("rg-debug-execfile", {
             mode,
+            rg,
             args,
             errorCode: (error as NodeJS.ErrnoException | null)?.code,
             stdout,

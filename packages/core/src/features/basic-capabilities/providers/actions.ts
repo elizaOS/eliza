@@ -32,8 +32,9 @@ import {
 // Get text content from centralized specs
 const spec = requireProviderSpec("ACTIONS");
 const GENERIC_CHAT_ACTIONS = new Set(["REPLY", "IGNORE", "NONE"]);
-const RELATIONSHIP_FOLLOW_UP_ACTIONS = new Set([
-	"RELATIONSHIP",
+const CONTACT_FOLLOW_UP_ACTIONS = new Set([
+	"CONTACT",
+	"OWNER_REMINDERS",
 	"REPLY",
 	"IGNORE",
 	"NONE",
@@ -391,8 +392,9 @@ export const actionsProvider: Provider = {
 		const relationshipFollowUpReminder =
 			looksLikeRelationshipFollowUpReminder(message);
 		const availableActions = resolvedActions.filter(Boolean) as Action[];
-		const hasRelationshipAction = availableActions.some(
-			(action) => action.name === "RELATIONSHIP",
+		const hasContactFollowUpAction = availableActions.some(
+			(action) =>
+				action.name === "CONTACT" || action.name === "OWNER_REMINDERS",
 		);
 		const visibleActions = availableActions.filter((action) => {
 			if (nonActionableChatter && !GENERIC_CHAT_ACTIONS.has(action.name)) {
@@ -400,8 +402,8 @@ export const actionsProvider: Provider = {
 			}
 			if (
 				relationshipFollowUpReminder &&
-				hasRelationshipAction &&
-				!RELATIONSHIP_FOLLOW_UP_ACTIONS.has(action.name)
+				hasContactFollowUpAction &&
+				!CONTACT_FOLLOW_UP_ACTIONS.has(action.name)
 			) {
 				return false;
 			}
