@@ -277,6 +277,7 @@ export function fusedCmakeBuildTargets() {
   return [
     "llama-server",
     "llama-cli",
+    "llama-speculative-simple",
     "omnivoice-core",
     "elizainference",
     "llama-omnivoice-server",

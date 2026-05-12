@@ -110,6 +110,14 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
     return handler(world, action.kwargs, action.name)
 
 
+def _initial_user_content(scenario: Scenario) -> str:
+    return (
+        f"Current benchmark time: {scenario.now_iso}. "
+        "Interpret relative dates against this timestamp, not the wall-clock date.\n\n"
+        f"{scenario.instruction}"
+    )
+
+
 def supported_actions() -> set[str]:
     """Return every action name the executor knows how to apply against a LifeWorld."""
     return set(_ACTION_HANDLERS.keys())
@@ -538,6 +546,12 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or kw.get("title")
             or details.get("event_name")
             or kw.get("event_name"),
+            date_hint=details.get("start")
+            or kw.get("start")
+            or details.get("new_start")
+            or kw.get("new_start")
+            or details.get("date")
+            or kw.get("date"),
         )
         if event is None:
             raise KeyError(
@@ -576,6 +590,10 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or kw.get("title")
             or details.get("event_name")
             or kw.get("event_name"),
+            date_hint=details.get("date")
+            or kw.get("date")
+            or details.get("start")
+            or kw.get("start"),
         )
         if event is None:
             if requested_event_id:
@@ -1120,6 +1138,19 @@ def _shift_iso(iso: str, *, minutes: int) -> str:
     return f"{out}Z"
 
 
+def _try_parse_iso(value: str) -> datetime | None:
+    s = value.strip()
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _primary_calendar_id(world: LifeWorld) -> str | None:
     primary = next((cal for cal in world.calendars.values() if cal.is_primary), None)
     if primary is not None:
@@ -1154,18 +1185,51 @@ def _find_calendar_event(
     *,
     event_id: Any = None,
     title: Any = None,
+    date_hint: Any = None,
 ) -> Any:
     if isinstance(event_id, str) and event_id in world.calendar_events:
         return world.calendar_events[event_id]
     if isinstance(title, str) and title.strip():
         wanted = title.strip().lower()
-        matches = [
+        active_events = [
             event
             for event in world.calendar_events.values()
-            if event.title.strip().lower() == wanted and event.status != "cancelled"
+            if event.status != "cancelled"
         ]
+        matches = [
+            event for event in active_events if event.title.strip().lower() == wanted
+        ]
+        if not matches:
+            matches = [
+                event
+                for event in active_events
+                if wanted in event.title.strip().lower()
+                or event.title.strip().lower() in wanted
+            ]
         if matches:
-            return sorted(matches, key=lambda event: event.start)[0]
+            hint = _try_parse_iso(str(date_hint)) if isinstance(date_hint, str) else None
+            if hint is None:
+                hint = _try_parse_iso(world.now_iso)
+            hint_date = hint.date() if hint is not None else None
+
+            def rank(event: Any) -> tuple[int, float, int, str]:
+                event_start = _try_parse_iso(str(event.start))
+                same_day = (
+                    0
+                    if hint_date is not None
+                    and event_start is not None
+                    and event_start.date() == hint_date
+                    else 1
+                )
+                distance = (
+                    abs((event_start - hint).total_seconds())
+                    if event_start is not None and hint is not None
+                    else float("inf")
+                )
+                primary = 0 if event.calendar_id == "cal_primary" else 1
+                return (same_day, distance, primary, event.id)
+
+            return sorted(matches, key=rank)[0]
     return None
 
 
@@ -1469,7 +1533,7 @@ class LifeOpsBenchRunner:
 
         world = self.world_factory(seed, scenario.now_iso)
         history: list[MessageTurn] = [
-            MessageTurn(role="user", content=scenario.instruction),
+            MessageTurn(role="user", content=_initial_user_content(scenario)),
         ]
         turns: list[TurnResult] = []
         terminated_reason: str = "max_turns"

@@ -85,8 +85,10 @@ import type {
   RejectedTokenRange,
   SchedulerConfig,
   SpeakerPreset,
+  StreamingTtsBackend,
   StreamingTranscriber,
   TextToken,
+  TtsPcmChunk,
   TranscriptionAudio,
   VadEventSource,
 } from "./types";
@@ -111,56 +113,7 @@ const STUB_PCM_STREAM_CHUNKS = 4;
 
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
 export { VoiceStartupError };
-
-/**
- * One PCM segment delivered to a `StreamingTtsBackend.synthesizeStream`
- * consumer (W9's scheduler) as TTS decodes it. `isFinal` marks the
- * zero-length tail chunk that closes the phrase.
- */
-export interface TtsPcmChunk {
-  pcm: Float32Array;
-  sampleRate: number;
-  isFinal: boolean;
-}
-
-/**
- * Streaming-TTS seam between the fused `libelizainference` runtime and
- * W9's voice scheduler. The scheduler calls `synthesizeStream(...)` for
- * a phrase and writes each delivered `pcm` segment into the
- * `PcmRingBuffer` on the same scheduler tick (AGENTS.md §4 —
- * phrase-chunk → TTS within one scheduler tick); returning `true` from
- * `onChunk` (or flipping `cancelSignal.cancelled`) hard-cancels the
- * in-flight forward pass at the next kernel boundary (barge-in /
- * DFlash-rejected tail).
- *
- * Both `OmniVoiceBackend` implementations in this module satisfy it:
- *   - `FfiOmniVoiceBackend` forwards to
- *     `eliza_inference_tts_synthesize_stream` when the loaded build
- *     advertises streaming TTS (`tts_stream_supported() == 1`), else it
- *     synthesizes whole and emits the result as one body chunk + a final
- *     tail (no silent "streaming" lie — the chunk count just collapses
- *     to one when the build is non-streaming);
- *   - `StubOmniVoiceBackend` emits deterministic synthetic PCM split
- *     into a fixed number of chunks so scheduler tests can observe the
- *     incremental handoff without a real model.
- */
-export interface StreamingTtsBackend {
-  /**
-   * Synthesize `phrase` with `preset` and deliver PCM in chunks. The
-   * scheduler owns the ring-buffer write inside `onChunk`. Resolves with
-   * `cancelled: true` if `onChunk` requested a stop (or `cancelSignal`
-   * was set), `false` on a clean finish. The final `onChunk` call always
-   * has `isFinal: true` (possibly a zero-length `pcm`) so the consumer
-   * can settle per-phrase state.
-   */
-  synthesizeStream(args: {
-    phrase: Phrase;
-    preset: SpeakerPreset;
-    cancelSignal: { cancelled: boolean };
-    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
-    onKernelTick?: () => void;
-  }): Promise<{ cancelled: boolean }>;
-}
+export type { StreamingTtsBackend, TtsPcmChunk } from "./types";
 
 /** True when `backend` implements the `StreamingTtsBackend` seam. */
 export function isStreamingTtsBackend(

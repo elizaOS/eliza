@@ -62,6 +62,7 @@ function audioSpeechBlock() {
 ${SENTINEL}
 #ifdef MILADY_FUSE_OMNIVOICE
 #include "omnivoice.h"
+#include <cstdlib>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
@@ -230,7 +231,7 @@ static server_http_context::handler_t audio_speech_handler() {
         ov_tts_params tp;
         ov_tts_default_params(&tp);
         tp.text = text.c_str();
-        ov_audio audio = { nullptr, 0 };
+        ov_audio audio = {};
         ov_status st;
         {
             // ov_synthesize is not reentrant on one context; serialise.

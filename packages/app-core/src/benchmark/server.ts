@@ -13,7 +13,10 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
-import { LifeOpsBenchHandler } from "./lifeops-bench-handler.js";
+import {
+  LifeOpsBenchHandler,
+  type LifeOpsBenchTurnRecord,
+} from "./lifeops-bench-handler.js";
 import type { LifeOpsFakeBackend } from "./lifeops-fake-backend.js";
 import {
   clearCapturedAction,
@@ -141,6 +144,57 @@ const MAX_BODY_BYTES =
 
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
+
+function buildLifeOpsBenchmarkContext(
+  backend: LifeOpsFakeBackend,
+  previousTurns: LifeOpsBenchTurnRecord[],
+): Record<string, unknown> {
+  const world = backend.toDocument();
+  const nowIso = backend.getNow();
+  const nowMs = Date.parse(nowIso);
+  const calendarEvents = Object.values(world.stores.calendar_event)
+    .filter((event) => event.status !== "cancelled")
+    .sort((a, b) => {
+      const aDistance = Number.isFinite(nowMs)
+        ? Math.abs(Date.parse(a.start) - nowMs)
+        : 0;
+      const bDistance = Number.isFinite(nowMs)
+        ? Math.abs(Date.parse(b.start) - nowMs)
+        : 0;
+      if (aDistance !== bDistance) return aDistance - bDistance;
+      return a.id.localeCompare(b.id);
+    })
+    .slice(0, 80)
+    .map((event) => ({
+      id: event.id,
+      calendarId: event.calendar_id,
+      title: event.title,
+      start: event.start,
+      end: event.end,
+      status: event.status,
+      source: event.source,
+    }));
+  const previousToolResults = previousTurns
+    .flatMap((turn) =>
+      turn.toolCalls.map((call) => ({
+        userText: turn.userText,
+        assistantText: turn.assistantText,
+        tool: call.name,
+        arguments: call.arguments,
+        ok: call.ok,
+        result: call.result,
+        error: call.error,
+      })),
+    )
+    .slice(-12);
+  return {
+    nowIso,
+    today: nowIso.slice(0, 10),
+    seed: backend.getSeed(),
+    calendarEvents,
+    previousToolResults,
+  };
+}
 
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
@@ -1078,7 +1132,13 @@ export async function startBenchmarkServer() {
   // ────────────────────────────────────────────────────────────────────────
   const lifeopsBenchHandler = new LifeOpsBenchHandler({
     checkAuth: checkBenchAuth,
-    invokePlanner: async ({ taskId, userText, toolManifest, backend }) => {
+    invokePlanner: async ({
+      taskId,
+      userText,
+      toolManifest,
+      backend,
+      previousTurns,
+    }) => {
       const session = resolveSession(taskId, "lifeops_bench", true);
       if (!session) throw new Error("Failed to resolve lifeops_bench session");
       await ensureBenchmarkSessionContext(runtime, session);
@@ -1087,6 +1147,7 @@ export async function startBenchmarkServer() {
         benchmark: "lifeops_bench",
         task_id: taskId,
         ...(Array.isArray(toolManifest) ? { tools: toolManifest } : {}),
+        lifeops: buildLifeOpsBenchmarkContext(backend, previousTurns),
       });
 
       const composedPrompt = composeBenchmarkPrompt({

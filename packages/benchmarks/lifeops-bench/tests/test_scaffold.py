@@ -189,14 +189,7 @@ def test_executor_resolves_calendar_update_alias_by_title() -> None:
     from eliza_lifeops_bench.types import Action
 
     world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
-    target = sorted(
-        (
-            event
-            for event in world.calendar_events.values()
-            if event.title == "Sync: the roadmap" and event.status != "cancelled"
-        ),
-        key=lambda event: event.start,
-    )[0]
+    target = world.calendar_events["event_00040"]
     result = _execute_action(
         Action(
             name="CALENDAR_UPDATE_EVENT",
@@ -212,6 +205,54 @@ def test_executor_resolves_calendar_update_alias_by_title() -> None:
     assert result["id"] == target.id
     assert result["start"] == "2026-05-11T15:00:00Z"
     assert result["end"] == "2026-05-11T17:00:00Z"
+
+
+def test_executor_resolves_calendar_update_alias_by_title_and_date_hint() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR_UPDATE_EVENT",
+            kwargs={
+                "event_name": "Sync: the migration plan",
+                "date": "2026-05-12T00:00:00Z",
+                "new_start": "2026-05-12T16:00:00Z",
+                "duration_minutes": 45,
+            },
+        ),
+        world,
+    )
+
+    assert result["id"] == "event_00092"
+    assert result["start"] == "2026-05-12T16:00:00Z"
+    assert result["end"] == "2026-05-12T16:45:00Z"
+
+
+def test_executor_resolves_calendar_update_alias_by_fuzzy_title_and_date_hint() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR_UPDATE_EVENT",
+            kwargs={
+                "event_name": "roadmap",
+                "date": "2026-05-10T00:00:00Z",
+                "new_start": "2026-05-10T15:00:00Z",
+                "duration_hours": 2,
+            },
+        ),
+        world,
+    )
+
+    assert result["id"] == "event_00040"
+    assert result["start"] == "2026-05-10T15:00:00Z"
+    assert result["end"] == "2026-05-10T17:00:00Z"
 
 
 def test_executor_treats_reply_as_terminal_noop() -> None:
@@ -257,8 +298,10 @@ async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
     from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
 
     captured_tool_names: list[str] = []
+    captured_user_content: list[str] = []
 
-    async def capture_agent_fn(_history: list[MessageTurn], tools: list[dict]) -> MessageTurn:
+    async def capture_agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn:
+        captured_user_content.append(history[0].content)
         captured_tool_names.extend(tool["function"]["name"] for tool in tools)
         return MessageTurn(role="assistant", content="done")
 
@@ -274,6 +317,9 @@ async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
 
     assert "CALENDAR" in captured_tool_names
     assert all("." not in name for name in captured_tool_names)
+    assert captured_user_content
+    assert "Current benchmark time: 2026-05-10T12:00:00Z" in captured_user_content[0]
+    assert "Interpret relative dates against this timestamp" in captured_user_content[0]
 
 
 def test_pass_at_k_formula() -> None:

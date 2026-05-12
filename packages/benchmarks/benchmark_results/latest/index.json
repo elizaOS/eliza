@@ -518,9 +518,9 @@
     },
     "loca_bench::openclaw": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/loca_bench__openclaw.json",
-      "run_id": "run_loca_bench_20260511T194850Z_2_57f31bd1",
+      "run_id": "run_loca_bench_20260512T012256Z_3_4b3f44cb",
       "status": "succeeded",
-      "updated_at": "2026-05-11T19:54:45.131764+00:00"
+      "updated_at": "2026-05-12T01:26:44.727179+00:00"
     },
     "mind2web::eliza": {
       "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/latest/mind2web__eliza.json",
@@ -937,5 +937,5 @@
       "updated_at": "2026-05-11T14:03:03.504082+00:00"
     }
   },
-  "updated_at": "2026-05-11T19:54:45.132511+00:00"
+  "updated_at": "2026-05-12T01:26:44.727517+00:00"
 }

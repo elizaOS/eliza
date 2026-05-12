@@ -72,6 +72,7 @@ providers:
 action-based benchmarks: call BENCHMARK_ACTION with one of:
 - AgentBench: { "command": "search[laptop] | click[42] | ls | SELECT ..." }
 - Tau-bench: { "tool_name": "...", "arguments": { ... } }
+- LifeOpsBench: { "tool_name": "CALENDAR", "arguments": { "subaction": "update_event", ... } }
 - Mind2Web: { "operation": "CLICK|TYPE|SELECT", "element_id": "...", "value": "..." }
 
 reply-based benchmarks: use REPLY with text payload:
@@ -100,9 +101,89 @@ rules:
 // Provider
 // ---------------------------------------------------------------------------
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function compactJson(value: unknown, maxLength = 500): string {
+  const raw =
+    typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+  return raw.length > maxLength ? `${raw.slice(0, maxLength)}...` : raw;
+}
+
+function formatToolLine(t: Record<string, unknown>): string {
+  const fn = isPlainRecord(t.function) ? t.function : undefined;
+  const name = t.name ?? fn?.name ?? "unknown";
+  const desc = t.description ?? fn?.description ?? "";
+  const params = t.parameters ?? fn?.parameters ?? {};
+  return `- **${String(name)}**: ${String(desc)}\n  Parameters: ${compactJson(params, 1200)}`;
+}
+
+function renderLifeOpsContext(value: unknown): string | null {
+  if (!isPlainRecord(value)) return null;
+
+  const sections: string[] = [];
+  const nowIso = typeof value.nowIso === "string" ? value.nowIso : "";
+  const today = typeof value.today === "string" ? value.today : "";
+  const seed = typeof value.seed === "number" ? value.seed : undefined;
+
+  sections.push(
+    [
+      `\n## LifeOps Clock`,
+      `- Current benchmark time: ${nowIso || "unknown"}`,
+      `- Today: ${today || (nowIso ? nowIso.slice(0, 10) : "unknown")}`,
+      seed !== undefined ? `- World seed: ${seed}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n"),
+  );
+
+  const events = Array.isArray(value.calendarEvents)
+    ? value.calendarEvents
+    : [];
+  if (events.length > 0) {
+    const lines = events.slice(0, 80).map((event) => {
+      const record = isPlainRecord(event) ? event : {};
+      const id = String(record.id ?? "?");
+      const calendarId = String(record.calendarId ?? record.calendar_id ?? "?");
+      const title = String(record.title ?? "");
+      const start = String(record.start ?? "");
+      const end = String(record.end ?? "");
+      const status = String(record.status ?? "");
+      return `- ${id} | ${calendarId} | ${title} | ${start} -> ${end} | ${status}`;
+    });
+    sections.push(`\n## Calendar Events\n${lines.join("\n")}`);
+  }
+
+  const previousResults = Array.isArray(value.previousToolResults)
+    ? value.previousToolResults
+    : [];
+  if (previousResults.length > 0) {
+    const lines = previousResults.slice(-12).map((entry, index) => {
+      const record = isPlainRecord(entry) ? entry : {};
+      const tool = String(record.tool ?? "unknown");
+      const ok = record.ok === true ? "true" : "false";
+      const error =
+        typeof record.error === "string" && record.error
+          ? ` error=${record.error}`
+          : "";
+      return [
+        `- ${index + 1}. ${tool} ok=${ok}${error}`,
+        `  arguments: ${compactJson(record.arguments, 350)}`,
+        `  result: ${compactJson(record.result, 500)}`,
+      ].join("\n");
+    });
+    sections.push(`\n## Previous LifeOps Tool Results\n${lines.join("\n")}`);
+  }
+
+  return sections.join("\n");
+}
+
 function formatContextAsText(ctx: BenchmarkContext): string {
   const sections: string[] = [];
   const benchmark = ctx.benchmark.trim().toLowerCase();
+  const isLifeOpsBenchmark =
+    benchmark === "lifeops_bench" || benchmark === "lifeops-bench";
   const isQuestionAnswerBenchmark = new Set([
     "context-bench",
     "context_bench",
@@ -155,6 +236,11 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     sections.push(`\n## Available Actions\n${ctx.actionSpace.join(", ")}`);
   }
 
+  if (isLifeOpsBenchmark) {
+    const lifeopsContext = renderLifeOpsContext(ctx.lifeops);
+    if (lifeopsContext) sections.push(lifeopsContext);
+  }
+
   if (isWooBench && ctx.payment_actions) {
     sections.push(
       `\n## Payment Actions\nUse BENCHMARK_ACTION for every money movement. Supported commands:\n` +
@@ -201,14 +287,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `For experience retrieval turns, use REPLY with a concise answer that recalls the relevant learning.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
-    const toolLines = ctx.tools.map((t) => {
-      const name = t.name ?? "unknown";
-      const desc = t.description ?? "";
-      const params = t.parameters
-        ? JSON.stringify(t.parameters, null, 2)
-        : "{}";
-      return `- **${name}**: ${desc}\n  Parameters: ${params}`;
-    });
+    const toolLines = ctx.tools.map(formatToolLine);
     sections.push(`\n## Available Tools\n${toolLines.join("\n")}`);
   }
 
@@ -257,6 +336,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "passages",
     "question",
     "payment_actions",
+    "lifeops",
+    "task_id",
   ]);
   const extras = Object.entries(ctx).filter(([k]) => !knownKeys.has(k));
   if (extras.length > 0) {
@@ -267,7 +348,20 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 
   sections.push(`\n## Instructions`);
 
-  if (ctx.tools && ctx.tools.length > 0) {
+  if (isLifeOpsBenchmark) {
+    sections.push(
+      `This is LifeOpsBench. Use the LifeOps Clock for all relative dates; do not use wall-clock time.`,
+    );
+    sections.push(
+      `For calendar changes, prefer updating the existing event id from Calendar Events or a prior search result. Do not create a duplicate and delete another event unless the user explicitly asked for that.`,
+    );
+    sections.push(
+      `If the requested mutation has not succeeded yet, call BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name set to the LifeOps tool name and params.BENCHMARK_ACTION.arguments set to the tool arguments.`,
+    );
+    sections.push(
+      `If Previous LifeOps Tool Results already show ok=true for the requested mutation, do not call another tool. Reply with a concise confirmation that includes the relevant title/date/time/details.`,
+    );
+  } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench: emphasise tool calling
     sections.push(
       `You are a customer service agent. You MUST use the available tools to help the customer.`,

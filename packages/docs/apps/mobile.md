@@ -25,9 +25,12 @@ target is the iOS simulator; use `bun run build:ios:local:device` or set
 `ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS'` plus normal Xcode signing
 when you want a sideload/device build.
 That target still does not imply a host shell or downloaded native code. The
-full Bun engine port is not complete until a signed iOS-compatible Bun runtime
-is linked and passes simulator boot; until then the foreground local-agent URL
-can still be routed through the in-process ITTP kernel.
+full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
+`packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` (or
+`ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`). If that artifact is missing, the build
+fails instead of falling back to the JSContext compatibility host. Until the
+Bun fork emits that framework and passes simulator boot, the foreground
+local-agent URL can still be routed through the in-process ITTP kernel.
 The kernel exposes `GET /api/local-agent/capabilities` so the app can show the
 truth about what is local today: foreground chat/model-management routes are
 ITTP, native `Agent.request` / `Agent.chat` can bridge into that WebView kernel

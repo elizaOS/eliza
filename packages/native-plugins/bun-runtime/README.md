@@ -1,11 +1,17 @@
 # @elizaos/capacitor-bun-runtime
 
 Native host package for the iOS local agent runtime work. The current Swift
-implementation hosts a `JSContext` compatibility bridge on a dedicated worker
-thread, installs the `__MILADY_BRIDGE__` host functions, and can load the
-staged iOS agent payload from `public/agent/agent-bundle.js`. It is not yet the
-full Bun engine; that still requires a signed iOS-compatible Bun runtime linked
-into this pod.
+implementation can run in two modes:
+
+- `engine: "auto"` / `engine: "bun"`: dynamically loads the full
+  `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
+  built with `ELIZA_IOS_FULL_BUN_ENGINE=1`.
+- `engine: "compat"`: hosts a `JSContext` compatibility bridge on a dedicated
+  worker thread, installs the `__MILADY_BRIDGE__` host functions, and loads the
+  staged iOS agent payload from `public/agent/agent-bundle.js`.
+
+The full Bun engine artifact is produced outside this package by the
+`packages/bun-ios-runtime` build harness and an `elizaos/bun` fork.
 
 The Android side is parked for now — the iOS path lands first; a JNI-backed
 implementation will follow under the same JS surface.
@@ -65,10 +71,10 @@ await ElizaBunRuntime.stop();
 
 ## Bridge contract
 
-The full host-function shape, threading rules, and lifecycle live in
-`native/ios-bun-port/BRIDGE_CONTRACT.md`. This package implements the
-Swift host for `v1` of that contract. Breaking changes bump the version
-string emitted in `globalThis.__MILADY_BRIDGE_VERSION__`.
+The full-engine ABI lives in
+`packages/bun-ios-runtime/BRIDGE_CONTRACT.md`. The compatibility host still
+implements the Swift `__MILADY_BRIDGE__` v1 surface; breaking changes bump the
+version string emitted in `globalThis.__MILADY_BRIDGE_VERSION__`.
 
 ## Llama backend
 
@@ -89,8 +95,8 @@ The plugin emits two Capacitor events:
 ## Limitations (v1)
 
 - iOS-only. Android falls back to the `WebPlugin` stub.
-- Full Bun is not linked yet. The current implementation is the compatibility
-  JSContext host plus native bridges.
+- Full Bun is only used when `ElizaBunEngine.framework` is embedded. Otherwise
+  `engine: "auto"` falls back to the compatibility JSContext host.
 - No `worker_threads.Worker` support in the compatibility host.
 - No `child_process` — sandboxed out.
 - HTTP-server bodies are buffered, not streamed.

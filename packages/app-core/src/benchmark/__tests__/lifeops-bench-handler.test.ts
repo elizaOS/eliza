@@ -192,6 +192,23 @@ describe("LifeOpsFakeBackend", () => {
     const matches = result.result as Array<{ id: string }>;
     expect(matches.map((m) => m.id)).toContain("e1");
   });
+
+  it("supports promoted calendar update aliases with fuzzy title lookup", () => {
+    const path = writeFixture();
+    const backend = LifeOpsFakeBackend.fromJsonFile(path);
+    const result = backend.applyAction("CALENDAR_UPDATE_EVENT", {
+      event_name: "meeting",
+      new_start: "2026-05-11T15:00:00Z",
+      duration_minutes: 90,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.result).toMatchObject({
+      id: "ev1",
+      start: "2026-05-11T15:00:00Z",
+      end: "2026-05-11T16:30:00Z",
+    });
+  });
 });
 
 describe("LifeOpsBenchHandler", () => {

@@ -29,6 +29,8 @@
     "build:ios:local": "node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
     "build:ios:local:sim": "ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS Simulator' ELIZA_IOS_BUILD_SDK=iphonesimulator node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
     "build:ios:local:device": "ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS' ELIZA_IOS_BUILD_SDK=iphoneos node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
+    "build:ios:local:sim:full-bun": "ELIZA_IOS_FULL_BUN_ENGINE=1 ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS Simulator' ELIZA_IOS_BUILD_SDK=iphonesimulator node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
+    "build:ios:local:device:full-bun": "ELIZA_IOS_FULL_BUN_ENGINE=1 ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS' ELIZA_IOS_BUILD_SDK=iphoneos node ../../packages/app-core/scripts/run-mobile-build.mjs ios-local",
     "build:android": "node ../../packages/app-core/scripts/run-mobile-build.mjs android",
     "build:android:cloud": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-cloud",
     "build:android:system": "node ../../packages/app-core/scripts/run-mobile-build.mjs android-system",

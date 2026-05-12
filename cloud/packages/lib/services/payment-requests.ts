@@ -340,6 +340,9 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
       id,
       "markSettled lookup",
     );
+    if (existing.status === "settled" && existing.settlementTxRef === settlementTxRef) {
+      return existing;
+    }
     assertNotTerminal(existing, "settle");
 
     const settledAt = new Date();
@@ -405,6 +408,9 @@ class PaymentRequestsServiceImpl implements PaymentRequestsService {
       id,
       "markFailed lookup",
     );
+    if (existing.status === "failed") {
+      return existing;
+    }
     assertNotTerminal(existing, "fail");
 
     const updated = requireRow(

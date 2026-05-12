@@ -1340,11 +1340,27 @@ export type V5MessageRuntimeStage1Result =
 			result: StrategyResult;
 	  };
 
+type ResponseHandlerEarlyReplyEvent = {
+	text: string;
+	messageHandler: MessageHandlerResult;
+};
+
 function getV5ModelText(raw: string | GenerateTextResult): string {
 	if (typeof raw === "string") {
 		return raw;
 	}
 	return typeof raw.text === "string" ? raw.text : JSON.stringify(raw);
+}
+
+function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
+	return (
+		message.content?.channelType === ChannelType.VOICE_DM ||
+		message.content?.channelType === ChannelType.VOICE_GROUP
+	);
+}
+
+function normalizeVisibleTextForDuplicateCheck(text: string): string {
+	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function createV5ReplyStrategyResult(args: {
@@ -4501,6 +4517,9 @@ export async function runV5MessageRuntimeStage1(args: {
 	state: State;
 	responseId: UUID;
 	plannerLoopConfig?: PlannerLoopParams["config"];
+	onResponseHandlerEarlyReply?: (
+		event: ResponseHandlerEarlyReplyEvent,
+	) => Promise<void> | void;
 }): Promise<V5MessageRuntimeStage1Result> {
 	const senderRole =
 		getTrajectoryContext()?.userRole ??
@@ -4738,6 +4757,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				"v5 messageHandler returned invalid MessageHandlerResult",
 			);
 		}
+		const parsedResponseHandlerReply = getMessageHandlerReply(messageHandler);
 
 		if (recorder && trajectoryId) {
 			await recordMessageHandlerStage({
@@ -4861,6 +4881,19 @@ export async function runV5MessageRuntimeStage1(args: {
 
 		const selectedContexts =
 			route.type === "planning_needed" ? route.contexts : [];
+		const routedResponseHandlerReply = getMessageHandlerReply(messageHandler);
+		const earlyReplyText =
+			routedResponseHandlerReply || parsedResponseHandlerReply;
+		const earlyReplySent =
+			messageHandler.processMessage === "RESPOND" &&
+			earlyReplyText.length > 0 &&
+			typeof args.onResponseHandlerEarlyReply === "function";
+		if (earlyReplySent) {
+			await args.onResponseHandlerEarlyReply({
+				text: earlyReplyText,
+				messageHandler,
+			});
+		}
 		const plannerProviderNames = selectV5PlannerStateProviderNames({
 			runtime: args.runtime,
 			message: args.message,
@@ -5004,6 +5037,18 @@ export async function runV5MessageRuntimeStage1(args: {
 							"Call at least one exposed non-terminal tool that can attempt the current request.",
 				})
 			: plannerContextWithDecision;
+		const plannerContextAfterEarlyReply = earlyReplySent
+			? appendContextEvent(effectivePlannerContext, {
+					id: `early-reply:${messageHandlerEndedAt}`,
+					type: "instruction",
+					source: "message-service",
+					createdAt: Date.now(),
+					content:
+						"The Stage 1 router already sent this visible reply to the user before planning: " +
+						JSON.stringify(earlyReplyText) +
+						". Do not repeat it. Send only additional follow-up text if the planner or tool work adds something new.",
+				})
+			: effectivePlannerContext;
 		const evaluatorEffects: EvaluatorEffects = {
 			copyToClipboard: () => undefined,
 			messageToUser: () => undefined,
@@ -5028,7 +5073,7 @@ export async function runV5MessageRuntimeStage1(args: {
 		try {
 			plannerResult = await runPlannerLoop({
 				runtime: plannerRuntime,
-				context: effectivePlannerContext,
+				context: plannerContextAfterEarlyReply,
 				config: args.plannerLoopConfig,
 				tools: plannerTools.length > 0 ? plannerTools : undefined,
 				requireNonTerminalToolCall,
@@ -5039,7 +5084,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					executeV5PlannedToolCall({
 						runtime: args.runtime,
 						toolCall,
-						plannerContext: effectivePlannerContext,
+						plannerContext: plannerContextAfterEarlyReply,
 						executorCtx: {
 							message: args.message,
 							state: plannerState,
@@ -5071,7 +5116,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				plannerState,
 				selectedContexts,
 				senderRole,
-				plannerContext: effectivePlannerContext,
+				plannerContext: plannerContextAfterEarlyReply,
 				plannerRuntime,
 				actions: exposedPlannerActions,
 				evaluatorEffects,
@@ -5104,11 +5149,15 @@ export async function runV5MessageRuntimeStage1(args: {
 				? withActionResultsForPrompt(plannerState, actionResults)
 				: plannerState;
 		const plannedText = String(plannerResult.finalMessage ?? "").trim();
+		const plannedTextRepeatsEarlyReply =
+			earlyReplySent &&
+			normalizeVisibleTextForDuplicateCheck(plannedText) ===
+				normalizeVisibleTextForDuplicateCheck(earlyReplyText);
 
 		return {
 			kind: "planned_reply",
 			messageHandler,
-			result: plannedText
+			result: plannedText && !plannedTextRepeatsEarlyReply
 				? createV5ReplyStrategyResult({
 						...args,
 						state: finalPlannerState,
@@ -8751,6 +8800,53 @@ export class DefaultMessageService implements IMessageService {
 		let routedDecision: ContextRoutingDecision | null = null;
 		let strategyResult: StrategyResult | null = null;
 		let _usedV5Runtime = false;
+		const earlyReplyMessages: Memory[] = [];
+		const persistedEarlyReplyIds = new Set<string>();
+		const voiceResponseHandlerFastPath = isVoiceChannelMessage(message);
+		const deliverResponseHandlerEarlyReply = voiceResponseHandlerFastPath
+			? async (event: ResponseHandlerEarlyReplyEvent): Promise<void> => {
+					const text = event.text.trim();
+					if (!text || !message.id) return;
+					const earlyResponseId = asUUID(v4());
+					const earlyContent: Content = {
+						thought: event.messageHandler.thought,
+						actions: ["REPLY"],
+						providers: [],
+						text,
+						simple: true,
+						responseId: earlyResponseId,
+						inReplyTo: createUniqueUuid(runtime, message.id),
+					};
+					await runtime.applyPipelineHooks(
+						"outgoing_before_deliver",
+						outgoingPipelineHookContext(earlyContent, {
+							source: "response-handler",
+							roomId: message.roomId,
+							message,
+							responseId: earlyResponseId,
+						}),
+					);
+					const earlyMemory: Memory = {
+						id: earlyResponseId,
+						entityId: runtime.agentId,
+						agentId: runtime.agentId,
+						content: earlyContent,
+						roomId: message.roomId,
+						createdAt: Date.now(),
+					};
+					await runtime.createMemory(earlyMemory, "messages");
+					await this.emitMessageSent(
+						runtime,
+						earlyMemory,
+						message.content.source ?? "messageHandler",
+					);
+					earlyReplyMessages.push(earlyMemory);
+					persistedEarlyReplyIds.add(earlyResponseId);
+					if (callback) {
+						await callback(earlyContent);
+					}
+				}
+			: undefined;
 
 		const parallelJoin: { translatedUserText?: string } = {};
 		const setTranslatedUserText = (text: string) => {
@@ -8817,6 +8913,7 @@ export class DefaultMessageService implements IMessageService {
 						message,
 						state,
 						responseId,
+						onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,
 					}),
 					runtime.applyPipelineHooks(
 						"parallel_with_should_respond",
@@ -8987,7 +9084,10 @@ export class DefaultMessageService implements IMessageService {
 			}
 
 			responseContent = result.responseContent;
-			responseMessages = result.responseMessages;
+			responseMessages =
+				earlyReplyMessages.length > 0
+					? [...earlyReplyMessages, ...result.responseMessages]
+					: result.responseMessages;
 			state = result.state;
 			mode = result.mode;
 
@@ -9068,6 +9168,12 @@ export class DefaultMessageService implements IMessageService {
 				mode !== "actions"
 			) {
 				for (const responseMemory of responseMessages) {
+					if (
+						responseMemory.id &&
+						persistedEarlyReplyIds.has(responseMemory.id)
+					) {
+						continue;
+					}
 					// Update the content in case inReplyTo was added
 					if (responseContent) {
 						responseMemory.content = responseContent;
@@ -9113,6 +9219,12 @@ export class DefaultMessageService implements IMessageService {
 					);
 					if (responseMessages.length > 0) {
 						for (const responseMemory of responseMessages) {
+							if (
+								responseMemory.id &&
+								persistedEarlyReplyIds.has(responseMemory.id)
+							) {
+								continue;
+							}
 							if (responseContent) {
 								responseMemory.content = responseContent;
 							}
@@ -9226,7 +9338,10 @@ export class DefaultMessageService implements IMessageService {
 				"Saved terminal response to memory",
 			);
 
-			if (callback) {
+			if (
+				callback &&
+				!(terminalAction === "IGNORE" && isVoiceChannelMessage(message))
+			) {
 				await callback(terminalContent);
 			}
 		}

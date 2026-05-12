@@ -405,6 +405,12 @@ function resolvePackageAbsolutePath(pkgName) {
 }
 
 function resolveNativePluginPackagePath(pkgName, relativeTo) {
+  if (pkgName === "@elizaos/bun-ios-runtime") {
+    const localPackageRoot = path.join(packagesRoot, "bun-ios-runtime");
+    if (fs.existsSync(path.join(localPackageRoot, "package.json"))) {
+      return path.relative(relativeTo, localPackageRoot);
+    }
+  }
   const match = pkgName.match(/^@elizaos\/capacitor-(.+)$/);
   if (match) {
     const localPluginRoot = path.join(nativePluginsDir, match[1]);
@@ -2059,6 +2065,13 @@ function isTruthyEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
 }
 
+function isFullIosBunEngineRequested(env = process.env) {
+  return (
+    isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE) ||
+    isTruthyEnv(env.MILADY_IOS_FULL_BUN_ENGINE)
+  );
+}
+
 function isIosSimulatorBuildTarget(buildTarget) {
   return (
     buildTarget?.sdk === "iphonesimulator" ||
@@ -2105,6 +2118,7 @@ function generatePodfile() {
   const includeLlama =
     isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
     isTruthyEnv(process.env.MILADY_IOS_INCLUDE_LLAMA);
+  const includeFullBunEngine = isFullIosBunEngineRequested();
   const customPods = [
     ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
     ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
@@ -2125,6 +2139,9 @@ function generatePodfile() {
     ...(includeLlama
       ? [
           ["LlamaCppCapacitor", "llama-cpp-capacitor"],
+          ...(includeFullBunEngine
+            ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
+            : []),
           ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
         ]
       : []),
@@ -2132,6 +2149,11 @@ function generatePodfile() {
   if (!includeLlama) {
     console.log(
       "[mobile-build] iOS Podfile: omitting local runtime pods (ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA not set)",
+    );
+  }
+  if (includeFullBunEngine) {
+    console.log(
+      "[mobile-build] iOS Podfile: requiring full Bun engine pod (ELIZA_IOS_FULL_BUN_ENGINE / MILADY_IOS_FULL_BUN_ENGINE set)",
     );
   }
 
@@ -3022,6 +3044,49 @@ export function resolveIosBuildTarget({
     sdk: "iphonesimulator",
     reason: "default cloud simulator build",
   };
+}
+
+function resolveIosFullBunEngineXcframework({ buildTarget = null } = {}) {
+  const candidates = [
+    process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK,
+    process.env.MILADY_IOS_BUN_ENGINE_XCFRAMEWORK,
+    path.join(
+      packagesRoot,
+      "bun-ios-runtime",
+      "artifacts",
+      "ElizaBunEngine.xcframework",
+    ),
+    path.join(
+      packagesRoot,
+      "bun-ios-runtime",
+      "build",
+      isIosSimulatorBuildTarget(buildTarget) ? "simulator" : "device",
+      "ElizaBunEngine.xcframework",
+    ),
+  ].filter(Boolean);
+  return firstExisting(candidates);
+}
+
+function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
+  if (!isFullIosBunEngineRequested()) return null;
+  const framework = resolveIosFullBunEngineXcframework({ buildTarget });
+  if (!framework) {
+    const target = isIosSimulatorBuildTarget(buildTarget)
+      ? "simulator"
+      : "device";
+    throw new Error(
+      [
+        "ELIZA_IOS_FULL_BUN_ENGINE is set, but ElizaBunEngine.xcframework was not found.",
+        "Build the Bun fork first:",
+        `  ELIZA_BUN_IOS_SOURCE_DIR=/path/to/elizaos-bun bun run --cwd packages/bun-ios-runtime build:${target === "simulator" ? "sim" : "device"}`,
+        "Or set ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK=/absolute/path/ElizaBunEngine.xcframework.",
+        "Refusing to fall back to the JSContext compatibility host for a full-engine build.",
+      ].join("\n"),
+    );
+  }
+  process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK = framework;
+  console.log(`[mobile-build] iOS full Bun engine: ${framework}`);
+  return framework;
 }
 
 // ── Android cloud (Play-Store) strip set ────────────────────────────────
@@ -4045,6 +4110,11 @@ async function buildIos({ local = false } = {}) {
 
   if (local) {
     configureIosLocalBuildDefaults();
+  }
+
+  const buildTarget = resolveIosBuildTarget();
+  if (local) {
+    ensureIosFullBunEngineArtifact({ buildTarget });
     await buildMobileAgentBundle({ target: "ios" });
   }
 
@@ -4071,7 +4141,6 @@ async function buildIos({ local = false } = {}) {
     stageIosAgentRuntime();
   }
 
-  const buildTarget = resolveIosBuildTarget();
   console.log(
     `[mobile-build] iOS build target: ${buildTarget.destination} (${buildTarget.sdk}; ${buildTarget.reason})`,
   );

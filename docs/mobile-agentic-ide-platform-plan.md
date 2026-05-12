@@ -81,9 +81,11 @@ This branch now has the following foundation:
   `GET /api/local-agent/capabilities`.
 - `@elizaos/capacitor-bun-runtime` is wired into local iOS Pod generation only
   when native local inference is included. Its llama bridge now delegates to
-  the real Swift/C llama.cpp implementation instead of canned text, but the
-  package still hosts JavaScriptCore rather than a proven iOS Bun engine. The
-  remaining full-backend blocker is the signed iOS Bun runtime itself.
+  the real Swift/C llama.cpp implementation instead of canned text. Full Bun
+  mode is a separate hard-gated path: `ELIZA_IOS_FULL_BUN_ENGINE=1` requires
+  `packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` and refuses
+  to fall back to the JSContext compatibility host. The remaining
+  full-backend blocker is the Bun fork producing that signed iOS framework.
 - The iOS ITTP kernel intentionally reports `task_service_unavailable` for
   `/api/background/run-due-tasks` and `/api/internal/wake`; Capacitor
   BackgroundRunner runs in a separate JSContext and cannot call the WebView

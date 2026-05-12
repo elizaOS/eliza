@@ -45,6 +45,13 @@ interface LifeOpsBenchSession {
   createdAtMs: number;
   /** Last assistant text returned, kept for diagnostics. */
   lastAssistantText: string;
+  turns: LifeOpsBenchTurnRecord[];
+}
+
+export interface LifeOpsBenchTurnRecord {
+  userText: string;
+  assistantText: string;
+  toolCalls: ToolCallRecord[];
 }
 
 interface ToolCallRecord {
@@ -93,6 +100,7 @@ export type LifeOpsPlannerInvocation = (args: {
   userText: string;
   toolManifest: unknown;
   backend: LifeOpsFakeBackend;
+  previousTurns: LifeOpsBenchTurnRecord[];
 }) => Promise<PlannerInvocationResult>;
 
 export interface LifeOpsBenchHandlerOptions {
@@ -213,6 +221,7 @@ export class LifeOpsBenchHandler {
       backend,
       createdAtMs: Date.now(),
       lastAssistantText: "",
+      turns: [],
     });
 
     writeJson(res, 200, {
@@ -268,6 +277,7 @@ export class LifeOpsBenchHandler {
         userText: text,
         toolManifest,
         backend: session.backend,
+        previousTurns: [...session.turns],
       });
     } catch (err) {
       writeError(res, 500, `Planner invocation failed: ${errorMessage(err)}`);
@@ -304,6 +314,11 @@ export class LifeOpsBenchHandler {
     }
 
     session.lastAssistantText = plannerResult.text;
+    session.turns.push({
+      userText: text,
+      assistantText: plannerResult.text,
+      toolCalls: executed,
+    });
 
     writeJson(res, 200, {
       task_id: taskId,

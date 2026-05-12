@@ -59,6 +59,7 @@ import {
   CUDA_KERNEL_CMAKE_FLAGS,
   patchCudaKernels as patchCudaKernelsImpl,
 } from "./kernel-patches/cuda-kernels.mjs";
+import { patchDflashDrafterArch as patchDflashDrafterArchImpl } from "./kernel-patches/dflash-drafter-arch.mjs";
 import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/metal-kernels.mjs";
 import { patchServerOmnivoiceRoute as patchServerOmnivoiceRouteImpl } from "./kernel-patches/server-omnivoice-route.mjs";
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
@@ -1454,6 +1455,7 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchDflashDrafterArchImpl(cacheDir, { dryRun });
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs

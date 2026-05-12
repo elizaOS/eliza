@@ -237,6 +237,13 @@ def test_agent_fn_resets_on_first_call_and_messages_thereafter() -> None:
     assert second_paths.count("/api/benchmark/lifeops_bench/reset") == 1
     assert second_paths[-1] == "/api/benchmark/lifeops_bench/message"
 
+    # LifeOpsBench passes a fresh list(history) on every turn. The adapter
+    # session must survive that list copy or Eliza loses prior tool results.
+    asyncio.run(agent_fn(list(history), []))
+    copied_paths = [c.path for c in calls]
+    assert copied_paths.count("/api/benchmark/lifeops_bench/reset") == 1
+    assert copied_paths[-1] == "/api/benchmark/lifeops_bench/message"
+
 
 def test_agent_fn_handles_no_user_message_safely() -> None:
     client, _ = _make_fake_client({})

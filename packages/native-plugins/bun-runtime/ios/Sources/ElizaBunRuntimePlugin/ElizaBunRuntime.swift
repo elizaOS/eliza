@@ -18,6 +18,7 @@ public final class ElizaBunRuntime {
     public private(set) var bridgeVersion: String?
     public private(set) var loadedModelPath: String?
     public private(set) var tokensPerSecond: Double?
+    public private(set) var engineMode: String = "compat"
 
     // MARK: - Private state
 
@@ -25,6 +26,7 @@ public final class ElizaBunRuntime {
     private let virtualMachine = JSVirtualMachine()!
     private var context: JSContext?
     private var bridges: BridgeKit?
+    private var fullBunEngine: FullBunEngineHost?
     private weak var plugin: CAPPlugin?
 
     // MARK: - Init
@@ -40,6 +42,7 @@ public final class ElizaBunRuntime {
     public func start(
         bundlePath: String?,
         polyfillPath: String?,
+        engine: String,
         argv: [String],
         env: [String: String],
         completion: @escaping (Result<StartOutcome, Error>) -> Void
@@ -56,6 +59,7 @@ public final class ElizaBunRuntime {
                 try self.bootstrap(
                     bundlePath: bundlePath,
                     polyfillPath: polyfillPath,
+                    engine: engine,
                     argv: argv,
                     env: env
                 )
@@ -101,8 +105,25 @@ public final class ElizaBunRuntime {
         completion: @escaping (Result<String, Error>) -> Void
     ) {
         queue.async { [weak self] in
-            guard let self = self, let ctx = self.context else {
-                completion(.failure(self?.makeError("Runtime is not started") ?? Self.runtimeStaleError()))
+            guard let self = self else {
+                completion(.failure(Self.runtimeStaleError()))
+                return
+            }
+            if let fullBunEngine = self.fullBunEngine {
+                do {
+                    let payload: [String: Any] = [
+                        "message": text,
+                        "conversationId": conversationId ?? NSNull(),
+                    ]
+                    let result = try fullBunEngine.call(method: "send_message", payload: payload)
+                    completion(.success(self.extractReply(from: result)))
+                } catch {
+                    completion(.failure(error))
+                }
+                return
+            }
+            guard let ctx = self.context else {
+                completion(.failure(self.makeError("Runtime is not started")))
                 return
             }
             guard let handler = self.bridges?.ui.handler(for: "send_message") else {
@@ -131,8 +152,20 @@ public final class ElizaBunRuntime {
         completion: @escaping (Result<Any?, Error>) -> Void
     ) {
         queue.async { [weak self] in
-            guard let self = self, let ctx = self.context else {
-                completion(.failure(self?.makeError("Runtime is not started") ?? Self.runtimeStaleError()))
+            guard let self = self else {
+                completion(.failure(Self.runtimeStaleError()))
+                return
+            }
+            if let fullBunEngine = self.fullBunEngine {
+                do {
+                    completion(.success(try fullBunEngine.call(method: method, payload: args ?? NSNull())))
+                } catch {
+                    completion(.failure(error))
+                }
+                return
+            }
+            guard let ctx = self.context else {
+                completion(.failure(self.makeError("Runtime is not started")))
                 return
             }
             guard let handler = self.bridges?.ui.handler(for: method) else {
@@ -157,9 +190,33 @@ public final class ElizaBunRuntime {
     private func bootstrap(
         bundlePath: String?,
         polyfillPath: String?,
+        engine: String,
         argv: [String],
         env: [String: String]
     ) throws {
+        let requestedEngine = engine.lowercased()
+        if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
+            let host = FullBunEngineHost.shared
+            if host.isAvailable {
+                try host.start(
+                    bundlePath: try resolveAgentBundlePath(override: bundlePath),
+                    argv: argv,
+                    env: env,
+                    appSupportDir: SandboxPaths().appSupport.path
+                )
+                self.fullBunEngine = host
+                self.context = nil
+                self.bridges = nil
+                self.engineMode = "bun"
+                self.bridgeVersion = "bun-ios:\(host.abiVersion)"
+                self.isRunning = true
+                return
+            }
+            if requestedEngine == "bun" {
+                throw makeError("Full Bun engine requested but ElizaBunEngine.framework is not embedded")
+            }
+        }
+
         let ctx = JSContext(virtualMachine: virtualMachine)!
         ctx.name = "ElizaBunRuntime"
         ctx.exceptionHandler = { _, exception in
@@ -185,6 +242,7 @@ public final class ElizaBunRuntime {
         )
         self.bridges = kit
         self.bridgeVersion = BridgeInstaller.version
+        self.engineMode = "compat"
 
         // Load the polyfill prefix.
         let polyfillSource = try loadPolyfillSource(override: polyfillPath)
@@ -212,6 +270,8 @@ public final class ElizaBunRuntime {
     }
 
     private func teardown() {
+        fullBunEngine?.stop()
+        fullBunEngine = nil
         bridges?.httpServer.shutdown()
         bridges?.ui.clear()
         bridges = nil
@@ -219,14 +279,19 @@ public final class ElizaBunRuntime {
         isRunning = false
         loadedModelPath = nil
         tokensPerSecond = nil
+        engineMode = "compat"
         RuntimeQueue.current = nil
     }
 
     // MARK: - Source loading
 
     private func loadAgentSource(override: String?) throws -> String {
+        return try String(contentsOfFile: resolveAgentBundlePath(override: override), encoding: .utf8)
+    }
+
+    private func resolveAgentBundlePath(override: String?) throws -> String {
         if let override = override, !override.isEmpty {
-            return try String(contentsOfFile: override, encoding: .utf8)
+            return override
         }
         let candidates: [(String, String?, String?)] = [
             ("agent-bundle-ios", "js", nil),
@@ -240,7 +305,7 @@ public final class ElizaBunRuntime {
                 withExtension: ext,
                 subdirectory: subdir
             ) {
-                return try String(contentsOf: url, encoding: .utf8)
+                return url.path
             }
         }
         throw makeError(
@@ -334,6 +399,16 @@ public final class ElizaBunRuntime {
             return s
         }
         return value.toString() ?? ""
+    }
+
+    private func extractReply(from value: Any?) -> String {
+        if let s = value as? String { return s }
+        if let dict = value as? [String: Any] {
+            if let s = dict["reply"] as? String { return s }
+            if let s = dict["text"] as? String { return s }
+            if let result = dict["result"] { return extractReply(from: result) }
+        }
+        return String(describing: value ?? "")
     }
 
     private func unwrapAny(

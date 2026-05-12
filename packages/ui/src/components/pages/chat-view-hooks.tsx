@@ -23,8 +23,10 @@ import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
 import type {
+  VoiceAssistantSpeechTelemetry,
   VoiceCaptureMode,
   VoicePlaybackStartEvent,
+  VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
 import { useCompanionSceneStatus } from "../companion/injected";
 
@@ -71,6 +73,37 @@ type CompanionSpeechMemoryEntry = {
   messageId: string;
   text: string;
 };
+
+type VoiceLatencyState = {
+  assistantFirstMessageId: string | null;
+  firstSegmentCached: boolean | null;
+  speechEndToFirstTokenMs: number | null;
+  speechEndToVoiceStartMs: number | null;
+  assistantStreamToVoiceStartMs: number | null;
+};
+
+type PendingVoiceTurnState = {
+  id: string;
+  expiresAtMs: number;
+  firstSegmentCached?: boolean;
+  firstTokenAtMs?: number;
+  assistantFirstMessageId?: string;
+  assistantFirstTextAtMs?: number;
+  speechEndedAtMs: number;
+  voiceStartedAtMs?: number;
+};
+
+type AssistantSpeechProgress = {
+  text: string;
+  firstTextAtMs: number;
+  finalQueued: boolean;
+};
+
+function makeVoiceTurnId(speechEndedAtMs: number): string {
+  return `voice-turn-${Math.round(speechEndedAtMs)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
 
 const companionSpeechMemoryByConversation = new Map<
   string,
@@ -166,18 +199,13 @@ export function useChatVoiceController(options: {
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig | null>(null);
   /** Bumps after each `getConfig` (or inline VOICE_CONFIG event) settles — game-modal auto-speak waits for this so TTS does not run with a stale/null voice profile and get stuck deduped. */
   const [voiceBootstrapTick, setVoiceBootstrapTick] = useState(0);
-  const [voiceLatency, setVoiceLatency] = useState<{
-    firstSegmentCached: boolean | null;
-    speechEndToFirstTokenMs: number | null;
-    speechEndToVoiceStartMs: number | null;
-  } | null>(null);
-  const pendingVoiceTurnRef = useRef<{
-    expiresAtMs: number;
-    firstSegmentCached?: boolean;
-    firstTokenAtMs?: number;
-    speechEndedAtMs: number;
-    voiceStartedAtMs?: number;
-  } | null>(null);
+  const [voiceLatency, setVoiceLatency] = useState<VoiceLatencyState | null>(
+    null,
+  );
+  const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
+  const assistantSpeechProgressRef = useRef<
+    Map<string, AssistantSpeechProgress>
+  >(new Map());
   const suppressedAssistantSpeechIdRef = useRef<string | null>(null);
   /** Skips duplicate companion auto-speak when only `voiceBootstrapTick` bumps (config/cloud reload) for the same assistant text. */
   const companionBootstrapAutoSpeakRef = useRef<{

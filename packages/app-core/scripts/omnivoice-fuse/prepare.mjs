@@ -1526,41 +1526,6 @@ function applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot }) {
   };
 }
 
-function applyMiladyOmnivoiceHttpRoute({ llamaCppRoot }) {
-  const serverPath = path.join(llamaCppRoot, "tools", "server", "server.cpp");
-  if (!fs.existsSync(serverPath)) {
-    throw new Error(
-      `[omnivoice-fuse] server route patch target missing: ${serverPath}`,
-    );
-  }
-  const sentinel = "milady-omnivoice-http-route";
-  let server = fs.readFileSync(serverPath, "utf8");
-  if (server.includes(sentinel)) {
-    return {
-      name: "milady-omnivoice-http-route",
-      status: "already-applied",
-      files: [],
-    };
-  }
-
-  const anchor =
-    '    ctx_http.post("/api/chat",            ex_wrapper(routes.post_chat_completions)); // ollama specific endpoint\n';
-  const route = `${anchor}#ifdef MILADY_FUSE_OMNIVOICE\n    // ${sentinel}: the fused binary must expose the OpenAI-compatible\n    // speech route in this same llama-server process. Until the full HTTP\n    // streaming handler is wired to ov_synthesize, fail closed with a\n    // structured 503 instead of looking like a stock text-only server.\n    ctx_http.post("/v1/audio/speech", ex_wrapper([](const server_http_req &) -> server_http_res_ptr {\n        auto res = std::make_unique<server_http_res>();\n        res->status = 503;\n        res->data = R"({\"error\":{\"code\":503,\"message\":\"omnivoice TTS route is mounted in the fused server, but no OmniVoice runtime handler is configured in this build\",\"type\":\"server_error\"}})";\n        return res;\n    }));\n#endif\n`;
-
-  if (!server.includes(anchor)) {
-    throw new Error(
-      "[omnivoice-fuse] server route patch anchor not found: /api/chat route",
-    );
-  }
-  server = server.replace(anchor, route);
-  fs.writeFileSync(serverPath, server, "utf8");
-  return {
-    name: "milady-omnivoice-http-route",
-    status: "applied",
-    files: ["tools/server/server.cpp"],
-  };
-}
-
 /**
  * Main entry. Performs the full prepare phase. All errors propagate.
  */
@@ -1648,10 +1613,8 @@ export function prepareOmnivoiceFusion({
   // Apply any reconciliation patches keyed to specific drifts.
   const patchesDir = new URL("./patches/", import.meta.url).pathname;
   const qwen3aBackport = applyMiladyQwen3AsrMtmdSupport({ llamaCppRoot });
-  const omnivoiceHttpRoute = applyMiladyOmnivoiceHttpRoute({ llamaCppRoot });
   const appliedPatches = [
     qwen3aBackport,
-    omnivoiceHttpRoute,
     ...applyPatches({ patchesDir, llamaCppRoot }),
   ];
 

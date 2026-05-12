@@ -34,15 +34,15 @@ import Darwin.Mach
 // We call llama.cpp's C symbols directly through @_silgen_name rather than
 // importing a generated module. This keeps us provider-agnostic: the same
 // Swift code works whether the binary slice came from `LlamaCpp.xcframework`
-// (built by `native/ios-bun-port/vendor-deps/llama.cpp/build-ios.sh`) or
-// from a different distribution. The contract is the linker — at link time
+// (built by the app-core iOS local-inference pipeline) or from a different
+// distribution. The contract is the linker — at link time
 // the symbols must resolve, otherwise we get a clear "Undefined symbol"
 // error.
 //
 // Symbol names track upstream llama.cpp >= b4404 (Jan 2025 sampler-chain
 // API). If you bump the pinned version in
-// `native/ios-bun-port/vendor-deps/VERSIONS` to one that renamed any of
-// these symbols, this file is where you update them.
+// the pinned llama.cpp version to one that renamed any of these symbols, this
+// file is where you update them.
 
 private let LLAMA_DEFAULT_SEED: UInt32 = 0xFFFFFFFF
 private let LLAMA_TOKEN_NULL: Int32 = -1
