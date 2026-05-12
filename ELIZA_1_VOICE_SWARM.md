@@ -42,7 +42,7 @@
   to ASR / openWakeWord, DFlash↔TTS rollback coupling, barge-in cancellation,
   voice on/off lazy regional loading from one bundle.
 - **Release pipeline.** Quant recipes, the converter wrapper
-  (`gguf_milady_apply.py`, `--release-state base-v1`), the DFlash distiller, the
+  (`gguf_eliza1_apply.py`, `--release-state base-v1`), the DFlash distiller, the
   bundle stagers, the manifest builder, the platform-plan generator, the publish
   orchestrator (gates on `releaseState ∈ {base-v1, upload-candidate, final}` +
   the `final.*` flags + `finetuned=false` + the `sourceModels` map), the §7

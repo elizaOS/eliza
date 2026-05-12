@@ -59,7 +59,7 @@ structured-output path, which is already in the fork.)
 ```bash
 # CPU host is fine for the converter; the build needs the target backend
 # (Metal / CUDA / Vulkan / ...) — see packages/inference/AGENTS.md §8.
-export LLAMA_CPP_DIR=$PWD/packages/inference/llama.cpp   # used by gguf_milady_apply.py / distill_dflash_drafter.py (both also fall back to the in-repo submodule)
+export LLAMA_CPP_DIR=$PWD/packages/inference/llama.cpp   # used by gguf_eliza1_apply.py / distill_dflash_drafter.py (both also fall back to the in-repo submodule)
 node packages/app-core/scripts/build-llama-cpp-dflash.mjs          # kernel patches + build (per supported backend)
 make -C packages/inference/verify reference-test                   # CPU host: must be clean
 ```
@@ -97,7 +97,7 @@ uv run python packages/inference/llama.cpp/convert_hf_to_gguf.py <hf-checkpoint-
   --outtype q4_k_m --outfile out/eliza-1-9b/text/eliza-1-9b-64k.gguf
 
 # Or, with the Milady type wrapper + provenance recording (CPU-safe, idempotent):
-uv run python packages/training/scripts/quantization/gguf_milady_apply.py \
+uv run python packages/training/scripts/quantization/gguf_eliza1_apply.py \
   --checkpoint <hf-checkpoint-dir-with-polarquant-codes> \
   --output     out/eliza-1-9b/text/eliza-1-9b-64k.gguf \
   --llama-cpp-dir packages/inference/llama.cpp \
@@ -114,7 +114,7 @@ the vision mmproj on 9B+ (`vision/mmproj-<tier>.gguf`), and the embedding on
 1.7B+ (`embedding/...gguf`). TTS/ASR/VAD are already GGUF/ONNX — just stage
 the right quant (`omnivoice-base-<quant>.gguf` etc.).
 
-**Needs a GPU?** No — `convert_hf_to_gguf.py` and `gguf_milady_apply.py` are
+**Needs a GPU?** No — `convert_hf_to_gguf.py` and `gguf_eliza1_apply.py` are
 CPU-only. They DO need the safetensors/checkpoint on disk and the fork
 checkout.
 
@@ -124,7 +124,7 @@ checkout.
 
 The five Milady quant recipes live in
 `packages/training/scripts/quantization/`. PolarQuant produces the int8
-weight codes that `gguf_milady_apply.py` packs as `Q4_POLAR` blocks;
+weight codes that `gguf_eliza1_apply.py` packs as `Q4_POLAR` blocks;
 TurboQuant + QJL are runtime KV-cache compressors — they emit the
 `quantization/*.json` sidecars the fork's runtime quantizer consumes (with
 the complete §3 `kernel_manifest` block: `kernel_target`,
@@ -329,7 +329,7 @@ and every platform-dispatch report is green for the exact shipped bytes, and
 
 | Step | Host |
 |---|---|
-| Fork converter (`convert_hf_to_gguf.py`), `gguf_milady_apply.py`, sidecar generation, bundle staging, checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only` | CPU host (the fork is in-tree at `packages/inference/llama.cpp`; this environment can run these once the source weights are present) |
+| Fork converter (`convert_hf_to_gguf.py`), `gguf_eliza1_apply.py`, sidecar generation, bundle staging, checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only` | CPU host (the fork is in-tree at `packages/inference/llama.cpp`; this environment can run these once the source weights are present) |
 | Fork build with kernel patches, `metal_verify` / `vulkan_verify` / `cuda_verify` / `rocm_verify`, platform-dispatch smokes | the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for the `27b-1m` tier) |
 | PolarQuant code generation, TurboQuant skip-layer calibration, DFlash distillation, text perplexity / RTF / WER / VAD / dflash / e2e / 30-turn evals | a GPU big enough for the tier (consumer GPU for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B) |
 

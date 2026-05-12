@@ -97,7 +97,7 @@ component.
   build clean and self-test on x86_64 here.
 - The training/manifest/publish machinery: the quant recipes
   (`packages/training/scripts/quantization/`), the converter wrapper
-  (`gguf_milady_apply.py`, `--release-state base-v1`), the DFlash distiller
+  (`gguf_eliza1_apply.py`, `--release-state base-v1`), the DFlash distiller
   (`distill_dflash_drafter.py`, `--synthetic-smoke` runs offline), the bundle
   stagers (`packages/training/scripts/manifest/stage_*.py`), the manifest builder
   (`eliza1_manifest.py`), the platform-plan generator (`eliza1_platform_plan.py`),

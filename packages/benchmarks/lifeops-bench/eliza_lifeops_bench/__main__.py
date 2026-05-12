@@ -351,7 +351,7 @@ def _spawn_dflash_server_for_bundle(
         return os.environ["PARALLAX_OPENCODE_BASE_URL"]
     dflash_root = (
         os.environ.get("ELIZA_DFLASH_LLAMA_DIR")
-        or os.path.expanduser("~/.cache/eliza-dflash/milady-llama-cpp")
+        or os.path.expanduser("~/.cache/eliza-dflash/eliza-llama-cpp")
     )
     binary = os.path.join(dflash_root, "build", "bin", "llama-server")
     if not os.path.exists(binary):

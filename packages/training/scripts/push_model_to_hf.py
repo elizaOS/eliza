@@ -568,7 +568,7 @@ def _build_eliza1_manifest_card(
         f"- V cache: `{types.get('v_cache', 'TBQ3_0=43')}` (TurboQuant 3-bit)\n"
         "\n"
         "These types only exist in `elizaOS/llama.cpp` "
-        f"`>= {runtime.get('min_llama_cpp_tag', 'v0.4.0-milady')}` "
+        f"`>= {runtime.get('min_llama_cpp_tag', 'v1.0.0-eliza')}` "
         f"(commit `{runtime.get('min_llama_cpp_commit', '')}`); the upstream "
         "`ggml-org/llama.cpp` build will refuse to load this file.\n"
         "\n"

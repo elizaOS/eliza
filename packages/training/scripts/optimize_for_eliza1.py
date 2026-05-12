@@ -23,7 +23,7 @@ Usage::
         --hf-repo elizaos/eliza-1-0_6b \\
         --dry-run
 
-    # Real run (needs the elizaOS/llama.cpp v0.4.0-milady checkout
+    # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
         uv run python scripts/optimize_for_eliza1.py \\
@@ -329,7 +329,7 @@ def _build_eliza1_manifest(
                 "--cache-type-v",
                 "tbq3_0",
             ],
-            "min_llama_cpp_tag": "v0.4.0-milady",
+            "min_llama_cpp_tag": "v1.0.0-eliza",
             "min_llama_cpp_commit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
             "fork_remote": "https://github.com/elizaOS/llama.cpp.git",
         },
@@ -430,7 +430,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
     raise FileNotFoundError(
         "convert_hf_to_gguf.py not found. Either pass --llama-cpp-dir or set "
         "LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp (the elizaOS/llama.cpp "
-        "v0.4.0-milady checkout)."
+        "v1.0.0-eliza checkout)."
     )
 
 
@@ -689,7 +689,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         "--llama-cpp-dir",
         type=Path,
         default=None,
-        help="Path to the elizaOS/llama.cpp v0.4.0-milady checkout. Falls back "
+        help="Path to the elizaOS/llama.cpp v1.0.0-eliza checkout. Falls back "
              "to $LLAMA_CPP_DIR env var, then $PATH.",
     )
     p.add_argument(

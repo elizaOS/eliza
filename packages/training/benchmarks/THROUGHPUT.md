@@ -37,8 +37,9 @@ the bigger tiers and for VRAM-constrained hosts.
   on NVIDIA hosts.** Confirmed: the fork's CUDA backend (incl. the custom
   `fattn-vec-instance-{qjl,polar,tbq}.cu` kernels) compiles with the stock
   nvcc 12.0 at `CMAKE_CUDA_ARCHITECTURES="89-real;90-real;90-virtual"` (the
-  driver JITs the sm_90 PTX to sm_120) — see `scripts/vendor_llama_cpp.sh`'s
-  `build-cuda` for the recipe. **Build the fork's CUDA backend with `-j2`**,
+  driver JITs the sm_90 PTX to sm_120) — see
+  `packages/app-core/scripts/build-llama-cpp-dflash.mjs` (`linux-x64-cuda`)
+  for the recipe. **Build the fork's CUDA backend with `-j2`**,
   not `-j$(nproc)`, on a ≤ 32 GB-RAM box: the custom `fattn-vec-instance-*`
   instantiations ~1.6× the standard set of fattn template TUs, each `fattn*.cu`
   nvcc eats ~1.5–2 GB during template metaprogramming, and at full parallelism
@@ -61,7 +62,7 @@ the bigger tiers and for VRAM-constrained hosts.
 - **Q4_POLAR weights (4 bpw)** halve the weight memory traffic vs Q8_0 (8 bpw)
   → faster `tg` for the bigger tiers. *Currently deferred* — the fork's
   `convert_hf_to_gguf.py` doesn't emit `q4_polar` yet (the runtime kernels
-  exist; the converter side lags), so `gguf_milady_apply.py` falls back to
+  exist; the converter side lags), so `gguf_eliza1_apply.py` falls back to
   `q8_0` and records `weight_quant.deferred: true` in `<gguf>.milady.json`.
   Closing that gap (add `Q4_POLAR` to the fork's `gguf-py` + a Python
   `quantize_q4_polar` packer) is the inference team's converter work.
@@ -105,8 +106,8 @@ the bigger tiers and for VRAM-constrained hosts.
 ## How to re-measure
 
 ```bash
-# Single GGUF, optimal GPU config:
-packages/training/vendor/llama.cpp/build-cuda/bin/llama-bench \
+# Single GGUF, optimal GPU config (the fork lives in-tree at packages/inference/llama.cpp):
+packages/inference/llama.cpp/build/bin/llama-bench \
   -m <path-to>.gguf -ngl 99 -fa 1 -b 2048 -p 256,512 -n 64,128
 
 # As part of a pipeline run (writes evals/throughput.json):

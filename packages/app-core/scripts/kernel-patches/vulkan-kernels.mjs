@@ -1,4 +1,4 @@
-// Vulkan kernel-shipment staging for the v0.4.0-milady fork.
+// Vulkan kernel-shipment staging for the elizaOS/llama.cpp fork (v1.0.0-eliza).
 //
 // What this module does:
 //

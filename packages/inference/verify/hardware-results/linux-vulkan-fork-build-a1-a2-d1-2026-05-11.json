@@ -9,7 +9,7 @@
     "ramGb": 30
   },
   "elizaCommit": "74aa603dc4fc620a88901b75793d8743deaaa233",
-  "forkRemote": "https://github.com/milady-ai/llama.cpp.git",
+  "forkRemote": "https://github.com/elizaOS/llama.cpp.git",
   "forkRef": "v0.4.0-milady",
   "forkCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
   "build": {

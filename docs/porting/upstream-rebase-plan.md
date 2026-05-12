@@ -70,7 +70,7 @@ not a clean replay — it is a re-port:
 - `ggml/src/ggml-metal/ggml-metal*.cpp` + `ggml/src/ggml-metal/ggml-metal.metal`
   and the `ggml-metal/milady-kernels/*.metal` shaders + dispatcher entries.
 - `gguf-py/gguf/constants.py` — the GGUF Python type table (`TBQ3_0`,
-  `TBQ4_0`, `QJL1_256`, `Q4_POLAR`) the converter and the `gguf_milady_apply.py`
+  `TBQ4_0`, `QJL1_256`, `Q4_POLAR`) the converter and the `gguf_eliza1_apply.py`
   shim grep for.
 - `include/llama.h` — re-exported types + `llama_context_params` (the
   `flash_attn` bool → `flash_attn_type` enum drift bites the AOSP shim).

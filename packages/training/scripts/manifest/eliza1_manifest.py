@@ -140,7 +140,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     # 1M context is only practical on very large unified/HBM memory
-    # (GH200-class). CUDA is the only backend whose v0.4.0-milady binary
+    # (GH200-class). CUDA is the only backend whose v1.0.0-eliza binary
     # covers the full runtime path at that window today; the others stay
     # off the supported list for this variant until verified.
     "27b-1m": ("cuda",),
