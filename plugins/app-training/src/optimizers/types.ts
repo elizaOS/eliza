@@ -96,6 +96,7 @@ export interface OptimizerResult {
 export type OptimizerName =
   | "instruction-search"
   | "prompt-evolution"
+  | "gepa"
   | "bootstrap-fewshot"
   | "dspy-bootstrap-fewshot"
   | "dspy-copro"

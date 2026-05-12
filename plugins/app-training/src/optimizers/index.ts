@@ -6,6 +6,11 @@ export {
   withDemonstrations,
 } from "./bootstrap-fewshot.js";
 export {
+  type GepaInput,
+  type GepaOptions,
+  runGepa,
+} from "./gepa.js";
+export {
   type InstructionSearchInput,
   type InstructionSearchOptions,
   runInstructionSearch,
