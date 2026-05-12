@@ -472,6 +472,13 @@ function renderPlannerModelInput(params: {
 	trajectory: PlannerTrajectory;
 	template?: string;
 	runtime?: PlannerRuntime;
+	/**
+	 * Optional per-tool-result character cap. Forwarded directly to
+	 * `trajectoryStepsToMessages` — caps the rendered tool-result
+	 * string for each kept-verbatim step without mutating the
+	 * trajectory itself.
+	 */
+	maxToolResultChars?: number;
 }): {
 	messages: ChatMessage[];
 	promptSegments: PromptSegment[];
@@ -481,7 +488,9 @@ function renderPlannerModelInput(params: {
 	const instructions = (
 		template.split("context_object:")[0] ?? template
 	).trim();
-	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps);
+	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
+		maxToolResultChars: params.maxToolResultChars,
+	});
 	const liveActionsBlock = renderAvailableActionsBlock(params.context);
 	const availableActionsBlock = params.runtime
 		? resolveOptimizedActionDescriptions(params.runtime, liveActionsBlock)
@@ -970,6 +979,7 @@ async function callPlanner(params: {
 		trajectory: params.trajectory,
 		template: resolveOptimizedPlannerTemplate(params.runtime),
 		runtime: params.runtime,
+		maxToolResultChars: params.config.compactionMaxKeptStepChars,
 	});
 	let modelInputBudget = buildModelInputBudget({
 		messages: renderedInput.messages,
@@ -995,6 +1005,7 @@ async function callPlanner(params: {
 				trajectory: params.trajectory,
 				template: resolveOptimizedPlannerTemplate(params.runtime),
 				runtime: params.runtime,
+				maxToolResultChars: params.config.compactionMaxKeptStepChars,
 			});
 			modelInputBudget = buildModelInputBudget({
 				messages: renderedInput.messages,
@@ -1203,6 +1214,7 @@ async function maybeCompactBeforeNextModelCall(args: {
 	const renderedInput = renderPlannerModelInput({
 		context: args.trajectory.context,
 		trajectory: args.trajectory,
+		maxToolResultChars: args.config.compactionMaxKeptStepChars,
 	});
 	const budget = buildModelInputBudget({
 		messages: renderedInput.messages,
