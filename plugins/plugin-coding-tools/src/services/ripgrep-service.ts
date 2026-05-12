@@ -104,6 +104,9 @@ function runRipgrep(
   mode: RipgrepMode,
 ): Promise<RipgrepResult> {
   return new Promise((resolve) => {
+    if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
+      console.error("rg-debug-start", { rg, args, mode });
+    }
     let stdout = "";
     let stderr = "";
     let truncated = false;

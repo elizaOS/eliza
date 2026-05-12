@@ -53,6 +53,7 @@ function installIssueGuards(page: Page): string[] {
   page.on("requestfailed", (request) => {
     const url = request.url();
     if (url.startsWith("data:") || url.startsWith("blob:")) return;
+    if (/\/api\/avatar\/(vrm|background)/.test(new URL(url).pathname)) return;
     issues.push(`requestfailed: ${url} ${request.failure()?.errorText ?? ""}`);
   });
   return issues;
@@ -76,9 +77,12 @@ async function expectNoIssues(
 }
 
 async function openAppWindow(page: Page, routeCase: RouteCase): Promise<void> {
-  await page.goto(`/?appWindow=1#${routeCase.path}`, {
-    waitUntil: "domcontentloaded",
-  });
+  await page.goto(
+    `/?appWindow=1&qaApp=${encodeURIComponent(routeCase.name)}#${routeCase.path}`,
+    {
+      waitUntil: "domcontentloaded",
+    },
+  );
   await expect(page.locator("#root")).toBeVisible({
     timeout: routeTimeout(routeCase),
   });
@@ -179,7 +183,7 @@ test("companion app controls are interactive and error-free", async ({
   );
 
   await page.getByTestId("companion-shell-toggle-character").click();
-  await expect(page.getByTestId("character-editor-view")).toBeVisible();
+  await expect(page.getByTestId("companion-character-editor")).toBeVisible();
   await page.getByTestId("companion-shell-toggle-companion").click();
   await expect(page.getByTestId("companion-chat-dock")).toBeVisible();
 

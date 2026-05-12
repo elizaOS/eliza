@@ -1104,6 +1104,7 @@ export function CharacterEditor({
       }
       data-no-camera-zoom={sceneOverlay ? "true" : undefined}
       data-no-camera-drag={sceneOverlay ? "true" : undefined}
+      data-testid={sceneOverlay ? "companion-character-editor" : undefined}
       onWheel={sceneOverlay ? (e) => e.stopPropagation() : undefined}
     >
       <div
