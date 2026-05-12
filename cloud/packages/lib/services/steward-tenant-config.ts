@@ -71,38 +71,11 @@ export async function resolveStewardTenantCredentials(
   };
 }
 
-/**
- * Ensures a Steward tenant exists for the given organization and returns its
- * credentials. Idempotent: if the org already has a `steward_tenant_id`, returns
- * it without touching Steward. Otherwise calls Steward's platform tenant-create
- * API with the configured platform key, persists the assignment on the org,
- * and returns the new credentials.
- *
- * Handles two transient states cleanly:
- *  - 409 from Steward (tenant exists in Steward but not linked in our DB,
- *    typically from a previous half-completed provision): re-link without an
- *    API key. Caller will pick up `STEWARD_TENANT_API_KEY` from env if needed.
- *  - Steward not configured (`STEWARD_PLATFORM_KEYS` empty): falls back to the
- *    default tenant rather than throwing, so non-production environments still
- *    boot. Sandbox creation in such environments will hit the existing
- *    `tenant not found` path against the default tenant, which is the same
- *    behavior as before.
- *
- * This is the auto-provisioning seam called from server-context flows
- * (e.g. `docker-sandbox-provider.createSandbox`) where we don't have a user
- * request to drive the explicit `POST /api/v1/steward/tenants` route. The route
- * handler delegates to this helper to keep both code paths in sync.
- */
 export interface EnsureStewardTenantOptions {
-  /** Display name forwarded to Steward when creating the tenant. Defaults to
-   *  `ElizaCloud — <org.slug>`. */
   tenantName?: string;
 }
 
 export interface EnsureStewardTenantResult extends StewardTenantCredentials {
-  /** `true` when a new tenant was provisioned on Steward in this call;
-   *  `false` when an existing tenant was returned (either persisted on the org
-   *  or already present on Steward and re-linked from a 409). */
   isNew: boolean;
 }
 

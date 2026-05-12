@@ -53,7 +53,7 @@ app.post("/", async (c) => {
       result.isNew ? 201 : 200,
     );
   } catch (error) {
-    if (error instanceof Error && /not found$/.test(error.message)) {
+    if (error instanceof Error && /^Organization .+ not found$/.test(error.message)) {
       return c.json({ error: "Organization not found" }, 404);
     }
     if (
