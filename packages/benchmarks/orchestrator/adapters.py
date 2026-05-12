@@ -58,7 +58,12 @@ IGNORED_BENCHMARK_DIRS = {
 # tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
-AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
+    # CompactBench currently exercises elizaOS conversation-compactor
+    # implementations through a Python bridge. Hermes/OpenClaw rows would be
+    # misleading labels unless explicit per-agent compactor methods are added.
+    "compactbench": ("eliza",),
+}
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:

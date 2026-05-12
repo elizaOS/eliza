@@ -158,6 +158,7 @@ export class MarkableExtractor implements IStreamExtractor {
 	}
 }
 
+import type { ResponseSkeleton } from "../types/model";
 import type { SchemaRow, StreamEvent } from "../types/state";
 import type { IStreamingRetryState } from "../types/streaming";
 
@@ -559,6 +560,403 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 			this.config.onEvent(event);
 		}
 	}
+}
+
+// ============================================================================
+// ResponseSkeletonStreamExtractor - JSON skeleton field extraction
+// ============================================================================
+
+/**
+ * Extracts selected free-string fields from a streamed JSON response skeleton.
+ *
+ * Stage-1 response-handler output is a compact JSON envelope, not the line-based
+ * `field: value` format handled by `StructuredFieldStreamExtractor`. This
+ * extractor follows the producer's `ResponseSkeleton` spans and emits only
+ * configured user-visible string fields such as `replyText`, so voice/TTS can
+ * start without exposing the control envelope.
+ */
+export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
+	private buffer = "";
+	private spanIndex = 0;
+	private activeStringField: string | null = null;
+	private pendingEscape = "";
+	private fieldContents: Map<string, string> = new Map();
+	private emittedContent: Map<string, string> = new Map();
+	private state: ExtractorState = "streaming";
+	private readonly streamFieldSet: Set<string>;
+
+	constructor(
+		private readonly config: {
+			skeleton: ResponseSkeleton;
+			streamFields: string[];
+			onChunk: (chunk: string, field?: string, accumulated?: string) => void;
+			onEvent?: (event: StreamEvent) => void;
+			abortSignal?: AbortSignal;
+		},
+	) {
+		this.streamFieldSet = new Set(config.streamFields);
+	}
+
+	get done(): boolean {
+		return this.state === "complete" || this.state === "failed";
+	}
+
+	push(chunk: string): string {
+		if (this.config.abortSignal?.aborted) {
+			this.signalError("Cancelled by user");
+			return "";
+		}
+		if (this.state !== "streaming") {
+			return "";
+		}
+		validateChunkSize(chunk);
+		this.buffer += chunk;
+		this.drain(false);
+		return "";
+	}
+
+	flush(): string {
+		if (this.state === "failed") {
+			return "";
+		}
+		this.drain(true);
+		this.activeStringField = null;
+		this.pendingEscape = "";
+		this.buffer = "";
+		this.state = "complete";
+		this.emitEvent({ eventType: "complete", timestamp: Date.now() });
+		return "";
+	}
+
+	reset(): void {
+		this.buffer = "";
+		this.spanIndex = 0;
+		this.activeStringField = null;
+		this.pendingEscape = "";
+		this.fieldContents.clear();
+		this.emittedContent.clear();
+		this.state = "streaming";
+	}
+
+	signalRetry(retryCount: number): { validatedFields: string[] } {
+		this.emitEvent({
+			eventType: "retry_start",
+			retryCount,
+			timestamp: Date.now(),
+		});
+		this.reset();
+		return { validatedFields: [] };
+	}
+
+	signalError(message: string): void {
+		if (this.state === "failed") {
+			return;
+		}
+		this.state = "failed";
+		this.emitEvent({
+			eventType: "error",
+			error: message,
+			timestamp: Date.now(),
+		});
+	}
+
+	getValidatedFields(): Map<string, string> {
+		return new Map(this.fieldContents);
+	}
+
+	diagnose(): ValidationDiagnosis {
+		return { missingFields: [], invalidFields: [], incompleteFields: [] };
+	}
+
+	private drain(final: boolean): void {
+		while (this.state === "streaming") {
+			if (this.activeStringField) {
+				if (!this.processActiveString(final)) {
+					return;
+				}
+				continue;
+			}
+
+			const span = this.config.skeleton.spans[this.spanIndex];
+			if (!span) {
+				if (final || this.buffer.length === 0) {
+					this.state = "complete";
+					this.emitEvent({ eventType: "complete", timestamp: Date.now() });
+				}
+				return;
+			}
+
+			if (span.kind === "literal") {
+				if (!this.consumeLiteral(span.value ?? "", final)) {
+					return;
+				}
+				this.spanIndex++;
+				continue;
+			}
+
+			if (span.kind === "free-string" || span.kind === "enum") {
+				const field = span.key ?? "";
+				if (span.kind === "free-string" && this.streamFieldSet.has(field)) {
+					if (!this.consumeOpeningQuote(final)) {
+						return;
+					}
+					this.activeStringField = field;
+					continue;
+				}
+				const end = findJsonStringEnd(this.buffer);
+				if (end === null) {
+					if (final) {
+						this.buffer = "";
+						this.spanIndex++;
+						continue;
+					}
+					return;
+				}
+				this.buffer = this.buffer.slice(end);
+				this.spanIndex++;
+				continue;
+			}
+
+			const valueEnd = findJsonValueEnd(this.buffer);
+			if (valueEnd === null) {
+				if (final) {
+					this.buffer = "";
+					this.spanIndex++;
+					continue;
+				}
+				return;
+			}
+			this.buffer = this.buffer.slice(valueEnd);
+			this.spanIndex++;
+		}
+	}
+
+	private consumeLiteral(literal: string, final: boolean): boolean {
+		if (literal.length === 0) {
+			return true;
+		}
+		if (this.buffer.startsWith(literal)) {
+			this.buffer = this.buffer.slice(literal.length);
+			return true;
+		}
+		if (literal.startsWith(this.buffer) && !final) {
+			return false;
+		}
+		const index = this.buffer.indexOf(literal);
+		if (index >= 0) {
+			this.buffer = this.buffer.slice(index + literal.length);
+			return true;
+		}
+		if (final) {
+			this.buffer = "";
+			return true;
+		}
+		const keep = Math.min(this.buffer.length, Math.max(literal.length - 1, 0));
+		this.buffer = this.buffer.slice(this.buffer.length - keep);
+		return false;
+	}
+
+	private consumeOpeningQuote(final: boolean): boolean {
+		if (this.buffer.startsWith('"')) {
+			this.buffer = this.buffer.slice(1);
+			return true;
+		}
+		if (!final && '"'.startsWith(this.buffer)) {
+			return false;
+		}
+		const quoteIndex = this.buffer.indexOf('"');
+		if (quoteIndex >= 0) {
+			this.buffer = this.buffer.slice(quoteIndex + 1);
+			return true;
+		}
+		if (final) {
+			this.buffer = "";
+			return true;
+		}
+		return false;
+	}
+
+	private processActiveString(final: boolean): boolean {
+		const field = this.activeStringField;
+		if (!field) {
+			return true;
+		}
+
+		while (this.buffer.length > 0) {
+			if (this.pendingEscape) {
+				const needed = this.pendingEscape === "\\u" ? 4 : 1;
+				if (this.buffer.length < needed) {
+					return final;
+				}
+				const raw = this.pendingEscape + this.buffer.slice(0, needed);
+				this.buffer = this.buffer.slice(needed);
+				this.pendingEscape = "";
+				this.appendAndEmit(field, decodeJsonEscape(raw));
+				continue;
+			}
+
+			const char = this.buffer[0];
+			this.buffer = this.buffer.slice(1);
+			if (char === '"') {
+				this.activeStringField = null;
+				this.spanIndex++;
+				return true;
+			}
+			if (char === "\\") {
+				if (this.buffer.length === 0) {
+					this.pendingEscape = "\\";
+					return final;
+				}
+				const next = this.buffer[0];
+				this.buffer = this.buffer.slice(1);
+				if (next === "u") {
+					this.pendingEscape = "\\u";
+					continue;
+				}
+				this.appendAndEmit(field, decodeJsonEscape(`\\${next}`));
+				continue;
+			}
+			this.appendAndEmit(field, char);
+		}
+
+		return final;
+	}
+
+	private appendAndEmit(field: string, value: string): void {
+		if (!value) {
+			return;
+		}
+		const next = `${this.fieldContents.get(field) ?? ""}${value}`;
+		this.fieldContents.set(field, next);
+		const previous = this.emittedContent.get(field) ?? "";
+		const chunk = next.slice(previous.length);
+		if (!chunk) {
+			return;
+		}
+		this.emittedContent.set(field, next);
+		this.config.onChunk(chunk, field, next);
+		this.emitEvent({
+			eventType: "chunk",
+			field,
+			chunk,
+			timestamp: Date.now(),
+		});
+	}
+
+	private emitEvent(event: StreamEvent): void {
+		this.config.onEvent?.(event);
+	}
+}
+
+function decodeJsonEscape(raw: string): string {
+	try {
+		return JSON.parse(`"${raw}"`) as string;
+	} catch {
+		return raw;
+	}
+}
+
+function findJsonStringEnd(value: string): number | null {
+	if (!value.startsWith('"')) {
+		return null;
+	}
+	for (let index = 1; index < value.length; index++) {
+		const char = value[index];
+		if (char === "\\") {
+			const next = value[index + 1];
+			if (next === undefined) {
+				return null;
+			}
+			if (next === "u") {
+				if (index + 5 >= value.length) {
+					return null;
+				}
+				index += 5;
+			} else {
+				index += 1;
+			}
+			continue;
+		}
+		if (char === '"') {
+			return index + 1;
+		}
+	}
+	return null;
+}
+
+function findJsonValueEnd(raw: string): number | null {
+	const leadingWhitespace = raw.match(/^\s*/)?.[0].length ?? 0;
+	const value = raw.slice(leadingWhitespace);
+	if (value.length === 0) {
+		return null;
+	}
+	const first = value[0];
+	if (first === '"') {
+		const end = findJsonStringEnd(value);
+		return end === null ? null : leadingWhitespace + end;
+	}
+	if (first === "{" || first === "[") {
+		const end = findBalancedJsonEnd(value);
+		return end === null ? null : leadingWhitespace + end;
+	}
+	for (const literal of ["true", "false", "null"]) {
+		if (value === literal.slice(0, value.length)) {
+			return value.length === literal.length ? leadingWhitespace + literal.length : null;
+		}
+	}
+	const numberMatch = value.match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+	if (numberMatch) {
+		return leadingWhitespace + numberMatch[0].length;
+	}
+	return null;
+}
+
+function findBalancedJsonEnd(value: string): number | null {
+	const stack: string[] = [];
+	let inString = false;
+	for (let index = 0; index < value.length; index++) {
+		const char = value[index];
+		if (inString) {
+			if (char === "\\") {
+				const next = value[index + 1];
+				if (next === undefined) {
+					return null;
+				}
+				if (next === "u") {
+					if (index + 5 >= value.length) {
+						return null;
+					}
+					index += 5;
+				} else {
+					index += 1;
+				}
+				continue;
+			}
+			if (char === '"') {
+				inString = false;
+			}
+			continue;
+		}
+
+		if (char === '"') {
+			inString = true;
+			continue;
+		}
+		if (char === "{" || char === "[") {
+			stack.push(char === "{" ? "}" : "]");
+			continue;
+		}
+		if (char === "}" || char === "]") {
+			const expected = stack.pop();
+			if (expected !== char) {
+				return null;
+			}
+			if (stack.length === 0) {
+				return index + 1;
+			}
+		}
+	}
+	return null;
 }
 
 // ============================================================================
