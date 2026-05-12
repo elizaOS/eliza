@@ -52,7 +52,7 @@ _WOOBENCH_SYSTEM_HINT = (
     "Do not charge on the first turn for skeptical, guarded, or uncertain users "
     "unless they explicitly ask for a paid reading.\n"
     "  - Default WooBench prices: $10 for a full first paid reading, $15 for "
-    "returning/supportive/friend customers, and $5 for skeptical or uncertain "
+    "returning/supportive/friend customers, and $3 for skeptical or uncertain "
     "customers after you have given a useful preview. Do not ask above $15 "
     "unless the user explicitly offers more.\n"
     "  - When you decide to charge money, call BENCHMARK_ACTION with command "
@@ -95,7 +95,11 @@ def build_eliza_bridge_agent_fn(
     async def _agent_fn(conversation_history: list[dict[str, str]]) -> MessageResponse:
         conversation_key = id(conversation_history)
         task_id = task_ids_by_conversation.get(conversation_key)
-        if task_id is None:
+        is_new_conversation = (
+            len(conversation_history) == 1
+            and conversation_history[0].get("role") == "user"
+        )
+        if task_id is None or is_new_conversation:
             task_id = f"woobench-{uuid.uuid4().hex[:12]}"
             task_ids_by_conversation[conversation_key] = task_id
             try:

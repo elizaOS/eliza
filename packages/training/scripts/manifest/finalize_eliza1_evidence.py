@@ -491,7 +491,8 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     # 7. Write back. Keep the existing structure; refresh the derived bits.
     evidence["schemaVersion"] = 1
     evidence["tier"] = tier
-    evidence.setdefault("repoId", f"elizaos/eliza-1-{tier}")
+    evidence["repoId"] = "elizaos/eliza-1"
+    evidence["repoPath"] = f"bundles/{tier}"
     evidence["generatedAt"] = _utc_now()
     evidence["final"] = final
     evidence["releaseState"] = release_state
@@ -528,7 +529,8 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
         t: f"evidence/platform/{t}.json" for t in required_targets
     }
     hf = dict(evidence.get("hf") or {})
-    hf.setdefault("repoId", f"elizaos/eliza-1-{tier}")
+    hf["repoId"] = "elizaos/eliza-1"
+    hf.setdefault("pathPrefix", f"bundles/{tier}")
     hf["status"] = "ready" if publish_eligible else f"blocked-{release_state}"
     evidence["hf"] = hf
 

@@ -18,6 +18,7 @@ import {
 } from "./ram-budget";
 import type {
   CatalogModel,
+  CatalogQuantizationVariant,
   HardwareFitLevel,
   HardwareProbe,
   InstalledModel,
@@ -29,9 +30,8 @@ import type {
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
 // The canonical tier-id set is `ELIZA_1_TIER_IDS` in
-// `packages/shared/src/local-inference/catalog.ts`. The legacy Qwen3-only
-// `0_6b` / `1_7b` tiers were dropped in favor of the Qwen3.5-based
-// `0_8b` / `2b` line; ladders below reference the canonical tiers only.
+// `packages/shared/src/local-inference/catalog.ts`. Ladders below reference
+// that canonical Qwen3.5-based tier line only.
 const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
@@ -51,6 +51,7 @@ export interface RecommendedModelSelection {
   slot: TextGenerationSlot;
   platformClass: RecommendationPlatformClass;
   model: CatalogModel | null;
+  quantization: CatalogQuantizationVariant | null;
   fit: HardwareFitLevel | null;
   reason: string;
   alternatives: CatalogModel[];
@@ -221,6 +222,39 @@ function canFit(
   return assessCatalogModelFit(hardware, model, catalog, options) !== "wontfit";
 }
 
+export function selectBestQuantizationVariant(
+  model: CatalogModel,
+  hardware: HardwareProbe,
+): CatalogQuantizationVariant | null {
+  const matrix = model.quantization;
+  if (!matrix) return null;
+  const published = matrix.variants.filter(
+    (variant) => variant.status === "published",
+  );
+  if (published.length === 0) return null;
+  const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
+  const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
+  const maxFootprintRatio = isMobile ? 0.65 : 0.7;
+  const rank: Record<CatalogQuantizationVariant["id"], number> = {
+    q8_0: 3,
+    q6_k: 2,
+    q4_k_m: 1,
+  };
+  const fitting = published
+    .filter(
+      (variant) =>
+        variant.minRamGb <= memGb &&
+        variant.sizeGb <= memGb * maxFootprintRatio,
+    )
+    .sort((left, right) => rank[right.id] - rank[left.id]);
+  return (
+    fitting[0] ??
+    published.find((variant) => variant.id === matrix.defaultVariantId) ??
+    published[0] ??
+    null
+  );
+}
+
 /**
  * True when every kernel listed in `model.runtime.optimizations.requiresKernel`
  * is advertised as `true` in the binary's CAPABILITIES.json kernels map.
@@ -388,6 +422,9 @@ export function selectRecommendedModelForSlot(
           kernelRequirementsSatisfied(model, binaryKernels),
         );
   const model = alternatives[0] ?? null;
+  const quantization = model
+    ? selectBestQuantizationVariant(model, hardware)
+    : null;
   const fit = model
     ? assessCatalogModelFit(
         hardware,
@@ -400,9 +437,12 @@ export function selectRecommendedModelForSlot(
     slot,
     platformClass,
     model,
+    quantization,
     fit,
     reason: model
-      ? `${platformClass} ${slot} ladder selected ${model.id}`
+      ? `${platformClass} ${slot} ladder selected ${model.id}${
+          quantization ? ` (${quantization.id})` : ""
+        }`
       : `${platformClass} ${slot} ladder has no fitting catalog model`,
     alternatives,
   };

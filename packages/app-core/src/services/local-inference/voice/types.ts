@@ -313,6 +313,12 @@ export interface PhraseChunkerConfig {
   chunkOn?: "punctuation" | "phoneme-stream";
   /** Phonemes per chunk in `phoneme-stream` mode. Default 8. */
   phonemesPerChunk?: number;
+  /**
+   * Maximum milliseconds a phrase may sit in the chunker before the
+   * scheduler force-flushes it even without punctuation / phoneme / cap
+   * boundaries. Default 200 ms. Set to 0 to disable.
+   */
+  maxAccumulationMs?: number;
 }
 
 export interface VerifierStreamEvent {

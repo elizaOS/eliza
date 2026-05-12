@@ -54,6 +54,12 @@ export interface BillingContext {
   model: string;
   provider?: string;
   billingSource?: PricingBillingSource;
+  requestId?: string | null;
+  providerRequestId?: string | null;
+  providerInstanceId?: string | null;
+  providerEndpoint?: string | null;
+  pricingSnapshotId?: string | null;
+  metadata?: Record<string, unknown>;
   description?: string;
   affiliateCode?: string | null;
 }
@@ -362,6 +368,17 @@ export async function recordUsageAnalytics(
 ): Promise<void> {
   const { type = "chat", isSuccessful = true, errorMessage, content, prompt } = options;
   const provider = context.provider ?? getProviderFromModel(context.model);
+  const reconciliationMetadata = {
+    ...(context.metadata ?? {}),
+    billingSource: context.billingSource ?? null,
+    providerRequestId: context.providerRequestId ?? null,
+    providerInstanceId: context.providerInstanceId ?? null,
+    providerEndpoint: context.providerEndpoint ?? null,
+    pricingSnapshotId: context.pricingSnapshotId ?? null,
+    baseInputCost: billing.baseInputCost,
+    baseOutputCost: billing.baseOutputCost,
+    baseTotalCost: billing.baseTotalCost,
+  };
 
   try {
     const usageRecord = await usageService.create({
@@ -376,14 +393,10 @@ export async function recordUsageAnalytics(
       input_cost: String(billing.inputCost),
       output_cost: String(billing.outputCost),
       markup: String(billing.platformMarkup),
+      request_id: context.requestId ?? context.providerRequestId ?? null,
       is_successful: isSuccessful,
       error_message: errorMessage,
-      metadata: {
-        billingSource: context.billingSource ?? null,
-        baseInputCost: billing.baseInputCost,
-        baseOutputCost: billing.baseOutputCost,
-        baseTotalCost: billing.baseTotalCost,
-      },
+      metadata: reconciliationMetadata,
     });
 
     // Create generation record if API key is used

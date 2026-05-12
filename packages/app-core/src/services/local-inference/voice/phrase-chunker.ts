@@ -1,25 +1,10 @@
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import type {
   AcceptedToken,
-  PhraseChunkerConfig as BasePhraseChunkerConfig,
   Phrase,
+  PhraseChunkerConfig,
   TextToken,
 } from "./types";
-
-/**
- * T3 — extension of the base `PhraseChunkerConfig` with the time-budget
- * field. Kept as a local extension because `types.ts` is owned by another
- * agent in this Phase 0 / Phase 1 sweep; the base config is structurally
- * a subset so any caller passing the narrower type still type-checks.
- */
-export interface PhraseChunkerConfig extends BasePhraseChunkerConfig {
-  /**
-   * T3 — maximum milliseconds a phrase may accumulate in the buffer
-   * before the chunker force-flushes, even without a punctuation /
-   * phoneme / max-cap boundary. Default 200 ms. Set to 0 to disable.
-   */
-  maxAccumulationMs?: number;
-}
 
 /**
  * Default phrase boundaries: end-of-clause punctuation plus the three

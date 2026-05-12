@@ -3954,7 +3954,10 @@ export async function startEliza(
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
-    const { startApiServer } = await import("../api/server.ts");
+    const serverModule = "../api/server.ts";
+    const { startApiServer } = await import(
+      /* @vite-ignore */ serverModule
+    );
     const apiPort = resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,

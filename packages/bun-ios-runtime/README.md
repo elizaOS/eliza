@@ -23,6 +23,11 @@ You can override the path with:
 ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK=/absolute/path/ElizaBunEngine.xcframework
 ```
 
+The app build validates an override first, then stages it into
+`packages/bun-ios-runtime/artifacts/` before CocoaPods runs. The Podspec only
+accepts vendored frameworks inside this package so full-Bun builds do not depend
+on an external absolute path at install/sign time.
+
 If full-engine mode is requested and the framework is missing, the iOS build
 fails before CocoaPods instead of falling back to the JSContext compatibility
 host.

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Target catalog tier: eliza-1-27b-256k (see packages/shared/src/local-inference/catalog.ts)
 # Distill the DFlash drafter for Eliza-1 tier 27b-256k (256k context variant).
 #
 # Same KD recipe as 27b — only the target's context window changes (the

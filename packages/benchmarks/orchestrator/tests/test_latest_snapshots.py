@@ -52,6 +52,7 @@ def _seed_run(
     score: float | None = 1.0,
     metrics: dict[str, Any] | None = None,
     token_metrics: dict[str, Any] | None = None,
+    extra_config: dict[str, Any] | None = None,
 ) -> None:
     insert_run_start(
         conn,
@@ -64,7 +65,7 @@ def _seed_run(
         agent=agent,
         provider="test",
         model="test-model",
-        extra_config={},
+        extra_config=extra_config or {},
         started_at=started_at,
         command=[],
         cwd=".",
@@ -203,7 +204,9 @@ def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     assert set(index["latest"]) == {"bfcl::eliza"}
 
 
-def test_rebuild_latest_quarantines_estimated_token_rows(tmp_path: Path) -> None:
+def test_rebuild_latest_publishes_estimated_token_rows_with_warning(
+    tmp_path: Path,
+) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)
     create_run_group(
@@ -237,11 +240,54 @@ def test_rebuild_latest_quarantines_estimated_token_rows(tmp_path: Path) -> None
 
     latest = tmp_path / "latest" / "action-calling__eliza.json"
     quarantine = tmp_path / "quarantine" / "action-calling__eliza.json"
-    assert not latest.exists()
-    payload = json.loads(quarantine.read_text(encoding="utf-8"))
-    assert payload["quarantine_reason"] == "estimated_token_metrics:prompt_chars_div_4"
+    assert latest.exists()
+    assert not quarantine.exists()
+    payload = json.loads(latest.read_text(encoding="utf-8"))
+    assert "estimated_token_metrics:prompt_chars_div_4" in payload["publication_warnings"]
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
-    assert index["latest"] == {}
+    assert set(index["latest"]) == {"action-calling::eliza"}
+
+
+def test_rebuild_latest_indexes_cross_harness_comparison_signature(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
+        _seed_run(
+            conn,
+            benchmark_id="woobench",
+            agent=agent,
+            run_id=f"run_{agent}",
+            started_at=f"2026-05-12T00:0{offset}:00+00:00",
+            extra_config={
+                "agent": agent,
+                "harness": agent,
+                "scenario": "skeptic_tarot_01",
+            },
+        )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    comparison_signatures = {
+        row["comparison_signature"] for row in index["latest"].values()
+    }
+    assert len(comparison_signatures) == 1
+    comparison_signature = next(iter(comparison_signatures))
+    assert set(index["latest_by_comparison_signature"]) == {
+        f"{comparison_signature}::woobench::eliza",
+        f"{comparison_signature}::woobench::hermes",
+        f"{comparison_signature}::woobench::openclaw",
+    }
 
 
 def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:

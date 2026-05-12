@@ -561,6 +561,7 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
     `.musl-execinfo-patched.${LLAMA_CPP_COMMIT}`,
   );
   if (fs.existsSync(sentinel)) {
+    patchAospMuslStartupEnvReads({ srcDir, log });
     return;
   }
 
@@ -576,6 +577,7 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
     log(
       `[compile-libllama] ggml/src/ggml.c already gates <execinfo.h> on __GLIBC__; no patch needed.`,
     );
+    patchAospMuslStartupEnvReads({ srcDir, log });
     return;
   }
 
@@ -620,6 +622,221 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
   log(
     `[compile-libllama] Patched ggml/src/ggml.c to gate <execinfo.h> on __GLIBC__ (musl compatibility).`,
   );
+  patchAospMuslStartupEnvReads({ srcDir, log });
+}
+
+export function patchAospMuslStartupEnvReads({ srcDir, log = console.log }) {
+  patchGgmlCppBacktraceInitForAospMusl({ srcDir, log });
+  patchCommonTtyColorEnvForAospMusl({ srcDir, log });
+  patchGgmlBackendPathEnvForAospMusl({ srcDir, log });
+  patchCommonArgEnvForAospMusl({ srcDir, log });
+}
+
+/**
+ * Disable ggml's optional C++ terminate-backtrace static initializer for the
+ * AOSP musl build. On Pixel 6a Android 16, the server executable crashes in
+ * musl's getenv("GGML_NO_BACKTRACE") while dependency constructors are still
+ * running under direct loader invocation (`ld-musl-aarch64.so.1.real
+ * ./llama-server --version`). The same libllama/libggml stack works when
+ * dlopen()ed after process start, so this is startup-constructor timing, not a
+ * quant/kernel failure. The initializer only installs a prettier terminate
+ * handler; disabling it for ELIZA_AOSP_MUSL keeps inference behavior intact.
+ */
+export function patchGgmlCppBacktraceInitForAospMusl({
+  srcDir,
+  log = console.log,
+}) {
+  const target = path.join(srcDir, "ggml", "src", "ggml.cpp");
+  if (!fs.existsSync(target)) {
+    throw new Error(
+      `[compile-libllama] Cannot patch ggml.cpp: file not found at ${target}. ` +
+        `Has the llama.cpp source layout changed in a newer pin?`,
+    );
+  }
+  const sentinel = path.join(
+    srcDir,
+    `.musl-ggml-cpp-backtrace-init-patched.${LLAMA_CPP_COMMIT}`,
+  );
+  if (fs.existsSync(sentinel)) return;
+
+  const original = fs.readFileSync(target, "utf8");
+  if (
+    original.includes("ELIZA_AOSP_MUSL") &&
+    original.includes("ggml_uncaught_exception_init")
+  ) {
+    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+    return;
+  }
+
+  const preImage =
+    "static bool ggml_uncaught_exception_init = []{\n" +
+    "    const char * GGML_NO_BACKTRACE = getenv(\"GGML_NO_BACKTRACE\");\n" +
+    "    if (GGML_NO_BACKTRACE) {\n" +
+    "        return false;\n" +
+    "    }\n" +
+    "    const auto prev{std::get_terminate()};\n" +
+    "    GGML_ASSERT(prev != ggml_uncaught_exception);\n" +
+    "    previous_terminate_handler = prev;\n" +
+    "    std::set_terminate(ggml_uncaught_exception);\n" +
+    "    return true;\n" +
+    "}();\n";
+  if (!original.includes(preImage)) {
+    throw new Error(
+      `[compile-libllama] Could not locate expected ggml.cpp backtrace ` +
+        `initializer in ${target}; update patchGgmlCppBacktraceInitForAospMusl() ` +
+        `before bumping LLAMA_CPP_COMMIT.`,
+    );
+  }
+
+  const postImage =
+    "#if defined(ELIZA_AOSP_MUSL)\n" +
+    "static bool ggml_uncaught_exception_init = false;\n" +
+    "#else\n" +
+    preImage +
+    "#endif\n";
+  fs.writeFileSync(target, original.replace(preImage, postImage), "utf8");
+  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+  log(
+    `[compile-libllama] Patched ggml/src/ggml.cpp to disable the optional ` +
+      `terminate-backtrace initializer for the AOSP musl server build.`,
+  );
+}
+
+export function patchCommonTtyColorEnvForAospMusl({
+  srcDir,
+  log = console.log,
+}) {
+  const target = path.join(srcDir, "common", "common.cpp");
+  if (!fs.existsSync(target)) {
+    throw new Error(`[compile-libllama] Cannot patch common.cpp at ${target}.`);
+  }
+  const sentinel = path.join(
+    srcDir,
+    `.musl-common-tty-env-patched.${LLAMA_CPP_COMMIT}`,
+  );
+  if (fs.existsSync(sentinel)) return;
+
+  const original = fs.readFileSync(target, "utf8");
+  if (
+    original.includes("ELIZA_AOSP_MUSL") &&
+    original.includes("tty_can_use_colors")
+  ) {
+    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+    return;
+  }
+  const preImage = "bool tty_can_use_colors() {\n";
+  const postImage =
+    "bool tty_can_use_colors() {\n" +
+    "#if defined(ELIZA_AOSP_MUSL)\n" +
+    "    return false;\n" +
+    "#endif\n";
+  if (!original.includes(preImage)) {
+    throw new Error(
+      `[compile-libllama] Could not locate tty_can_use_colors() in ${target}.`,
+    );
+  }
+  fs.writeFileSync(target, original.replace(preImage, postImage), "utf8");
+  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+  log(
+    `[compile-libllama] Patched common/common.cpp to skip NO_COLOR/TERM ` +
+      `startup env reads for the AOSP musl server build.`,
+  );
+}
+
+export function patchGgmlBackendPathEnvForAospMusl({
+  srcDir,
+  log = console.log,
+}) {
+  const target = path.join(srcDir, "ggml", "src", "ggml-backend-reg.cpp");
+  if (!fs.existsSync(target)) {
+    throw new Error(
+      `[compile-libllama] Cannot patch ggml-backend-reg.cpp at ${target}.`,
+    );
+  }
+  const sentinel = path.join(
+    srcDir,
+    `.musl-backend-path-env-patched.${LLAMA_CPP_COMMIT}`,
+  );
+  if (fs.existsSync(sentinel)) return;
+
+  const original = fs.readFileSync(target, "utf8");
+  if (
+    original.includes("ELIZA_AOSP_MUSL") &&
+    original.includes("GGML_BACKEND_PATH")
+  ) {
+    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+    return;
+  }
+  const preImage =
+    "    // check the environment variable GGML_BACKEND_PATH to load an out-of-tree backend\n" +
+    "    const char * backend_path = std::getenv(\"GGML_BACKEND_PATH\");\n" +
+    "    if (backend_path) {\n" +
+    "        ggml_backend_load(backend_path);\n" +
+    "    }\n";
+  const postImage =
+    "#if !defined(ELIZA_AOSP_MUSL)\n" +
+    preImage +
+    "#endif\n";
+  if (!original.includes(preImage)) {
+    throw new Error(
+      `[compile-libllama] Could not locate GGML_BACKEND_PATH block in ${target}.`,
+    );
+  }
+  fs.writeFileSync(target, original.replace(preImage, postImage), "utf8");
+  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+  log(
+    `[compile-libllama] Patched ggml-backend-reg.cpp to skip external backend ` +
+      `startup env reads for the AOSP musl server build.`,
+  );
+}
+
+export function patchCommonArgEnvForAospMusl({ srcDir, log = console.log }) {
+  const target = path.join(srcDir, "common", "arg.cpp");
+  if (!fs.existsSync(target)) {
+    throw new Error(`[compile-libllama] Cannot patch common/arg.cpp at ${target}.`);
+  }
+  const sentinel = path.join(
+    srcDir,
+    `.musl-common-arg-env-patched.${LLAMA_CPP_COMMIT}`,
+  );
+  if (fs.existsSync(sentinel)) return;
+
+  const original = fs.readFileSync(target, "utf8");
+  if (
+    original.includes("ELIZA_AOSP_MUSL") &&
+    original.includes("common_arg::get_value_from_env")
+  ) {
+    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+    return;
+  }
+  const getPre = "bool common_arg::get_value_from_env(std::string & output) const {\n";
+  const getPost =
+    getPre +
+    "#if defined(ELIZA_AOSP_MUSL)\n" +
+    "    (void) output;\n" +
+    "    return false;\n" +
+    "#endif\n";
+  const hasPre = "bool common_arg::has_value_from_env() const {\n";
+  const hasPost =
+    hasPre +
+    "#if defined(ELIZA_AOSP_MUSL)\n" +
+    "    return false;\n" +
+    "#endif\n";
+  if (!original.includes(getPre) || !original.includes(hasPre)) {
+    throw new Error(
+      `[compile-libllama] Could not locate common_arg env helpers in ${target}.`,
+    );
+  }
+  fs.writeFileSync(
+    target,
+    original.replace(getPre, getPost).replace(hasPre, hasPost),
+    "utf8",
+  );
+  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+  log(
+    `[compile-libllama] Patched common/arg.cpp to skip LLAMA_ARG_* startup ` +
+      `env reads for the AOSP musl server build.`,
+  );
 }
 
 /**
@@ -651,6 +868,8 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
   fs.mkdirSync(driverDir, { recursive: true });
   const ccPath = path.join(driverDir, "zig-cc");
   const cxxPath = path.join(driverDir, "zig-cxx");
+  const arPath = path.join(driverDir, "zig-ar");
+  const ranlibPath = path.join(driverDir, "zig-ranlib");
   // Quote zigBin so a path with spaces still works. The driver runs under
   // /bin/sh which is POSIX-portable across Linux, macOS, Alpine.
   const ccBody =
@@ -663,11 +882,80 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
     "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
     "# Do not edit — regenerated on every build.\n" +
     `exec "${zigBin}" c++ --target=${target.zigTarget} "$@"\n`;
+  const arBody =
+    "#!/bin/sh\n" +
+    "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
+    "# Do not edit — regenerated on every build.\n" +
+    `exec "${zigBin}" ar "$@"\n`;
+  const ranlibBody =
+    "#!/bin/sh\n" +
+    "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
+    "# Do not edit — regenerated on every build.\n" +
+    `exec "${zigBin}" ranlib "$@"\n`;
   fs.writeFileSync(ccPath, ccBody, "utf8");
   fs.writeFileSync(cxxPath, cxxBody, "utf8");
+  fs.writeFileSync(arPath, arBody, "utf8");
+  fs.writeFileSync(ranlibPath, ranlibBody, "utf8");
   fs.chmodSync(ccPath, 0o755);
   fs.chmodSync(cxxPath, 0o755);
-  return { ccPath, cxxPath };
+  fs.chmodSync(arPath, 0o755);
+  fs.chmodSync(ranlibPath, 0o755);
+  return { ccPath, cxxPath, arPath, ranlibPath };
+}
+
+function resetStaleCmakeToolchainIfNeeded({ buildDir, arPath, ranlibPath, log }) {
+  const cmakeFilesDir = path.join(buildDir, "CMakeFiles");
+  const cacheFile = path.join(buildDir, "CMakeCache.txt");
+  if (fs.existsSync(cacheFile)) {
+    const cache = fs.readFileSync(cacheFile, "utf8");
+    if (
+      cache.includes("LLAMA_OPENSSL:BOOL=ON") ||
+      cache.includes("OPENSSL_SSL_LIBRARY:FILEPATH=") ||
+      cache.includes("OPENSSL_CRYPTO_LIBRARY:FILEPATH=")
+    ) {
+      log(
+        `[compile-libllama] Clearing stale CMake cache in ${buildDir} ` +
+          `(host OpenSSL was discovered for a musl cross-build).`,
+      );
+      fs.rmSync(buildDir, { recursive: true, force: true });
+      fs.mkdirSync(buildDir, { recursive: true });
+      return;
+    }
+  }
+  if (!fs.existsSync(cmakeFilesDir)) return;
+
+  const staleNeedles = [
+    'set(CMAKE_AR "/usr/bin/ar")',
+    'set(CMAKE_RANLIB "/usr/bin/ranlib")',
+  ];
+  const expectedNeedles = [
+    `set(CMAKE_AR "${arPath}")`,
+    `set(CMAKE_RANLIB "${ranlibPath}")`,
+  ];
+
+  for (const entry of fs.readdirSync(cmakeFilesDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const compilerFiles = [
+      path.join(cmakeFilesDir, entry.name, "CMakeCCompiler.cmake"),
+      path.join(cmakeFilesDir, entry.name, "CMakeCXXCompiler.cmake"),
+    ];
+    for (const compilerFile of compilerFiles) {
+      if (!fs.existsSync(compilerFile)) continue;
+      const contents = fs.readFileSync(compilerFile, "utf8");
+      if (
+        staleNeedles.some((needle) => contents.includes(needle)) ||
+        !expectedNeedles.every((needle) => contents.includes(needle))
+      ) {
+        log(
+          `[compile-libllama] Clearing stale CMake toolchain cache in ${buildDir} ` +
+            `(archive tool was not the Zig cross archiver).`,
+        );
+        fs.rmSync(buildDir, { recursive: true, force: true });
+        fs.mkdirSync(buildDir, { recursive: true });
+        return;
+      }
+    }
+  }
 }
 
 /**
@@ -708,7 +996,12 @@ export function buildLibllamaForAbi({
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
   // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own.
-  const { ccPath, cxxPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
+  const { ccPath, cxxPath, arPath, ranlibPath } = ensureZigDrivers({
+    cacheDir,
+    abi,
+    zigBin,
+  });
+  resetStaleCmakeToolchainIfNeeded({ buildDir, arPath, ranlibPath, log });
 
   log(
     `[compile-libllama] Configuring llama.cpp for ${abi} (${target.zigTarget}) in ${buildDir}`,
@@ -732,11 +1025,26 @@ export function buildLibllamaForAbi({
       // throughput win.
       "-DLLAMA_BUILD_SERVER=ON",
       "-DLLAMA_CURL=OFF",
+      // The Android/AOSP server is loopback-only and must not link against
+      // host Homebrew/macOS OpenSSL archives during the Linux-musl cross-build.
+      "-DLLAMA_OPENSSL=OFF",
+      "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE",
       `-DCMAKE_C_COMPILER=${ccPath}`,
       `-DCMAKE_CXX_COMPILER=${cxxPath}`,
+      `-DCMAKE_AR=${arPath}`,
+      `-DCMAKE_RANLIB=${ranlibPath}`,
+      `-DCMAKE_C_COMPILER_AR=${arPath}`,
+      `-DCMAKE_CXX_COMPILER_AR=${arPath}`,
+      `-DCMAKE_C_COMPILER_RANLIB=${ranlibPath}`,
+      `-DCMAKE_CXX_COMPILER_RANLIB=${ranlibPath}`,
       // No launcher — the driver scripts do all the wrapping themselves.
       "-DCMAKE_C_COMPILER_LAUNCHER=",
       "-DCMAKE_CXX_COMPILER_LAUNCHER=",
+      // Compile-time marker for the source patch above. This only changes the
+      // Android musl build; host Metal/CUDA/Vulkan builds keep the upstream
+      // terminate-backtrace initializer.
+      "-DCMAKE_C_FLAGS=-DELIZA_AOSP_MUSL=1",
+      "-DCMAKE_CXX_FLAGS=-DELIZA_AOSP_MUSL=1",
       "-DCMAKE_SYSTEM_NAME=Linux",
       `-DCMAKE_SYSTEM_PROCESSOR=${target.cmakeProcessor}`,
       // Disable host-arch-specific ISA so the resulting .so loads on any
@@ -753,6 +1061,13 @@ export function buildLibllamaForAbi({
       "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
       "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
       "-DCMAKE_INSTALL_RPATH=",
+      // CMake 3.27+ can ask clang-compatible linkers to emit Makefile link
+      // dependency files via `-Xlinker --dependency-file=...`. Zig 0.16.0's
+      // musl cross linker segfaults on that option for shared objects, while
+      // the exact same link succeeds without the depfile. Disable linker-side
+      // depfiles for this cross-build; object depfiles still cover source
+      // rebuilds and target-level dependencies still order the ggml family.
+      "-DCMAKE_LINK_DEPENDS_USE_LINKER=FALSE",
     ],
     {},
   );
@@ -776,15 +1091,15 @@ export function buildLibllamaForAbi({
     {},
   );
 
-  // libllama.so and the ggml shared-library family are all transitive build
-  // products of the `llama` target. b4500's NEEDED chain (verified via
-  // `readelf -d`):
+  // libllama.so, the ggml shared-library family, and server support libs are
+  // transitive build products of the `llama` / `llama-server` targets.
+  // b4500's NEEDED chain (verified via `readelf -d`):
   //   libllama.so -> libggml.so, libggml-cpu.so, libggml-base.so, libc.so
   //   libggml.so   -> libggml-cpu.so, libggml-base.so, libc.so
-  // We co-copy every libggml*.so we find under the build tree alongside
-  // libllama.so so the dynamic linker resolves the whole graph from the
-  // per-ABI asset dir at runtime (LD_LIBRARY_PATH set by
-  // ElizaAgentService.java).
+  // The current server also NEEDED-links libmtmd.so.0. Co-copy the
+  // unversioned support libs we find under the build tree so the SONAME
+  // aliases below can satisfy all runtime dynamic-linker edges from the
+  // per-ABI asset dir (LD_LIBRARY_PATH set by ElizaAgentService.java).
   const builtLlama = locateBuiltLib(buildDir, "libllama.so");
   if (!builtLlama) {
     throw new Error(
@@ -799,11 +1114,12 @@ export function buildLibllamaForAbi({
         `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
     );
   }
+  const builtServerSupportLibs = locateBuiltSupportLibs(buildDir, ["libmtmd"]);
 
   fs.mkdirSync(abiAssetDir, { recursive: true });
   const llamaOut = path.join(abiAssetDir, "libllama.so");
   fs.copyFileSync(builtLlama, llamaOut);
-  const ggmlOuts = builtGgmlLibs.map((src) => {
+  const supportOuts = [...builtGgmlLibs, ...builtServerSupportLibs].map((src) => {
     const dst = path.join(abiAssetDir, path.basename(src));
     fs.copyFileSync(src, dst);
     return dst;
@@ -821,7 +1137,7 @@ export function buildLibllamaForAbi({
   // identical). APK build dedupes identical files automatically; even
   // without dedup this is well under the per-ABI .so budget.
   const sonameAliases = [];
-  for (const out of [llamaOut, ...ggmlOuts]) {
+  for (const out of [llamaOut, ...supportOuts]) {
     const soname = readSoname(out);
     if (soname && soname !== path.basename(out)) {
       const aliasPath = path.join(abiAssetDir, soname);
@@ -858,7 +1174,7 @@ export function buildLibllamaForAbi({
     );
   }
 
-  const stripTargets = [...ggmlOuts, llamaOut, ...sonameAliases];
+  const stripTargets = [...supportOuts, llamaOut, ...sonameAliases];
   if (llamaServerOut) stripTargets.push(llamaServerOut);
   for (const out of stripTargets) {
     const sizeBefore = fs.statSync(out).size;
@@ -879,7 +1195,7 @@ export function buildLibllamaForAbi({
   }
   // Re-chmod llama-server after strip — system strip may reset perms.
   if (llamaServerOut) fs.chmodSync(llamaServerOut, 0o755);
-  return { llama: llamaOut, ggml: ggmlOuts, llamaServer: llamaServerOut };
+  return { llama: llamaOut, ggml: supportOuts, llamaServer: llamaServerOut };
 }
 
 /**
@@ -1017,6 +1333,10 @@ export function buildShimForAbi({
  * to ship the SONAME chain into the APK.
  */
 function locateBuiltGgmlLibs(buildDir) {
+  return locateBuiltSupportLibs(buildDir, ["libggml"]);
+}
+
+function locateBuiltSupportLibs(buildDir, prefixes) {
   const found = new Set();
   const stack = [buildDir];
   while (stack.length > 0) {
@@ -1044,7 +1364,7 @@ function locateBuiltGgmlLibs(buildDir) {
         // want the unversioned entry the dynamic linker resolves at
         // NEEDED-time.
         (entry.isFile() || entry.isSymbolicLink()) &&
-        entry.name.startsWith("libggml") &&
+        prefixes.some((prefix) => entry.name.startsWith(prefix)) &&
         entry.name.endsWith(".so")
       ) {
         found.add(path.join(dir, entry.name));

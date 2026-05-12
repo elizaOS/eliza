@@ -254,19 +254,18 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def score_by_system(self) -> dict[str, float]:
-        """Average normalized score grouped by divination system."""
+        """Revenue-focused WooScore grouped by divination system."""
         from .scenarios import SCENARIOS_BY_ID
-        system_scores: dict[str, list[float]] = {}
+        grouped: dict[str, list[ScenarioResult]] = {}
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
             system_name = scenario.system.value
-            normalized = (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
-            system_scores.setdefault(system_name, []).append(normalized)
+            grouped.setdefault(system_name, []).append(r)
         return {
-            system: statistics.mean(scores)
-            for system, scores in system_scores.items()
+            system: WooBenchScorer(results).overall_woo_score()
+            for system, results in grouped.items()
         }
 
     # ------------------------------------------------------------------
@@ -274,19 +273,18 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def score_by_archetype(self) -> dict[str, float]:
-        """Average normalized score grouped by persona archetype."""
+        """Revenue-focused WooScore grouped by persona archetype."""
         from .scenarios import SCENARIOS_BY_ID
-        arch_scores: dict[str, list[float]] = {}
+        grouped: dict[str, list[ScenarioResult]] = {}
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
             arch = scenario.persona.archetype.value
-            normalized = (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
-            arch_scores.setdefault(arch, []).append(normalized)
+            grouped.setdefault(arch, []).append(r)
         return {
-            arch: statistics.mean(scores)
-            for arch, scores in arch_scores.items()
+            arch: WooBenchScorer(results).overall_woo_score()
+            for arch, results in grouped.items()
         }
 
     # ------------------------------------------------------------------

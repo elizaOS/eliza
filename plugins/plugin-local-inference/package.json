@@ -34,10 +34,12 @@
 	},
 	"dependencies": {
 		"@elizaos/core": "2.0.0-beta.1",
+		"@elizaos/shared": "2.0.0-beta.1",
 		"@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "2.0.0-beta.1",
+		"@elizaos/shared": "2.0.0-beta.1",
 		"@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1"
 	},
 	"devDependencies": {

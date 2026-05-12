@@ -435,13 +435,6 @@ function loadDatasetSamples(datasetPath: string): {
         return remapped;
       }
     }
-    const fallbackAudio = process.env.VOICEBENCH_AUDIO_PATH;
-    if (fallbackAudio) {
-      const fallback = resolve(fallbackAudio);
-      if (existsSync(fallback)) {
-        return fallback;
-      }
-    }
     throw new Error(`Dataset audio file not found: ${direct}`);
   };
   const samples: DatasetSample[] = rawSamples.map((sample, idx) => {
@@ -653,8 +646,11 @@ async function main(): Promise<void> {
   const output = parseArg("output");
   const timestamp = parseArg("timestamp") ?? `${Date.now()}`;
 
-  if (!audioPath) {
-    throw new Error("--audio is required");
+  if (!audioPath && !datasetPath) {
+    throw new Error("--audio is required when --dataset is not provided");
+  }
+  if (audioPath && !existsSync(resolve(audioPath))) {
+    throw new Error(`--audio file not found: ${resolve(audioPath)}`);
   }
   if (!output) {
     throw new Error("--output is required");
@@ -683,7 +679,7 @@ async function main(): Promise<void> {
   const datasetName = dataset ? dataset.datasetName : "single-audio";
   const samples: DatasetSample[] = dataset
     ? dataset.samples
-    : [{ id: "single-audio", audioPath, expectedText: null }];
+    : [{ id: "single-audio", audioPath: audioPath!, expectedText: null }];
 
   const sttProvider =
     profile === "elevenlabs"
@@ -793,16 +789,26 @@ async function main(): Promise<void> {
           const responseTtftMs =
             (firstResponseAt ?? responseEnd) - responseStart;
           const speechToResponseStartMs = transcriptionMs + responseTtftMs;
-          const rawResponseText =
+          const rawResponseText = (
             callbackText ||
             responseResult.responseContent?.text ||
-            "Voicebench fallback response.";
+            ""
+          ).trim();
+          if (!rawResponseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} produced no agent response text`,
+            );
+          }
           const boundedResponse = enforceResponseBudget(
             rawResponseText,
             responseMaxChars,
           );
-          const responseText =
-            boundedResponse.text || "Voicebench fallback response.";
+          const responseText = boundedResponse.text.trim();
+          if (!responseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} response became empty after budget enforcement`,
+            );
+          }
 
           const segmented = splitFirstSentence(responseText);
           const firstSentence = segmented.firstSentence || responseText;

@@ -111,6 +111,20 @@ Examples:
         help="Random seed for reproducibility",
     )
     run_parser.add_argument(
+        "--starter-inventory",
+        action="store_true",
+        help=(
+            "Seed initial machine stock and subtract its cost from cash. "
+            "Use for short revenue-focused smoke runs."
+        ),
+    )
+    run_parser.add_argument(
+        "--max-actions-per-day",
+        type=int,
+        default=10,
+        help="Maximum agent actions per simulated day (default: 10)",
+    )
+    run_parser.add_argument(
         "--model",
         type=str,
         default="gpt-oss-120b",
@@ -215,6 +229,8 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         max_days_per_run=args.days,
         initial_cash=Decimal(str(args.initial_cash)),
         random_seed=args.seed,
+        starter_inventory=bool(args.starter_inventory),
+        max_actions_per_day=max(1, int(args.max_actions_per_day)),
         model_name=args.model,
         temperature=args.temperature,
         output_dir=args.output_dir,
@@ -415,6 +431,12 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
         initial_cash=_to_decimal(config_raw.get("initial_cash", "500.00"))
         if isinstance(config_raw, dict)
         else Decimal("500.00"),
+        starter_inventory=bool(config_raw.get("starter_inventory", False))
+        if isinstance(config_raw, dict)
+        else False,
+        max_actions_per_day=_to_int(config_raw.get("max_actions_per_day", 10))
+        if isinstance(config_raw, dict)
+        else 10,
         model_name=str(config_raw.get("model_name", "unknown"))
         if isinstance(config_raw, dict)
         else "unknown",

@@ -140,7 +140,7 @@ export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
  * Resolve the embedding source for an activated Eliza-1 bundle.
  *
  * @param bundleRoot   Bundle directory on disk.
- * @param tierId       The Eliza-1 tier id (`eliza-1-0_8b`, …).
+ * @param tierId       The Eliza-1 tier id (`eliza-1-0_8b`, ...).
  * @param textModelPath Absolute path of the activated text GGUF (needed for
  *                      the `pooled-text` case).
  *

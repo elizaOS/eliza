@@ -78,7 +78,7 @@ Backbones (do not change without explicit human approval):
 - **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
   Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
   artifact. This is a deliberate public-upstream exception; do not
-  fabricate embedding source repos with a Qwen3.5 prefix. On `0_6b` the embedding
+  fabricate embedding source repos with a Qwen3.5 prefix. On `0_8b` the embedding
   model IS the text backbone with `--pooling last` — no duplicate weights.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
@@ -120,8 +120,8 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice small | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `1_7b`         | modern phones                  | 1.7B    | OmniVoice small | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
+| `0_8b`       | low-RAM phones, CPU fallback   | 0.8B  | OmniVoice small | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `2b`         | modern phones                  | 2B    | OmniVoice small | no     | 32k      | yes    | TurboQuant Q4 + QJL K-cache     |
 | `4b`         | flagship phones, small desktops| 4B    | OmniVoice small | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
 | `9b`         | laptops, 24GB phones, 48GB Mac | ~9B   | OmniVoice large | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
 | `27b`        | 96GB+ Mac, high-VRAM desktop   | 27B   | OmniVoice large | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
@@ -350,12 +350,12 @@ catalogs drift from it — generate them.
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
     "text": { "base": "qwen3.5-9b", "license": "..." },
-    "voice": { "base": "omnivoice-1.7b", "license": "..." },
+    "voice": { "base": "omnivoice-2b", "license": "..." },
     "drafter": { "base": "dflash-9b-drafter", "license": "..." }
   },
   "files": {
     "text":    [{ "path": "text/eliza-1-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
-    "voice":   [{ "path": "tts/omnivoice-1.7b.gguf",          "sha256": "..." }],
+    "voice":   [{ "path": "tts/omnivoice-2b.gguf",          "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
     "vision":  [{ "path": "vision/mmproj-9b.gguf",    "sha256": "..." }],
     "dflash":  [{ "path": "dflash/drafter-9b.gguf",   "sha256": "..." }],

@@ -25,6 +25,8 @@ ELIZA_BUN_ENGINE_EXPORT int32_t eliza_bun_engine_start(
 
 ELIZA_BUN_ENGINE_EXPORT int32_t eliza_bun_engine_stop(void);
 
+ELIZA_BUN_ENGINE_EXPORT int32_t eliza_bun_engine_is_running(void);
+
 ELIZA_BUN_ENGINE_EXPORT char *eliza_bun_engine_call(
     const char *method,
     const char *payload_json);

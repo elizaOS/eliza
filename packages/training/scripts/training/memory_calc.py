@@ -188,7 +188,7 @@ def _kv_k_bytes_per_elem(quant: KvKQuant) -> float:
     `head_dim=128` (Qwen3 / Llama-3 / Qwen3.5 small models) the realized
     ratio is `head_dim*2 / (proj_dim/8 + 2) = 256/34 = 7.53×`, validated by
     the QJL agent's calibration probe on real K activations from
-    Qwen/Qwen3-0.6B. We use 0.272 bytes/elem (= 2/7.53) here so the
+    Qwen/Qwen3.5-0.8B. We use 0.272 bytes/elem (= 2/7.53) here so the
     published budgets reflect reality, not the marketing number.
     """
     return {KvKQuant.BF16: 2.0, KvKQuant.QJL_1BIT: 2.0 / 7.53}[quant]

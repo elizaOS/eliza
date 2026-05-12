@@ -72,10 +72,10 @@ def test_qwen3_asr_and_embedding_remain_upstream_exceptions() -> None:
     asr = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.asr")
     embedding = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.embedding")
 
-    assert "Qwen3-ASR-0.6B-GGUF" in asr.upstream_repo
+    assert "Qwen3-ASR-0.8B-GGUF" in asr.upstream_repo
     assert "Qwen3 upstream exception" in asr.render()
     assert "Qwen3.5-ASR" not in asr.render()
-    assert "Qwen3-Embedding-0.6B-GGUF" in embedding.upstream_repo
+    assert "Qwen3-Embedding-0.8B-GGUF" in embedding.upstream_repo
     assert "Qwen3.5-Embedding" not in embedding.render()
 
 
@@ -104,7 +104,8 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     }))
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(json.dumps({
-        "schemaVersion": 1, "tier": tier, "repoId": f"elizaos/eliza-1-{tier}",
+        "schemaVersion": 1, "tier": tier, "repoId": "elizaos/eliza-1",
+        "repoPath": f"bundles/{tier}",
         "releaseState": "weights-staged",
         "final": {"weights": True, "hashes": False, "evals": False, "licenses": False,
                   "kernelDispatchReports": False, "platformEvidence": False, "sizeFirstRepoIds": False},

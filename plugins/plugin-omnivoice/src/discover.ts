@@ -47,9 +47,7 @@ export interface OmnivoiceDiscoveryOptions {
 function resolveStateDir(stateDir: string | undefined): string {
   if (stateDir && stateDir.length > 0) return stateDir;
   const env =
-    process.env.MILADY_STATE_DIR ??
-    process.env.ELIZA_STATE_DIR ??
-    undefined;
+    process.env.MILADY_STATE_DIR ?? process.env.ELIZA_STATE_DIR ?? undefined;
   if (env && env.length > 0) return env;
   return join(homedir(), ".milady");
 }

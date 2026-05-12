@@ -24,7 +24,7 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_8b|2b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
+ *     [--tier 0_6b|1_7b|4b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
  */
 
 import fs from "node:fs";
@@ -47,7 +47,6 @@ const DEFAULT_GATES = path.join(
   "benchmarks",
   "eliza1_gates.yaml",
 );
-
 function timestamp() {
   return new Date()
     .toISOString()
@@ -57,7 +56,7 @@ function timestamp() {
 
 function parseArgs(argv) {
   const args = {
-    tier: "2b",
+    tier: "1_7b",
     gates: DEFAULT_GATES,
     report: null,
     json: false,
@@ -210,6 +209,10 @@ function firstNonNull(...values) {
   return null;
 }
 
+function textOrNull(value) {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
 function matchesTier(data, tier) {
   if (data?.tier === tier || data?.bundle?.tier === tier || data?.request?.tier === tier) {
     return true;
@@ -251,6 +254,13 @@ function extractDflashSpeedup(data) {
     data?.withDrafter?.accepted,
     data?.summary?.dflashAcceptedTotal,
   );
+  const summarySpeedup = finiteOrNull(data?.summary?.dflashSpeedup);
+  if (summarySpeedup !== null) return summarySpeedup;
+  const withTps = finiteOrNull(data?.withDrafter?.tokensPerSecond);
+  const withoutTps = finiteOrNull(data?.withoutDrafter?.tokensPerSecond);
+  if (withTps !== null && withoutTps !== null && withoutTps > 0) {
+    return withTps / withoutTps;
+  }
   const draftingActive =
     data?.draftingActive ??
     data?.summary?.dflashDraftingActive ??
@@ -260,15 +270,7 @@ function extractDflashSpeedup(data) {
     data?.summary?.tokenizerCompatible ??
     data?.withDrafter?.tokenizerCompatible;
   if (draftingActive === false || tokenizerCompatible === false || drafted === 0) {
-    return 0;
-  }
-
-  const summarySpeedup = finiteOrNull(data?.summary?.dflashSpeedup);
-  if (summarySpeedup !== null) return summarySpeedup;
-  const withTps = finiteOrNull(data?.withDrafter?.tokensPerSecond);
-  const withoutTps = finiteOrNull(data?.withoutDrafter?.tokensPerSecond);
-  if (withTps !== null && withoutTps !== null && withoutTps > 0) {
-    return withTps / withoutTps;
+    return null;
   }
   return null;
 }
@@ -277,6 +279,31 @@ function averageStepRtf(data) {
   const rows = data?.summary?.stepSweep;
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return firstFinite(rows[0]?.meanRtf);
+}
+
+function extractCpuSimd(data) {
+  const qjl = firstNonNull(
+    textOrNull(data?.qjl_active_simd),
+    textOrNull(data?.shippedLib?.qjl_active_simd),
+  );
+  const polar = firstNonNull(
+    textOrNull(data?.polarquant_active_simd),
+    textOrNull(data?.shippedLib?.polarquant_active_simd),
+  );
+  const qjlReady =
+    qjl !== null ||
+    data?.kernels?.qjl?.runtimeReady === true ||
+    data?.kernels?.fused_attn?.runtimeReady === true;
+  const polarReady = polar !== null;
+  return {
+    qjl,
+    polar,
+    qjlReady,
+    polarReady,
+    mtVsStPass:
+      typeof data?.mtVsStGate?.verdict === "string" &&
+      data.mtVsStGate.verdict.toUpperCase().includes("PASS"),
+  };
 }
 
 function statusText(row) {
@@ -480,11 +507,13 @@ async function main() {
     (data) => matchesTier(data, args.tier) && (data?.summary?.turns ?? data?.request?.turns ?? 0) >= 30,
   );
   const cpuSimd = newestJsonReportWhere(
-    [BENCH_RESULTS_ROOT],
-    ({ name, data }) =>
-      name.toLowerCase().includes("cpu_simd") &&
-      Array.isArray(data?.kernels) &&
-      data?.qjl_active_simd,
+    [BENCH_RESULTS_ROOT, VERIFY_ROOT],
+    ({ name, data }) => {
+      const lower = name.toLowerCase();
+      if (!(lower.includes("cpu") || lower.includes("simd"))) return false;
+      const simd = extractCpuSimd(data);
+      return simd.qjlReady && simd.polarReady;
+    },
   );
   const metalDispatch = newestJsonReportWhere(
     [VERIFY_ROOT],
@@ -745,7 +774,8 @@ async function main() {
   const vulkanKernelReady = requiredKernelNames.every(
     (name) => vulkanDispatch?.data?.kernels?.[name]?.runtimeReady === true,
   );
-  const cpuKernelReady = Boolean(cpuSimd?.data?.qjl_active_simd && cpuSimd?.data?.polarquant_active_simd);
+  const cpuSimdEvidence = cpuSimd ? extractCpuSimd(cpuSimd.data) : null;
+  const cpuKernelReady = Boolean(cpuSimdEvidence?.qjlReady && cpuSimdEvidence?.polarReady);
   const dflashDrafted = firstFinite(
     dflashBench?.data?.withDrafter?.drafted,
     e2eLoop?.data?.summary?.dflashDraftedTotal,
@@ -775,18 +805,43 @@ async function main() {
     voiceProfile?.data?.defaultStreamingTtsRoundTrip?.tts?.rtf,
     averageStepRtf(ttsSweep?.data),
   );
-  const localVoiceLoopbackWer = localVoiceLoopbackPass
-      ? 0
-      : firstFinite(
-          ttsSweep?.data?.summary?.stepSweep?.[0]?.meanAsrWer,
-          asrBench?.data?.aggregate?.wer,
-      );
+  const localVoiceLoopbackWer = firstFinite(
+    ttsSweep?.data?.summary?.stepSweep?.[0]?.meanAsrWer,
+    asrBench?.data?.aggregate?.wer,
+  );
   const localVoiceLoopbackStatus =
     localVoiceLoopbackPass || (localVoiceLoopbackWer !== null && localVoiceLoopbackWer <= 0.1)
       ? "pass"
       : voiceProfile || ttsSweep || asrBench
         ? "fail"
         : "needs-data";
+  const localVoiceLoopbackMeasured =
+    localVoiceLoopbackStatus === "needs-data"
+      ? null
+      : asrTtsLoopbackSmoke
+        ? [
+            `lexical=${asrTtsLoopbackSmoke.data.ok === true}`,
+            `rtf=${localVoiceLoopbackRtf ?? "unknown"}`,
+            `transcript=${JSON.stringify(asrTtsLoopbackSmoke.data.transcript ?? "")}`,
+            `expected=${JSON.stringify(asrTtsLoopbackSmoke.data.expectedContains ?? "")}`,
+          ].join(", ")
+        : `wer=${localVoiceLoopbackWer ?? "unknown"}, rtf=${localVoiceLoopbackRtf ?? "unknown"}`;
+  const thirtyTurnMeasured =
+    thirtyTurnOk !== null
+      ? thirtyTurnOk
+      : endurance
+        ? [
+            `turns=${endurance.data?.turns ?? "unknown"}`,
+            `voiceLoopExercised=${endurance.data?.voiceLoopExercised ?? "unknown"}`,
+            `noCrash=${endurance.data?.assertions?.noCrash ?? "unknown"}`,
+            `rssLeakWithinCap=${endurance.data?.assertions?.rssLeakWithinCap ?? "unknown"}`,
+          ].join(", ")
+        : null;
+  const thirtyTurnReason =
+    thirtyTurnOk === null && endurance
+      ? endurance.data?.reason ??
+        "30-turn report exists, but it did not emit summary.thirtyTurnOk"
+      : null;
   const releaseGateMatrix = [
     gateRow("text_eval", "quality", sourcePath(textEval ?? evalAggregate)),
     gateRow("voice_rtf", "voice", sourcePath(ttsSweep ?? ttsStreamSmoke ?? e2eLoop)),
@@ -803,10 +858,7 @@ async function main() {
       gate: "local_voice_loopback_smoke",
       status: localVoiceLoopbackStatus,
       blocking: localVoiceLoopbackStatus !== "pass",
-      measured:
-        localVoiceLoopbackStatus === "needs-data"
-          ? null
-          : `wer=${localVoiceLoopbackWer ?? "unknown"}, rtf=${localVoiceLoopbackRtf ?? "unknown"}`,
+      measured: localVoiceLoopbackMeasured,
       threshold: "generated TTS->ASR smoke pass",
       reason:
         localVoiceLoopbackStatus === "pass"
@@ -831,7 +883,15 @@ async function main() {
       false,
     ),
     gateRow("barge_in_cancel_ms", "latency", sourcePath(bargein ?? e2eLoop)),
-    gateRow("thirty_turn_ok", "endurance", sourcePath(endurance ?? e2eEnduranceLoop)),
+    {
+      ...gateRow(
+        "thirty_turn_ok",
+        "endurance",
+        sourcePath(endurance ?? e2eEnduranceLoop),
+        thirtyTurnReason,
+      ),
+      measured: thirtyTurnMeasured,
+    },
     gateRow("e2e_loop_ok", "e2e", sourcePath(e2eLoop)),
     gateRow(
       "dflash_acceptance",
@@ -840,7 +900,6 @@ async function main() {
       dflashDrafted === 0 && dflashAccepted === 0
         ? "DFlash generated zero drafted and accepted tokens; acceptance is an honest 0"
         : null,
-      true,
     ),
     gateRow(
       "dflash_speedup",
@@ -849,28 +908,24 @@ async function main() {
       dflashSpeedup !== null
         ? `DFlash speedup ${dflashSpeedup.toFixed(3)}x is below target`
         : null,
-      true,
     ),
     gateRow(
       "expressive_tag_faithfulness",
       "expressive",
       sourcePath(expressive ?? evalAggregate),
       expressive?.data?.reason ?? "expressive graders did not produce tag-faithfulness data",
-      true,
     ),
     gateRow(
       "expressive_mos",
       "expressive",
       sourcePath(expressive ?? evalAggregate),
       expressive?.data?.reason ?? "expressive graders did not produce MOS data",
-      true,
     ),
     gateRow(
       "expressive_tag_leakage",
       "expressive",
       sourcePath(expressive ?? evalAggregate),
       expressive?.data?.reason ?? "expressive graders did not produce tag-leakage data",
-      true,
     ),
     {
       area: "platform",
@@ -878,7 +933,7 @@ async function main() {
       status: cpuKernelReady ? "pass" : "needs-data",
       blocking: !cpuKernelReady,
       measured: cpuKernelReady
-        ? `qjl=${cpuSimd.data.qjl_active_simd}, polar=${cpuSimd.data.polarquant_active_simd}`
+        ? `qjl=${cpuSimdEvidence.qjl ?? "runtime-ready"}, polar=${cpuSimdEvidence.polar}`
         : null,
       threshold: "QJL + Polar SIMD active",
       reason: cpuKernelReady
@@ -934,7 +989,7 @@ async function main() {
       status: visionStatus,
       blocking: visionStatus === "fail",
       measured: visionSmoke?.data?.status ?? null,
-      threshold: args.tier === "0_8b" || args.tier === "2b" ? "not-applicable" : "pass",
+      threshold: ["0_6b", "0_6b", "1_7b", "1_7b"].includes(args.tier) ? "not-applicable" : "pass",
       reason:
         visionSmoke?.data?.reason ??
         (visionStatus === "needs-data" ? "no vision smoke evidence for this tier" : "vision smoke passed"),

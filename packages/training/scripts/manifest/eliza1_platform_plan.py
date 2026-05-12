@@ -385,10 +385,10 @@ def release_status_blockers(
                 if not isinstance(hf, dict):
                     tier_blockers.append("`evidence/release.json`: hf object missing")
                 else:
-                    if hf.get("repoId") != f"elizaos/eliza-1-{tier}":
+                    if hf.get("repoId") != "elizaos/eliza-1":
                         tier_blockers.append(
                             "`evidence/release.json`: hf.repoId is not "
-                            f"`elizaos/eliza-1-{tier}`"
+                            "`elizaos/eliza-1`"
                         )
                     if hf.get("status") != "uploaded":
                         tier_blockers.append(
@@ -401,10 +401,10 @@ def release_status_blockers(
                         "final Hugging Face commit/url/uploaded paths are not proven"
                     )
                 else:
-                    if upload.get("repoId") != f"elizaos/eliza-1-{tier}":
+                    if upload.get("repoId") != "elizaos/eliza-1":
                         tier_blockers.append(
                             "`evidence/release.json`: hf.uploadEvidence.repoId is not "
-                            f"`elizaos/eliza-1-{tier}`"
+                            "`elizaos/eliza-1`"
                         )
                     for key in ("commit", "url"):
                         if not isinstance(upload.get(key), str) or not upload.get(key):

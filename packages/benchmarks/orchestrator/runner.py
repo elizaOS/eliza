@@ -101,6 +101,53 @@ def _signature_for(adapter: BenchmarkAdapter, request: RunRequest) -> str:
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
 
 
+def _comparison_signature_for(adapter: BenchmarkAdapter, request: RunRequest) -> str:
+    """Hash the benchmark/model/config shape without the harness label.
+
+    ``signature`` intentionally includes ``request.agent`` so resume/idempotency
+    stays per-harness. For apples-to-apples reporting we also need a stable
+    grouping key that lets the latest index line up Eliza, Hermes, and OpenClaw
+    runs using the same benchmark configuration.
+    """
+    return _comparison_signature_from_parts(
+        benchmark_id=adapter.id,
+        benchmark_directory=adapter.directory,
+        agent=request.agent,
+        provider=request.provider,
+        model=request.model,
+        extra_config=request.extra_config,
+    )
+
+
+def _comparison_signature_from_parts(
+    *,
+    benchmark_id: str,
+    benchmark_directory: str,
+    agent: str,
+    provider: str,
+    model: str,
+    extra_config: dict[str, Any] | None,
+) -> str:
+    normalized_extra = dict(extra_config or {})
+    injected_agent = str(normalized_extra.get("agent") or "").strip().lower()
+    injected_harness = str(normalized_extra.get("harness") or "").strip().lower()
+    comparable_agents = set(LATEST_SNAPSHOT_AGENTS) | set(SYNTHETIC_HARNESSES)
+    if injected_agent in comparable_agents:
+        normalized_extra.pop("agent", None)
+    if injected_harness in comparable_agents:
+        normalized_extra.pop("harness", None)
+    if agent.strip().lower() in CALIBRATION_HARNESSES:
+        normalized_extra["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    payload = {
+        "benchmark_id": benchmark_id,
+        "benchmark_directory": benchmark_directory,
+        "provider": provider,
+        "model": model,
+        "extra_config": normalized_extra,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
+
+
 def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunRequest:
     request_extra = dict(request.extra_config)
     per_benchmark = request_extra.pop("per_benchmark", None)
@@ -480,34 +527,48 @@ def _publication_quarantine_reason(
 ) -> str | None:
     """Return ``None`` if the result is publishable; otherwise a reason string.
 
-    Synthetic / calibration harnesses bypass the gate (they're routed to a
-    separate ``baselines/`` dir). Failed/incompatible runs are always
-    publishable so consumers can see them in ``latest/``.
+    ``latest/`` is the source of truth for the most recent real benchmark
+    result. Telemetry and sample-size weaknesses are recorded as publication
+    warnings, not quarantine reasons, because hiding successful rows makes the
+    matrix look missing and breaks idempotent tracking.
     """
+    del status, token_metrics, metrics
     if _is_synthetic_agent(agent):
         return None
+    return None
+
+
+def _publication_warnings(
+    *,
+    status: str,
+    token_metrics: dict[str, Any] | None,
+    metrics: dict[str, Any],
+) -> list[str]:
     if status != "succeeded":
-        return None
-    if metrics.get("interrupted") is True:
-        return "interrupted_run"
+        return []
+    warnings: list[str] = []
     tokens = token_metrics or {}
     estimate_source = tokens.get("token_estimate_source")
     if estimate_source is not None or any(str(key).startswith("estimated_") for key in tokens):
         source = str(estimate_source or "unknown")
-        return f"estimated_token_metrics:{source}"
+        warnings.append(f"estimated_token_metrics:{source}")
     total_tokens = tokens.get("total_tokens")
     llm_calls = tokens.get("llm_call_count")
     if total_tokens in (None, 0):
-        return "telemetry_missing_total_tokens"
-    if llm_calls in (None, 0, 1):
-        return f"insufficient_llm_calls:{llm_calls!r}"
+        warnings.append("telemetry_missing_total_tokens")
+    if llm_calls in (None, 0):
+        warnings.append(f"telemetry_missing_llm_calls:{llm_calls!r}")
+    elif llm_calls == 1:
+        warnings.append("single_llm_call")
     total_instances = metrics.get("total_instances")
     if isinstance(total_instances, (int, float)) and total_instances <= 1:
-        return f"insufficient_total_instances:{total_instances!r}"
+        warnings.append(f"insufficient_total_instances:{total_instances!r}")
     n_value = metrics.get("n")
     if isinstance(n_value, (int, float)) and n_value <= 1:
-        return f"insufficient_n:{n_value!r}"
-    return None
+        warnings.append(f"insufficient_n:{n_value!r}")
+    if metrics.get("interrupted") is True:
+        warnings.append("interrupted_run")
+    return warnings
 
 
 _QUARANTINE_TRACKER: dict[Path, list[tuple[str, str, str]]] = {}
@@ -541,13 +602,15 @@ def _write_latest_result_snapshot(
     artifacts: list[str] | None = None,
     error: str | None = None,
     reproducibility: dict[str, Any] | None = None,
+    signature: str | None = None,
+    comparison_signature: str | None = None,
 ) -> Path:
-    """Route a snapshot to ``latest/``, ``quarantine/``, or ``baselines/``.
+    """Route a snapshot to ``latest/`` or ``baselines/``.
 
-    Publication gate (real-agent runs only): ``total_tokens`` must be non-zero,
-    ``llm_call_count`` must be > 1, and ``total_instances``/``n`` must be > 1.
-    Synthetic baselines (``perfect_v1`` etc.) are always written to
-    ``baselines/`` and never intermingle with ``latest/``.
+    Real-agent rows always publish to ``latest/`` so that the newest result is
+    visible even when telemetry is incomplete. Synthetic baselines
+    (``perfect_v1`` etc.) are always written to ``baselines/`` and never
+    intermingle with ``latest/``.
     """
     agent = request.agent
     is_synthetic = _is_synthetic_agent(agent)
@@ -559,10 +622,13 @@ def _write_latest_result_snapshot(
     )
     if is_synthetic:
         target_dir = output_root / "baselines"
-    elif quarantine_reason is not None:
-        target_dir = output_root / "quarantine"
     else:
         target_dir = output_root / "latest"
+    publication_warnings = [] if is_synthetic else _publication_warnings(
+        status=status,
+        token_metrics=token_metrics,
+        metrics=metrics,
+    )
     target_dir.mkdir(parents=True, exist_ok=True)
     snapshot_path = target_dir / f"{_sanitize_name(adapter.id)}__{_sanitize_name(agent)}.json"
     payload: dict[str, Any] = {
@@ -571,6 +637,9 @@ def _write_latest_result_snapshot(
         "benchmark_directory": adapter.directory,
         "run_group_id": run_group_id,
         "run_id": run_id,
+        "signature": signature,
+        "comparison_signature": comparison_signature
+        or _comparison_signature_for(adapter, request),
         "status": status,
         "agent": agent,
         "provider": request.provider,
@@ -591,6 +660,8 @@ def _write_latest_result_snapshot(
     if quarantine_reason is not None:
         payload["quarantine_reason"] = quarantine_reason
         _record_quarantine(output_root, agent, adapter.id, quarantine_reason)
+    if publication_warnings:
+        payload["publication_warnings"] = publication_warnings
     if is_synthetic:
         payload["synthetic"] = True
     snapshot_path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
@@ -615,7 +686,12 @@ def _write_latest_result_snapshot(
     # Rebuild the index.json for the published-only set (``latest/``).
     latest_dir = output_root / "latest"
     latest_dir.mkdir(parents=True, exist_ok=True)
-    index: dict[str, Any] = {"updated_at": _utc_now(), "latest": {}}
+    index: dict[str, Any] = {
+        "updated_at": _utc_now(),
+        "latest": {},
+        "latest_by_signature": {},
+        "latest_by_comparison_signature": {},
+    }
     for path in sorted(latest_dir.glob("*.json")):
         if path.name == "index.json":
             continue
@@ -627,9 +703,21 @@ def _write_latest_result_snapshot(
         index["latest"][key] = {
             "path": str(path),
             "run_id": data.get("run_id"),
+            "run_group_id": data.get("run_group_id"),
+            "signature": data.get("signature"),
+            "comparison_signature": data.get("comparison_signature"),
+            "score": data.get("score"),
             "status": data.get("status"),
             "updated_at": data.get("updated_at"),
         }
+        signature_key = data.get("signature")
+        if signature_key:
+            index["latest_by_signature"][f"{signature_key}::{key}"] = index["latest"][key]
+        comparison_signature_key = data.get("comparison_signature")
+        if comparison_signature_key:
+            index["latest_by_comparison_signature"][
+                f"{comparison_signature_key}::{key}"
+            ] = index["latest"][key]
     (latest_dir / "index.json").write_text(json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
     return snapshot_path
 
@@ -677,6 +765,8 @@ def _rebuild_latest_result_snapshots(
         d.mkdir(parents=True, exist_ok=True)
 
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    latest_by_signature: dict[tuple[str, str, str], dict[str, Any]] = {}
+    latest_by_comparison_signature: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=100000):
         benchmark_id = str(row.get("benchmark_id") or "")
@@ -694,13 +784,36 @@ def _rebuild_latest_result_snapshots(
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
+        signature = str(row.get("signature") or "")
+        if signature:
+            signature_key = (signature, benchmark_id, agent)
+            if signature_key not in latest_by_signature:
+                latest_by_signature[signature_key] = row
+        comparison_signature = _comparison_signature_from_parts(
+            benchmark_id=benchmark_id,
+            benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
+            agent=agent,
+            provider=str(row.get("provider") or ""),
+            model=str(row.get("model") or ""),
+            extra_config=row.get("extra_config")
+            if isinstance(row.get("extra_config"), dict)
+            else {},
+        )
+        comparison_key = (comparison_signature, benchmark_id, agent)
+        if comparison_key not in latest_by_comparison_signature:
+            latest_by_comparison_signature[comparison_key] = (row, comparison_signature)
 
     expected_by_dir: dict[Path, set[Path]] = {
         latest_dir: set(),
         quarantine_dir: set(),
         baselines_dir: set(),
     }
-    index: dict[str, Any] = {"updated_at": _utc_now(), "latest": {}}
+    index: dict[str, Any] = {
+        "updated_at": _utc_now(),
+        "latest": {},
+        "latest_by_signature": {},
+        "latest_by_comparison_signature": {},
+    }
     for (benchmark_id, agent), row in sorted(latest_by_key.items()):
         metrics = row.get("metrics") or {}
         token_metrics = row.get("token_metrics") or {}
@@ -716,6 +829,11 @@ def _rebuild_latest_result_snapshots(
                 metrics=metrics,
             )
             target_dir = quarantine_dir if quarantine_reason is not None else latest_dir
+        publication_warnings = [] if is_synthetic else _publication_warnings(
+            status=str(row.get("status") or ""),
+            token_metrics=token_metrics,
+            metrics=metrics,
+        )
         snapshot_path = target_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
         expected_by_dir[target_dir].add(snapshot_path)
         payload: dict[str, Any] = {
@@ -724,6 +842,17 @@ def _rebuild_latest_result_snapshots(
             "benchmark_directory": row.get("benchmark_directory"),
             "run_group_id": row.get("run_group_id"),
             "run_id": row.get("run_id"),
+            "signature": row.get("signature"),
+            "comparison_signature": _comparison_signature_from_parts(
+                benchmark_id=benchmark_id,
+                benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
+                agent=agent,
+                provider=str(row.get("provider") or ""),
+                model=str(row.get("model") or ""),
+                extra_config=row.get("extra_config")
+                if isinstance(row.get("extra_config"), dict)
+                else {},
+            ),
             "status": row.get("status"),
             "agent": agent,
             "provider": row.get("provider"),
@@ -742,6 +871,8 @@ def _rebuild_latest_result_snapshots(
         }
         if quarantine_reason is not None:
             payload["quarantine_reason"] = quarantine_reason
+        if publication_warnings:
+            payload["publication_warnings"] = publication_warnings
         if is_synthetic:
             payload["synthetic"] = True
         snapshot_path.write_text(
@@ -752,9 +883,45 @@ def _rebuild_latest_result_snapshots(
             index["latest"][f"{benchmark_id}::{agent}"] = {
                 "path": str(snapshot_path),
                 "run_id": row.get("run_id"),
+                "run_group_id": row.get("run_group_id"),
+                "signature": row.get("signature"),
+                "comparison_signature": payload["comparison_signature"],
+                "score": row.get("score"),
                 "status": row.get("status"),
                 "updated_at": payload["updated_at"],
             }
+
+    for (signature, benchmark_id, agent), row in sorted(latest_by_signature.items()):
+        index["latest_by_signature"][f"{signature}::{benchmark_id}::{agent}"] = {
+            "run_id": row.get("run_id"),
+            "run_group_id": row.get("run_group_id"),
+            "benchmark_id": benchmark_id,
+            "agent": agent,
+            "signature": signature,
+            "score": row.get("score"),
+            "status": row.get("status"),
+            "updated_at": row.get("ended_at") or row.get("started_at"),
+            "result_json_path": row.get("result_json_path"),
+        }
+
+    for (comparison_signature, benchmark_id, agent), (
+        row,
+        _comparison_signature,
+    ) in sorted(latest_by_comparison_signature.items()):
+        index["latest_by_comparison_signature"][
+            f"{comparison_signature}::{benchmark_id}::{agent}"
+        ] = {
+            "run_id": row.get("run_id"),
+            "run_group_id": row.get("run_group_id"),
+            "benchmark_id": benchmark_id,
+            "agent": agent,
+            "signature": row.get("signature"),
+            "comparison_signature": comparison_signature,
+            "score": row.get("score"),
+            "status": row.get("status"),
+            "updated_at": row.get("ended_at") or row.get("started_at"),
+            "result_json_path": row.get("result_json_path"),
+        }
 
     # Prune stale files from each managed dir (only files we own).
     for d, expected in expected_by_dir.items():
@@ -1671,6 +1838,7 @@ def run_benchmarks(
             artifacts=artifacts,
             error=error,
             reproducibility=reproducibility,
+            signature=signature,
         )
 
     finish_run_group(conn, run_group_id=run_group_id, finished_at=_utc_now())

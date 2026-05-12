@@ -25,6 +25,15 @@ describe("searchHuggingFaceGguf", () => {
         },
       ],
       [
+        "Qwen/Qwen3.5-2B-GGUF",
+        {
+          id: "Qwen/Qwen3.5-2B-GGUF",
+          tags: ["gguf", "text-generation"],
+          siblings: [{ rfilename: "qwen3.5-2b-q4_k_m.gguf", size: 512 }],
+          pipeline_tag: "text-generation",
+        },
+      ],
+      [
         "org/legacy-1.7b-GGUF",
         {
           id: "org/legacy-1.7b-GGUF",
@@ -34,11 +43,11 @@ describe("searchHuggingFaceGguf", () => {
         },
       ],
       [
-        "org/tiny-0.6b-GGUF",
+        "org/tiny-0.8b-GGUF",
         {
-          id: "org/tiny-0.6b-GGUF",
+          id: "org/tiny-0.8b-GGUF",
           tags: ["gguf"],
-          siblings: [{ rfilename: "tiny-0.6b-q4_k_m.gguf", size: 512 }],
+          siblings: [{ rfilename: "tiny-0.8b-q4_k_m.gguf", size: 512 }],
           pipeline_tag: "text-generation",
         },
       ],
@@ -55,12 +64,13 @@ describe("searchHuggingFaceGguf", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const results = await searchHuggingFaceGguf("qwen", 3);
+    const results = await searchHuggingFaceGguf("qwen", 4);
 
     expect(results.map((result) => [result.params, result.bucket])).toEqual([
       ["0.8B", "small"],
-      ["1.7B", "small"],
-      ["0.6B", "small"],
+      ["2B", "small"],
+      ["2B", "small"],
+      ["0.8B", "small"],
     ]);
   });
 });

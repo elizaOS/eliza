@@ -1,12 +1,13 @@
-import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api/client";
 import { isApiError } from "../../api/client-types-core";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useApp } from "../../state/useApp";
 import { formatUptime } from "../../utils/format";
 import { IS_POPOUT } from "../stream/helpers";
+import { openStreamPopout } from "../stream/popout-url";
 import { StatusBar } from "../stream/StatusBar";
 
 export function StreamView({ inModal }: { inModal?: boolean } = {}) {
@@ -64,21 +65,7 @@ export function StreamView({ inModal }: { inModal?: boolean } = {}) {
         setStreamLive(result.live);
 
         if (result.live && !IS_POPOUT && !isElectrobun) {
-          const apiBase = getBootConfig().apiBase;
-          const base = window.location.origin || "";
-          const sep =
-            window.location.protocol === "file:" ||
-            window.location.protocol === "electrobun:"
-              ? "#"
-              : "";
-          const qs = apiBase
-            ? `popout&apiBase=${encodeURIComponent(apiBase)}`
-            : "popout";
-          window.open(
-            `${base}${sep}/?${qs}`,
-            "elizaos-stream",
-            "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
-          );
+          openStreamPopout(getBootConfig().apiBase);
         }
       }
     } catch (err) {

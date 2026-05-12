@@ -68,6 +68,25 @@ const ROUTE_MAX_DURATION = 800;
 // Minimum tokens to reserve for actual response generation when CoT is active
 const MIN_RESPONSE_TOKENS = 4096;
 
+function buildProviderReconciliationMetadata(
+  provider: string,
+  model: string,
+  streaming: boolean,
+  appId?: string | null,
+): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {
+    route: "chat_completions",
+    streaming,
+    appId: appId ?? null,
+  };
+  if (provider === "vast" || model.startsWith("vast/")) {
+    metadata.vastEndpointName = process.env.VAST_ENDPOINT_NAME ?? null;
+    metadata.vastTemplateId = process.env.VAST_TEMPLATE_ID ?? null;
+    metadata.vastWorkergroupId = process.env.VAST_WORKERGROUP_ID ?? null;
+  }
+  return metadata;
+}
+
 /**
  * Computes effective max_tokens when Anthropic CoT is enabled.
  * When thinking is active, max_tokens must be >= budgetTokens or Anthropic API rejects.
@@ -593,6 +612,7 @@ export async function handleChatCompletionsPOST(
   options: ChatCompletionsHandlerOptions = {},
 ) {
   const startTime = Date.now();
+  const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
   let settleReservation: ((actualCost: number) => Promise<void>) | null = null;
 
@@ -815,6 +835,8 @@ export async function handleChatCompletionsPOST(
         apiKey ? { id: apiKey.id } : null,
         appCreditsInfo,
         affiliateCode,
+        requestId,
+        appId,
         startTime,
         req.signal,
         routeTimeoutMs,
@@ -834,6 +856,8 @@ export async function handleChatCompletionsPOST(
         apiKey ? { id: apiKey.id } : null,
         appCreditsInfo,
         affiliateCode,
+        requestId,
+        appId,
         startTime,
         req.signal,
         routeTimeoutMs,
@@ -896,6 +920,8 @@ async function handleStreamingRequest(
   apiKey: { id: string } | null,
   appCreditsInfo: { appId: string; estimatedBaseCost: number; app: unknown } | undefined,
   affiliateCode: string | null,
+  requestId: string,
+  appId: string | null,
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
@@ -945,6 +971,8 @@ async function handleStreamingRequest(
             model,
             provider,
             billingSource,
+            requestId,
+            metadata: buildProviderReconciliationMetadata(provider, model, true, appId),
             affiliateCode,
           },
           usage,
@@ -971,6 +999,8 @@ async function handleStreamingRequest(
             model,
             provider,
             billingSource,
+            requestId,
+            metadata: buildProviderReconciliationMetadata(provider, model, true, appId),
           },
           billing,
           {
@@ -1186,6 +1216,8 @@ async function handleNonStreamingRequest(
   apiKey: { id: string } | null,
   appCreditsInfo: { appId: string; estimatedBaseCost: number; app: unknown } | undefined,
   affiliateCode: string | null,
+  requestId: string,
+  appId: string | null,
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
@@ -1239,6 +1271,8 @@ async function handleNonStreamingRequest(
         model,
         provider,
         billingSource,
+        requestId,
+        metadata: buildProviderReconciliationMetadata(provider, model, false, appId),
         affiliateCode,
       },
       result.usage,
@@ -1265,6 +1299,8 @@ async function handleNonStreamingRequest(
         model,
         provider,
         billingSource,
+        requestId,
+        metadata: buildProviderReconciliationMetadata(provider, model, false, appId),
       },
       billing,
       {

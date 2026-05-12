@@ -159,6 +159,7 @@ class VendingEnvironment:
         location: str = "Office Building Lobby",
         daily_base_fee: Decimal = Decimal("5.00"),
         slot_fee: Decimal = Decimal("0.50"),
+        starter_inventory: bool = False,
     ) -> None:
         """Initialize the vending environment."""
         self.economic_model = EconomicModel(seed)
@@ -178,6 +179,8 @@ class VendingEnvironment:
             columns=columns,
             location=location,
         )
+        if starter_inventory:
+            self._seed_starter_inventory()
 
     def _initialize_state(
         self,
@@ -226,6 +229,38 @@ class VendingEnvironment:
             daily_history=[],
             notes={},
             kv_store={},
+        )
+
+    def _seed_starter_inventory(self) -> None:
+        """Seed short revenue smokes with stocked slots at cost-neutral net worth."""
+        product_ids = [
+            "water",
+            "soda_cola",
+            "chips_regular",
+            "candy_bar",
+            "juice_orange",
+            "cookies",
+            "energy_drink",
+            "protein_bar",
+            "crackers",
+            "trail_mix",
+            "dried_fruit",
+            "nuts_almonds",
+        ]
+        total_cost = Decimal("0")
+        for slot, product_id in zip(self.state.machine.slots, product_ids, strict=False):
+            product = self.products.get(product_id)
+            if product is None:
+                continue
+            quantity = min(5, slot.max_capacity)
+            slot.product = product
+            slot.quantity = quantity
+            slot.price = product.suggested_retail
+            slot.last_restocked = self.state.current_date
+            total_cost += product.cost_price * quantity
+        self.state.cash_on_hand -= total_cost
+        self.state.notes["starter_inventory"] = (
+            "Seeded initial stock for short revenue smoke; cash reduced by cost."
         )
 
     def _initialize_products(self) -> dict[str, Product]:

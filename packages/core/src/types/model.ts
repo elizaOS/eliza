@@ -421,11 +421,18 @@ export interface GenerateTextParams {
 	repetitionPenalty?: number;
 	frequencyPenalty?: number;
 	presencePenalty?: number;
-	stream?: boolean;
-	responseFormat?: { type: "json_object" | "text" } | string;
-	stopSequences?: string[];
-	onStreamChunk?: StreamChunkCallback;
-	user?: string;
+		stream?: boolean;
+		responseFormat?: { type: "json_object" | "text" } | string;
+		stopSequences?: string[];
+		onStreamChunk?: StreamChunkCallback;
+		/**
+		 * Marks this generation as text that will be shown to the user, so local
+		 * voice mode may route the same stream to TTS. Internal structured calls
+		 * (planner, evaluators, tool repair, should-ignore JSON) must leave this
+		 * unset or set it to `"internal"`.
+		 */
+		voiceOutput?: "user-visible" | "internal";
+		user?: string;
 	/**
 	 * Provider-neutral system instruction for text-generation calls. When omitted,
 	 * runtime/provider layers may derive it from the leading system message or

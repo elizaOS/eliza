@@ -523,12 +523,51 @@ describe("LocalInferenceEngine voice surface", () => {
       },
     };
 
-    const result = await engine.generate({ prompt: "answer briefly" });
+    const result = await engine.generate({
+      prompt: "answer briefly",
+      voiceOutput: "user-visible",
+    });
 
     expect(result).toBe("Sure.");
     expect(backend.calls).toBe(1);
     expect(backend.texts).toEqual(["Sure."]);
     expect(audio).toHaveLength(1);
+    await engine.stopVoice();
+  });
+
+  it("does not speak internal non-streamed JSON while voice is armed", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate() {
+        return '{"shouldRespond":"IGNORE","replyText":""}';
+      },
+    };
+
+    const result = await engine.generate({ prompt: "should respond?" });
+
+    expect(result).toContain('"IGNORE"');
+    expect(backend.calls).toBe(0);
+    expect(audio).toHaveLength(0);
     await engine.stopVoice();
   });
 
@@ -595,6 +634,126 @@ describe("LocalInferenceEngine voice surface", () => {
     await engine.stopVoice();
   });
 
+  it("does not schedule structured replyText when shouldRespond resolves to IGNORE", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: {
+            onTextChunk?: (chunk: string) => Promise<void> | void;
+          }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        await args.onTextChunk?.(
+          '{"shouldRespond":"IGNORE","contexts":["general"],"intents":[],',
+        );
+        await args.onTextChunk?.('"replyText":"Do not say this.","facts":[]}');
+        return '{"shouldRespond":"IGNORE","contexts":["general"],"intents":[],"replyText":"Do not say this.","facts":[]}';
+      },
+    };
+
+    const result = await engine.generate({
+      prompt: "answer briefly",
+      streamStructured: true,
+      responseSkeleton: {
+        spans: [
+          { kind: "literal", value: '{"shouldRespond":' },
+          { kind: "free-string", key: "shouldRespond" },
+          { kind: "literal", value: ',"contexts":' },
+          { kind: "free-json", key: "contexts" },
+          { kind: "literal", value: ',"intents":' },
+          { kind: "free-json", key: "intents" },
+          { kind: "literal", value: ',"replyText":' },
+          { kind: "free-string", key: "replyText" },
+          { kind: "literal", value: ',"facts":' },
+          { kind: "free-json", key: "facts" },
+          { kind: "literal", value: "}" },
+        ],
+      },
+    });
+
+    expect(result).toContain('"shouldRespond":"IGNORE"');
+    expect(backend.calls).toBe(0);
+    expect(audio).toHaveLength(0);
+    await engine.stopVoice();
+  });
+
+  it("does not schedule structured replyText when shouldRespond resolves to STOP", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: {
+            onTextChunk?: (chunk: string) => Promise<void> | void;
+          }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        await args.onTextChunk?.(
+          '{"shouldRespond":"STOP","contexts":["general"],"intents":[],',
+        );
+        await args.onTextChunk?.('"replyText":"Do not say this.","facts":[]}');
+        return '{"shouldRespond":"STOP","contexts":["general"],"intents":[],"replyText":"Do not say this.","facts":[]}';
+      },
+    };
+
+    const result = await engine.generate({
+      prompt: "answer briefly",
+      streamStructured: true,
+      responseSkeleton: {
+        spans: [
+          { kind: "literal", value: '{"shouldRespond":' },
+          { kind: "free-string", key: "shouldRespond" },
+          { kind: "literal", value: ',"contexts":' },
+          { kind: "free-json", key: "contexts" },
+          { kind: "literal", value: ',"intents":' },
+          { kind: "free-json", key: "intents" },
+          { kind: "literal", value: ',"replyText":' },
+          { kind: "free-string", key: "replyText" },
+          { kind: "literal", value: ',"facts":' },
+          { kind: "free-json", key: "facts" },
+          { kind: "literal", value: "}" },
+        ],
+      },
+    });
+
+    expect(result).toContain('"shouldRespond":"STOP"');
+    expect(backend.calls).toBe(0);
+    expect(audio).toHaveLength(0);
+    await engine.stopVoice();
+  });
+
   it("uses verifier events for voice streaming without duplicating text chunks", async () => {
     writePresetBundle(bundleRoot);
     const backend = new CountingBackend();
@@ -642,7 +801,10 @@ describe("LocalInferenceEngine voice surface", () => {
       },
     };
 
-    const result = await engine.generate({ prompt: "answer briefly" });
+    const result = await engine.generate({
+      prompt: "answer briefly",
+      voiceOutput: "user-visible",
+    });
 
     expect(result).toBe("Sure.");
     expect(verifierEvents).toEqual(["accept:Sure", "accept:."]);
@@ -1027,7 +1189,7 @@ describe("LocalInferenceEngine voice surface", () => {
       },
     };
 
-    const gen = engine.generate({ prompt: "..." });
+    const gen = engine.generate({ prompt: "...", voiceOutput: "user-visible" });
     await new Promise((r) => setTimeout(r, 5));
     expect(observedSignal).toBeInstanceOf(AbortSignal);
     expect(observedSignal?.aborted).toBe(false);

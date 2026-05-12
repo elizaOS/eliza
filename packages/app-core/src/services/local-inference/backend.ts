@@ -120,6 +120,11 @@ export interface GenerateArgs extends StructuredGenerateParams {
    */
   onTextChunk?: (chunk: string) => void | Promise<void>;
   /**
+   * Whether this generation is user-visible text and therefore eligible for
+   * voice-mode TTS. Internal JSON / planner calls must not be spoken.
+   */
+  voiceOutput?: "user-visible" | "internal";
+  /**
    * Native verifier stream from speculative backends. Current llama-server
    * builds synthesize accept events from streamed text deltas; future DFlash
    * builds should emit exact accept/reject token ranges here so voice TTS

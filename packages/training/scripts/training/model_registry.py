@@ -90,16 +90,19 @@ class ModelEntry:
     we don't intend to publish."""
 
     eliza_repo_id: str = ""
-    """HuggingFace repo id under which the fine-tuned model is published,
-    e.g. ``elizaos/eliza-1-2b``. Quants live in sibling repos with suffixes
-    (``-gguf``, ``-fp8``, ``-polarquant``)."""
+    """HuggingFace model repo for Eliza-1 artifacts.
+
+    Runtime bundles publish into one repo, ``elizaos/eliza-1``, under
+    ``bundles/<tier>/``. Do not create per-tier or per-quant model repos; the
+    app catalog and optimizer matrix assume one canonical repo.
+    """
 
     abliteration_repo_id: str = ""
-    """HuggingFace repo id for the post-abliteration ("uncensored") release,
-    e.g. ``elizaos/eliza-1-2b-uncensored``. Empty means: do not publish an
-    abliterated variant for this entry. Lives under the same ``elizaos`` org
-    as the safety-tuned line, distinguished by the ``-uncensored`` suffix —
-    see ``scripts/training/abliterate.py``."""
+    """Optional repo id for post-abliteration variants.
+
+    Empty by default: Eliza-1 v1 intentionally ships one safety-tuned model
+    repo only.
+    """
 
     # ─── inference budgets (PolarQuant weights + TurboQuant 4-bit KV) ───
     infer_max_in: int = 131072
@@ -234,8 +237,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # tiers and applies its own KV quantization.
     "qwen3.5-0.8b": _entry(
         hf_id="Qwen/Qwen3.5-0.8B", short_name="qwen3.5-0.8b",
-        eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1-0_8b",
-        abliteration_repo_id="elizaos/eliza-1-0_8b-uncensored",
+        eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1",
         params_billion=0.8, tier=Tier.LOCAL,
         seq_len=4096, optimizer="apollo_mini", optimizer_rank=128,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=10.0,
@@ -253,8 +255,7 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-2b": _entry(
         hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
-        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
-        abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
+        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1",
         params_billion=2.0, tier=Tier.LOCAL,
         seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
@@ -268,8 +269,7 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.5-4b": _entry(
         hf_id="Qwen/Qwen3.5-4B", short_name="qwen3.5-4b",
-        eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1-4b",
-        abliteration_repo_id="elizaos/eliza-1-4b-uncensored",
+        eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1",
         params_billion=4.0, tier=Tier.LOCAL,
         seq_len=4096, optimizer="apollo_mini", optimizer_rank=256,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=24.0,
@@ -285,8 +285,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # Larger real tiers train through Vast/FSDP rather than the local path.
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
-        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
-        abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
+        eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1",
         params_billion=9.0, tier=Tier.WORKSTATION,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
         micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
@@ -299,8 +298,7 @@ REGISTRY: dict[str, ModelEntry] = {
     ),
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
-        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
-        abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
+        eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1",
         params_billion=27.0, tier=Tier.CLOUD,
         seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,

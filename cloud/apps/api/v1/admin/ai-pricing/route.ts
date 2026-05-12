@@ -66,7 +66,9 @@ const OverrideSchema = z.object({
 });
 
 const RefreshSchema = z.object({
-  sources: z.array(z.enum(["gateway", "openrouter", "fal", "elevenlabs", "suno"])).optional(),
+  sources: z
+    .array(z.enum(["gateway", "openrouter", "fal", "elevenlabs", "suno", "vast"]))
+    .optional(),
 });
 
 app.get("/", async (c) => {

@@ -96,6 +96,8 @@ export interface VoiceTurnControllerDeps {
    * `runtime.prewarmResponseHandler(roomId)`.)
    */
   prewarm?: (roomId: string) => void | Promise<void>;
+  /** Optional cached first-audio filler played immediately on speech-start. */
+  playFirstAudioFiller?: () => string | null;
   /**
    * Run a generation pass. The callee builds the message, calls the runtime
    * message handler / `useModel`, and streams `replyText` into TTS via the
@@ -154,6 +156,8 @@ export class VoiceTurnController {
   private started = false;
   private vadUnsub: (() => void) | null = null;
   private transcriberUnsub: (() => void) | null = null;
+  private bargeSignalUnsub: (() => void) | null = null;
+  private activeFinalController: AbortController | null = null;
   /** True once `speech-end` ran and finalize is pending/done for this segment. */
   private segmentEnded = false;
   private latestUpdate: TranscriptUpdate | null = null;
@@ -181,6 +185,16 @@ export class VoiceTurnController {
     // while the agent is speaking; the scheduler already listens to its
     // `onSignal` stream.
     this.bargeIn.bindVad(this.deps.vad);
+    this.bargeSignalUnsub = this.bargeIn.onSignal((signal) => {
+      if (signal.type !== "hard-stop") return;
+      this.abortSpeculative();
+      if (
+        this.activeFinalController &&
+        !this.activeFinalController.signal.aborted
+      ) {
+        this.activeFinalController.abort();
+      }
+    });
     this.vadUnsub = this.deps.vad.onVadEvent((e) => this.onVadEvent(e));
     this.transcriberUnsub = this.deps.transcriber.on((e) =>
       this.onTranscriberEvent(e),
@@ -196,7 +210,16 @@ export class VoiceTurnController {
     this.transcriberUnsub?.();
     this.transcriberUnsub = null;
     this.bargeIn.unbindVad();
+    this.bargeSignalUnsub?.();
+    this.bargeSignalUnsub = null;
     this.abortSpeculative();
+    if (
+      this.activeFinalController &&
+      !this.activeFinalController.signal.aborted
+    ) {
+      this.activeFinalController.abort();
+    }
+    this.activeFinalController = null;
   }
 
   // --- VAD ---------------------------------------------------------------
@@ -214,6 +237,7 @@ export class VoiceTurnController {
         this.latestPartial = "";
         this.abortSpeculative();
         this.bargeIn.reset();
+        this.playFirstAudioFiller();
         void this.firePrewarm();
         break;
       }
@@ -287,6 +311,15 @@ export class VoiceTurnController {
     if (!this.deps.prewarm) return;
     try {
       await this.deps.prewarm(this.roomId);
+    } catch (err) {
+      this.events.onError?.(toError(err));
+    }
+  }
+
+  private playFirstAudioFiller(): void {
+    if (!this.deps.playFirstAudioFiller) return;
+    try {
+      this.deps.playFirstAudioFiller();
     } catch (err) {
       this.events.onError?.(toError(err));
     }
@@ -383,6 +416,7 @@ export class VoiceTurnController {
       return;
     }
     const controller = new AbortController();
+    this.activeFinalController = controller;
     let outcome: VoiceTurnOutcome | null;
     try {
       outcome = await this.runGenerate({
@@ -394,6 +428,10 @@ export class VoiceTurnController {
     } catch (err) {
       outcome = null;
       this.events.onError?.(toError(err));
+    } finally {
+      if (this.activeFinalController === controller) {
+        this.activeFinalController = null;
+      }
     }
     if (outcome) this.events.onTurnComplete?.(outcome);
   }

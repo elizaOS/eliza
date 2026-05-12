@@ -62,6 +62,7 @@ import {
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
 import { parseJsonObject } from "../runtime/json-output";
+import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -3210,14 +3211,18 @@ function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
 	if (typeof raw !== "string") {
+		const text = getV5ModelText(raw);
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(getV5ModelText(raw)) ??
-			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
+			parseMessageHandlerOutput(text) ??
+			recoverPlanActionsFromContentText(text) ??
+			synthesizeSimpleReplyFromPlainText(text)
 		);
 	}
 	return (
-		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
+		parseMessageHandlerOutput(raw) ??
+		recoverPlanActionsFromContentText(raw) ??
+		synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
 
@@ -3249,6 +3254,49 @@ function synthesizeSimpleReplyFromPlainText(
 			contexts: [SIMPLE_CONTEXT_ID],
 			reply: replyText,
 			simple: true,
+		},
+	};
+}
+
+/**
+ * Stage 1 tolerant recovery: when the model emitted a single well-formed
+ * PLAN_ACTIONS({...}) block as message-content text instead of invoking the
+ * HANDLE_RESPONSE tool (symptom: Cerebras / weak-planner LLMs), synthesize a
+ * planning envelope that will let Stage 2 dispatch the intended action.
+ *
+ * Only fires when the raw text is exclusively the PLAN_ACTIONS call (strict
+ * mode) so explanatory text like "here's how you'd call it: PLAN_ACTIONS({...})"
+ * falls through to the existing simple-reply path.
+ *
+ * The envelope sets requiresTool=true and candidateActions=[extracted.action]
+ * so the Stage 2 planner narrows to the right action. Role-gate checks and
+ * action resolution still run normally in Stage 2 — this is a parse-layer
+ * recovery only.
+ */
+function recoverPlanActionsFromContentText(
+	text: string,
+): MessageHandlerResult | null {
+	const extracted = extractPlanActionsFromContent(text);
+	if (!extracted) return null;
+
+	logger.info(
+		{
+			src: "service:message",
+			action: extracted.action,
+			recoverySource: extracted.recoverySource,
+		},
+		"Recovered planner action from content (Stage 1 RESPONSE_HANDLER)",
+	);
+
+	return {
+		processMessage: "RESPOND",
+		thought: `Tolerant recovery: model emitted PLAN_ACTIONS as content text rather than tool call; routing to Stage 2 with candidateActions=[${extracted.action}].`,
+		plan: {
+			contexts: ["general"],
+			reply: "",
+			simple: false,
+			requiresTool: true,
+			candidateActions: [extracted.action],
 		},
 	};
 }

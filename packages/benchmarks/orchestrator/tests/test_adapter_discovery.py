@@ -47,6 +47,57 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["gaia_orchestrated"].directory == "gaia"
     assert adapters["rlm_bench"].directory == "rlm-bench"
     assert adapters["osworld"].directory == "OSWorld"
+    assert adapters["mmau"].directory == "mmau"
+    assert adapters["voicebench_quality"].directory == "voicebench-quality"
+    assert adapters["voiceagentbench"].directory == "voiceagentbench"
+    assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+
+
+def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
+    registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
+
+    mmau = registry["mmau"]
+    mmau_command = mmau.build_command(
+        tmp_path / "mmau",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes", "limit": 2, "no_traces": True},
+    )
+    assert mmau_command[:3] == [mmau_command[0], "-m", "benchmarks.mmau"]
+    assert mmau_command[mmau_command.index("--agent") + 1] == "hermes"
+    assert mmau_command[mmau_command.index("--limit") + 1] == "2"
+    assert "--mock" not in mmau_command
+    assert "--no-traces" in mmau_command
+    assert mmau.extract_score(
+        {"metrics": {"overall_accuracy": 0.5, "total_samples": 2}}
+    ).score == 0.5
+
+    voicebench_quality = registry["voicebench_quality"]
+    vbq_command = voicebench_quality.build_command(
+        tmp_path / "vbq",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw", "suite": "openbookqa", "limit": 2, "fixtures": True},
+    )
+    assert vbq_command[:3] == [vbq_command[0], "-m", "elizaos_voicebench"]
+    assert vbq_command[vbq_command.index("--agent") + 1] == "openclaw"
+    assert vbq_command[vbq_command.index("--suite") + 1] == "openbookqa"
+    assert "--fixtures" in vbq_command
+    assert voicebench_quality.extract_score(
+        {"score": 0.75, "n": 2, "per_suite": {"openbookqa": 0.75}}
+    ).score == 0.75
+
+    voiceagentbench = registry["voiceagentbench"]
+    vab_command = voiceagentbench.build_command(
+        tmp_path / "vab",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "suite": "single", "limit": 2, "mock": True, "no_judge": True},
+    )
+    assert vab_command[:3] == [vab_command[0], "-m", "elizaos_voiceagentbench"]
+    assert vab_command[vab_command.index("--agent") + 1] == "eliza"
+    assert "--mock" in vab_command
+    assert "--no-judge" in vab_command
+    assert voiceagentbench.extract_score(
+        {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
+    ).score == 1.0
 
 
 def test_hermes_native_envs_are_hermes_only() -> None:
@@ -63,6 +114,17 @@ def test_hermes_native_envs_are_hermes_only() -> None:
         assert adapter.agent_compatibility == ("hermes",)
         assert _is_harness_compatible(adapter, "hermes") is True
         assert _is_harness_compatible(adapter, "eliza") is False
+        assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+
+    for benchmark_id in ("openclaw_bench", "interrupt_bench"):
+        adapter = adapters[benchmark_id]
+        assert adapter.agent_compatibility == ()
+        assert _is_harness_compatible(adapter, "eliza") is False
+        assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
 
 
@@ -143,7 +205,15 @@ def test_bfcl_registry_always_writes_scoreable_json(tmp_path: Path) -> None:
 
     assert "--no-report" not in command
     assert "--no-exec" in command
+    assert command[command.index("--provider") + 1] == "hermes"
     assert command[command.index("--sample") + 1] == "1"
+
+    openclaw_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw", "sample": 1},
+    )
+    assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
 
 
 def test_bfcl_score_rejects_zero_task_results() -> None:
@@ -157,6 +227,31 @@ def test_bfcl_score_rejects_zero_task_results() -> None:
                 }
             }
         )
+
+
+def test_bfcl_openclaw_env_uses_direct_openai_compatible_transport(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["bfcl"]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("bfcl",),
+            agent="openclaw",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"agent": "openclaw", "sample": 1},
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+
+    assert env["OPENCLAW_DIRECT_OPENAI_COMPAT"] == "1"
+    assert env["OPENCLAW_USE_CLI"] == "0"
 
 
 def test_openclaw_registry_command_and_result_locator(tmp_path: Path) -> None:
@@ -316,7 +411,7 @@ def test_scambench_orchestrator_default_is_tiny_bridge_smoke(tmp_path: Path) -> 
     assert command[command.index("--out") + 1] == str(tmp_path / "out")
 
 
-def test_woobench_orchestrator_default_is_single_heuristic_scenario(tmp_path: Path) -> None:
+def test_woobench_orchestrator_default_is_bounded_multi_scenario_persona(tmp_path: Path) -> None:
     adapters = discover_adapters(_workspace_root()).adapters
     adapter = adapters["woobench"]
     ctx = ExecutionContext(
@@ -338,7 +433,10 @@ def test_woobench_orchestrator_default_is_single_heuristic_scenario(tmp_path: Pa
 
     command = adapter.command_builder(ctx, adapter)
 
-    assert command[command.index("--scenario") + 1] == "skeptic_tarot_01"
+    assert "--scenario" not in command
+    assert command[command.index("--scenarios") + 1] == (
+        "friend_supporter_tarot_01,repeat_customer_tarot_01"
+    )
     assert command[command.index("--evaluator") + 1] == "heuristic"
     assert command[command.index("--concurrency") + 1] == "1"
     assert command[command.index("--random-seed") + 1] == "1"
@@ -353,8 +451,15 @@ def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Pat
                 "revenue_efficiency": 0.0,
                 "resilience_score": 0.0,
                 "failed_scenarios": 1,
+                "total_revenue": 9.0,
                 "interrupted": True,
-                "scenarios": [{"scenario_id": "skeptic_tarot_01"}],
+                "scenarios": [
+                    {
+                        "scenario_id": "skeptic_tarot_01",
+                        "payment_converted": True,
+                        "agent_responsive": True,
+                    }
+                ],
             }
         ),
         encoding="utf-8",
@@ -365,6 +470,9 @@ def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Pat
     assert score.score == 0.125
     assert score.metrics["interrupted"] is True
     assert score.metrics["total_instances"] == 1
+    assert score.metrics["total_revenue"] == 9.0
+    assert score.metrics["avg_revenue_per_scenario"] == 9.0
+    assert score.metrics["payment_converted_count"] == 1
 
 
 def test_compactbench_score_accepts_valid_hit_file_from_locator(tmp_path: Path) -> None:
@@ -635,6 +743,23 @@ def test_action_calling_registry_command_forwards_tool_choice(tmp_path: Path) ->
     )
 
     assert command[command.index("--tool-choice") + 1] == "required"
+
+
+def test_vending_registry_clamps_smoke_to_revenue_observable_days(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "vending_bench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "runs": 1, "days": 1},
+    )
+
+    assert command[command.index("--runs") + 1] == "1"
+    assert command[command.index("--days") + 1] == "3"
+    assert "--starter-inventory" in command
+    assert command[command.index("--max-actions-per-day") + 1] == "6"
 
 
 def test_abliteration_registry_command_defaults_to_no_tool_choice(tmp_path: Path) -> None:

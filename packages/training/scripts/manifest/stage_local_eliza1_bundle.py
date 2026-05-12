@@ -981,7 +981,8 @@ def _write_release_evidence(
         "schemaVersion": 1,
         "generatedAt": generated_at,
         "tier": tier,
-        "repoId": f"elizaos/eliza-1-{tier}",
+        "repoId": "elizaos/eliza-1",
+        "repoPath": f"bundles/{tier}",
         "releaseState": release_state,
         "publishEligible": False,
         "defaultEligible": False,
@@ -1019,7 +1020,8 @@ def _write_release_evidence(
             "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
         },
         "hf": {
-            "repoId": f"elizaos/eliza-1-{tier}",
+            "repoId": "elizaos/eliza-1",
+            "pathPrefix": f"bundles/{tier}",
             "status": "blocked-local-standin",
         },
         "publishBlockingReasons": list(reasons),

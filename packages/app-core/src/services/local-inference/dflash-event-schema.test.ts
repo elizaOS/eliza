@@ -3,6 +3,7 @@ import {
   computeAcceptanceRate,
   dflashBatchEventSchema,
   type DflashStreamEvent,
+  type DflashVerifyStreamEvent,
   expandDflashBatchEvent,
   groupByRound,
   parseDflashBatchEvent,
@@ -397,5 +398,149 @@ describe("summarizeEvents", () => {
       rounds: 0,
       acceptanceRate: 0,
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dflash-verify event round-trip tests (L1)
+// ---------------------------------------------------------------------------
+
+describe("parseDflashStreamEvent — dflash-verify", () => {
+  const validVerify: DflashVerifyStreamEvent = {
+    kind: "dflash-verify",
+    drafted_count: 4,
+    accept_count: 3,
+    reject_index: 3,
+    correction_token_id: 99,
+    verify_latency_ms: 12.5,
+  };
+
+  it("parses a well-formed dflash-verify event (partial accept)", () => {
+    const ev = parseDflashStreamEvent(validVerify);
+    expect(ev).toEqual(validVerify);
+  });
+
+  it("parses dflash-verify with all tokens accepted (reject_index = -1, correction_token_id = null)", () => {
+    const allAccepted: DflashVerifyStreamEvent = {
+      kind: "dflash-verify",
+      drafted_count: 5,
+      accept_count: 5,
+      reject_index: -1,
+      correction_token_id: null,
+      verify_latency_ms: 8.0,
+    };
+    const ev = parseDflashStreamEvent(allAccepted);
+    expect(ev).toEqual(allAccepted);
+  });
+
+  it("rejects dflash-verify when accept_count > drafted_count", () => {
+    expect(
+      parseDflashStreamEvent({
+        kind: "dflash-verify",
+        drafted_count: 2,
+        accept_count: 5,
+        reject_index: -1,
+        correction_token_id: null,
+        verify_latency_ms: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects dflash-verify when reject_index < -1", () => {
+    expect(
+      parseDflashStreamEvent({
+        kind: "dflash-verify",
+        drafted_count: 4,
+        accept_count: 2,
+        reject_index: -2,
+        correction_token_id: null,
+        verify_latency_ms: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects dflash-verify when correction_token_id is a negative number", () => {
+    expect(
+      parseDflashStreamEvent({
+        kind: "dflash-verify",
+        drafted_count: 4,
+        accept_count: 2,
+        reject_index: 2,
+        correction_token_id: -1,
+        verify_latency_ms: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects dflash-verify when verify_latency_ms is negative", () => {
+    expect(
+      parseDflashStreamEvent({
+        kind: "dflash-verify",
+        drafted_count: 4,
+        accept_count: 2,
+        reject_index: 2,
+        correction_token_id: null,
+        verify_latency_ms: -1,
+      }),
+    ).toBeNull();
+  });
+
+  it("rejects dflash-verify when drafted_count is missing", () => {
+    expect(
+      parseDflashStreamEvent({
+        kind: "dflash-verify",
+        accept_count: 2,
+        reject_index: 2,
+        correction_token_id: null,
+        verify_latency_ms: 1,
+      }),
+    ).toBeNull();
+  });
+
+  it("round-trips through parseDflashFieldFromSseChunk — single event", () => {
+    const events = parseDflashFieldFromSseChunk({
+      dflash: validVerify,
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual(validVerify);
+  });
+
+  it("round-trips through parseDflashFieldFromSseChunk — array", () => {
+    const allAccepted: DflashVerifyStreamEvent = {
+      kind: "dflash-verify",
+      drafted_count: 3,
+      accept_count: 3,
+      reject_index: -1,
+      correction_token_id: null,
+      verify_latency_ms: 5.0,
+    };
+    const events = parseDflashFieldFromSseChunk({
+      dflash: [
+        { kind: "speculate-start", round: 0, ts: 0 },
+        allAccepted,
+      ],
+    });
+    expect(events).toHaveLength(2);
+    expect(events[0]?.kind).toBe("speculate-start");
+    expect(events[1]).toEqual(allAccepted);
+  });
+
+  it("filters malformed dflash-verify entries in an array without dropping valid ones", () => {
+    const events = parseDflashFieldFromSseChunk({
+      dflash: [
+        {
+          kind: "dflash-verify",
+          drafted_count: 10,
+          accept_count: 999, // invalid: > drafted_count
+          reject_index: -1,
+          correction_token_id: null,
+          verify_latency_ms: 1,
+        },
+        validVerify,
+      ],
+    });
+    // Malformed entry is dropped, valid entry is preserved.
+    expect(events).toHaveLength(1);
+    expect(events[0]).toEqual(validVerify);
   });
 });

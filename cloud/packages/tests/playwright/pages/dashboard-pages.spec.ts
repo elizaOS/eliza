@@ -5,8 +5,10 @@ import {
   expectDashboardShell,
   expectNoBadApiResponses,
   expectNoHorizontalOverflow,
+  expectNoRenderTelemetryErrors,
   expectRouteResponseOk,
   installDashboardSessionAuth,
+  installRenderTelemetryGuard,
   trackBadApiResponses,
 } from "../fixtures/page-helpers";
 
@@ -617,12 +619,14 @@ test.describe("Dashboard Pages", () => {
 
   test.beforeEach(async ({ page, baseURL }) => {
     badApiResponses = trackBadApiResponses(page, baseURL);
+    await installRenderTelemetryGuard(page);
     await installDashboardSessionAuth(page, baseURL);
     await mockDashboardRouteApis(page);
   });
 
   test.afterEach(async ({ page }) => {
     await page.waitForLoadState("networkidle", { timeout: 2000 }).catch(() => {});
+    await expectNoRenderTelemetryErrors(page, "dashboard routes");
     expectNoBadApiResponses(badApiResponses, "dashboard routes");
   });
 

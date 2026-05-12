@@ -16,8 +16,9 @@
  * Optional env:
  *   VAST_TEMPLATE_NAME — defaults to "eliza-cloud-eliza-1-27b".
  *   VAST_RUNTIME       — "llama" (default) or "vllm".
- *   ELIZA_VAST_MANIFEST — vLLM manifest name/path. Defaults to
- *                        eliza-1-2b.json when VAST_RUNTIME=vllm.
+ *   ELIZA_VAST_MANIFEST — manifest name/path. Defaults to eliza-1-2b.json
+ *                        when VAST_RUNTIME=vllm. Llama runtime may opt in
+ *                        with a llama manifest such as eliza-1-27b-3090.json.
  *   PYWORKER_REPO      — git URL for the PyWorker source (defaults to the
  *                        elizaOS/cloud repo).
  *   PYWORKER_REF       — branch/tag/commit. **Pin a commit in production**;
@@ -84,9 +85,9 @@ function optionalEnv(env: Record<string, string>, names: string[]): void {
   }
 }
 
-function readVllmManifest(): LoadedVastManifest {
-  const name = readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json");
-  return readVastManifest(name);
+function readSelectedManifest(defaultName = "eliza-1-2b.json"): LoadedVastManifest {
+  const name = readEnv("ELIZA_VAST_MANIFEST", defaultName);
+  return readVastManifest(name || defaultName);
 }
 
 async function vastFetch<T>(
@@ -132,10 +133,19 @@ async function main(): Promise<void> {
   if (runtime !== "llama" && runtime !== "vllm") {
     throw new Error(`VAST_RUNTIME must be "llama" or "vllm", got ${runtime}`);
   }
-  const manifest = runtime === "vllm" ? readVllmManifest() : null;
+  const manifest =
+    runtime === "vllm" || process.env.ELIZA_VAST_MANIFEST ? readSelectedManifest() : null;
+  const manifestRuntime =
+    manifest?.manifest.runtime ??
+    (manifest?.manifest.onstart_script === "onstart-vllm.sh" ? "vllm" : undefined);
+  if (manifestRuntime && manifestRuntime !== runtime) {
+    throw new Error(
+      `VAST_RUNTIME=${runtime} does not match ${manifest.name} runtime=${manifestRuntime}`,
+    );
+  }
   const onstartPath = join(
     VAST_PYWORKER_DIR,
-    runtime === "vllm" ? "onstart-vllm.sh" : "onstart.sh",
+    manifest?.manifest.onstart_script ?? (runtime === "vllm" ? "onstart-vllm.sh" : "onstart.sh"),
   );
   const onstart = readFileSync(onstartPath, "utf8");
 
@@ -192,13 +202,29 @@ async function main(): Promise<void> {
       "EXTRA_VLLM_ARGS",
     ]);
   } else {
-    env.MODEL_REPO = readEnv("MODEL_REPO", "elizaos/eliza-1-27b-fp8");
-    env.MODEL_FILE = readEnv("MODEL_FILE", "text/eliza-1-pro-27b-128k.gguf");
-    env.MODEL_ALIAS = readEnv("MODEL_ALIAS", "vast/eliza-1-27b");
-    env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", "32768");
-    env.LLAMA_PARALLEL = readEnv("LLAMA_PARALLEL", "2");
+    if (manifest) {
+      env.ELIZA_VAST_MANIFEST = manifest.name;
+      env.ELIZA_VAST_MANIFEST_JSON = manifest.json;
+      for (const [key, value] of Object.entries(manifest.manifest.vast_template_env ?? {})) {
+        if (value) env[key] = value;
+      }
+    }
+    env.MODEL_REPO = readEnv(
+      "MODEL_REPO",
+      manifest?.manifest.model_repo ?? manifest?.manifest.model ?? "elizaos/eliza-1-27b-fp8",
+    );
+    env.MODEL_FILE = readEnv(
+      "MODEL_FILE",
+      manifest?.manifest.model_file ?? "text/eliza-1-pro-27b-128k.gguf",
+    );
+    env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-27b");
+    env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", String(manifest?.manifest.max_model_len ?? 32768));
+    env.LLAMA_PARALLEL = readEnv(
+      "LLAMA_PARALLEL",
+      String(manifest?.manifest.vast_template_env?.LLAMA_PARALLEL ?? 2),
+    );
     env.LLAMA_NGL = readEnv("LLAMA_NGL", "99");
-    env.LLAMA_SERVER_PORT = readEnv("LLAMA_SERVER_PORT", "8080");
+    env.LLAMA_SERVER_PORT = readEnv("LLAMA_SERVER_PORT", String(manifest?.manifest.port ?? 8080));
     env.LLAMA_SERVER_BIN = readEnv("LLAMA_SERVER_BIN", "llama-server");
     env.MODEL_DIR = readEnv("MODEL_DIR", "/workspace/models");
     optionalEnv(env, [
@@ -211,6 +237,10 @@ async function main(): Promise<void> {
       "LLAMA_DRAFT_MAX",
       "LLAMA_CACHE_TYPE_K",
       "LLAMA_CACHE_TYPE_V",
+      "LLAMA_FLASH_ATTN",
+      "LLAMA_JINJA",
+      "LLAMA_REASONING_FORMAT",
+      "LLAMA_DISABLE_THINKING",
       "LLAMA_EXTRA_ARGS",
     ]);
   }

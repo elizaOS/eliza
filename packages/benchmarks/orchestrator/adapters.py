@@ -43,6 +43,8 @@ IGNORED_BENCHMARK_DIRS = {
     ".pytest_cache",
     "benchmark_results",
     "claw-eval",
+    # Distribution-name shim for benchmarks.mmau, not a separate benchmark.
+    "elizaos_mmau",
     "eliza-adapter",
     "hermes-adapter",
     "openclaw-adapter",
@@ -92,6 +94,11 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     "hermes_terminalbench_2": ("hermes",),
     "hermes_yc_bench": ("hermes",),
     "hermes_swe_env": ("hermes",),
+    # These benchmarks currently bypass the selected harness entirely. Keeping
+    # them out of real-agent publication is safer than emitting rows labeled as
+    # Eliza/Hermes/OpenClaw that all exercised the same direct-provider path.
+    "openclaw_bench": (),
+    "interrupt_bench": (),
 }
 
 
@@ -147,6 +154,9 @@ def _make_registry_adapter(
         str((benchmarks_root / "hermes-adapter").resolve()),
         str((benchmarks_root / "openclaw-adapter").resolve()),
     ]
+    lifeops_bench_path = benchmarks_root / "lifeops-bench"
+    if lifeops_bench_path.exists():
+        adapter_python_paths.append(str(lifeops_bench_path.resolve()))
     if benchmark_id == "gauntlet":
         adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
 
@@ -166,6 +176,14 @@ def _make_registry_adapter(
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
+        harness = str(
+            ctx.request.extra_config.get("agent")
+            or ctx.request.extra_config.get("harness")
+            or ctx.request.agent
+        ).strip().lower()
+        if benchmark_id == "bfcl" and harness == "openclaw":
+            env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
+            env["OPENCLAW_USE_CLI"] = "0"
         return env
 
     return BenchmarkAdapter(
@@ -606,20 +624,38 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     if isinstance(payment_mock_url, str) and payment_mock_url.strip():
         args.extend(["--payment-mock-url", payment_mock_url.strip()])
 
-    for extra_key, cli_key in (
-        ("scenario", "--scenario"),
-        ("system", "--system"),
-        ("persona", "--persona"),
-    ):
-        value = ctx.request.extra_config.get(extra_key)
-        if isinstance(value, str) and value.strip():
-            args.extend([cli_key, value.strip()])
+    scenarios = ctx.request.extra_config.get("scenarios")
+    if isinstance(scenarios, list):
+        scenario_ids = [
+            str(item).strip()
+            for item in scenarios
+            if isinstance(item, str) and item.strip()
+        ]
+        if scenario_ids:
+            args.extend(["--scenarios", ",".join(scenario_ids)])
+    elif isinstance(scenarios, str) and scenarios.strip():
+        args.extend(["--scenarios", scenarios.strip()])
+
+    if "--scenarios" not in args:
+        for extra_key, cli_key in (
+            ("scenario", "--scenario"),
+            ("system", "--system"),
+            ("persona", "--persona"),
+        ):
+            value = ctx.request.extra_config.get(extra_key)
+            if isinstance(value, str) and value.strip():
+                args.extend([cli_key, value.strip()])
 
     max_tasks = ctx.request.extra_config.get("max_tasks")
-    has_scope_filter = any(
-        isinstance(ctx.request.extra_config.get(key), str) and ctx.request.extra_config.get(key).strip()
-        for key in ("scenario", "system", "persona")
-    )
+    has_scope_filter = False
+    for key in ("scenarios", "scenario", "system", "persona"):
+        value = ctx.request.extra_config.get(key)
+        if isinstance(value, str) and value.strip():
+            has_scope_filter = True
+        elif isinstance(value, list) and any(
+            isinstance(item, str) and item.strip() for item in value
+        ):
+            has_scope_filter = True
     if isinstance(max_tasks, int) and max_tasks == 1 and not has_scope_filter:
         args.extend(["--scenario", "skeptic_tarot_01"])
 
@@ -1063,6 +1099,19 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     raw = data.get("overall_score")
     score = float(raw) / 100.0 if isinstance(raw, (int, float)) else None
+    scenarios = data.get("scenarios", [])
+    scenario_rows = scenarios if isinstance(scenarios, list) else []
+    total_revenue_raw = data.get("total_revenue")
+    total_revenue = float(total_revenue_raw) if isinstance(total_revenue_raw, (int, float)) else 0.0
+    converted_count = sum(
+        1 for scenario in scenario_rows
+        if isinstance(scenario, dict) and scenario.get("payment_converted") is True
+    )
+    completed_count = sum(
+        1 for scenario in scenario_rows
+        if isinstance(scenario, dict) and scenario.get("agent_responsive") is True
+    )
+    total_instances = len(scenario_rows)
     return ScoreSummary(
         score=score,
         unit="ratio",
@@ -1072,7 +1121,13 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
             "revenue_efficiency": data.get("revenue_efficiency"),
             "resilience_score": data.get("resilience_score"),
             "failed_scenarios": data.get("failed_scenarios"),
-            "total_instances": len(data.get("scenarios", [])) if isinstance(data.get("scenarios"), list) else 0,
+            "total_revenue": total_revenue,
+            "avg_revenue_per_scenario": (
+                total_revenue / total_instances if total_instances else 0.0
+            ),
+            "payment_converted_count": converted_count,
+            "completed_reading_count": completed_count,
+            "total_instances": total_instances,
             "interrupted": data.get("interrupted") is True,
         },
     )
@@ -1572,6 +1627,22 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_examples": 2,
             "max_new_tokens": 128,
         },
+        "mmau": {
+            "limit": 2,
+            "no_traces": True,
+        },
+        "voicebench_quality": {
+            "suite": "openbookqa",
+            "limit": 2,
+            "fixtures": True,
+        },
+        "voiceagentbench": {
+            "suite": "single",
+            "limit": 2,
+            "seeds": 1,
+            "mock": True,
+            "no_judge": True,
+        },
     }
     registry_dir_map = {
         "context_bench": "context-bench",
@@ -1584,6 +1655,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "hyperliquid_bench": "HyperliquidBench",
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
+        "voicebench_quality": "voicebench-quality",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",
@@ -1859,7 +1931,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["woobench_*.json"],
             score_extractor=_score_from_woobench,
             default_extra_config={
-                "scenario": "skeptic_tarot_01",
+                "scenarios": [
+                    "friend_supporter_tarot_01",
+                    "repeat_customer_tarot_01",
+                ],
                 "concurrency": 1,
                 "evaluator": "heuristic",
                 "random_seed": 1,

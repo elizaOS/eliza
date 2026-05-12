@@ -39,6 +39,14 @@ export function getBenchmarkContext(): BenchmarkContext | null {
   return _currentContext;
 }
 
+function currentBenchmarkName(): string {
+  return (_currentContext?.benchmark ?? "").trim().toLowerCase();
+}
+
+function isBenchmarkActionDisabledForCurrentContext(): boolean {
+  return false;
+}
+
 // Captured action from the last agent response
 export interface CapturedAction {
   params?: Record<string, unknown>;
@@ -72,6 +80,22 @@ function recordCapturedAction(action: CapturedAction): CapturedAction {
   return action;
 }
 
+const VENDING_BENCHMARK_ACTION_NAMES = [
+  "VIEW_BUSINESS_STATE",
+  "VIEW_SUPPLIERS",
+  "SET_PRICE",
+  "PLACE_ORDER",
+  "RESTOCK_SLOT",
+  "COLLECT_CASH",
+  "UPDATE_NOTES",
+  "CHECK_DELIVERIES",
+  "ADVANCE_DAY",
+] as const;
+
+function isVendingBenchmarkContext(): boolean {
+  return new Set(["vending-bench", "vending_bench"]).has(currentBenchmarkName());
+}
+
 // ---------------------------------------------------------------------------
 // Message handler template
 // ---------------------------------------------------------------------------
@@ -96,7 +120,7 @@ reply-based benchmarks: use REPLY with text payload:
 
 experience-learning turns: BENCHMARK_ACTION with command RECORD_EXPERIENCE.
 
-text-format fallback (no native tool calling): return one JSON object:
+text-format fallback for action benchmarks (no native tool calling): return one JSON object:
 {
   "thought": "[brief reason]",
   "actions": ["BENCHMARK_ACTION"],
@@ -104,9 +128,18 @@ text-format fallback (no native tool calling): return one JSON object:
   "params": { "BENCHMARK_ACTION": { "command": "[command]" } }
 }
 
+text-format fallback for reply-based benchmarks: return one JSON object:
+{
+  "thought": "[brief reason]",
+  "actions": ["REPLY"],
+  "text": "[the required answer or JSON payload]",
+  "params": {}
+}
+
 rules:
 - always BENCHMARK_ACTION (never raw action name) for action benchmarks
 - never REPLY when execution is required
+- always REPLY (never BENCHMARK_ACTION) for reply-based benchmarks such as vending-bench
 `;
 
 // ---------------------------------------------------------------------------
@@ -603,7 +636,7 @@ export function createBenchmarkPlugin(): Plugin {
           "Supported params: command (agentbench), tool_name+arguments (tau-bench), " +
           "operation+element_id+value (mind2web).",
 
-        validate: async () => true,
+        validate: async () => !isBenchmarkActionDisabledForCurrentContext(),
 
         handler: async (
           _runtime: unknown,
@@ -622,6 +655,7 @@ export function createBenchmarkPlugin(): Plugin {
           return {
             text: `Benchmark action captured: ${JSON.stringify(capturedAction)}`,
             success: true,
+            continueChain: isVendingBenchmarkContext() ? false : undefined,
             values: { captured: true },
             data: { action: capturedAction },
           };
@@ -690,6 +724,32 @@ export function createBenchmarkPlugin(): Plugin {
           },
         ],
       },
+      ...VENDING_BENCHMARK_ACTION_NAMES.map((name) => ({
+        name,
+        contextGate: {},
+        roleGate: { minRole: "NONE" as const },
+        similes: [],
+        description:
+          "Vending-Bench compatibility action. Captures one vending simulator action for the benchmark environment.",
+        validate: async () => isVendingBenchmarkContext(),
+        handler: async (_runtime, _message, _state, options) => {
+          const params = extractActionParameters(options);
+          console.log(`[${name}] params:`, JSON.stringify(params));
+          const capturedAction = recordCapturedAction({
+            toolName: name,
+            arguments: params,
+            params: { tool_name: name, arguments: params },
+          });
+          return {
+            text: `Benchmark vending action captured: ${name}`,
+            success: true,
+            continueChain: false,
+            values: { captured: true },
+            data: { action: capturedAction },
+          };
+        },
+        parameters: [],
+      })),
       ...LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
         name,
         contextGate: {},

@@ -206,8 +206,8 @@ export interface BenchInjection {
 /**
  * Driver contract the harness uses to talk to the voice pipeline. The
  * real pipeline (VoicePipeline + VoiceScheduler) implements this via a
- * thin adapter; for unit tests and CI without a model, MockPipelineDriver
- * implements it deterministically.
+ * thin adapter. Unit tests may use deterministic test drivers, but release
+ * evidence must come from a real backend.
  *
  * `run` plays the audio through the pipeline and returns once the pipeline
  * has either finished generating, been cancelled, or hit the token cap.
@@ -216,7 +216,7 @@ export interface BenchInjection {
  */
 export interface PipelineDriver {
   readonly name: string;
-  /** Backend label used in result JSON (`metal`, `cuda`, `cpu`, `mock`). */
+  /** Backend label used in result JSON (`metal`, `cuda`, `vulkan`, `cpu`). */
   readonly backend: string;
   run(args: {
     audio: BenchAudioPayload;

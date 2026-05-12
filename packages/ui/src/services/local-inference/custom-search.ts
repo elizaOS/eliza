@@ -48,9 +48,7 @@ const PROVIDERS: readonly LocalModelSearchProviderDescriptor[] = [
     shortLabel: "ModelScope",
     placeholder: "Search ModelScope owner or owner/model",
     searchSupported: true,
-    downloadSupported: false,
-    downloadUnsupportedReason:
-      "ModelScope direct downloads are not implemented in this build.",
+    downloadSupported: true,
   },
 ] as const;
 

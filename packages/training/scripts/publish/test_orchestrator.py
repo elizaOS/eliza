@@ -313,7 +313,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {"repo": "elizaos/eliza-1-9b-drafter"},
-        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
         "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj.gguf"},
     }

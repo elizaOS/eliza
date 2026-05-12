@@ -157,8 +157,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="ASR (Qwen3-ASR)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="ggml-org/Qwen3-ASR-0.6B-GGUF / ggml-org/Qwen3-ASR-1.7B-GGUF (base: Qwen/Qwen3-ASR-*)",
-        upstream_url="https://huggingface.co/ggml-org/Qwen3-ASR-0.6B-GGUF",
+        upstream_repo="ggml-org/Qwen3-ASR-0.8B-GGUF / ggml-org/Qwen3-ASR-2B-GGUF (base: Qwen/Qwen3-ASR-*)",
+        upstream_url="https://huggingface.co/ggml-org/Qwen3-ASR-0.8B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "ASR weights are Qwen3-ASR, GGUF-converted upstream. This is a "
@@ -208,11 +208,11 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="embedding (Qwen3-Embedding)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Qwen/Qwen3-Embedding-0.6B-GGUF",
-        upstream_url="https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF",
+        upstream_repo="Qwen/Qwen3-Embedding-0.8B-GGUF",
+        upstream_url="https://huggingface.co/Qwen/Qwen3-Embedding-0.8B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "Qwen3-Embedding-0.6B (1024-dim, Matryoshka, 32k ctx), shipped as a "
+            "Qwen3-Embedding-0.8B (1024-dim, Matryoshka, 32k ctx), shipped as a "
             "separate embedding/ artifact on non-lite tiers. On 0_8b the embedding "
             "model IS the text backbone with --pooling last — no duplicate weights, "
             "no separate embedding/ artifact, and this file is absent on 0_8b. "

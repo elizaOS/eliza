@@ -30,6 +30,7 @@ const iosBackgroundTaskId =
   argValue("--ios-background-task-id") ?? "ai.eliza.tasks.refresh";
 const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
+const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
 const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const ANDROID_HEALTH_ATTEMPTS = 240;
@@ -172,7 +173,9 @@ function launchIosSimulatorApp() {
     `[local-chat-smoke] Launching ${id} in the booted simulator (${udid}).`,
   );
   tryExec("xcrun", ["simctl", "launch", udid, id]);
-  tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
+  if (!iosFullBunSmoke) {
+    tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
+  }
   return { udid, installed: true };
 }
 
@@ -201,7 +204,8 @@ function writeIosDefaultsString(udid, domain, key, value) {
 }
 
 function readIosDefaultsString(udid, domain, key) {
-  return tryExec(
+  const nativeKey = `CapacitorStorage.${key}`;
+  const value = tryExec(
     "xcrun",
     [
       "simctl",
@@ -210,10 +214,36 @@ function readIosDefaultsString(udid, domain, key) {
       "defaults",
       "read",
       domain,
-      `CapacitorStorage.${key}`,
+      nativeKey,
     ],
     { allowFailure: true },
   );
+  if (value !== null) return value;
+
+  const dataContainer = tryExec(
+    "xcrun",
+    ["simctl", "get_app_container", udid, domain, "data"],
+    { allowFailure: true },
+  );
+  if (!dataContainer) return null;
+  const plist = path.join(
+    dataContainer,
+    "Library",
+    "Preferences",
+    `${domain}.plist`,
+  );
+  if (!fs.existsSync(plist)) return null;
+  const json = tryExec("plutil", ["-convert", "json", "-o", "-", plist], {
+    allowFailure: true,
+  });
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json);
+    const plistValue = parsed?.[nativeKey];
+    return typeof plistValue === "string" ? plistValue : null;
+  } catch {
+    return null;
+  }
 }
 
 function deleteIosDefaultsKey(udid, domain, key) {
@@ -262,6 +292,7 @@ function preseedIosLocalRuntime(udid, id) {
 
 function preseedIosFullBunSmoke(udid, id) {
   deleteIosDefaultsKey(udid, id, IOS_FULL_BUN_SMOKE_RESULT_KEY);
+  deleteIosDefaultsKey(udid, id, IOS_FULL_BUN_PREWARM_RESULT_KEY);
   writeIosDefaultsString(udid, id, IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
   flushIosPreferencesCache(udid);
   console.log(

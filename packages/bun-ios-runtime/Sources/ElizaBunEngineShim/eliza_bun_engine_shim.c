@@ -15,9 +15,9 @@
 #include <unistd.h>
 
 enum {
-  ELIZA_STARTUP_TIMEOUT_MS = 30000,
   ELIZA_DEFAULT_CALL_TIMEOUT_MS = 120000,
   ELIZA_MAX_CALL_TIMEOUT_MS = 30 * 60 * 1000,
+  ELIZA_MAX_STARTUP_TIMEOUT_MS = 10 * 60 * 1000,
   ELIZA_MAX_PROTOCOL_LINE_BYTES = 16 * 1024 * 1024,
   ELIZA_LAST_ERROR_BYTES = 4096,
 };
@@ -59,10 +59,16 @@ static void mark_engine_ready(void) {
 }
 
 static void on_bun_exit(uint32_t code) {
+  pthread_mutex_lock(&g_state_mutex);
+  int was_running = g_running;
+  pthread_mutex_unlock(&g_state_mutex);
   g_bun_exited = 1;
   g_bun_exit_code = code;
   mark_engine_stopped();
-  set_last_error("Bun exited before ios-bridge readiness with code %u", code);
+  set_last_error(
+      was_running ? "Bun exited with code %u"
+                  : "Bun exited before ios-bridge readiness with code %u",
+      code);
   close_fd(&g_stdout_write_fd);
   close_fd(&g_stderr_write_fd);
 }
@@ -357,6 +363,10 @@ static void ensure_default_env(const char *app_support_dir, const char *bundle_p
   setenv("ELIZA_PLATFORM", "ios", 0);
   setenv("ELIZA_MOBILE_PLATFORM", "ios", 0);
   setenv("ELIZA_IOS_LOCAL_BACKEND", "1", 0);
+  setenv("ELIZA_VAULT_BACKEND", "file", 0);
+  setenv("ELIZA_DISABLE_VAULT_PROFILE_RESOLVER", "1", 0);
+  setenv("ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "1", 0);
+  setenv("ELIZA_PGLITE_DISABLE_EXTENSIONS", "0", 0);
   setenv("ELIZA_HEADLESS", "1", 0);
   setenv("LOG_LEVEL", "error", 0);
   setenv("GIGACAGE_ENABLED", "0", 0);
@@ -485,6 +495,16 @@ static int extract_timeout_ms(const char *json) {
   return (int)value;
 }
 
+static int env_timeout_ms(const char *name, int fallback_ms, int max_ms) {
+  const char *raw = getenv(name);
+  if (!raw || raw[0] == '\0') return fallback_ms;
+  char *end = NULL;
+  long value = strtol(raw, &end, 10);
+  if (end == raw || value <= 0) return fallback_ms;
+  if (value > max_ms) return max_ms;
+  return (int)value;
+}
+
 static int is_ready_line(const char *line, char **error_out) {
   if (!line || !strstr(line, "\"type\"") || !strstr(line, "\"ready\"")) return 0;
   if (strstr(line, "\"ok\":false")) {
@@ -541,12 +561,12 @@ static int start_stderr_drain(int fd) {
 
 static void stop_stderr_drain(void) {
   g_stderr_thread_stop = 1;
+  close_fd(&g_stderr_read_fd);
   close_fd(&g_stderr_write_fd);
   if (g_stderr_thread_started) {
     pthread_join(g_stderr_thread, NULL);
     g_stderr_thread_started = 0;
   }
-  close_fd(&g_stderr_read_fd);
 }
 
 static void free_argv(char **argv, int argc) {
@@ -737,7 +757,7 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
 }
 
 const char *eliza_bun_engine_abi_version(void) {
-  return "1";
+  return "2";
 }
 
 const char *eliza_bun_engine_last_error(void) {
@@ -850,7 +870,11 @@ int32_t eliza_bun_engine_start(
     return -1;
   }
 
-  int ready = wait_for_ready(g_stdout_read_fd, ELIZA_STARTUP_TIMEOUT_MS);
+  int startup_timeout_ms = env_timeout_ms(
+      "ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS",
+      180000,
+      ELIZA_MAX_STARTUP_TIMEOUT_MS);
+  int ready = wait_for_ready(g_stdout_read_fd, startup_timeout_ms);
   if (ready != 0) {
     eliza_bun_engine_stop();
     return ready;
@@ -868,6 +892,13 @@ int32_t eliza_bun_engine_stop(void) {
   close_fd(&g_stdout_write_fd);
   stop_stderr_drain();
   return 0;
+}
+
+int32_t eliza_bun_engine_is_running(void) {
+  pthread_mutex_lock(&g_state_mutex);
+  int running = g_running && !g_bun_exited;
+  pthread_mutex_unlock(&g_state_mutex);
+  return running ? 1 : 0;
 }
 
 char *eliza_bun_engine_call(const char *method, const char *payload_json) {
@@ -921,7 +952,9 @@ char *eliza_bun_engine_call(const char *method, const char *payload_json) {
     char *line = read_line_timeout(g_stdout_read_fd, (int)remaining, &timed_out);
     if (!line) {
       pthread_mutex_unlock(&g_call_mutex);
-      if (timed_out) return timeout_json(timeout_ms);
+      if (timed_out) {
+        return timeout_json(timeout_ms);
+      }
       return error_json("Bun bridge closed before returning a response");
     }
     if (extract_line_id(line) == (int64_t)id) {

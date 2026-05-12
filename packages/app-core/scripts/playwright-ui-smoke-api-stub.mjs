@@ -1,5 +1,5 @@
-import http from "node:http";
 import { readFileSync } from "node:fs";
+import http from "node:http";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
@@ -810,10 +810,7 @@ function parsePositiveInt(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function createStubConversation({
-  title = "New chat",
-  metadata = {},
-} = {}) {
+function createStubConversation({ title = "New chat", metadata = {} } = {}) {
   conversationCounter += 1;
   const createdAt = nowIso();
   const conversation = {
@@ -1301,10 +1298,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (
-    req.method === "GET" &&
-    url.pathname === "/api/vincent/trading-profile"
-  ) {
+  if (req.method === "GET" && url.pathname === "/api/vincent/trading-profile") {
     sendJson(req, res, 200, { connected: false, profile: null });
     return;
   }
@@ -1508,7 +1502,9 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  const conversationMatch = url.pathname.match(/^\/api\/conversations\/([^/]+)$/);
+  const conversationMatch = url.pathname.match(
+    /^\/api\/conversations\/([^/]+)$/,
+  );
   if (conversationMatch) {
     const conversationId = decodeURIComponent(conversationMatch[1]);
     const conversation = findStubConversation(conversationId);
@@ -1584,6 +1580,16 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/runtime") {
     sendJson(req, res, 200, buildRuntimeSnapshot(url));
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/runtime/mode") {
+    sendJson(req, res, 200, {
+      mode: "local",
+      deploymentRuntime: "local",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
+    });
     return;
   }
 

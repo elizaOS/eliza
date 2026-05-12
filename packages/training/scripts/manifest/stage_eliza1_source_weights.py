@@ -78,7 +78,7 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror for the official Qwen/Qwen3.5-0.8B base.",
+            "GGUF mirror of the official Qwen/Qwen3.5-0.8B base.",
             "Final Eliza-1 0.8B still needs training plus Q3_K_M quantization.",
         ),
     ),
@@ -90,7 +90,7 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror for the official Qwen/Qwen3.5-2B base.",
+            "GGUF mirror of the official Qwen/Qwen3.5-2B base.",
             "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
         ),
     ),

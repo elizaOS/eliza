@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Target catalog tier: eliza-1-9b (see packages/shared/src/local-inference/catalog.ts)
 # Distill the DFlash drafter for Eliza-1 tier 9b.
 #
 # Student base: Qwen/Qwen3.5-2B. Acceptance gate: 0.55.

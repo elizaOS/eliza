@@ -2,20 +2,17 @@
 /**
  * voice-bench CLI.
  *
- *   voice-bench --bundle eliza-1-1.7b --backend metal --scenario all --runs 3 --output results.json
+ *   voice-bench --bundle eliza-1-2b --backend metal --scenario all --runs 3 --output results.json
  *   voice-bench gpu                # detect host GPU and print the autotune plan
  *   voice-bench gpu --bundle eliza-1-9b
  *
- * Currently only the mock driver is wired. Wiring the real pipeline is
- * a follow-up: see README.md "Wiring the real pipeline" section.
+ * The legacy mock-only benchmark path is intentionally disabled. Use the
+ * real VoiceBench runner under `packages/benchmarks/voicebench/run.sh`.
  */
 
-import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { MockPipelineDriver } from "../src/mock-driver.ts";
-import { parseCliArgs, runBench } from "../src/runner.ts";
-import { evaluateGates } from "../src/gates.ts";
-import type { BenchRun } from "../src/types.ts";
+import { parseCliArgs } from "../src/runner.ts";
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
@@ -30,47 +27,12 @@ async function main(): Promise<void> {
 
   const args = parseCliArgs(argv);
 
-  if (args.backend !== "mock") {
-    process.stderr.write(
-      `[voice-bench] backend "${args.backend}" not yet wired in this build — only "mock" is available.\n` +
-        `[voice-bench] See packages/inference/voice-bench/README.md for the follow-up plan.\n`,
-    );
-    process.exit(2);
-  }
-
-  const driver = new MockPipelineDriver({ backend: args.backend });
-  const scenarios = args.scenario === "all" ? undefined : [args.scenario];
-
-  const run = await runBench({
-    driver,
-    bundleId: args.bundle,
-    scenarios,
-    runs: args.runs,
-  });
-
-  const json = JSON.stringify(run, null, 2);
-  if (args.output) {
-    writeFileSync(args.output, json);
-    process.stdout.write(`[voice-bench] wrote ${args.output}\n`);
-  } else {
-    process.stdout.write(`${json}\n`);
-  }
-
-  let baselineRun: BenchRun | undefined;
-  if (args.baseline) {
-    if (!existsSync(args.baseline)) {
-      process.stderr.write(`[voice-bench] baseline not found: ${args.baseline}\n`);
-      process.exit(2);
-    }
-    baselineRun = JSON.parse(readFileSync(args.baseline, "utf8")) as BenchRun;
-  }
-
-  const report = evaluateGates({ current: run, baseline: baselineRun });
-  process.stdout.write(`\n${report.markdown}\n`);
-  if (!report.passed) {
-    process.stderr.write("[voice-bench] gate FAIL\n");
-    process.exit(1);
-  }
+  process.stderr.write(
+    `[voice-bench] the runnable benchmark path is now real-only; the old mock driver is disabled.\n` +
+      `[voice-bench] requested backend=${args.backend} bundle=${args.bundle} scenario=${args.scenario} runs=${args.runs}\n` +
+      `[voice-bench] run packages/benchmarks/voicebench/run.sh --profile=groq|elevenlabs with real credentials and real audio fixtures.\n`,
+  );
+  process.exit(2);
 }
 
 interface DetectedGpuLite {

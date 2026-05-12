@@ -10,11 +10,12 @@
  *
  * `--backend synthetic` is deterministic and CI-safe. It verifies the
  * orchestration, metrics shape, and schema-prefill accounting without
- * claiming model/hardware evidence. `--backend real` is intentionally
- * fail-closed until the fused runtime bridge can route two live voice
- * sessions through the app's agent/tool pipeline.
+ * claiming model/hardware evidence. `--backend real` bridges to the
+ * app-core voice-duet harness, which owns the live in-memory
+ * TTS -> ASR -> agent-tool loop.
  */
 
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -27,6 +28,14 @@ const DEFAULT_REPORT_DIR = path.join(
   __dirname,
   "reports",
   "two-agent-voice",
+);
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const VOICE_DUET = path.join(
+  REPO_ROOT,
+  "packages",
+  "app-core",
+  "scripts",
+  "voice-duet.mjs",
 );
 
 function timestamp() {
@@ -46,6 +55,7 @@ function usage() {
     "  --model-id <id>            Shared model id (default: eliza-1-2b)",
     "  --bundle <dir>             Bundle directory for real backend checks",
     "  --bin-dir <dir>            Fused runtime bin dir for real backend checks",
+    "  --real-timeout-ms <ms>     Max wall time for real voice-duet bridge (default: 300000)",
     "  --agent-a <name>           Agent A name (default: ada)",
     "  --agent-b <name>           Agent B name (default: bea)",
     "  --seed <n>                 Deterministic synthetic seed (default: 42)",
@@ -63,6 +73,10 @@ function parseArgs(argv) {
     modelId: process.env.ELIZA_TWO_AGENT_MODEL_ID || "eliza-1-2b",
     bundle: process.env.ELIZA_TWO_AGENT_BUNDLE || "",
     binDir: process.env.ELIZA_TWO_AGENT_BIN_DIR || "",
+    realTimeoutMs: Number.parseInt(
+      process.env.ELIZA_TWO_AGENT_REAL_TIMEOUT_MS || "300000",
+      10,
+    ),
     agentA: process.env.ELIZA_TWO_AGENT_A || "ada",
     agentB: process.env.ELIZA_TWO_AGENT_B || "bea",
     seed: Number.parseInt(process.env.ELIZA_TWO_AGENT_SEED || "42", 10),
@@ -82,6 +96,9 @@ function parseArgs(argv) {
     else if (a === "--model-id") args.modelId = next();
     else if (a === "--bundle" || a === "--bundle-dir") args.bundle = next();
     else if (a === "--bin-dir") args.binDir = next();
+    else if (a === "--real-timeout-ms") {
+      args.realTimeoutMs = Number.parseInt(next(), 10);
+    }
     else if (a === "--agent-a") args.agentA = next();
     else if (a === "--agent-b") args.agentB = next();
     else if (a === "--seed") args.seed = Number.parseInt(next(), 10);
@@ -103,6 +120,9 @@ function parseArgs(argv) {
   }
   if (!Number.isFinite(args.seed)) {
     throw new Error("--seed must be an integer");
+  }
+  if (!Number.isFinite(args.realTimeoutMs) || args.realTimeoutMs < 1000) {
+    throw new Error("--real-timeout-ms must be at least 1000");
   }
   if (!args.report) {
     args.report = path.join(
@@ -332,6 +352,134 @@ function validateRealBackend(args) {
   return { bundle, binDir, dylib, server, ok: reasons.length === 0, reasons };
 }
 
+function envForRealBridge(args, real) {
+  const env = { ...process.env };
+  if (args.binDir) {
+    env.ELIZA_INFERENCE_LIBRARY = real.dylib;
+    env.ELIZA_INFERENCE_LIB_DIR = real.binDir;
+    env.ELIZA_DFLASH_LLAMA_SERVER = real.server;
+  }
+  const defaultBundlePath = defaultBundle(args.modelId);
+  if (args.bundle && path.resolve(args.bundle) !== path.resolve(defaultBundlePath)) {
+    const suffix = path.join(
+      "local-inference",
+      "models",
+      `${args.modelId}.bundle`,
+    );
+    const normalized = path.resolve(args.bundle);
+    if (normalized.endsWith(suffix)) {
+      env.ELIZA_STATE_DIR = normalized.slice(0, -suffix.length - 1);
+    } else {
+      env.ELIZA_TWO_AGENT_BUNDLE_UNSUPPORTED_BY_DUET = args.bundle;
+    }
+  }
+  return env;
+}
+
+function executableForBunHarness() {
+  if (process.versions?.bun) return process.execPath;
+  return process.env.BUN_EXE || "bun";
+}
+
+function bridgeReportPath(args) {
+  const parsed = path.parse(args.report);
+  return path.join(parsed.dir, `${parsed.name}.voice-duet.json`);
+}
+
+function tail(text, max = 4000) {
+  return text.length <= max ? text : text.slice(-max);
+}
+
+function runVoiceDuetBridge(args, real, reportPath) {
+  return new Promise((resolve) => {
+    const childArgs = [
+      VOICE_DUET,
+      "--model",
+      args.modelId,
+      "--turns",
+      String(args.turns),
+      "--report",
+      reportPath,
+    ];
+    const started = Date.now();
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+    const child = spawn(executableForBunHarness(), childArgs, {
+      cwd: REPO_ROOT,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: envForRealBridge(args, real),
+    });
+    child.stdout.on("data", (chunk) => {
+      stdout = tail(stdout + chunk.toString("utf8"));
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr = tail(stderr + chunk.toString("utf8"));
+    });
+    child.on("error", (err) => {
+      resolve({
+        code: null,
+        signal: null,
+        timedOut: false,
+        wallMs: Date.now() - started,
+        stdout,
+        stderr: tail(`${stderr}\n${err.message}`),
+        report: null,
+      });
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        /* child may already be gone */
+      }
+    }, args.realTimeoutMs);
+    child.on("exit", (code, signal) => {
+      clearTimeout(timer);
+      let bridgeReport = null;
+      try {
+        if (fs.existsSync(reportPath)) {
+          bridgeReport = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+        }
+      } catch {
+        /* partial or invalid report */
+      }
+      resolve({
+        code,
+        signal,
+        timedOut,
+        wallMs: Date.now() - started,
+        stdout,
+        stderr,
+        report: bridgeReport,
+      });
+    });
+  });
+}
+
+function realBridgeStatus(result) {
+  if (result.timedOut) return "real-voice-duet-timeout";
+  if (result.code === 0 && (result.report?.completedTurns ?? 0) > 0) {
+    return "pass";
+  }
+  if (result.code === 0) return "real-voice-duet-no-turns";
+  return "real-voice-duet-failed";
+}
+
+function realBridgeReason(status, result) {
+  if (status === "pass") {
+    return "Real fused assets were present and the app-core voice-duet harness completed live TTS->ASR->agent turns.";
+  }
+  if (status === "real-voice-duet-timeout") {
+    return `The app-core voice-duet bridge did not complete within ${result.wallMs}ms. Inspect the bridge stdout/stderr tail for the stage that stalled.`;
+  }
+  if (status === "real-voice-duet-no-turns") {
+    return "The app-core voice-duet bridge exited successfully but did not record a completed round-trip; inspect the bridge report for missing latency/turn data.";
+  }
+  return "The app-core voice-duet bridge exited non-zero; stdout/stderr include the concrete missing prerequisite or native runtime failure.";
+}
+
 async function runSynthetic(args) {
   const backend = new SyntheticBackend(args.seed);
   const agents = [
@@ -396,18 +544,84 @@ async function runSynthetic(args) {
 
 async function runReal(args) {
   const real = validateRealBackend(args);
+  const agents = [
+    { id: "agent-a", name: args.agentA, voice: "eliza-default-a" },
+    { id: "agent-b", name: args.agentB, voice: "eliza-default-b" },
+  ];
+  const env = envForRealBridge(args, real);
+  if (env.ELIZA_TWO_AGENT_BUNDLE_UNSUPPORTED_BY_DUET) {
+    return {
+      status: "needs-supported-bundle-layout",
+      backendMode: "real",
+      releaseEvidence: false,
+      releaseEvidenceReason:
+        "A custom --bundle was supplied, but voice-duet resolves installed bundles from <state-dir>/local-inference/models/<model-id>.bundle. Move or symlink the bundle there, or pass a bundle path with that layout so ELIZA_STATE_DIR can be derived.",
+      realBackend: {
+        ...real,
+        reasons: [
+          ...real.reasons,
+          `custom bundle path is not consumable by voice-duet: ${args.bundle}`,
+        ],
+      },
+      agents,
+      turns: [],
+    };
+  }
+  if (!fs.existsSync(VOICE_DUET)) {
+    real.reasons.push(`voice-duet harness missing: ${VOICE_DUET}`);
+    real.ok = false;
+  }
+  if (!real.ok || real.reasons.length > 0) {
+    return {
+      status: "needs-build-or-bundle",
+      backendMode: "real",
+      releaseEvidence: false,
+      releaseEvidenceReason:
+        "Real fused assets are missing; no synthetic pass is recorded as release evidence.",
+      realBackend: real,
+      bridge: {
+        harness: VOICE_DUET,
+        attempted: false,
+        reason: "missing required bundle/bin assets",
+      },
+      agents,
+      turns: [],
+    };
+  }
+
+  const duetReport = bridgeReportPath(args);
+  const result = await runVoiceDuetBridge(args, real, duetReport);
+  const status = realBridgeStatus(result);
   return {
-    status: real.ok ? "needs-real-two-agent-bridge" : "needs-build-or-bundle",
+    status,
     backendMode: "real",
-    releaseEvidence: false,
-    releaseEvidenceReason: real.ok
-      ? "Real fused assets are present, but this harness still needs the two-agent startVoiceSession host bridge to drive live TTS->ASR->agent-tool turns."
-      : "Real fused assets are missing; no synthetic pass is recorded as release evidence.",
+    releaseEvidence: status === "pass",
+    releaseEvidenceReason: realBridgeReason(status, result),
     realBackend: real,
-    agents: [
-      { id: "agent-a", name: args.agentA, voice: "eliza-default-a" },
-      { id: "agent-b", name: args.agentB, voice: "eliza-default-b" },
-    ],
+    bridge: {
+      harness: VOICE_DUET,
+      command: [
+        executableForBunHarness(),
+        VOICE_DUET,
+        "--model",
+        args.modelId,
+        "--turns",
+        String(args.turns),
+        "--report",
+        duetReport,
+      ],
+      report: duetReport,
+      exitCode: result.code,
+      signal: result.signal,
+      timedOut: result.timedOut,
+      wallMs: result.wallMs,
+      stdoutTail: result.stdout,
+      stderrTail: result.stderr,
+      voiceDuetReport: result.report,
+      completedTurns: result.report?.completedTurns ?? 0,
+      requestedTurns: result.report?.requestedTurns ?? args.turns,
+    },
+    agents,
     turns: [],
   };
 }

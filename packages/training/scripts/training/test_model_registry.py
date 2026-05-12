@@ -38,8 +38,8 @@ def test_every_entry_has_publish_metadata() -> None:
     for key, public in zip(VERIFIED_KEYS, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
-        assert e.eliza_repo_id == f"elizaos/{public}"
-        assert e.abliteration_repo_id == f"elizaos/{public}-uncensored"
+        assert e.eliza_repo_id == "elizaos/eliza-1"
+        assert e.abliteration_repo_id == ""
 
 
 def test_verified_bases_are_not_flagged_unverified() -> None:

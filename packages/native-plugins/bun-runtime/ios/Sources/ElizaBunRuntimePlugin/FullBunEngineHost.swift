@@ -9,7 +9,7 @@ import Darwin
 /// to this host.
 final class FullBunEngineHost {
     static let shared = FullBunEngineHost()
-    private static let expectedAbiVersion = "1"
+    private static let expectedAbiVersion = "2"
 
     private typealias AbiVersionFn = @convention(c) () -> UnsafePointer<CChar>?
     private typealias LastErrorFn = @convention(c) () -> UnsafePointer<CChar>?
@@ -20,6 +20,7 @@ final class FullBunEngineHost {
         UnsafePointer<CChar>
     ) -> Int32
     private typealias StopFn = @convention(c) () -> Int32
+    private typealias IsRunningFn = @convention(c) () -> Int32
     private typealias CallFn = @convention(c) (
         UnsafePointer<CChar>,
         UnsafePointer<CChar>
@@ -31,6 +32,7 @@ final class FullBunEngineHost {
     private var lastErrorFn: LastErrorFn?
     private var startFn: StartFn?
     private var stopFn: StopFn?
+    private var isRunningFn: IsRunningFn?
     private var callFn: CallFn?
     private var freeFn: FreeFn?
     private var running = false
@@ -51,14 +53,29 @@ final class FullBunEngineHost {
         return String(cString: abi)
     }
 
+    var isRunning: Bool {
+        do {
+            try load()
+            let engineRunning = isRunningFn?() == 1
+            if !engineRunning { running = false }
+            return engineRunning
+        } catch {
+            running = false
+            return false
+        }
+    }
+
     func start(
         bundlePath: String,
         argv: [String],
         env: [String: String],
         appSupportDir: String
     ) throws {
-        if running { return }
         try load()
+        if running {
+            if isRunningFn?() == 1 { return }
+            running = false
+        }
         guard let startFn else {
             throw makeError("ElizaBunEngine missing start symbol")
         }
@@ -84,7 +101,6 @@ final class FullBunEngineHost {
     }
 
     func stop() {
-        guard running else { return }
         _ = stopFn?()
         running = false
     }
@@ -94,6 +110,7 @@ final class FullBunEngineHost {
         guard let callFn else {
             throw makeError("ElizaBunEngine missing call symbol")
         }
+        let previousError = lastError()
         let payloadJson = try encodeJSON(payload ?? NSNull())
         let resultPtr = method.withCString { methodPtr in
             payloadJson.withCString { payloadPtr in
@@ -113,7 +130,10 @@ final class FullBunEngineHost {
            let ok = dict["ok"] as? Bool,
            ok == false {
             let message = dict["error"] as? String ?? "unknown full Bun engine error"
-            throw makeError(message)
+            let detail = previousError.isEmpty || previousError == message
+                ? ""
+                : " (previous engine error: \(previousError))"
+            throw makeError("\(message)\(detail)")
         }
         if let dict = decoded as? [String: Any],
            let ok = dict["ok"] as? Bool,
@@ -140,6 +160,10 @@ final class FullBunEngineHost {
             )
             let loadedStartFn: StartFn = try symbol("eliza_bun_engine_start", in: openedHandle)
             let loadedStopFn: StopFn = try symbol("eliza_bun_engine_stop", in: openedHandle)
+            let loadedIsRunningFn: IsRunningFn = try symbol(
+                "eliza_bun_engine_is_running",
+                in: openedHandle
+            )
             let loadedCallFn: CallFn = try symbol("eliza_bun_engine_call", in: openedHandle)
             let loadedFreeFn: FreeFn = try symbol("eliza_bun_engine_free", in: openedHandle)
             guard let abiPointer = loadedAbiVersionFn() else {
@@ -157,6 +181,7 @@ final class FullBunEngineHost {
             self.lastErrorFn = loadedLastErrorFn
             self.startFn = loadedStartFn
             self.stopFn = loadedStopFn
+            self.isRunningFn = loadedIsRunningFn
             self.callFn = loadedCallFn
             self.freeFn = loadedFreeFn
         } catch {

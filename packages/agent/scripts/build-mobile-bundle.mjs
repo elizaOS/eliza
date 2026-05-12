@@ -218,6 +218,7 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
+  "@elizaos/app-core": path.join(stubsDir, "app-core-runtime.cjs"),
   // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that
   // `packages/app-core/src/api/training-benchmarks.ts` imports at module
   // top level. Bun 1.3.x on arm64-Android does not yet implement it, so
@@ -257,6 +258,13 @@ const nativeStubs = {
     stubsDir,
     "huggingface-transformers.cjs",
   ),
+  mammoth: path.join(stubsDir, "mammoth.cjs"),
+  "source-map": path.join(stubsDir, "source-map.cjs"),
+  // PDF extraction pulls in pdfjs (~2 MB of parser/runtime code) through
+  // core document utilities. The iOS full-Bun startup path only needs chat
+  // and API dispatch, so keep PDF parsing behind a clear mobile runtime error
+  // instead of paying that no-JIT parse cost on every app launch.
+  unpdf: path.join(stubsDir, "unpdf.cjs"),
   "puppeteer-core": path.join(stubsDir, "puppeteer-core.cjs"),
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),
@@ -366,6 +374,17 @@ if (TARGET === "ios-jsc") {
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-agent-orchestrator": path.join(
+    stubsDir,
+    "null-plugin.cjs",
+  ),
+  "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-commands": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-mlx": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
   // Browser bridge can still be resolved through workspace/plugin fallback
   // paths when core plugins are collected. Mobile doesn't run a headless
   // browser, and the runtime's plugin filter strips browser-bridge from the
@@ -926,9 +945,18 @@ const buildResult = await Bun.build({
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
-  // Don't minify. Bundling is already significant — this is a debugging step
-  // to keep stack traces readable. Re-enable selectively if APK size matters.
-  minify: false,
+  // Keep Android debuggable, but compact the real iOS Bun payload. Static
+  // JavaScriptCore no-JIT spends a lot of time parsing this file; syntax +
+  // whitespace minification reduces launch cost without identifier mangling,
+  // preserving the post-build undeclared-identifier scan below.
+  minify:
+    TARGET === "ios"
+      ? {
+          syntax: true,
+          whitespace: true,
+          identifiers: false,
+        }
+      : false,
   define: {
     "process.env.ELIZA_PLATFORM": JSON.stringify(platformDefineValue),
     // Disable the `isDirectRun` self-invocation guard in the agent's

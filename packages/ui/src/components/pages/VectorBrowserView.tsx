@@ -1,12 +1,3 @@
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { MetaPill } from "../composites/page-panel/page-panel-header";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { PagePanel } from "../composites/page-panel";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import type { ReactNode } from "react";
 import {
   useCallback,
@@ -20,8 +11,23 @@ import type * as Three from "three";
 import { client, type QueryResult, type TableInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { MetaPill } from "../composites/page-panel/page-panel-header";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
 import {
   buildVectorGraph2DLayout,
@@ -421,6 +427,9 @@ export function VectorGraph3D({
         cancelAnimationFrame(animationRef.current);
         if (handleResize) {
           window.removeEventListener("resize", handleResize);
+        }
+        if (visibilityHandler) {
+          document.removeEventListener("visibilitychange", visibilityHandler);
         }
         if (onMouseDown) {
           renderer.domElement.removeEventListener("mousedown", onMouseDown);

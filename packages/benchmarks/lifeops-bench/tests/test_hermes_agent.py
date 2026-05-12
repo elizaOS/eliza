@@ -112,6 +112,7 @@ def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pyte
         captured.update(kwargs)
         self.model = kwargs.get("model") or "gpt-oss-120b"
 
+    monkeypatch.setenv("HERMES_ADAPTER_MODE", "in_process")
     monkeypatch.setattr(BridgeHermesClient, "__init__", _fake_init)
     monkeypatch.setattr(BridgeHermesClient, "wait_until_ready", lambda self, timeout=60: None)
 
@@ -134,6 +135,33 @@ def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pyte
         "base_url": "https://cerebras.example/v1",
         "api_key": "test-key",
     }
+
+
+def test_build_hermes_agent_uses_subprocess_when_parent_openai_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Lean benchmark Python envs may not have openai installed."""
+    from eliza_lifeops_bench.agents import hermes as hermes_agent
+    from eliza_lifeops_bench.agents.adapter_paths import ensure_benchmark_adapter_importable
+
+    ensure_benchmark_adapter_importable("hermes")
+    from hermes_adapter.client import HermesClient as BridgeHermesClient
+
+    captured: dict[str, Any] = {}
+
+    def _fake_init(self: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+        self.model = kwargs.get("model") or "gpt-oss-120b"
+
+    monkeypatch.delenv("HERMES_ADAPTER_MODE", raising=False)
+    monkeypatch.setattr(hermes_agent.importlib.util, "find_spec", lambda name: None)
+    monkeypatch.setattr(BridgeHermesClient, "__init__", _fake_init)
+    monkeypatch.setattr(BridgeHermesClient, "wait_until_ready", lambda self, timeout=60: None)
+
+    agent = build_hermes_agent()
+
+    assert callable(agent)
+    assert captured["mode"] == "subprocess"
 
 
 # ---------------------------------------------------------------------------

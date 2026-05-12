@@ -157,6 +157,7 @@ class ElizaVendingProvider:
                 text=prompt,
                 context={
                     "benchmark": "vending-bench",
+                    "task_id": f"{self._run_id}:turn-{self._turn_counter}",
                     "system_prompt": system_prompt,
                     "temperature": temperature,
                     "run_id": self._run_id,

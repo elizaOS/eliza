@@ -76,6 +76,7 @@ export {
   type RecommendationPlatformClass,
   type RecommendedModelSelection,
   recommendForFirstRun,
+  selectBestQuantizationVariant,
   selectRecommendedModelForSlot,
   selectRecommendedModels,
 } from "./recommendation";

@@ -339,6 +339,7 @@ class VendingBenchConfig:
     max_days_per_run: int = 30
     initial_cash: Decimal = Decimal("500.00")
     random_seed: int | None = None
+    starter_inventory: bool = False
 
     # Environment settings
     daily_base_fee: Decimal = Decimal("5.00")

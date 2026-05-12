@@ -670,6 +670,31 @@ def _score_from_woobench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_score", ctx="woobench:root"),
         ctx="woobench:overall_score",
     )
+    scenarios_raw = get_optional(root, "scenarios")
+    scenarios = scenarios_raw if isinstance(scenarios_raw, list) else []
+    converted = 0
+    completed = 0
+    scenario_revenue = 0.0
+    for scenario in scenarios:
+        if not isinstance(scenario, dict):
+            continue
+        if scenario.get("payment_converted") is True:
+            converted += 1
+        if scenario.get("agent_responsive") is True:
+            completed += 1
+        revenue_obj = scenario.get("revenue")
+        if isinstance(revenue_obj, dict):
+            amount = revenue_obj.get("total_paid") or revenue_obj.get("amount") or 0
+        else:
+            amount = revenue_obj if isinstance(revenue_obj, (int, float)) else 0
+        try:
+            scenario_revenue += float(amount)
+        except (TypeError, ValueError):
+            pass
+    total_revenue = get_optional(root, "total_revenue")
+    if not isinstance(total_revenue, (int, float)):
+        total_revenue = scenario_revenue
+    scenario_count = len(scenarios)
     return ScoreExtraction(
         score=overall / 100.0,
         unit="ratio",
@@ -679,6 +704,13 @@ def _score_from_woobench_json(data: JSONValue) -> ScoreExtraction:
             "revenue_efficiency": get_optional(root, "revenue_efficiency") or 0,
             "resilience_score": get_optional(root, "resilience_score") or 0,
             "failed_scenarios": get_optional(root, "failed_scenarios") or 0,
+            "total_revenue": float(total_revenue),
+            "scenario_count": scenario_count,
+            "payment_converted_count": converted,
+            "completed_reading_count": completed,
+            "avg_revenue_per_scenario": (
+                float(total_revenue) / scenario_count if scenario_count else 0.0
+            ),
         },
     )
 
@@ -822,6 +854,87 @@ def _score_from_lifeops_bench_json(data: JSONValue) -> ScoreExtraction:
             "eval_cost_usd": get_optional(root, "eval_cost_usd") or 0,
             "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
             "model_name": get_optional(root, "model_name") or "",
+            "judge_model_name": get_optional(root, "judge_model_name") or "",
+        },
+    )
+
+
+def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="mmau:root")
+    metrics_obj = get_optional(root, "metrics")
+    metrics = expect_dict(metrics_obj, ctx="mmau:metrics") if isinstance(metrics_obj, dict) else root
+    overall = expect_float(
+        get_required(metrics, "overall_accuracy", ctx="mmau:metrics"),
+        ctx="mmau:overall_accuracy",
+    )
+    total_samples_raw = get_optional(metrics, "total_samples")
+    if not isinstance(total_samples_raw, (int, float)) or isinstance(total_samples_raw, bool) or total_samples_raw <= 0:
+        raise ValueError("mmau: result contains no evaluated samples")
+    return ScoreExtraction(
+        score=overall,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "overall_accuracy": overall,
+            "speech_accuracy": get_optional(metrics, "speech_accuracy") or 0,
+            "sound_accuracy": get_optional(metrics, "sound_accuracy") or 0,
+            "music_accuracy": get_optional(metrics, "music_accuracy") or 0,
+            "total_samples": total_samples_raw,
+            "error_count": get_optional(metrics, "error_count") or 0,
+        },
+    )
+
+
+def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="voicebench_quality:root")
+    score = expect_float(
+        get_required(root, "score", ctx="voicebench_quality:root"),
+        ctx="voicebench_quality:score",
+    )
+    n_raw = get_optional(root, "n")
+    if not isinstance(n_raw, (int, float)) or isinstance(n_raw, bool) or n_raw <= 0:
+        raise ValueError("voicebench_quality: result contains no evaluated samples")
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "n": n_raw,
+            "per_suite": get_optional(root, "per_suite") or {},
+            "suites_run": get_optional(root, "suites_run") or [],
+            "elapsed_s": get_optional(root, "elapsed_s") or 0,
+            "judge_model": get_optional(root, "judge_model") or "",
+            "stt_provider": get_optional(root, "stt_provider") or "",
+        },
+    )
+
+
+def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
+    root = expect_dict(data, ctx="voiceagentbench:root")
+    pass_at_1 = expect_float(
+        get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
+        ctx="voiceagentbench:pass_at_1",
+    )
+    tasks = get_optional(root, "tasks")
+    tasks_run = len(tasks) if isinstance(tasks, list) else 0
+    if tasks_run <= 0:
+        raise ValueError("voiceagentbench: result contains no task trajectories")
+    return ScoreExtraction(
+        score=pass_at_1,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "pass_at_1": pass_at_1,
+            "pass_at_k": get_optional(root, "pass_at_k") or {},
+            "per_suite_pass_at_1": get_optional(root, "per_suite_pass_at_1") or {},
+            "mean_tool_selection": get_optional(root, "mean_tool_selection") or 0,
+            "mean_parameter_match": get_optional(root, "mean_parameter_match") or 0,
+            "mean_coherence": get_optional(root, "mean_coherence") or 0,
+            "mean_safety": get_optional(root, "mean_safety") or 0,
+            "tasks_run": tasks_run,
+            "seeds": get_optional(root, "seeds") or 0,
+            "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
             "judge_model_name": get_optional(root, "judge_model_name") or "",
         },
     )
@@ -984,11 +1097,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _bfcl_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [python, "-m", "benchmarks.bfcl", "run", "--output", str(output_dir)]
         provider_name = (model.provider or "").strip().lower()
-        agent = extra.get("agent")
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         # Route LLM-backed providers through the eliza TS bridge so the
         # ElizaBFCLAgent + registered runtime is exercised.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent == "eliza" or provider_name in bridge_providers:
+        if agent in {"hermes", "openclaw"}:
+            args.extend(["--provider", agent])
+            if model.model:
+                args.extend(["--model", model.model])
+        elif agent == "eliza" or provider_name in bridge_providers:
             args.extend(["--provider", "eliza"])
             if model.model:
                 args.extend(["--model", model.model])
@@ -1428,10 +1545,33 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         days = extra.get("days")
         if not isinstance(days, int):
             days = extra.get("max_days_per_run")
+        effective_days = 3
         if isinstance(days, int) and days > 0:
-            args.extend(["--days", str(days)])
+            effective_days = max(3, days)
+            args.extend(["--days", str(effective_days)])
         elif extra.get("max_tasks") == 1:
-            args.extend(["--days", "1"])
+            effective_days = 3
+            args.extend(["--days", "3"])
+        else:
+            effective_days = 3
+            args.extend(["--days", "3"])
+        starter_inventory = extra.get("starter_inventory")
+        if starter_inventory is True or (
+            starter_inventory is not False and effective_days <= 3
+        ):
+            args.append("--starter-inventory")
+        max_actions_per_day = extra.get("max_actions_per_day")
+        if not isinstance(max_actions_per_day, int):
+            max_actions_per_day = extra.get("max_actions")
+        if isinstance(max_actions_per_day, int) and max_actions_per_day > 0:
+            args.extend(["--max-actions-per-day", str(max_actions_per_day)])
+        elif effective_days <= 3:
+            args.extend(["--max-actions-per-day", "6"])
+        seed = extra.get("seed")
+        if not isinstance(seed, int):
+            seed = extra.get("random_seed")
+        if isinstance(seed, int):
+            args.extend(["--seed", str(seed)])
         return args
 
     def _vending_result(output_dir: Path) -> Path:
@@ -2668,6 +2808,138 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _lifeops_bench_result(output_dir: Path) -> Path:
         return find_latest_file(output_dir, glob_pattern="lifeops_*.json")
 
+    # MMAU - multi-task audio understanding, MCQ exact-match scorer.
+    def _mmau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        if agent not in {"mock", "eliza", "hermes", "openclaw"}:
+            agent = "mock" if (model.provider or "").strip().lower() == "mock" else "eliza"
+        args = [
+            python,
+            "-m",
+            "benchmarks.mmau",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        if extra.get("mock") is True or (model.provider or "").strip().lower() == "mock":
+            args.append("--mock")
+        if model.provider:
+            args.extend(["--provider", model.provider])
+        if model.model:
+            args.extend(["--model", model.model])
+        split = extra.get("split")
+        if isinstance(split, str) and split in {"test-mini", "test"}:
+            args.extend(["--split", split])
+        categories = extra.get("category") or extra.get("categories")
+        if isinstance(categories, str) and categories.strip():
+            args.extend(["--category", categories.strip()])
+        elif isinstance(categories, list) and categories:
+            args.extend(["--category", ",".join(str(c) for c in categories if str(c).strip())])
+        limit = extra.get("limit")
+        if not isinstance(limit, int):
+            limit = extra.get("max_samples")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        fixture_path = extra.get("fixture_path")
+        if isinstance(fixture_path, str) and fixture_path.strip():
+            args.extend(["--fixture-path", fixture_path.strip()])
+        if extra.get("hf") is True:
+            args.append("--hf")
+        stt_model = extra.get("stt_model")
+        if isinstance(stt_model, str) and stt_model.strip():
+            args.extend(["--stt-model", stt_model.strip()])
+        timeout = extra.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
+        if extra.get("no_traces") is True:
+            args.append("--no-traces")
+        return args
+
+    def _mmau_result(output_dir: Path) -> Path:
+        return output_dir / "mmau-results.json"
+
+    # VoiceBench-quality - response quality counterpart to the TS latency bench.
+    def _voicebench_quality_cmd(
+        output_dir: Path,
+        model: ModelSpec,
+        extra: Mapping[str, JSONValue],
+    ) -> list[str]:
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        if agent not in {"echo", "eliza", "hermes", "openclaw"}:
+            agent = "echo" if (model.provider or "").strip().lower() == "mock" else "eliza"
+        args = [
+            python,
+            "-m",
+            "elizaos_voicebench",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        suite = extra.get("suite")
+        if isinstance(suite, str) and suite.strip():
+            args.extend(["--suite", suite.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        if extra.get("mock") is True or (model.provider or "").strip().lower() == "mock":
+            args.append("--mock")
+        elif extra.get("fixtures") is True or extra.get("fixture") is True:
+            args.append("--fixtures")
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        stt_provider = extra.get("stt_provider")
+        if isinstance(stt_provider, str) and stt_provider.strip():
+            args.extend(["--stt-provider", stt_provider.strip()])
+        return args
+
+    def _voicebench_quality_result(output_dir: Path) -> Path:
+        return output_dir / "voicebench-quality-results.json"
+
+    # VoiceAgentBench - voice-in, tool-call-out task suites.
+    def _voiceagentbench_cmd(
+        output_dir: Path,
+        model: ModelSpec,
+        extra: Mapping[str, JSONValue],
+    ) -> list[str]:
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
+        if agent not in {"mock", "eliza", "hermes", "openclaw"}:
+            agent = "mock" if (model.provider or "").strip().lower() == "mock" else "eliza"
+        args = [
+            python,
+            "-m",
+            "elizaos_voiceagentbench",
+            "--agent",
+            agent,
+            "--output",
+            str(output_dir),
+        ]
+        suite = extra.get("suite")
+        if isinstance(suite, str) and suite.strip():
+            args.extend(["--suite", suite.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        seeds = extra.get("seeds")
+        if isinstance(seeds, int) and seeds > 0:
+            args.extend(["--seeds", str(seeds)])
+        if extra.get("mock") is True or extra.get("fixtures") is True or (model.provider or "").strip().lower() == "mock":
+            args.append("--mock")
+        if extra.get("no_judge") is True:
+            args.append("--no-judge")
+        data_path = extra.get("data_path")
+        if isinstance(data_path, str) and data_path.strip():
+            args.extend(["--data-path", data_path.strip()])
+        judge_model = extra.get("judge_model")
+        if isinstance(judge_model, str) and judge_model.strip():
+            args.extend(["--judge-model", judge_model.strip()])
+        return args
+
+    def _voiceagentbench_result(output_dir: Path) -> Path:
+        return find_latest_file(output_dir, glob_pattern="voiceagentbench_*.json")
+
     # --- Hermes-native envs (tblite / terminalbench_2 / yc_bench / hermes_swe_env) ---
     # The four envs share one subprocess shim and one score extractor; only the
     # short env-id arg and the result-glob differ between them.
@@ -3292,6 +3564,61 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             build_command=_lifeops_bench_cmd,
             locate_result=_lifeops_bench_result,
             extract_score=_score_from_lifeops_bench_json,
+        ),
+        BenchmarkDefinition(
+            id="mmau",
+            display_name="MMAU",
+            description="Massive Multi-task Audio Understanding benchmark (speech/sound/music MCQ exact match)",
+            cwd_rel=".",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/mmau/fixtures/smoke.jsonl",),
+                notes=(
+                    "Defaults to the bundled fixture so smoke runs can exercise "
+                    "Eliza/Hermes/OpenClaw adapters without HF downloads. Full "
+                    "audio runs require hf=true plus GROQ_API_KEY for cascaded STT."
+                ),
+            ),
+            build_command=_mmau_cmd,
+            locate_result=_mmau_result,
+            extract_score=_score_from_mmau_json,
+        ),
+        BenchmarkDefinition(
+            id="voicebench_quality",
+            display_name="VoiceBench Quality",
+            description="VoiceBench response-quality benchmark over spoken instruction suites",
+            cwd_rel="benchmarks/voicebench-quality",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/voicebench-quality/elizaos_voicebench",),
+                notes=(
+                    "Separate from the TypeScript latency benchmark. Defaults to "
+                    "fixture data on openbookqa so runs can exercise the selected "
+                    "adapter. Full audio runs require datasets/HF plus GROQ_API_KEY; "
+                    "open-ended suites use a Cerebras judge."
+                ),
+            ),
+            build_command=_voicebench_quality_cmd,
+            locate_result=_voicebench_quality_result,
+            extract_score=_score_from_voicebench_quality_json,
+        ),
+        BenchmarkDefinition(
+            id="voiceagentbench",
+            display_name="VoiceAgentBench",
+            description="Voice-in tool-call benchmark with single, parallel, sequential, multi-turn, safety, and multilingual suites",
+            cwd_rel="benchmarks/voiceagentbench",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=("benchmarks/voiceagentbench/fixtures/mock_tasks.jsonl",),
+                notes=(
+                    "Defaults to bundled fixtures with passthrough STT and no judge "
+                    "for smoke loops while still invoking the selected agent. Full "
+                    "audio/coherence runs may need GROQ_API_KEY and CEREBRAS_API_KEY."
+                ),
+            ),
+            build_command=_voiceagentbench_cmd,
+            locate_result=_voiceagentbench_result,
+            extract_score=_score_from_voiceagentbench_json,
         ),
         # ----- standard public LLM benchmarks (W1-B1, gap C6) -----
         BenchmarkDefinition(

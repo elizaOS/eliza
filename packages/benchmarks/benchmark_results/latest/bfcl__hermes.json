@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T144519Z_1a709559/bfcl__bfcl/run_bfcl_20260512T144519Z_2_422c61a7/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T185643Z_878b82e3/bfcl__bfcl/run_bfcl_20260512T185643Z_1_abb65cd6/output"
   ],
   "benchmark_directory": "bfcl",
   "benchmark_id": "bfcl",
@@ -9,21 +9,22 @@
     "cache_creation_input_tokens": 0,
     "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 2
+    "turns_with_cached_field": 1
   },
+  "comparison_signature": "2f335f386cab13e788e6961d09b7f5d8ade433be1390d2557f1b76ba55fdd89c",
   "error": null,
   "higher_is_better": true,
   "metrics": {
-    "ast_accuracy": 0.5,
+    "ast_accuracy": 1.0,
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
       "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 2
+      "turns_with_cached_field": 1
     },
     "canonical_entries": 0,
     "error_analysis": {
-      "argument_mismatch": 1,
+      "argument_mismatch": 0,
       "execution_error": 0,
       "extra_call": 0,
       "missing_call": 0,
@@ -34,70 +35,61 @@
       "type_error": 0
     },
     "exec_accuracy": 0,
-    "overall_score": 0.2857142857142857,
+    "overall_score": 1.0,
     "performance_metrics": {
-      "duration_seconds": 3.450476417026948,
-      "mean_latency_ms": 997.7693937641258,
-      "p95_latency_ms": 1542.7219867706299,
-      "throughput_per_second": 1.7388903081302063
+      "duration_seconds": 1.1382825830005459,
+      "mean_latency_ms": 673.2435141029782,
+      "p95_latency_ms": 673.4278202056885,
+      "throughput_per_second": 1.7570329458331357
     },
     "relevance_accuracy": 1.0,
     "return_code": 0,
     "token_metrics": {
-      "avg_completion_tokens": 94.33333333333333,
-      "avg_prompt_tokens": 227.5,
-      "completion_tokens": 566,
-      "llm_call_count": 6,
-      "prompt_tokens": 1365,
+      "avg_completion_tokens": 48.0,
+      "avg_prompt_tokens": 120.0,
+      "completion_tokens": 96,
+      "llm_call_count": 2,
+      "prompt_tokens": 240,
       "telemetry_missing": false,
-      "total_tokens": 1931
+      "total_tokens": 336
     },
-    "total_tests": 2,
+    "total_tests": 1,
     "trajectory_summary": {
       "files": 3,
-      "prompt_chars": 6154,
-      "repeated_prefixes": [
-        {
-          "count": 2,
-          "snippet": "You are solving a Berkeley Function-Calling Leaderboard task. Use native tool calls when one or more listed functions are relevant. If no listed function is relevant, respond without a tool call.\nBenc"
-        }
-      ],
-      "turns": 6
+      "prompt_chars": 346,
+      "repeated_prefixes": [],
+      "turns": 2
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 3.450476417026948,
-    "mean_latency_ms": 997.7693937641258,
-    "p95_latency_ms": 1542.7219867706299,
-    "throughput_per_second": 1.7388903081302063
+    "duration_seconds": 1.1382825830005459,
+    "mean_latency_ms": 673.2435141029782,
+    "p95_latency_ms": 673.4278202056885,
+    "throughput_per_second": 1.7570329458331357
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T144519Z_1a709559/bfcl__bfcl/run_bfcl_20260512T144519Z_2_422c61a7/output/bfcl_results_gpt-oss-120b_20260512_074522.json",
-  "run_group_id": "rg_20260512T144519Z_1a709559",
-  "run_id": "run_bfcl_20260512T144519Z_2_422c61a7",
-  "score": 0.2857142857142857,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T185643Z_878b82e3/bfcl__bfcl/run_bfcl_20260512T185643Z_1_abb65cd6/output/bfcl_results_gpt-oss-120b_20260512_115644.json",
+  "run_group_id": "rg_20260512T185643Z_878b82e3",
+  "run_id": "run_bfcl_20260512T185643Z_1_abb65cd6",
+  "score": 1.0,
+  "signature": "22c324f734c931f0a62d602bbb9d3724a5e26241bd55861909f9031cc835a8d4",
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 94.33333333333333,
-    "avg_prompt_tokens": 227.5,
-    "completion_tokens": 566,
-    "llm_call_count": 6,
-    "prompt_tokens": 1365,
+    "avg_completion_tokens": 48.0,
+    "avg_prompt_tokens": 120.0,
+    "completion_tokens": 96,
+    "llm_call_count": 2,
+    "prompt_tokens": 240,
     "telemetry_missing": false,
-    "total_tokens": 1931
+    "total_tokens": 336
   },
   "trajectory_summary": {
     "files": 3,
-    "prompt_chars": 6154,
-    "repeated_prefixes": [
-      {
-        "count": 2,
-        "snippet": "You are solving a Berkeley Function-Calling Leaderboard task. Use native tool calls when one or more listed functions are relevant. If no listed function is relevant, respond without a tool call.\nBenc"
-      }
-    ],
-    "turns": 6
+    "prompt_chars": 346,
+    "repeated_prefixes": [],
+    "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T14:45:22.887042+00:00"
+  "updated_at": "2026-05-12T18:56:44.264945+00:00"
 }

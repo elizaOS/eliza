@@ -24,8 +24,8 @@
 // (e.g. `"acme-download"` for a fork named "AcmeOS").
 //
 // APK size impact (Q4_K_M quants):
-//   Eliza-1 1.7B                   ~1.2 GB
-//   Eliza-1 0.6B                   ~0.5 GB
+//   Eliza-1 2B                   ~1.2 GB
+//   Eliza-1 0.8B                   ~0.5 GB
 //   --------------------------------------
 //   total                          ~1.7 GB
 //
@@ -66,20 +66,22 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * staging step fails loudly rather than shipping a broken APK.
  */
 const CHAT_MODEL_ELIZA_1_MOBILE = {
-  id: "eliza-1-1_7b",
-  displayName: "Eliza-1 1.7B",
-  hfRepo: "elizaos/eliza-1-1_7b",
-  ggufFile: "text/eliza-1-1_7b-32k.gguf",
+  id: "eliza-1-2b",
+  displayName: "Eliza-1 2B",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "bundles/2b/text/eliza-1-2b-32k.gguf",
+  ggufFile: "text/eliza-1-2b-32k.gguf",
   expectedMinBytes: 900 * 1024 * 1024,
   expectedMaxBytes: 1700 * 1024 * 1024,
   role: "chat",
 };
 
 const EMBEDDING_MODEL_ELIZA_1_LITE = {
-  id: "eliza-1-0_6b",
-  displayName: "Eliza-1 0.6B",
-  hfRepo: "elizaos/eliza-1-0_6b",
-  ggufFile: "text/eliza-1-0_6b-32k.gguf",
+  id: "eliza-1-0_8b",
+  displayName: "Eliza-1 0.8B",
+  hfRepo: "elizaos/eliza-1",
+  hfPath: "bundles/0_8b/text/eliza-1-0_8b-32k.gguf",
+  ggufFile: "text/eliza-1-0_8b-32k.gguf",
   expectedMinBytes: 300 * 1024 * 1024,
   expectedMaxBytes: 800 * 1024 * 1024,
   role: "embedding",
@@ -295,7 +297,7 @@ export async function main(argv = process.argv.slice(2)) {
         `[stage-default-models] ${model.id}: downloading from ${model.hfRepo}...`,
       );
     }
-    const url = hfResolveUrl(model.hfRepo, model.ggufFile);
+    const url = hfResolveUrl(model.hfRepo, model.hfPath ?? model.ggufFile);
     const { sizeBytes, sha256 } = await streamDownload(
       url,
       dest,

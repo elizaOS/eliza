@@ -1,4 +1,14 @@
 #!/usr/bin/env bash
+# Target catalog tier: all tiers (see packages/shared/src/local-inference/catalog.ts)
+# This library is sourced by each per-tier distill_dflash_<tier>.sh wrapper.
+# Tier → catalog mapping:
+#   0_8b.sh    → eliza-1-0_8b
+#   2b.sh      → eliza-1-2b
+#   4b.sh      → eliza-1-4b
+#   9b.sh      → eliza-1-9b
+#   27b.sh     → eliza-1-27b
+#   27b-256k.sh → eliza-1-27b-256k
+#   27b-1m.sh  → eliza-1-27b-1m
 # Shared helpers for DFlash drafter distillation job scripts.
 #
 # Per-tier scripts source this file, set TIER + hyperparam env vars, and call

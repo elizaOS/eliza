@@ -1,4 +1,4 @@
-import type { JSONSchema, ToolDefinition } from "@elizaos/core";
+import { type JSONSchema, type ToolDefinition, extractPlanActionsFromContent } from "@elizaos/core";
 import {
   type ChatModelFunctionCall,
   type ChatSessionModelFunctions,
@@ -64,6 +64,14 @@ export function buildLlamaFunctions(tools: readonly ToolDefinition[]): ChatSessi
 /**
  * Pull parsed function calls out of a `promptWithMeta` response array.
  * Mirrors the OpenAI/Anthropic provider shape: `{ id, name, arguments }`.
+ *
+ * In-harness recovery: when node-llama-cpp's function-calling grammar fires
+ * but the model emitted the call shape as text (e.g. `PLAN_ACTIONS({...})`),
+ * `response` contains only string entries. The strict extractor runs over the
+ * concatenated text as a fallback so the runtime sees a native tool call
+ * rather than raw text. This is the "eliza-1 in-harness" fix — we correct
+ * the model's output before it reaches the planner loop, ensuring Stage 2
+ * dispatches correctly without needing the text-recovery paths.
  */
 export function extractToolCalls(
   response: ReadonlyArray<string | ChatModelFunctionCall | unknown>
@@ -85,6 +93,31 @@ export function extractToolCalls(
       });
     }
   }
+
+  if (calls.length === 0) {
+    // Collect the full text from any string entries in the response array.
+    const textParts = response
+      .filter((e) => typeof e === "string")
+      .join("");
+    if (textParts.trim().length > 0) {
+      const recovered = extractPlanActionsFromContent(textParts);
+      if (recovered) {
+        // Synthesize a PLAN_ACTIONS wrapper so downstream normalizeToolCall
+        // unwraps it correctly via the name === PLAN_ACTIONS_TOOL_NAME path.
+        calls.push({
+          id: `call_recovered_${i++}`,
+          name: "PLAN_ACTIONS",
+          arguments: {
+            action: recovered.action,
+            parameters: recovered.parameters,
+            ...(recovered.thought ? { thought: recovered.thought } : {}),
+          },
+          type: "function",
+        });
+      }
+    }
+  }
+
   return calls;
 }
 

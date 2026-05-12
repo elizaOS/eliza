@@ -1,10 +1,17 @@
 import { Buffer } from "node:buffer";
+import crypto from "node:crypto";
 import process from "node:process";
-import readline from "node:readline";
 
-import type { IAgentRuntime } from "@elizaos/core";
+import {
+  ChannelType,
+  createMessageMemory,
+  type IAgentRuntime,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 
 import { dispatchRoute } from "../api/dispatch-route.ts";
+import { installMobileFsShim } from "./mobile-fs-shim.ts";
 
 interface BridgeRequest {
   id?: unknown;
@@ -47,18 +54,34 @@ interface IosBridgeBackend {
    * runs the matched route handler directly, with no loopback HTTP hop.
    */
   runtime: IAgentRuntime;
-  /**
-   * Fallback ephemeral HTTP server used only for routes that haven't been
-   * migrated onto `runtime.routes` yet (hardcoded handlers in
-   * `packages/agent/src/api/server.ts`). New code SHOULD register routes via
-   * the plugin Route contract so dispatchRoute handles them in-process.
-   *
-   * Phase 0 keeps the fallback to preserve behavior; later waves will move
-   * each hardcoded endpoint onto runtime.routes and the fallback can be
-   * removed entirely.
-   */
+  conversations: Map<string, IosConversation>;
   fallbackPort: number;
   close: () => Promise<void>;
+}
+
+interface IosBridgeHost {
+  backendPromise: Promise<IosBridgeBackend>;
+  backend: IosBridgeBackend | null;
+  bootError: unknown;
+}
+
+interface IosConversation {
+  id: string;
+  title: string;
+  roomId: UUID;
+  createdAt: string;
+  updatedAt: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface RuntimeMessageService {
+  handleMessage: (
+    runtime: IAgentRuntime,
+    message: ReturnType<typeof createMessageMemory>,
+    onResponse: (
+      content: { text?: string } | null | undefined,
+    ) => Promise<unknown[]> | unknown[],
+  ) => Promise<unknown> | unknown;
 }
 
 function normalizeHeaderRecord(value: unknown): Record<string, string> {
@@ -98,29 +121,24 @@ function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   ) as ArrayBuffer;
 }
 
-function bodyToFetchBody(payload: HttpRequestPayload): BodyInit | undefined {
-  if (typeof payload.bodyBase64 === "string") {
-    return bytesToArrayBuffer(Buffer.from(payload.bodyBase64, "base64"));
-  }
-  if (payload.bodyEncoding === "base64" && typeof payload.body === "string") {
-    return bytesToArrayBuffer(Buffer.from(payload.body, "base64"));
-  }
-  const value = payload.body;
-  if (value == null) return undefined;
-  if (typeof value === "string") return value;
-  if (value instanceof Uint8Array) return bytesToArrayBuffer(value);
-  return JSON.stringify(value);
-}
-
-function responseHeadersToRecord(headers: Headers): Record<string, string> {
-  const out: Record<string, string> = {};
-  headers.forEach((value, key) => {
-    out[key] = value;
-  });
-  return out;
-}
-
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
+  // ── Mobile filesystem sandbox ────────────────────────────────────────────
+  // Install the fs shim as the very first action — before any runtime code
+  // runs — so that PGlite, trajectory logs, skill files, and all other agent
+  // I/O is confined to the app's writable workspace directory.
+  //
+  // MOBILE_WORKSPACE_ROOT is set by the native Swift host (ElizaBunEngine)
+  // to `SandboxPaths.appSupport + "/workspace"`.  On Android it is set by
+  // the nodejs-mobile bridge to `context.getFilesDir()/eliza/workspace`.
+  // Fall back to a sensible default so the agent can still boot in
+  // simulator / dev builds where the native host hasn't set it yet.
+  const mobileWorkspaceRoot =
+    process.env.MOBILE_WORKSPACE_ROOT ||
+    (process.env.HOME
+      ? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
+      : "/tmp/eliza-workspace");
+  installMobileFsShim(mobileWorkspaceRoot);
+
   (
     globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: boolean }
   ).__ELIZA_DISABLE_DIRECT_RUN = true;
@@ -133,29 +151,68 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
     process.env.ELIZA_DISABLE_DIRECT_RUN || "1";
   process.env.ELIZA_HEADLESS = process.env.ELIZA_HEADLESS || "1";
   process.env.ELIZA_API_BIND = process.env.ELIZA_API_BIND || "127.0.0.1";
+  process.env.ELIZA_VAULT_BACKEND = process.env.ELIZA_VAULT_BACKEND || "file";
+  process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER =
+    process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER || "1";
+  process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP =
+    process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP || "1";
   process.env.LOG_LEVEL = process.env.LOG_LEVEL || "error";
 
   const { bootElizaRuntime } = await import("../runtime/index.ts");
-  const { startApiServer } = await import("../api/server.ts");
 
   const runtime = await bootElizaRuntime();
-  // Phase 0 still spins up an ephemeral loopback server for routes that
-  // haven't been moved onto `runtime.routes` yet (hardcoded handlers in
-  // server.ts). `fetchBackend` prefers `dispatchRoute` (no loopback hop) and
-  // only falls through to the server for unmigrated routes. As waves of
-  // plugins move onto the canonical Route contract, this server becomes
-  // dead code and is removed.
-  const server = await startApiServer({
-    port: 0,
-    runtime,
-    skipDeferredStartupWork: true,
-  });
 
   return {
     runtime,
-    fallbackPort: server.port,
-    close: server.close,
+    conversations: new Map(),
+    fallbackPort: 0,
+    close: async () => {},
   };
+}
+
+function startIosBridgeHost(): IosBridgeHost {
+  const host: IosBridgeHost = {
+    backend: null,
+    bootError: null,
+    backendPromise: Promise.resolve(null as unknown as IosBridgeBackend),
+  };
+  host.backendPromise = startIosBridgeBackend().then(
+    (backend) => {
+      host.backend = backend;
+      return backend;
+    },
+    (error) => {
+      host.bootError = error;
+      throw error;
+    },
+  );
+  host.backendPromise.catch(() => {
+    // Status requests report `bootError`; keep the bridge process alive so the
+    // native host receives the real startup failure instead of a closed pipe.
+  });
+  return host;
+}
+
+async function awaitIosBridgeBackend(
+  host: IosBridgeHost,
+  timeoutMs: number | undefined,
+  label: string,
+): Promise<IosBridgeBackend> {
+  if (host.backend) return host.backend;
+  if (host.bootError) {
+    throw host.bootError instanceof Error
+      ? host.bootError
+      : new Error(String(host.bootError));
+  }
+  const result = await timeoutAfter(
+    host.backendPromise,
+    timeoutMs,
+    `${label} backend startup`,
+  );
+  if (isTimeoutMarker(result)) {
+    throw new Error(`${result.label} timed out after ${result.timeoutMs}ms`);
+  }
+  return result;
 }
 
 function splitPathAndQuery(rawPath: string): {
@@ -192,8 +249,73 @@ function statusTextForCode(status: number): string {
   if (status === 401) return "Unauthorized";
   if (status === 403) return "Forbidden";
   if (status === 404) return "Not Found";
+  if (status === 504) return "Gateway Timeout";
   if (status === 500) return "Internal Server Error";
   return "";
+}
+
+function timeoutResponse(label: string, timeoutMs: number): {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  bodyBase64: string;
+  bodyEncoding: "utf-8";
+} {
+  const body = JSON.stringify({
+    error: `${label} timed out after ${timeoutMs}ms`,
+    code: "timeout",
+    timeoutMs,
+  });
+  return {
+    status: 504,
+    statusText: statusTextForCode(504),
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body,
+    bodyBase64: Buffer.from(body, "utf8").toString("base64"),
+    bodyEncoding: "utf-8",
+  };
+}
+
+function timeoutAfter<T>(
+  promise: Promise<T>,
+  timeoutMs: number | undefined,
+  label: string,
+): Promise<T | { __timeout: true; timeoutMs: number; label: string }> {
+  if (!timeoutMs || timeoutMs <= 0) return promise;
+  const jsTimeoutMs = Math.max(100, timeoutMs - 500);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      resolve({ __timeout: true, timeoutMs: jsTimeoutMs, label });
+    }, jsTimeoutMs);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
+
+function bridgeTimeoutMs(value: unknown): number | undefined {
+  return typeof value === "number" && value > 0
+    ? Math.min(value, 30 * 60_000)
+    : undefined;
+}
+
+function isTimeoutMarker(
+  value: unknown,
+): value is { __timeout: true; timeoutMs: number; label: string } {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      "__timeout" in value &&
+      (value as { __timeout?: unknown }).__timeout === true,
+  );
 }
 
 async function fetchBackend(
@@ -216,26 +338,41 @@ async function fetchBackend(
 
   const method = normalizeMethod(payload.method);
   const headers = normalizeHeaderRecord(payload.headers);
-  const timeoutMs =
-    typeof payload.timeoutMs === "number" && payload.timeoutMs > 0
-      ? Math.min(payload.timeoutMs, 30 * 60_000)
-      : undefined;
+  const timeoutMs = bridgeTimeoutMs(payload.timeoutMs);
+  const { pathname, query } = splitPathAndQuery(rawPath);
+
+  const direct = await timeoutAfter(
+    handleDirectCoreRoute(backend, method, rawPath, payload),
+    timeoutMs,
+    `${method} ${pathname}`,
+  );
+  if (isTimeoutMarker(direct)) {
+    return timeoutResponse(direct.label, direct.timeoutMs);
+  }
+  if (direct) return direct;
 
   // ── Canonical path: in-process dispatchRoute (no loopback hop) ──────────
   // Treats every authenticated bridge call as authorized — the bridge is the
-  // local app talking to its own runtime via a sealed PTY, no external
+  // local app talking to its own runtime via a sealed native bridge, no external
   // attacker can inject frames here.
-  const { pathname, query } = splitPathAndQuery(rawPath);
-  const result = await dispatchRoute({
-    runtime: backend.runtime,
-    method,
-    path: pathname,
-    headers,
-    query,
-    body: payloadBodyAsRaw(payload),
-    inProcess: true,
-    isAuthorized: () => true,
-  });
+  const result = await timeoutAfter(
+    dispatchRoute({
+      runtime: backend.runtime,
+      method,
+      path: pathname,
+      headers,
+      query,
+      body: payloadBodyAsRaw(payload),
+      inProcess: true,
+      isAuthorized: () => true,
+    }),
+    timeoutMs,
+    `${method} ${pathname}`,
+  );
+
+  if (isTimeoutMarker(result)) {
+    return timeoutResponse(result.label, result.timeoutMs);
+  }
 
   if (result) {
     const responseHeaders = result.headers ?? {};
@@ -268,37 +405,10 @@ async function fetchBackend(
     };
   }
 
-  // ── Fallback: loopback HTTP for routes not yet on runtime.routes ───────
-  const controller = timeoutMs ? new AbortController() : null;
-  const timeout = controller
-    ? setTimeout(() => controller.abort(), timeoutMs)
-    : null;
-
-  try {
-    const response = await fetch(
-      `http://127.0.0.1:${backend.fallbackPort}${rawPath}`,
-      {
-        method,
-        headers,
-        body:
-          method === "GET" || method === "HEAD"
-            ? undefined
-            : bodyToFetchBody(payload),
-        signal: controller?.signal,
-      },
-    );
-    const bytes = Buffer.from(await response.arrayBuffer());
-    return {
-      status: response.status,
-      statusText: response.statusText,
-      headers: responseHeadersToRecord(response.headers),
-      body: bytes.toString("utf8"),
-      bodyBase64: bytes.toString("base64"),
-      bodyEncoding: "utf-8",
-    };
-  } finally {
-    if (timeout) clearTimeout(timeout);
-  }
+  return jsonResponse(404, {
+    error: `No iOS local route for ${method} ${pathname}`,
+    code: "not_found",
+  });
 }
 
 function parseJsonBody(body: string): unknown {
@@ -307,6 +417,254 @@ function parseJsonBody(body: string): unknown {
   } catch {
     return null;
   }
+}
+
+function jsonResponse(
+  status: number,
+  body: unknown,
+): {
+  status: number;
+  statusText: string;
+  headers: Record<string, string>;
+  body: string;
+  bodyBase64: string;
+  bodyEncoding: "utf-8";
+} {
+  const text = JSON.stringify(body);
+  return {
+    status,
+    statusText: statusTextForCode(status),
+    headers: { "content-type": "application/json; charset=utf-8" },
+    body: text,
+    bodyBase64: Buffer.from(text, "utf8").toString("base64"),
+    bodyEncoding: "utf-8",
+  };
+}
+
+function runtimeAgentName(runtime: IAgentRuntime): string {
+  const character = (runtime as { character?: { name?: unknown } }).character;
+  return typeof character?.name === "string" && character.name.trim()
+    ? character.name.trim()
+    : "Eliza";
+}
+
+function parseRequestBody(payload: HttpRequestPayload): Record<string, unknown> {
+  const raw = payloadBodyAsRaw(payload);
+  if (!raw) return {};
+  if (Buffer.isBuffer(raw)) {
+    const parsed = parseJsonBody(raw.toString("utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  }
+  if (typeof raw === "string") {
+    const parsed = parseJsonBody(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {};
+  }
+  return typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+}
+
+function createIosConversation(
+  backend: IosBridgeBackend,
+  input: Record<string, unknown> = {},
+): IosConversation {
+  const id = crypto.randomUUID();
+  const now = new Date().toISOString();
+  const metadata =
+    input.metadata &&
+    typeof input.metadata === "object" &&
+    !Array.isArray(input.metadata)
+      ? (input.metadata as Record<string, unknown>)
+      : undefined;
+  const conversation: IosConversation = {
+    id,
+    title:
+      typeof input.title === "string" && input.title.trim()
+        ? input.title.trim()
+        : "New Chat",
+    roomId: stringToUuid(`ios-conv-${id}`) as UUID,
+    createdAt: now,
+    updatedAt: now,
+    ...(metadata ? { metadata } : {}),
+  };
+  backend.conversations.set(id, conversation);
+  return conversation;
+}
+
+async function ensureConversationConnection(
+  backend: IosBridgeBackend,
+  conversation: IosConversation,
+): Promise<UUID> {
+  const runtime = backend.runtime as IAgentRuntime & {
+    ensureConnection?: (args: Record<string, unknown>) => Promise<void> | void;
+  };
+  const userId = stringToUuid("ios-local-user") as UUID;
+  if (typeof runtime.ensureConnection === "function") {
+    await runtime.ensureConnection({
+      entityId: userId,
+      roomId: conversation.roomId,
+      worldId: stringToUuid("ios-local-world") as UUID,
+      userName: "User",
+      source: "ios-local",
+      channelId: "ios-local-chat",
+      type: ChannelType.DM,
+      messageServerId: stringToUuid("ios-local-server") as UUID,
+      metadata: { ownership: { ownerId: userId } },
+    });
+  }
+  return userId;
+}
+
+async function handleDirectConversationMessage(
+  backend: IosBridgeBackend,
+  conversation: IosConversation,
+  input: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const prompt =
+    typeof input.text === "string"
+      ? input.text
+      : typeof input.message === "string"
+        ? input.message
+        : typeof input.prompt === "string"
+          ? input.prompt
+          : "";
+  if (!prompt.trim()) throw new Error("message text is required");
+
+  const runtime = backend.runtime as IAgentRuntime & {
+    createMemory?: (
+      memory: ReturnType<typeof createMessageMemory>,
+      tableName: string,
+    ) => Promise<void> | void;
+    messageService?: RuntimeMessageService;
+  };
+  const userId = await ensureConversationConnection(backend, conversation);
+  const channelType =
+    typeof input.channelType === "string" &&
+    Object.values(ChannelType).includes(input.channelType as ChannelType)
+      ? (input.channelType as ChannelType)
+      : ChannelType.DM;
+  const metadata =
+    input.metadata &&
+    typeof input.metadata === "object" &&
+    !Array.isArray(input.metadata)
+      ? (input.metadata as Record<string, unknown>)
+      : undefined;
+  const message = createMessageMemory({
+    id: crypto.randomUUID() as UUID,
+    entityId: userId,
+    roomId: conversation.roomId,
+    content: {
+      text: prompt,
+      source: "ios-local",
+      channelType,
+      ...(metadata ? { metadata: metadata as never } : {}),
+    },
+  });
+
+  try {
+    await runtime.createMemory?.(message, "messages");
+  } catch {
+    // Best effort. Some adapters persist inside messageService.
+  }
+
+  if (!runtime.messageService?.handleMessage) {
+    throw new Error("runtime.messageService is not available");
+  }
+
+  const chunks: string[] = [];
+  try {
+    await runtime.messageService.handleMessage(runtime, message, async (content) => {
+      if (content?.text) chunks.push(content.text);
+      return [];
+    });
+  } catch (err) {
+    chunks.push(
+      err instanceof Error
+        ? `The local agent started, but generation is unavailable: ${err.message}`
+        : "The local agent started, but generation is unavailable.",
+    );
+  }
+
+  const text = chunks.join("").trim();
+  conversation.updatedAt = new Date().toISOString();
+  return {
+    text,
+    reply: text,
+    agentName: runtimeAgentName(backend.runtime),
+    conversationId: conversation.id,
+  };
+}
+
+async function handleDirectCoreRoute(
+  backend: IosBridgeBackend,
+  method: string,
+  rawPath: string,
+  payload: HttpRequestPayload,
+): Promise<ReturnType<typeof jsonResponse> | null> {
+  const { pathname } = splitPathAndQuery(rawPath);
+
+  if (method === "GET" && pathname === "/api/health") {
+    return jsonResponse(200, {
+      ready: true,
+      runtime: "ok",
+      database: "ok",
+      plugins: {
+        loaded: Array.isArray((backend.runtime as { plugins?: unknown }).plugins)
+          ? ((backend.runtime as { plugins?: unknown[] }).plugins?.length ?? 0)
+          : 0,
+        failed: 0,
+      },
+      coordinator: "not_wired",
+      agentState: "running",
+      agentName: runtimeAgentName(backend.runtime),
+      startedAt: null,
+      uptime: 0,
+      iosBridge: "bun",
+    });
+  }
+
+  if (method === "GET" && pathname === "/api/conversations") {
+    return jsonResponse(200, {
+      conversations: Array.from(backend.conversations.values()).sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime(),
+      ),
+    });
+  }
+
+  if (method === "POST" && pathname === "/api/conversations") {
+    const conversation = createIosConversation(
+      backend,
+      parseRequestBody(payload),
+    );
+    return jsonResponse(200, { conversation });
+  }
+
+  const messageMatch = pathname.match(
+    /^\/api\/conversations\/([^/]+)\/messages$/,
+  );
+  if (method === "GET" && messageMatch) {
+    return jsonResponse(200, { messages: [] });
+  }
+  if (method === "POST" && messageMatch) {
+    const conversationId = decodeURIComponent(messageMatch[1] ?? "");
+    const conversation = backend.conversations.get(conversationId);
+    if (!conversation) {
+      return jsonResponse(404, { error: "Conversation not found" });
+    }
+    const result = await handleDirectConversationMessage(
+      backend,
+      conversation,
+      parseRequestBody(payload),
+    );
+    return jsonResponse(200, result);
+  }
+
+  return null;
 }
 
 async function sendMessage(
@@ -326,73 +684,85 @@ async function sendMessage(
       : "";
 
   if (!conversationId) {
-    const created = await fetchBackend(backend, {
-      method: "POST",
-      path: "/api/conversations",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-      },
-      body: JSON.stringify({ title: "iOS Local Chat" }),
-    });
-    if (created.status < 200 || created.status >= 300) {
-      throw new Error(`Failed to create conversation: HTTP ${created.status}`);
-    }
-    const parsed = parseJsonBody(created.body) as {
-      conversation?: { id?: unknown };
-    } | null;
-    const id = parsed?.conversation?.id;
-    if (typeof id !== "string" || !id) {
-      throw new Error("Conversation create response did not include an id");
-    }
-    conversationId = id;
+    conversationId = createIosConversation(backend, {
+      title: "iOS Local Chat",
+    }).id;
   }
 
-  const response = await fetchBackend(backend, {
-    method: "POST",
-    path: `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-    headers: { "content-type": "application/json", accept: "application/json" },
-    body: JSON.stringify({
+  const conversation = backend.conversations.get(conversationId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const result = await timeoutAfter(
+    handleDirectConversationMessage(backend, conversation, {
       text: message,
       channelType:
         typeof input.channelType === "string" ? input.channelType : "DM",
-      source: "ios-local",
       ...(input.metadata &&
       typeof input.metadata === "object" &&
       !Array.isArray(input.metadata)
         ? { metadata: input.metadata }
         : {}),
     }),
-  });
-  if (response.status < 200 || response.status >= 300) {
-    throw new Error(`send_message failed: HTTP ${response.status}`);
+    bridgeTimeoutMs(input.timeoutMs),
+    "send_message",
+  );
+  if (isTimeoutMarker(result)) {
+    throw new Error(`${result.label} timed out after ${result.timeoutMs}ms`);
   }
-  const parsed = parseJsonBody(response.body) as Record<string, unknown> | null;
-  const text = typeof parsed?.text === "string" ? parsed.text : "";
-  return {
-    reply: text,
-    text,
-    conversationId,
-    response: parsed ?? { body: response.body },
-  };
+  return { ...result, conversationId, response: result };
 }
 
 async function dispatchBridgeRequest(
-  backend: IosBridgeBackend,
+  host: IosBridgeHost,
   request: BridgeRequest,
 ): Promise<unknown> {
   const method = typeof request.method === "string" ? request.method : "";
+  const payload =
+    request.payload && typeof request.payload === "object"
+      ? (request.payload as Record<string, unknown>)
+      : {};
   switch (method) {
     case "status":
-      return { ready: true, apiPort: backend.fallbackPort };
+      if (host.backend) {
+        return { ready: true, apiPort: host.backend.fallbackPort };
+      }
+      if (host.bootError) {
+        return {
+          ready: false,
+          phase: "error",
+          error:
+            host.bootError instanceof Error
+              ? host.bootError.message
+            : String(host.bootError),
+        };
+      }
+      if (payload.timeoutMs !== undefined) {
+        const backend = await awaitIosBridgeBackend(
+          host,
+          bridgeTimeoutMs(payload.timeoutMs),
+          "status",
+        );
+        return { ready: true, apiPort: backend.fallbackPort };
+      }
+      return { ready: false, phase: "starting", apiPort: 0 };
     case "http_request":
     case "http_fetch":
+      const backendForFetch = await awaitIosBridgeBackend(
+        host,
+        bridgeTimeoutMs(payload.timeoutMs),
+        method,
+      );
       return fetchBackend(
-        backend,
+        backendForFetch,
         (request.payload ?? {}) as HttpRequestPayload,
       );
     case "send_message":
-      return sendMessage(backend, request.payload);
+      const backendForMessage = await awaitIosBridgeBackend(
+        host,
+        bridgeTimeoutMs(payload.timeoutMs),
+        method,
+      );
+      return sendMessage(backendForMessage, request.payload);
     default:
       throw new Error(`Unknown iOS bridge method: ${method || "(missing)"}`);
   }
@@ -457,42 +827,46 @@ export async function runIosBridgeCli(
     protocolWrite(`${JSON.stringify(value)}\n`);
   };
 
-  let backend: IosBridgeBackend;
-  try {
-    backend = await startIosBridgeBackend();
-    writeProtocolLine({
-      type: "ready",
-      ok: true,
-      result: { ready: true, apiPort: backend.fallbackPort },
-    });
-  } catch (err) {
-    writeProtocolLine({
-      type: "ready",
-      ok: false,
-      error: err instanceof Error ? err.message : String(err),
-    });
-    restoreStdout();
-    throw err;
-  }
-
-  const lines = readline.createInterface({
-    input: process.stdin,
-    crlfDelay: Infinity,
-    terminal: false,
+  const host = startIosBridgeHost();
+  process.on("unhandledRejection", (reason) => {
+    console.error(
+      "[ios-bridge] unhandled rejection:",
+      reason instanceof Error ? reason.stack || reason.message : reason,
+    );
+  });
+  process.on("uncaughtException", (error) => {
+    console.error("[ios-bridge] uncaught exception:", error.stack || error.message);
+  });
+  writeProtocolLine({
+    type: "ready",
+    ok: true,
+    result: { ready: true, apiPort: 0 },
   });
 
   const shutdown = async () => {
     try {
-      await backend.close();
+      if (host.backend) {
+        await host.backend.close();
+      }
     } catch {
       // Best effort during app shutdown.
     }
   };
-  process.once("SIGINT", shutdown);
-  process.once("SIGTERM", shutdown);
+  let stopBridge: (() => void) | null = null;
+  const stopPromise = new Promise<void>((resolve) => {
+    stopBridge = resolve;
+  });
+  process.once("SIGINT", () => stopBridge?.());
+  process.once("SIGTERM", () => stopBridge?.());
 
-  for await (const line of lines) {
-    if (!line.trim()) continue;
+  const keepAlive = setInterval(() => {
+    // Bun's iOS stdio does not always keep the JS event loop alive while a
+    // native pipe is idle. The bridge is host-owned and exits when the app
+    // tears down the engine, so this timer intentionally keeps the process up.
+  }, 2_147_483_647);
+
+  const handleLine = async (line: string) => {
+    if (!line.trim()) return;
     let parsed: BridgeRequest;
     try {
       parsed = JSON.parse(line) as BridgeRequest;
@@ -502,12 +876,12 @@ export async function runIosBridgeCli(
         ok: false,
         error: err instanceof Error ? err.message : String(err),
       });
-      continue;
+      return;
     }
 
     const id = parsed.id ?? null;
     try {
-      const result = await dispatchBridgeRequest(backend, parsed);
+      const result = await dispatchBridgeRequest(host, parsed);
       writeProtocolLine({ id, ok: true, result });
     } catch (err) {
       writeProtocolLine({
@@ -516,7 +890,52 @@ export async function runIosBridgeCli(
         error: err instanceof Error ? err.message : String(err),
       });
     }
-  }
+  };
+
+  let pending = Promise.resolve();
+  let bufferedInput = "";
+  const stdin = process.stdin as typeof process.stdin & {
+    setEncoding?: (encoding: BufferEncoding) => void;
+    resume?: () => void;
+  };
+  stdin.setEncoding?.("utf8");
+  stdin.on("data", (chunk: Buffer | string) => {
+    bufferedInput += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+    for (;;) {
+      const newline = bufferedInput.indexOf("\n");
+      if (newline < 0) break;
+      const line = bufferedInput.slice(0, newline).replace(/\r$/, "");
+      bufferedInput = bufferedInput.slice(newline + 1);
+      pending = pending.then(() => handleLine(line)).catch((err) => {
+        writeProtocolLine({
+          id: null,
+          ok: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+  });
+  stdin.once("end", () => {
+    if (bufferedInput.trim()) {
+      const line = bufferedInput;
+      bufferedInput = "";
+      pending = pending.then(() => handleLine(line));
+    }
+    stopBridge?.();
+  });
+  stdin.once("error", (err) => {
+    writeProtocolLine({
+      id: null,
+      ok: false,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    stopBridge?.();
+  });
+  stdin.resume?.();
+
+  await stopPromise;
+  clearInterval(keepAlive);
+  await pending.catch(() => undefined);
 
   restoreStdout();
   await shutdown();
