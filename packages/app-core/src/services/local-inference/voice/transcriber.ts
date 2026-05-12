@@ -373,6 +373,14 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
   }
 }
 
+export interface FfiBatchTranscriberOptions {
+  ffi: ElizaInferenceFfi;
+  getContext: () => ElizaInferenceContextHandle;
+  vad?: VadEventSource;
+  metadata?: TranscriptMetadataDefaults;
+  source?: VoiceInputSource;
+}
+
 /**
  * Fused ASR fallback over the implemented batch ABI. This is intentionally
  * honest about latency: it emits a final transcript only at `flush()` and does
@@ -386,13 +394,7 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
   private buf: Float32Array = new Float32Array(0);
   private sampleRate = ASR_SAMPLE_RATE;
 
-  constructor(args: {
-    ffi: ElizaInferenceFfi;
-    getContext: () => ElizaInferenceContextHandle;
-    vad?: VadEventSource;
-    metadata?: TranscriptMetadataDefaults;
-    source?: VoiceInputSource;
-  }) {
+  constructor(args: FfiBatchTranscriberOptions) {
     super(args.vad, {
       ...args.metadata,
       source: args.metadata?.source ?? args.source,

@@ -1382,6 +1382,46 @@ export async function probeFact(args: {
   };
 }
 
+export async function probeToolCall(args: {
+  client: ModelClient;
+  model: string;
+  history: ChatMessage[];
+  toolCall: ToolCallProbe;
+  systemPrompt: string;
+  agentReasoningEffort?: ReasoningEffort;
+  probeMaxTokens?: number;
+}): Promise<ProbeOutcome> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: args.systemPrompt },
+    ...args.history,
+    { role: "user", content: args.toolCall.question },
+  ];
+  const resp = await args.client.chat({
+    model: args.model,
+    messages,
+    maxTokens: args.probeMaxTokens ?? 600,
+    temperature: 0,
+    reasoningEffort: args.agentReasoningEffort ?? "medium",
+  });
+  const rawActual = resp.content.trim();
+  const actual = extractBenchmarkAnswerText(rawActual);
+  const correct = isIsolatedExactRecallAnswer(
+    actual,
+    args.toolCall.toolValue,
+  );
+  return {
+    factId: args.toolCall.id,
+    turn: args.toolCall.turn,
+    expected: args.toolCall.toolValue,
+    actual,
+    ...(actual !== rawActual ? { rawActual } : {}),
+    correct,
+    judgeReasoning: correct
+      ? "tool-call: isolated expected value present"
+      : "tool-call: expected value missing or contaminated",
+  };
+}
+
 export function normalizeRecallText(s: string): string {
   return (
     s
@@ -1425,6 +1465,29 @@ function isExactRecallAnswer(actual: string, expected: string): boolean {
     return false;
   }
   return true;
+}
+
+function isIsolatedExactRecallAnswer(actual: string, expected: string): boolean {
+  if (!isExactRecallAnswer(actual, expected)) return false;
+
+  const normalizedActual = normalizeRecallText(actual);
+  const normalizedExpected = normalizeRecallText(expected);
+  const expectedPattern = new RegExp(escapeRegExp(normalizedExpected), "gi");
+  const matches = [...normalizedActual.matchAll(expectedPattern)];
+  if (matches.length !== 1) return false;
+
+  const identifierPattern =
+    /\b[A-F0-9]{6}-\d{1,3}\b|\b\d{12,13}\b|\b[A-Za-z]{1,3}\d{2,5}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+  const identifiers = new Set(
+    [...normalizedActual.matchAll(identifierPattern)]
+      .map((match) => match[0])
+      .filter((value) => value !== normalizedExpected),
+  );
+  return identifiers.size === 0;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function modelJudge(args: {
@@ -2083,43 +2146,6 @@ export async function runDriftHarness(opts: RunOptions): Promise<JsonlSink> {
     ...(skipReason ? { skipReason } : {}),
   });
   return sink;
-}
-
-async function probeToolCall(args: {
-  client: ModelClient;
-  model: string;
-  history: ChatMessage[];
-  toolCall: ToolCallProbe;
-  systemPrompt: string;
-  agentReasoningEffort?: ReasoningEffort;
-  probeMaxTokens?: number;
-}): Promise<ProbeOutcome> {
-  const messages: ChatMessage[] = [
-    { role: "system", content: args.systemPrompt },
-    ...args.history,
-    { role: "user", content: args.toolCall.question },
-  ];
-  const resp = await args.client.chat({
-    model: args.model,
-    messages,
-    maxTokens: args.probeMaxTokens ?? 600,
-    temperature: 0,
-    reasoningEffort: args.agentReasoningEffort ?? "medium",
-  });
-  const rawActual = resp.content.trim();
-  const actual = extractBenchmarkAnswerText(rawActual);
-  const correct = isExactRecallAnswer(actual, args.toolCall.toolValue);
-  return {
-    factId: args.toolCall.id,
-    turn: args.toolCall.turn,
-    expected: args.toolCall.toolValue,
-    actual,
-    ...(actual !== rawActual ? { rawActual } : {}),
-    correct,
-    judgeReasoning: correct
-      ? "tool-call: expected substring present"
-      : "tool-call: expected substring missing",
-  };
 }
 
 // ---------------------------------------------------------------------------

@@ -8,6 +8,7 @@ from benchmarks.orchestrator.adapters import (
     _score_from_compactbench,
     discover_adapters,
 )
+from benchmarks.orchestrator.runner import _effective_request
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import get_benchmark_registry
 
@@ -162,6 +163,24 @@ def test_compactbench_score_prefers_repaired_valid_hit_analysis(tmp_path: Path) 
     assert score.score == 0.95
     assert score.metrics["raw_lexical_overall_score"] == 0.25
     assert score.metrics["valid_false_negatives"] == 3
+
+
+def test_compare_label_remains_incompatible_with_eliza_only_compactbench() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
+    request = RunRequest(
+        benchmarks=("compactbench",),
+        agent="compare",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        extra_config={},
+        force=True,
+    )
+
+    effective = _effective_request(adapter, request)
+
+    assert adapter.agent_compatibility == ("eliza",)
+    assert effective.agent == "compare"
+    assert "compare" not in adapter.agent_compatibility
 
 
 def test_scambench_registry_command_and_score_contract(tmp_path: Path) -> None:

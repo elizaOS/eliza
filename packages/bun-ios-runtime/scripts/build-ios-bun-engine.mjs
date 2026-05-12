@@ -281,7 +281,7 @@ function stageWebKitIfRequested(info) {
       [
         "CMake iOS Bun builds require a static iOS JavaScriptCore/WebKit build.",
         `Expected ${path.join(staged, "lib", "libJavaScriptCore.a")}, or set:`,
-        "  ELIZA_BUN_IOS_WEBKIT_BUILD_DIR=/path/to/WebKit/build-ios-device",
+        "  ELIZA_BUN_IOS_WEBKIT_BUILD_DIR=/path/to/WebKit/build-ios-{device,simulator}",
         "  ELIZA_BUN_IOS_WEBKIT_PATH=/path/with/include-and-lib",
         "Build WebKit/JSC with ENABLE_JIT=OFF and ENABLE_C_LOOP=ON first.",
       ].join("\n"),

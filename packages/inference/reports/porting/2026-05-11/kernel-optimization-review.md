@@ -60,7 +60,7 @@ Correctness run:
 | Metal standalone | Turbo3/Turbo4/TCQ/QJL/Polar/Polar+QJL/Polar-preHT/Polar-preHT+QJL all 8/8 PASS |
 | Metal multiblock | Turbo3/Turbo4/TCQ/QJL all PASS for N in `{2,3,4,8}` |
 | Metal fused | `fused_attn_qjl_tbq` and `fused_attn_qjl_polar` PASS, 1920/1920 outputs |
-| Metal graph dispatch | `dispatch_smoke` PASS for QJL, Turbo3, Turbo4, TCQ, Polar no-residual, Polar residual |
+| Metal graph dispatch | `dispatch_smoke` PASS for QJL, Turbo3, Turbo4, TCQ, Polar raw no-residual/residual, and Polar preHT no-residual/residual |
 | Vulkan via MoltenVK | Standalone, multiblock, fused, and Polar-preHT SPIR-V checks PASS |
 | QJL CPU plugin | NEON/dotprod build runs; int8 smoke passes with `max_abs=0.001207` |
 | Polar CPU plugin | NEON build runs; raw, preHT, SIMD parity tests pass |
@@ -222,7 +222,7 @@ Acceptance:
   128k, and 256k contexts.
 - Voice mode remains cancellable at one small kernel/tile boundary.
 
-### P0 - Metal multi-block runtime policy - MOSTLY LANDED
+### P0 - Metal multi-block runtime policy - LANDED with runtime tuning knobs
 
 The Metal source already has multi-block variants:
 
@@ -245,9 +245,16 @@ Current state:
 
 - Metal graph-dispatch evidence already records Turbo3, Turbo4, Turbo3-TCQ,
   and QJL routing through the `_multi` entrypoints.
-- This pass changed the patcher policy from a single Turbo value (`N=8`) to
-  the measured M4 Max family-specific table:
-  `turbo3=8`, `turbo4=32`, `turbo3_tcq=4`.
+- This pass keeps the conservative defaults but exposes guarded runtime knobs
+  so the release harness can run per-device autotune without recompiling the
+  fork:
+  `ELIZA_METAL_QJL_TOKENS_PER_TG=32`,
+  `ELIZA_METAL_TBQ3_BLOCKS_PER_TG=8`,
+  `ELIZA_METAL_TBQ4_BLOCKS_PER_TG=32`,
+  `ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG=4`; valid range is `1..64`.
+- Invalid tuning values log a warning and fall back to the default. A
+  dispatch-smoke run with non-default values (`QJL=4`, `TBQ3=4`, `TBQ4=16`,
+  `TCQ=8`) passed all eight Metal graph routes.
 - The idempotent repair path in
   `packages/app-core/scripts/kernel-patches/metal-kernels.mjs` also updates
   older cached forks when the sentinel is already present.
@@ -257,15 +264,15 @@ Remaining recommendation:
 - Add a higher-level voice/non-voice scheduler override so voice can force
   `N=1` when barge-in latency dominates. The kernel patcher does not currently
   know whether the graph was launched by voice mode.
-- Persist the chosen N in benchmark evidence so release artifacts can be
-  reproduced.
+- Persist the chosen N in benchmark evidence and bundle metadata so release
+  artifacts can be reproduced per device class.
 
 Do not use command-buffer batching for voice. The batched bench shows N=4
 already pushes worst-case cancellation around 0.8-1.4 ms for the small kernels
 and higher for Polar. That violates the voice loop's low-latency cancellation
 goal even when throughput improves.
 
-### P1 - PolarQuant pre-Hadamard hot path - LANDED for Metal/Vulkan standalone
+### P1 - PolarQuant pre-Hadamard hot path - LANDED for Metal graph dispatch
 
 Original finding: Metal and Vulkan Polar both materialized a full 128-float decoded block into
 threadgroup scratch, run a 7-stage Hadamard, then dot against `q`. CPU NEON and
@@ -305,11 +312,21 @@ Implemented in this pass:
 - Added CPU reference API `ggml_vec_dot_q4_polar_preht_f32_ref()` plus
   `polar_preht_dot_test`, proving the same `dot(H*x, q) == dot(x, H*q)` path
   matches dequantize-then-dot for both `use_qjl=0` and `use_qjl=1`.
+- Added explicit graph constructor `ggml_attn_score_polar_preht(ctx, Hq, K,
+  n_kv_heads, use_qjl)` so the raw-q route cannot accidentally select the
+  preHT kernel.
+- Updated Metal graph dispatch to read a third Polar op-param (`q_preht`) and
+  route only the explicit preHT graph to `kernel_attn_score_q4_polar_preht_f32`.
+- Extended `dispatch_smoke` so raw-q Polar and preHT Polar both run for
+  `use_qjl=0` and `use_qjl=1` against the same scalar reference.
 
 Verification run on 2026-05-11:
 
 - `make -C packages/inference/verify metal-verify`: all eight Metal checks pass,
   including Polar pre-Hadamard with and without QJL residual.
+- `make -C packages/inference/verify dispatch-smoke`: all eight Metal graph
+  routes pass, including `GGML_OP_ATTN_SCORE_POLAR_PREHT/use_qjl=0` and
+  `GGML_OP_ATTN_SCORE_POLAR_PREHT/use_qjl=1`.
 - `make -C packages/inference/verify vulkan-verify` on Apple M4 Max via
   MoltenVK: all eight Vulkan checks pass, including `polar_preht.spv` with and
   without QJL residual.
@@ -326,12 +343,13 @@ Benchmark note:
 
 Remaining production work:
 
-- CPU SIMD pre-Hadamard variants are still open; scalar reference is landed.
-- Runtime graph dispatch must pass `H*q`; do not replace the raw-q Polar route
-  with the pre-Hadamard kernel until the query pretransform is present and
-  verified.
-- A manifest/runtime bit should state whether `q` has been pre-Hadamarded, and
-  dispatch must hard-fail on a mismatched variant.
+- CPU SIMD pre-Hadamard variants have separate AVX2/NEON work; keep measuring
+  the plugin path on each target CPU before defaulting it for CPU-only tiers.
+- Model graph producers still need to choose `ggml_attn_score_polar_preht()`
+  only after constructing `H*q`. The backend route is ready; the higher-level
+  model graph must carry the preHT contract explicitly.
+- A manifest/runtime bit should state whether Polar score receives raw `q` or
+  `H*q`, and dispatch must hard-fail on a mismatched variant.
 
 ### P1 - Vulkan multi-block exists; native driver routing still needs evidence
 

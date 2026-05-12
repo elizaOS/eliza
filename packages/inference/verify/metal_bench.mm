@@ -1,5 +1,6 @@
 // metal_bench.mm — Metal performance harness for the Eliza-1 KV-cache
-// kernels (turbo3, turbo4, turbo3_tcq, qjl, polar, polar_preht).
+// kernels (turbo3, turbo4, turbo3_tcq, qjl, polar, polar_preht) plus the
+// fused-attention QJL-K + quantized-V kernels.
 //
 // SCOPE: this is a perf harness, not a correctness harness. metal_verify.mm
 // (sibling file) handles correctness against fixtures. metal_bench dispatches
@@ -29,6 +30,10 @@
 //                      and dotted with simd_sum. This is the "unquantized"
 //                      throughput we'd be giving up by NOT shipping the
 //                      quantization kernels.
+//   --mode fused     : fused attention QJL-K + TBQ3-V / Q4_POLAR-V timing at
+//                      a 9B-class single-token decode shape. This measures
+//                      the full online softmax + V-mix kernel, not only the
+//                      standalone score/decode pieces.
 //
 // --iters / --warmup / --runs override the per-mode defaults. The harness
 // runs `runs` independent measurement blocks back-to-back and reports the
@@ -126,6 +131,20 @@ struct PolarMvArgs {
     uint32_t n_rows;
     uint32_t head_dim;
     uint32_t use_qjl;
+};
+
+struct FusedAttnArgs {
+    uint32_t head_dim;
+    uint32_t proj_dim;
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_q_pos;
+    uint32_t n_kv;
+    uint32_t kv_tile;
+    uint32_t v_use_qjl;
+    float    scale;
+    uint32_t causal;
+    uint32_t q_pos_base;
 };
 
 struct TurboArgsMulti {

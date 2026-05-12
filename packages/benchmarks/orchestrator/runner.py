@@ -611,12 +611,14 @@ def run_benchmarks(
 
         # Harness/agent compatibility — if the harness is not in the adapter's
         # supported list, record an ``incompatible`` outcome and skip without
-        # spawning the subprocess. ``random_v1`` and ``compare`` are
-        # control labels that always run; only real harnesses are gated.
+        # spawning the subprocess. ``random_v1`` is a synthetic baseline and is
+        # handled above. ``compare`` must still be gated: otherwise an
+        # Eliza-only adapter such as CompactBench can be mislabeled as a
+        # Hermes/OpenClaw comparison.
         harness_label = request.agent.strip().lower()
         if (
             harness_label
-            and harness_label not in {"random_v1", "compare"}
+            and harness_label != "random_v1"
             and harness_label not in adapter.agent_compatibility
         ):
             attempt = next_attempt_for_signature(conn, signature)

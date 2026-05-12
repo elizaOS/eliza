@@ -148,7 +148,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	PAYMENT: ["payments"],
 	X: ["social_posting", "messaging"],
 	CONNECTOR: ["connectors"],
-	TOGGLE_FEATURE: ["settings"],
 	ELEVATE_TRUST: ["contacts", "admin"],
 	REVOKE_TRUST: ["contacts", "admin"],
 	BLOCK_USER: ["messaging", "admin"],
