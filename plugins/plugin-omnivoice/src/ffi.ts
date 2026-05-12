@@ -206,16 +206,22 @@ async function openLib(): Promise<OmnivoiceLibHandle> {
     );
   }
   logger.info(`[plugin-omnivoice] dlopen(${libPath})`);
-  const handle = ffi.dlopen(libPath, {
-    ov_version: { args: [], returns: "ptr" },
-    ov_last_error: { args: [], returns: "ptr" },
-    ov_init_default_params: { args: ["ptr"], returns: "void" },
-    ov_init: { args: ["ptr"], returns: "ptr" },
-    ov_free: { args: ["ptr"], returns: "void" },
-    ov_tts_default_params: { args: ["ptr"], returns: "void" },
-    ov_synthesize: { args: ["ptr", "ptr", "ptr"], returns: "i32" },
-    ov_audio_free: { args: ["ptr"], returns: "void" },
-  });
+  let handle: ReturnType<typeof ffi.dlopen>;
+  try {
+    handle = ffi.dlopen(libPath, {
+      ov_version: { args: [], returns: "ptr" },
+      ov_last_error: { args: [], returns: "ptr" },
+      ov_init_default_params: { args: ["ptr"], returns: "void" },
+      ov_init: { args: ["ptr"], returns: "ptr" },
+      ov_free: { args: ["ptr"], returns: "void" },
+      ov_tts_default_params: { args: ["ptr"], returns: "void" },
+      ov_synthesize: { args: ["ptr", "ptr", "ptr"], returns: "i32" },
+      ov_audio_free: { args: ["ptr"], returns: "void" },
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new OmnivoiceNotInstalled(`dlopen failed for ${libPath}: ${msg}`);
+  }
   cachedLib = {
     symbols: handle.symbols,
     ffi,

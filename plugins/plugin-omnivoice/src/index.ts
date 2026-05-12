@@ -102,11 +102,6 @@ export const omnivoicePlugin: Plugin = {
   name: "omnivoice",
   description:
     "Local TTS via omnivoice.cpp — voice cloning, voice design, emotion-aware synthesis, and singing on CPU/Metal/CUDA/Vulkan.",
-  autoEnable: {
-    shouldEnable: (env, _config) => {
-      return Boolean(env.OMNIVOICE_MODEL_PATH && env.OMNIVOICE_CODEC_PATH);
-    },
-  },
   models: {
     [ModelType.TEXT_TO_SPEECH]: async (
       runtime: IAgentRuntime,
