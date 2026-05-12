@@ -10,7 +10,7 @@ Two kinds of entries live here:
    model catalog (``packages/shared/src/local-inference/catalog.ts`` —
    ``ELIZA_1_TIER_IDS`` / ``MODEL_CATALOG``):
 
-     - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B`` → ``eliza-1-0_8b``  (local tier; new "smallest" Qwen3.5 tier; full-param SFT on one consumer GPU)
+     - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B-Base`` → ``eliza-1-0_8b``  (local tier; new "smallest" Qwen3.5 tier; full-param SFT on one consumer GPU; trains from the Base pretrain checkpoint, not the instruct release)
      - ``qwen3-0.6b``   → ``Qwen/Qwen3-0.6B``   → ``eliza-1-0_6b``  (legacy Qwen3 local tier; full-param SFT on one consumer GPU)
      - ``qwen3-1.7b``   → ``Qwen/Qwen3-1.7B``   → ``eliza-1-1_7b``  (legacy Qwen3 local tier; full-param SFT on a 16 GB GPU)
      - ``qwen3-4b``     → ``Qwen/Qwen3-4B``     → ``eliza-1-4b``    (legacy Qwen3 local/workstation tier; full-param SFT on a 24 GB GPU)
@@ -282,9 +282,11 @@ REGISTRY: dict[str, ModelEntry] = {
     # why it is the DFlash drafter base for those tiers (see
     # DFLASH_DRAFTER_BASE above). Hybrid linear-attn VLM (`qwen3_5`,
     # `full_attention_interval=4` → 6 of 24 layers are full-attention /
-    # KV-bearing). Geometry from Qwen/Qwen3.5-0.8B `config.json`.
+    # KV-bearing). Geometry from Qwen/Qwen3.5-0.8B `config.json`. SFT trains
+    # from the *Base* pretrain checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the
+    # instruct release — same architecture/tokenizer, no chat-SFT pre-baked in.
     "qwen3.5-0.8b": _entry(
-        hf_id="Qwen/Qwen3.5-0.8B", short_name="qwen3.5-0.8b",
+        hf_id="Qwen/Qwen3.5-0.8B-Base", short_name="qwen3.5-0.8b",
         eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1-0_8b",
         abliteration_repo_id="elizaos/eliza-1-0_8b-uncensored",
         params_billion=0.8, tier=Tier.LOCAL,
