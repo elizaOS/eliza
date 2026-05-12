@@ -236,6 +236,16 @@ vulkan-native-smoke:
 android-vulkan-smoke:
 	./android_vulkan_smoke.sh
 
+# Cuttlefish (cvd) Android x86_64 CPU kernel-reference parity smoke. Cross-
+# compiles gen_fixture with the NDK x86_64-linux-android clang, pushes it to
+# a live cvd via adb, runs `gen_fixture --self-test` (canonical C-reference
+# parity for all six required kernels + fused-attn + tbq V-cache), and asserts
+# bit-identical output vs the host build. The recordable evidence is
+# evidence/platform/android-x86_64-cpu.json. Vulkan-on-cvd is SwiftShader
+# (software) and is run as DIAGNOSTIC-ONLY (not recordable per fail-closed).
+cuttlefish-x86_64-smoke:
+	./cuttlefish_x86_64_smoke.sh
+
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
 metal_verify: metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
@@ -661,6 +671,14 @@ cpu-dispatch-smoke:
 	$(CC) -O2 -I"$(GGML_INC_DIR)" qjl_mt_check.c -o qjl_mt_check \
 	  -L"$(CPU_BIN_DIR)" -lggml-cpu -lggml-base -lggml -lm -Wl,-rpath,"$(CPU_BIN_DIR)"
 	LD_LIBRARY_PATH="$(CPU_BIN_DIR)" ./qjl_mt_check
+	# QJL/Polar K/V -> F16 cast -> flash_attn_ext regression smoke.
+	# Guards the fix in elizaOS/llama.cpp src/llama-graph.cpp (commit cb700767)
+	# which dequantizes the K-cache-only QJL1_256/Q4_POLAR types before
+	# the generic flash_attn_ext path that would otherwise call a NULL
+	# kq_vec_dot fn-ptr and segfault.
+	$(CC) -O2 -I"$(GGML_INC_DIR)" cpu_qjl_polar_attn_smoke.c -o cpu_qjl_polar_attn_smoke \
+	  -L"$(CPU_BIN_DIR)" -lggml-cpu -lggml-base -lggml -lm -Wl,-rpath,"$(CPU_BIN_DIR)"
+	LD_LIBRARY_PATH="$(CPU_BIN_DIR)" ./cpu_qjl_polar_attn_smoke
 
 # Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
 # and the fork's in-tree shaders. Both ship the same kernel symbols and decode

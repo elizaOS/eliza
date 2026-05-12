@@ -25,11 +25,13 @@
 # can target a 2× or 4× H200/B200 box.
 #
 # eliza-1 cloud-tier targets (model_registry.py REGISTRY keys):
-#   REGISTRY_KEY=qwen3-0.6b   → eliza-1-0_6b   (single H200 — overkill, ~2 GPU-h)
-#   REGISTRY_KEY=qwen3-1.7b   → eliza-1-1_7b   (single H200 — fits seq 4096 easily)
-#   REGISTRY_KEY=qwen3-4b     → eliza-1-4b     (single H200)
+#   REGISTRY_KEY=qwen3.5-0.8b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
+#   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
+#   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (8× H200 + FSDP — HOLD, see above)
+#   REGISTRY_KEY=qwen3.5-27b  → eliza-1-27b    (single H200 — apollo_mini fits 141 GB)
+#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
+#   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
@@ -102,7 +104,8 @@ esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
 # The transformer decoder-layer class FSDP wraps. Qwen3-0.6B/1.7B/4B use
-# Qwen3DecoderLayer; the (larger) Qwen3.5/3.6 checkpoints use Qwen3_5DecoderLayer.
+# Qwen3DecoderLayer; the Qwen3.5/3.6 checkpoints (incl. 0.8B/2B/4B/9B/27B Base)
+# use Qwen3_5DecoderLayer.
 case "$REGISTRY_KEY" in
   qwen3-0.6b|qwen3-1.7b|qwen3-4b) FSDP_WRAP_CLS="Qwen3DecoderLayer" ;;
   *) FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;

@@ -1,0 +1,244 @@
+{
+  "schema": "voice-duet-bench/1",
+  "model": "eliza-1-0_6b",
+  "generatedAt": "2026-05-12T14:59:01.317Z",
+  "platform": "linux-x64",
+  "backend": null,
+  "twoProcess": false,
+  "requestedTurns": 5,
+  "completedTurns": 0,
+  "sweepKnobs": {
+    "ringMs": 200,
+    "parallel": null,
+    "draftMax": null,
+    "draftMin": null,
+    "ctxSizeDraft": null,
+    "prewarmLeadMs": null,
+    "chunkWords": null,
+    "kvCacheType": null
+  },
+  "latency": {
+    "histograms": {
+      "ttftMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "ttfaMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "ttapMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "asrFinalLatencyMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "asrFirstPartialMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "prewarmLatencyMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "llmFirstTokenAfterAsrMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "envelopeToReplyTextMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "replyTextToPhrase1Ms": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "ttsFirstChunkMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "audioSinkLatencyMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "ttftFromUtteranceEndMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "replyTextFirstCharFromUtteranceEndMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "firstTtsPcmFromUtteranceEndMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "firstAudioIntoPeerRingFromUtteranceEndMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      },
+      "emotionTagOverheadMs": {
+        "count": 0,
+        "p50": null,
+        "p90": null,
+        "p99": null,
+        "min": null,
+        "max": null,
+        "mean": null
+      }
+    },
+    "derivedKeys": [
+      "ttftMs",
+      "ttfaMs",
+      "ttapMs",
+      "asrFinalLatencyMs",
+      "asrFirstPartialMs",
+      "prewarmLatencyMs",
+      "llmFirstTokenAfterAsrMs",
+      "envelopeToReplyTextMs",
+      "replyTextToPhrase1Ms",
+      "ttsFirstChunkMs",
+      "audioSinkLatencyMs",
+      "ttftFromUtteranceEndMs",
+      "replyTextFirstCharFromUtteranceEndMs",
+      "firstTtsPcmFromUtteranceEndMs",
+      "firstAudioIntoPeerRingFromUtteranceEndMs",
+      "emotionTagOverheadMs"
+    ]
+  },
+  "runMetrics": {
+    "turns": 0,
+    "dflashAcceptRate": null,
+    "dflashAccepted": 0,
+    "dflashDrafted": 0,
+    "dflashAcceptRateHistogram": {
+      "count": 0,
+      "p50": null,
+      "p90": null,
+      "p99": null,
+      "min": null,
+      "max": null,
+      "mean": null
+    },
+    "structuredDecodeTokenSavingsPct": {
+      "count": 0,
+      "p50": null,
+      "p90": null,
+      "p99": null,
+      "min": null,
+      "max": null,
+      "mean": null
+    },
+    "tokensPerSecond": {
+      "count": 0,
+      "p50": null,
+      "p90": null,
+      "p99": null,
+      "min": null,
+      "max": null,
+      "mean": null
+    },
+    "rss": {
+      "firstMb": null,
+      "lastMb": null,
+      "maxMb": null,
+      "samples": 0,
+      "leakSuspected": false,
+      "growthMb": null
+    }
+  },
+  "emotionFidelity": {
+    "perceiver": "perceiver: fallback-classifier (unavailable — recorded as null)",
+    "samples": 0,
+    "accuracy": null,
+    "confusionMatrix": {}
+  },
+  "gates": {
+    "first_token_latency_ms": null,
+    "first_audio_latency_ms": null,
+    "duet_round_trip_ms": null,
+    "structured_decode_token_savings_pct": null,
+    "dflash_acceptance": null,
+    "expressive_tag_faithfulness": null,
+    "e2e_loop_ok": false
+  },
+  "notes": "emotionFidelity.accuracy is null — the GGUF-converted Qwen3-ASR did not surface an emotion label in this run and no fallback emotion-from-audio classifier was available; recorded as null per the honesty contract, not fabricated. structured-decode token-savings % is null when the running llama-server's /metrics did not expose the guided-decode counter.",
+  "turns": []
+}
