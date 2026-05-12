@@ -69,7 +69,7 @@ Direct mobile targets are still externally installed:
 | `android` | `direct` | GitHub Release plus Android package-installer consent |
 | `android-system` | `direct` | Signed AOSP OTA or platform-signed privileged package channel |
 | `ios` | `store` | App Store/TestFlight or another Apple-controlled channel |
-| `ios-local` | `direct` | Xcode, Apple Configurator, enterprise MDM, or developer sideload tooling |
+| `ios-local` | `direct` | Xcode, Apple Configurator, Homebrew-assisted local tooling, or developer sideload tooling |
 
 `direct` means the build keeps local/runtime capabilities appropriate for that
 target. It does not grant silent self-update authority on mobile OSes.

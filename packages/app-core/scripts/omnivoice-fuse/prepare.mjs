@@ -23,7 +23,7 @@ import path from "node:path";
 
 const OMNIVOICE_REPO =
   process.env.MILADY_OMNIVOICE_REMOTE ||
-  "https://github.com/ServeurpersoCom/omnivoice.cpp.git";
+  "https://github.com/elizaOS/omnivoice.cpp.git";
 
 // Master HEAD as of 2026-05-10. Bump per the runbook in README.md.
 export const OMNIVOICE_REF =
@@ -143,6 +143,9 @@ struct EliInferenceContext {
     std::mutex tts_mutex;
     std::mutex asr_mutex;
 };
+
+#define ELIZA_STRINGIFY_IMPL(x) #x
+#define ELIZA_STRINGIFY(x) ELIZA_STRINGIFY_IMPL(x)
 
 static char * eliza_strdup(const std::string & s) {
     char * out = (char *) std::malloc(s.size() + 1);
@@ -478,10 +481,11 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
 extern "C" {
 
 const char * eliza_inference_abi_version(void) {
-    // ABI v2 adds the streaming-ASR session API (eliza_inference_asr_stream_*).
+    // Keep this tied to ffi.h so ABI bumps cannot drift between the
+    // generated adapter and the TypeScript loader.
     // Keep in lockstep with ELIZA_INFERENCE_ABI_VERSION in
     // packages/app-core/src/services/local-inference/voice/ffi-bindings.ts.
-    return "2";
+    return ELIZA_STRINGIFY(ELIZA_INFERENCE_ABI_VERSION);
 }
 
 EliInferenceContext * eliza_inference_create(

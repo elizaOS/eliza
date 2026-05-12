@@ -137,6 +137,32 @@ const APP_TOOL_ROUTES: readonly AiQaRoute[] = DIRECT_ROUTE_CASES.map(
   },
 );
 
+const SUPPLEMENTAL_NON_GAME_APP_ROUTES: readonly AiQaRoute[] = [
+  {
+    id: "app-wallet-inventory",
+    label: "App: wallet inventory",
+    path: "/apps/inventory",
+    readyChecks: [
+      { text: "No balances or trade history yet" },
+      { text: "Spot prices" },
+      { text: "Popular predictions" },
+    ],
+    readyMode: "any",
+    timeoutMs: 90_000,
+  },
+  {
+    id: "app-elizamaker",
+    label: "App: ElizaMaker",
+    path: "/apps/elizamaker",
+    readyChecks: [
+      { selector: '[data-testid="terminal-channel-panel"]' },
+      { text: "What would you like to check?" },
+    ],
+    readyMode: "any",
+    timeoutMs: 90_000,
+  },
+];
+
 /**
  * Sub-routes that live inside the settings shell. The harness clicks each
  * section button rather than navigating, since the settings router is
@@ -205,6 +231,7 @@ export const SETTINGS_SECTIONS: readonly {
 export const AI_QA_ROUTES: readonly AiQaRoute[] = [
   ...CORE_ROUTES,
   ...APP_TOOL_ROUTES,
+  ...SUPPLEMENTAL_NON_GAME_APP_ROUTES,
 ];
 
 export function listRouteIds(): string[] {

@@ -330,10 +330,14 @@ for (const fixture of FIXTURES) {
     const api = await installGameRoutes(page, fixture);
 
     await openAppPath(page, `/apps/${fixture.slug}`);
-    const launchButton = page.getByRole("button", {
-      name: `Launch ${fixture.displayName}`,
-    });
+    const launchButton = page
+      .getByTestId("app-launch-panel")
+      .getByRole("button", { name: "Launch" });
     await expect(launchButton).toBeVisible({ timeout: 60_000 });
+    await expect(launchButton).toHaveAttribute(
+      "title",
+      `Launch ${fixture.displayName}`,
+    );
     await launchButton.click();
 
     await expect(page.getByTestId("game-view-iframe")).toBeVisible({

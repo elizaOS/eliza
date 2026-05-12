@@ -592,19 +592,19 @@
 
     <section>
       <h2>Follow-Up Benchmark Review</h2>
-      <p>A bounded live LifeOpsBench comparison was run on May 11, 2026 against Cerebras <code>gpt-oss-120b</code>, using two static calendar scenarios, one seed, concurrency 1, and JS scenarios skipped. Mockoon was disabled because the local shell does not expose <code>npx</code>; these scenarios do not require connector mocks.</p>
+      <p>A bounded LifeOpsBench comparison was rerun on May 11, 2026 against Cerebras <code>gpt-oss-120b</code>, using two static calendar scenarios, one seed, concurrency 1, and JS scenarios skipped. Mockoon was disabled for this static slice; the bootstrap now falls back to Homebrew <code>npx</code> or repo-local <code>bunx</code> when <code>npx</code> is not on the shell path.</p>
       <table>
         <thead><tr><th>Agent</th><th>Scenarios</th><th>Pass@1</th><th>Mean Score</th><th>Cost</th><th>Latency</th><th>Notes</th></tr></thead>
         <tbody>
-          <tr><td><code>eliza</code></td><td>2</td><td>0.000</td><td>0.000</td><td>$0.0000</td><td>0.0s recorded</td><td>Server started after switching to Homebrew Node. Both scenarios ended at <code>max_turns</code>; server logs show repeated Cerebras <code>Not Found</code> failures during Stage 1.</td></tr>
-          <tr><td><code>hermes</code></td><td>2</td><td>0.000</td><td>0.100</td><td>$0.0061</td><td>6.0s</td><td>Completed both scenarios; first responded early, second reached max turns.</td></tr>
-          <tr><td><code>openclaw</code></td><td>2</td><td>0.000</td><td>0.125</td><td>$0.0130</td><td>6.4s</td><td>Completed both scenarios; emitted malformed calendar/search args in the second scenario, but partial score beat Hermes on this tiny sample.</td></tr>
+          <tr><td><code>eliza</code></td><td>2</td><td>0.000</td><td>0.200</td><td>$0.0000</td><td>0.0s recorded</td><td>Stage-1 Cerebras wiring is fixed; no 404s and no local-embedding 401s. The remaining miss is model behavior: repeated calendar tool attempts still end at <code>max_turns</code> on this tiny slice.</td></tr>
+          <tr><td><code>hermes</code></td><td>2</td><td>0.000</td><td>0.250</td><td>$0.0066</td><td>4.1s</td><td>Completed both scenarios with no 429 in the final run; retry/backoff is present for transient Cerebras 429/5xx failures.</td></tr>
+          <tr><td><code>openclaw</code></td><td>2</td><td>0.000</td><td>0.300</td><td>$0.0131</td><td>5.9s</td><td>Completed both scenarios. A follow-up OpenClaw-only rerun after the <code>id</code> alias fix completed without executor warnings at the same mean score.</td></tr>
         </tbody>
       </table>
-      <p class="small">Artifacts: <code>~/.milady/runs/lifeops/lifeops-multiagent-1778524352851/</code> for Hermes/OpenClaw and <code>~/.milady/runs/lifeops/lifeops-multiagent-1778524474307/</code> for Eliza.</p>
+      <p class="small">Latest all-agent artifacts: <code>~/.milady/runs/lifeops/lifeops-multiagent-1778526387011/</code>. Follow-up clean OpenClaw-only artifact: <code>~/.milady/runs/lifeops/lifeops-multiagent-1778526830810/</code>. Earlier failing artifacts captured the fixed provider/model issue at <code>~/.milady/runs/lifeops/lifeops-multiagent-1778524474307/</code>.</p>
       <p>Existing latest benchmark-result snapshots cover 50 benchmark families with all three agents present; 46 had numeric scores. On a per-benchmark normalized score, Hermes averaged 0.803, Eliza 0.781, and OpenClaw 0.652. Winner counts across those 46 scored families were: Eliza 9, Hermes 3, OpenClaw 2, ties 32. Raw averages are not directly comparable because benchmark score scales differ.</p>
       <div class="callout warn">
-        <strong>Missed item found:</strong> <code>response-grammar.test.ts</code> still had a weak legacy assertion that did not explicitly pin the field-registry envelope. The test now asserts that registered fields replace the legacy envelope and start in priority order.
+        <strong>Missed items found and fixed:</strong> <code>response-grammar.test.ts</code> now pins the field-registry envelope; LifeOpsBench now canonicalizes promoted calendar aliases, accepts observed <code>event_name</code>/<code>id</code> variants, treats <code>REPLY</code> as a terminal no-op, and makes duplicate synthetic calendar creates idempotent.
       </div>
     </section>
 
@@ -613,8 +613,9 @@
       <ol>
         <li>Core Stage-1, grammar, registry, abort, planner, context-catalog, tiered-action, and stress-compaction tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
         <li>LifeOps <code>threadOps</code>, action-structure audit, and work-thread integration tests pass under <code>node scripts/run-vitest.mjs</code>.</li>
-        <li>The interrupt benchmark scenario suite passes. The work-thread benchmark script now measures <code>threadOps</code> field-evaluator routing instead of the deleted post-parse router; after repairing the nested <code>@elizaos/agent</code> package metadata, <code>evaluator.handle</code> averaged 0.03ms and <code>evaluator.shouldRun</code> averaged 1.18ms over 30 iterations.</li>
-        <li>The remaining known compile risk is broader LifeOps TypeScript debt outside this response-handler migration, not the registry/threadOps path itself.</li>
+        <li>The interrupt benchmark scenario suite passes. The work-thread benchmark script now measures <code>threadOps</code> field-evaluator routing instead of the deleted post-parse router; the latest run measured <code>evaluator.handle</code> at 0.02ms average and <code>evaluator.shouldRun</code> at 0.60ms average over 30 iterations.</li>
+        <li><code>packages/core</code> and <code>packages/app-core</code> both pass <code>tsc --noEmit</code> for the touched paths.</li>
+        <li>LifeOpsBench scaffold/executor tests pass under Homebrew Python with 12 tests, including alias, idempotency, and <code>REPLY</code> regression coverage.</li>
       </ol>
     </section>
   </main>

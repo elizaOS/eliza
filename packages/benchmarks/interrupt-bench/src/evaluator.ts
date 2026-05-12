@@ -59,7 +59,16 @@ export async function runScenario(
   const scripted = opts.scripted ?? createDefaultScriptedProvider();
   const registry = buildBenchRegistry();
   const schema = registry.composeSchema();
-  const systemPrompt = `You are the Stage-1 response handler in InterruptBench. Emit a single JSON object matching the schema. Be concise. Honor user retractions. Coalesce fragmented input — emit only one final reply per intent. Never reply in a channel the message did not originate in.`;
+  const systemPrompt = `You are the Stage-1 response handler in InterruptBench. Emit a single JSON object matching the schema.
+
+Rules:
+- If the new message is only a fragment of a request, set shouldRespond="IGNORE", replyText="", and threadOps=[].
+- Do not ask clarifying questions for obvious fragments such as "i need to", "send", "an email", "set up a meeting", or "with carol tomorrow at 3pm"; wait for the complete request.
+- Once a complete fragmented request arrives, emit exactly one reply for the final intent.
+- Honor retractions and cancellations. For "stop", "nvm", "scratch that", or "actually don't", emit an abort/stop threadOp for the active workThreadId when one exists.
+- For refinements to an active thread, use a steer threadOp with the existing workThreadId.
+- For pivots, stop the old thread and create a new thread.
+- Never reply in a channel the message did not originate in.`;
 
   channels.schedule(scenario, async ({ step }) => {
     trace.push("handler_start", { channel: step.channel, sender: step.sender });
@@ -85,7 +94,7 @@ export async function runScenario(
     } else {
       const conversation = renderConversation({
         scenario,
-        history,
+        history: history.slice(0, -1),
         message: step,
         state,
       });

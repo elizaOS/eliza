@@ -2165,6 +2165,8 @@ function buildIosRuntimeSymbolShim({ target, outDir }) {
     "-isysroot",
     sdkPath,
     minVersionFlag,
+    "-I",
+    path.join(outDir, "include"),
     "-fvisibility=default",
     "-c",
     source,

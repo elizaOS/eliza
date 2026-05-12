@@ -71,11 +71,19 @@ This branch now has the following foundation:
   when config or environment asks for shell, coding tools, or agent
   orchestrator.
 - iOS local dev/sideload builds have an `ios-local` build target that bakes
-  `runtimeMode=local`, starts the native Agent plugin in local mode, routes
-  foreground local-agent requests through the WebView ITTP kernel, exposes a
-  foreground native `Agent.request` / `Agent.chat` bridge into that kernel,
-  persists the kernel's local state through the native storage bridge, and reports
+  `runtimeMode=local`, builds the Bun-targeted agent payload into
+  `packages/agent/dist-mobile-ios/agent-bundle.js`, stages that payload under
+  `App/public/agent/`, includes the native llama bridge, starts the native Agent
+  plugin in local mode, routes foreground local-agent requests through the
+  WebView ITTP kernel, exposes a foreground native `Agent.request` /
+  `Agent.chat` bridge into that kernel, persists the kernel's local state
+  through the native storage bridge, and reports
   `GET /api/local-agent/capabilities`.
+- `@elizaos/capacitor-bun-runtime` is wired into local iOS Pod generation only
+  when native local inference is included. Its llama bridge now delegates to
+  the real Swift/C llama.cpp implementation instead of canned text, but the
+  package still hosts JavaScriptCore rather than a proven iOS Bun engine. The
+  remaining full-backend blocker is the signed iOS Bun runtime itself.
 - The iOS ITTP kernel intentionally reports `task_service_unavailable` for
   `/api/background/run-due-tasks` and `/api/internal/wake`; Capacitor
   BackgroundRunner runs in a separate JSContext and cannot call the WebView

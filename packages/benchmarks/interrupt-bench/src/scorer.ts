@@ -293,13 +293,19 @@ function scoreBoundary(scenario: Scenario, trace: Trace): { axis: AxisScore; vio
 }
 
 function scoreLatency(trace: Trace): AxisScore {
-  const durations: number[] = [];
+  const llmDurations = trace
+    .filter((e) => e.type === "stage1_response")
+    .map((e) => e.detail?.llmLatencyMs)
+    .filter((value): value is number => typeof value === "number");
+  const durations: number[] = llmDurations.length > 0 ? llmDurations : [];
   let lastStart: TraceEvent | undefined;
-  for (const e of trace.all()) {
-    if (e.type === "handler_start") lastStart = e;
-    else if (e.type === "handler_end" && lastStart) {
-      durations.push(e.t - lastStart.t);
-      lastStart = undefined;
+  if (durations.length === 0) {
+    for (const e of trace.all()) {
+      if (e.type === "handler_start") lastStart = e;
+      else if (e.type === "handler_end" && lastStart) {
+        durations.push(e.t - lastStart.t);
+        lastStart = undefined;
+      }
     }
   }
   if (durations.length === 0) {

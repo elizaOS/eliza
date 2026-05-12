@@ -1,77 +1,79 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132258Z_348586a8/terminal-bench__terminal_bench/run_terminal_bench_20260511T132258Z_1_61556d0e/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191156Z_d6bda818/terminal-bench__terminal_bench/run_terminal_bench_20260511T191156Z_1_af614376/output"
   ],
   "benchmark_directory": "terminal-bench",
   "benchmark_id": "terminal_bench",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "accuracy": 0.0,
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
+    "canonical_entries": 0,
+    "nonzero_return_code_with_result": 1,
     "passed_tasks": 0,
     "performance_metrics": {
-      "duration_seconds": 0.5113133340200875,
+      "duration_seconds": 17.104974209010834,
       "mean_latency_ms": 0.0,
       "p95_latency_ms": 0.0,
-      "throughput_per_second": 1.9557479405782794
+      "throughput_per_second": 0.05846252603369632
     },
-    "return_code": 0,
+    "return_code": 1,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 1,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "total_tasks": 1,
     "trajectory_summary": {
       "files": 1,
-      "turns": 1,
       "prompt_chars": 10,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 1
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 0.5113133340200875,
+    "duration_seconds": 17.104974209010834,
     "mean_latency_ms": 0.0,
     "p95_latency_ms": 0.0,
-    "throughput_per_second": 1.9557479405782794
+    "throughput_per_second": 0.05846252603369632
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132258Z_348586a8/terminal-bench__terminal_bench/run_terminal_bench_20260511T132258Z_1_61556d0e/output/terminal-bench-20260511_062258.json",
-  "run_group_id": "rg_20260511T132258Z_348586a8",
-  "run_id": "run_terminal_bench_20260511T132258Z_1_61556d0e",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191156Z_d6bda818/terminal-bench__terminal_bench/run_terminal_bench_20260511T191156Z_1_af614376/output/terminal-bench-20260511_121213.json",
+  "run_group_id": "rg_20260511T191156Z_d6bda818",
+  "run_id": "run_terminal_bench_20260511T191156Z_1_af614376",
   "score": 0.0,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 1,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 1,
-    "turns": 1,
     "prompt_chars": 10,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:03:03.002916+00:00"
+  "updated_at": "2026-05-11T19:12:13.385945+00:00"
 }

@@ -544,6 +544,18 @@ export interface EngineVoiceBridgeOptions {
   whisper?: WhisperCppOptions;
 }
 
+export function nativeRejectedRangeToRollbackRange(
+  event: Pick<NativeVerifierEvent, "rejectedFrom" | "rejectedTo">,
+): RejectedTokenRange | null {
+  if (event.rejectedFrom < 0 || event.rejectedTo <= event.rejectedFrom) {
+    return null;
+  }
+  return {
+    fromIndex: event.rejectedFrom,
+    toIndex: event.rejectedTo - 1,
+  };
+}
+
 /**
  * Wires the voice scaffold (`VoiceScheduler` + helpers) onto the engine.
  * One bridge per active voice session — created in
@@ -904,11 +916,9 @@ export class EngineVoiceBridge {
         })();
     return this.ffi.setVerifierCallback(ctx, (event) => {
       onEvent?.(event);
-      if (event.rejectedFrom >= 0 && event.rejectedTo >= event.rejectedFrom) {
-        void this.pushRejectedRange({
-          fromIndex: event.rejectedFrom,
-          toIndex: event.rejectedTo,
-        });
+      const rejected = nativeRejectedRangeToRollbackRange(event);
+      if (rejected) {
+        void this.pushRejectedRange(rejected);
       }
     });
   }
@@ -988,6 +998,7 @@ export class EngineVoiceBridge {
       asrBundlePresent: this.asrAvailable,
       vad: opts?.vad,
       whisper: this.whisper,
+      prefer: this.ffi && this.asrAvailable ? "fused" : "auto",
     });
   }
 
@@ -1084,6 +1095,7 @@ export class EngineVoiceBridge {
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
         whisper: this.whisper,
+        prefer: this.ffi && this.asrAvailable ? "fused" : "auto",
       });
     } catch (err) {
       if (err instanceof AsrUnavailableError) {

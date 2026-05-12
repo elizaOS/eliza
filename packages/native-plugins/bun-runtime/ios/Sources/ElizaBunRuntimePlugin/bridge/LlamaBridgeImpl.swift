@@ -49,6 +49,7 @@ private let LLAMA_TOKEN_NULL: Int32 = -1
 
 typealias LlamaModelPtr = OpaquePointer
 typealias LlamaContextPtr = OpaquePointer
+typealias LlamaMemoryPtr = OpaquePointer
 typealias LlamaVocabPtr = OpaquePointer
 typealias LlamaSamplerPtr = OpaquePointer
 
@@ -87,6 +88,12 @@ private func c_llama_model_get_vocab(_ model: LlamaModelPtr) -> LlamaVocabPtr
 
 @_silgen_name("llama_n_ctx")
 private func c_llama_n_ctx(_ ctx: LlamaContextPtr) -> UInt32
+
+@_silgen_name("llama_get_memory")
+private func c_llama_get_memory(_ ctx: LlamaContextPtr) -> LlamaMemoryPtr?
+
+@_silgen_name("llama_memory_clear")
+private func c_llama_memory_clear(_ memory: LlamaMemoryPtr, _ data: Bool)
 
 @_silgen_name("llama_tokenize")
 private func c_llama_tokenize(
@@ -150,9 +157,6 @@ private func c_llama_sampler_accept(_ smpl: LlamaSamplerPtr, _ token: Int32)
 
 @_silgen_name("llama_sampler_free")
 private func c_llama_sampler_free(_ smpl: LlamaSamplerPtr)
-
-@_silgen_name("llama_kv_self_clear")
-private func c_llama_kv_self_clear(_ ctx: LlamaContextPtr)
 
 // MARK: - Opaque parameter bags
 //
@@ -435,7 +439,9 @@ public final class LlamaBridgeImpl {
         }
 
         // Reset KV cache for a clean generation.
-        c_llama_kv_self_clear(session.ctx)
+        if let memory = c_llama_get_memory(session.ctx) {
+            c_llama_memory_clear(memory, true)
+        }
 
         // 2. Prefill: enqueue all prompt tokens, then decode once.
         let batch = c_llama_batch_init(max(Int32(promptTokens.count), 512), 0, 1)

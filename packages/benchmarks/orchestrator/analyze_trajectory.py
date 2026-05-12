@@ -97,6 +97,15 @@ def _token_detail_value(usage: dict[str, Any], keys: tuple[str, ...]) -> int:
     return 0
 
 
+def _nested_dict(obj: dict[str, Any], path: tuple[str, ...]) -> dict[str, Any] | None:
+    current: Any = obj
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current if isinstance(current, dict) else None
+
+
 def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
     """Pull a TurnTokens out of one trajectory entry, or None if no signal."""
 
@@ -120,10 +129,70 @@ def extract_tokens(obj: dict[str, Any]) -> TurnTokens | None:
         cache_creation = _coerce_int(
             usage.get("cacheCreationInputTokens")
             or usage.get("cache_creation_input_tokens")
-            or _token_detail_value(usage, ("cache_creation_input_tokens",))
+            or _token_detail_value(usage, ("cache_creation_input_tokens", "cache_write_tokens"))
         )
         has_cached = cached_raw is not None
         cached = _coerce_int(cached_raw)
+        if prompt or completion or cached or cache_creation:
+            return TurnTokens(
+                prompt=prompt,
+                completion=completion,
+                cached=cached,
+                cache_creation=cache_creation,
+                has_cached=has_cached,
+            )
+
+    # Shape 1c: nested raw harness output, e.g. VisualWebBench stores
+    # prediction.raw_output.params.usage instead of promoting usage to the
+    # trace root.
+    for path in (
+        ("params", "usage"),
+        ("raw_output", "params", "usage"),
+        ("prediction", "raw_output", "params", "usage"),
+        ("provider_payload", "usage"),
+    ):
+        nested_usage = _nested_dict(obj, path)
+        if nested_usage is None:
+            continue
+        nested_tokens = extract_tokens({"usage": nested_usage})
+        if nested_tokens is not None:
+            return nested_tokens
+
+    for path in (("usage_tracking",), ("provider_payload", "usage_tracking")):
+        current: Any = obj
+        for key in path:
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(key)
+        if not isinstance(current, list) or not current:
+            continue
+        prompt = 0
+        completion = 0
+        cached = 0
+        cache_creation = 0
+        has_cached = False
+        for item in current:
+            if not isinstance(item, dict):
+                continue
+            prompt += _coerce_int(item.get("prompt_tokens") or item.get("promptTokens"))
+            completion += _coerce_int(
+                item.get("completion_tokens")
+                or item.get("completionTokens")
+                or item.get("output_tokens")
+            )
+            cached_raw = (
+                item.get("prompt_cache_hit_tokens")
+                or item.get("cache_read_input_tokens")
+                or item.get("cached_tokens")
+            )
+            if cached_raw is not None:
+                has_cached = True
+                cached += _coerce_int(cached_raw)
+            cache_creation += _coerce_int(
+                item.get("prompt_cache_miss_tokens")
+                or item.get("cache_creation_input_tokens")
+            )
         if prompt or completion or cached or cache_creation:
             return TurnTokens(
                 prompt=prompt,
@@ -614,8 +683,9 @@ def summarize(
                 summary.turns_with_cached_field += 1
             summary.prompt_chars += len(prompt_text)
 
-    if summary.prompt_tokens > 0:
-        summary.cache_hit_ratio = summary.cached_tokens / summary.prompt_tokens
+    prompt_plus_cached = summary.prompt_tokens + summary.cached_tokens
+    if prompt_plus_cached > 0:
+        summary.cache_hit_ratio = summary.cached_tokens / prompt_plus_cached
 
     summary.repeated_prefixes = find_repeated_prefixes(
         [r.prompt_text for r in records],

@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
+import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
@@ -70,7 +70,9 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 			trace: vi.fn(),
 		},
 		responseHandlerFieldRegistry,
-		responseHandlerFieldEvaluators: [...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS],
+		responseHandlerFieldEvaluators: [
+			...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+		],
 		responseHandlerEvaluators: [],
 	} as IAgentRuntime;
 }

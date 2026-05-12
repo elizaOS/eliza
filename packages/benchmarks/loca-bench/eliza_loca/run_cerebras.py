@@ -24,10 +24,10 @@ DEFAULT_MODEL = "gpt-oss-120b"
 
 def main() -> int:
     args = parse_args()
-    command = build_command(args)
     output_dir = Path(args.output_dir).resolve()
 
     if args.dry_run:
+        command = build_command(args)
         dry_run_payload = write_dry_run_outputs(
             output_dir,
             command=command,
@@ -42,9 +42,42 @@ def main() -> int:
         )
         return 0
 
-    env = build_env(args)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    completed = subprocess.run(command, cwd=LOCA_ROOT, env=env, check=False)
+    server_mgr = None
+    proxy = None
+    try:
+        harness = selected_harness()
+        if harness:
+            if harness == "eliza" and (
+                not os.environ.get("ELIZA_BENCH_URL")
+                or not os.environ.get("ELIZA_BENCH_TOKEN")
+            ):
+                from eliza_adapter.server_manager import ElizaServerManager
+
+                server_mgr = ElizaServerManager()
+                server_mgr.start()
+                os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+                os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
+
+            from eliza_loca.harness_proxy import HarnessOpenAIProxy
+
+            os.environ.setdefault(
+                "LOCA_HARNESS_TIMEOUT_S",
+                str(max(5, min(int(args.timeout) - 5, 240))),
+            )
+            proxy = HarnessOpenAIProxy()
+            proxy.start()
+            args.base_url = proxy.base_url
+            os.environ.setdefault("LOCA_OPENAI_API_KEY", "benchmark-harness-proxy")
+
+        command = build_command(args)
+        env = build_env(args)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        completed = subprocess.run(command, cwd=LOCA_ROOT, env=env, check=False)
+    finally:
+        if proxy is not None:
+            proxy.stop()
+        if server_mgr is not None:
+            server_mgr.stop()
 
     audit_path = output_dir / "eliza_loca_audit.json"
     audit = audit_output_dir(
@@ -163,6 +196,17 @@ def parse_args() -> argparse.Namespace:
     except ValueError as exc:
         parser.error(str(exc))
     return args
+
+
+def selected_harness() -> str:
+    if os.environ.get("LOCA_USE_HARNESS_PROXY", "1").strip() in {"0", "false", "False"}:
+        return ""
+    harness = (
+        os.environ.get("BENCHMARK_HARNESS")
+        or os.environ.get("ELIZA_BENCH_HARNESS")
+        or ""
+    ).strip().lower()
+    return harness if harness in {"eliza", "hermes", "openclaw"} else ""
 
 
 def build_env(args: argparse.Namespace) -> dict[str, str]:

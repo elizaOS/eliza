@@ -340,7 +340,6 @@ export function createBenchmarkPlugin(): Plugin {
     name: "eliza-benchmark",
     description:
       "Benchmark adapter plugin — injects task context and captures actions",
-
     providers: [
       {
         name: "ELIZA_BENCHMARK",

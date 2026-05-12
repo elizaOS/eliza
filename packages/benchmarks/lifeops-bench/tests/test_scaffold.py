@@ -148,6 +148,108 @@ def test_runner_builds_openai_compatible_tool_manifest() -> None:
         assert function["parameters"]["type"] == "object"
 
 
+def test_executor_accepts_promoted_calendar_alias_without_subaction() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR_CREATE_EVENT",
+            kwargs={
+                "title": "deep work",
+                "start_time": "2026-05-12T10:00:00Z",
+                "duration_minutes": 30,
+            },
+        ),
+        world,
+    )
+
+    assert result["title"] == "deep work"
+    assert any(event.title == "deep work" for event in world.calendar_events.values())
+    repeated = _execute_action(
+        Action(
+            name="CALENDAR_CREATE_EVENT",
+            kwargs={
+                "title": "deep work",
+                "start_time": "2026-05-12T10:00:00Z",
+                "duration_minutes": 30,
+            },
+        ),
+        world,
+    )
+    assert repeated["id"] == result["id"]
+    assert repeated["idempotent"] is True
+
+
+def test_executor_resolves_calendar_update_alias_by_title() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    target = sorted(
+        (
+            event
+            for event in world.calendar_events.values()
+            if event.title == "Sync: the roadmap" and event.status != "cancelled"
+        ),
+        key=lambda event: event.start,
+    )[0]
+    result = _execute_action(
+        Action(
+            name="CALENDAR_UPDATE_EVENT",
+            kwargs={
+                "event_name": target.title,
+                "new_start": "2026-05-11T15:00:00Z",
+                "duration_hours": 2,
+            },
+        ),
+        world,
+    )
+
+    assert result["id"] == target.id
+    assert result["start"] == "2026-05-11T15:00:00Z"
+    assert result["end"] == "2026-05-11T17:00:00Z"
+
+
+def test_executor_treats_reply_as_terminal_noop() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(Action(name="REPLY", kwargs={"text": "done"}), world)
+
+    assert result == {"ok": True, "noop": True, "reply": {"text": "done"}}
+
+
+def test_executor_accepts_calendar_delete_alias_with_id() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    target = next(event for event in world.calendar_events.values() if event.status != "cancelled")
+    result = _execute_action(
+        Action(name="CALENDAR_DELETE_EVENT", kwargs={"id": target.id}),
+        world,
+    )
+
+    assert result == {"id": target.id, "status": "cancelled"}
+    missing = _execute_action(
+        Action(name="CALENDAR_DELETE_EVENT", kwargs={"id": "evt_12345"}),
+        world,
+    )
+    assert missing == {
+        "ok": False,
+        "noop": True,
+        "missing_id": "evt_12345",
+        "subaction": "delete_event",
+    }
+
+
 @pytest.mark.asyncio
 async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
     from eliza_lifeops_bench import LifeOpsBenchRunner, MessageTurn

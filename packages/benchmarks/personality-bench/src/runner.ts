@@ -14,8 +14,10 @@ import { gradeScenario } from "./judge/index.ts";
 import type {
 	BatchReport,
 	Bucket,
+	CalibrationCase,
 	PersonalityScenario,
 	PersonalityVerdict,
+	Verdict,
 } from "./types.ts";
 
 const BUCKETS: Bucket[] = [
@@ -31,6 +33,8 @@ interface CliArgs {
 	outputMd: string;
 	outputJson: string;
 	agent: string | null;
+	calibration: boolean;
+	calibrationDir: string;
 }
 
 function parseArgs(argv: string[]): CliArgs {
@@ -38,18 +42,22 @@ function parseArgs(argv: string[]): CliArgs {
 	let outputMd = "report.md";
 	let outputJson = "report.json";
 	let agent: string | null = null;
+	let calibration = false;
+	let calibrationDir = path.join("tests", "calibration");
 	for (let i = 0; i < argv.length; i++) {
 		const arg = argv[i];
 		if (arg === "--run-dir") runDir = argv[++i] ?? "";
 		else if (arg === "--output") outputMd = argv[++i] ?? "report.md";
 		else if (arg === "--output-json") outputJson = argv[++i] ?? "report.json";
 		else if (arg === "--agent") agent = argv[++i] ?? null;
+		else if (arg === "--calibration") calibration = true;
+		else if (arg === "--calibration-dir") calibrationDir = argv[++i] ?? calibrationDir;
 	}
-	if (!runDir) {
+	if (!runDir && !calibration) {
 		console.error("error: --run-dir is required");
 		process.exit(1);
 	}
-	return { runDir, outputMd, outputJson, agent };
+	return { runDir, outputMd, outputJson, agent, calibration, calibrationDir };
 }
 
 async function loadScenarios(runDir: string): Promise<PersonalityScenario[]> {
@@ -67,6 +75,35 @@ async function loadScenarios(runDir: string): Promise<PersonalityScenario[]> {
 		}
 	}
 	return scenarios;
+}
+
+async function loadJsonl<T>(filePath: string): Promise<T[]> {
+	const raw = await fs.readFile(filePath, "utf8");
+	return raw
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter((line) => line.length > 0 && !line.startsWith("//"))
+		.map((line) => JSON.parse(line) as T);
+}
+
+async function loadCalibrationCases(calibrationDir: string): Promise<CalibrationCase[]> {
+	const root = path.resolve(calibrationDir);
+	const cases: CalibrationCase[] = [];
+	for (const filename of ["hand-graded.jsonl", "adversarial.jsonl"]) {
+		const filePath = path.join(root, filename);
+		cases.push(...(await loadJsonl<CalibrationCase>(filePath)));
+	}
+	return cases;
+}
+
+function calibrationToScenario(c: CalibrationCase, agent: string | null): PersonalityScenario {
+	return {
+		id: c.scenario_id,
+		bucket: c.bucket,
+		personalityExpect: c.personalityExpect,
+		trajectory: c.trajectory,
+		agent: agent ?? undefined,
+	};
 }
 
 function emptyBucketMatrix(): Record<Bucket, { pass: number; fail: number; needsReview: number }> {
@@ -135,9 +172,81 @@ function renderReport(report: BatchReport): string {
 	return lines.join("\n");
 }
 
+function scoreCalibration(
+	cases: CalibrationCase[],
+	verdicts: PersonalityVerdict[],
+): {
+	total: number;
+	agreed: number;
+	disagreed: number;
+	needsReview: number;
+	falsePositive: number;
+	falseNegative: number;
+	agreementRate: number;
+	falsePositiveRate: number;
+	reviewRate: number;
+	score: number;
+	mismatches: Array<{ id: string; expected: Verdict; actual: Verdict; reason: string }>;
+} {
+	let agreed = 0;
+	let disagreed = 0;
+	let needsReview = 0;
+	let falsePositive = 0;
+	let falseNegative = 0;
+	const mismatches: Array<{ id: string; expected: Verdict; actual: Verdict; reason: string }> = [];
+
+	for (let i = 0; i < cases.length; i++) {
+		const expected = cases[i]?.ground_truth;
+		const actual = verdicts[i]?.verdict;
+		if (!expected || !actual) continue;
+		if (actual === expected) {
+			agreed += 1;
+			if (actual === "NEEDS_REVIEW") needsReview += 1;
+			continue;
+		}
+		if (actual === "NEEDS_REVIEW") {
+			needsReview += 1;
+		} else {
+			disagreed += 1;
+			if (actual === "PASS" && expected === "FAIL") falsePositive += 1;
+			if (actual === "FAIL" && expected === "PASS") falseNegative += 1;
+		}
+		mismatches.push({
+			id: cases[i]?.scenario_id ?? `case-${i}`,
+			expected,
+			actual,
+			reason: verdicts[i]?.reason ?? "",
+		});
+	}
+
+	const total = cases.length;
+	const decided = agreed + disagreed;
+	const agreementRate = decided === 0 ? 0 : agreed / decided;
+	const falsePositiveRate = total === 0 ? 0 : falsePositive / total;
+	const reviewRate = total === 0 ? 0 : needsReview / total;
+	return {
+		total,
+		agreed,
+		disagreed,
+		needsReview,
+		falsePositive,
+		falseNegative,
+		agreementRate,
+		falsePositiveRate,
+		reviewRate,
+		score: agreementRate,
+		mismatches,
+	};
+}
+
 async function main(): Promise<void> {
 	const args = parseArgs(process.argv.slice(2));
-	const scenarios = await loadScenarios(args.runDir);
+	const calibrationCases = args.calibration
+		? await loadCalibrationCases(args.calibrationDir)
+		: [];
+	const scenarios = args.calibration
+		? calibrationCases.map((c) => calibrationToScenario(c, args.agent))
+		: await loadScenarios(args.runDir);
 	if (args.agent) {
 		for (const s of scenarios) s.agent = s.agent ?? args.agent;
 	}
@@ -167,7 +276,10 @@ async function main(): Promise<void> {
 		if (agentMatrix) tallyInto(v.bucket, v.verdict, agentMatrix);
 	}
 
-	const report: BatchReport = {
+	const report: BatchReport & {
+		score?: number;
+		calibration?: ReturnType<typeof scoreCalibration>;
+	} = {
 		schemaVersion: "personality-bench-v1",
 		generatedAt: new Date().toISOString(),
 		totals: { scenarios: verdicts.length, ...totals },
@@ -175,6 +287,10 @@ async function main(): Promise<void> {
 		perAgent,
 		verdicts,
 	};
+	if (args.calibration) {
+		report.calibration = scoreCalibration(calibrationCases, verdicts);
+		report.score = report.calibration.score;
+	}
 
 	await fs.writeFile(args.outputMd, renderReport(report), "utf8");
 	await fs.writeFile(args.outputJson, JSON.stringify(report, null, 2), "utf8");

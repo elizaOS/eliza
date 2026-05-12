@@ -173,6 +173,10 @@ playwright-report/
 /cloud-develop-playwright-ci/
 /cloud-develop-fix/
 
+# Local OmniVoice source checkout used for pin audits; fused builds clone the
+# pinned source into a cache and strip OmniVoice's nested ggml submodule.
+packages/inference/omnivoice.cpp/
+
 # Archive files
 *.zip
 *.tar

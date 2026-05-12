@@ -14,7 +14,9 @@
 export interface StartOptions {
   /**
    * Path to the agent bundle JavaScript file. When omitted, the runtime
-   * loads `agent-bundle-ios.js` from the main app bundle resources.
+   * loads the staged iOS agent payload from `public/agent/agent-bundle.js`
+   * in the main app bundle resources. Legacy JSContext development bundles
+   * named `agent-bundle-ios.js` are still probed for compatibility.
    * Use this only for development overrides.
    */
   bundlePath?: string;
@@ -30,7 +32,7 @@ export interface StartOptions {
   env?: Record<string, string>;
   /**
    * argv vector exposed to the agent via `argv()`. Defaults to
-   * `["bun", "agent-bundle-ios.js"]`.
+   * `["bun", "public/agent/agent-bundle.js"]`.
    */
   argv?: string[];
 }

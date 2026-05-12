@@ -2576,7 +2576,8 @@ export const allActionsSpec = {
 		},
 		{
 			name: "BLOCK",
-			description: "Block or unblock phone apps and desktop websites. ",
+			description:
+				"Block or unblock specific phone apps (Family Controls / Usage Access) ",
 			parameters: [
 				{
 					name: "target",
@@ -2721,7 +2722,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"block/unblock apps+websites; actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+				"block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
 			exampleCalls: [
 				{
 					user: "Use BLOCK with the provided parameters.",
@@ -3219,7 +3220,7 @@ export const allActionsSpec = {
 				{
 					name: "details",
 					description:
-						"Structured calendar fields — time bounds, timezone, calendar id, create-event timing, location, and attendees.",
+						"Structured calendar fields for create_event / update_event / delete_event. ",
 					required: false,
 					schema: {
 						type: "object",
@@ -3243,6 +3244,12 @@ export const allActionsSpec = {
 								type: "number",
 							},
 							windowPreset: {
+								type: "string",
+							},
+							start: {
+								type: "string",
+							},
+							end: {
 								type: "string",
 							},
 							startAt: {
@@ -3278,17 +3285,18 @@ export const allActionsSpec = {
 						},
 					},
 					descriptionCompressed:
-						"calendar details: calendarId timeMin timeMax timeZone startAt endAt durationMinutes eventId newTitle description location travelOriginAddress windowDays windowPreset forceSync",
+						"details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
 				},
 				{
 					name: "durationMinutes",
-					description: "Meeting length in minutes. Used by propose_times.",
+					description:
+						"Top-level flat field. Meeting length in minutes for propose_times. ",
 					required: false,
 					schema: {
 						type: "number",
 					},
 					descriptionCompressed:
-						"Meeting length in minutes. Used by propose_times.",
+						"Top-level flat field. Meeting length in minutes for propose_times.",
 				},
 				{
 					name: "daysAhead",
@@ -3336,23 +3344,25 @@ export const allActionsSpec = {
 				},
 				{
 					name: "startAt",
-					description: "ISO-8601 start time. Used by check_availability.",
+					description:
+						"Top-level flat field. ISO-8601 start time for check_availability. ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ISO-8601 start time. Used by check_availability.",
+						"Top-level flat field. ISO-8601 start time for check_availability.",
 				},
 				{
 					name: "endAt",
-					description: "ISO-8601 end time. Used by check_availability.",
+					description:
+						"Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"ISO-8601 end time. Used by check_availability.",
+						"Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
 				},
 				{
 					name: "timeZone",
@@ -3368,24 +3378,24 @@ export const allActionsSpec = {
 				{
 					name: "preferredStartLocal",
 					description:
-						"Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). ",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h).",
 				},
 				{
 					name: "preferredEndLocal",
 					description:
-						"Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
 					required: false,
 					schema: {
 						type: "string",
 					},
 					descriptionCompressed:
-						"Latest preferred meeting end time-of-day (local HH:MM, 24h).",
+						"Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
 				},
 				{
 					name: "defaultDurationMinutes",
@@ -3444,22 +3454,6 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
-			similes: [
-				"CALENDAR",
-				"SCHEDULE",
-				"MEETING",
-				"CALENDAR_LIST_UPCOMING",
-				"CALENDAR_FIND_AVAILABILITY",
-				"CALENDAR_CREATE_EVENT",
-				"CALENDAR_CREATE_RECURRING_BLOCK",
-				"CALENDAR_RESCHEDULE_EVENT",
-				"CALENDAR_CANCEL_EVENT",
-				"CALENDAR_PROPOSE_TIMES",
-				"CALENDAR_PROTECT_WINDOW",
-				"CALENDAR_BUNDLE_MEETINGS",
-				"CALENDAR_ADD_PREP_BUFFER",
-				"CALENDAR_ADD_TRAVEL_BUFFER",
-			],
 			exampleCalls: [
 				{
 					user: "Use CALENDAR with the provided parameters.",

@@ -192,7 +192,7 @@ The mobile build script now exposes the release-authority mapping through
 | `android` | `direct` | `local` | GitHub Release + Android package installer | Open GitHub release; user installs |
 | `android-system` | `direct` | `local` | AOSP OTA/privileged package channel | Show OTA/version status only |
 | `ios` | `store` | `cloud` | Apple App Store/TestFlight | Open App Store/TestFlight/release notes |
-| `ios-local` | `direct` | `local` | Xcode, Apple Configurator, MDM, or developer sideload tooling | Show build provenance/release notes |
+| `ios-local` | `direct` | `local` | Xcode, Apple Configurator, Homebrew-assisted local tooling, or developer sideload tooling | Show build provenance/release notes |
 
 None of these mobile targets has app-controlled binary OTA. The direct mobile
 variant means "not app-store sandboxed"; it does not mean the app may silently
@@ -234,8 +234,8 @@ should use HTTPS URLs.
 
 ### iOS
 
-App Store/TestFlight, EU Web Distribution, alternative marketplaces, enterprise
-MDM, and local sideload all remain externally managed. Settings can show
+App Store/TestFlight, EU Web Distribution, alternative marketplaces, and local
+sideload all remain externally managed. Settings can show
 version/build and release notes. It must not download a replacement app bundle
 or executable runtime. For EU Web Distribution, the install/update path is still
 the Apple-notarized domain/marketplace path, not our app UI.

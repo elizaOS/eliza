@@ -1,9 +1,11 @@
 # @elizaos/capacitor-bun-runtime
 
-Embedded Bun-shape JavaScript runtime for iOS. Hosts a `JSContext` on a
-dedicated worker thread, installs the `__MILADY_BRIDGE__` host functions
-documented in `native/ios-bun-port/BRIDGE_CONTRACT.md`, and loads an agent
-bundle (`agent-bundle-ios.js`) from the app bundle resources.
+Native host package for the iOS local agent runtime work. The current Swift
+implementation hosts a `JSContext` compatibility bridge on a dedicated worker
+thread, installs the `__MILADY_BRIDGE__` host functions, and can load the
+staged iOS agent payload from `public/agent/agent-bundle.js`. It is not yet the
+full Bun engine; that still requires a signed iOS-compatible Bun runtime linked
+into this pod.
 
 The Android side is parked for now — the iOS path lands first; a JNI-backed
 implementation will follow under the same JS surface.
@@ -16,27 +18,32 @@ bun add @elizaos/capacitor-bun-runtime
 
 Capacitor 8 auto-discovers the plugin via the `capacitor.ios` block in
 `package.json`. Re-run `pod install` after adding it so the
-`ElizaosCapacitorBunRuntime` pod links into your iOS workspace. The pod
-links `JavaScriptCore.framework` and `Network.framework` and depends on
-`Capacitor`.
+`ElizaosCapacitorBunRuntime` pod links into your iOS workspace. The pod links
+`JavaScriptCore.framework` and `Network.framework`, depends on `Capacitor`, and
+uses `LlamaCppCapacitor` for the native llama.cpp symbols in local builds.
 
 ## Bundle layout
 
-The runtime expects the following resources inside the app `.app` bundle
-(add them to the Xcode `App` target):
+The local iOS build stages these resources under `App/public/agent/`, which is
+copied into the app bundle by Capacitor's `public` folder resource:
 
-- `agent-bundle-ios.js` — the compiled agent bundle. Required.
+- `agent-bundle.js` — the Bun-targeted agent bundle from
+  `packages/agent/dist-mobile-ios/`. Required for the full backend path.
+- `pglite.wasm`, `initdb.wasm`, `pglite.data`, `vector.tar.gz`,
+  `fuzzystrmatch.tar.gz` — PGlite runtime assets used by the agent bundle.
 - `milady-polyfill-prefix.js` — the polyfill prefix that maps `Bun.*` /
-  `node:*` onto `__MILADY_BRIDGE__`. Optional; the runtime ships a
-  minimal embedded fallback that just version-checks the bridge.
+  `node:*` onto `__MILADY_BRIDGE__` for the compatibility JSContext path.
+  Optional; the runtime ships a minimal embedded fallback that just
+  version-checks the bridge.
 
 ## Usage
 
 ```ts
 import { ElizaBunRuntime } from "@elizaos/capacitor-bun-runtime";
 
-// Boots the JSContext, installs the bridge, evaluates the agent bundle,
-// and invokes globalThis.startEliza() if exported.
+// Boots the current native host, installs the bridge, evaluates the staged
+// bundle in the compatibility path, and invokes globalThis.startEliza() if
+// exported.
 await ElizaBunRuntime.start({});
 
 // Round-trips a chat message through the agent's send_message handler,
@@ -65,11 +72,10 @@ string emitted in `globalThis.__MILADY_BRIDGE_VERSION__`.
 
 ## Llama backend
 
-`llama_*` host functions currently return canned responses so the
-end-to-end JS path can be exercised. The wiring point for the real
-backend (via `LlamaCppCapacitor`) is documented inline in
-`ios/Sources/ElizaBunRuntimePlugin/bridge/LlamaBridge.swift`. M09 of the
-iOS Bun port replaces the stub with the real call.
+`llama_*` host functions delegate to `LlamaBridgeImpl`, which links against the
+same `LlamaCpp.xcframework` built by the iOS local-inference pipeline. The
+xcframework build also emits the small `milady_llama_*` C helpers needed by the
+Swift direct bridge.
 
 ## Events
 
@@ -83,7 +89,9 @@ The plugin emits two Capacitor events:
 ## Limitations (v1)
 
 - iOS-only. Android falls back to the `WebPlugin` stub.
-- No `worker_threads.Worker` support — single-threaded JSContext.
+- Full Bun is not linked yet. The current implementation is the compatibility
+  JSContext host plus native bridges.
+- No `worker_threads.Worker` support in the compatibility host.
 - No `child_process` — sandboxed out.
 - HTTP-server bodies are buffered, not streamed.
 - `bun:ffi.dlopen` is forbidden. The only FFI surface is the llama

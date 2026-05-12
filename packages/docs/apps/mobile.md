@@ -18,20 +18,22 @@ surfaces and Cloud containers.
 
 iOS local development and sideload builds are a separate target, not an
 enterprise distribution path. Use `bun run build:ios:local` from
-`packages/app` to bake `runtimeMode=local` and include the native llama bridge.
-The target defaults to a generic iOS device build; set
-`ELIZA_IOS_CODE_SIGNING_ALLOWED=YES` plus the normal Xcode signing settings when
-you want to install it on a device.
-That target still does not imply a host shell or downloaded native code; the
-local-agent URL is routed through the in-process ITTP kernel until the shared
-iOS route kernel/backend port lands.
+`packages/app` to bake `runtimeMode=local`, build
+`packages/agent/dist-mobile-ios/agent-bundle.js`, stage it under
+`App/public/agent/`, and include the native llama bridge. The default local
+target is the iOS simulator; use `bun run build:ios:local:device` or set
+`ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS'` plus normal Xcode signing
+when you want a sideload/device build.
+That target still does not imply a host shell or downloaded native code. The
+full Bun engine port is not complete until a signed iOS-compatible Bun runtime
+is linked and passes simulator boot; until then the foreground local-agent URL
+can still be routed through the in-process ITTP kernel.
 The kernel exposes `GET /api/local-agent/capabilities` so the app can show the
 truth about what is local today: foreground chat/model-management routes are
 ITTP, native `Agent.request` / `Agent.chat` can bridge into that WebView kernel
-while the app is foregrounded, the full Node/Bun AgentRuntime is not mounted,
-plugin/app managers are not mounted, and the `ScheduledTask` service is
-unavailable in background runner JSContexts. Background wakes in this mode are
-recorded as an explicit
+while the app is foregrounded, plugin/app managers are not mounted, and the
+`ScheduledTask` service is unavailable in background runner JSContexts.
+Background wakes in this mode are recorded as an explicit
 `ios_ittp_route_kernel_unavailable_in_background_jscontext` skip instead of
 probing a fake TCP endpoint.
 
@@ -72,7 +74,9 @@ source tree and artifact.
 
 - **macOS** (required for iOS development)
 - **Xcode 15+** with iOS platform tools installed
-- **CocoaPods** (Capacitor uses it for native dependencies): `sudo gem install cocoapods`
+- **CocoaPods** (Capacitor uses it for native dependencies): prefer
+  `brew install cocoapods`; `gem install --user-install cocoapods` also works
+  when Ruby's user gem bin directory is on `PATH`
 - An Apple Developer account for device testing and distribution
 - For simulator testing, no signing is required
 

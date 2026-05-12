@@ -509,6 +509,9 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or details.get("eventId")
             or _synthetic_id("event_auto", {"t": title, "s": start, "e": end, "c": calendar_id})
         )
+        if event_id in world.calendar_events:
+            event = world.calendar_events[str(event_id)]
+            return {"id": event.id, "title": event.title, "idempotent": True}
         event = world.create_calendar_event(
             event_id=event_id,
             calendar_id=calendar_id,
@@ -525,8 +528,16 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
     if sub == "update_event":
         event = _find_calendar_event(
             world,
-            event_id=details.get("eventId") or kw.get("eventId") or details.get("event_id") or kw.get("event_id"),
-            title=details.get("title") or kw.get("title"),
+            event_id=details.get("eventId")
+            or kw.get("eventId")
+            or details.get("event_id")
+            or kw.get("event_id")
+            or details.get("id")
+            or kw.get("id"),
+            title=details.get("title")
+            or kw.get("title")
+            or details.get("event_name")
+            or kw.get("event_name"),
         )
         if event is None:
             raise KeyError(
@@ -550,12 +561,30 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         event = world.move_event(event.id, start=start, end=end)
         return {"id": event.id, "start": event.start, "end": event.end}
     if sub == "delete_event":
+        requested_event_id = (
+            details.get("eventId")
+            or kw.get("eventId")
+            or details.get("event_id")
+            or kw.get("event_id")
+            or details.get("id")
+            or kw.get("id")
+        )
         event = _find_calendar_event(
             world,
-            event_id=details.get("eventId") or kw.get("eventId") or details.get("event_id") or kw.get("event_id"),
-            title=details.get("title") or kw.get("title"),
+            event_id=requested_event_id,
+            title=details.get("title")
+            or kw.get("title")
+            or details.get("event_name")
+            or kw.get("event_name"),
         )
         if event is None:
+            if requested_event_id:
+                return {
+                    "ok": False,
+                    "noop": True,
+                    "missing_id": str(requested_event_id),
+                    "subaction": sub,
+                }
             raise KeyError(
                 f"{name}/{sub} missing required field 'eventId' in kwargs={sorted(kw)}"
             )

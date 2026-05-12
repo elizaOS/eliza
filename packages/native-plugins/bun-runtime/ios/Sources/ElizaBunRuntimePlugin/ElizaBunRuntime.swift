@@ -228,10 +228,24 @@ public final class ElizaBunRuntime {
         if let override = override, !override.isEmpty {
             return try String(contentsOfFile: override, encoding: .utf8)
         }
-        guard let url = Bundle.main.url(forResource: "agent-bundle-ios", withExtension: "js") else {
-            throw makeError("agent-bundle-ios.js not found in app bundle")
+        let candidates: [(String, String?, String?)] = [
+            ("agent-bundle-ios", "js", nil),
+            ("agent-bundle", "js", nil),
+            ("agent-bundle-ios", "js", "public/agent"),
+            ("agent-bundle", "js", "public/agent"),
+        ]
+        for (name, ext, subdir) in candidates {
+            if let url = Bundle.main.url(
+                forResource: name,
+                withExtension: ext,
+                subdirectory: subdir
+            ) {
+                return try String(contentsOf: url, encoding: .utf8)
+            }
         }
-        return try String(contentsOf: url, encoding: .utf8)
+        throw makeError(
+            "agent-bundle.js not found in app bundle resources (searched app root and public/agent)"
+        )
     }
 
     private func loadPolyfillSource(override: String?) throws -> String {

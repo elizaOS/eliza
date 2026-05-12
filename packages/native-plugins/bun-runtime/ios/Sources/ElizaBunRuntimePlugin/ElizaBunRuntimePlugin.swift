@@ -37,7 +37,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
     @objc func start(_ call: CAPPluginCall) {
         let bundlePath = call.getString("bundlePath")
         let polyfillPath = call.getString("polyfillPath")
-        let argv = call.getArray("argv", String.self) ?? ["bun", "agent-bundle-ios.js"]
+        let argv = call.getArray("argv", String.self) ?? ["bun", "public/agent/agent-bundle.js"]
         let env: [String: String]
         if let raw = call.getObject("env") {
             env = raw.compactMapValues { $0 as? String }

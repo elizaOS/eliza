@@ -1078,15 +1078,29 @@ const polyfillFooter = "";
 let iosJscPolyfillSrc = "";
 let iosJscPolyfillBundled = false;
 if (TARGET === "ios-jsc") {
-  const polyfillPath = path.resolve(
-    repoRoot,
-    "..",
-    "native",
-    "ios-bun-port",
-    "polyfill",
-    "dist",
-    "polyfill-prefix.js",
-  );
+  const polyfillCandidates = [
+    path.resolve(
+      repoRoot,
+      "native",
+      "ios-bun-port",
+      "polyfill",
+      "dist",
+      "polyfill-prefix.js",
+    ),
+    // Compatibility for older checkouts that kept native/ beside the repo.
+    path.resolve(
+      repoRoot,
+      "..",
+      "native",
+      "ios-bun-port",
+      "polyfill",
+      "dist",
+      "polyfill-prefix.js",
+    ),
+  ];
+  const polyfillPath =
+    polyfillCandidates.find((candidate) => existsSync(candidate)) ??
+    polyfillCandidates[0];
   if (existsSync(polyfillPath)) {
     iosJscPolyfillSrc = await Bun.file(polyfillPath).text();
     iosJscPolyfillBundled = true;

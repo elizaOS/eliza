@@ -1111,6 +1111,20 @@ async function main() {
         : null,
     };
     return finish(out, args, logFn);
+  } catch (err) {
+    const serverLogPath = path.join(tmpDir, "server.log");
+    const out = {
+      ...baseReport,
+      status: "failed",
+      reason: err instanceof Error ? err.message : String(err),
+      e2eLoopOk: false,
+      thirtyTurnOk: null,
+      serverExitCode: serverChild?.exitCode ?? null,
+      serverLog: fs.existsSync(serverLogPath)
+        ? fs.readFileSync(serverLogPath, "utf8").split("\n").slice(-80).join("\n")
+        : null,
+    };
+    return finish(out, args, logFn);
   } finally {
     // teardown FFI then server
     try {

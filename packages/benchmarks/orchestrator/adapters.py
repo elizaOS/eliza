@@ -71,13 +71,15 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     "action_calling": ("eliza", "openclaw", "hermes"),
     "agentbench": ("eliza", "openclaw", "hermes"),
     "mind2web": ("eliza", "openclaw", "hermes"),
+    "visualwebbench": ("eliza", "openclaw", "hermes"),
     "tau_bench": ("eliza", "openclaw", "hermes"),
     "context_bench": ("eliza", "openclaw", "hermes"),
     "lifeops_bench": ("eliza", "openclaw", "hermes"),
+    "loca_bench": ("eliza", "openclaw", "hermes"),
     "clawbench": ("eliza", "openclaw", "hermes"),
     "openclaw_bench": ("eliza", "openclaw"),
     "mint": ("eliza", "openclaw", "hermes"),
-    "terminal_bench": ("eliza", "hermes"),
+    "terminal_bench": ("eliza", "hermes", "openclaw"),
     "swe_bench": ("eliza", "hermes"),
     "swe_bench_orchestrated": ("eliza", "hermes"),
     "osworld": ("eliza", "hermes"),
@@ -86,6 +88,9 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     "hermes_terminalbench_2": ("eliza", "openclaw", "hermes"),
     "hermes_yc_bench": ("eliza", "openclaw", "hermes"),
     "hermes_swe_env": ("eliza", "openclaw", "hermes"),
+    # TypeScript/package-local benchmark suites:
+    "interrupt_bench": ("eliza", "openclaw", "hermes"),
+    "personality_bench": ("eliza", "openclaw", "hermes"),
 }
 
 
@@ -1203,6 +1208,8 @@ def _command_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> lis
         str(int(ctx.request.extra_config.get("max_tokens", 2048))),
         "--timeout",
         str(int(ctx.request.extra_config.get("timeout", 300))),
+        "--max-retries",
+        str(int(ctx.request.extra_config.get("max_retries", 1))),
         "--allow-empty",
     ]
     config = ctx.request.extra_config.get("config")
@@ -1234,18 +1241,160 @@ def _score_from_loca_bench(path: Path) -> ScoreSummary:
     if not isinstance(summary, dict):
         raise ValueError("loca-bench audit missing summary")
     raw = summary.get("avg_accuracy")
+    trajectory_count = summary.get("trajectory_count")
+    aggregate_trajectory_count = summary.get("aggregate_trajectory_count")
+    metadata_total_tasks = summary.get("metadata_total_tasks")
     score = float(raw) if isinstance(raw, (int, float)) else None
+    if score is None:
+        observed_trajectories = (
+            trajectory_count
+            if isinstance(trajectory_count, int)
+            else aggregate_trajectory_count
+            if isinstance(aggregate_trajectory_count, int)
+            else 0
+        )
+        if observed_trajectories > 0 or (
+            isinstance(metadata_total_tasks, int) and metadata_total_tasks > 0
+        ):
+            score = 0.0
     return ScoreSummary(
         score=score,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "avg_accuracy": raw,
-            "trajectory_count": summary.get("trajectory_count"),
+            "aggregate_trajectory_count": aggregate_trajectory_count,
             "issue_count": summary.get("issue_count"),
+            "metadata_total_tasks": metadata_total_tasks,
             "total_api_tokens": summary.get("total_api_tokens"),
             "max_prompt_tokens": summary.get("max_prompt_tokens"),
+            "max_total_tokens": summary.get("max_total_tokens"),
+            "trajectory_count": trajectory_count,
         },
+    )
+
+
+def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    args = [
+        "bun",
+        "run",
+        "src/runner.ts",
+        "--mode=cerebras",
+        f"--model={ctx.request.model}",
+        f"--out={ctx.output_root}",
+    ]
+    scenario = ctx.request.extra_config.get("scenario")
+    if isinstance(scenario, str) and scenario.strip():
+        args.append(f"--scenario={scenario.strip()}")
+    elif int(ctx.request.extra_config.get("max_tasks", 0) or 0) == 1:
+        args.append("--scenario=A1-fragmented-email-draft")
+    if ctx.request.extra_config.get("judge") is True:
+        args.append("--judge")
+    return args
+
+
+def _score_from_interrupt_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    final_score = data.get("finalScore")
+    aggregate = data.get("aggregate")
+    raw_score = final_score if isinstance(final_score, (int, float)) else aggregate
+    score = float(raw_score) / 100.0 if isinstance(raw_score, (int, float)) else None
+    scenarios = data.get("scenarios")
+    scenario_count = len(scenarios) if isinstance(scenarios, list) else 0
+    boundary_violations = 0
+    if isinstance(scenarios, list):
+        boundary_violations = sum(
+            1
+            for item in scenarios
+            if isinstance(item, dict) and item.get("boundaryViolated") is True
+        )
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "finalScore": final_score,
+            "aggregate": aggregate,
+            "judgeBonus": data.get("judgeBonus"),
+            "passTier": data.get("passTier"),
+            "scenario_count": scenario_count,
+            "boundary_violations": boundary_violations,
+            "mode": data.get("mode"),
+            "model": data.get("model"),
+        },
+    )
+
+
+def _command_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    return [
+        "bun",
+        "run",
+        "src/runner.ts",
+        "--calibration",
+        "--calibration-dir",
+        "tests/calibration",
+        "--agent",
+        ctx.request.agent.strip().lower() or "eliza",
+        "--output",
+        str(ctx.output_root / "report.md"),
+        "--output-json",
+        str(ctx.output_root / "report.json"),
+    ]
+
+
+def _env_personality_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    enable_llm = ctx.request.extra_config.get("enable_llm_judge") is True
+    return {
+        "PERSONALITY_JUDGE_MODEL": ctx.request.model,
+        "PERSONALITY_JUDGE_ENABLE_LLM": "1" if enable_llm else "0",
+        "PERSONALITY_JUDGE_STRICT": "0",
+    }
+
+
+def _score_from_personality_bench(path: Path) -> ScoreSummary:
+    import json
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    calibration = data.get("calibration")
+    totals = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+    if isinstance(calibration, dict):
+        raw_score = calibration.get("score", calibration.get("agreementRate"))
+        score = float(raw_score) if isinstance(raw_score, (int, float)) else None
+        metrics = {
+            "total": calibration.get("total"),
+            "agreed": calibration.get("agreed"),
+            "disagreed": calibration.get("disagreed"),
+            "needsReview": calibration.get("needsReview"),
+            "falsePositive": calibration.get("falsePositive"),
+            "falseNegative": calibration.get("falseNegative"),
+            "agreementRate": calibration.get("agreementRate"),
+            "falsePositiveRate": calibration.get("falsePositiveRate"),
+            "reviewRate": calibration.get("reviewRate"),
+            "mismatch_count": len(calibration.get("mismatches", []))
+            if isinstance(calibration.get("mismatches"), list)
+            else 0,
+        }
+        return ScoreSummary(
+            score=score,
+            unit="ratio",
+            higher_is_better=True,
+            metrics=metrics,
+        )
+
+    scenario_count = totals.get("scenarios", 0) if isinstance(totals, dict) else 0
+    passed = totals.get("pass", 0) if isinstance(totals, dict) else 0
+    score = (float(passed) / float(scenario_count)) if scenario_count else None
+    return ScoreSummary(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics=dict(totals) if isinstance(totals, dict) else {},
     )
 
 
@@ -1274,6 +1423,18 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mint": {
             "agent": "eliza",
+        },
+        "terminal_bench": {
+            "max_tasks": 1,
+            "sample": True,
+            "timeout": 60,
+            "no_markdown": True,
+            "no_sessions": True,
+            "no_leaderboard": True,
+        },
+        "visualwebbench": {
+            "max_tasks": 1,
+            "task_types": "web_caption",
         },
         "social_alpha": {
             "system": "eliza",
@@ -1502,9 +1663,32 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "max_steps": 1,
                 "max_tool_uses": 5,
+                "max_retries": 1,
+                "timeout": 120,
                 "context_summary": True,
             },
             default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="interrupt_bench",
+            directory="interrupt-bench",
+            description="InterruptBench response-handler interruption benchmark",
+            cwd=str((benchmarks_root / "interrupt-bench").resolve()),
+            command_builder=_command_interrupt_bench,
+            result_patterns=["report.json"],
+            score_extractor=_score_from_interrupt_bench,
+            default_timeout_seconds=7200,
+        ),
+        _make_extra_adapter(
+            adapter_id="personality_bench",
+            directory="personality-bench",
+            description="Personality-bench judge calibration suite",
+            cwd=str((benchmarks_root / "personality-bench").resolve()),
+            command_builder=_command_personality_bench,
+            env_builder=_env_personality_bench,
+            result_patterns=["report.json"],
+            score_extractor=_score_from_personality_bench,
+            default_timeout_seconds=600,
         ),
         _make_extra_adapter(
             adapter_id="rolodex",

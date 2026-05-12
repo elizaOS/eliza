@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { resolveMobileBuildPolicy } from "./run-mobile-build.mjs";
+import {
+  resolveIosBuildTarget,
+  resolveMobileBuildPolicy,
+} from "./run-mobile-build.mjs";
 
 test("resolveMobileBuildPolicy marks Google Play Android as a store-managed cloud client", () => {
   assert.deepEqual(resolveMobileBuildPolicy("android-cloud"), {
@@ -53,4 +56,21 @@ test("resolveMobileBuildPolicy separates App Store iOS from local iOS builds", (
     releaseAuthority: "developer-toolchain",
     appControlledOta: false,
   });
+});
+
+test("resolveIosBuildTarget honors simulator overrides used by local iOS smoke builds", () => {
+  assert.deepEqual(
+    resolveIosBuildTarget({
+      env: {
+        ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator",
+        ELIZA_IOS_BUILD_SDK: "iphonesimulator",
+      },
+      appDirValue: "/tmp/no-app",
+    }),
+    {
+      destination: "generic/platform=iOS Simulator",
+      sdk: "iphonesimulator",
+      reason: "explicit environment override",
+    },
+  );
 });

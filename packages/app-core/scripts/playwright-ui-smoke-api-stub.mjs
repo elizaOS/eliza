@@ -1025,6 +1025,14 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname.startsWith("/api/apps/hero/")
+  ) {
+    sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     sendJson(req, res, 200, { status: "ok" });
     return;

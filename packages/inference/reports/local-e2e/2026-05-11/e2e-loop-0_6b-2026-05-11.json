@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-11T19:00:25.049Z",
+  "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 16,
+    "cpuModel": "Apple M4 Max",
+    "totalMemMb": 131072
+  },
+  "request": {
+    "tier": "0_6b",
+    "backend": "metal",
+    "turns": 1,
+    "nPredict": 8
+  },
+  "bundle": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+    "tier": "0_6b",
+    "ramBudgetMb": {
+      "min": 1500,
+      "recommended": 1800
+    }
+  },
+  "engine": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused",
+    "backend": "metal",
+    "fused": true,
+    "caps": {
+      "dflash": true,
+      "turbo3": true,
+      "turbo4": true,
+      "turbo3_tcq": true,
+      "qjl_full": true,
+      "polarquant": true,
+      "lookahead": true,
+      "ngramDraft": true
+    }
+  },
+  "status": "failed",
+  "reason": "llama-server exited (code 1) before becoming healthy",
+  "e2eLoopOk": false,
+  "thirtyTurnOk": null,
+  "serverExitCode": 1,
+  "serverLog": "common_init_result: added <|fim_pad|> logit bias = -inf\ncommon_init_result: added <|repo_name|> logit bias = -inf\ncommon_init_result: added <|file_sep|> logit bias = -inf\nllama_context: constructing llama_context\nllama_context: n_seq_max     = 4\nllama_context: n_ctx         = 1024\nllama_context: n_ctx_seq     = 1024\nllama_context: n_batch       = 1024\nllama_context: n_ubatch      = 512\nllama_context: causal_attn   = 1\nllama_context: flash_attn    = auto\nllama_context: kv_unified    = true\nllama_context: freq_base     = 1000000.0\nllama_context: freq_scale    = 1\nllama_context: n_ctx_seq (1024) < n_ctx_train (40960) -- the full capacity of the model will not be utilized\nggml_metal_init: allocating\nggml_metal_init: found device: Apple M4 Max\nggml_metal_init: picking default device: Apple M4 Max\nggml_metal_init: use fusion         = true\nggml_metal_init: use concurrency    = true\nggml_metal_init: use graph optimize = true\nllama_context:        CPU  output buffer size =     2.32 MiB\nllama_kv_cache:       MTL0 KV buffer size =   112.00 MiB\nllama_kv_cache: size =  112.00 MiB (  1024 cells,  28 layers,  4/1 seqs), K (f16):   56.00 MiB, V (f16):   56.00 MiB\nsched_reserve: reserving ...\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve:       MTL0 compute buffer size =   298.75 MiB\nsched_reserve:        CPU compute buffer size =     6.01 MiB\nsched_reserve: graph nodes  = 987\nsched_reserve: graph splits = 2\nsched_reserve: reserve took 12.82 ms, sched copies = 1\nsrv    load_model: loading draft model '/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf'\nllama_model_load_from_file_impl: using device MTL0 (Apple M4 Max) (unknown id) - 109085 MiB free\nllama_model_loader: loaded meta data with 32 key-value pairs and 58 tensors from /Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf (version GGUF V3 (latest))\nllama_model_loader: Dumping metadata keys/values. Note: KV overrides do not apply in this output.\nllama_model_loader: - kv   0:                       general.architecture str              = dflash-draft\nllama_model_loader: - kv   1:                               general.type str              = model\nllama_model_loader: - kv   2:                               general.name str              = z-lab/Qwen3.5-4B-DFlash\nllama_model_loader: - kv   3:                           general.finetune str              = 96899cc270945f554998309580b08a04a05a3187\nllama_model_loader: - kv   4:                         general.size_label str              = 537M\nllama_model_loader: - kv   5:                            general.license str              = mit\nllama_model_loader: - kv   6:                               general.tags arr[str,8]       = [\"dflash\", \"speculative-decoding\", \"b...\nllama_model_loader: - kv   7:                   dflash-draft.block_count u32              = 5\nllama_model_loader: - kv   8:                dflash-draft.context_length u32              = 262144\nllama_model_loader: - kv   9:              dflash-draft.embedding_length u32              = 2560\nllama_model_loader: - kv  10:           dflash-draft.feed_forward_length u32              = 9728\nllama_model_loader: - kv  11:          dflash-draft.attention.head_count u32              = 32\nllama_model_loader: - kv  12:       dflash-draft.attention.head_count_kv u32              = 8\nllama_model_loader: - kv  13:                dflash-draft.rope.freq_base f32              = 10000000.000000\nllama_model_loader: - kv  14: dflash-draft.attention.layer_norm_rms_epsilon f32              = 0.000001\nllama_model_loader: - kv  15:          dflash-draft.attention.key_length u32              = 128\nllama_model_loader: - kv  16:        dflash-draft.attention.value_length u32              = 128\nllama_model_loader: - kv  17:              dflash-draft.attention.causal bool             = false\nllama_model_loader: - kv  18:          dflash-draft.rope.dimension_count u32              = 128\nllama_model_loader: - kv  19:             dflash-draft.dflash.block_size u32              = 16\nllama_model_loader: - kv  20:          dflash-draft.dflash.mask_token_id u32              = 248070\nllama_model_loader: - kv  21:       dflash-draft.dflash.target_layer_ids arr[i32,5]       = [1, 8, 15, 22, 29]\nllama_model_loader: - kv  22:      dflash-draft.dflash.n_target_features u32              = 12800\nllama_model_loader: - kv  23:                       tokenizer.ggml.model str              = gpt2\nllama_model_loader: - kv  24:                         tokenizer.ggml.pre str              = qwen35\nllama_model_loader: - kv  25:                      tokenizer.ggml.tokens arr[str,248320]  = [\"<|endoftext|>\", \"[PAD1]\", \"[PAD2]\",...\nllama_model_loader: - kv  26:                  tokenizer.ggml.token_type arr[i32,248320]  = [3, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, ...\nllama_model_loader: - kv  27:                tokenizer.ggml.eos_token_id u32              = 248044\nllama_model_loader: - kv  28:            tokenizer.ggml.padding_token_id u32              = 248044\nllama_model_loader: - kv  29:               general.quantization_version u32              = 2\nllama_model_loader: - kv  30:                          general.file_type u32              = 15\nllama_model_loader: - kv  31:                      tokenizer.ggml.merges arr[str,247587]  = [\"Ġ Ġ\", \"ĠĠ ĠĠ\", \"i n\", \"Ġ t\",...\nllama_model_loader: - type  f32:   22 tensors\nllama_model_loader: - type q4_K:   32 tensors\nllama_model_loader: - type q6_K:    4 tensors\nprint_info: file format = GGUF V3 (latest)\nprint_info: file type   = Q4_K - Medium\nprint_info: file size   = 301.94 MiB (4.71 BPW) \nllama_model_load: error loading model: error loading model architecture: unknown model architecture: 'dflash-draft'\nllama_model_load_from_file_impl: failed to load model\nsrv    load_model: failed to load draft model, '/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/dflash/drafter-0_6b.gguf'\nsrv    operator(): operator(): cleaning up before exit...\nmain: exiting due to model loading error\nggml_metal_free: deallocating\n"
+}

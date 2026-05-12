@@ -4,7 +4,7 @@ import JavaScriptCore
 /// Implements `now_ns`, `argv`, `env_*`, `exit` from `BRIDGE_CONTRACT.md`.
 public final class ProcessBridge {
     private var env: [String: String] = [:]
-    private var argv: [String] = ["bun", "agent-bundle-ios.js"]
+    private var argv: [String] = ["bun", "public/agent/agent-bundle.js"]
     /// Snapshot of the monotonic clock origin for `now_ns`.
     private let monotonicEpoch: UInt64
     private weak var owner: ElizaBunRuntime?
