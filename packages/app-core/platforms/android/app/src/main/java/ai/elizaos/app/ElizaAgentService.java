@@ -859,6 +859,11 @@ public class ElizaAgentService extends Service {
                 // (Tensor / Adreno) finishes in seconds, so this only
                 // matters for AOSP cvd runs.
                 agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
+                // Device bridge is unused on AOSP (ELIZA_LOCAL_LLAMA=1 routes
+                // inference through the native llama.so adapter instead). Set
+                // the same 1h budget explicitly so the intent is clear and
+                // operator overrides above are not inadvertently in effect.
+                agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "3600000");
 
                 // Eliza-1 native context is 128k. We pin to 16k
                 // because 16k easily fits the planner's ~12k-token
