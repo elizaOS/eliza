@@ -429,6 +429,84 @@ function formatContextAsText(ctx: BenchmarkContext): string {
 // Plugin factory
 // ---------------------------------------------------------------------------
 
+const LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES = [
+  "CALENDAR",
+  "CALENDAR_CREATE_EVENT",
+  "CALENDAR_UPDATE_EVENT",
+  "CALENDAR_DELETE_EVENT",
+  "CALENDAR_SEARCH_EVENTS",
+  "CALENDAR_CHECK_AVAILABILITY",
+  "CALENDAR_PROPOSE_TIMES",
+  "CALENDAR_NEXT_EVENT",
+  "CALENDAR_UPDATE_PREFERENCES",
+] as const;
+
+function extractActionParameters(options: unknown): Record<string, unknown> {
+  let params: Record<string, unknown> = {};
+  if (options && typeof options === "object") {
+    const opts = options as Record<string, unknown>;
+    if (opts.parameters && typeof opts.parameters === "object") {
+      const p = opts.parameters as Record<string, unknown>;
+      if ("fields" in p && typeof p.fields === "object") {
+        const fields = p.fields as Record<
+          string,
+          { stringValue?: string; numberValue?: number }
+        >;
+        for (const [k, v] of Object.entries(fields)) {
+          params[k] = v?.stringValue ?? v?.numberValue ?? v;
+        }
+      } else {
+        params = p;
+      }
+    }
+  }
+  return params;
+}
+
+function parseCapturedArguments(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as Record<string, unknown>;
+    } catch {
+      logger.warn(
+        `[BENCHMARK_ACTION] Failed to parse arguments as JSON: ${value}`,
+      );
+      return { _raw: value };
+    }
+  }
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function captureBenchmarkAction(params: Record<string, unknown>): CapturedAction {
+  return {
+    params,
+    command: typeof params.command === "string" ? params.command : undefined,
+    toolName:
+      typeof params.tool_name === "string" ? params.tool_name : undefined,
+    arguments: parseCapturedArguments(params.arguments),
+    operation:
+      typeof params.operation === "string" ? params.operation : undefined,
+    elementId:
+      typeof params.element_id === "string" ? params.element_id : undefined,
+    value: typeof params.value === "string" ? params.value : undefined,
+  };
+}
+
+function captureLifeOpsBenchmarkToolAction(
+  name: string,
+  params: Record<string, unknown>,
+): CapturedAction {
+  return {
+    params,
+    toolName: name,
+    arguments: params,
+  };
+}
+
 export function createBenchmarkPlugin(): Plugin {
   return {
     name: "eliza-benchmark",
@@ -505,66 +583,11 @@ export function createBenchmarkPlugin(): Plugin {
         validate: async () => true,
 
         handler: async (_runtime, _message, _state, options) => {
-          // Extract params — TS runtime may pass as Struct, plain object, or nested
-          let params: Record<string, unknown> = {};
-          if (options && typeof options === "object") {
-            const opts = options as Record<string, unknown>;
-            if (opts.parameters && typeof opts.parameters === "object") {
-              const p = opts.parameters as Record<string, unknown>;
-              // If it's a protobuf Struct with .fields, extract values
-              if ("fields" in p && typeof p.fields === "object") {
-                const fields = p.fields as Record<
-                  string,
-                  { stringValue?: string; numberValue?: number }
-                >;
-                for (const [k, v] of Object.entries(fields)) {
-                  params[k] = v?.stringValue ?? v?.numberValue ?? v;
-                }
-              } else {
-                params = p;
-              }
-            }
-          }
+          const params = extractActionParameters(options);
 
           console.log("[BENCHMARK_ACTION] params:", JSON.stringify(params));
 
-          _capturedAction = {
-            params,
-            command:
-              typeof params.command === "string" ? params.command : undefined,
-            toolName:
-              typeof params.tool_name === "string"
-                ? params.tool_name
-                : undefined,
-            arguments:
-              typeof params.arguments === "string"
-                ? (() => {
-                    try {
-                      return JSON.parse(params.arguments as string) as Record<
-                        string,
-                        unknown
-                      >;
-                    } catch {
-                      logger.warn(
-                        `[BENCHMARK_ACTION] Failed to parse arguments as JSON: ${params.arguments}`,
-                      );
-                      return { _raw: params.arguments as string };
-                    }
-                  })()
-                : typeof params.arguments === "object" &&
-                    params.arguments !== null
-                  ? (params.arguments as Record<string, unknown>)
-                  : undefined,
-            operation:
-              typeof params.operation === "string"
-                ? params.operation
-                : undefined,
-            elementId:
-              typeof params.element_id === "string"
-                ? params.element_id
-                : undefined,
-            value: typeof params.value === "string" ? params.value : undefined,
-          };
+          _capturedAction = captureBenchmarkAction(params);
 
           return {
             text: `Benchmark action captured: ${JSON.stringify(_capturedAction)}`,
@@ -637,6 +660,27 @@ export function createBenchmarkPlugin(): Plugin {
           },
         ],
       },
+      ...LIFEOPS_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
+        name,
+        contextGate: {},
+        roleGate: { minRole: "NONE" as const },
+        similes: [],
+        description:
+          "LifeOpsBench compatibility action. Captures a planner-emitted LifeOps tool call for the benchmark fake backend.",
+        validate: async () => true,
+        handler: async (_runtime, _message, _state, options) => {
+          const params = extractActionParameters(options);
+          console.log(`[${name}] params:`, JSON.stringify(params));
+          _capturedAction = captureLifeOpsBenchmarkToolAction(name, params);
+          return {
+            text: `Benchmark LifeOps action captured: ${name}`,
+            success: true,
+            values: { captured: true },
+            data: { action: _capturedAction },
+          };
+        },
+        parameters: [],
+      })),
     ],
   };
 }

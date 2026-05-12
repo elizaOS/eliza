@@ -19,12 +19,14 @@ from eliza_lifeops_bench.scorer import (
     _canonicalize_action,
     _kwargs_match,
     compare_actions,
+    output_substring_match,
     score_scenario,
 )
 from eliza_lifeops_bench.types import (
     Action,
     Domain,
     FirstQuestionFallback,
+    MessageTurn,
     Persona,
     Scenario,
     ScenarioMode,
@@ -216,7 +218,7 @@ def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
 
 
 def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> None:
-    """Repro for openclaw: granular action + state_hash=True must score > 0."""
+    """Repro for openclaw: granular action + state_hash=True is semantically successful."""
     scenario = _scenario(
         ground_truth_actions=[
             Action(
@@ -243,10 +245,62 @@ def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> N
         ],
     )
     score = score_scenario(result, scenario)
-    # action_score=0.5 (name match, kwargs differ on naming), state_score=1.0,
-    # substring_score=1.0 (no required outputs).
-    # 0.5*1.0 + 0.4*0.5 + 0.1*1.0 = 0.80.
-    assert score == pytest.approx(0.80)
+    # action_score is promoted to 1.0 because the state hash matched and the
+    # action name matched after canonicalization.
+    assert score == pytest.approx(1.0)
+
+
+def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
+    """A successful calendar creation can say 'added to your calendar'."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="Your 30-minute focus block was added to your calendar.",
+            )
+        ],
+        ["scheduled", "focus block"],
+    )
+
+    assert matches == [True, True]
+
+
+def test_score_scenario_state_match_plus_partial_action_and_synonym_passes() -> None:
+    """Cerebras smoke: correct state + alias kwargs + calendar confirmation should pass."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "details": {
+                        "calendarId": "cal_primary",
+                        "start": "2026-05-11T10:00:00Z",
+                        "end": "2026-05-11T10:30:00Z",
+                    },
+                },
+            )
+        ],
+        required_outputs=["scheduled", "deep work"],
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "start_time": "2026-05-11T10:00:00Z",
+                    "duration_minutes": 30,
+                },
+            )
+        ],
+        output_substring_matches=[True, True],
+    )
+
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
 
 
 def test_score_scenario_hermes_intent_only_gap_now_full_credit() -> None:

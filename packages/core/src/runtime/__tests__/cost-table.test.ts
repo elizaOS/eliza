@@ -149,9 +149,9 @@ describe("cost-table", () => {
 			const { MODEL_CONTEXT_WINDOW_TOKENS } = await import(
 				"../../features/trajectories/pricing"
 			);
-			expect(MODEL_CONTEXT_WINDOW_TOKENS["qwen-3-235b-a22b-instruct-2507"]).toBe(
-				64_000,
-			);
+			expect(
+				MODEL_CONTEXT_WINDOW_TOKENS["qwen-3-235b-a22b-instruct-2507"],
+			).toBe(64_000);
 			expect(MODEL_CONTEXT_WINDOW_TOKENS["llama3.1-8b"]).toBe(32_000);
 		});
 

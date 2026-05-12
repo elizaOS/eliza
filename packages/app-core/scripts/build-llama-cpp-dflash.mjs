@@ -1932,6 +1932,8 @@ function installLegacyDflashDrafterRuntime({ target, outDir, args }) {
 function probeKernels(target, buildDir, outDir, cacheDir = null) {
   const { platform, backend } = parseTarget(target);
   const canRunOnHost = canRunTargetOnHost(target);
+  const hasNativeDflash =
+    cacheDir !== null && sourceContainsDflashDraft(cacheDir);
   const kernels = {
     dflash: false,
     turbo3: false,
@@ -1962,7 +1964,7 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
       });
       const help = `${result.stdout || ""}\n${result.stderr || ""}`;
       const lc = help.toLowerCase();
-      kernels.dflash = /dflash/.test(lc);
+      kernels.dflash = hasNativeDflash && /dflash/.test(lc);
       // The fork's CLI advertises tbq3_0/tbq4_0 as cache-type names (the
       // user-facing identifier for GGML_TYPE_TBQ3_0/_TBQ4_0). Also accept
       // the legacy `turbo3`/`turbo4` strings the original probe expected,
@@ -2015,7 +2017,7 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     const objects = collectFilesUnder(buildDir, /\.(o|obj|air|spv)$/);
     const names = objects.join("\n").toLowerCase();
     // Per-backend kernels (CUDA/Metal/Vulkan emit per-kernel object files).
-    kernels.dflash = /dflash|flash[-_]?attn[-_]?ext/.test(names);
+    kernels.dflash = hasNativeDflash && /dflash/.test(names);
     kernels.turbo3 = /turbo3/.test(names);
     kernels.turbo4 = /turbo4/.test(names);
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
@@ -2023,23 +2025,12 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
     // CPU build inlines the turbo quantization paths inside ggml-cpu and
     // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
-    // as evidence both turbo3 and turbo4 paths are compiled in. Likewise,
-    // the fork wires DFlash through ggml-cpu's flash-attn entry, so dflash
-    // is also implicit when ggml-turbo-quant is present on CPU targets.
+    // as evidence both turbo3 and turbo4 paths are compiled in. DFlash is
+    // not inferred from turbo/flash-attention objects: publishable Eliza-1
+    // builds must carry the native dflash-draft speculative state.
     if (backend === "cpu" && /ggml-turbo-quant\.c\.o/.test(names)) {
       kernels.turbo3 = true;
       kernels.turbo4 = true;
-      kernels.dflash = true;
-    }
-    // For non-CPU backends, presence of the backend's flash-attn unit is a
-    // strong proxy for dflash (the fork hangs DFlash off the existing FA
-    // kernel registration).
-    if (
-      !kernels.dflash &&
-      (backend === "cuda" || backend === "vulkan" || backend === "metal") &&
-      /(flash[-_]?attn|fattn)/.test(names)
-    ) {
-      kernels.dflash = true;
     }
   }
 

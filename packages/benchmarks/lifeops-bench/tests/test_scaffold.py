@@ -255,6 +255,77 @@ def test_executor_resolves_calendar_update_alias_by_fuzzy_title_and_date_hint() 
     assert result["end"] == "2026-05-10T17:00:00Z"
 
 
+def test_executor_resolves_calendar_update_when_event_id_is_title() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR",
+            kwargs={
+                "subaction": "update_event",
+                "eventId": "Sync: the roadmap",
+                "newStart": "2026-05-10T15:00:00Z",
+                "newEnd": "2026-05-10T17:00:00Z",
+            },
+        ),
+        world,
+    )
+
+    assert result["id"] == "event_00040"
+    assert result["start"] == "2026-05-10T15:00:00Z"
+    assert result["end"] == "2026-05-10T17:00:00Z"
+
+
+def test_executor_resolves_calendar_update_with_updates_object() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR_UPDATE_EVENT",
+            kwargs={
+                "event_id": "event_00040",
+                "updates": {
+                    "start": "2026-05-10T15:00:00Z",
+                    "end": "2026-05-10T17:00:00Z",
+                },
+            },
+        ),
+        world,
+    )
+
+    assert result["id"] == "event_00040"
+    assert result["start"] == "2026-05-10T15:00:00Z"
+    assert result["end"] == "2026-05-10T17:00:00Z"
+
+
+def test_executor_calendar_search_returns_matching_events() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR",
+            kwargs={
+                "subaction": "search_events",
+                "query": "roadmap",
+                "date": "2026-05-10",
+            },
+        ),
+        world,
+    )
+
+    assert result["ok"] is True
+    assert [event["id"] for event in result["events"]] == ["event_00040"]
+
+
 def test_executor_treats_reply_as_terminal_noop() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action

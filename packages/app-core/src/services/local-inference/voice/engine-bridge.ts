@@ -933,9 +933,9 @@ export class EngineVoiceBridge {
    * Construct a `StreamingTranscriber` for live ASR — the contract the
    * voice turn controller (W9) feeds mic frames into and the barge-in
    * word-confirm gate (W1) listens to. Resolves the adapter chain:
-   *   fused `libelizainference` streaming ASR (final path, gated on a
-   *   working decoder AND a bundled ASR model) → whisper.cpp interim
-   *   adapter → `AsrUnavailableError`.
+   *   fused `libelizainference` streaming ASR when available; otherwise the
+   *   fused batch ASR path over the same bundled model; then whisper.cpp
+   *   interim adapter → `AsrUnavailableError`.
    *
    * Pass W1's `vad` event stream to gate decoding to active speech
    * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1030,12 +1030,12 @@ export class EngineVoiceBridge {
 
   /**
    * Resolve the pipeline's ASR backend: a real `StreamingTranscriber`
-   * (fused `eliza_inference_asr_stream_*` decoder when the loaded build
-   * advertises one and the bundle ships an `asr/` region, else the
-   * whisper.cpp interim adapter) adapted onto the pipeline's batch
-   * token-iterator (`StreamingTranscriberTokenStreamer`). When no ASR
-   * backend is available the failure is surfaced as a `MissingAsrTranscriber`
-   * that throws on first use — AGENTS.md §3, no silent cloud fallback.
+   * (fused streaming ASR when available, fused batch ASR when the bundle
+   * ships an `asr/` region, else the whisper.cpp interim adapter) adapted
+   * onto the pipeline's batch token-iterator
+   * (`StreamingTranscriberTokenStreamer`). When no ASR backend is available
+   * the failure is surfaced as a `MissingAsrTranscriber` that throws on first
+   * use — AGENTS.md §3, no silent cloud fallback.
    */
   private resolveTranscriber():
     | StreamingTranscriberTokenStreamer

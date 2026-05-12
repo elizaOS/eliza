@@ -1,9 +1,18 @@
 {
-  "status": "failed",
-  "startedAt": "2026-05-12T01:40:02.760Z",
-  "finishedAt": "2026-05-12T01:40:06.877Z",
-  "device": null,
-  "xcframework": null,
+  "status": "passed",
+  "startedAt": "2026-05-12T01:41:31.543Z",
+  "finishedAt": "2026-05-12T01:44:20.803Z",
+  "device": {
+    "section": "CoreDevice",
+    "name": "Shaw’s iPhone",
+    "version": null,
+    "id": "C9130C48-48F1-5DC3-98E9-8BACE231D047",
+    "hostname": "Shaws-iPhone.coredevice.local",
+    "state": "available (paired)",
+    "model": "iPhone 15 Pro (iPhone16,1)",
+    "idSource": "devicectl"
+  },
+  "xcframework": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/app/node_modules/llama-cpp-capacitor/ios/Frameworks-xcframework/LlamaCpp.xcframework",
   "skippedVoiceAbi": false,
   "failClosed": {
     "physicalDeviceOnly": true,
@@ -12,13 +21,110 @@
     "requiresVoiceAbi": true,
     "capturesXcodebuildOutput": true
   },
-  "toolchain": null,
-  "xcodebuild": null,
-  "blocker": {
-    "category": "unknown",
-    "detail": "xcodegen generate failed with null"
+  "toolchain": {
+    "xcodebuild": {
+      "command": [
+        "xcodebuild",
+        "-version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Xcode 26.4.1\nBuild version 17E202\n",
+      "stderr": "",
+      "error": null
+    },
+    "xctrace": {
+      "command": [
+        "xcrun",
+        "xctrace",
+        "version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "xctrace version 16.0 (17E202)\n",
+      "stderr": "",
+      "error": null
+    }
   },
-  "resultBundlePath": null,
-  "derivedDataPath": null,
-  "error": "xcodegen generate failed with null"
+  "xcodebuild": {
+    "command": [
+      "xcodebuild",
+      "test",
+      "-project",
+      "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/ElizaIosRuntimeSmoke.xcodeproj",
+      "-scheme",
+      "ElizaIosRuntimeSmoke",
+      "-destination",
+      "platform=iOS,id=C9130C48-48F1-5DC3-98E9-8BACE231D047",
+      "-derivedDataPath",
+      "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData",
+      "-resultBundlePath",
+      "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/ElizaIosRuntimeSmoke.xcresult",
+      "CODE_SIGNING_ALLOWED=YES",
+      "DEVELOPMENT_TEAM=25877RY2EH"
+    ],
+    "cwd": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh",
+    "status": 0,
+    "signal": null,
+    "stdoutTail": "os/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/PlugIns --scan-folder /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/SystemExtensions --scan-folder /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/Extensions --platform iphoneos --toolchain /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.5.188.0.BZ4qL3/Metal.xctoolchain --toolchain /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain --destination /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/Frameworks --strip-bitcode --scan-executable /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/usr/lib/libXCTestSwiftSupport.dylib --strip-bitcode-tool /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/bitcode_strip --emit-dependency-info /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/SwiftStdLibToolInputDependencies.dep --filter-for-swift-os\n\nExtractAppIntentsMetadata (in target 'ElizaIosRuntimeSmokeTests' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsmetadataprocessor --toolchain-dir /var/run/com.apple.security.cryptexd/mnt/com.apple.MobileAsset.MetalToolchain-v17.5.188.0.BZ4qL3/Metal.xctoolchain --module-name ElizaIosRuntimeSmokeTests --sdk-root /Applications/Xcode.app/Contents/Developer/Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.4.sdk --xcode-version 17E202 --platform-family iOS --deployment-target 14.0 --bundle-identifier ai.elizalabs.ElizaIosRuntimeSmokeTests --output /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest --target-triple arm64-apple-ios14.0 --binary-file /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/ElizaIosRuntimeSmokeTests --dependency-file /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/Objects-normal/arm64/ElizaIosRuntimeSmokeTests_dependency_info.dat --stringsdata-file /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/Objects-normal/arm64/ExtractedAppShortcutsMetadata.stringsdata --source-file-list /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/Objects-normal/arm64/ElizaIosRuntimeSmokeTests.SwiftFileList --metadata-file-list /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/ElizaIosRuntimeSmokeTests.DependencyMetadataFileList --static-metadata-file-list /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/ElizaIosRuntimeSmokeTests.DependencyStaticMetadataFileList --swift-const-vals-list /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/Objects-normal/arm64/ElizaIosRuntimeSmokeTests.SwiftConstValuesFileList --compile-time-extraction --deployment-aware-processing --validate-assistant-intents --no-app-shortcuts-localization\n2026-05-11 18:42:08.347 appintentsmetadataprocessor[64042:47566420] Starting appintentsmetadataprocessor export\n2026-05-11 18:42:08.348 appintentsmetadataprocessor[64042:47566420] warning: Metadata extraction skipped. No AppIntents.framework dependency found.\n\nGenerateDSYMFile /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest.dSYM /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/ElizaIosRuntimeSmokeTests (in target 'ElizaIosRuntimeSmokeTests' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/dsymutil /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/ElizaIosRuntimeSmokeTests -o /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest.dSYM\n\nAppIntentsSSUTraining (in target 'ElizaIosRuntimeSmokeTests' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/appintentsnltrainingprocessor --infoplist-path /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/Info.plist --temp-dir-path /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/ssu --bundle-id ai.elizalabs.ElizaIosRuntimeSmokeTests --product-path /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest --extracted-metadata-path /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/Metadata.appintents --metadata-file-list /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeTests.build/ElizaIosRuntimeSmokeTests.DependencyMetadataFileList --source-file /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest/Info.plist --archive-ssu-assets\n2026-05-11 18:42:08.370 appintentsnltrainingprocessor[64044:47566433] Parsing options for appintentsnltrainingprocessor\n2026-05-11 18:42:08.371 appintentsnltrainingprocessor[64044:47566433] Starting AppIntents SSU YAML Generation\n2026-05-11 18:42:08.371 appintentsnltrainingprocessor[64044:47566433] No AppShortcuts found - Skipping.\n\nCodeSign /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest (in target 'ElizaIosRuntimeSmokeTests' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    \n    Signing Identity:     \"Apple Development: Shaw Walters (UT5K5Q5EVF)\"\n    \n    /usr/bin/codesign --force --sign 96A036FCADC6BCD189190DD30D8AA4988C6F76B8 --timestamp\\=none --generate-entitlement-der /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest\n\nRegisterExecutionPolicyException /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest (in target 'ElizaIosRuntimeSmokeTests' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    builtin-RegisterExecutionPolicyException /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest\n\nTouch /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest (in target 'ElizaIosRuntimeSmokeTests' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    /usr/bin/touch -c /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/PlugIns/ElizaIosRuntimeSmokeTests.xctest\n\nCodeSign /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/ElizaIosRuntimeSmokeHost.debug.dylib (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    \n    Signing Identity:     \"Apple Development: Shaw Walters (UT5K5Q5EVF)\"\n    Provisioning Profile: \"iOS Team Provisioning Profile: *\"\n                          (a27c85a0-a572-4387-82ba-b4605b07820f)\n    \n    /usr/bin/codesign --force --sign 96A036FCADC6BCD189190DD30D8AA4988C6F76B8 --timestamp\\=none --generate-entitlement-der /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/ElizaIosRuntimeSmokeHost.debug.dylib\n\nCodeSign /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/__preview.dylib (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    \n    Signing Identity:     \"Apple Development: Shaw Walters (UT5K5Q5EVF)\"\n    Provisioning Profile: \"iOS Team Provisioning Profile: *\"\n                          (a27c85a0-a572-4387-82ba-b4605b07820f)\n    \n    /usr/bin/codesign --force --sign 96A036FCADC6BCD189190DD30D8AA4988C6F76B8 --timestamp\\=none --generate-entitlement-der /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app/__preview.dylib\n\nCodeSign /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    \n    Signing Identity:     \"Apple Development: Shaw Walters (UT5K5Q5EVF)\"\n    Provisioning Profile: \"iOS Team Provisioning Profile: *\"\n                          (a27c85a0-a572-4387-82ba-b4605b07820f)\n    \n    /usr/bin/codesign --force --sign 96A036FCADC6BCD189190DD30D8AA4988C6F76B8 --entitlements /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Intermediates.noindex/ElizaIosRuntimeSmoke.build/Debug-iphoneos/ElizaIosRuntimeSmokeHost.build/ElizaIosRuntimeSmokeHost.app.xcent --timestamp\\=none --generate-entitlement-der /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app\n\nRegisterExecutionPolicyException /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    builtin-RegisterExecutionPolicyException /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app\n\nValidate /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    builtin-validationUtility /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app -shallow-bundle -infoplist-subpath Info.plist\nwarning: All interface orientations must be supported unless the app requires full screen. (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\nwarning: A launch configuration or launch storyboard or xib must be provided unless the app requires full screen. (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n\nTouch /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app (in target 'ElizaIosRuntimeSmokeHost' from project 'ElizaIosRuntimeSmoke')\n    cd /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh\n    /usr/bin/touch -c /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData/Build/Products/Debug-iphoneos/ElizaIosRuntimeSmokeHost.app\n\n2026-05-11 18:44:19.972778-0700 ElizaIosRuntimeSmokeHost[13380:1966670] [UIKit App Config] `UIScene` lifecycle will soon be required. Failure to adopt will result in an assert in the future.\r\nTest Suite 'All tests' started at 2026-05-11 18:44:20.393.\r\nTest Suite 'ElizaIosRuntimeSmokeTests.xctest' started at 2026-05-11 18:44:20.393.\r\nTest Suite 'ElizaIosRuntimeSmokeTests' started at 2026-05-11 18:44:20.393.\r\nTest Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testLibElizaInferenceAbiV1CallsMatchHeader]' started.\r\nTest Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testLibElizaInferenceAbiV1CallsMatchHeader]' passed (0.001 seconds).\r\nTest Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testLlamaKernelAndVoiceSymbolsResolve]' started.\r\nTest Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testLlamaKernelAndVoiceSymbolsResolve]' passed (0.001 seconds).\r\nTest Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testMetalDeviceIsAvailableOnPhysicalIos]' started.\r\nTest Case '-[ElizaIosRuntimeSmokeTests.ElizaIosRuntimeSmokeTests testMetalDeviceIsAvailableOnPhysicalIos]' passed (0.003 seconds).\r\nTest Suite 'ElizaIosRuntimeSmokeTests' passed at 2026-05-11 18:44:20.399.\r\n\t Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds\r\nTest Suite 'ElizaIosRuntimeSmokeTests.xctest' passed at 2026-05-11 18:44:20.399.\r\n\t Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.005) seconds\r\nTest Suite 'All tests' passed at 2026-05-11 18:44:20.399.\r\n\t Executed 3 tests, with 0 failures (0 unexpected) in 0.005 (0.006) seconds\r\n\nTest session results, code coverage, and logs:\n\t/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/ElizaIosRuntimeSmoke.xcresult\n\n** TEST SUCCEEDED **\n\nTesting started\n",
+    "stderrTail": "2026-05-11 18:42:20.075 xcodebuild[57752:47554200] [MT] Run Destination Preflight: The destination is not ready.\nError Domain=com.apple.dt.deviceprep Code=-3 \"Unlock Shaw’s iPhone to Continue\" UserInfo={NSRecoveryAttempter=<_DVTErrorRecoveryHandler: 0x8a9ae40e0>, NSLocalizedRecoveryOptions=(\n    \"Cancel Testing\"\n), NSLocalizedRecoverySuggestion=Xcode cannot launch ElizaIosRuntimeSmokeTests on Shaw’s iPhone because the device is locked., DVTRecoveryBlockKey=<__NSMallocBlock__: 0x8ad8caa60>, NSLocalizedDescription=Unlock Shaw’s iPhone to Continue}\n2026-05-11 18:42:20.075 xcodebuild[57752:47554200] [MT] Run Destination Preflight: Waiting for the destination to become ready.\n2026-05-11 18:44:20.724 xcodebuild[57752:47554200] [MT] IDETestOperationsObserverDebug: 125.664 elapsed -- Testing started completed.\n2026-05-11 18:44:20.724 xcodebuild[57752:47554200] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start\n2026-05-11 18:44:20.724 xcodebuild[57752:47554200] [MT] IDETestOperationsObserverDebug: 125.664 sec, +125.664 sec -- end\n",
+    "error": null,
+    "failureCategory": null
+  },
+  "blocker": null,
+  "resultBundlePath": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/ElizaIosRuntimeSmoke.xcresult",
+  "derivedDataPath": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh/DerivedData",
+  "connectedPhysicalDeviceCount": 1,
+  "offlinePhysicalDeviceCount": 1,
+  "xcframeworkDeviceSlice": {
+    "infoPlist": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/app/node_modules/llama-cpp-capacitor/ios/Frameworks-xcframework/LlamaCpp.xcframework/Info.plist",
+    "library": {
+      "LibraryPath": "LlamaCpp.framework",
+      "SupportedPlatform": "ios",
+      "BinaryPath": "LlamaCpp.framework/LlamaCpp",
+      "LibraryIdentifier": "ios-arm64",
+      "SupportedArchitectures": [
+        "arm64"
+      ]
+    }
+  },
+  "frameworkBinary": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/app/node_modules/llama-cpp-capacitor/ios/Frameworks-xcframework/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/LlamaCpp",
+  "developmentTeam": "25877RY2EH",
+  "tempPackage": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-XzDjRh",
+  "requiredSymbols": {
+    "llama": [
+      "llama_init_context",
+      "llama_release_context",
+      "llama_completion",
+      "llama_stop_completion",
+      "llama_get_formatted_chat",
+      "llama_toggle_native_log",
+      "llama_embedding",
+      "llama_embedding_register_context",
+      "llama_embedding_unregister_context",
+      "llama_get_model_info",
+      "llama_get_context_ptr",
+      "llama_get_last_error",
+      "llama_free_string"
+    ],
+    "kernels": [
+      "ggml_attn_score_qjl",
+      "ggml_compute_forward_attn_score_qjl",
+      "dequantize_row_qjl1_256",
+      "quantize_qjl1_256",
+      "dequantize_row_q4_polar",
+      "quantize_q4_polar",
+      "llama_decode"
+    ],
+    "voiceAbi": [
+      "eliza_inference_abi_version",
+      "eliza_inference_create",
+      "eliza_inference_destroy",
+      "eliza_inference_mmap_acquire",
+      "eliza_inference_mmap_evict",
+      "eliza_inference_tts_synthesize",
+      "eliza_inference_asr_transcribe",
+      "eliza_inference_free_string"
+    ]
+  }
 }

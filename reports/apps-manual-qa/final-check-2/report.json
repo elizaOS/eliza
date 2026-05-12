@@ -1,0 +1,93 @@
+[
+  {
+    "name": "desktop-tasks",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": []
+    },
+    "preview": "Tasks\n\nDetailed status, history, approvals, and coordinator output for coding-agent tasks.\n\nTASKS\n\nNo orchestrator work running"
+  },
+  {
+    "name": "mobile-tasks",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": []
+    },
+    "preview": "Tasks\n\nDetailed status, history, approvals, and coordinator output for coding-agent tasks.\n\nTASKS\n\nNo orchestrator work running"
+  },
+  {
+    "name": "mobile-shopify",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": []
+    },
+    "preview": "Shopify\nNot connected\nConnect your Shopify store\nSTORE DOMAIN\nSHOPIFY_STORE_DOMAIN=your-store.myshopify.com\nACCESS TOKEN\nSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx\n\nRestart after setting these env vars.\n\nread_products\nread_orders\nread_inventory\nread_customers"
+  },
+  {
+    "name": "mobile-lifeops",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": []
+    },
+    "preview": "EVENING / MONDAY, MAY 11\nThe day is open.\nSLEEP\nNo sleep signal\nREMINDERS\nClear\nSCREEN\nNo data\nPartial overview\nMissing: Sleep, Messages, Mail, and Calendar\nOpen setup\nSleep\nConnect Health\nScreen Time\nNo data\nNo screen-time sessions yet.\nSocial\nNo data\nNo social time\n0 opened / 0 sent\nCalendar\nConne"
+  },
+  {
+    "name": "mobile-logs",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": []
+    },
+    "preview": "Filter logs\n\nNarrow the runtime stream by text, severity, source, or tag so the current incident stands out without losing the surrounding context.\n\nAll levels\nAll sources\nAll tags\nRefresh\nShowing 1 entry\n0 active filters\n6:24:10 PM\nINFO\n[smoke]\nsmoke\nsmoke API ready"
+  },
+  {
+    "name": "mobile-skills",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 390,
+      "innerWidth": 390,
+      "overflow": []
+    },
+    "preview": "Browse\nADVANCED\nSkills\nCustom agent skills\n0 visible\nNo Skills Installed\nInstall skills from the marketplace or create your own.\nBrowse Marketplace\nCreate Skill"
+  },
+  {
+    "name": "desktop-database",
+    "badText": [],
+    "messages": [],
+    "pageErrors": [],
+    "layout": {
+      "horizontal": false,
+      "scrollWidth": 1440,
+      "innerWidth": 1440,
+      "overflow": []
+    },
+    "preview": "Tables\nMedia\nVectors\nVectors\nLIST VIEW\nList\n2D\n3D\nSearch\nLoading memories...\nMemory Detail\nSelect a memory from the sidebar to inspect its content, metadata, and embedding values."
+  }
+]

@@ -173,12 +173,12 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
-		'The direct reply text. Use this ONLY when contexts contains "simple" — the runtime sends replyText verbatim to the user. When contexts contains anything else, leave this empty (""); the planner will compose the reply via the REPLY action with full context. Do NOT put thinking or reasoning here; keep it user-facing.',
+		'The user-facing reply text. Always populate it when shouldRespond=RESPOND. When contexts contains "simple", this is the whole answer. When planning/tool work is needed, make this a brief acknowledgement that can be sent immediately; the planner will send any grounded follow-up later. Leave empty for IGNORE. Do NOT put thinking or reasoning here; keep it user-facing.',
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			"User-facing reply text. Empty string when routing to planner. Plain text, not markdown unless the channel supports it.",
+			"User-facing reply text. Whole answer for simple turns; brief immediate acknowledgement for planning turns. Plain text, not markdown unless the channel supports it.",
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";

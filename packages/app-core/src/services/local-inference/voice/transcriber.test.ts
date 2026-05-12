@@ -18,6 +18,7 @@ import {
   ASR_SAMPLE_RATE,
   AsrUnavailableError,
   createStreamingTranscriber,
+  FfiBatchTranscriber,
   FfiStreamingTranscriber,
   parseWhisperStdout,
   resampleLinear,
@@ -283,20 +284,10 @@ describe("createStreamingTranscriber — adapter chain", () => {
     ).toThrow(AsrUnavailableError);
   });
 
-  it("throws AsrUnavailableError when prefer=fused but no fused streaming ASR", () => {
+  it("throws AsrUnavailableError when prefer=fused but no fused ASR context/model", () => {
     expect(() => createStreamingTranscriber({ prefer: "fused" })).toThrow(
       AsrUnavailableError,
     );
-    // ffi present but reports no working decoder → still unavailable for `fused`.
-    const ffi = makeFakeFfi({ streamSupported: false });
-    expect(() =>
-      createStreamingTranscriber({
-        prefer: "fused",
-        ffi,
-        getContext: () => 1n,
-        asrBundlePresent: true,
-      }),
-    ).toThrow(AsrUnavailableError);
   });
 
   it("selects the fused adapter when the library advertises a working streaming decoder", () => {
@@ -310,12 +301,32 @@ describe("createStreamingTranscriber — adapter chain", () => {
     t.dispose();
   });
 
-  it("falls through to the whisper adapter when the fused decoder is unavailable but a decoder is injected", () => {
+  it("selects the fused batch adapter when streaming ASR is unavailable but bundled ASR exists", async () => {
+    const ffi = makeFakeFfi({
+      streamSupported: false,
+      transcribe: (pcm) => `batch:${pcm.length}`,
+    });
+    const t = createStreamingTranscriber({
+      prefer: "fused",
+      ffi,
+      getContext: () => 1n,
+      asrBundlePresent: true,
+    });
+    expect(t).toBeInstanceOf(FfiBatchTranscriber);
+    t.feed({ pcm: new Float32Array(10), sampleRate: ASR_SAMPLE_RATE, timestampMs: 0 });
+    await expect(t.flush()).resolves.toMatchObject({
+      partial: "batch:10",
+      isFinal: true,
+    });
+    t.dispose();
+  });
+
+  it("falls through to the whisper adapter when fused ASR has no bundled model but a decoder is injected", () => {
     const ffi = makeFakeFfi({ streamSupported: false });
     const t = createStreamingTranscriber({
       ffi,
       getContext: () => 1n,
-      asrBundlePresent: true,
+      asrBundlePresent: false,
       whisper: { decoder: async () => "fallback" },
     });
     expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
@@ -427,6 +438,7 @@ describe("transcriber helpers", () => {
 function makeFakeFfi(opts: {
   streamSupported: boolean;
   onFeed?: (pcm: Float32Array) => void;
+  transcribe?: (pcm: Float32Array) => string;
   partial?: () => { partial: string; tokens?: number[] };
   finish?: () => { partial: string; tokens?: number[] };
   onClose?: () => void;
@@ -448,9 +460,7 @@ function makeFakeFfi(opts: {
     ttsSynthesize: () => {
       throw new Error("not used");
     },
-    asrTranscribe: () => {
-      throw new Error("not used");
-    },
+    asrTranscribe: ({ pcm }) => opts.transcribe?.(pcm) ?? "batch transcript",
     ttsStreamSupported: () => false,
     ttsSynthesizeStream: () => {
       throw new Error("not used");

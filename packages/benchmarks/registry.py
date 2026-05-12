@@ -1196,9 +1196,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_name = (model.provider or "").strip().lower()
         agent = extra.get("agent")
         # LLM-backed providers route through the eliza TS bridge so the
-        # registered eliza agent + plugins are exercised.
+        # registered eliza agent + plugins are exercised. Hermes/OpenClaw also
+        # use that Python bridge surface, but their delegate clients must keep
+        # the real provider/model from the orchestrator environment.
         bridge_providers = {"cerebras", "openai", "groq", "openrouter", "vllm", "eliza"}
-        if agent == "eliza" or provider_name in bridge_providers:
+        if agent in {"eliza", "hermes", "openclaw"}:
+            if model.model:
+                args.extend(["--model", model.model])
+            if agent == "eliza":
+                args.extend(["--model-provider", "eliza"])
+        elif provider_name in bridge_providers:
             if model.model:
                 args.extend(["--model", model.model])
             args.extend(["--model-provider", "eliza"])

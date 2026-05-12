@@ -110,6 +110,7 @@ export {
   type CreateStreamingTranscriberOptions,
   createStreamingTranscriber,
   downloadWhisperModel,
+  FfiBatchTranscriber,
   FfiStreamingTranscriber,
   ffiSupportsStreamingAsr,
   makeWhisperCppDecoder,

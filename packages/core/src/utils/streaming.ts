@@ -782,15 +782,25 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			return true;
 		}
 
+		let plain = "";
+		const flushPlain = () => {
+			if (plain.length > 0) {
+				this.appendAndEmit(field, plain);
+				plain = "";
+			}
+		};
+
 		while (this.buffer.length > 0) {
 			if (this.pendingEscape) {
 				const needed = this.pendingEscape === "\\u" ? 4 : 1;
 				if (this.buffer.length < needed) {
+					flushPlain();
 					return final;
 				}
 				const raw = this.pendingEscape + this.buffer.slice(0, needed);
 				this.buffer = this.buffer.slice(needed);
 				this.pendingEscape = "";
+				flushPlain();
 				this.appendAndEmit(field, decodeJsonEscape(raw));
 				continue;
 			}
@@ -798,6 +808,7 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			const char = this.buffer[0];
 			this.buffer = this.buffer.slice(1);
 			if (char === '"') {
+				flushPlain();
 				this.activeStringField = null;
 				this.spanIndex++;
 				return true;
@@ -805,20 +816,24 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 			if (char === "\\") {
 				if (this.buffer.length === 0) {
 					this.pendingEscape = "\\";
+					flushPlain();
 					return final;
 				}
 				const next = this.buffer[0];
 				this.buffer = this.buffer.slice(1);
 				if (next === "u") {
 					this.pendingEscape = "\\u";
+					flushPlain();
 					continue;
 				}
+				flushPlain();
 				this.appendAndEmit(field, decodeJsonEscape(`\\${next}`));
 				continue;
 			}
-			this.appendAndEmit(field, char);
+			plain += char;
 		}
 
+		flushPlain();
 		return final;
 	}
 
@@ -901,10 +916,14 @@ function findJsonValueEnd(raw: string): number | null {
 	}
 	for (const literal of ["true", "false", "null"]) {
 		if (value === literal.slice(0, value.length)) {
-			return value.length === literal.length ? leadingWhitespace + literal.length : null;
+			return value.length === literal.length
+				? leadingWhitespace + literal.length
+				: null;
 		}
 	}
-	const numberMatch = value.match(/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/);
+	const numberMatch = value.match(
+		/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/,
+	);
 	if (numberMatch) {
 		return leadingWhitespace + numberMatch[0].length;
 	}

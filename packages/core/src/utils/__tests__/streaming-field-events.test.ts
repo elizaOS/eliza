@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { SchemaRow } from "../../types/state";
-import { StructuredFieldStreamExtractor } from "../streaming";
+import {
+	ResponseSkeletonStreamExtractor,
+	StructuredFieldStreamExtractor,
+} from "../streaming";
 
 const schema: SchemaRow[] = [
 	{ field: "thought", description: "internal reasoning" },
@@ -127,5 +130,61 @@ describe("StructuredFieldStreamExtractor per-field events", () => {
 		);
 		extractor.flush();
 		expect(chunks.join("")).toBe("still works");
+	});
+});
+
+describe("ResponseSkeletonStreamExtractor", () => {
+	const skeleton = {
+		spans: [
+			{ kind: "literal" as const, value: '{"shouldRespond":' },
+			{ kind: "free-string" as const, key: "shouldRespond" },
+			{ kind: "literal" as const, value: ',"contexts":' },
+			{ kind: "free-json" as const, key: "contexts" },
+			{ kind: "literal" as const, value: ',"intents":' },
+			{ kind: "free-json" as const, key: "intents" },
+			{ kind: "literal" as const, value: ',"replyText":' },
+			{ kind: "free-string" as const, key: "replyText" },
+			{ kind: "literal" as const, value: ',"facts":' },
+			{ kind: "free-json" as const, key: "facts" },
+			{ kind: "literal" as const, value: "}" },
+		],
+	};
+
+	it("streams only the selected JSON skeleton field", () => {
+		const chunks: Array<[string | undefined, string, string | undefined]> = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk, field, accumulated) =>
+				chunks.push([field, chunk, accumulated]),
+		});
+
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],',
+		);
+		extractor.push('"replyText":"Hello ');
+		extractor.push('there","facts":[]}');
+		extractor.flush();
+
+		expect(chunks).toEqual([
+			["replyText", "Hello ", "Hello "],
+			["replyText", "there", "Hello there"],
+		]);
+	});
+
+	it("decodes JSON string escapes before emitting text", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push(
+			'{"shouldRespond":"RESPOND","contexts":[],"intents":[],"replyText":"Line 1\\nLine 2 \\u2728","facts":[]}',
+		);
+		extractor.flush();
+
+		expect(chunks.join("")).toBe("Line 1\nLine 2 \u2728");
 	});
 });

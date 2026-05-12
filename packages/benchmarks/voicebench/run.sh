@@ -2,9 +2,20 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 TIMESTAMP=$(python3 -c 'import time; print(int(time.time() * 1000))')
+BUN_BIN="${BUN_BIN:-}"
+if [[ -z "${BUN_BIN}" ]]; then
+  if command -v bun >/dev/null 2>&1; then
+    BUN_BIN="$(command -v bun)"
+  elif [[ -x "${ROOT_DIR}/node_modules/.bin/bun" ]]; then
+    BUN_BIN="${ROOT_DIR}/node_modules/.bin/bun"
+  else
+    echo "bun not found. Set BUN_BIN=/path/to/bun or install dependencies so node_modules/.bin/bun exists." >&2
+    exit 1
+  fi
+fi
 
 PROFILE="${VOICEBENCH_PROFILE:-mock}"
 ITERATIONS=""
@@ -95,7 +106,7 @@ echo "[voicebench] elevenlabs-model=${ELEVENLABS_MODEL_ID} voice=${ELEVENLABS_VO
 if $RUN_TS; then
   echo "[voicebench] TypeScript"
   TS_OUT="${OUT_DIR}/voicebench-typescript-${PROFILE}-${TIMESTAMP}.json"
-  (cd "${ROOT_DIR}" && bun run "${SCRIPT_DIR}/typescript/src/bench.ts" "${COMMON_ARGS[@]}" "--output=${TS_OUT}")
+  (cd "${ROOT_DIR}" && "${BUN_BIN}" run "${SCRIPT_DIR}/typescript/src/bench.ts" "${COMMON_ARGS[@]}" "--output=${TS_OUT}")
   echo "  -> ${TS_OUT}"
 fi
 

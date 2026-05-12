@@ -42,6 +42,9 @@
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../native-plugins/bun-runtime/src/index.ts"
+      ],
       "@elizaos/capacitor-calendar": [
         "../native-plugins/calendar/src/index.ts"
       ],

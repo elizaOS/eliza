@@ -15,6 +15,7 @@ import "@elizaos/capacitor-location";
 import "@elizaos/capacitor-messages";
 import "@elizaos/capacitor-mobile-signals";
 import "@elizaos/capacitor-appblocker";
+import "@elizaos/capacitor-bun-runtime";
 import "@elizaos/capacitor-phone";
 import "@elizaos/capacitor-screencapture";
 import "@elizaos/capacitor-swabble";

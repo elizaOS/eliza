@@ -247,6 +247,7 @@ class TurnResult:
     input_tokens: int
     output_tokens: int
     cost_usd: float
+    tool_results: list[dict[str, Any]] = field(default_factory=list)
     cache_read_input_tokens: int | None = None
     cache_creation_input_tokens: int | None = None
     cache_hit_pct: float | None = None

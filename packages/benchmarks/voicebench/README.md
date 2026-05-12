@@ -7,11 +7,14 @@
 For each runtime and each mode (`simple`, `non-simple`):
 
 - transcription time (`TRANSCRIPTION` model)
+- speech-end-to-text (`speechEndToTextMs`; equivalent to transcription time for pre-segmented fixture audio)
 - transcription accuracy against labels (when a dataset manifest includes expected text)
+- response-handler decision latency (`responseHandlerDecisionMs`; first callback/early reply timing)
 - response TTFT (time to first response token/chunk; falls back to response completion when streaming is unavailable)
 - response total time
-- speech-to-response-start (`transcriptionMs + responseTtftMs`)
-- speech-to-voice-start (`transcriptionMs + responseTotalMs + firstSentenceTtsMs`) for cached and uncached first sentence paths
+- speech-end-to-response-decision (`speechEndToResponseDecisionMs`; STT plus response-handler decision)
+- speech-end-to-first-audio (`speechEndToFirstAudio*Ms`; STT plus response total plus first-sentence synthesis) for cached and uncached first sentence paths
+- legacy aliases `speechToResponseStartMs` and `speechToVoiceStart*Ms`
 - voice generation time (`TEXT_TO_SPEECH` model)
 - voice first-token proxy (first-sentence synthesis) in two paths:
   - uncached first sentence

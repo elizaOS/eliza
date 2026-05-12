@@ -360,13 +360,27 @@ export function planFacts(args: {
   // so a 4-fact run gets 4 distinct kinds; an 8-fact run gets 2 of each of
   // the first 8 kinds; etc. This keeps per-kind accuracy interpretable.
   const kindOrder = shuffleKinds(rand);
+  const plannedKinds = sorted
+    .map((_, i) => kindOrder[i % kindOrder.length])
+    .filter((kind): kind is FactKind => kind !== undefined);
+  const totalByKind = new Map<FactKind, number>();
+  for (const kind of plannedKinds) {
+    totalByKind.set(kind, (totalByKind.get(kind) ?? 0) + 1);
+  }
+  const seenByKind = new Map<FactKind, number>();
 
   const out: PlantedFact[] = [];
   for (let i = 0; i < sorted.length; i++) {
     const t = sorted[i];
-    const kind = kindOrder[i % kindOrder.length];
+    const kind = plannedKinds[i];
     if (t === undefined || kind === undefined) continue;
-    const fact = makeFact(kind, rand);
+    const occurrence = seenByKind.get(kind) ?? 0;
+    seenByKind.set(kind, occurrence + 1);
+    const label =
+      (totalByKind.get(kind) ?? 0) > 1
+        ? MEMORY_SLOT_LABELS[occurrence % MEMORY_SLOT_LABELS.length]
+        : undefined;
+    const fact = makeFact(kind, rand, label);
     out.push({
       id: `fact_${i + 1}`,
       turn: t,
@@ -379,6 +393,21 @@ export function planFacts(args: {
   }
   return out;
 }
+
+const MEMORY_SLOT_LABELS = [
+  "Alpha",
+  "Bravo",
+  "Charlie",
+  "Delta",
+  "Echo",
+  "Foxtrot",
+  "Golf",
+  "Hotel",
+  "India",
+  "Juliet",
+  "Kilo",
+  "Lima",
+] as const;
 
 function shuffleKinds(rand: () => number): FactKind[] {
   const arr = [...FACT_KINDS];
@@ -397,6 +426,7 @@ function shuffleKinds(rand: () => number): FactKind[] {
 function makeFact(
   kind: FactKind,
   rand: () => number,
+  memorySlot?: string,
 ): {
   utterance: string;
   expected: string;
@@ -406,12 +436,12 @@ function makeFact(
   switch (kind) {
     case "aws_account": {
       const id = String(Math.floor(rand() * 1e12)).padStart(12, "0");
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `By the way, my AWS account ID is ${id}. Please remember it.`,
         expected: id,
         question: "What is my AWS account ID?",
         exactMatch: true,
-      };
+      });
     }
     case "person_name": {
       const first = pick(rand, [
@@ -429,33 +459,33 @@ function makeFact(
         "Lindholm",
         "Khoury",
       ]);
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `My contact at the vendor is ${first} ${last}, just FYI.`,
         expected: `${first} ${last}`,
         question: "Who is my contact at the vendor?",
         exactMatch: true,
-      };
+      });
     }
     case "address": {
       const num = 100 + Math.floor(rand() * 9000);
       const street = pick(rand, ["Pine", "Maple", "Cedar", "Birch", "Elm"]);
       const city = pick(rand, ["Boulder", "Asheville", "Bend", "Ithaca"]);
       const expected = `${num} ${street} St, ${city}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `Ship to: ${expected}. That's the new office.`,
         expected,
         question: "What is the new office shipping address?",
         exactMatch: false,
-      };
+      });
     }
     case "code": {
       const code = randHex(rand, 8).toUpperCase();
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `Project codename for this quarter: ${code}.`,
         expected: code,
         question: "What is this quarter's project codename?",
         exactMatch: true,
-      };
+      });
     }
     case "book_title": {
       const adj = pick(rand, [
@@ -475,12 +505,12 @@ function makeFact(
         "Harbor",
       ]);
       const title = `The ${adj} ${noun}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `The book my friend recommended is called "${title}". Hold onto that.`,
         expected: title,
         question: "What is the book my friend recommended?",
         exactMatch: false,
-      };
+      });
     }
     case "project_codename": {
       const left = pick(rand, [
@@ -500,36 +530,36 @@ function makeFact(
         "Quartz",
       ]);
       const name = `${left} ${right}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `Internal codename for the new initiative is "${name}". Don't share it externally.`,
         expected: name,
         question: "What is the internal codename for the new initiative?",
         exactMatch: true,
-      };
+      });
     }
     case "isbn": {
       // ISBN-13: 13 digits. We don't compute a valid checksum; we just need a
       // unique, memorable identifier that the model has to reproduce.
       let digits = "978";
       for (let i = 0; i < 10; i++) digits += Math.floor(rand() * 10);
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `For reference, the ISBN of that book is ${digits}.`,
         expected: digits,
         question: "What is the ISBN of that book?",
         exactMatch: true,
-      };
+      });
     }
     case "date_iso": {
       const year = 2024 + Math.floor(rand() * 4);
       const month = String(1 + Math.floor(rand() * 12)).padStart(2, "0");
       const day = String(1 + Math.floor(rand() * 28)).padStart(2, "0");
       const date = `${year}-${month}-${day}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `The contract effective date is ${date}. Make a note.`,
         expected: date,
         question: "What is the contract effective date?",
         exactMatch: true,
-      };
+      });
     }
     case "birthday": {
       const month = String(1 + Math.floor(rand() * 12)).padStart(2, "0");
@@ -542,44 +572,59 @@ function makeFact(
         "my best friend",
       ]);
       const capitalizedWho = `${who.charAt(0).toUpperCase()}${who.slice(1)}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `${capitalizedWho}'s birthday is ${date}. Don't let me forget.`,
         expected: date,
         question: `When is ${who}'s birthday?`,
         exactMatch: true,
-      };
+      });
     }
     case "flight_number": {
       const airline = pick(rand, ["UA", "DL", "AA", "BA", "LH", "AF"]);
       const num = 100 + Math.floor(rand() * 9000);
       const flight = `${airline}${num}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `My flight is ${flight} on Tuesday — please remember.`,
         expected: flight,
         question: "What is my flight number on Tuesday?",
         exactMatch: true,
-      };
+      });
     }
     case "uuid": {
       // RFC 4122-ish v4 layout; we only care about the literal string.
       const seg = (n: number) => randHex(rand, n);
       const uuid = `${seg(8)}-${seg(4)}-4${seg(3)}-${pick(rand, ["8", "9", "a", "b"])}${seg(3)}-${seg(12)}`;
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `The ticket UUID is ${uuid}. Keep that handy.`,
         expected: uuid,
         question: "What is the ticket UUID?",
         exactMatch: true,
-      };
+      });
     }
     case "zipcode": {
       const zip = String(10000 + Math.floor(rand() * 89999));
-      return {
+      return contextualizeFact(memorySlot, {
         utterance: `The warehouse ZIP code is ${zip}. Save that for shipping.`,
         expected: zip,
         question: "What is the warehouse ZIP code?",
         exactMatch: true,
-      };
+      });
     }
+  }
+
+  function contextualizeFact<
+    T extends Omit<PlantedFact, "id" | "turn" | "kind">,
+  >(memorySlot: string | undefined, fact: T): T {
+    if (!memorySlot) return fact;
+    return {
+      ...fact,
+      utterance: `For memory slot ${memorySlot}, ${lowercaseFirst(fact.utterance)}`,
+      question: `For memory slot ${memorySlot}, ${lowercaseFirst(fact.question)}`,
+    };
+  }
+
+  function lowercaseFirst(value: string): string {
+    return value.length > 0 ? value[0].toLowerCase() + value.slice(1) : value;
   }
 }
 
@@ -1358,17 +1403,22 @@ function isExactRecallAnswer(actual: string, expected: string): boolean {
   if (!normalizedActual.includes(normalizedExpected)) return false;
 
   const lower = normalizedActual.toLowerCase();
-  const hedgedOrRefused =
-    /\b(?:i do not know|i don't know|not sure|cannot confirm|can't confirm|unable to recall|do not have|don't have|maybe|possibly|might be)\b/.test(
-      lower,
-    );
-  if (hedgedOrRefused) return false;
-
   const expectedIndex = lower.indexOf(normalizedExpected.toLowerCase());
+  const localWindow = lower.slice(
+    Math.max(0, expectedIndex - 96),
+    Math.min(lower.length, expectedIndex + normalizedExpected.length + 96),
+  );
   const nearbyPrefix = lower.slice(
     Math.max(0, expectedIndex - 32),
     expectedIndex,
   );
+  const refusalNearAnswer =
+    /\b(?:i do not know|i don't know|not sure|cannot confirm|can't confirm|unable to recall|do not have|don't have)\b/.test(
+      localWindow,
+    );
+  const hedgedPrefix = /\b(?:maybe|possibly|might be)\b/.test(nearbyPrefix);
+  if (refusalNearAnswer || hedgedPrefix) return false;
+
   if (
     /\b(?:not|isn't|is not|wasn't|was not|wrong|incorrect)\b/.test(nearbyPrefix)
   ) {

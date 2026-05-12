@@ -28,13 +28,17 @@ That target still does not imply a host shell or downloaded native code. The
 full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
 `packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` (or
 `ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`). If that artifact is missing, the build
-fails instead of falling back to the JSContext compatibility host. Until the
-Bun fork emits that framework and passes simulator boot, the foreground
-local-agent URL can still be routed through the in-process ITTP kernel.
-The kernel exposes `GET /api/local-agent/capabilities` so the app can show the
-truth about what is local today: foreground chat/model-management routes are
-ITTP, native `Agent.request` / `Agent.chat` can bridge into that WebView kernel
-while the app is foregrounded, plugin/app managers are not mounted, and the
+fails instead of falling back to the JSContext compatibility host. When the
+framework is present, the React app routes local-agent requests through
+Capacitor `ElizaBunRuntime.call("http_request")`, the native C ABI, and the
+agent bundle's `ios-bridge --stdio` command. The WebView does not open a TCP
+connection to the backend. Until the Bun fork emits that framework and passes
+simulator boot, the foreground local-agent URL can still be routed through the
+in-process ITTP compatibility kernel. The kernel exposes
+`GET /api/local-agent/capabilities` so the app can show the truth about what is
+local today: foreground chat/model-management routes are ITTP,
+native `Agent.request` / `Agent.chat` can bridge into that WebView kernel while
+the app is foregrounded, plugin/app managers are not mounted, and the
 `ScheduledTask` service is unavailable in background runner JSContexts.
 Background wakes in this mode are recorded as an explicit
 `ios_ittp_route_kernel_unavailable_in_background_jscontext` skip instead of

@@ -518,6 +518,69 @@ describe("LocalInferenceEngine voice surface", () => {
     await engine.stopVoice();
   });
 
+  it("extracts replyText from structured response streams before voice scheduling", async () => {
+    writePresetBundle(bundleRoot);
+    const backend = new CountingBackend();
+    const audio: AudioChunk[] = [];
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      backendOverride: backend,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onAudio: (chunk) => audio.push(chunk),
+      },
+    });
+    await engine.armVoice();
+
+    (
+      engine as unknown as {
+        dispatcher: {
+          generate(args: {
+            onTextChunk?: (chunk: string) => Promise<void> | void;
+          }): Promise<string>;
+        };
+      }
+    ).dispatcher = {
+      async generate(args) {
+        await args.onTextChunk?.(
+          '{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],',
+        );
+        await args.onTextChunk?.('"replyText":"On it ');
+        await args.onTextChunk?.('now.","facts":[]}');
+        return '{"shouldRespond":"RESPOND","contexts":["general"],"intents":[],"replyText":"On it now.","facts":[]}';
+      },
+    };
+
+    const result = await engine.generate({
+      prompt: "answer briefly",
+      streamStructured: true,
+      responseSkeleton: {
+        spans: [
+          { kind: "literal", value: '{"shouldRespond":' },
+          { kind: "free-string", key: "shouldRespond" },
+          { kind: "literal", value: ',"contexts":' },
+          { kind: "free-json", key: "contexts" },
+          { kind: "literal", value: ',"intents":' },
+          { kind: "free-json", key: "intents" },
+          { kind: "literal", value: ',"replyText":' },
+          { kind: "free-string", key: "replyText" },
+          { kind: "literal", value: ',"facts":' },
+          { kind: "free-json", key: "facts" },
+          { kind: "literal", value: "}" },
+        ],
+      },
+    });
+
+    expect(result).toContain('"replyText":"On it now."');
+    expect(backend.calls).toBeGreaterThan(0);
+    expect(backend.texts.join("")).toBe("On it now.");
+    expect(backend.texts.join("")).not.toContain("shouldRespond");
+    expect(audio.length).toBe(backend.calls);
+    await engine.stopVoice();
+  });
+
   it("uses verifier events for voice streaming without duplicating text chunks", async () => {
     writePresetBundle(bundleRoot);
     const backend = new CountingBackend();

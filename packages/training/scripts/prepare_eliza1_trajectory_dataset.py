@@ -953,7 +953,8 @@ def build_lifeops_records(
 
             messages = [dict(msg) for msg in history]
             messages.append(assistant)
-            tools = finalize_tools({}, actions, manifest_tools)
+            context_actions = actions_from_message_tool_calls(messages)
+            tools = finalize_tools({}, [*context_actions, *actions], manifest_tools)
             record_id = stable_hash(
                 "lifeops",
                 path.as_posix(),
@@ -1005,6 +1006,36 @@ def build_lifeops_records(
             )
 
             history.append(assistant)
+            raw_tool_results = turn.get("tool_results")
+            if isinstance(raw_tool_results, list):
+                for result_idx, raw_result in enumerate(raw_tool_results):
+                    if not isinstance(raw_result, dict):
+                        continue
+                    raw_name = raw_result.get("name")
+                    name = (
+                        aliases.canonicalize(raw_name)
+                        if isinstance(raw_name, str) and raw_name.strip()
+                        else None
+                    )
+                    fallback_call_id = (
+                        tool_calls[result_idx].get("id")
+                        if result_idx < len(tool_calls)
+                        else f"call_{result_idx}"
+                    )
+                    tool_call_id = str(raw_result.get("tool_call_id") or fallback_call_id)
+                    content = content_to_text(raw_result.get("content"))
+                    if not content.strip() and "payload" in raw_result:
+                        content = json.dumps(raw_result.get("payload"), sort_keys=True, default=str)
+                    if not content.strip():
+                        continue
+                    tool_message: dict[str, Any] = {
+                        "role": "tool",
+                        "content": content,
+                        "tool_call_id": tool_call_id,
+                    }
+                    if name:
+                        tool_message["name"] = name
+                    history.append(tool_message)
             user_response = content_to_text(turn.get("user_response"))
             if user_response.strip():
                 history.append({"role": "user", "content": user_response})

@@ -107,6 +107,11 @@ final class FullBunEngineHost {
             let message = dict["error"] as? String ?? "unknown full Bun engine error"
             throw makeError(message)
         }
+        if let dict = decoded as? [String: Any],
+           let ok = dict["ok"] as? Bool,
+           ok == true {
+            return dict["result"] ?? NSNull()
+        }
         return decoded
     }
 

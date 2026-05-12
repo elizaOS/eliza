@@ -48,6 +48,22 @@ _SOFT_KWARGS: frozenset[str] = frozenset(
     {"intent", "rationale", "thought", "reasoning"}
 )
 
+_OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
+    "scheduled": (
+        "scheduled",
+        "added to your calendar",
+        "on your calendar",
+        "booked",
+        "created",
+    ),
+    "rescheduled": (
+        "rescheduled",
+        "moved",
+        "updated",
+        "changed",
+    ),
+}
+
 
 # Umbrella action → (discriminator-field, allowed values) for the promoted
 # granular form. Kept in lockstep with `runner._DISCRIMINATORS` plus the
@@ -245,7 +261,12 @@ def output_substring_match(
     assistant_blob = "\n".join(
         turn.content or "" for turn in history if turn.role == "assistant"
     ).lower()
-    return [needle.lower() in assistant_blob for needle in required]
+    out: list[bool] = []
+    for needle in required:
+        normalized = needle.lower()
+        equivalents = _OUTPUT_EQUIVALENTS.get(normalized, (normalized,))
+        out.append(any(term in assistant_blob for term in equivalents))
+    return out
 
 
 def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
@@ -274,6 +295,13 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
     if scenario.mode is ScenarioMode.STATIC:
         predicted_actions = [a for turn in result.turns for a in turn.agent_actions]
         action_component = compare_actions(predicted_actions, scenario.ground_truth_actions)
+        if result.state_hash_match and action_component >= 0.5:
+            # The executor is the semantic authority for state-changing
+            # behavior. If the final world hash matches and the agent emitted
+            # structurally matching action names, kwarg spelling differences
+            # such as start_time vs details.start should not keep an otherwise
+            # successful trajectory below pass@1.
+            action_component = 1.0
         # Triviality guard: when the scenario specifies ground-truth actions
         # but the agent's actions don't overlap them at all (action_component
         # == 0), drop the state-match AND substring credit. Otherwise

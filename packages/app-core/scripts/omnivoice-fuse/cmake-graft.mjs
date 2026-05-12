@@ -4,24 +4,20 @@
  * and the fused output targets:
  *
  *   - `omnivoice-core`         — static lib over omnivoice/src/*.cpp
- *   - `llama-omnivoice-server` — single executable that links llama-server's
- *                                HTTP surface against omnivoice-core, exposing
- *                                both /v1/chat/completions and /v1/audio/speech
- *                                in one process. (TODO marker — see below.)
+ *   - `llama-omnivoice-server` — small executable smoke target kept for
+ *                                symbol verification and manual OmniVoice
+ *                                checks.
  *   - `libelizainference`      — fused shared library used by the desktop
  *                                + mobile bridges. Exposes both `llama_*`
  *                                and `omnivoice_*` exports.
  *
  * Idempotent: a sentinel marker in CMakeLists.txt prevents double-append.
  *
- * The HTTP route fusion (mounting omnivoice's TTS endpoints onto the
- * llama-server router) is left as an explicit TODO. Doing it correctly
- * requires editing llama.cpp's `examples/server/server.cpp` to register
- * a TTS handler that calls into omnivoice-core, which is non-trivial and
- * lives outside this prepare script's scope. The graft below builds the
- * fused shared library + a stub `llama-omnivoice-server` that links both
- * symbol families so the symbol verifier can prove they're co-resident;
- * the route-mounting work is filed against the runtime.
+ * The product HTTP route fusion lives in
+ * `kernel-patches/server-omnivoice-route.mjs`: it mounts
+ * `POST /v1/audio/speech` onto the fused `llama-server` and this graft links
+ * that server target against `omnivoice-core`. The legacy
+ * `llama-omnivoice-server` remains only as a small co-residency smoke target.
  */
 
 import fs from "node:fs";

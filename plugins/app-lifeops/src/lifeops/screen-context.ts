@@ -124,9 +124,16 @@ const TRANSITION_KEYWORDS = [
   "launchpad",
 ];
 
-type SharpFactory = typeof import("sharp")["default"];
+type SharpFactory = typeof import("sharp");
+type SharpModuleWithDefault = { default: SharpFactory };
 
 let sharpImportPromise: Promise<SharpFactory> | null = null;
+
+function hasDefaultSharpFactory(
+  mod: SharpFactory | SharpModuleWithDefault,
+): mod is SharpModuleWithDefault {
+  return typeof (mod as SharpModuleWithDefault).default === "function";
+}
 
 function normalizeText(value: string | null | undefined): string {
   return (value ?? "")
@@ -141,7 +148,9 @@ function keywordMatches(text: string, keywords: readonly string[]): string[] {
 }
 
 async function loadSharp(): Promise<SharpFactory> {
-  sharpImportPromise ??= import("sharp").then((mod) => mod.default);
+  sharpImportPromise ??= import("sharp").then((mod) =>
+    hasDefaultSharpFactory(mod) ? mod.default : mod,
+  );
   return await sharpImportPromise;
 }
 

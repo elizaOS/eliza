@@ -251,8 +251,9 @@ patched fused `llama-server`; mobile and desktop bridges can also load
 `libelizainference` directly.
 
 Remaining HTTP follow-up:
-  1. Wire a streaming ASR route over the `eliza_inference_asr_stream_*`
-     API.
+  1. Wire a streaming ASR route once `eliza_inference_asr_stream_supported()`
+     advertises a true low-latency streaming decoder. Until then the JS bridge
+     uses fused batch ASR, not whisper, when an Eliza-1 ASR bundle is present.
   2. Route native DFlash verifier callbacks into the speech scheduler so
      phrase rollback no longer depends on the non-fused SSE side channel.
 
@@ -261,12 +262,12 @@ Do NOT mark `eliza_inference_tts_synthesize` /
 they are the batch one-shot fallbacks. The within-a-tick handoff
 AGENTS.md §4 needs is the `*_stream` / verifier-callback surface above.
 
-Implementation note: ABI v2 added streaming TTS, streaming ASR, and the
-verifier-callback registration. ABI v3 adds native Silero VAD. TTS +
-batch ASR are implemented on macOS Metal; streaming TTS chunks the
-OmniVoice forward result into ~120 ms 24 kHz segments, and finer
-per-frame streaming awaits an omnivoice.cpp internal hook. The streaming
-ASR session runs windowed re-decode passes over accumulated PCM.
+Implementation note: ABI v2 added the streaming TTS, streaming ASR, and
+verifier-callback symbols. ABI v3 adds native Silero VAD. TTS + batch ASR
+are implemented on macOS Metal. The current fused library still advertises
+`tts_stream_supported()==0`, `asr_stream_supported()==0`, and
+`vad_supported()==0`; callers use the batch TTS/ASR paths and the JS/ONNX VAD
+fallback until the corresponding native low-latency implementations exist.
 
 Implementation note (v1, still in force): TTS and ASR on macOS Metal.
 TTS keeps the OmniVoice LM / MaskGIT path on the selected accelerator. On

@@ -9,9 +9,9 @@ export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
 export * from "./api/secrets-manager-routes";
 export * from "./api/server";
-export * from "./api/setup-contract";
 export * from "./api/server-security";
 export * from "./api/server-wallet-trade";
+export * from "./api/setup-contract";
 export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
 export * from "./diagnostics/integration-observability";
@@ -22,6 +22,10 @@ export * from "./permissions/types";
 // noop stubs. Browser bundlers alias it in via the path map; Node imports
 // the originals directly through this barrel.
 export * from "./registry";
+// `ConfigField` and `getPlugins` also exist in @elizaos/ui, which is bridged
+// below for legacy app-core UI consumers. Keep the app-core registry exports
+// authoritative on the Node barrel to avoid ambiguous star re-exports.
+export { type ConfigField, getPlugins } from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";

@@ -79,6 +79,15 @@ function locateFusedServer({ outDir, target }) {
   return null;
 }
 
+function locateProductServer({ outDir, target }) {
+  const names = target.startsWith("windows-") ? ["llama-server.exe"] : ["llama-server"];
+  for (const name of names) {
+    const full = path.join(outDir, name);
+    if (fs.existsSync(full)) return full;
+  }
+  return null;
+}
+
 function dumpSymbols({ tool, file }) {
   const result = spawnSync(tool.cmd, [...tool.args, file], {
     encoding: "utf8",
@@ -300,11 +309,26 @@ function verifyFusedSymbolsInner({ outDir, target }) {
     );
   }
 
-  // Optional fused-server check: it's expected, but the route-mount work
-  // is a TODO (see cmake-graft.mjs). If it exists, verify its symbol
-  // families too — the executable must drag in omnivoice-core, not just
-  // llama. If it doesn't exist, that's also acceptable for now (the
-  // shared library is the contract surface for the bridges).
+  const productServer = locateProductServer({ outDir, target });
+  if (!productServer) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: fused target did not install llama-server in ${outDir}; /v1/audio/speech cannot be served from the product HTTP runtime`,
+    );
+  }
+  const productServerSyms = dumpSymbols({ tool, file: productServer });
+  const productServerReport = {
+    llamaSymbolCount: countExportedSymbolFamily(productServerSyms, "llama"),
+    omnivoiceSymbolCount: countExportedSymbolFamily(productServerSyms, "ov"),
+    path: productServer,
+  };
+  if (productServerReport.omnivoiceSymbolCount === 0) {
+    throw new Error(
+      `[omnivoice-fuse] symbol-verify: product llama-server at ${productServer} does not link OmniVoice symbols; /v1/audio/speech route would be a dead mount`,
+    );
+  }
+
+  // Legacy CLI smoke target: not product-serving, but useful for manual
+  // OmniVoice checks and co-residency evidence when present.
   let serverReport = null;
   const server = locateFusedServer({ outDir, target });
   if (server) {
@@ -328,6 +352,7 @@ function verifyFusedSymbolsInner({ outDir, target }) {
     omnivoiceSymbols: [...REQUIRED_OMNIVOICE_SYMBOLS],
     abiSymbolCount: REQUIRED_ELIZA_INFERENCE_SYMBOLS.length,
     abiSymbols: [...REQUIRED_ELIZA_INFERENCE_SYMBOLS],
+    productServer: productServerReport,
     server: serverReport,
   };
 }

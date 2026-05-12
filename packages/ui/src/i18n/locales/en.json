@@ -2924,7 +2924,7 @@
   "taskseventspanel.Activity": "Activity",
   "taskseventspanel.OpenView": "Open Tasks view",
   "taskseventspanel.Tasks": "Tasks",
-  "taskseventspanel.TasksViewDescription": "Tasks View Description",
+  "taskseventspanel.TasksViewDescription": "Detailed status, history, approvals, and coordinator output for coding-agent tasks.",
   "taskseventspanel.Title": "Tasks & Events",
   "taskseventspanel.Todos": "Todos",
   "terminal.starting": "Starting",

@@ -286,7 +286,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
   return (
     <div
       data-testid="phone-shell"
-      className="fixed inset-0 z-50 flex flex-col bg-bg h-[100vh] overflow-hidden supports-[height:100dvh]:h-[100dvh]"
+      className="fixed inset-0 z-50 flex h-[100vh] flex-col overflow-hidden bg-bg pb-[var(--safe-area-bottom,0px)] pl-[var(--safe-area-left,0px)] pr-[var(--safe-area-right,0px)] pt-[var(--safe-area-top,0px)] supports-[height:100dvh]:h-[100dvh]"
     >
       {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border/20 bg-bg/80 px-4 py-3 backdrop-blur-sm">
@@ -350,9 +350,9 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
         {/* Dialer */}
         <TabsContent
           value="dialer"
-          className="flex-1 overflow-hidden focus-visible:outline-none"
+          className="flex-1 overflow-y-auto focus-visible:outline-none"
         >
-          <div className="flex h-full flex-col items-center justify-between px-4 py-6">
+          <div className="flex min-h-full flex-col items-center justify-between px-4 py-6">
             <div className="flex w-full max-w-sm flex-col items-center gap-3 pt-2">
               <output
                 className="block min-h-[3rem] w-full select-text rounded-xl border border-border bg-bg-accent px-4 py-3 text-center font-mono text-2xl text-txt"
@@ -382,7 +382,7 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
                 <button
                   key={key}
                   type="button"
-                  className="aspect-square rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70"
+                  className="h-16 rounded-full border border-border bg-bg-accent text-2xl font-semibold text-txt transition active:scale-95 hover:bg-bg-accent/70 sm:h-20"
                   onClick={() => appendDigit(key)}
                   aria-label={`Dial ${key}`}
                 >

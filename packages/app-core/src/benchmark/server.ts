@@ -1250,9 +1250,18 @@ export async function startBenchmarkServer() {
       // Also pass through any directly-named actions (e.g. when the planner
       // emits MESSAGE/CALENDAR directly without the BENCHMARK_ACTION wrapper),
       // skipping the BENCHMARK_ACTION sentinel itself which has already been
-      // unwrapped above.
+      // unwrapped above. REPLY/RESPOND are terminal assistant messages, not
+      // LifeOps backend tools; forwarding them as tool calls makes the Python
+      // runner keep looping after a finished response.
       for (const name of actions) {
-        if (name === "BENCHMARK_ACTION") continue;
+        if (name === "BENCHMARK_ACTION" || name === "REPLY" || name === "RESPOND")
+          continue;
+        if (
+          capturedAction &&
+          typeof capturedAction.toolName === "string" &&
+          capturedAction.toolName === name
+        )
+          continue;
         const paramsForAction = params[name];
         const argumentsObj: Record<string, unknown> =
           paramsForAction &&

@@ -477,19 +477,31 @@ export class LifeOpsFakeBackend {
     }
 
     if (subaction === "update_event") {
+      const updates = isRecord(kw.updates) ? kw.updates : {};
+      const merged = { ...kw, ...updates };
+      const requestedId = pickStringOrNull(merged, ["eventId", "event_id", "id"]);
       const event = this.findCalendarEvent({
-        id: pickStringOrNull(kw, ["eventId", "event_id", "id"]),
-        title: pickStringOrNull(kw, ["title", "event_name", "query"]),
+        id: requestedId,
+        title:
+          pickStringOrNull(merged, ["title", "event_name", "query"]) ??
+          (requestedId && !this.stores.calendar_event[requestedId]
+            ? requestedId
+            : null),
         dateHint:
-          pickStringOrNull(kw, ["new_start", "start", "date"]) ?? this.nowIso,
+          pickStringOrNull(merged, ["new_start", "newStart", "start", "date"]) ??
+          this.nowIso,
       });
       if (!event) {
         return { ok: false, result: { missing: "calendar_event", kwargs: kw } };
       }
-      const start = pickString(kw, ["new_start", "start", "start_time"], event.start);
+      const start = pickString(
+        merged,
+        ["new_start", "newStart", "start", "start_time"],
+        event.start,
+      );
       const end =
-        pickStringOrNull(kw, ["new_end", "end", "end_time"]) ??
-        shiftIso(start, durationMinutes(kw, durationBetweenMinutes(event.start, event.end)));
+        pickStringOrNull(merged, ["new_end", "newEnd", "end", "end_time"]) ??
+        shiftIso(start, durationMinutes(merged, durationBetweenMinutes(event.start, event.end)));
       return { ok: true, result: this.moveEvent({ id: event.id, start, end }) };
     }
 
@@ -527,14 +539,19 @@ export class LifeOpsFakeBackend {
       pickStringOrNull(kw, ["query", "q", "title", "event_name"]) ?? ""
     ).toLowerCase();
     const dateRaw = pickStringOrNull(kw, ["date"]);
+    const timeRange = isRecord(kw.time_range) ? kw.time_range : {};
     const date =
       dateRaw === "today"
         ? this.nowIso.slice(0, 10)
         : dateRaw && /^\d{4}-\d{2}-\d{2}/.test(dateRaw)
           ? dateRaw.slice(0, 10)
           : null;
-    const start = pickStringOrNull(kw, ["start", "from", "windowStart"]);
-    const end = pickStringOrNull(kw, ["end", "to", "windowEnd"]);
+    const start =
+      pickStringOrNull(kw, ["start", "from", "windowStart", "startDate"]) ??
+      pickStringOrNull(timeRange, ["start", "from", "windowStart"]);
+    const end =
+      pickStringOrNull(kw, ["end", "to", "windowEnd", "endDate"]) ??
+      pickStringOrNull(timeRange, ["end", "to", "windowEnd"]);
     return Object.values(this.stores.calendar_event)
       .filter((event) => {
         if (event.status === "cancelled") return false;
@@ -929,6 +946,10 @@ function pickString(
     if (typeof v === "string") return v;
   }
   return fallback;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function pickStringOrNull(

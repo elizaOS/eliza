@@ -8,13 +8,25 @@ import process from "node:process";
 const args = new Set(process.argv.slice(2));
 const json = args.has("--json");
 const strict = args.has("--strict");
-const bun = process.env.BUN_BIN || process.env.npm_execpath || "bun";
+const npmExecPath =
+  process.env.npm_execpath && /(^|[/\\])bun(x)?$/.test(process.env.npm_execpath)
+    ? process.env.npm_execpath
+    : "";
+const bun = process.env.BUN_BIN || npmExecPath || "bun";
 
 function run(command, commandArgs) {
-  return spawnSync(command, commandArgs, {
+  const result = spawnSync(command, commandArgs, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
+  return {
+    status: result.status ?? 1,
+    stdout: result.stdout ?? "",
+    stderr:
+      result.stderr ??
+      (result.error ? `${result.error.name}: ${result.error.message}` : ""),
+    error: result.error,
+  };
 }
 
 function probeCompileTarget(target) {
@@ -40,24 +52,42 @@ function probeCompileTarget(target) {
   };
 }
 
-const version = run(bun, ["--version"]).stdout.trim();
-const revision = run(bun, ["--revision"]).stdout.trim();
-const probes = [
-  probeCompileTarget("bun-ios-arm64"),
-  probeCompileTarget("bun-ios-arm64-simulator"),
-];
+const versionProbe = run(bun, ["--version"]);
+const revisionProbe =
+  versionProbe.status === 0 ? run(bun, ["--revision"]) : { stdout: "" };
+const version = versionProbe.stdout.trim();
+const revision = revisionProbe.stdout.trim();
+const probes =
+  versionProbe.status === 0
+    ? [
+        probeCompileTarget("bun-ios-arm64"),
+        probeCompileTarget("bun-ios-arm64-simulator"),
+      ]
+    : [];
 const supported = probes.some((probe) => probe.ok);
 const payload = {
   bun,
   version,
   revision,
   supported,
+  ...(versionProbe.status === 0
+    ? {}
+    : {
+        error:
+          versionProbe.stderr ||
+          `Unable to execute ${bun}. Install Bun or set BUN_BIN=/path/to/bun.`,
+      }),
   probes,
 };
 
 if (json) {
   console.log(JSON.stringify(payload, null, 2));
 } else {
+  if (versionProbe.status !== 0) {
+    console.log(
+      `[bun-ios-runtime] ${payload.error ?? `Unable to execute ${bun}`}`,
+    );
+  }
   console.log(`[bun-ios-runtime] bun ${revision || version || "<unknown>"}`);
   for (const probe of probes) {
     console.log(

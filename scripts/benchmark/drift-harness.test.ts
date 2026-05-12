@@ -247,6 +247,61 @@ describe("probeFact exact recall scoring", () => {
     expect(outcome.correct).toBe(false);
   });
 
+  it("scores final answers inside reasoning traces without global hedge pollution", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content:
+          "Maybe the user asked earlier; scan the notes. The recorded result was LIME-4421.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "code",
+        utterance: "The code is LIME-4421.",
+        expected: "LIME-4421",
+        question: "What is the code?",
+        exactMatch: true,
+      },
+    });
+
+    expect(outcome.correct).toBe(true);
+  });
+
+  it("still rejects a hedge local to the expected value", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "The code might be LIME-4421.",
+      }),
+    };
+    const outcome = await probeFact({
+      client,
+      model: "fake",
+      judgeModel: "fake",
+      judgeWithModel: false,
+      history: [],
+      systemPrompt: "test",
+      fact: {
+        id: "fact_1",
+        turn: 1,
+        kind: "code",
+        utterance: "The code is LIME-4421.",
+        expected: "LIME-4421",
+        question: "What is the code?",
+        exactMatch: true,
+      },
+    });
+
+    expect(outcome.correct).toBe(false);
+  });
+
   it("normalizes narrow no-break spaces in exact answers", async () => {
     const client: ModelClient = {
       chat: async () => ({
@@ -607,6 +662,25 @@ describe("planFacts balanced kind distribution", () => {
     for (const v of counts.values()) {
       expect(v).toBe(2);
     }
+  });
+
+  it("disambiguates repeated fact kinds with memory slots", () => {
+    const facts = planFacts({
+      totalTurns: 200,
+      count: FACT_KINDS.length * 2,
+      seed: 17,
+    });
+    const repeated = facts.filter(
+      (fact) => facts.filter((other) => other.kind === fact.kind).length > 1,
+    );
+
+    expect(repeated.length).toBe(facts.length);
+    for (const fact of repeated) {
+      expect(fact.utterance).toMatch(/For memory slot /);
+      expect(fact.question).toMatch(/For memory slot /);
+    }
+    const questions = repeated.map((fact) => fact.question);
+    expect(new Set(questions).size).toBe(questions.length);
   });
 
   it("does not produce api_key facts", () => {

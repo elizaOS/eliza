@@ -269,6 +269,25 @@ function readBool(name: string): boolean {
   return raw === "1" || raw === "true" || raw === "yes";
 }
 
+function allowZeroDraftForDiagnostics(): boolean {
+  return readBool("ELIZA_DFLASH_ALLOW_ZERO_DRAFT");
+}
+
+export function shouldRequireActiveDflashForRequest(
+  plan: Pick<DflashServerPlan, "disableDrafter" | "draftMin"> | null | undefined,
+  maxTokens: number | null | undefined,
+): boolean {
+  if (!plan || plan.disableDrafter || allowZeroDraftForDiagnostics()) {
+    return false;
+  }
+  if (!Number.isFinite(maxTokens) || maxTokens == null) return true;
+  // The verifier can only test a draft after the first target token, and
+  // llama.cpp's server refuses drafts smaller than draftMin. One-token
+  // prewarm and tiny control probes should not be mistaken for a skipped
+  // DFlash path.
+  return maxTokens >= Math.max(1, plan.draftMin) + 2;
+}
+
 /**
  * Developer-only escape hatch from the always-on speculative-decoding
  * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
@@ -2382,6 +2401,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;
     const usage = diffSnapshots(before, after, responseUsage);
+    const maxTokens =
+      typeof payload.max_tokens === "number" ? payload.max_tokens : null;
+    if (
+      shouldRequireActiveDflashForRequest(this.loadedPlan, maxTokens) &&
+      (usage.dflash_drafted_tokens ?? 0) <= 0
+    ) {
+      throw new Error(
+        "[dflash] speculative decoding was required for this Eliza-1 generation, " +
+          "but llama-server produced zero drafted tokens. This usually means the " +
+          "DFlash drafter path initialized as a generic draft model or the " +
+          "bundle's drafter does not match the target checkpoint. Rebuild with " +
+          "the native dflash-draft speculative path or set " +
+          "ELIZA_DFLASH_ALLOW_ZERO_DRAFT=1 only for local diagnostics.",
+      );
+    }
     this.touchSlot(slotId);
     return { text, usage, slotId };
   }

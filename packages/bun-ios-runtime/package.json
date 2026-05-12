@@ -17,6 +17,7 @@
     "ElizaBunEngine.podspec",
     "README.md",
     "BRIDGE_CONTRACT.md",
+    "Sources/",
     "scripts/"
   ]
 }

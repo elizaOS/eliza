@@ -487,7 +487,9 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         propose_times, search_events, check_availability,
         next_event, update_preferences
     """
-    sub = _required(kw, "subaction", action=name, sub="<missing>")
+    sub = kw.get("subaction") or kw.get("action") or kw.get("operation")
+    if not sub:
+        sub = _required(kw, "subaction", action=name, sub="<missing>")
     details = _details(kw)
     if sub == "create_event":
         calendar_id = (
@@ -534,22 +536,40 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         )
         return {"id": event.id, "title": event.title}
     if sub == "update_event":
-        event = _find_calendar_event(
-            world,
-            event_id=details.get("eventId")
+        updates = kw.get("updates") or details.get("updates") or {}
+        if not isinstance(updates, dict):
+            updates = {}
+        requested_event_id = (
+            details.get("eventId")
             or kw.get("eventId")
             or details.get("event_id")
             or kw.get("event_id")
             or details.get("id")
-            or kw.get("id"),
+            or kw.get("id")
+        )
+        event = _find_calendar_event(
+            world,
+            event_id=requested_event_id,
             title=details.get("title")
             or kw.get("title")
+            or updates.get("title")
             or details.get("event_name")
-            or kw.get("event_name"),
+            or kw.get("event_name")
+            or (
+                requested_event_id
+                if isinstance(requested_event_id, str)
+                and requested_event_id not in world.calendar_events
+                else None
+            ),
             date_hint=details.get("start")
             or kw.get("start")
             or details.get("new_start")
             or kw.get("new_start")
+            or details.get("newStart")
+            or kw.get("newStart")
+            or updates.get("start")
+            or updates.get("new_start")
+            or updates.get("newStart")
             or details.get("date")
             or kw.get("date"),
         )
@@ -562,6 +582,11 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or kw.get("start")
             or details.get("new_start")
             or kw.get("new_start")
+            or details.get("newStart")
+            or kw.get("newStart")
+            or updates.get("start")
+            or updates.get("new_start")
+            or updates.get("newStart")
             or event.start
         )
         end = (
@@ -569,6 +594,11 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             or kw.get("end")
             or details.get("new_end")
             or kw.get("new_end")
+            or details.get("newEnd")
+            or kw.get("newEnd")
+            or updates.get("end")
+            or updates.get("new_end")
+            or updates.get("newEnd")
         )
         if not end:
             end = _shift_iso(str(start), minutes=_duration_minutes(kw, details, 60))
@@ -608,16 +638,16 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
             )
         event = world.cancel_event(event.id)
         return {"id": event.id, "status": event.status}
-    if sub in {
-        "propose_times",
-        "search_events",
-        "check_availability",
-        "next_event",
-        "update_preferences",
-    }:
-        # Read-only or planner-config subactions; LifeWorld has no place to
-        # persist these, so they're no-ops by design. State hash matches
-        # because both replays are no-ops.
+    if sub in {"search_events", "check_availability", "next_event"}:
+        return {
+            "subaction": sub,
+            "ok": True,
+            "events": _search_calendar_events(world, kw, details),
+        }
+    if sub in {"propose_times", "update_preferences"}:
+        # Planner-config subactions; LifeWorld has no place to persist these,
+        # so they're no-ops by design. State hash matches because both replays
+        # are no-ops.
         return {"subaction": sub, "ok": True, "noop": True}
     raise UnsupportedAction(
         f"unsupported action in execute path: CALENDAR/{sub} — file gap in LIFEOPS_BENCH_GAPS.md"
@@ -1233,6 +1263,80 @@ def _find_calendar_event(
     return None
 
 
+def _search_calendar_events(
+    world: LifeWorld,
+    kw: dict[str, Any],
+    details: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    details = details or {}
+    query_raw = (
+        kw.get("query")
+        or details.get("query")
+        or kw.get("title")
+        or details.get("title")
+        or kw.get("event_name")
+        or details.get("event_name")
+        or ""
+    )
+    query = str(query_raw).strip().lower()
+    date_raw = kw.get("date") or details.get("date")
+    if date_raw == "today":
+        date_filter = world.now_iso[:10]
+    elif isinstance(date_raw, str) and re.match(r"^\d{4}-\d{2}-\d{2}", date_raw):
+        date_filter = date_raw[:10]
+    else:
+        date_filter = None
+
+    time_range = kw.get("time_range") or details.get("time_range") or {}
+    if not isinstance(time_range, dict):
+        time_range = {}
+    start = (
+        kw.get("start")
+        or details.get("start")
+        or kw.get("startDate")
+        or details.get("startDate")
+        or time_range.get("start")
+    )
+    end = (
+        kw.get("end")
+        or details.get("end")
+        or kw.get("endDate")
+        or details.get("endDate")
+        or time_range.get("end")
+    )
+
+    def matches(event: Any) -> bool:
+        if getattr(event, "status", None) == "cancelled":
+            return False
+        title = str(getattr(event, "title", "")).lower()
+        if query and query not in title and title not in query:
+            return False
+        event_start = str(getattr(event, "start", ""))
+        event_end = str(getattr(event, "end", ""))
+        if date_filter and event_start[:10] != date_filter:
+            return False
+        if isinstance(start, str) and event_end < start:
+            return False
+        if isinstance(end, str) and event_start > end:
+            return False
+        return True
+
+    return [
+        {
+            "id": event.id,
+            "calendar_id": event.calendar_id,
+            "title": event.title,
+            "start": event.start,
+            "end": event.end,
+            "status": event.status,
+        }
+        for event in sorted(
+            (event for event in world.calendar_events.values() if matches(event)),
+            key=lambda event: (event.start, event.id),
+        )
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Registry — every action name the executor knows
 # ---------------------------------------------------------------------------
@@ -1556,39 +1660,67 @@ class LifeOpsBenchRunner:
             history.append(agent_turn)
 
             agent_actions = _extract_actions_from_turn(agent_turn)
+            tool_results: list[dict[str, Any]] = []
             for action in agent_actions:
                 # Execution failures don't crash the run — we surface them as
                 # tool-error messages and let scoring penalize via state mismatch.
+                tool_call_id = _extract_tool_call_id(agent_turn, action)
                 try:
                     result_payload = _execute_action(action, world)
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(result_payload),
+                            "payload": result_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
                             content=json.dumps(result_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
                 except UnsupportedAction as exc:
                     logger.warning("Unsupported action in scenario %s: %s", scenario.id, exc)
+                    error_payload = {"error": "unsupported_action", "message": str(exc)}
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(error_payload),
+                            "payload": error_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
-                            content=json.dumps({"error": "unsupported_action", "message": str(exc)}),
+                            content=json.dumps(error_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
                 except (KeyError, ValueError, TypeError) as exc:
                     logger.warning(
                         "Action %s failed in scenario %s: %s", action.name, scenario.id, exc
                     )
+                    error_payload = {"error": "execution_failed", "message": str(exc)}
+                    tool_results.append(
+                        {
+                            "name": action.name,
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(error_payload),
+                            "payload": error_payload,
+                        }
+                    )
                     history.append(
                         MessageTurn(
                             role="tool",
-                            content=json.dumps({"error": "execution_failed", "message": str(exc)}),
+                            content=json.dumps(error_payload),
                             name=action.name,
-                            tool_call_id=_extract_tool_call_id(agent_turn, action),
+                            tool_call_id=tool_call_id,
                         )
                     )
 
@@ -1627,6 +1759,7 @@ class LifeOpsBenchRunner:
                 input_tokens=input_tokens_val,
                 output_tokens=int(getattr(agent_turn, "output_tokens", 0) or 0),
                 cost_usd=agent_cost,
+                tool_results=tool_results,
                 cache_read_input_tokens=cache_read,
                 cache_creation_input_tokens=cache_creation,
                 cache_hit_pct=compute_cache_hit_pct(

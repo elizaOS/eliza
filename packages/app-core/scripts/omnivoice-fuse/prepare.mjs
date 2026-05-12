@@ -762,9 +762,9 @@ int eliza_inference_asr_transcribe(
  * The fused build ships the v1 batch \`eliza_inference_asr_transcribe\`
  * decoder above; the windowed streaming-session decoder is not yet wired
  * (W7). Per packages/inference/AGENTS.md §3 we do NOT fake it — the
- * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
- * pick the batch path (or the whisper.cpp interim adapter) instead of
- * opening a session that would only return ELIZA_ERR_NOT_IMPLEMENTED.
+     * capability probe returns 0 so EngineVoiceBridge / StreamingTranscriber
+     * pick the fused batch ASR adapter instead of opening a session that would
+     * only return ELIZA_ERR_NOT_IMPLEMENTED.
  * These symbols exist so the ABI surface is complete and the loader's
  * version check (ffi-bindings.ts expects v3) succeeds.
  */

@@ -255,17 +255,17 @@ function LogsViewBody() {
             {filteredLogs.map((entry: LogEntry) => (
               <div
                 key={`${entry.timestamp}-${entry.source}-${entry.level}-${entry.message}`}
-                className="flex items-start gap-3 px-3 py-3 text-sm"
+                className="flex flex-col gap-1 px-3 py-3 text-sm md:flex-row md:items-start md:gap-3"
                 data-testid="log-entry"
               >
                 {/* Timestamp */}
-                <span className="w-[5.75rem] shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums">
+                <span className="shrink-0 whitespace-nowrap text-xs-tight text-muted tabular-nums md:w-[5.75rem]">
                   {formatTime(entry.timestamp, { fallback: "—" })}
                 </span>
 
                 {/* Level */}
                 <span
-                  className={`w-14 shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight ${
+                  className={`shrink-0 font-semibold uppercase tracking-[0.08em] text-xs-tight md:w-14 ${
                     entry.level === "error"
                       ? "text-danger"
                       : entry.level === "warn"
@@ -281,12 +281,12 @@ function LogsViewBody() {
                 </span>
 
                 {/* Source */}
-                <span className="w-20 shrink-0 truncate text-xs-tight text-muted">
+                <span className="min-w-0 shrink-0 break-words text-xs-tight text-muted md:w-20 md:truncate">
                   [{entry.source}]
                 </span>
 
                 {/* Tag badges */}
-                <span className="inline-flex max-w-[14rem] shrink-0 flex-wrap gap-1">
+                <span className="inline-flex max-w-full shrink-0 flex-wrap gap-1 md:max-w-[14rem]">
                   {(entry.tags ?? []).map((t: string) => {
                     return (
                       <span
@@ -313,7 +313,7 @@ function LogsViewBody() {
                           fontFamily: "var(--font-body, sans-serif)",
                         }}
                       >
-                        {t}
+                        <span className="break-all">{t}</span>
                       </span>
                     );
                   })}

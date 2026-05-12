@@ -6,15 +6,20 @@
  * to force-finalize on `speech-end`. Two adapters, resolved in priority
  * order by `createStreamingTranscriber()`:
  *
- *   1. `FfiStreamingTranscriber` — the FINAL path. Drives the fused
+ *   1. `FfiStreamingTranscriber` — the low-latency fused
  *      `libelizainference` streaming ASR ABI (`eliza_inference_asr_stream_*`,
  *      ABI v2 — declared in `packages/app-core/scripts/omnivoice-fuse/ffi.h`,
- *      bound in `voice/ffi-bindings.ts`). The C side is W7's job; until the
- *      real fused build advertises streaming ASR the binding's `mmap`/`asr`
- *      calls return `ELIZA_ERR_NOT_IMPLEMENTED`, which surfaces as a thrown
- *      error here. Selected only when `ffi.supportsStreamingAsr()` is true.
+ *      bound in `voice/ffi-bindings.ts`). Selected only when
+ *      `ffi.asrStreamSupported()` is true.
  *
- *   2. `WhisperCppStreamingTranscriber` — the INTERIM path. Wraps the
+ *   2. `FfiBatchTranscriber` — the current fused fallback. It buffers the
+ *      active speech segment and calls the implemented batch
+ *      `eliza_inference_asr_transcribe` path at `flush()`. This keeps
+ *      EngineVoiceBridge on fused Eliza-1 assets when streaming ASR is not
+ *      ready, instead of falling through to whisper or throwing despite a
+ *      working bundled ASR model.
+ *
+ *   3. `WhisperCppStreamingTranscriber` — the INTERIM path. Wraps the
  *      whisper.cpp `main`/`whisper-cli` one-shot binary (the same way the
  *      Electrobun talkmode/swabble modules do) and runs *windowed*
  *      re-transcription with overlap: it commits a prefix in window-sized
@@ -365,6 +370,60 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
       this.ffi.asrStreamClose(this.stream);
       this.stream = null;
     }
+  }
+}
+
+/**
+ * Fused ASR fallback over the implemented batch ABI. This is intentionally
+ * honest about latency: it emits a final transcript only at `flush()` and does
+ * not advertise running partials. The value is correctness and memory sharing:
+ * voice mode stays inside the fused Eliza-1 bundle/runtime even before the
+ * native streaming ASR session is implemented.
+ */
+export class FfiBatchTranscriber extends BaseStreamingTranscriber {
+  private readonly ffi: ElizaInferenceFfi;
+  private readonly getContext: () => ElizaInferenceContextHandle;
+  private buf: Float32Array = new Float32Array(0);
+  private sampleRate = ASR_SAMPLE_RATE;
+
+  constructor(args: {
+    ffi: ElizaInferenceFfi;
+    getContext: () => ElizaInferenceContextHandle;
+    vad?: VadEventSource;
+    metadata?: TranscriptMetadataDefaults;
+    source?: VoiceInputSource;
+  }) {
+    super(args.vad, {
+      ...args.metadata,
+      source: args.metadata?.source ?? args.source,
+    });
+    this.ffi = args.ffi;
+    this.getContext = args.getContext;
+  }
+
+  protected onFrame(frame: PcmFrame): void {
+    const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
+    this.sampleRate = ASR_SAMPLE_RATE;
+    this.buf = concatFloat32(this.buf, pcm);
+  }
+
+  protected async onFlush(): Promise<TranscriptUpdate> {
+    if (this.buf.length === 0) {
+      return { partial: "", isFinal: true };
+    }
+    const text = this.ffi.asrTranscribe({
+      ctx: this.getContext(),
+      pcm: this.buf,
+      sampleRateHz: this.sampleRate,
+    });
+    this.buf = new Float32Array(0);
+    const update = { partial: text.trim(), isFinal: true };
+    this.emitPartial(update);
+    return update;
+  }
+
+  protected onDispose(): void {
+    this.buf = new Float32Array(0);
   }
 }
 
@@ -827,9 +886,10 @@ export interface CreateStreamingTranscriberOptions {
   /** Provider for the fused context pointer (the bridge owns the lazy create). */
   getContext?: () => ElizaInferenceContextHandle;
   /**
-   * Whether a bundled ASR model directory is present. The fused path is
-   * only chosen when this is true AND the library advertises streaming
-   * ASR. (Whisper-interim ignores it — it has its own model.)
+   * Whether a bundled ASR model directory is present. The fused path is chosen
+   * when this is true and an FFI context exists. If the library advertises
+   * streaming ASR, use that; otherwise use the implemented batch ASR fallback.
+   * Whisper-interim ignores it — it has its own model.
    */
   asrBundlePresent?: boolean;
   /** VAD event stream to gate decoding (W1). */
@@ -841,18 +901,18 @@ export interface CreateStreamingTranscriberOptions {
   /** Whisper.cpp interim options (binary/model overrides, decoder injection for tests). */
   whisper?: WhisperCppOptions;
   /**
-   * Force a specific backend. `"fused"` throws if the fused path is not
+   * Force a specific backend. `"fused"` throws if no fused FFI ASR path is
    * available; `"whisper"` skips the fused path entirely; `"auto"` (the
-   * default) tries fused → whisper → throw.
+   * default) tries fused streaming → fused batch → whisper → throw.
    */
   prefer?: "auto" | "fused" | "whisper";
 }
 
 /**
- * Resolve the ASR adapter chain: fused (`libelizainference` streaming ASR,
- * the FINAL path) → whisper.cpp interim → `AsrUnavailableError`. No silent
- * fallback to an empty transcript — if nothing is available the caller
- * gets a hard, actionable failure (AGENTS.md §3 + §9).
+ * Resolve the ASR adapter chain: fused streaming ASR → fused batch ASR →
+ * whisper.cpp interim → `AsrUnavailableError`. No silent fallback to an empty
+ * transcript — if nothing is available the caller gets a hard, actionable
+ * failure (AGENTS.md §3 + §9).
  */
 export function createStreamingTranscriber(
   opts: CreateStreamingTranscriberOptions = {},
@@ -862,21 +922,23 @@ export function createStreamingTranscriber(
   const tryFused = (): StreamingTranscriber | null => {
     if (!opts.ffi || !opts.getContext) return null;
     if (!opts.asrBundlePresent) return null;
-    if (!ffiSupportsStreamingAsr(opts.ffi)) return null;
-    return new FfiStreamingTranscriber({
+    const common = {
       ffi: opts.ffi,
       getContext: opts.getContext,
       vad: opts.vad,
       metadata: opts.metadata,
       source: opts.source,
-    });
+    };
+    return ffiSupportsStreamingAsr(opts.ffi)
+      ? new FfiStreamingTranscriber(common)
+      : new FfiBatchTranscriber(common);
   };
 
   if (prefer === "fused") {
     const fused = tryFused();
     if (fused) return fused;
     throw new AsrUnavailableError(
-      "[asr] fused streaming ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_stream_*)",
+      "[asr] fused ASR was requested but is not available (no libelizainference handle, context provider, or bundled ASR model)",
     );
   }
 

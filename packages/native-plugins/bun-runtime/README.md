@@ -47,10 +47,16 @@ copied into the app bundle by Capacitor's `public` folder resource:
 ```ts
 import { ElizaBunRuntime } from "@elizaos/capacitor-bun-runtime";
 
-// Boots the current native host, installs the bridge, evaluates the staged
-// bundle in the compatibility path, and invokes globalThis.startEliza() if
-// exported.
-await ElizaBunRuntime.start({});
+// Auto-selects the full Bun engine when ElizaBunEngine.framework is embedded,
+// otherwise falls back to the JSContext compatibility bridge.
+await ElizaBunRuntime.start({ engine: "auto" });
+
+// Require the full Bun engine. This returns { ok: false } if the framework is
+// not embedded in the app bundle.
+await ElizaBunRuntime.start({
+  engine: "bun",
+  argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+});
 
 // Round-trips a chat message through the agent's send_message handler,
 // which must have been registered via bridge.ui_register_handler.
@@ -58,8 +64,8 @@ const { reply } = await ElizaBunRuntime.sendMessage({ message: "hello" });
 
 // Generic dispatch into any handler the agent registered.
 const { result } = await ElizaBunRuntime.call({
-  method: "get_active_skill",
-  args: { skillId: "weather" },
+  method: "http_request",
+  args: { method: "GET", path: "/api/health" },
 });
 
 // Check ready state, current model, throughput.
@@ -75,6 +81,13 @@ The full-engine ABI lives in
 `packages/bun-ios-runtime/BRIDGE_CONTRACT.md`. The compatibility host still
 implements the Swift `__MILADY_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__MILADY_BRIDGE_VERSION__`.
+
+In full Bun mode, the Swift host loads `ElizaBunEngine.framework` with
+`dlopen`, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
+requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
+`packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
+the native plugin is available, then falls back to the foreground JSContext
+ITTP kernel for compatibility builds.
 
 ## Llama backend
 
@@ -97,6 +110,9 @@ The plugin emits two Capacitor events:
 - iOS-only. Android falls back to the `WebPlugin` stub.
 - Full Bun is only used when `ElizaBunEngine.framework` is embedded. Otherwise
   `engine: "auto"` falls back to the compatibility JSContext host.
+- The full Bun bridge currently buffers HTTP response bodies over stdio. It is
+  correct for API calls, but token-by-token streaming needs a follow-up stream
+  envelope.
 - No `worker_threads.Worker` support in the compatibility host.
 - No `child_process` — sandboxed out.
 - HTTP-server bodies are buffered, not streamed.
