@@ -57,6 +57,7 @@ const nm = run("nm", ["-gU", frameworkBinary]);
 const symbols = nm.stdout + nm.stderr;
 for (const symbol of [
   "_eliza_bun_engine_abi_version",
+  "_eliza_bun_engine_set_host_callback",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
   "_eliza_bun_engine_call",

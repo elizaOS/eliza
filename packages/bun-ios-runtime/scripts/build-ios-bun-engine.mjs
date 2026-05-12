@@ -28,10 +28,11 @@ const webKitIosPatch = path.join(
   "webkit-ios-simulator-nojit.patch",
 );
 const frameworkName = "ElizaBunEngine";
-const expectedEngineAbiVersion = "2";
+const expectedEngineAbiVersion = "3";
 const requiredSymbols = [
   "_eliza_bun_engine_abi_version",
   "_eliza_bun_engine_last_error",
+  "_eliza_bun_engine_set_host_callback",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
   "_eliza_bun_engine_is_running",

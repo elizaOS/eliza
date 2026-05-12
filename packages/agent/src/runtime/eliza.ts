@@ -3955,9 +3955,7 @@ export async function startEliza(
   // surface.
   try {
     const serverModule = "../api/server.ts";
-    const { startApiServer } = await import(
-      /* @vite-ignore */ serverModule
-    );
+    const { startApiServer } = await import(/* @vite-ignore */ serverModule);
     const apiPort = resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,

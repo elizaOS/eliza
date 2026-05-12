@@ -53,6 +53,7 @@ export function useProvisioningChat(
   // Poll provisioning agent status every 5 seconds.
   // biome-ignore lint/correctness/useExhaustiveDependencies: cloudApiBase triggers client re-creation
   React.useEffect(() => {
+    if (!agentId) return;
     if (isContainerReady) return;
     if (containerStatus === "error") return;
     stoppedRef.current = false;
@@ -60,17 +61,16 @@ export function useProvisioningChat(
     const poll = async () => {
       if (stoppedRef.current) return;
       try {
-        const res = await client.getProvisioningAgentStatus(
-          agentId ?? undefined,
-        );
+        const res = await client.getCloudCompatAgentStatus(agentId);
         if (stoppedRef.current) return;
         if (res.success && res.data) {
           const newStatus = res.data.status ?? containerStatus;
+          const nextBridgeUrl = res.data.bridgeUrl ?? res.data.webUiUrl ?? null;
           setContainerStatus(newStatus);
-          if (res.data.bridgeUrl) {
-            setBridgeUrl(res.data.bridgeUrl);
+          if (nextBridgeUrl) {
+            setBridgeUrl(nextBridgeUrl);
           }
-          if (newStatus === "running" && res.data.bridgeUrl) {
+          if (newStatus === "running" && nextBridgeUrl) {
             stoppedRef.current = true;
             setMessages((prev) => [
               ...prev,
@@ -111,25 +111,17 @@ export function useProvisioningChat(
       setIsLoading(true);
 
       try {
-        const res = await client.sendProvisioningAgentMessage(
-          content.trim(),
-          agentId ?? undefined,
-        );
-        if (res.success && res.data) {
-          if (res.data.containerStatus) {
-            setContainerStatus(res.data.containerStatus);
-          }
-          if (res.data.bridgeUrl) {
-            setBridgeUrl(res.data.bridgeUrl);
-          }
-          const reply = res.data.reply;
-          if (reply) {
-            setMessages((prev) => [
-              ...prev,
-              { id: generateId(), role: "assistant", content: reply },
-            ]);
-          }
-        }
+        await Promise.resolve();
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: generateId(),
+            role: "assistant",
+            content: isContainerReady
+              ? "Your container is ready. I am opening the workspace now."
+              : "I'm still monitoring the startup. I'll let you know as soon as the container has a live bridge.",
+          },
+        ]);
       } catch {
         setMessages((prev) => [
           ...prev,
@@ -137,14 +129,14 @@ export function useProvisioningChat(
             id: generateId(),
             role: "assistant",
             content:
-              "I'm having trouble connecting right now. Your container is still warming up in the background — I'll let you know when it's ready!",
+              "I'm having trouble updating the chat right now. Your container is still warming up in the background.",
           },
         ]);
       } finally {
         setIsLoading(false);
       }
     },
-    [agentId, isLoading],
+    [isContainerReady, isLoading],
   );
 
   return {

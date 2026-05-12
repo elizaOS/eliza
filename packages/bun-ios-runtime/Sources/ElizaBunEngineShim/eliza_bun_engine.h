@@ -17,6 +17,14 @@ ELIZA_BUN_ENGINE_EXPORT const char *eliza_bun_engine_abi_version(void);
 
 ELIZA_BUN_ENGINE_EXPORT const char *eliza_bun_engine_last_error(void);
 
+typedef char *(*eliza_bun_engine_host_call_callback)(
+    const char *method,
+    const char *payload_json,
+    int32_t timeout_ms);
+
+ELIZA_BUN_ENGINE_EXPORT int32_t eliza_bun_engine_set_host_callback(
+    eliza_bun_engine_host_call_callback callback);
+
 ELIZA_BUN_ENGINE_EXPORT int32_t eliza_bun_engine_start(
     const char *bundle_path,
     const char *argv_json,

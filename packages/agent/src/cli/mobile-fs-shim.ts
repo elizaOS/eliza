@@ -94,11 +94,6 @@ const BLOCKED_ROOT_PREFIXES = [
   "/run",
 ];
 
-// Native binary extensions that must never be written at runtime.
-// .js / .ts user scripts inside the workspace are intentionally allowed —
-// the write guard only blocks native code loaders (.so / .dylib / .node).
-const NATIVE_BINARY_EXTENSIONS = new Set([".so", ".dylib", ".node"]);
-
 // ---------------------------------------------------------------------------
 // Path helpers
 // ---------------------------------------------------------------------------
@@ -262,7 +257,7 @@ type AnyFn = (...args: unknown[]) => unknown;
  * (or PathLike).  The wrapper resolves the path through the sandbox before
  * forwarding the call.
  */
-function wrapFsPath<T extends AnyFn>(original: T, name: string): T {
+function wrapFsPath<T extends AnyFn>(original: T): T {
   return function sandboxedFsCall(this: unknown, ...args: unknown[]) {
     // Normalise PathLike (URL, Buffer, string) to string for checking.
     const raw = args[0];
@@ -363,6 +358,8 @@ function wrapFsWriteGuard<T extends AnyFn>(original: T): T {
  * in the bundle references the same object.
  */
 function patchFsModule(): void {
+  const mutableNodeFs = nodeFs as Record<string, unknown>;
+
   // ── Synchronous API ──────────────────────────────────────────────────────
 
   const syncOnePath: Array<keyof typeof nodeFs> = [
@@ -392,22 +389,17 @@ function patchFsModule(): void {
   ];
 
   for (const name of syncOnePath) {
-    const orig = nodeFs[name];
+    const key = String(name);
+    const orig = mutableNodeFs[key];
     if (typeof orig === "function") {
-      (nodeFs as Record<string, unknown>)[name] = wrapFsPath(
-        orig as AnyFn,
-        name as string,
-      );
+      mutableNodeFs[key] = wrapFsPath(orig as AnyFn);
     }
   }
 
   // writeFileSync and appendFileSync carry an extra write guard.
   if (typeof nodeFs.writeFileSync === "function") {
     const wrapped = wrapFsWriteGuard(nodeFs.writeFileSync as AnyFn);
-    (nodeFs as Record<string, unknown>).writeFileSync = wrapFsPath(
-      wrapped,
-      "writeFileSync",
-    );
+    mutableNodeFs.writeFileSync = wrapFsPath(wrapped);
   }
 
   // Two-path sync operations.
@@ -418,11 +410,10 @@ function patchFsModule(): void {
     "symlinkSync",
   ];
   for (const name of syncTwoPaths) {
-    const orig = nodeFs[name];
+    const key = String(name);
+    const orig = mutableNodeFs[key];
     if (typeof orig === "function") {
-      (nodeFs as Record<string, unknown>)[name] = wrapFsTwoPaths(
-        orig as AnyFn,
-      );
+      mutableNodeFs[key] = wrapFsTwoPaths(orig as AnyFn);
     }
   }
 
@@ -457,21 +448,16 @@ function patchFsModule(): void {
   ];
 
   for (const name of callbackOnePath) {
-    const orig = nodeFs[name];
+    const key = String(name);
+    const orig = mutableNodeFs[key];
     if (typeof orig === "function") {
-      (nodeFs as Record<string, unknown>)[name] = wrapFsPath(
-        orig as AnyFn,
-        name as string,
-      );
+      mutableNodeFs[key] = wrapFsPath(orig as AnyFn);
     }
   }
 
   if (typeof nodeFs.writeFile === "function") {
     const wrapped = wrapFsWriteGuard(nodeFs.writeFile as AnyFn);
-    (nodeFs as Record<string, unknown>).writeFile = wrapFsPath(
-      wrapped,
-      "writeFile",
-    );
+    mutableNodeFs.writeFile = wrapFsPath(wrapped);
   }
 
   const callbackTwoPaths: Array<keyof typeof nodeFs> = [
@@ -481,11 +467,10 @@ function patchFsModule(): void {
     "symlink",
   ];
   for (const name of callbackTwoPaths) {
-    const orig = nodeFs[name];
+    const key = String(name);
+    const orig = mutableNodeFs[key];
     if (typeof orig === "function") {
-      (nodeFs as Record<string, unknown>)[name] = wrapFsTwoPaths(
-        orig as AnyFn,
-      );
+      mutableNodeFs[key] = wrapFsTwoPaths(orig as AnyFn);
     }
   }
 
@@ -520,13 +505,13 @@ function patchFsModule(): void {
   for (const name of promisesOnePath) {
     const orig = promises[name];
     if (typeof orig === "function") {
-      promises[name] = wrapFsPath(orig as AnyFn, name);
+      promises[name] = wrapFsPath(orig as AnyFn);
     }
   }
 
   if (typeof promises.writeFile === "function") {
     const wrapped = wrapFsWriteGuard(promises.writeFile as AnyFn);
-    promises.writeFile = wrapFsPath(wrapped, "writeFile");
+    promises.writeFile = wrapFsPath(wrapped);
   }
 
   const promisesTwoPaths = ["copyFile", "rename", "link", "symlink"];
@@ -544,10 +529,7 @@ function patchFsModule(): void {
     typeof nodeFs.promises === "object" &&
     nodeFs.promises !== nodeFsPromises
   ) {
-    for (const key of promisesOnePath.concat(
-      ["writeFile"],
-      promisesTwoPaths,
-    )) {
+    for (const key of promisesOnePath.concat(["writeFile"], promisesTwoPaths)) {
       if (key in promises) {
         (nodeFs.promises as Record<string, unknown>)[key] = promises[key];
       }
