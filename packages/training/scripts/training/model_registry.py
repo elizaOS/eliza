@@ -1,27 +1,23 @@
-"""Qwen3 model registry for the milady training pipeline.
+"""Qwen3 model registry for the eliza training pipeline.
 
 Single source of truth for which Qwen variant trains where, with what
 optimizer + quantization combination, and what its memory budget looks like.
 
 Two kinds of entries live here:
 
-1. REAL, buildable entries on published Qwen3 dense base models. These map
+1. REAL, buildable entries on published Qwen3.5 / Qwen3.6 dense base models. These map
    onto the size-first ``eliza-1-*`` tier ids used by the runtime model
    catalog (``packages/shared/src/local-inference/catalog.ts`` —
    ``ELIZA_1_TIER_IDS`` / ``MODEL_CATALOG``):
 
-     - ``qwen3-0.6b`` → ``Qwen/Qwen3-0.6B`` → ``eliza-1-0_6b``  (local tier; full-param SFT on one consumer GPU)
-     - ``qwen3-1.7b`` → ``Qwen/Qwen3-1.7B`` → ``eliza-1-1_7b``  (local tier; full-param SFT on a 16 GB GPU)
-     - ``qwen3-4b``   → ``Qwen/Qwen3-4B``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24 GB GPU)
+     - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B`` → ``eliza-1-0_8b``  (local tier; full-param SFT on one consumer GPU)
+     - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B``   → ``eliza-1-2b``    (local tier; full-param SFT on a 16 GB GPU)
+     - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24 GB GPU)
+     - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``   → ``eliza-1-9b``    (workstation/cloud tier)
+     - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``  → ``eliza-1-27b``   (cloud tier)
 
-2. UNVERIFIED placeholder entries pointing at base models that have no
-   published checkpoint as of 2026-05 (``qwen3.5-2b`` / ``qwen3.5-9b`` /
-   ``qwen3.6-27b``). They are kept because other scripts/tests still
-   reference the keys, but they will NOT load — every such entry is flagged
-   ``# UNVERIFIED BASE`` and carries ``unverified_base=True``. The runtime
-   catalog's ``eliza-1-9b`` / ``eliza-1-27b`` tiers are aspirational sizes
-   with no real base model behind them yet; do not trust these for a real
-   run.
+2. Legacy aliases such as ``qwen3-4b`` are accepted by ``get()``, but the
+   canonical registry keys track the actual upstream model ids.
 
 The numbers below are observed-or-projected memory budgets for full-parameter
 SFT with APOLLO at the listed sequence length. They are *budgets* — the
@@ -144,7 +140,7 @@ class ModelEntry:
     other scripts/tests reference the key. ``train_local.py`` /
     ``run_pipeline.py`` refuse to run with an unverified entry unless the
     caller passes an explicit ``--model`` override (or sets
-    ``MILADY_ALLOW_UNVERIFIED_BASE=1``)."""
+    ``ELIZA_ALLOW_UNVERIFIED_BASE=1``)."""
 
     notes: str = ""
     extra: dict[str, str] = field(default_factory=dict)
@@ -214,37 +210,38 @@ def _entry(**kw) -> ModelEntry:
     return ModelEntry(**kw)
 
 
-# Layer counts / head shapes come straight from the HF `config.json` of each
-# base model. The Qwen3 dense models below are plain full-attention causal
-# LMs (no hybrid linear-attention layers), so the KV-bearing layer count
-# equals the total layer count.
-#   total layers   q_heads  kv_heads  head_dim   vocab    (HF base id)
-#   28             16        8         128        151936   Qwen/Qwen3-0.6B → eliza-1-0_6b
-#   28             16        8         128        151936   Qwen/Qwen3-1.7B → eliza-1-1_7b
-#   36             32        8         128        151936   Qwen/Qwen3-4B   → eliza-1-4b
+# Layer counts / head shapes come from the HF `text_config` of each base
+# model. Qwen3.5/3.6 uses a 3:1 linear-attention/full-attention hidden layout,
+# so `infer_kv_layers` is one quarter of total layers.
+#   total layers   q_heads  kv_heads  head_dim   vocab     full-attn  (HF base id)
+#   24             8         2         256        248320    6          Qwen/Qwen3.5-0.8B
+#   24             8         2         256        248320    6          Qwen/Qwen3.5-2B
+#   32             16        4         256        248320    8          Qwen/Qwen3.5-4B
+#   32             16        4         256        248320    8          Qwen/Qwen3.5-9B
+#   64             24        4         256        248320    16         Qwen/Qwen3.6-27B
 
 REGISTRY: dict[str, ModelEntry] = {
     # ─────────────────────────── REAL ENTRIES ───────────────────────────
-    # Buildable Qwen3 dense base models, mapped onto the size-first
+    # Buildable Qwen3.5 / Qwen3.6 dense base models, mapped onto the size-first
     # eliza-1 tier ids in packages/shared/src/local-inference/catalog.ts.
     # Full-parameter SFT with APOLLO + Liger; the listed budgets target a
-    # single consumer GPU (0.6B/1.7B: 16 GB; 4B: 24 GB).
+    # single consumer GPU (0.8B/2B: 16 GB; 4B: 24 GB).
     #
-    # Qwen3 vocab is ~152k tokens — the HF causal-LM loss upcasts logits to
+    # Qwen3.5/3.6 vocab is ~248k tokens — the HF causal-LM loss upcasts logits to
     # fp32 (B*S*V*4 bytes), so Liger fused chunked CE is what keeps the
     # listed seq_len inside the budget. Inference budgets here are modest
     # local-tier windows; the runtime catalog ships 32k context for these
     # tiers and applies its own KV quantization.
-    "qwen3-0.6b": _entry(
-        hf_id="Qwen/Qwen3-0.6B", short_name="qwen3-0.6b",
-        eliza_short_name="eliza-1-0_6b", eliza_repo_id="elizaos/eliza-1-0_6b",
-        abliteration_repo_id="elizaos/eliza-1-0_6b-uncensored",
-        params_billion=0.6, tier=Tier.LOCAL,
+    "qwen3.5-0.8b": _entry(
+        hf_id="Qwen/Qwen3.5-0.8B", short_name="qwen3.5-0.8b",
+        eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1-0_8b",
+        abliteration_repo_id="elizaos/eliza-1-0_8b-uncensored",
+        params_billion=0.8, tier=Tier.LOCAL,
         seq_len=4096, optimizer="apollo_mini", optimizer_rank=128,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=10.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
-        infer_kv_layers=28, infer_kv_heads=8, infer_kv_head_dim=128,
+        infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         # Names must match scripts/quantization/<name>_apply.py exactly —
         # run_pipeline.py / train_vast.sh invoke `${name}_apply.py` per name.
         # gguf-q4_k_m wraps llama.cpp's convert_hf_to_gguf.py + llama-quantize.
@@ -252,25 +249,25 @@ REGISTRY: dict[str, ModelEntry] = {
         notes="Smallest published eliza-1 tier. Full-param APOLLO SFT fits a "
               "single 16 GB consumer GPU comfortably; runs the whole "
               "train→quant→bench stack end-to-end in well under an hour. "
-              "Runtime catalog id: eliza-1-0_6b (32k context).",
+              "Runtime catalog id: eliza-1-0_8b (32k context).",
     ),
-    "qwen3-1.7b": _entry(
-        hf_id="Qwen/Qwen3-1.7B", short_name="qwen3-1.7b",
-        eliza_short_name="eliza-1-1_7b", eliza_repo_id="elizaos/eliza-1-1_7b",
-        abliteration_repo_id="elizaos/eliza-1-1_7b-uncensored",
-        params_billion=1.7, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=256,
-        micro_batch=1, grad_accum=16, train_mem_gb_budget=15.0,
+    "qwen3.5-2b": _entry(
+        hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
+        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
+        abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
+        params_billion=2.0, tier=Tier.LOCAL,
+        seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
+        micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
         train_dtype="bf16",
-        infer_max_in=28672, infer_max_out=4096,
-        infer_kv_layers=28, infer_kv_heads=8, infer_kv_head_dim=128,
-        quantization_after=("polarquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="Modern-phone default tier. Full-param APOLLO SFT at seq=4k "
-              "with Liger fits a 16 GB consumer GPU; drop to seq=2k if peak "
-              "reserved >15 GB. Runtime catalog id: eliza-1-1_7b (32k context).",
+        infer_max_in=131072, infer_max_out=16384,
+        infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
+        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
+        notes="Modern-phone default tier. Full-param APOLLO SFT at seq=8k "
+              "with Liger targets a 16 GB consumer GPU; drop to seq=4k if "
+              "peak reserved >15.5 GB. Runtime catalog id: eliza-1-2b.",
     ),
-    "qwen3-4b": _entry(
-        hf_id="Qwen/Qwen3-4B", short_name="qwen3-4b",
+    "qwen3.5-4b": _entry(
+        hf_id="Qwen/Qwen3.5-4B", short_name="qwen3.5-4b",
         eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1-4b",
         abliteration_repo_id="elizaos/eliza-1-4b-uncensored",
         params_billion=4.0, tier=Tier.LOCAL,
@@ -278,85 +275,65 @@ REGISTRY: dict[str, ModelEntry] = {
         micro_batch=1, grad_accum=16, train_mem_gb_budget=24.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
-        infer_kv_layers=36, infer_kv_heads=8, infer_kv_head_dim=128,
+        infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "qjl", "fp8", "gguf-q4_k_m"),
         notes="Mid local/workstation tier. Full-param APOLLO SFT needs ~24 GB "
               "(4090 / A5000 / one L4 with grad-checkpointing + Liger). NOTE: "
               "no eliza-1-4b tier exists in catalog.ts yet — add it there "
               "before publishing under this name.",
     ),
-    # ──────────────────── UNVERIFIED PLACEHOLDER ENTRIES ────────────────────
-    # The eliza-1 line was originally specced against next-gen Qwen3.5/3.6
-    # checkpoints. None of these were published as of 2026-05; the keys are
-    # kept only because scripts (train_vast.sh, train_nebius.sh, push_*),
-    # docs, and tests still reference them. Every entry below carries
-    # `unverified_base=True`; train_local.py / run_pipeline.py refuse to run
-    # with one unless `--model` is overridden or MILADY_ALLOW_UNVERIFIED_BASE=1
-    # is set. Repoint hf_id to a real checkpoint here once one exists.
-    #
-    # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
-    "qwen3.5-2b": _entry(
-        hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
-        eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
-        abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
-        params_billion=2.27, tier=Tier.LOCAL, unverified_base=True,
-        seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
-        micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
-        train_dtype="bf16",
-        infer_max_in=131072, infer_max_out=16384,
-        infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="UNVERIFIED BASE — Qwen/Qwen3.5-2B has no published checkpoint "
-              "as of 2026-05. Use qwen3-1.7b (real, eliza-1-1_7b) for the "
-              "local tier instead, or repoint hf_id once a 2B checkpoint ships.",
-    ),
-    # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
+    # Larger real tiers train through Vast/FSDP rather than the local path.
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
         eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
         abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
-        params_billion=9.0, tier=Tier.WORKSTATION, unverified_base=True,
+        params_billion=9.0, tier=Tier.WORKSTATION,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
         micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="UNVERIFIED BASE — Qwen/Qwen3.5-9B has no published checkpoint "
-              "as of 2026-05 (Qwen3 dense line goes 4B → 8B → 14B → 32B; no 9B). "
-              "The runtime catalog's eliza-1-9b tier is aspirational. Repoint "
-              "hf_id to Qwen/Qwen3-8B (or 14B) if you actually want to build it.",
+        notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
+              "and the 9B Qwen3.5 checkpoint.",
     ),
-    # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
         abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
-        params_billion=27.0, tier=Tier.CLOUD, unverified_base=True,
+        params_billion=27.0, tier=Tier.CLOUD,
         seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="UNVERIFIED BASE — Qwen/Qwen3.6-27B has no published checkpoint "
-              "as of 2026-05 (Qwen3 dense line has no 27B; closest are 14B / 32B). "
-              "The runtime catalog's eliza-1-27b tier is aspirational. Repoint "
-              "hf_id to Qwen/Qwen3-32B (cloud tier, FSDP) if you want to build it.",
-        extra={"nebius_machine": "H200-2x", "fsdp_world_size": "2"},
+        notes="Cloud tier. Full-param APOLLO SFT uses Vast/FSDP; the registry "
+              "default keeps seq_len conservative and lets operators bump it "
+              "per run after memory preflight.",
+        extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
 
 
 def get(name: str) -> ModelEntry:
-    key = name.lower().replace("/", "-").replace("qwen-", "qwen").replace("qwen_", "qwen")
+    raw = name.strip()
+    lowered = raw.lower()
+    key = lowered.replace("/", "-").replace("_", "-")
+    aliases = {
+        "qwen3-4b": "qwen3.5-4b",
+        "qwen-qwen3-4b": "qwen3.5-4b",
+        "qwen/qwen3-4b": "qwen3.5-4b",
+    }
+    key = aliases.get(lowered, aliases.get(key, key))
     if key in REGISTRY:
         return REGISTRY[key]
     for entry in REGISTRY.values():
         if (
-            entry.hf_id == name
-            or entry.short_name == name
-            or entry.eliza_short_name == name
+            entry.hf_id == raw
+            or entry.hf_id.lower() == lowered
+            or entry.short_name == raw
+            or entry.eliza_short_name == raw
             or entry.eliza_short_name.lower() == key
         ):
             return entry

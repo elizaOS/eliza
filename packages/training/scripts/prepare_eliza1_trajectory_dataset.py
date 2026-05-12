@@ -1104,6 +1104,47 @@ def split_success_record(record: dict[str, Any], *, seed: str, val_ratio: float,
     return "train"
 
 
+def enforce_requested_success_splits(
+    splits: dict[str, list[dict[str, Any]]],
+    *,
+    val_ratio: float,
+    test_ratio: float,
+) -> list[dict[str, str]]:
+    """Keep requested train/val/test files populated for small repeatable runs."""
+
+    requested = ["train"]
+    if val_ratio > 0:
+        requested.append("val")
+    if test_ratio > 0:
+        requested.append("test")
+
+    success_total = sum(len(splits[name]) for name in ("train", "val", "test"))
+    if success_total < len(requested):
+        return []
+
+    moves: list[dict[str, str]] = []
+    for target in requested:
+        if splits[target]:
+            continue
+        donor = max(
+            (
+                split
+                for split in ("train", "val", "test")
+                if split != target and len(splits[split]) > 1
+            ),
+            key=lambda split: (len(splits[split]), split),
+            default=None,
+        )
+        if donor is None:
+            continue
+        row = sorted(splits[donor], key=lambda item: str(item.get("id") or ""))[-1]
+        splits[donor].remove(row)
+        row["split"] = target
+        splits[target].append(row)
+        moves.append({"id": str(row.get("id") or ""), "from": donor, "to": target})
+    return moves
+
+
 def write_jsonl(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
@@ -1363,6 +1404,12 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
         if max_records and stats.produced >= max_records:
             break
 
+    split_minimum_moves = enforce_requested_success_splits(
+        splits,
+        val_ratio=args.val_ratio,
+        test_ratio=args.test_ratio,
+    )
+
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "recordSchema": NATIVE_FORMAT
@@ -1426,6 +1473,7 @@ def prepare(args: argparse.Namespace) -> tuple[dict[str, list[dict[str, Any]]], 
             "seed": args.seed,
             "valRatio": args.val_ratio,
             "testRatio": args.test_ratio,
+            "minimumMoves": split_minimum_moves,
         },
         "actionAliases": str(Path(args.action_aliases)),
         "actionManifest": {

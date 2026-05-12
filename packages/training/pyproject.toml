@@ -1,5 +1,5 @@
 [project]
-name = "milady-training"
+name = "eliza-training"
 version = "0.1.0"
 description = "Fine-tuning pipeline for Eliza-1 on Eliza-native Vercel AI SDK trajectory rows."
 readme = "README.md"
@@ -36,7 +36,6 @@ train = [
   "accelerate>=1.1.0",
   "peft>=0.14.0",
   "trl>=0.13.0",
-  "bitsandbytes>=0.45.0",
   "datasets>=3.2.0",
   "wandb>=0.18.0",
   "apollo-torch>=1.0.3",
@@ -127,7 +126,7 @@ serve = [
   "transformers>=4.46.0",
   # OpenAI client used by scripts/inference/test_apc_dflash_tool_calls.py to
   # speak vLLM's OpenAI-compatible chat completions endpoint. The harness
-  # is the production gate that unlocks `MILADY_APC_DRAFTER_VERIFIED=1` on
+  # is the production gate that unlocks `ELIZA_APC_DRAFTER_VERIFIED=1` on
   # any new vLLM build for the Qwen3.5/3.6 hybrid path (omlx#825).
   "openai>=1.50.0",
 ]

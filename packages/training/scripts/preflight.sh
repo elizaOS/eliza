@@ -34,7 +34,7 @@
 # the mtime of that file and refuses to provision unless it was updated
 # within the current calendar hour.
 #
-# Bypass with MILADY_SKIP_PREFLIGHT=1 (loud warning printed). Use only
+# Bypass with ELIZA_SKIP_PREFLIGHT=1 (loud warning printed). Use only
 # in operator emergencies — the gate exists because every check here
 # costs cents to run locally and saves dollars on Vast.
 #
@@ -44,10 +44,10 @@
 # Reads (env, all optional with sensible defaults):
 #   REGISTRY_KEY           — same as train_vast.sh; default qwen3.6-27b
 #   VAST_GPU_TARGET        — same as train_vast.sh; default auto-picked
-#   MILADY_PREFLIGHT_SAMPLE_LINES — schema sample size per file; default 1000
-#   MILADY_PREFLIGHT_MAX_UTIL_PCT — memory headroom cutoff; default 85
-#   MILADY_PREFLIGHT_SMOKE_MAX_AGE_HOURS — stale-smoke cutoff; default 24
-#   MILADY_PREFLIGHT_MIN_CONTENT_PCT — minimum content_pct in summary; default 80
+#   ELIZA_PREFLIGHT_SAMPLE_LINES — schema sample size per file; default 1000
+#   ELIZA_PREFLIGHT_MAX_UTIL_PCT — memory headroom cutoff; default 85
+#   ELIZA_PREFLIGHT_SMOKE_MAX_AGE_HOURS — stale-smoke cutoff; default 24
+#   ELIZA_PREFLIGHT_MIN_CONTENT_PCT — minimum content_pct in summary; default 80
 
 set -euo pipefail
 
@@ -60,17 +60,17 @@ log_err()  { printf '[preflight] FAIL  %s\n' "$*" >&2; }
 log_skip() { printf '[preflight] SKIP  %s\n' "$*"; }
 
 REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
-SAMPLE_LINES="${MILADY_PREFLIGHT_SAMPLE_LINES:-1000}"
-MAX_UTIL_PCT="${MILADY_PREFLIGHT_MAX_UTIL_PCT:-85}"
-SMOKE_MAX_AGE_HOURS="${MILADY_PREFLIGHT_SMOKE_MAX_AGE_HOURS:-24}"
-MIN_CONTENT_PCT="${MILADY_PREFLIGHT_MIN_CONTENT_PCT:-80}"
+SAMPLE_LINES="${ELIZA_PREFLIGHT_SAMPLE_LINES:-1000}"
+MAX_UTIL_PCT="${ELIZA_PREFLIGHT_MAX_UTIL_PCT:-85}"
+SMOKE_MAX_AGE_HOURS="${ELIZA_PREFLIGHT_SMOKE_MAX_AGE_HOURS:-24}"
+MIN_CONTENT_PCT="${ELIZA_PREFLIGHT_MIN_CONTENT_PCT:-80}"
 
 # Mirror train_vast.sh's GPU-target auto-pick so a user who only sets
 # REGISTRY_KEY gets the same default the launcher would.
 case "$REGISTRY_KEY" in
   qwen3.5-2b|qwen3.5-9b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
   qwen3.6-27b)           DEFAULT_GPU_TARGET="b200-2x" ;;
-  qwen3-0.6b)            DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
+  qwen3.5-0.8b)            DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
   *)                     DEFAULT_GPU_TARGET="blackwell6000-2x" ;;
 esac
 VAST_GPU_TARGET="${VAST_GPU_TARGET:-$DEFAULT_GPU_TARGET}"
@@ -351,7 +351,6 @@ shape = SHAPES[REGISTRY_KEY]
 opt_map = {
     "apollo": TrainOpt.APOLLO,
     "apollo_mini": TrainOpt.APOLLO_MINI,
-    "adamw": TrainOpt.ADAMW,
 }
 optimizer = opt_map.get(entry.optimizer, TrainOpt.APOLLO_MINI)
 
@@ -660,8 +659,8 @@ fi
 # transform_fix_default_thoughts.py) and a tight per-record cost — we
 # count, threshold, and fail with the exact remediation command. Threshold
 # defaults to 100 records cumulative across train/val/test; override via
-# MILADY_PREFLIGHT_LEAK_THRESHOLD.
-LEAK_THRESHOLD="${MILADY_PREFLIGHT_LEAK_THRESHOLD:-100}"
+# ELIZA_PREFLIGHT_LEAK_THRESHOLD.
+LEAK_THRESHOLD="${ELIZA_PREFLIGHT_LEAK_THRESHOLD:-100}"
 log "[8/8] default-thought leak scan (≤${LEAK_THRESHOLD} cumulative leaks)"
 LEAK_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE" "$CUDA_DETAIL_FILE" "$FORMAT_DETAIL_FILE" "$LEAK_DETAIL_FILE"' EXIT
