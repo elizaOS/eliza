@@ -5,8 +5,12 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  __resetCtxCheckpointsProbeCacheForTests,
+  appendCtxCheckpointFlags,
   appendKvOffloadFlags,
   appendOptimizationFlags,
+  DEFAULT_CTX_CHECKPOINT_INTERVAL,
+  DEFAULT_CTX_CHECKPOINTS,
   dflashDevDisabled,
   dflashEnabled,
   dflashLlamaServer,
@@ -1067,5 +1071,81 @@ describe("llama-server optimization flags", () => {
     });
 
     expect(args).toEqual(["--cache-reuse", "64", "--no-cont-batching"]);
+  });
+});
+
+describe("appendCtxCheckpointFlags", () => {
+  /**
+   * Fake binary that advertises --ctx-checkpoints in its --help output so the
+   * runtime probe returns `true` without a real llama-server install.
+   */
+  function fakeBinaryPath(): string {
+    const tmp = os.tmpdir();
+    const name = `fake-llama-server-${Date.now()}`;
+    const p = path.join(tmp, name);
+    // Write a shell script that echoes a --help blurb containing the flag.
+    fs.writeFileSync(
+      p,
+      "#!/bin/sh\necho '--ctx-checkpoints N'\n",
+      "utf8",
+    );
+    fs.chmodSync(p, 0o755);
+    return p;
+  }
+
+  afterEach(() => {
+    __resetCtxCheckpointsProbeCacheForTests();
+  });
+
+  it("exports DEFAULT_CTX_CHECKPOINTS=4 and DEFAULT_CTX_CHECKPOINT_INTERVAL=256", () => {
+    expect(DEFAULT_CTX_CHECKPOINTS).toBe(4);
+    expect(DEFAULT_CTX_CHECKPOINT_INTERVAL).toBe(256);
+  });
+
+  it("applies module defaults when optimizations provide no checkpoint values", () => {
+    const binary = fakeBinaryPath();
+    const args: string[] = [];
+    appendCtxCheckpointFlags(args, null, binary);
+    expect(args).toEqual([
+      "--ctx-checkpoints",
+      String(DEFAULT_CTX_CHECKPOINTS),
+      "--ctx-checkpoint-interval",
+      String(DEFAULT_CTX_CHECKPOINT_INTERVAL),
+    ]);
+  });
+
+  it("uses catalog values when provided, ignoring defaults", () => {
+    const binary = fakeBinaryPath();
+    const args: string[] = [];
+    appendCtxCheckpointFlags(
+      args,
+      { ctxCheckpoints: 8, ctxCheckpointInterval: 4096 },
+      binary,
+    );
+    expect(args).toEqual([
+      "--ctx-checkpoints",
+      "8",
+      "--ctx-checkpoint-interval",
+      "4096",
+    ]);
+  });
+
+  it("is a no-op when enableCheckpoints is explicitly false", () => {
+    const binary = fakeBinaryPath();
+    const args: string[] = [];
+    appendCtxCheckpointFlags(args, null, binary, false);
+    expect(args).toHaveLength(0);
+  });
+
+  it("is a no-op when the binary does not advertise the flags", () => {
+    // Write a binary whose --help does NOT mention --ctx-checkpoints.
+    const tmp = os.tmpdir();
+    const noFlagBinary = path.join(tmp, `no-ctx-ckpt-${Date.now()}`);
+    fs.writeFileSync(noFlagBinary, "#!/bin/sh\necho '--ctx-size N'\n", "utf8");
+    fs.chmodSync(noFlagBinary, 0o755);
+
+    const args: string[] = [];
+    appendCtxCheckpointFlags(args, null, noFlagBinary);
+    expect(args).toHaveLength(0);
   });
 });

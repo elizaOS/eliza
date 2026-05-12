@@ -63,6 +63,7 @@ import {
   fetchMetricsSnapshot,
   type LocalUsageBlock,
 } from "./llama-server-metrics";
+import { inferenceTelemetry } from "./inference-telemetry";
 import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
@@ -753,31 +754,48 @@ export function __resetCtxCheckpointsProbeCacheForTests(): void {
   ctxCheckpointsProbeCache.clear();
 }
 
+/** Default number of mid-prefill KV snapshots the server keeps per slot. */
+export const DEFAULT_CTX_CHECKPOINTS = 4;
+/** Default token interval between automatic mid-prefill snapshots. */
+export const DEFAULT_CTX_CHECKPOINT_INTERVAL = 256;
+
 /**
  * Append `--ctx-checkpoints N --ctx-checkpoint-interval M` to `args` when:
- *   - the catalog declares one or both values, AND
+ *   - `enableCheckpoints` is not explicitly `false`, AND
  *   - the runtime probe says the binary supports the flags.
  *
- * No-op when either condition fails so server startup never breaks because
- * of an old binary.
+ * Values are sourced from `optimizations` when present; otherwise the
+ * module-level defaults (`DEFAULT_CTX_CHECKPOINTS` = 4,
+ * `DEFAULT_CTX_CHECKPOINT_INTERVAL` = 256) apply. This means all spawn-mode
+ * servers automatically advertise checkpoint support once the upstream merge
+ * lands — no per-model catalog entry is required.
+ *
+ * No-op when `enableCheckpoints === false` or when the binary doesn't
+ * advertise the flags (so older fork builds without the merge start cleanly).
  */
 export function appendCtxCheckpointFlags(
   args: string[],
   optimizations: LocalRuntimeOptimizations | null,
   binaryPath: string,
+  enableCheckpoints = true,
 ): void {
-  const ckpt = optimizations?.ctxCheckpoints;
-  const interval = optimizations?.ctxCheckpointInterval;
-  const hasCkpt =
-    typeof ckpt === "number" && Number.isInteger(ckpt) && ckpt > 0;
-  const hasInterval =
-    typeof interval === "number" && Number.isInteger(interval) && interval > 0;
-  if (!hasCkpt && !hasInterval) return;
+  if (!enableCheckpoints) return;
   if (!probeCtxCheckpointsSupported(binaryPath)) return;
-  if (hasCkpt) {
+  const ckpt = optimizations?.ctxCheckpoints ?? DEFAULT_CTX_CHECKPOINTS;
+  const interval =
+    optimizations?.ctxCheckpointInterval ?? DEFAULT_CTX_CHECKPOINT_INTERVAL;
+  if (
+    typeof ckpt === "number" &&
+    Number.isInteger(ckpt) &&
+    ckpt > 0
+  ) {
     args.push("--ctx-checkpoints", String(ckpt));
   }
-  if (hasInterval) {
+  if (
+    typeof interval === "number" &&
+    Number.isInteger(interval) &&
+    interval > 0
+  ) {
     args.push("--ctx-checkpoint-interval", String(interval));
   }
 }
@@ -2776,6 +2794,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // save and restore agree on the exact path.
     const conversationKvDir = slotDir;
     fs.mkdirSync(slotDir, { recursive: true });
+    // Pre-create a checkpoints/ subdir inside the slot-save directory so the
+    // server's mid-prefill KV snapshots (`--ctx-checkpoints`) land in a
+    // known location. The files are named by CheckpointManager and stored
+    // directly under --slot-save-path; this subdir is kept for any future
+    // path-prefix conventions and so operators can find checkpoint files
+    // without sifting through slot KV blobs.
+    const checkpointsDir = path.join(slotDir, "checkpoints");
+    fs.mkdirSync(checkpointsDir, { recursive: true });
     // Fire-and-forget eviction: stale slot files on disk shouldn't block
     // server startup, but we don't want them to grow without bound.
     void evictExpired(slotDir, DEFAULT_CACHE_TTLS).catch(() => {
@@ -3464,6 +3490,25 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
       text = streamedPrefix + tail.text;
       firstTokenMs = tail.firstTokenMs;
+      // L5 — emit first-token latency metrics now that we have the value.
+      // `inference.ttfa_ms` is the time from fetch() to the first HTTP chunk
+      // (time-to-first-arrival); `inference.first_token_ms` captures the same
+      // measurement from the request's own perspective (they are identical here
+      // since we record on the first SSE chunk that carries decoded text). Both
+      // are recorded so downstream consumers can choose their preferred name.
+      if (firstTokenMs !== null) {
+        const telTags = {
+          tier: this.loadedPlan?.params ?? "unknown",
+          backend: "dflash-llama",
+          slot_id: slotId,
+        };
+        inferenceTelemetry.record("inference.ttfa_ms", firstTokenMs, telTags);
+        inferenceTelemetry.record(
+          "inference.first_token_ms",
+          firstTokenMs,
+          telTags,
+        );
+      }
     } else {
       json = (await fetchJson(
         `${baseUrl}/v1/chat/completions`,
