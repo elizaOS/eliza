@@ -117,7 +117,9 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
     "HEALTH": {
         "domain": "domain:health",
         "capabilities": ["capability:read"],
-        "discriminator_values": ["by_metric", "summary", "trends"],
+        # All spellings accepted by scorer._UMBRELLA_SUBACTIONS["HEALTH"] plus
+        # "trend" (singular) used in health_batch_001 GT scenarios.
+        "discriminator_values": ["by_metric", "summary", "trends", "trend", "today", "status"],
         "extra_properties": {
             "metric": {"type": "string"},
             "date": {"type": "string"},
@@ -194,7 +196,23 @@ _BENCH_UMBRELLA_AUGMENTS: dict[str, dict[str, Any]] = {
             "destination": {"type": "string"},
             "departureDate": {"type": "string"},
             "returnDate": {"type": "string"},
-            "passengers": {"type": "number"},
+            # passengers is an array of objects, not a bare integer count.
+            # Each item carries name (string) and seat_class (economy|business|first).
+            # The scorer coerces integer counts to this canonical array form.
+            "passengers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "seat_class": {
+                            "type": "string",
+                            "enum": ["economy", "business", "first"],
+                        },
+                    },
+                    "required": ["name", "seat_class"],
+                },
+            },
         },
     },
     "SCHEDULED_TASK_CREATE": {
@@ -306,18 +324,33 @@ def augment_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
     surface wins). Bench entries are appended only for names the manifest
     does not already cover, and the action list is sorted by name to match
     the TS exporter's ordering.
+
+    P1-8 dedup guard: if the manifest already contains duplicate names (from a
+    prior double-invocation of this function), the duplicates are removed before
+    bench entries are appended. The first occurrence of each name wins so the
+    plugin-derived surface always takes precedence over any bench entry that
+    accidentally ended up in the first slot from a prior run.
     """
-    actions = list(manifest.get("actions", []))
-    existing = {a.get("function", {}).get("name") for a in actions}
+    # Remove any pre-existing duplicates so idempotent invocations are safe.
+    seen_names: set[str] = set()
+    deduplicated: list[dict[str, Any]] = []
+    for entry in manifest.get("actions", []):
+        name = entry.get("function", {}).get("name")
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+        deduplicated.append(entry)
+
+    existing = set(seen_names)
     for entry in bench_umbrella_actions():
         name = entry["function"]["name"]
         if name in existing:
             continue
-        actions.append(entry)
+        deduplicated.append(entry)
         existing.add(name)
-    actions.sort(key=lambda a: a["function"]["name"])
+    deduplicated.sort(key=lambda a: a["function"]["name"])
     out = dict(manifest)
-    out["actions"] = actions
+    out["actions"] = deduplicated
     return out
 
 

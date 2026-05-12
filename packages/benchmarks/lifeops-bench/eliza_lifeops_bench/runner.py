@@ -132,6 +132,11 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
     "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
     "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
     "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+    # P1-5: contact-create aliases. Agents emit ENTITY_CREATE_CONTACT,
+    # CONTACT_CREATE, or contact_create interchangeably with ENTITY/create.
+    # Normalise all of them into ENTITY(subaction=create) before dispatch.
+    "ENTITY_CREATE_CONTACT": ("ENTITY", "subaction", "create"),
+    "CONTACT_CREATE": ("ENTITY", "subaction", "create"),
 }
 
 
@@ -275,7 +280,10 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
             "read_with_contact",
         ],
     ),
-    "ENTITY": ("subaction", ["add", "set_identity", "log_interaction", "list"]),
+    # P1-5: `create` is the canonical TS subaction; `add` is the legacy alias
+    # retained for scenario-corpus compatibility. `create_contact` covers the
+    # ENTITY_CREATE_CONTACT promoted form some agents emit.
+    "ENTITY": ("subaction", ["create", "add", "create_contact", "set_identity", "log_interaction", "list"]),
     "LIFE_CREATE": ("subaction", ["create"]),
     "LIFE_UPDATE": ("subaction", ["update"]),
     "LIFE_DELETE": ("subaction", ["delete"]),
@@ -286,7 +294,11 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
     "LIFE_UPDATE": ("subaction", ["update"]),
     "SCHEDULED_TASK_UPDATE": ("subaction", ["update"]),
     "SCHEDULED_TASK_SNOOZE": ("subaction", ["snooze"]),
-    "HEALTH": ("subaction", ["by_metric", "summary", "trends"]),
+    # All six spellings used across scenarios, scorer, and TS backend:
+    # - "trend" (singular) appears in health_batch_001 GT scenarios
+    # - "trends" (plural) appears in older runner fixture
+    # - "today" / "status" / "summary" match the TS health.ts surface
+    "HEALTH": ("subaction", ["by_metric", "summary", "trends", "trend", "today", "status"]),
 }
 
 
@@ -472,6 +484,47 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
             "minimum": 1,
         }
         schema["required"] = sorted({*schema.get("required", []), "taskId", "minutes"})
+    elif action_name == "BOOK_TRAVEL":
+        # Passengers must be an array of objects. Emit a named+seat_class shape
+        # so agents produce [{name, seat_class}] instead of a bare integer count.
+        # The scorer coerces an integer passenger count to this canonical array
+        # form when comparing against GT, so both representations score correctly.
+        schema["properties"]["origin"] = {
+            "type": "string",
+            "description": "IATA origin airport code (e.g. LAX).",
+        }
+        schema["properties"]["destination"] = {
+            "type": "string",
+            "description": "IATA destination airport code (e.g. JFK).",
+        }
+        schema["properties"]["departureDate"] = {
+            "type": "string",
+            "description": "Departure date in YYYY-MM-DD format.",
+        }
+        schema["properties"]["returnDate"] = {
+            "type": "string",
+            "description": "Return date in YYYY-MM-DD format, or omit for one-way.",
+        }
+        schema["properties"]["passengers"] = {
+            "type": "array",
+            "description": (
+                "Array of passenger objects. Each entry must have "
+                "name (string) and seat_class ('economy'|'business'|'first'). "
+                "Example: [{\"name\": \"passenger_1\", \"seat_class\": \"economy\"}]. "
+                "Do NOT pass a bare integer count."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "seat_class": {
+                        "type": "string",
+                        "enum": ["economy", "business", "first"],
+                    },
+                },
+                "required": ["name", "seat_class"],
+            },
+        }
 
     return schema
 
@@ -1048,10 +1101,14 @@ def _manage_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str,
 def _u_entity(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
     """Dispatch the ENTITY umbrella on `subaction`.
 
-    Subactions: add, set_identity, log_interaction, list.
+    Canonical subaction is `create`; `add` is the legacy alias (kept for
+    scenario-corpus compatibility). Agents also emit `create_contact` and
+    the promoted `ENTITY_CREATE_CONTACT` / `CONTACT_CREATE` surface names —
+    all four route to the same contact-creation handler (P1-5 vocab alignment).
     """
     sub = _required(kw, "subaction", action=name, sub="<missing>")
-    if sub == "add":
+    # Normalise the four contact-create variants into a single branch.
+    if sub in {"add", "create", "create_contact"}:
         display = kw.get("name") or "Unknown"
         parts = display.split(maxsplit=1)
         given = parts[0] if parts else display
@@ -1622,6 +1679,10 @@ _ACTION_HANDLERS: dict[
     "CALENDAR_CHECK_AVAILABILITY": _u_calendar,
     "CALENDAR_NEXT_EVENT": _u_calendar,
     "CALENDAR_UPDATE_PREFERENCES": _u_calendar,
+    # P1-5: contact-create promoted aliases. _normalize_action already injects
+    # subaction=create before dispatch, so routing to _u_entity is sufficient.
+    "ENTITY_CREATE_CONTACT": _u_entity,
+    "CONTACT_CREATE": _u_entity,
 }
 
 
