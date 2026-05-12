@@ -466,7 +466,6 @@ export const entityAction: Action & {
     "MERGE_ENTITIES",
     "MERGE_CONTACTS",
     "SET_IDENTITY",
-    "SET_RELATIONSHIP",
   ],
   description:
     "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
@@ -652,7 +651,7 @@ export const entityAction: Action & {
           success: false,
           scenario: "entity_log_missing_id",
           fallback: "I need a known contact to log an interaction.",
-          data: { subaction, error: "MISSING_RELATIONSHIP_ID" },
+          data: { subaction, error: "MISSING_EDGE_ID" },
         });
       }
       const rel = await service.getRelationship(relationshipId);

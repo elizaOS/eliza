@@ -11,12 +11,18 @@ import { shellAction } from "./bash.js";
 interface RuntimeOptions {
   blockedPaths?: string;
   shellTimeoutMs?: number;
+  shellHistoryCommands?: string[];
+  withShellHistoryService?: boolean;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   runtime: IAgentRuntime;
   sandbox: SandboxService;
   session: SessionCwdService;
+  shellHistoryService?: {
+    clearCommandHistory: ReturnType<typeof vi.fn>;
+    getCommandHistory: ReturnType<typeof vi.fn>;
+  };
 }> {
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
@@ -35,8 +41,22 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const session = await SessionCwdService.start(runtime);
   services.set(SANDBOX_SERVICE, sandbox);
   services.set(SESSION_CWD_SERVICE, session);
+  const shellHistoryService =
+    opts.withShellHistoryService || opts.shellHistoryCommands
+      ? {
+          clearCommandHistory: vi.fn(),
+          getCommandHistory: vi.fn((_conversationId: string, limit?: number) =>
+            (opts.shellHistoryCommands ?? [])
+              .slice(0, limit ?? opts.shellHistoryCommands?.length ?? 0)
+              .map((command) => ({ command })),
+          ),
+        }
+      : undefined;
+  if (shellHistoryService) {
+    services.set("shell", shellHistoryService);
+  }
 
-  return { runtime, sandbox, session };
+  return { runtime, sandbox, session, shellHistoryService };
 }
 
 function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
@@ -121,5 +141,43 @@ describe("shellAction", () => {
     expect(result.text).toContain("command_failed");
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.exit_code).toBe(7);
+  });
+
+  it("clears shell history through the canonical SHELL action", async () => {
+    const { runtime, shellHistoryService } = await makeRuntime({
+      withShellHistoryService: true,
+    });
+    const result = await shellAction.handler!(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "clear_history" },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("history has been cleared");
+    expect(shellHistoryService?.clearCommandHistory).toHaveBeenCalledOnce();
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.action).toBe("clear_history");
+  });
+
+  it("views shell history through the canonical SHELL action", async () => {
+    const { runtime, shellHistoryService } = await makeRuntime({
+      shellHistoryCommands: ["git status", "bun test"],
+    });
+    const result = await shellAction.handler!(
+      runtime,
+      makeMessage(),
+      undefined,
+      { action: "view_history", limit: 1 },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("git status");
+    expect(result.text).not.toContain("bun test");
+    expect(shellHistoryService?.getCommandHistory).toHaveBeenCalledWith(
+      expect.any(String),
+      1,
+    );
+    const data = result.data as Record<string, unknown> | undefined;
+    expect(data?.action).toBe("view_history");
   });
 });

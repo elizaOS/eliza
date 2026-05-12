@@ -336,7 +336,7 @@ export function EmotePicker() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Cmd+E toggle
-      if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "e") {
         e.preventDefault();
         if (emotePickerOpen) {
           closeEmotePicker();
@@ -351,8 +351,9 @@ export function EmotePicker() {
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, { capture: true });
+    return () =>
+      window.removeEventListener("keydown", handleKeyDown, { capture: true });
   }, [emotePickerOpen, openEmotePicker, closeEmotePicker]);
 
   // Desktop bridge listener

@@ -84,7 +84,7 @@ function inferShellSubactionFromText(text: string): ShellActionSubaction | null 
 function getShellHistoryService(
   runtime: IAgentRuntime,
 ): ShellHistoryServiceLike | null {
-  const service = runtime.getService<ShellHistoryServiceLike>("shell");
+  const service = runtime.getService("shell") as unknown;
   return service && typeof service === "object" ? service : null;
 }
 
@@ -179,7 +179,7 @@ export const shellAction: Action = {
   ): Promise<ActionResult> => {
     const explicitSubaction = readStringParam(options, "action");
     const inferredSubaction = inferShellSubactionFromText(
-      message.content.text ?? "",
+      message.content?.text ?? "",
     );
     const subaction = explicitSubaction
       ? normalizeShellSubaction(explicitSubaction)

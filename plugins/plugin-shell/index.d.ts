@@ -1,7 +1,6 @@
 import type { Plugin } from "@elizaos/core";
 export declare const shellPlugin: Plugin;
 export default shellPlugin;
-export { clearHistory, shellHistoryAction } from "./actions/shellHistory";
 export { shellHistoryProvider } from "./providers/shellHistoryProvider";
 export {
   addSession,
