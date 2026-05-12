@@ -18,8 +18,8 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
-	getPersonalityStore,
 } from "../features/advanced-capabilities/personality";
+import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
