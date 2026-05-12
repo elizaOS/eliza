@@ -2,7 +2,7 @@
  * Eliza-curated local model catalog.
  *
  * Eliza-1 is the only default-eligible model line. User-facing model ids are
- * size-first: `eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-4b`, `eliza-1-9b`,
+ * size-first: `eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`,
  * `eliza-1-27b`, `eliza-1-27b-256k`, and `eliza-1-27b-1m`.
  *
  * HF-search results from outside `elizaos/eliza-1-*` must never be marked
@@ -13,8 +13,8 @@
 import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
 
 export const ELIZA_1_TIER_IDS = [
-  "eliza-1-0_6b",
-  "eliza-1-1_7b",
+  "eliza-1-0_8b",
+  "eliza-1-2b",
   "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
@@ -24,7 +24,7 @@ export const ELIZA_1_TIER_IDS = [
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-1_7b";
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
@@ -77,8 +77,8 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_6b": ["omnivoice", "kokoro"],
-  "eliza-1-1_7b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
   "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice", "kokoro"],
@@ -97,8 +97,8 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const asrLarge = { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" } as const;
 
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
-    "eliza-1-0_6b": { repo: "Qwen/Qwen3.5-0.6B" },
-    "eliza-1-1_7b": { repo: "Qwen/Qwen3.5-1.7B" },
+    "eliza-1-0_8b": { repo: "Qwen/Qwen3.5-0.8B" },
+    "eliza-1-2b": { repo: "Qwen/Qwen3.5-2B" },
     "eliza-1-4b": { repo: "Qwen/Qwen3.5-4B" },
     "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
     "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
@@ -127,7 +127,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       file: `dflash/drafter-${id.slice("eliza-1-".length)}.gguf`,
     },
   };
-  if (id !== "eliza-1-0_6b") components.embedding = embedding;
+  if (id !== "eliza-1-0_8b") components.embedding = embedding;
   if (visionByTier[id]) components.vision = visionByTier[id];
   return { finetuned: false, components };
 }
@@ -161,7 +161,7 @@ function ctxCheckpointsForTier(id: Eliza1TierId): {
   ctxCheckpoints: number;
   ctxCheckpointInterval: number;
 } {
-  if (id === "eliza-1-0_6b" || id === "eliza-1-1_7b") {
+  if (id === "eliza-1-0_8b" || id === "eliza-1-2b") {
     return { ctxCheckpoints: 4, ctxCheckpointInterval: 4096 };
   }
   if (id === "eliza-1-4b" || id === "eliza-1-9b") {
@@ -194,7 +194,7 @@ function runtimeFor(
       draftContextSize: Math.min(contextLength, 65536),
       draftMin: 2,
       draftMax:
-        id === "eliza-1-0_6b" || id === "eliza-1-1_7b" || id === "eliza-1-4b"
+        id === "eliza-1-0_8b" || id === "eliza-1-2b" || id === "eliza-1-4b"
           ? 4
           : contextLength >= 131072
             ? 8

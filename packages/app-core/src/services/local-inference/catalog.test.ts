@@ -18,23 +18,23 @@ describe("local inference catalog", () => {
     );
   });
 
-  it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale small-tier text sources", () => {
+  it("uses the Qwen3.5 0.8B / 2B / 4B text source tiers, not stale Qwen3 small-tier sources", () => {
     expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
-      "eliza-1-0_6b",
-      "eliza-1-1_7b",
+      "eliza-1-0_8b",
+      "eliza-1-2b",
       "eliza-1-4b",
     ]);
-    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-1_7b");
+    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-2b");
     const serializedCatalog = JSON.stringify(MODEL_CATALOG);
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.6B");
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-1.7B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.8B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-2B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
-    const staleSmallTierId = "eliza-1-0_" + "8b";
-    const staleMobileTierId = "eliza-1-" + "2b";
-    const staleQwen3Small = "Qwen/Qwen3-0" + "\\.8B";
-    const staleQwen3Mobile = "Qwen/Qwen3-" + "2B";
-    const staleQwen35Small = "Qwen/Qwen3\\.5-0" + "\\.8B";
-    const staleQwen35Mobile = "Qwen/Qwen3\\.5-" + "2B";
+    const staleSmallTierId = "eliza-1-0_6b";
+    const staleMobileTierId = "eliza-1-1_7b";
+    const staleQwen3Small = "Qwen/Qwen3-0\\.8B";
+    const staleQwen3Mobile = "Qwen/Qwen3-2B";
+    const staleQwen35Small = "Qwen/Qwen3\\.5-0\\.6B";
+    const staleQwen35Mobile = "Qwen/Qwen3\\.5-1\\.7B";
     expect(serializedCatalog).not.toMatch(
       new RegExp(
         [
@@ -122,12 +122,12 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B / 1.7B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B / 2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_6b": 32768,
-      "eliza-1-1_7b": 32768,
+      "eliza-1-0_8b": 32768,
+      "eliza-1-2b": 32768,
       "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
