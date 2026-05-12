@@ -150,9 +150,45 @@ def build_dataset(
         )
     from datasets import Dataset
 
+    def _coerce_tool_call_arguments(messages):
+        # The Qwen3.5 chat template (and Qwen3.6) iterates
+        # `tool_call.arguments | items`, which requires a mapping (dict).
+        # OpenAI-ChatML ToolCalls (what format_for_training.py emits, what
+        # eliza-1-sft-0_6b carries) store `arguments` as a JSON-encoded
+        # string. Convert string → dict at render time so the template
+        # renders cleanly. (2026-05-12 incident: SFT crashed at 76% of
+        # dataset Map() with `TypeError: Can only get item pairs from a
+        # mapping.` on a record whose arguments was a string.)
+        import json as _json
+        out = []
+        for m in messages:
+            if isinstance(m, dict) and isinstance(m.get("tool_calls"), list):
+                fixed_tool_calls = []
+                for tc in m["tool_calls"]:
+                    if not isinstance(tc, dict):
+                        fixed_tool_calls.append(tc)
+                        continue
+                    fc = dict(tc)
+                    fn = fc.get("function")
+                    if isinstance(fn, dict) and isinstance(fn.get("arguments"), str):
+                        try:
+                            fn = {**fn, "arguments": _json.loads(fn["arguments"]) or {}}
+                        except (ValueError, TypeError):
+                            fn = {**fn, "arguments": {}}
+                        fc["function"] = fn
+                    if isinstance(fc.get("arguments"), str):
+                        try:
+                            fc["arguments"] = _json.loads(fc["arguments"]) or {}
+                        except (ValueError, TypeError):
+                            fc["arguments"] = {}
+                    fixed_tool_calls.append(fc)
+                m = {**m, "tool_calls": fixed_tool_calls}
+            out.append(m)
+        return out
+
     def render(example):
         kwargs = {
-            "conversation": example["messages"],
+            "conversation": _coerce_tool_call_arguments(example["messages"]),
             "tokenize": False,
             "add_generation_prompt": False,
         }
