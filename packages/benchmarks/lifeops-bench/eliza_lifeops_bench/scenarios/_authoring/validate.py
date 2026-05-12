@@ -275,11 +275,6 @@ def _check_actions(
                 alias in kwargs and target == required_field
                 for alias, target in PARAMETER_ALIASES.items()
             ):
-                if (
-                    umbrella_discriminator is not None
-                    and umbrella_discriminator in kwargs
-                ):
-                    continue
                 issues.append(
                     ValidationIssue(
                         path=f"{prefix}.kwargs.{required_field}",
