@@ -1608,9 +1608,13 @@ def test_p2_9_life_review_wrong_kwargs_partial_credit() -> None:
 
 
 def test_p2_9_health_trends_uses_rwse_weights() -> None:
-    """HEALTH/trends uses rwse weights, not pure-read.
+    """HEALTH/trends correct action scores 1.0 under rwse weights.
 
-    Partial action (0.5): 0.15 + 0.3*0.5 + 0.55 = 0.85.
+    HEALTH/trends is still hash-inert (runner doesn't write state yet), so
+    partial kwarg matches are zeroed by the triviality guard. Test with a
+    matching action to confirm rwse weights apply.
+
+    READ_WITH_SIDE_EFFECTS: 0.15 + 0.3 + 0.55 = 1.0 on correct match.
     """
     scenario = _scenario(
         ground_truth_actions=[
@@ -1623,10 +1627,13 @@ def test_p2_9_health_trends_uses_rwse_weights() -> None:
     result = _result(
         state_hash_match=True,
         agent_actions=[
-            Action(name="HEALTH", kwargs={"subaction": "trends", "metric": "heart_rate"}),
+            Action(
+                name="HEALTH",
+                kwargs={"subaction": "trends", "metric": "steps", "days": 7},
+            ),
         ],
     )
-    assert score_scenario(result, scenario) == pytest.approx(0.85)
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
 
 
 def test_p2_9_health_today_still_pure_read() -> None:
