@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/electrobun-carrots",
   "version": "0.0.1",
-  "description": "Eliza-flavored carrot runtime types for Electrobun desktop shells. Phase 1: types-only.",
+  "description": "Eliza-flavored carrot runtime primitives for Electrobun desktop shells.",
   "type": "module",
   "main": "./dist/index.js",
   "license": "MIT",

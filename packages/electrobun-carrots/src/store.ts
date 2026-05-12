@@ -52,6 +52,32 @@ export interface InstalledCarrot {
   viewUrl: string;
 }
 
+export interface InstalledCarrotSnapshot {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  mode: CarrotManifest["mode"];
+  status: CarrotInstallRecord["status"];
+  sourceKind: CarrotInstallSource["kind"];
+  currentHash: string | null;
+  installedAt: number;
+  updatedAt: number;
+  devMode: boolean;
+  lastBuildAt: number | null;
+  lastBuildError: string | null;
+  requestedPermissions: CarrotManifest["permissions"];
+  grantedPermissions: CarrotPermissionGrant;
+  view: CarrotManifest["view"] & { viewUrl: string };
+  worker: CarrotManifest["worker"];
+  remoteUIs?: CarrotManifest["remoteUIs"];
+}
+
+export interface CarrotStoreSnapshot {
+  version: 1;
+  carrots: InstalledCarrotSnapshot[];
+}
+
 export interface CarrotStorePaths {
   rootDir: string;
   currentDir: string;
@@ -612,6 +638,44 @@ export function loadInstalledCarrots(storeRoot: string): InstalledCarrot[] {
     .sort((left, right) =>
       left.manifest.name.localeCompare(right.manifest.name),
     );
+}
+
+export function toInstalledCarrotSnapshot(
+  carrot: InstalledCarrot,
+): InstalledCarrotSnapshot {
+  const { install, manifest } = carrot;
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    version: manifest.version,
+    description: manifest.description,
+    mode: manifest.mode,
+    status: install.status,
+    sourceKind: install.source.kind,
+    currentHash: install.currentHash,
+    installedAt: install.installedAt,
+    updatedAt: install.updatedAt,
+    devMode: install.devMode ?? false,
+    lastBuildAt: install.lastBuildAt ?? null,
+    lastBuildError: install.lastBuildError ?? null,
+    requestedPermissions: normalizeCarrotPermissions(manifest.permissions),
+    grantedPermissions: normalizeCarrotPermissions(install.permissionsGranted),
+    view: {
+      ...manifest.view,
+      viewUrl: carrot.viewUrl,
+    },
+    worker: manifest.worker,
+    ...(manifest.remoteUIs ? { remoteUIs: manifest.remoteUIs } : {}),
+  };
+}
+
+export function loadCarrotStoreSnapshot(
+  storeRoot: string,
+): CarrotStoreSnapshot {
+  return {
+    version: REGISTRY_VERSION,
+    carrots: loadInstalledCarrots(storeRoot).map(toInstalledCarrotSnapshot),
+  };
 }
 
 export function installPrebuiltCarrot(

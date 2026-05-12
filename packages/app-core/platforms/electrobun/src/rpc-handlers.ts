@@ -98,6 +98,10 @@ import {
 } from "./runtime-permissions";
 import { isDetachedSurface } from "./surface-windows";
 import type { SendToWebview } from "./types.js";
+import {
+	composeUpdateStatusSnapshot,
+	readUpdateStatusViaHttp,
+} from "./update-rpc";
 
 function normalizeRendererRoutePath(path: string): string {
 	const trimmed = path.trim();
@@ -288,6 +292,12 @@ export function buildBunRpcHandlers({
 			composeAgentStatusSnapshot(
 				resolveRpcAgentPort(agent.getStatus().port),
 				readAgentStatusViaHttp,
+			),
+		getUpdateStatus: async (params) =>
+			composeUpdateStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params?.force ?? false,
+				readUpdateStatusViaHttp,
 			),
 		/**
 		 * Aggregated boot snapshot — typed counterpart to renderer

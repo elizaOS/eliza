@@ -531,6 +531,20 @@ export interface AgentStatusSnapshot {
 	cloud?: AgentCloudStatusSnapshot;
 }
 
+export type AgentUpdateReleaseChannel = "stable" | "beta" | "nightly";
+
+export interface AgentUpdateStatusSnapshot {
+	currentVersion: string;
+	channel: AgentUpdateReleaseChannel;
+	installMethod: string;
+	updateAvailable: boolean;
+	latestVersion: string | null;
+	channels: Record<AgentUpdateReleaseChannel, string | null>;
+	distTags: Record<AgentUpdateReleaseChannel, string>;
+	lastCheckAt: string | null;
+	error: string | null;
+}
+
 export interface DesktopStartupDiagnostics {
 	state: "not_started" | "starting" | "running" | "stopped" | "error";
 	phase: string;
@@ -762,6 +776,10 @@ export type ElizaDesktopRPCSchema = {
 			};
 			agentStatus: { params: undefined; response: EmbeddedAgentStatus };
 			getAgentStatus: { params: undefined; response: AgentStatusSnapshot };
+			getUpdateStatus: {
+				params: { force?: boolean } | undefined;
+				response: AgentUpdateStatusSnapshot;
+			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the
 			 * `/api/health` plugin/db counters and the in-process runtime phase.
