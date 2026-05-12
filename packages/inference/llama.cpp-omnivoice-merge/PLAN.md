@@ -1,9 +1,28 @@
 # omnivoice → llama.cpp merge plan
 
-**Status:** PLAN ONLY. This directory documents the merge approach.
-No changes to the `packages/inference/llama.cpp` submodule have been
-made — those will happen on a feature branch of the elizaOS/llama.cpp
-fork once this plan is reviewed.
+## Status (see STATUS.md for details)
+
+| Patch | Subject                          | State                                                            |
+|-------|----------------------------------|------------------------------------------------------------------|
+| 0001  | add LLAMA_BUILD_OMNIVOICE option | **APPLIED locally** on submodule branch `eliza/omnivoice-build-flag` (commit `fc722d397`). Not pushed. Cmake configure verified ON (fails as designed) + OFF (succeeds). |
+| 0002  | vendor omnivoice tree            | not started — still example-only                                 |
+| 0003  | replace backend wedge            | not started — still example-only                                 |
+
+Patch 0001 introduces the cmake flag as a safe no-op: default OFF is a
+no-change to existing consumers; ON is a hard `FATAL_ERROR` until 0002
+vendors `tools/omnivoice/`. That makes the flag-introduction patch
+landable independently of the vendor step.
+
+The rest of this document is the original merge plan (patches 0002 and
+0003 remain accurate as written; 0001 has been refined into the actual
+applied form documented in STATUS.md).
+
+---
+
+**Original-plan note:** This directory documents the merge approach.
+Beyond patch 0001 above, no changes to the `packages/inference/llama.cpp`
+submodule have been made — those will happen on a feature branch of the
+elizaOS/llama.cpp fork once this plan is reviewed.
 
 **Owner of follow-up:** Phase E follow-up task (see RESEARCH.md
 "Open follow-ups" #4 in `plugins/plugin-omnivoice/`).
