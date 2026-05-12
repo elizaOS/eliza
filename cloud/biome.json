@@ -1,0 +1,142 @@
+{
+  "root": false,
+  "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "includes": [
+      "**",
+      "!**/node_modules",
+      "!**/.next",
+      "!**/.next-build",
+      "!**/.next-analyze",
+      "!**/out",
+      "!**/dist",
+      "!**/.wrangler",
+      "!**/.wrangler-dry-run",
+      "!**/packages/sdk/src/public-routes.ts",
+      "!**/storybook-static",
+      "!**/build",
+      "!**/next-env.d.ts",
+      "!**/docs",
+      "!**/packages/tests/playwright/test-reports",
+      "!**/packages/tests/playwright/test-results",
+      "!**/packages/ui/storybook-static",
+      "!**/packages/db/migrations",
+      "!**/packages/types/**/*.d.ts",
+      "!**/*.html",
+      "!**/*.css"
+    ]
+  },
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double",
+      "semicolons": "always",
+      "trailingCommas": "all"
+    }
+  },
+  "css": {
+    "parser": {
+      "cssModules": true
+    },
+    "linter": {
+      "enabled": false
+    },
+    "formatter": {
+      "enabled": false
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "useHookAtTopLevel": "warn",
+        "useExhaustiveDependencies": "warn",
+        "noUnusedImports": "warn",
+        "noUnusedVariables": "warn",
+        "noUnusedFunctionParameters": "off",
+        "useParseIntRadix": "off",
+        "noUnusedPrivateClassMembers": "off",
+        "noUnknownProperty": "off",
+        "noInvalidPositionAtImportRule": "off",
+        "noInvalidUseBeforeDeclaration": "off"
+      },
+      "complexity": {
+        "noUselessFragments": "warn",
+        "noImportantStyles": "off",
+        "useOptionalChain": "off",
+        "useLiteralKeys": "off",
+        "noUselessSwitchCase": "off",
+        "noUselessConstructor": "off",
+        "noCommaOperator": "off",
+        "noBannedTypes": "off",
+        "useDateNow": "off",
+        "noStaticOnlyClass": "off"
+      },
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noImplicitAnyLet": "off",
+        "noArrayIndexKey": "off",
+        "useIterableCallbackReturn": "off",
+        "noGlobalIsNan": "off",
+        "noControlCharactersInRegex": "off",
+        "noTemplateCurlyInString": "off",
+        "noAssignInExpressions": "off",
+        "noShadowRestrictedNames": "off",
+        "noConfusingVoidType": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "useImportType": "off",
+        "noParameterAssign": "off",
+        "useTemplate": "off",
+        "useNodejsImportProtocol": "off",
+        "useConst": "off"
+      },
+      "a11y": {
+        "useKeyWithClickEvents": "off",
+        "useKeyWithMouseEvents": "off",
+        "noSvgWithoutTitle": "off",
+        "useValidAnchor": "off",
+        "noAutofocus": "off",
+        "useButtonType": "off",
+        "noLabelWithoutControl": "off",
+        "noStaticElementInteractions": "off",
+        "useSemanticElements": "off",
+        "useMediaCaption": "off",
+        "noRedundantRoles": "off",
+        "noRedundantAlt": "off",
+        "useAriaPropsSupportedByRole": "off"
+      },
+      "security": {
+        "noDangerouslySetInnerHtml": "off"
+      },
+      "performance": {
+        "noImgElement": "off"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/lib/eliza/**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "plugin-viewer",
+  "name": "Plugin Viewer",
+  "description": "Inspect installed plugins, connectors, and runtime feature flags.",
+  "npmName": "@elizaos/app-plugin-viewer",
+  "source": "bundled",
+  "tags": ["plugins", "connectors", "viewer"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Package",
+    "group": "Apps",
+    "groupOrder": 1,
+    "actions": ["launch"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "internal-tab",
+    "target": "plugins",
+    "capabilities": ["plugins", "connectors", "viewer"]
+  }
+}

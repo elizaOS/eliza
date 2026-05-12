@@ -1,0 +1,35 @@
+{
+  "id": "shower-weekly-basic",
+  "title": "Shower weekly cadence",
+  "domain": "habits",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "discord",
+      "title": "LifeOps Shower Weekly"
+    }
+  ],
+  "turns": [
+    {
+      "name": "shower weekly preview",
+      "text": "Please remind me to shower three times a week.",
+      "responseIncludesAny": ["shower", "week"]
+    },
+    {
+      "name": "shower weekly confirm",
+      "text": "Yes, save that routine.",
+      "responseIncludesAny": ["saved", "shower"]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Shower",
+      "delta": 1,
+      "cadenceKind": "weekly",
+      "requiredWeekdays": [1, 3, 5],
+      "requiredWindows": ["morning", "night"],
+      "requireReminderPlan": true
+    }
+  ]
+}

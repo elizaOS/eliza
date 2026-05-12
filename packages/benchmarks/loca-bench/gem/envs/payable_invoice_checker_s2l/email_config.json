@@ -1,0 +1,11 @@
+{
+    "email": "walkera@mcp.com",
+    "password": "AW0808!6v5nP",
+    "name": "Amy Walker",
+    "imap_server": "localhost",
+    "imap_port": 1143,
+    "smtp_server": "localhost",
+    "smtp_port": 1587,
+    "use_ssl": false,
+    "use_starttls": false
+}

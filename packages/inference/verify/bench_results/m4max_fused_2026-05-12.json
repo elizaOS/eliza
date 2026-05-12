@@ -1,0 +1,32 @@
+{
+  "device": "Apple M4 Max",
+  "date": "2026-05-12",
+  "mode": "fused",
+  "iterations": 50,
+  "warmup": 5,
+  "workload": {
+    "description": "single-token decode fused attention, 9B-class GQA",
+    "head_dim": 128, "proj_dim": 256, "n_heads": 32, "n_kv_heads": 8, "n_q_pos": 1, "n_kv": 4096
+  },
+  "kernels": [
+    {
+      "name": "fused_attn_qjl_tbq3",
+      "kernel_function": "kernel_fused_attn_qjl_tbq3_f32",
+      "bytes_per_dispatch": 11845632,
+      "gpu_us": { "median": 8704.5208, "p50": 8704.5208, "p99": 11672.6021, "min": 7441.6250, "max": 11715.3750 },
+      "cpu_us": { "median": 10284.0000, "p99": 16363.0000 },
+      "bandwidth_GBs": 1.3609,
+      "bandwidth_pct_of_peak": 0.2492
+    },
+    {
+      "name": "fused_attn_qjl_polar",
+      "kernel_function": "kernel_fused_attn_qjl_polar_f32",
+      "bytes_per_dispatch": 15253504,
+      "gpu_us": { "median": 10974.5417, "p50": 10974.5417, "p99": 14494.1267, "min": 9518.9583, "max": 14653.4584 },
+      "cpu_us": { "median": 12973.0000, "p99": 18982.9400 },
+      "bandwidth_GBs": 1.3899,
+      "bandwidth_pct_of_peak": 0.2546
+    }
+  ],
+  "note": "Fused attention walks K once and decodes/mixes V inside the online-softmax recurrence. This measures standalone shader cost only; runtime-ready status still requires built-fork graph dispatch smoke."
+}

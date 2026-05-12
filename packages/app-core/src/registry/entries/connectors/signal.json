@@ -1,0 +1,81 @@
+{
+  "id": "signal",
+  "name": "Signal",
+  "description": "Signal messaging integration plugin for ElizaOS agents",
+  "npmName": "@elizaos/plugin-signal",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "signal",
+    "messaging",
+    "secure",
+    "encrypted",
+    "connector",
+    "social",
+    "social-chat"
+  ],
+  "config": {
+    "SIGNAL_CLI_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Cli Path",
+      "help": "Path to signal-cli executable (alternative to HTTP API). Leave blank to resolve signal-cli from PATH and auto-install with Homebrew on macOS/Linux when available; on Windows or without Homebrew, install signal-cli manually and set this path.",
+      "advanced": false
+    },
+    "SIGNAL_CLI_AUTO_INSTALL": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Auto Install Cli",
+      "help": "Set false to disable Homebrew auto-install for the default signal-cli binary on macOS/Linux.",
+      "advanced": true
+    },
+    "SIGNAL_HTTP_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Http Url",
+      "help": "Signal CLI REST API URL (e.g., http://localhost:8080)",
+      "advanced": false
+    },
+    "SIGNAL_ACCOUNT_NUMBER": {
+      "type": "number",
+      "required": true,
+      "sensitive": false,
+      "label": "Account Number",
+      "help": "Signal account phone number in E.164 format (e.g., +1234567890)",
+      "advanced": false,
+      "min": 0
+    },
+    "SIGNAL_SHOULD_IGNORE_GROUP_MESSAGES": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Should Ignore Group Messages",
+      "help": "If true, the bot will only respond to direct messages",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Lock",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-signal#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-signal",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#signal"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

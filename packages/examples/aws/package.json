@@ -1,0 +1,37 @@
+{
+  "name": "@elizaos/aws-examples",
+  "version": "2.0.0-beta.0",
+  "description": "elizaOS AWS Lambda worker (TypeScript) and test client",
+  "type": "module",
+  "main": "dist/handler.js",
+  "scripts": {
+    "build": "bun build handler.ts --outdir=dist --target=node --format=esm --outfile=dist/handler.js --packages=external",
+    "build:watch": "bun run build --watch",
+    "clean": "rm -rf dist",
+    "test": "cd ../../.. && bunx tsx packages/examples/aws/test-local.ts",
+    "start": "bun run server-local.ts",
+    "test:client": "bun run test-client.ts",
+    "deploy": "sam build && sam deploy",
+    "deploy:guided": "sam build && sam deploy --guided",
+    "invoke:local": "sam local invoke ElizaWorkerFunction --event events/chat.json",
+    "local": "sam local start-api",
+    "logs": "sam logs --tail",
+    "delete": "sam delete",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

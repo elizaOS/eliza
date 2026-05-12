@@ -1,0 +1,83 @@
+{
+  "compilerOptions": {
+    "target": "es2023",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "types": [
+      "node"
+    ],
+    "paths": {
+      "@elizaos/core": [
+        "../core/src/index.node.ts"
+      ],
+      "@elizaos/agent": [
+        "../agent/src/index.ts"
+      ],
+      "@elizaos/shared": [
+        "../shared/src/index.ts"
+      ],
+      "@elizaos/ui": [
+        "../ui/dist/index.d.ts"
+      ],
+      "@elizaos/vault": [
+        "../vault/src/index.ts"
+      ],
+      "@elizaos/app-core": [
+        "../app-core/src/index.ts"
+      ],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/dist/node/index.d.ts"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-orchestrator": [
+        "../../plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
+      "@elizaos/plugin-local-embedding": [
+        "../../plugins/plugin-local-embedding/src/index.ts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-signal": [
+        "../../plugins/plugin-signal/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/dist/index.d.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/app-lifeops": [
+        "./src/shims/eliza-app-lifeops.ts"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.d.ts",
+    "../../plugins/app-companion/src/ambient-modules.d.ts"
+  ]
+}

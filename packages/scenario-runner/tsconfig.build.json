@@ -1,0 +1,80 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": true,
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "outDir": "dist",
+    "rootDir": "./src",
+    "paths": {
+      "@elizaos/core": ["../core/dist/index.node.d.ts"],
+      "@elizaos/core/testing": ["../core/dist/testing/index.d.ts"],
+      "@elizaos/core/*": ["../core/dist/*"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/agent/*": ["../agent/src/*"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../shared/dist/*"],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../ui/dist/*"],
+      "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/vault/*": ["../vault/src/*"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/dist/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/dist/node/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../plugins/plugin-elizacloud/dist/*"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-orchestrator": [
+        "../../plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
+      "@elizaos/plugin-local-embedding": [
+        "../../plugins/plugin-local-embedding/src/index.ts"
+      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-telegram/account-auth-service": [
+        "../../plugins/plugin-telegram/src/account-auth-service.ts"
+      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-signal/*": ["../../plugins/plugin-signal/src/*"],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/dist/index.d.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/app-core/components/pages/PageScopedChatPane": [
+        "../app-core/src/components/pages/PageScopedChatPane.tsx"
+      ],
+      "@elizaos/app-lifeops": ["./src/shims/eliza-app-lifeops.ts"],
+      "@elizaos/app-lifeops/lifeops/runtime": [
+        "./src/shims/elizaos-app-lifeops-runtime.ts"
+      ]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/__tests__/**/*",
+    "src/executor.test.ts",
+    "src/runtime-factory.ts",
+    "src/seeds.ts"
+  ]
+}

@@ -1,0 +1,206 @@
+{
+  "name": "@elizaos/ui",
+  "version": "2.0.0-beta.2",
+  "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/ui"
+  },
+  "keywords": [
+    "elizaos",
+    "ui",
+    "react",
+    "design-system"
+  ],
+  "main": "./dist/index.js",
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build:dist",
+    "build": "bun run build:dist",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage\" vitest run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src",
+    "build:dist": "bun run clean && tsc --noCheck -p tsconfig.build.json && node ../../scripts/flatten-tsc-package-output.mjs packages/ui && node ../../scripts/copy-package-assets.mjs packages/ui src/styles && node ../../scripts/prepare-package-dist.mjs packages/ui && node ../../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui",
+    "pack:dry-run": "cd dist && npm pack --dry-run"
+  },
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json",
+    "./styles": "./dist/styles.js",
+    "./styles/*.css": "./dist/styles/*.css",
+    "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
+    "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
+    "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
+    "./config/app-config": "./dist/config/app-config.js",
+    "./events": "./dist/events/index.js",
+    "./onboarding-config": "./dist/onboarding-config.js",
+    "./api": {
+      "import": "./dist/api/index.js",
+      "default": "./dist/api/index.js",
+      "types": "./dist/api/index.d.ts"
+    },
+    "./bridge": {
+      "import": "./dist/bridge/index.js",
+      "default": "./dist/bridge/index.js",
+      "types": "./dist/bridge/index.d.ts"
+    },
+    "./chat": {
+      "import": "./dist/chat/index.js",
+      "default": "./dist/chat/index.js",
+      "types": "./dist/chat/index.d.ts"
+    },
+    "./components": {
+      "import": "./dist/components/index.js",
+      "default": "./dist/components/index.js",
+      "types": "./dist/components/index.d.ts"
+    },
+    "./config": {
+      "import": "./dist/config/index.js",
+      "default": "./dist/config/index.js",
+      "types": "./dist/config/index.d.ts"
+    },
+    "./content-packs": {
+      "import": "./dist/content-packs/index.js",
+      "default": "./dist/content-packs/index.js",
+      "types": "./dist/content-packs/index.d.ts"
+    },
+    "./desktop-runtime": {
+      "import": "./dist/desktop-runtime/index.js",
+      "default": "./dist/desktop-runtime/index.js",
+      "types": "./dist/desktop-runtime/index.d.ts"
+    },
+    "./events": {
+      "import": "./dist/events/index.js",
+      "default": "./dist/events/index.js",
+      "types": "./dist/events/index.d.ts"
+    },
+    "./hooks": {
+      "import": "./dist/hooks/index.js",
+      "default": "./dist/hooks/index.js",
+      "types": "./dist/hooks/index.d.ts"
+    },
+    "./i18n": {
+      "import": "./dist/i18n/index.js",
+      "default": "./dist/i18n/index.js",
+      "types": "./dist/i18n/index.d.ts"
+    },
+    "./layouts": {
+      "import": "./dist/layouts/index.js",
+      "default": "./dist/layouts/index.js",
+      "types": "./dist/layouts/index.d.ts"
+    },
+    "./navigation": {
+      "import": "./dist/navigation/index.js",
+      "default": "./dist/navigation/index.js",
+      "types": "./dist/navigation/index.d.ts"
+    },
+    "./platform": {
+      "import": "./dist/platform/index.js",
+      "default": "./dist/platform/index.js",
+      "types": "./dist/platform/index.d.ts"
+    },
+    "./providers": {
+      "import": "./dist/providers/index.js",
+      "default": "./dist/providers/index.js",
+      "types": "./dist/providers/index.d.ts"
+    },
+    "./state": {
+      "import": "./dist/state/index.js",
+      "default": "./dist/state/index.js",
+      "types": "./dist/state/index.d.ts"
+    },
+    "./types": {
+      "import": "./dist/types/index.js",
+      "default": "./dist/types/index.js",
+      "types": "./dist/types/index.d.ts"
+    },
+    "./utils": {
+      "import": "./dist/utils/index.js",
+      "default": "./dist/utils/index.js",
+      "types": "./dist/utils/index.d.ts"
+    },
+    "./voice": {
+      "import": "./dist/voice/index.js",
+      "default": "./dist/voice/index.js",
+      "types": "./dist/voice/index.d.ts"
+    },
+    "./widgets": {
+      "import": "./dist/widgets/index.js",
+      "default": "./dist/widgets/index.js",
+      "types": "./dist/widgets/index.d.ts"
+    },
+    "./dist/styles/*.css": "./dist/styles/*.css",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "optionalDependencies": {
+    "@elizaos/capacitor-bun-runtime": "0.1.0"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-browser": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@radix-ui/react-checkbox": "^1.3.3",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-dropdown-menu": "^2.1.16",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-popover": "^1.1.15",
+    "@radix-ui/react-select": "^2.2.6",
+    "@radix-ui/react-separator": "^1.1.8",
+    "@radix-ui/react-slider": "^1.3.6",
+    "@radix-ui/react-slot": "^1.2.4",
+    "@radix-ui/react-switch": "^1.2.6",
+    "@radix-ui/react-tabs": "^1.1.13",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "@xyflow/react": "^12.10.2",
+    "chalk": "^5.3.0",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cron-parser": "^5.5.0",
+    "drizzle-orm": "0.45.2",
+    "lucide-react": "^1.0.0",
+    "tailwind-merge": "^3.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/core": "8.3.1",
+    "@capacitor/haptics": "8.0.2",
+    "@capacitor/keyboard": "8.0.3",
+    "@capacitor/preferences": "^8.0.1",
+    "@storybook/react": "^10.3.5",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.184.0",
+    "jsdom": "^29.0.0",
+    "storybook": "^10.3.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "types": "./dist/index.d.ts"
+}

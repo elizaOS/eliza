@@ -1,0 +1,188 @@
+---
+title: "Customize a Generated Project"
+description: "Update identity, branding, default app plugins, and platform config in a generated project"
+---
+
+This guide uses Eliza as a reference shape without requiring edits to the Eliza source. Apply the same pattern in your generated project.
+
+## Files to Review
+
+```bash
+apps/app/app.config.ts
+apps/app/src/main.tsx
+package.json
+```
+
+`apps/app/app.config.ts` should be the single source of truth for identity and platform metadata. `apps/app/src/main.tsx` boots the app, imports shared `@elizaos/app-core` pieces, and registers app plugin surfaces. The root `package.json` exposes the commands your team runs.
+
+## Identity
+
+Set the project identity in `apps/app/app.config.ts`:
+
+```typescript
+const config = {
+  appName: "Eliza",
+  appId: "ai.elizaos.eliza",
+  orgName: "eliza-ai",
+  repoName: "eliza",
+  cliName: "eliza",
+  description: "Cute agents for the acceleration",
+  envPrefix: "ELIZA",
+  namespace: "eliza",
+};
+```
+
+Use your own values:
+
+| Field | Purpose |
+| --- | --- |
+| `appName` | Human-readable product name shown in UI and native shells. |
+| `appId` | Reverse-DNS bundle identifier for native builds. Keep it stable after release. |
+| `orgName` | GitHub or product organization. |
+| `repoName` | Repository slug. |
+| `cliName` | Local command/name used by scripts and runtime tooling. |
+| `description` | Product description for package metadata and surfaces. |
+| `envPrefix` | Uppercase prefix for product-specific environment variables. |
+| `namespace` | Lowercase runtime/storage namespace. |
+
+## Bundle IDs and URL Schemes
+
+Native shells need stable identifiers:
+
+```typescript
+desktop: {
+  bundleId: "ai.elizaos.eliza",
+  urlScheme: "eliza",
+},
+```
+
+For iOS and Android, Capacitor reads `appId` and `appName` from `app.config.ts`. Choose the final bundle ID before shipping because app stores treat changes as a different app.
+
+## Branding
+
+Keep brand metadata together:
+
+```typescript
+branding: {
+  appName: "Eliza",
+  orgName: "eliza-ai",
+  repoName: "eliza",
+  docsUrl: "https://docs.eliza.ai",
+  appUrl: "https://app.eliza.ai",
+  bugReportUrl:
+    "https://github.com/eliza-ai/eliza/issues/new?template=bug_report.yml",
+  hashtag: "#ElizaAgent",
+  fileExtension: ".eliza-agent",
+  packageScope: "elizaai",
+},
+```
+
+Also update app assets under `apps/app/public/`, including icons, splash imagery, Open Graph images, favicons, and any provider logos the app shell expects.
+
+## Web Config
+
+The web block controls PWA and sharing metadata:
+
+```typescript
+web: {
+  shortName: "Eliza",
+  themeColor: "#08080a",
+  backgroundColor: "#0a0a0a",
+  shareImagePath: "/og-image.png",
+},
+```
+
+Use colors that match the product app. Make sure `shareImagePath` exists in the app's public assets.
+
+## Default App Plugins
+
+Set app plugins that should be available by default:
+
+```typescript
+defaultApps: [
+  "@elizaos/app-companion",
+  "@elizaos/app-screenshare",
+  "@elizaos/app-workflow-builder",
+],
+```
+
+In the eliza repo, app plugin packages live under `plugins/app-*` and keep `@elizaos/app-*` package names. In a generated project, `apps/app` is your project app.
+
+When adding an app plugin, update both configuration and registration:
+
+1. Add the package to `defaultApps` if it should be enabled by default.
+2. Import its registration or UI module from `apps/app/src/main.tsx`.
+3. Add the dependency or workspace package if it is not already present.
+4. Run `bun run typecheck` and `bun run test`.
+
+## Native, Desktop, and Web Config
+
+Generated apps can target several shells:
+
+| Target | Main config |
+| --- | --- |
+| Web | `apps/app/app.config.ts`, `apps/app/vite.config.ts`, public assets |
+| Desktop | `apps/app/app.config.ts`, `apps/app/electrobun/`, root desktop scripts |
+| iOS/Android | `apps/app/app.config.ts`, `apps/app/capacitor.config.ts` |
+| AOSP variants | `aosp` block in `app.config.ts` when your project owns a system image |
+
+Eliza's AOSP block shows the expected kind of product metadata:
+
+```typescript
+aosp: {
+  productLunch: "eliza_cf_x86_64_phone-trunk_staging-userdebug",
+  vendorDir: "eliza",
+  variantName: "ElizaOS",
+  productName: "eliza",
+  packageName: "ai.elizaos.eliza",
+  appName: "Eliza",
+  commonMk: "vendor/eliza/eliza_common.mk",
+  modelSourceLabel: "eliza-download",
+  bootanimationAssetDir: "os/android/vendor/eliza/bootanimation",
+},
+```
+
+Only include AOSP config if your project owns that platform target.
+
+## Root Package Scripts
+
+Keep root scripts product-oriented. Eliza exposes commands like:
+
+```json
+{
+  "bin": {
+    "eliza": "eliza.mjs",
+    "eliza.ai": "eliza.mjs"
+  },
+  "scripts": {
+    "dev": "node eliza/packages/app-core/scripts/rt.mjs eliza/packages/app-core/scripts/dev-ui.mjs --name=eliza",
+    "build": "node scripts/run-eliza-app-core-script.mjs run-production-build.mjs",
+    "build:desktop": "ELIZA_APP_NAME=Eliza ELIZA_APP_ID=ai.elizaos.eliza ELIZA_NAMESPACE=eliza node scripts/run-eliza-app-core-script.mjs desktop-build.mjs build --variant=base",
+    "test": "bun run verify:secrets && node eliza/packages/app-core/test/scripts/test-runner.mjs"
+  }
+}
+```
+
+Generated projects start smaller, but the principle is the same: use root scripts for app workflows and keep `elizaos` for template creation and upgrades.
+
+## Checklist
+
+- Update `appName`, `appId`, `orgName`, `repoName`, `cliName`, `envPrefix`, and `namespace`.
+- Update `desktop.bundleId` and `desktop.urlScheme`.
+- Update `branding` URLs, file extension, hashtag, and package scope.
+- Update `web` colors and share image.
+- Choose `defaultApps` and register matching app plugin modules in `main.tsx`.
+- Update native assets and platform config for desktop, iOS, Android, or AOSP targets.
+- Update root package metadata, `bin`, and scripts.
+- Run `bun run typecheck`, `bun run test`, and platform-specific build checks.
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Project Overview" icon="diagram-project" href="/projects/overview">
+    Understand generated project structure.
+  </Card>
+  <Card title="Package Boundaries" icon="boxes-stacked" href="/runtime/package-boundaries">
+    Know when to use `@elizaos/agent` and `@elizaos/app-core`.
+  </Card>
+</CardGroup>

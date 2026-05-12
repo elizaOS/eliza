@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-visualwebbench"
+version = "0.1.0"
+description = "VisualWebBench benchmark scaffold for ElizaOS"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [
+    { name = "ElizaOS Team" }
+]
+keywords = ["benchmark", "visualwebbench", "web", "vision", "elizaos"]
+dependencies = [
+    "eliza-adapter",
+]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.8",
+    "ruff>=0.5",
+]
+hf = [
+    "datasets>=2.0",
+]
+all = [
+    "elizaos-visualwebbench[dev,hf]",
+]
+
+[project.scripts]
+visualwebbench = "benchmarks.visualwebbench.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["benchmarks/visualwebbench"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]

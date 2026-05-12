@@ -1,0 +1,15 @@
+{
+  "name": "@elizaos/native-plugin-shared-types",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "description": "Shared type contracts for elizaOS native plugin bridges.",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "license": "MIT",
+  "private": true
+}

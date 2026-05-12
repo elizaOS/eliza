@@ -1,0 +1,34 @@
+{
+  "id": "vitamins-with-meals",
+  "title": "Vitamins tied to a meal window",
+  "domain": "habits",
+  "rooms": [
+    {
+      "id": "main",
+      "source": "discord",
+      "title": "LifeOps Vitamins With Meals"
+    }
+  ],
+  "turns": [
+    {
+      "name": "vitamins meal preview",
+      "text": "Please remind me to take vitamins with lunch every day.",
+      "responseIncludesAny": ["vitamins", "lunch", "afternoon"]
+    },
+    {
+      "name": "vitamins meal confirm",
+      "text": "Yes, save that vitamin routine.",
+      "responseIncludesAny": ["saved", "vitamin"]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Take vitamins",
+      "delta": 1,
+      "cadenceKind": "daily",
+      "requiredWindows": ["afternoon"],
+      "requireReminderPlan": true
+    }
+  ]
+}

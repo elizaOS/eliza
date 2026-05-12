@@ -1,0 +1,205 @@
+---
+title: Chat Completions
+description: OpenAI-compatible chat completions API with streaming support for elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Chat Completions
+
+<div className="status-badge status-stable">Stable</div>
+
+OpenAI-compatible chat completions endpoint for conversational AI.
+
+## Create Chat Completion
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/chat/completions</span>
+</div>
+
+Generate a chat completion response from the model.
+
+### Request
+
+<Tabs items={['cURL', 'JavaScript', 'Python']}>
+  <Tabs.Tab>
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gpt-4o",
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Hello!"}
+    ],
+    "temperature": 0.7
+  }'
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```javascript
+const response = await fetch('https://elizacloud.ai/api/v1/chat/completions', {
+  method: 'POST',
+  headers: {
+    'Authorization': 'Bearer YOUR_API_KEY',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    model: 'gpt-4o',
+    messages: [
+      { role: 'system', content: 'You are a helpful assistant.' },
+      { role: 'user', content: 'Hello!' }
+    ],
+    temperature: 0.7,
+  }),
+});
+
+const data = await response.json();
+console.log(data.choices[0].message.content);
+
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```python
+import requests
+
+response = requests.post(
+    'https://elizacloud.ai/api/v1/chat/completions',
+    headers={
+        'Authorization': 'Bearer YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'model': 'gpt-4o',
+        'messages': [
+            {'role': 'system', 'content': 'You are a helpful assistant.'},
+            {'role': 'user', 'content': 'Hello!'}
+        ],
+        'temperature': 0.7,
+    }
+)
+
+data = response.json()
+print(data['choices'][0]['message']['content'])
+```
+
+  </Tabs.Tab>
+</Tabs>
+
+### Parameters
+
+| Parameter           | Type         | Required | Description                            |
+| ------------------- | ------------ | -------- | -------------------------------------- |
+| `model`             | string       | ✓        | Model ID or agent ID                   |
+| `messages`          | array        | ✓        | Array of message objects               |
+| `temperature`       | number       |          | Sampling temperature (0-2). Default: 1 |
+| `max_tokens`        | integer      |          | Maximum tokens to generate             |
+| `stream`            | boolean      |          | Stream response chunks. Default: false |
+| `top_p`             | number       |          | Nucleus sampling parameter (0-1)       |
+| `frequency_penalty` | number       |          | Frequency penalty (-2 to 2)            |
+| `presence_penalty`  | number       |          | Presence penalty (-2 to 2)             |
+| `stop`              | string/array |          | Stop sequences                         |
+| `user`              | string       |          | Unique user identifier                 |
+
+### Message Object
+
+| Field     | Type   | Required | Description                              |
+| --------- | ------ | -------- | ---------------------------------------- |
+| `role`    | string | ✓        | `system`, `user`, `assistant`, or `tool` |
+| `content` | string | ✓        | Message content                          |
+| `name`    | string |          | Optional name for the participant        |
+
+### Response
+
+```json
+{
+  "id": "chatcmpl-abc123",
+  "object": "chat.completion",
+  "created": 1705312800,
+  "model": "gpt-4o",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Hello! How can I help you today?"
+      },
+      "finish_reason": "stop"
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 20,
+    "completion_tokens": 10,
+    "total_tokens": 30
+  }
+}
+```
+
+---
+
+## Streaming
+
+Enable streaming for real-time responses by setting `stream: true`.
+
+### Streaming Request
+
+```javascript
+const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "gpt-4o",
+    messages: [{ role: "user", content: "Tell me a story" }],
+    stream: true,
+  }),
+});
+
+const reader = response.body.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { done, value } = await reader.read();
+  if (done) break;
+
+  const chunk = decoder.decode(value);
+  const lines = chunk.split("\n").filter((line) => line.startsWith("data: "));
+
+  for (const line of lines) {
+    const data = line.slice(6);
+    if (data === "[DONE]") continue;
+    const parsed = JSON.parse(data);
+    process.stdout.write(parsed.choices[0]?.delta?.content || "");
+  }
+}
+```
+
+---
+
+## Using with Agents
+
+You can use an agent ID as the model to chat with your custom AI agents:
+
+```json
+{
+  "model": "agent_abc123",
+  "messages": [{ "role": "user", "content": "Hello!" }]
+}
+```
+
+<Callout type="info">
+  The agent's personality, system prompt, and configured model will be used
+  automatically.
+</Callout>
+
+---
+
+## Available Models
+
+Model availability changes as provider catalogs and account configuration
+change. See the [Models API](/docs/api/models) or API Explorer for the current
+catalog and defaults.

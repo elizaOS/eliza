@@ -1,0 +1,37 @@
+# Eliza-1 9B (Q4_K_M GGUF) — workstation-tier fine-tune.
+#
+# Build:
+#   ollama create eliza-1-9b -f Modelfile.eliza-1-9b-q4_k_m
+#
+# Pulls from the published HF sibling. push_model_to_hf.py uploads each
+# K-quant level to its own repo (`-gguf-q4_k_m`, `-gguf-q5_k_m`,
+# `-gguf-q6_k`).
+#
+# Sized for 24 GB workstation cards (RTX 4090 / 5080 16-24 GB):
+#   - weights:  ~5.5 GB on disk
+#   - 32k KV:   ~0.7 GB
+#   - resident: ~8 GB at --parallel 2; ~10 GB at --parallel 4
+#
+# Q4_K_M also runs (slowly) on 16 GB consumer GPUs with --parallel 1 and
+# 16k context.
+#
+# Availability: requires `scripts/publish_all_eliza1.sh --filter-size 9b
+# --filter-quant gguf-q4_k_m` to have completed against a trained eliza-1
+# checkpoint. The HF repo does not exist before that runs.
+FROM hf.co/elizaos/eliza-1-9b-gguf-q4_k_m
+
+SYSTEM """You are Eliza, an autonomous AI agent powered by elizaOS. You are helpful, concise, and grounded in the user's task. Use tools when they make the task tractable; otherwise answer directly."""
+
+PARAMETER stop "<|im_start|>"
+PARAMETER stop "<|im_end|>"
+PARAMETER stop "<|endoftext|>"
+
+# 9B handles longer context comfortably on workstation cards; default to
+# 64k. Bump to 128k when the host has 32+ GB.
+PARAMETER num_ctx 65536
+
+PARAMETER num_predict 8192
+
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER repeat_penalty 1.05

@@ -1,0 +1,560 @@
+name: elizaos-app
+version: "2.0.0-beta.0"
+summary: Personal AI assistant built on elizaOS
+description: |
+  elizaOS App is a personal AI assistant you run on your own devices, built on
+  elizaOS. It provides zero-config onboarding, multi-provider AI support,
+  a web dashboard, and a plugin system for extensibility.
+
+  Features:
+  - Interactive setup on first run — pick a name, personality, and AI provider
+  - Support for Anthropic (Claude), OpenAI, Google Gemini, Ollama, and more
+  - Web dashboard at http://localhost:2138
+  - Gateway API at http://localhost:18789
+  - Plugin system for extensibility
+  - Web3 wallet integration (EVM + Solana)
+  - Desktop apps for macOS, Windows, and Linux
+
+  Quick start: sudo snap install elizaos-app && elizaos-app setup
+
+grade: devel
+confinement: strict
+base: core22
+license: MIT
+website: https://app.elizaos.ai
+source-code: https://github.com/elizaOS/eliza
+issues: https://github.com/elizaOS/eliza/issues
+
+architectures:
+  - build-on: [amd64]
+    build-for: [amd64]
+  - build-on: [arm64]
+    build-for: [arm64]
+
+layout:
+  /usr/lib/x86_64-linux-gnu/libatomic.so.1:
+    symlink: $SNAP/usr/lib/x86_64-linux-gnu/libatomic.so.1
+
+apps:
+  elizaos-app:
+    command: bin/elizaos-app-wrapper
+    plugs:
+      - network
+      - network-bind
+      - home
+      - desktop
+      - browser-support
+      - password-manager-service
+    environment:
+      PATH: $SNAP/node/bin:$SNAP/usr/bin:$SNAP/bin:$PATH
+      NODE_PATH: $SNAP/lib/elizaos-app/node_modules
+      HOME: $SNAP_USER_DATA
+      ELIZAOS_APP_DATA_DIR: $SNAP_USER_COMMON/.elizaos-app
+      # Ensure Node.js can resolve DNS and make HTTPS requests
+      NODE_EXTRA_CA_CERTS: /etc/ssl/certs/ca-certificates.crt
+      # Snap-specific: tell elizaOS App where config lives
+      XDG_CONFIG_HOME: $SNAP_USER_COMMON
+      XDG_DATA_HOME: $SNAP_USER_COMMON
+
+parts:
+  node:
+    plugin: nil
+    override-build: |
+      set -eu
+      NODE_VERSION="22.12.0"
+      ARCH=$(dpkg --print-architecture)
+      case "$ARCH" in
+        amd64) NODE_ARCH="x64" ;;
+        arm64) NODE_ARCH="arm64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+      esac
+
+      curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-${NODE_ARCH}.tar.xz" \
+        | tar xJ --strip-components=1 -C "$CRAFT_PART_INSTALL"
+
+      export PATH="$CRAFT_PART_INSTALL/bin:$PATH"
+
+      "$CRAFT_PART_INSTALL/bin/node" --version
+      "$CRAFT_PART_INSTALL/bin/npm" --version
+    organize:
+      "*": node/
+
+  bun:
+    plugin: nil
+    override-build: |
+      set -eu
+      ARCH=$(dpkg --print-architecture)
+      case "$ARCH" in
+        amd64) BUN_ARCH="x64" ;;
+        arm64) BUN_ARCH="aarch64" ;;
+        *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+      esac
+
+      curl -fsSL "https://github.com/oven-sh/bun/releases/latest/download/bun-linux-${BUN_ARCH}.zip" -o /tmp/bun.zip
+      unzip -o /tmp/bun.zip -d /tmp/bun-extract
+      mkdir -p "$CRAFT_PART_INSTALL/bun/bin"
+      cp /tmp/bun-extract/bun-linux-${BUN_ARCH}/bun "$CRAFT_PART_INSTALL/bun/bin/bun"
+      chmod +x "$CRAFT_PART_INSTALL/bun/bin/bun"
+      ln -sf bun "$CRAFT_PART_INSTALL/bun/bin/bunx"
+      "$CRAFT_PART_INSTALL/bun/bin/bun" --version
+    build-packages:
+      - unzip
+      - curl
+
+  elizaos-app:
+    after: [node, bun]
+    plugin: nil
+    source: .
+    override-build: |
+      set -eu
+      export PATH="$CRAFT_STAGE/bun/bin:$CRAFT_STAGE/node/bin:$PATH"
+      APP_CORE_DIR="packages/app-core"
+      PACKAGES_DIR="packages"
+      APP_CORE_SCRIPTS_DIR="$APP_CORE_DIR/scripts"
+
+      # Skip building local upstreams and native Capacitor plugins in the snap build.
+      export ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1
+      export SKIP_NATIVE_PLUGINS=1
+
+      # Remove plugin source directories outside the snap runtime closure so
+      # tsc/build does not attempt to compile unrelated app/plugin workspaces.
+      # Keep the local beta runtime workspaces so the snap ships the same code
+      # as the npm tarballs instead of resolving stale registry prereleases.
+      node -e '
+        const fs = require("fs");
+        const path = require("path");
+        if (!fs.existsSync("plugins")) process.exit(0);
+        const keep = new Set([
+          "app-elizamaker",
+          "app-lifeops",
+          "app-task-coordinator",
+          "app-training",
+          "app-wallet",
+          "plugin-agent-skills",
+          "plugin-anthropic",
+          "plugin-browser",
+          "plugin-elizacloud",
+          "plugin-imessage",
+          "plugin-local-embedding",
+          "plugin-ollama",
+          "plugin-pdf",
+          "plugin-signal",
+          "plugin-sql",
+          "plugin-streaming",
+          "plugin-telegram",
+          "plugin-video",
+          "plugin-wallet",
+          "plugin-wechat",
+          "plugin-whatsapp",
+        ]);
+        for (const dir of fs.readdirSync("plugins").filter(d =>
+          fs.statSync(path.join("plugins", d)).isDirectory()
+        )) {
+          if (keep.has(dir)) continue;
+          fs.rmSync(path.join("plugins", dir), { recursive: true, force: true });
+        }
+      '
+
+      # Also drop any remaining `workspace:*` entries that point at
+      # plugin workspaces we just removed. This has to scan every
+      # surviving package.json, not just the root + packages/agent,
+      # because package-level devDependencies such as app-core's
+      # plugin-agent-skills workspace refs also participate
+      # in Bun's workspace resolution.
+      node -e '
+        const fs = require("fs");
+        const path = require("path");
+        const repoRoot = process.cwd();
+        const packageJsonPaths = [path.join(repoRoot, "package.json")];
+        const rootPkg = JSON.parse(
+          fs.readFileSync(path.join(repoRoot, "package.json"), "utf8")
+        );
+        const availableWorkspaceNames = new Set();
+        const dependencySections = [
+          "dependencies",
+          "devDependencies",
+          "peerDependencies",
+          "optionalDependencies",
+        ];
+
+        function walk(dir) {
+          if (!fs.existsSync(dir)) return;
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name === "node_modules" || entry.name.startsWith(".git")) {
+              continue;
+            }
+            const entryPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              walk(entryPath);
+              continue;
+            }
+            if (entry.isFile() && entry.name === "package.json") {
+              packageJsonPaths.push(entryPath);
+            }
+          }
+        }
+
+        const workspaceRoots = new Set();
+        for (const entry of Array.isArray(rootPkg.workspaces) ? rootPkg.workspaces : []) {
+          let scanRoot = path.join(repoRoot, String(entry).split("*")[0]);
+          while (scanRoot !== repoRoot && !fs.existsSync(scanRoot)) {
+            scanRoot = path.dirname(scanRoot);
+          }
+          if (fs.existsSync(scanRoot)) {
+            workspaceRoots.add(scanRoot);
+          }
+        }
+
+        for (const dir of workspaceRoots) {
+          walk(dir);
+        }
+
+        for (const pkgPath of packageJsonPaths) {
+          try {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+            if (typeof pkg.name === "string" && pkg.name.length > 0) {
+              availableWorkspaceNames.add(pkg.name);
+            }
+          } catch {}
+        }
+
+        function stripWorkspaceDeps(pkgPath) {
+          if (!fs.existsSync(pkgPath)) return;
+          const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+          let mutated = false;
+          for (const section of dependencySections) {
+            if (!pkg[section]) continue;
+            for (const [k, v] of Object.entries(pkg[section])) {
+              if (
+                typeof v === "string" &&
+                v.startsWith("workspace:") &&
+                !availableWorkspaceNames.has(k)
+              ) {
+                delete pkg[section][k];
+                mutated = true;
+              }
+            }
+          }
+          if (pkg.overrides && typeof pkg.overrides === "object") {
+            for (const [k, v] of Object.entries(pkg.overrides)) {
+              if (
+                typeof v === "string" &&
+                v.startsWith("workspace:") &&
+                !availableWorkspaceNames.has(k)
+              ) {
+                delete pkg.overrides[k];
+                mutated = true;
+              }
+            }
+            if (Object.keys(pkg.overrides).length === 0) {
+              delete pkg.overrides;
+            }
+          }
+          if (Array.isArray(pkg.workspaces)) {
+            const next = pkg.workspaces.filter((entry) => {
+              if (typeof entry !== "string") return false;
+              const prefix = entry.split("*")[0];
+              return prefix.length === 0 || fs.existsSync(path.join(repoRoot, prefix));
+            });
+            if (next.length !== pkg.workspaces.length) {
+              pkg.workspaces = next;
+              mutated = true;
+            }
+          }
+          if (Array.isArray(pkg.bundleDependencies)) {
+            pkg.bundleDependencies = pkg.bundleDependencies.filter(
+              d => availableWorkspaceNames.has(d)
+            );
+            mutated = true;
+          }
+          if (mutated) {
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+          }
+        }
+        for (const pkgPath of packageJsonPaths) {
+          stripWorkspaceDeps(pkgPath);
+        }
+      '
+
+      # The cloud-agent template is a release helper workspace, not a
+      # snap runtime dependency. Keeping it in the workspace graph
+      # pulls the published @elizaos/plugin-sql package, whose current
+      # older prerelease manifest self-pins an unavailable build.
+      node -e '
+        const fs = require("fs");
+        const pkgPath = "package.json";
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+        if (Array.isArray(pkg.workspaces)) {
+          const next = pkg.workspaces.filter(
+            (entry) => entry !== "packages/app-core/deploy/cloud-agent-template"
+          );
+          if (next.length !== pkg.workspaces.length) {
+            pkg.workspaces = next;
+            fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
+          }
+        }
+      '
+
+      # The committed lockfile still references repo-local workspace
+      # paths that no longer exist after the destructive rewrite
+      # above. Force Bun to resolve against the patched manifests.
+      rm -f bun.lock
+
+      # Install dependencies — skip postinstall to avoid ensure-bundled-workspaces
+      # trying to build the (now-removed) plugin-agent-orchestrator from source.
+      bun install --ignore-scripts
+
+      # app-core still carries compatibility re-exports for wallet route
+      # helpers that live in plugin-wallet. The snap workspace rewrite keeps
+      # plugin-wallet on disk, but Bun may not link workspace packages unless
+      # a surviving manifest declares them. Link the local workspace explicitly
+      # so app-core's declaration build can resolve those compatibility imports.
+      mkdir -p node_modules/@elizaos "$APP_CORE_DIR/node_modules/@elizaos"
+      rm -rf node_modules/@elizaos/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
+      ln -s ../../plugins/plugin-wallet node_modules/@elizaos/plugin-wallet
+      ln -s ../../../../plugins/plugin-wallet "$APP_CORE_DIR/node_modules/@elizaos/plugin-wallet"
+
+      # `bun install --ignore-scripts` skips the npm bun package postinstall,
+      # leaving node_modules/bun/bin/bun as a non-executable JS shim. Turbo
+      # package builds can then fail with "Exec format error" when they spawn
+      # that package binary instead of the staged Bun runtime.
+      install_js=""
+      if [ -f node_modules/bun/install.js ]; then
+        install_js="node_modules/bun/install.js"
+      elif [ -d node_modules/.bun ]; then
+        install_js="$(find node_modules/.bun -maxdepth 4 -path '*/bun@*/node_modules/bun/install.js' -print -quit 2>/dev/null)"
+      fi
+      if [ -n "$install_js" ] && [ -f "$install_js" ]; then
+        echo "Running bun postinstall: $install_js"
+        (cd "$(dirname "$install_js")" && node install.js)
+      else
+        echo "No bun/install.js found; continuing with staged Bun runtime"
+      fi
+
+      # Rehydrate published-only workspace deps that Vite and app-core imports
+      # still need after the destructive workspace rewrite above.
+      if [ -f scripts/install-published-workspace-fallback-deps.sh ]; then
+        bash scripts/install-published-workspace-fallback-deps.sh
+      fi
+
+      # Inject tailwindcss into packages/app-core/node_modules so the
+      # Vite CSS pipeline can resolve @import "tailwindcss" from the app-core
+      # source tree during the snap production build.
+      mkdir -p "$APP_CORE_DIR/node_modules"
+      if [ ! -d "$APP_CORE_DIR/node_modules/tailwindcss" ]; then
+        TAILWIND_URL=$(npm view tailwindcss dist.tarball 2>/dev/null || true)
+        if [ -z "$TAILWIND_URL" ]; then
+          echo "Failed to resolve tailwindcss tarball URL" >&2
+          exit 1
+        fi
+        rm -rf /tmp/tw_extract
+        mkdir -p /tmp/tw_extract
+        curl -fsSL "$TAILWIND_URL" | tar xz -C /tmp/tw_extract
+        rm -rf "$APP_CORE_DIR/node_modules/tailwindcss"
+        mv /tmp/tw_extract/package "$APP_CORE_DIR/node_modules/tailwindcss"
+      fi
+
+      # Fresh snap builds also need generated i18n keyword data; the
+      # production build imports the generated TypeScript module directly.
+      node "$APP_CORE_SCRIPTS_DIR/ensure-shared-i18n-data.mjs"
+
+      # patch-deps removes @types packages from node_modules and Bun's cache.
+      # Preserve the packages needed by declaration builds outside node_modules
+      # before patch-deps runs.
+      SNAP_BUILD_TYPES_DIR=".snap-build-types"
+      SNAP_BUILD_TYPE_PACKAGES="
+        node bun fs-extra fast-redact markdown-it jsonfile linkify-it mdurl
+        react react-dom jsdom pg qrcode three ws
+        stats.js tough-cookie webxr
+      "
+      rm -rf "$SNAP_BUILD_TYPES_DIR"
+      mkdir -p "$SNAP_BUILD_TYPES_DIR/@types"
+      for type_pkg in $(printf '%s\n' "$SNAP_BUILD_TYPE_PACKAGES"); do
+        type_target=""
+        if [ -d "node_modules/@types/$type_pkg" ]; then
+          type_target="node_modules/@types/$type_pkg"
+        elif [ -d "node_modules/.bun/node_modules/@types/$type_pkg" ]; then
+          type_target="node_modules/.bun/node_modules/@types/$type_pkg"
+        elif [ -d node_modules/.bun ]; then
+          type_target="$(find node_modules/.bun -maxdepth 5 -path "*/@types+$type_pkg@*/node_modules/@types/$type_pkg" -type d -print -quit 2>/dev/null)"
+        fi
+        if [ -z "$type_target" ] || [ ! -d "$type_target" ]; then
+          echo "Failed to locate @types/$type_pkg before patch-deps" >&2
+          exit 1
+        fi
+        cp -aL "$type_target" "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg"
+      done
+
+      # Run only the safe postinstall steps (patch deps, link browser server)
+      node "$APP_CORE_SCRIPTS_DIR/patch-deps.mjs" || true
+      node "$APP_CORE_SCRIPTS_DIR/link-browser-server.mjs" || true
+
+      # patch-deps intentionally removes @types from the runtime install so Bun
+      # never tries to execute .d.ts files. Rehydrate just the type packages tsc
+      # needs for the build, then remove them again before copying node_modules
+      # into the snap runtime payload.
+      mkdir -p node_modules/@types
+      for type_pkg in $(printf '%s\n' "$SNAP_BUILD_TYPE_PACKAGES"); do
+        type_target="$SNAP_BUILD_TYPES_DIR/@types/$type_pkg"
+        if [ ! -d "$type_target" ]; then
+          echo "Failed to restore @types/$type_pkg after patch-deps" >&2
+          exit 1
+        fi
+        rm -rf "node_modules/@types/$type_pkg"
+        cp -aL "$type_target" "node_modules/@types/$type_pkg"
+      done
+      mkdir -p "$APP_CORE_DIR/node_modules/@types"
+      for type_pkg in react react-dom three ws; do
+        rm -rf "$APP_CORE_DIR/node_modules/@types/$type_pkg"
+        cp -aL "$SNAP_BUILD_TYPES_DIR/@types/$type_pkg" "$APP_CORE_DIR/node_modules/@types/$type_pkg"
+      done
+
+      # The snap rewrite removes non-runtime plugin/native workspaces from disk. Turbo
+      # validates explicit package-task dependencies before filtering, so drop
+      # dependency edges that point at packages no longer present in the
+      # rewritten workspace graph.
+      node -e '
+        const fs = require("fs");
+        const path = require("path");
+        const repoRoot = process.cwd();
+        const availableWorkspaceNames = new Set();
+
+        function walk(dir) {
+          if (!fs.existsSync(dir)) return;
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (entry.name === "node_modules" || entry.name.startsWith(".git")) {
+              continue;
+            }
+            const entryPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              walk(entryPath);
+              continue;
+            }
+            if (entry.isFile() && entry.name === "package.json") {
+              try {
+                const pkg = JSON.parse(fs.readFileSync(entryPath, "utf8"));
+                if (typeof pkg.name === "string" && pkg.name.length > 0) {
+                  availableWorkspaceNames.add(pkg.name);
+                }
+              } catch {}
+            }
+          }
+        }
+
+        walk(repoRoot);
+
+        const turboPath = path.join(repoRoot, "turbo.json");
+        const turbo = JSON.parse(fs.readFileSync(turboPath, "utf8"));
+        let mutated = false;
+        for (const task of Object.values(turbo.tasks ?? {})) {
+          if (!Array.isArray(task.dependsOn)) continue;
+          const next = task.dependsOn.filter((dependency) => {
+            if (typeof dependency !== "string" || dependency.startsWith("^")) {
+              return true;
+            }
+            const hashIndex = dependency.indexOf("#");
+            if (hashIndex <= 0) return true;
+            return availableWorkspaceNames.has(dependency.slice(0, hashIndex));
+          });
+          if (next.length !== task.dependsOn.length) {
+            task.dependsOn = next;
+            mutated = true;
+          }
+        }
+        if (mutated) {
+          fs.writeFileSync(turboPath, JSON.stringify(turbo, null, 2) + "\n");
+        }
+      '
+
+      # Build only the runtime workspace closure needed by the snap. The root
+      # `bun run build` also builds examples and release helpers, which are not
+      # part of the snap payload and depend on workspaces intentionally removed
+      # above.
+      bunx turbo run build \
+        --filter=@elizaos/core \
+        --filter=@elizaos/shared \
+        --filter=@elizaos/ui \
+        --filter=@elizaos/vault \
+        --filter=@elizaos/cloud-routing \
+        --filter=@elizaos/skills \
+        --filter=@elizaos/app-core \
+        --filter=@elizaos/agent \
+        --filter=@elizaos/app-elizamaker \
+        --filter=@elizaos/app-lifeops \
+        --filter=@elizaos/app-task-coordinator \
+        --filter=@elizaos/app-training \
+        --filter=@elizaos/app-wallet \
+        --filter=@elizaos/plugin-agent-skills \
+        --filter=@elizaos/plugin-browser \
+        --filter=@elizaos/plugin-imessage \
+        --filter=@elizaos/plugin-local-embedding \
+        --filter=@elizaos/plugin-ollama \
+        --filter=@elizaos/plugin-pdf \
+        --filter=@elizaos/plugin-signal \
+        --filter=@elizaos/plugin-sql \
+        --filter=@elizaos/plugin-streaming \
+        --filter=@elizaos/plugin-telegram \
+        --filter=@elizaos/plugin-video \
+        --filter=@elizaos/plugin-wallet \
+        --filter=@elizaos/plugin-wechat \
+        --filter=@elizaos/plugin-whatsapp \
+        --filter=@elizaos/capacitor-contacts \
+        --filter=@elizaos/capacitor-phone \
+        --filter=@elizaos/capacitor-wifi \
+        --filter=@elizaos/capacitor-appblocker \
+        --filter=@elizaos/capacitor-mobile-signals \
+        --filter=@elizaos/native-activity-tracker \
+        --filter=@elizaos/scenario-schema
+      rm -rf node_modules/@types
+      rm -rf "$SNAP_BUILD_TYPES_DIR"
+
+      # Install into snap
+      mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app"
+      mkdir -p "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent"
+
+      # Copy built artifacts
+      cp -r dist/ "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      cp elizaos-app.mjs "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+      cp -r packages/agent/dist "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/"
+      cp packages/agent/package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/packages/agent/"
+      cp package.json "$CRAFT_PART_INSTALL/lib/elizaos-app/"
+      cp plugins.json "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+
+      # Copy node_modules for runtime
+      cp -r node_modules "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+
+      # Copy additional runtime files
+      for dir in src scripts skills patches; do
+        if [ -d "$dir" ]; then
+          cp -r "$dir" "$CRAFT_PART_INSTALL/lib/elizaos-app/" 2>/dev/null || true
+        fi
+      done
+
+      # Create wrapper script
+      mkdir -p "$CRAFT_PART_INSTALL/bin"
+      cat > "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper" << 'WRAPPER'
+      #!/bin/sh
+      set -e
+
+      # Ensure elizaOS App data directory exists
+      ELIZAOS_APP_HOME="${ELIZAOS_APP_DATA_DIR:-$SNAP_USER_COMMON/.elizaos-app}"
+      mkdir -p "$ELIZAOS_APP_HOME"
+
+      if [ -f "$SNAP/lib/elizaos-app/elizaos-app.mjs" ]; then
+        exec "$SNAP/node/bin/node" "$SNAP/lib/elizaos-app/elizaos-app.mjs" "$@"
+      fi
+
+      exec "$SNAP/node/bin/node" \
+        --import "$SNAP/lib/elizaos-app/node_modules/tsx/dist/loader.mjs" \
+        "$SNAP/lib/elizaos-app/packages/agent/dist/packages/agent/src/bin.js" \
+        "$@"
+      WRAPPER
+      chmod +x "$CRAFT_PART_INSTALL/bin/elizaos-app-wrapper"
+
+    build-packages:
+      - curl
+      - git
+      - build-essential
+    stage-packages:
+      - libatomic1
+      - ca-certificates

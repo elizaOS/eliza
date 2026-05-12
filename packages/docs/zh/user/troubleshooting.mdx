@@ -1,0 +1,188 @@
+---
+title: "故障排除"
+sidebarTitle: "故障排除"
+description: "修复 Eliza 在启动、提供商、语音、连接器和远程访问方面的常见问题。"
+---
+
+大多数故障来自以下几个方面：
+
+1. 应用启动
+2. 提供商设置
+3. 语音设置
+4. 连接器凭据
+5. 远程 URL 或令牌配置
+
+<div id="eliza-will-not-open">
+
+## Eliza 无法打开
+
+</div>
+
+<div id="macos">
+
+### macOS
+
+</div>
+
+如果 Gatekeeper 或公证警告看起来可疑，请从官方 [GitHub releases](https://github.com/eliza-ai/eliza/releases/latest) 页面重新下载。
+
+<div id="windows">
+
+### Windows
+
+</div>
+
+如果出现 SmartScreen 提示，使用"更多信息"并确认你下载的是官方安装程序。
+
+<div id="linux">
+
+### Linux
+
+</div>
+
+如果 AppImage 无法启动：
+
+```bash
+chmod +x Eliza.AppImage
+```
+
+<div id="the-first-message-hangs">
+
+## 第一条消息挂起
+
+</div>
+
+检查：
+
+- API 密钥
+- Ollama 是否正在运行
+- 选择的模型是否存在
+- 远程后端是否拥有提供商路由权
+
+<div id="voice-is-silent">
+
+## 语音无声
+
+</div>
+
+先测试语音预览。
+
+- 如果预览失败，修复语音提供商或音频输出
+- 如果预览正常但回复仍然无声，修复语音合成提供商
+- 如果对话模式失败，检查麦克风权限
+
+<div id="a-connector-does-not-reply">
+
+## 连接器没有回复
+
+</div>
+
+<div id="discord">
+
+### Discord
+
+</div>
+
+- 令牌错误
+- Message Content Intent 未启用
+- 缺少频道权限
+
+<div id="telegram">
+
+### Telegram
+
+</div>
+
+- 令牌错误
+- 连接器离线
+- 隐私模式阻止了群组行为
+
+<div id="slack">
+
+### Slack
+
+</div>
+
+- Socket Mode 缺少 `appToken`
+- HTTP 模式的 `signingSecret` 错误
+
+<div id="whatsapp">
+
+### WhatsApp
+
+</div>
+
+- 未扫描二维码或会话已过期
+- `authDir` 未设置或不可写
+
+<div id="signal">
+
+### Signal
+
+</div>
+
+- `signal-cli` 未运行或在 `httpUrl` 上不可达
+
+<div id="general">
+
+### 通用
+
+</div>
+
+对于任何连接器：检查令牌/凭据，确认连接器在配置中已启用（`connectors.<name>.enabled` 不是 `false`），并检查日志中的启动错误。
+
+指南：
+
+- [连接 Discord](/zh/user/connect-discord)
+- [连接 Telegram](/zh/user/connect-telegram)
+- [所有连接器](/zh/guides/connectors)
+
+<div id="remote-connection-fails">
+
+## 远程连接失败
+
+</div>
+
+检查：
+
+- URL
+- 令牌
+- 后端是否正在运行
+- 后端是否监听 localhost 以外的地址
+- 当前设备是否能访问该网络
+
+<div id="eliza-is-slow">
+
+## Eliza 运行缓慢
+
+</div>
+
+- 在生成第一个 token 之前就很慢：选择更快的模型或提供商
+- 全程缓慢：检查网络限制或本地模型大小
+
+<div id="start-over">
+
+## 重新开始
+
+</div>
+
+退出 Eliza，重命名状态目录，然后重新启动：
+
+- macOS / Linux: `~/.eliza`
+- Windows: `%USERPROFILE%\\.eliza\\`
+
+<div id="file-a-bug">
+
+## 提交 Bug 报告
+
+</div>
+
+请包含：
+
+- 操作系统
+- 本地、远程或 Eliza Cloud
+- 选择的提供商
+- 预期行为
+- 实际行为
+
+问题追踪器：[eliza-ai/eliza issues](https://github.com/eliza-ai/eliza/issues)

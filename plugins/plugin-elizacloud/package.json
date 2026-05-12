@@ -1,0 +1,313 @@
+{
+  "name": "@elizaos/plugin-elizacloud",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/node/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-elizacloud.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/node/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "types",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding",
+        "text-to-speech",
+        "image-description"
+      ]
+    }
+  },
+  "dependencies": {
+    "@ai-sdk/openai": "^3.0.9",
+    "@elizaos/cloud-sdk": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "ai": "^6.0.30",
+    "jose": "^6.2.2",
+    "js-tiktoken": "^1.0.21",
+    "undici": "8.2.0",
+    "viem": "^2.48.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@clack/prompts": "^0.11.0",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "peerDependencies": {
+    "zod": "^4.4.3"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "test": "vitest run",
+    "test:unit": "vitest run __tests__/unit/",
+    "test:integration": "vitest run __tests__/integration/",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "ELIZAOS_CLOUD_API_KEY": {
+        "type": "string",
+        "description": "API key used to authenticate requests to ElizaOS Cloud API (format: eliza_xxxxx). Get it from https://www.elizacloud.ai/dashboard/api-keys",
+        "required": true,
+        "sensitive": true
+      },
+      "ELIZAOS_CLOUD_BASE_URL": {
+        "type": "string",
+        "description": "Base URL for all ElizaOS Cloud API requests.",
+        "required": false,
+        "default": "https://www.elizacloud.ai/api/v1",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_NANO_MODEL": {
+        "type": "string",
+        "description": "Nano/cheapest text model for lightweight routing and should-respond tasks (overrides NANO_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "NANO_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the nano language model if ELIZAOS_CLOUD_NANO_MODEL is not set.",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_SMALL_MODEL": {
+        "type": "string",
+        "description": "Small/fast model for quick tasks (overrides SMALL_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "SMALL_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the small language model if ELIZAOS_CLOUD_SMALL_MODEL is not set.",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_MEDIUM_MODEL": {
+        "type": "string",
+        "description": "Medium planning model for multi-step reasoning (overrides MEDIUM_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "MEDIUM_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the medium language model if ELIZAOS_CLOUD_MEDIUM_MODEL is not set.",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_LARGE_MODEL": {
+        "type": "string",
+        "description": "Large/powerful model for complex tasks (overrides LARGE_MODEL). Default: openai/gpt-oss-120b:nitro",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "LARGE_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the large language model if ELIZAOS_CLOUD_LARGE_MODEL is not set.",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_MEGA_MODEL": {
+        "type": "string",
+        "description": "Mega/top-tier model for the heaviest generation tasks (overrides MEGA_MODEL). Falls back to the large tier when unset.",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "MEGA_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for the mega language model if ELIZAOS_CLOUD_MEGA_MODEL is not set.",
+        "required": false,
+        "default": "openai/gpt-oss-120b:nitro",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL": {
+        "type": "string",
+        "description": "Optional override for RESPONSE_HANDLER. Defaults to the configured nano tier when unset.",
+        "required": false,
+        "sensitive": false
+      },
+      "RESPONSE_HANDLER_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for RESPONSE_HANDLER if ELIZAOS_CLOUD_RESPONSE_HANDLER_MODEL is not set.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_ACTION_PLANNER_MODEL": {
+        "type": "string",
+        "description": "Optional override for ACTION_PLANNER. Defaults to the configured medium tier when unset.",
+        "required": false,
+        "sensitive": false
+      },
+      "ACTION_PLANNER_MODEL": {
+        "type": "string",
+        "description": "Fallback identifier for ACTION_PLANNER if ELIZAOS_CLOUD_ACTION_PLANNER_MODEL is not set.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model to use for generating text embeddings.",
+        "required": false,
+        "default": "text-embedding-3-small",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_EMBEDDING_URL": {
+        "type": "string",
+        "description": "Custom base URL for the ElizaOS Cloud embeddings endpoint.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_EMBEDDING_API_KEY": {
+        "type": "string",
+        "description": "Custom API key for the ElizaOS Cloud embeddings endpoint.",
+        "required": false,
+        "sensitive": true
+      },
+      "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS": {
+        "type": "number",
+        "description": "Number of dimensions for the returned embedding vectors.",
+        "required": false,
+        "default": 1536,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for describing images.",
+        "required": false,
+        "default": "gpt-5.4-mini",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_IMAGE_DESCRIPTION_MAX_TOKENS": {
+        "type": "number",
+        "description": "Maximum number of tokens allowed in the image-description model response.",
+        "required": false,
+        "default": 8192,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_TTS_MODEL": {
+        "type": "string",
+        "description": "Identifier of the model used for text-to-speech generation.",
+        "required": false,
+        "default": "gpt-5-mini-tts",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_TTS_VOICE": {
+        "type": "string",
+        "description": "Voice profile to use for text-to-speech output.",
+        "required": false,
+        "default": "nova",
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_TTS_INSTRUCTIONS": {
+        "type": "string",
+        "description": "Optional instructions to control the style or behavior of the text-to-speech request.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_EXPERIMENTAL_TELEMETRY": {
+        "type": "boolean",
+        "description": "Enable experimental telemetry features for enhanced debugging and usage analytics.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_BROWSER_BASE_URL": {
+        "type": "string",
+        "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud requests (no secrets in the client).",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_BROWSER_EMBEDDING_URL": {
+        "type": "string",
+        "description": "Browser-only proxy endpoint base URL for ElizaOS Cloud embeddings.",
+        "required": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_ENABLED": {
+        "type": "boolean",
+        "description": "Enable ElizaCloud container provisioning, device auth, bridge, and backup services. When false, only inference model handlers are active.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ELIZAOS_CLOUD_APP_VERSION": {
+        "type": "string",
+        "description": "Application version sent during device authentication.",
+        "required": false,
+        "default": "2.0.0-beta.0",
+        "sensitive": false
+      }
+    }
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "eliza": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

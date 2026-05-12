@@ -1,0 +1,27 @@
+# Calendar MCP Server Configuration
+name: calendar
+display_name: Calendar MCP Server
+description: Mock calendar operations server for benchmarking
+
+execution:
+  command_type: uv
+  script:
+    primary: "mcp_convert/mcps/calendar/server.py"
+    fallbacks: []
+  requires_project_root: true
+
+parameters:
+  data_dir:
+    required: true
+    default: "./calendar_data"
+    env_var: "CALENDAR_DATA_DIR"
+    description: "Path to calendar data directory"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

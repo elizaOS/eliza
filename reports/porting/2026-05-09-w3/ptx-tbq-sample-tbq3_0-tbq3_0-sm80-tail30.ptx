@@ -1,0 +1,30 @@
+	add.s32 	%r1466, %r6, %r7;
+	setp.gt.s32 	%p301, %r1466, 1;
+	or.pred  	%p302, %p300, %p301;
+	add.s32 	%r88, %r1466, %r1485;
+	setp.ge.s32 	%p303, %r88, %r1487;
+	or.pred  	%p304, %p302, %p303;
+	@%p304 bra 	$L__BB22_498;
+
+	ld.param.u64 	%rd15364, [_Z18flash_attn_ext_vecILi256ELi2EL9ggml_type43ELS0_43ELb1EEvPKcS2_S2_S2_S2_PKiPfP6float2ffffjfi5uint3iiiiiiiiiiiliiliiiiil_param_7];
+	mov.u32 	%r1490, %ctaid.y;
+	ld.param.u32 	%r1489, [_Z18flash_attn_ext_vecILi256ELi2EL9ggml_type43ELS0_43ELb1EEvPKcS2_S2_S2_S2_PKiPfP6float2ffffjfi5uint3iiiiiiiiiiiliiliiiiil_param_16];
+	ld.param.u32 	%r1488, [_Z18flash_attn_ext_vecILi256ELi2EL9ggml_type43ELS0_43ELb1EEvPKcS2_S2_S2_S2_PKiPfP6float2ffffjfi5uint3iiiiiiiiiiiliiliiiiil_param_15+8];
+	mul.wide.s32 	%rd15357, %r1466, 4;
+	add.s64 	%rd15358, %rd2, %rd15357;
+	add.s64 	%rd15359, %rd3, %rd15357;
+	mad.lo.s32 	%r1473, %r3, %r1488, %r88;
+	mad.lo.s32 	%r1477, %r1473, %r1489, %r4;
+	mad.lo.s32 	%r1479, %r1477, %r87, %r1490;
+	cvta.to.global.u64 	%rd15360, %rd15364;
+	mul.wide.u32 	%rd15361, %r1479, 8;
+	add.s64 	%rd15362, %rd15360, %rd15361;
+	ld.local.f32 	%f44905, [%rd15359];
+	ld.local.f32 	%f44906, [%rd15358];
+	st.global.v2.f32 	[%rd15362], {%f44906, %f44905};
+
+$L__BB22_498:
+	ret;
+
+}
+

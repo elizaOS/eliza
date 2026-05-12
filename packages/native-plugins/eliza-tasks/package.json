@@ -1,0 +1,83 @@
+{
+  "name": "@elizaos/capacitor-eliza-tasks",
+  "version": "2.0.0-beta.1",
+  "description": "Bridges iOS BGTaskScheduler (BGAppRefreshTask + BGProcessingTask) wake events into the Eliza Capacitor runtime.",
+  "keywords": [
+    "background",
+    "bgtaskscheduler",
+    "ios",
+    "wake",
+    "eliza"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec",
+    "dist"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza"
+  },
+  "scripts": {
+    "build": "bun run clean && bunx tsc -p tsconfig.json && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "test": "vitest run",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
+    "@capacitor/ios": "^8.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaosCapacitorElizaTasks"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "No-op web fallback; BGTaskScheduler is iOS-only.",
+      "node": "No desktop equivalent; runtime ignores this plugin off-mobile.",
+      "ios": true,
+      "android": false
+    }
+  }
+}

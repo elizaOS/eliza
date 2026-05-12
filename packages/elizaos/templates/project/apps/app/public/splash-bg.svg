@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 720" fill="none">
+  <defs>
+    <linearGradient id="base" x1="96" x2="1068" y1="48" y2="688" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B1220" />
+      <stop offset=".55" stop-color="#111827" />
+      <stop offset="1" stop-color="#1E293B" />
+    </linearGradient>
+    <radialGradient id="glowA" cx="0" cy="0" r="1" gradientTransform="translate(892 188) rotate(90) scale(240)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDE68A" />
+      <stop offset="1" stop-color="#F59E0B" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="glowB" cx="0" cy="0" r="1" gradientTransform="translate(288 592) rotate(90) scale(312)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#7DD3FC" stop-opacity=".92" />
+      <stop offset="1" stop-color="#0EA5E9" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="panel" x1="204" x2="964" y1="180" y2="540" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC" stop-opacity=".18" />
+      <stop offset="1" stop-color="#F8FAFC" stop-opacity=".04" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="720" fill="url(#base)" />
+  <circle cx="892" cy="188" r="240" fill="url(#glowA)" />
+  <circle cx="288" cy="592" r="312" fill="url(#glowB)" />
+  <path d="M0 118H1200" stroke="#F8FAFC" stroke-opacity=".06" />
+  <path d="M0 236H1200" stroke="#F8FAFC" stroke-opacity=".05" />
+  <path d="M0 354H1200" stroke="#F8FAFC" stroke-opacity=".04" />
+  <path d="M0 472H1200" stroke="#F8FAFC" stroke-opacity=".05" />
+  <path d="M0 590H1200" stroke="#F8FAFC" stroke-opacity=".06" />
+  <path d="M152 0V720" stroke="#F8FAFC" stroke-opacity=".04" />
+  <path d="M392 0V720" stroke="#F8FAFC" stroke-opacity=".035" />
+  <path d="M632 0V720" stroke="#F8FAFC" stroke-opacity=".03" />
+  <path d="M872 0V720" stroke="#F8FAFC" stroke-opacity=".035" />
+  <path d="M1112 0V720" stroke="#F8FAFC" stroke-opacity=".04" />
+  <rect x="188" y="166" width="824" height="388" rx="72" fill="url(#panel)" stroke="#F8FAFC" stroke-opacity=".08" />
+  <circle cx="402" cy="316" r="108" fill="#F59E0B" fill-opacity=".92" />
+  <circle cx="584" cy="404" r="146" fill="#0EA5E9" fill-opacity=".58" />
+  <path
+    d="M360 444C438 348 532 280 640 248C724 222 806 220 876 232"
+    stroke="#F8FAFC"
+    stroke-linecap="round"
+    stroke-width="26"
+    stroke-opacity=".74"
+  />
+  <path
+    d="M386 496C468 404 570 336 688 302"
+    stroke="#F8FAFC"
+    stroke-linecap="round"
+    stroke-width="14"
+    stroke-opacity=".24"
+  />
+</svg>

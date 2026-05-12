@@ -1,0 +1,299 @@
+name: Release Orchestrator
+
+on:
+  release:
+    types: [published]
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to distribute (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+      publish_npm:
+        description: "Publish npm package"
+        required: false
+        type: boolean
+        default: true
+      publish_packages:
+        description: "Publish PyPI / Snap / Debian / Flatpak"
+        required: false
+        type: boolean
+        default: true
+      publish_android:
+        description: "Publish Android build"
+        required: false
+        type: boolean
+        default: true
+      publish_apple:
+        description: "Publish Apple builds"
+        required: false
+        type: boolean
+        default: true
+      update_homebrew:
+        description: "Update Homebrew tap"
+        required: false
+        type: boolean
+        default: true
+      deploy_homepage:
+        description: "Deploy homepage"
+        required: false
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to distribute (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+      publish_npm:
+        description: "Publish npm package"
+        required: false
+        type: boolean
+        default: true
+      publish_packages:
+        description: "Publish PyPI / Snap / Debian / Flatpak"
+        required: false
+        type: boolean
+        default: true
+      publish_android:
+        description: "Publish Android build"
+        required: false
+        type: boolean
+        default: true
+      publish_apple:
+        description: "Publish Apple builds"
+        required: false
+        type: boolean
+        default: true
+      update_homebrew:
+        description: "Update Homebrew tap"
+        required: false
+        type: boolean
+        default: true
+      deploy_homepage:
+        description: "Deploy homepage"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+  pages: write
+
+jobs:
+  prepare:
+    name: Resolve release metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      npm_dist_tag: ${{ steps.meta.outputs.npm_dist_tag }}
+      android_track: ${{ steps.meta.outputs.android_track }}
+      apple_track: ${{ steps.meta.outputs.apple_track }}
+      publish_npm: ${{ steps.meta.outputs.publish_npm }}
+      publish_packages: ${{ steps.meta.outputs.publish_packages }}
+      publish_flatpak: ${{ steps.meta.outputs.publish_flatpak }}
+      publish_android: ${{ steps.meta.outputs.publish_android }}
+      publish_apple: ${{ steps.meta.outputs.publish_apple }}
+      update_homebrew: ${{ steps.meta.outputs.update_homebrew }}
+      deploy_homepage: ${{ steps.meta.outputs.deploy_homepage }}
+    steps:
+      - name: Determine routing policy
+        id: meta
+        shell: bash -euo pipefail {0}
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+          TAG_NAME: ${{ github.event.release.tag_name || '' }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="${TAG_NAME#v}"
+          fi
+
+          TAG="v${VERSION}"
+          IS_PRERELEASE="false"
+          NPM_DIST_TAG="latest"
+          ANDROID_TRACK="production"
+          APPLE_TRACK="app-store"
+
+          if echo "$VERSION" | grep -qi 'alpha'; then
+            echo "::error::Alpha releases are disabled. Use a beta, rc, nightly, or stable version."
+            exit 1
+          fi
+
+          if echo "$VERSION" | grep -qiE '(beta|rc|nightly)'; then
+            IS_PRERELEASE="true"
+            ANDROID_TRACK="internal"
+            APPLE_TRACK="testflight"
+            if echo "$VERSION" | grep -qi 'nightly'; then
+              NPM_DIST_TAG="nightly"
+            elif echo "$VERSION" | grep -qi 'beta'; then
+              NPM_DIST_TAG="beta"
+            else
+              NPM_DIST_TAG="next"
+            fi
+          fi
+
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" || "${{ github.event_name }}" == "workflow_call" ]]; then
+            PUBLISH_NPM="${{ inputs.publish_npm }}"
+            PUBLISH_PACKAGES="${{ inputs.publish_packages }}"
+            PUBLISH_ANDROID="${{ inputs.publish_android }}"
+            PUBLISH_APPLE="${{ inputs.publish_apple }}"
+            UPDATE_HOMEBREW="${{ inputs.update_homebrew }}"
+            DEPLOY_HOMEPAGE="${{ inputs.deploy_homepage }}"
+          else
+            PUBLISH_NPM="true"
+            PUBLISH_PACKAGES="true"
+            PUBLISH_ANDROID="true"
+            PUBLISH_APPLE="true"
+            UPDATE_HOMEBREW="true"
+            DEPLOY_HOMEPAGE="true"
+          fi
+
+          PUBLISH_FLATPAK="$PUBLISH_PACKAGES"
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            UPDATE_HOMEBREW="false"
+          fi
+
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "is_prerelease=$IS_PRERELEASE"
+            echo "npm_dist_tag=$NPM_DIST_TAG"
+            echo "android_track=$ANDROID_TRACK"
+            echo "apple_track=$APPLE_TRACK"
+            echo "publish_npm=$PUBLISH_NPM"
+            echo "publish_packages=$PUBLISH_PACKAGES"
+            echo "publish_flatpak=$PUBLISH_FLATPAK"
+            echo "publish_android=$PUBLISH_ANDROID"
+            echo "publish_apple=$PUBLISH_APPLE"
+            echo "update_homebrew=$UPDATE_HOMEBREW"
+            echo "deploy_homepage=$DEPLOY_HOMEPAGE"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          {
+            echo "## Release distribution plan"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Version | \`${{ steps.meta.outputs.version }}\` |"
+            echo "| Tag | \`${{ steps.meta.outputs.tag }}\` |"
+            echo "| Pre-release | \`${{ steps.meta.outputs.is_prerelease }}\` |"
+            echo "| npm dist-tag | \`${{ steps.meta.outputs.npm_dist_tag }}\` |"
+            echo "| Android track | \`${{ steps.meta.outputs.android_track }}\` |"
+            echo "| Apple track | \`${{ steps.meta.outputs.apple_track }}\` |"
+            echo "| Homebrew enabled | \`${{ steps.meta.outputs.update_homebrew }}\` |"
+            echo "| Flatpak enabled | \`${{ steps.meta.outputs.publish_flatpak }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish-packages:
+    name: Package registries
+    needs: prepare
+    if: needs.prepare.outputs.publish_packages == 'true'
+    uses: ./.github/workflows/publish-packages.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      pypi: true
+      snap: true
+      flatpak: ${{ needs.prepare.outputs.publish_flatpak == 'true' }}
+      apt: true
+    secrets: inherit
+
+  publish-android:
+    name: Android
+    needs: prepare
+    if: needs.prepare.outputs.publish_android == 'true'
+    uses: ./.github/workflows/android-release.yml
+    with:
+      version_name: ${{ needs.prepare.outputs.version }}
+      track: ${{ needs.prepare.outputs.android_track }}
+    secrets: inherit
+
+  publish-apple:
+    name: Apple Stores
+    needs: prepare
+    if: needs.prepare.outputs.publish_apple == 'true'
+    uses: ./.github/workflows/apple-store-release.yml
+    with:
+      platform: both
+      track: ${{ needs.prepare.outputs.apple_track }}
+      version: ${{ needs.prepare.outputs.version }}
+    secrets: inherit
+
+  update-homebrew:
+    name: Homebrew
+    needs: prepare
+    if: needs.prepare.outputs.update_homebrew == 'true'
+    uses: ./.github/workflows/update-homebrew.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+    secrets: inherit
+
+  deploy-homepage:
+    name: Homepage
+    needs: [prepare, publish-packages, publish-android, publish-apple]
+    # Deploy after the artifact-producing jobs so the homepage's release-data
+    # fetch (which queries the GitHub Releases API) sees the new assets.
+    if: |
+      always() &&
+      needs.prepare.outputs.deploy_homepage == 'true' &&
+      needs.prepare.result == 'success'
+    uses: ./.github/workflows/deploy-homepage.yml
+    with:
+      ref: ${{ needs.prepare.outputs.tag }}
+    secrets: inherit
+
+  summary:
+    name: Distribution summary
+    needs:
+      [
+        prepare,
+        publish-packages,
+        publish-android,
+        publish-apple,
+        update-homebrew,
+        deploy-homepage,
+      ]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summary
+        run: |
+          {
+            echo "## Release Orchestrator"
+            echo ""
+            echo "| Target | Result |"
+            echo "|--------|--------|"
+            echo "| Package registries | ${{ needs.publish-packages.result || 'skipped' }} |"
+            echo "| Android | ${{ needs.publish-android.result || 'skipped' }} |"
+            echo "| Apple Stores | ${{ needs.publish-apple.result || 'skipped' }} |"
+            echo "| Homebrew | ${{ needs.update-homebrew.result || 'skipped' }} |"
+            echo "| Homepage | ${{ needs.deploy-homepage.result || 'skipped' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require enabled distributions succeeded
+        run: |
+          failed=0
+          require_result() {
+            local label="$1"
+            local enabled="$2"
+            local result="$3"
+            if [[ "$enabled" == "true" && "$result" != "success" ]]; then
+              echo "::error::$label distribution result was '$result', expected success"
+              failed=1
+            fi
+          }
+
+          require_result "Package registries" "${{ needs.prepare.outputs.publish_packages }}" "${{ needs.publish-packages.result }}"
+          require_result "Android" "${{ needs.prepare.outputs.publish_android }}" "${{ needs.publish-android.result }}"
+          require_result "Apple Stores" "${{ needs.prepare.outputs.publish_apple }}" "${{ needs.publish-apple.result }}"
+          require_result "Homebrew" "${{ needs.prepare.outputs.update_homebrew }}" "${{ needs.update-homebrew.result }}"
+          require_result "Homepage" "${{ needs.prepare.outputs.deploy_homepage }}" "${{ needs.deploy-homepage.result }}"
+
+          exit "$failed"

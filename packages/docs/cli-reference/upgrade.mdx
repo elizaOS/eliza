@@ -1,0 +1,27 @@
+---
+title: "elizaos upgrade"
+description: "Upgrade managed files in a generated workspace"
+---
+
+```bash
+elizaos upgrade [options]
+```
+
+Run this command from the root of a generated project or plugin. The command reads `.elizaos/template.json`, renders the latest version of the same template, updates managed files, and reports conflicts.
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `--check` | Preview changes without writing files. |
+| `--dry-run` | Preview changes without writing files. |
+| `--skip-upstream` | Skip updating the upstream eliza checkout. |
+
+## Examples
+
+```bash
+elizaos upgrade --check
+elizaos upgrade
+```
+
+Use `--check` before writing changes when you have local edits.

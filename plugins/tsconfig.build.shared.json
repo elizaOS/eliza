@@ -1,0 +1,45 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "paths": {
+      "@elizaos/core": ["../packages/core/dist/index.d.ts"],
+      "@elizaos/core/*": ["../packages/core/dist/*"],
+      "@elizaos/shared": ["../packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/*": ["../packages/shared/dist/*"],
+      "@elizaos/ui": ["../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../packages/ui/dist/*"],
+      "@elizaos/app-task-coordinator": [
+        "./app-task-coordinator/dist/index.d.ts"
+      ],
+      "@elizaos/app-task-coordinator/*": ["./app-task-coordinator/dist/*"],
+      "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
+      "@elizaos/agent": [
+        "../packages/agent/dist/packages/agent/src/index.d.ts"
+      ],
+      "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
+      "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
+      "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
+      "@elizaos/plugin-elizacloud": [
+        "../packages/agent/src/external-modules.d.ts"
+      ],
+      "@elizaos/cloud-sdk": ["../cloud/packages/sdk/dist/index.d.ts"],
+      "@elizaos/scenario-runner": [
+        "../packages/scenario-runner/dist/index.d.ts"
+      ]
+    }
+  }
+}

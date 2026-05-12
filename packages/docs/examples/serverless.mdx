@@ -1,0 +1,230 @@
+---
+title: "Serverless Examples"
+description: "Deploy elizaOS agents to AWS, GCP, Vercel, Cloudflare, and Supabase (TypeScript)"
+---
+
+Deploy AI agents as serverless functions. Examples in the repo are **TypeScript**; copy the handler shape to other runtimes if you maintain a fork.
+
+## Overview
+
+| Platform            | Languages   | Directory              | Cold Start |
+| ------------------- | ----------- | ---------------------- | ---------- |
+| AWS Lambda          | TypeScript  | `examples/aws/`        | 2–5s       |
+| GCP Cloud Functions | TypeScript  | `examples/gcp/`        | 2–5s       |
+| Vercel Edge         | TypeScript  | `examples/vercel/`     | &lt;1s     |
+| Cloudflare Workers  | TypeScript  | `examples/cloudflare/` | &lt;1s     |
+| Supabase Edge       | TypeScript (Deno) | `examples/supabase/` | &lt;1s     |
+
+---
+
+## AWS Lambda
+
+### Quick Start
+
+```bash
+cd examples/aws
+export OPENAI_API_KEY="your-key"
+bun install
+sam build
+sam deploy --guided
+```
+
+### Handler (TypeScript)
+
+```typescript
+import { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+  runtime = new AgentRuntime({
+    character: {
+      name: process.env.CHARACTER_NAME || "Eliza",
+      bio: process.env.CHARACTER_BIO || "A helpful AI assistant.",
+    },
+    plugins: [openaiPlugin],
+  });
+  await runtime.initialize();
+  return runtime;
+}
+
+export async function handler(
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> {
+  const rt = await getRuntime();
+  const body = JSON.parse(event.body || "{}");
+
+  if (event.path === "/health") {
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ status: "healthy" }),
+    };
+  }
+
+  const { message } = body;
+  const response = await rt.useModel("TEXT_LARGE", { prompt: message });
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      response: String(response),
+      timestamp: new Date().toISOString(),
+    }),
+  };
+}
+```
+
+---
+
+## Vercel Edge Functions
+
+```bash
+cd examples/vercel
+bun install
+vercel dev
+vercel
+```
+
+```typescript
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+export const config = { runtime: "edge" };
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+  runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A helpful AI assistant." },
+    plugins: [openaiPlugin],
+  });
+  await runtime.initialize();
+  return runtime;
+}
+
+export default async function handler(request: Request) {
+  const rt = await getRuntime();
+  const { message } = (await request.json()) as { message: string };
+  const response = await rt.useModel(ModelType.TEXT_LARGE, { prompt: message });
+  return new Response(JSON.stringify({ response: String(response) }), {
+    headers: { "Content-Type": "application/json" },
+  });
+}
+```
+
+---
+
+## Cloudflare Workers
+
+```bash
+cd examples/cloudflare
+bun install
+wrangler dev
+wrangler deploy
+```
+
+```typescript
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+export interface Env {
+  OPENAI_API_KEY: string;
+}
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime(env: Env) {
+  if (runtime) return runtime;
+  runtime = new AgentRuntime({
+    character: {
+      name: "Eliza",
+      bio: "A helpful AI assistant.",
+      secrets: { OPENAI_API_KEY: env.OPENAI_API_KEY },
+    },
+    plugins: [openaiPlugin],
+  });
+  await runtime.initialize();
+  return runtime;
+}
+
+export default {
+  async fetch(request: Request, env: Env): Promise<Response> {
+    if (request.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+    const rt = await getRuntime(env);
+    const { message } = (await request.json()) as { message: string };
+    const response = await rt.useModel(ModelType.TEXT_LARGE, { prompt: message });
+    return new Response(JSON.stringify({ response: String(response) }), {
+      headers: { "Content-Type": "application/json" },
+    });
+  },
+};
+```
+
+---
+
+## Supabase Edge Functions
+
+```bash
+cd examples/supabase
+supabase start
+supabase functions serve eliza-chat
+supabase functions deploy eliza-chat
+```
+
+```typescript
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+async function getRuntime() {
+  if (runtime) return runtime;
+  runtime = new AgentRuntime({
+    character: { name: "Eliza", bio: "A helpful AI assistant." },
+    plugins: [openaiPlugin],
+  });
+  await runtime.initialize();
+  return runtime;
+}
+
+serve(async (req) => {
+  const rt = await getRuntime();
+  const { message } = await req.json();
+  const response = await rt.useModel(ModelType.TEXT_LARGE, { prompt: message });
+  return new Response(JSON.stringify({ response: String(response) }), {
+    headers: { "Content-Type": "application/json" },
+  });
+});
+```
+
+---
+
+## Performance comparison
+
+| Platform      | Cold Start | Warm latency | Max timeout | Free tier (typical) |
+| ------------- | ---------- | ------------ | ----------- | ------------------- |
+| AWS Lambda    | 2–5s       | 50–100ms     | 15 min      | 1M requests         |
+| GCP Functions | 2–5s       | 50–100ms     | 9 min       | 2M invocations      |
+| Vercel Edge   | &lt;50ms   | &lt;50ms     | 30s         | 100K requests       |
+| Cloudflare    | &lt;10ms   | &lt;10ms     | 30s         | 100K requests       |
+| Supabase      | &lt;100ms  | &lt;50ms     | 60s         | 500K invocations    |
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Game Examples" icon="gamepad" href="/examples/game">
+    Game demos and patterns
+  </Card>
+  <Card title="Deploy Guide" icon="rocket" href="/guides/deploy-a-project">
+    Full deployment documentation
+  </Card>
+</CardGroup>

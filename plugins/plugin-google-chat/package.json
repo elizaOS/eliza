@@ -1,0 +1,128 @@
+{
+  "name": "@elizaos/plugin-google-chat",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "google-auth-library": "^10.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "GOOGLE_CHAT_SERVICE_ACCOUNT": {
+        "type": "string",
+        "description": "Service account credentials",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_SERVICE_ACCOUNT_FILE": {
+        "type": "string",
+        "description": "Service account credentials",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_APPLICATION_CREDENTIALS": {
+        "type": "string",
+        "description": "Credentials file path or JSON",
+        "required": false,
+        "sensitive": true
+      },
+      "GOOGLE_CHAT_AUDIENCE_TYPE": {
+        "type": "string",
+        "description": "Audience/auth scope",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_AUDIENCE": {
+        "type": "string",
+        "description": "Audience/auth scope",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_WEBHOOK_PATH": {
+        "type": "string",
+        "description": "Webhook path",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_SPACES": {
+        "type": "string",
+        "description": "Comma-separated space/room list",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_REQUIRE_MENTION": {
+        "type": "boolean",
+        "description": "Only respond when mentioned",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_ENABLED": {
+        "type": "boolean",
+        "description": "Enable or disable this feature",
+        "required": false,
+        "sensitive": false
+      },
+      "GOOGLE_CHAT_BOT_USER": {
+        "type": "string",
+        "description": "Bot user identifier",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

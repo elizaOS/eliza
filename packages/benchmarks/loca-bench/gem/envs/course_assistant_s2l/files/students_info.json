@@ -1,0 +1,177 @@
+[
+  {
+    "name": "Joseph Smith",
+    "student_id": "200046048",
+    "email": "josephsmith32@mcp.com",
+    "password": "oUQ4fAbnFbmO",
+    "status": "enrolled"
+  },
+  {
+    "name": "Donald Anderson",
+    "student_id": "200087236",
+    "email": "donaldanderson36@mcp.com",
+    "password": "YaYRvj8vfg1M",
+    "status": "enrolled"
+  },
+  {
+    "name": "Sophia Moore",
+    "student_id": "200026361",
+    "email": "sophiamoore49@mcp.com",
+    "password": "esN3wmePW$12",
+    "status": "enrolled"
+  },
+  {
+    "name": "Sophia Lee",
+    "student_id": "200057819",
+    "email": "sophialee21@mcp.com",
+    "password": "xnq7OMkTkx$O",
+    "status": "enrolled"
+  },
+  {
+    "name": "Barbara Ramirez",
+    "student_id": "200017331",
+    "email": "barbararamirez30@mcp.com",
+    "password": "ZYze5JTnF3Oj",
+    "status": "enrolled"
+  },
+  {
+    "name": "Evelyn Rodriguez",
+    "student_id": "200086622",
+    "email": "evelynrodriguez55@mcp.com",
+    "password": "4zn$GfcgNXAe",
+    "status": "enrolled"
+  },
+  {
+    "name": "Sophia Taylor",
+    "student_id": "200042953",
+    "email": "sophiataylor71@mcp.com",
+    "password": "2aTQHqOhBC83",
+    "status": "enrolled"
+  },
+  {
+    "name": "Amelia Sanchez",
+    "student_id": "200033416",
+    "email": "ameliasanchez65@mcp.com",
+    "password": "52sOMjWHXHau",
+    "status": "dropped"
+  },
+  {
+    "name": "Sarah Robinson",
+    "student_id": "200050306",
+    "email": "sarahrobinson31@mcp.com",
+    "password": "d37fEeVWiDIq",
+    "status": "enrolled"
+  },
+  {
+    "name": "Ava Miller",
+    "student_id": "200080686",
+    "email": "avamiller97@mcp.com",
+    "password": "Tmt$OBGhovLo",
+    "status": "enrolled"
+  },
+  {
+    "name": "William White",
+    "student_id": "200092719",
+    "email": "williamwhite8@mcp.com",
+    "password": "o52eoQni6JDX",
+    "status": "enrolled"
+  },
+  {
+    "name": "Anthony Brown",
+    "student_id": "200022704",
+    "email": "anthonybrown85@mcp.com",
+    "password": "BADTQ$gzv2pl",
+    "status": "enrolled"
+  },
+  {
+    "name": "Ava Garcia",
+    "student_id": "200046509",
+    "email": "avagarcia60@mcp.com",
+    "password": "p6B2Id$0961k",
+    "status": "enrolled"
+  },
+  {
+    "name": "Mark Lewis",
+    "student_id": "200062565",
+    "email": "marklewis8@mcp.com",
+    "password": "kay6XrRUXPEl",
+    "status": "enrolled"
+  },
+  {
+    "name": "Michael Jackson",
+    "student_id": "200081066",
+    "email": "michaeljackson8@mcp.com",
+    "password": "VdKF1j8flLQo",
+    "status": "enrolled"
+  },
+  {
+    "name": "Mary Jackson",
+    "student_id": "200087924",
+    "email": "maryjackson6@mcp.com",
+    "password": "NAKG6mTpyQst",
+    "status": "enrolled"
+  },
+  {
+    "name": "William Smith",
+    "student_id": "200070068",
+    "email": "williamsmith80@mcp.com",
+    "password": "$$enq633xj0S",
+    "status": "enrolled"
+  },
+  {
+    "name": "Harper Smith",
+    "student_id": "200097538",
+    "email": "harpersmith71@mcp.com",
+    "password": "sP7ihgIrMTmN",
+    "status": "enrolled"
+  },
+  {
+    "name": "Charlotte Rodriguez",
+    "student_id": "200016658",
+    "email": "charlotterodriguez12@mcp.com",
+    "password": "N0cvi9kBSJh7",
+    "status": "enrolled"
+  },
+  {
+    "name": "Christopher Moore",
+    "student_id": "200014722",
+    "email": "christophermoore48@mcp.com",
+    "password": "Kjit4Y24npgX",
+    "status": "enrolled"
+  },
+  {
+    "name": "Olivia Martin",
+    "student_id": "200030257",
+    "email": "oliviamartin31@mcp.com",
+    "password": "29Z3bUu6Y2Zq",
+    "status": "enrolled"
+  },
+  {
+    "name": "Richard Gonzalez",
+    "student_id": "200015075",
+    "email": "richardgonzalez61@mcp.com",
+    "password": "oZCtYobmu28r",
+    "status": "enrolled"
+  },
+  {
+    "name": "Emma Thompson",
+    "student_id": "200080282",
+    "email": "emmathompson43@mcp.com",
+    "password": "7h9l8qgBTtMG",
+    "status": "enrolled"
+  },
+  {
+    "name": "Anthony Rodriguez",
+    "student_id": "200015817",
+    "email": "anthonyrodriguez91@mcp.com",
+    "password": "BGYR7UmB76NP",
+    "status": "enrolled"
+  },
+  {
+    "name": "Elizabeth Taylor",
+    "student_id": "200050538",
+    "email": "elizabethtaylor86@mcp.com",
+    "password": "zzsiA7Q4MsIa",
+    "status": "enrolled"
+  }
+]

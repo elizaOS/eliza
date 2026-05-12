@@ -1,0 +1,80 @@
+{
+  "name": "@elizaos/plugin-wechat",
+  "version": "2.0.0-beta.1",
+  "description": "WeChat connector plugin for elizaOS via proxy API",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/eliza-ai/plugin-wechat",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/eliza-ai/plugin-wechat.git"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "check": "tsc --noEmit",
+    "test": "vitest run --config ./vitest.config.ts",
+    "test:watch": "vitest --config ./vitest.config.ts",
+    "clean": "rm -rf dist"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.18"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "WECHAT_API_KEY": {
+        "type": "string",
+        "required": true,
+        "sensitive": true,
+        "description": "WeChat proxy service API key"
+      }
+    }
+  },
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "wechat",
+    "connector",
+    "messaging"
+  ],
+  "packageType": "plugin"
+}

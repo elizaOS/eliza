@@ -1,0 +1,37 @@
+{
+  "name": "@elizaos/cloud-api",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "dev": "bun run ../../packages/scripts/sync-api-dev-vars.ts && wrangler dev --port ${API_DEV_PORT:-8787} --local",
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "codegen": "node src/_generate-router.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:audit": "node test/_audit-coverage.mjs",
+    "test:e2e": "node test/e2e/run-e2e-batches.mjs",
+    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload ../../packages/tests/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "^3.0.37",
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "@elizaos/billing": "workspace:*",
+    "@elizaos/cloud-rtmp-relay": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.27.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "@upstash/redis": "^1.37.0",
+    "drizzle-orm": "^0.45.1",
+    "hono": "4.12.18",
+    "mcp-handler": "^1.0.7",
+    "jose": "^6.0.0",
+    "stripe": "^22.0.0",
+    "wrangler": "^4.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  }
+}

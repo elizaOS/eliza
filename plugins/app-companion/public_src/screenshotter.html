@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>VRM Screenshotter</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #111; color: #eee; font-family: system-ui, sans-serif; padding: 24px; }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .status { color: #999; margin-bottom: 20px; font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    .card { background: #222; border: 1px solid #333; border-radius: 8px; padding: 12px; text-align: center; }
+    .card canvas { width: 100%; aspect-ratio: 3/4; display: block; border-radius: 4px; background: radial-gradient(ellipse at 50% 80%, rgba(124,58,237,0.12), transparent 60%), #0b0f14; }
+    .card .label { font-size: 13px; margin-top: 8px; color: #ccc; }
+    .card .dl { display: inline-block; margin-top: 6px; padding: 4px 12px; font-size: 12px; background: #7c3aed; color: #fff; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; }
+    .card .dl:hover { background: #6d28d9; }
+    .card.loading .label { color: #f59e0b; }
+    .card.done .label { color: #22c55e; }
+    .card.error .label { color: #ef4444; }
+    #run-all { padding: 8px 20px; font-size: 14px; background: #7c3aed; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-bottom: 20px; }
+    #run-all:hover { background: #6d28d9; }
+    #run-all:disabled { opacity: 0.4; cursor: not-allowed; }
+    #download-all { padding: 8px 20px; font-size: 14px; background: #22c55e; color: #fff; border: none; border-radius: 6px; cursor: pointer; margin-left: 8px; display: none; }
+</style>
+</head>
+<body>
+<h1>VRM Screenshotter</h1>
+<p class="status" id="status">Renders each VRM in idle pose and captures a framed preview image.</p>
+<div style="margin-bottom: 20px;">
+  <button type="button" id="run-all">Generate All Previews</button>
+  <button type="button" id="download-all">Download All</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<script type="module">
+import { getCharacterAssets } from "@elizaos/app-companion";
+
+/**
+ * Import Three.js and three-vrm. Vite resolves these when screenshotter is an entry point.
+ */
+async function loadModules() {
+  const [threeModule, threeVrm, gltfExamples] = await Promise.all([
+    import('three'),
+    import('@pixiv/three-vrm'),
+    import('three/examples/jsm/loaders/GLTFLoader.js'),
+  ]);
+  const THREE = threeModule.default ?? threeModule;
+  if (!THREE?.WebGLRenderer) {
+    throw new Error('Three.js failed to load: WebGLRenderer not found');
+  }
+  return {
+    THREE,
+    threeVrm,
+    GLTFLoader: gltfExamples.GLTFLoader,
+  };
+}
+
+const vrmAssets = getCharacterAssets();
+const CANVAS_W = 400;
+const CANVAS_H = 400;
+const grid = document.getElementById('grid');
+const statusEl = document.getElementById('status');
+const runAllBtn = document.getElementById('run-all');
+const downloadAllBtn = document.getElementById('download-all');
+
+// Build cards
+const cards = [];
+for (const asset of vrmAssets) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <canvas id="c${asset.id}" width="${CANVAS_W}" height="${CANVAS_H}"></canvas>
+    <div class="label" id="l${asset.id}">${asset.title}</div>
+    <a class="dl" id="d${asset.id}" style="display:none" download="${asset.slug}.png">Download</a>
+  `;
+  grid.appendChild(card);
+  cards.push({ card, assetId: asset.id });
+}
+
+// Mixamo -> VRM bone name mapping
+const mixamoVRMRigMap = {
+  mixamorigHips: "hips", mixamorigSpine: "spine", mixamorigSpine1: "chest",
+  mixamorigSpine2: "upperChest", mixamorigNeck: "neck", mixamorigHead: "head",
+  mixamorigLeftShoulder: "leftShoulder", mixamorigLeftArm: "leftUpperArm",
+  mixamorigLeftForeArm: "leftLowerArm", mixamorigLeftHand: "leftHand",
+  mixamorigRightShoulder: "rightShoulder", mixamorigRightArm: "rightUpperArm",
+  mixamorigRightForeArm: "rightLowerArm", mixamorigRightHand: "rightHand",
+  mixamorigLeftUpLeg: "leftUpperLeg", mixamorigLeftLeg: "leftLowerLeg",
+  mixamorigLeftFoot: "leftFoot", mixamorigLeftToeBase: "leftToes",
+  mixamorigRightUpLeg: "rightUpperLeg", mixamorigRightLeg: "rightLowerLeg",
+  mixamorigRightFoot: "rightFoot", mixamorigRightToeBase: "rightToes",
+};
+
+function normalizeMixamoRigName(name) {
+  const pipe = name.lastIndexOf("|");
+  const base = pipe >= 0 ? name.slice(pipe + 1) : name;
+  const colon = base.indexOf(":");
+  if (colon >= 0) {
+    const ns = base.slice(0, colon);
+    const rest = base.slice(colon + 1);
+    if (ns === "mixamorig") return `mixamorig${rest}`;
+    return rest;
+  }
+  return base;
+}
+
+function isVrm0(vrm) {
+  const mv = String(vrm.meta?.metaVersion ?? "");
+  return mv.startsWith("0");
+}
+
+function retargetMixamoToVrm(THREE, animGltf, vrm) {
+  animGltf.scene.updateMatrixWorld(true);
+  vrm.scene.updateMatrixWorld(true);
+  const sourceClip = animGltf.animations[0];
+  if (!sourceClip) { console.warn('No animation clips in idle.glb'); return null; }
+
+  const tracks = [];
+  const restRotInv = new THREE.Quaternion();
+  const parentRestWorld = new THREE.Quaternion();
+  const q = new THREE.Quaternion();
+  const vrm0 = isVrm0(vrm);
+
+  for (const track of sourceClip.tracks) {
+    const parts = track.name.split(".");
+    const rawName = parts[0], prop = parts[1];
+    if (!rawName || prop !== "quaternion") continue;
+    if (!(track instanceof THREE.QuaternionKeyframeTrack)) continue;
+
+    const normName = normalizeMixamoRigName(rawName);
+    const boneName = mixamoVRMRigMap[normName];
+    if (!boneName) continue;
+
+    const vrmNode = vrm.humanoid?.getNormalizedBoneNode(boneName);
+    if (!vrmNode) continue;
+
+    // Find the source node in the Mixamo rig — try all naming variants
+    const mixNode = animGltf.scene.getObjectByName(rawName)
+      ?? animGltf.scene.getObjectByName(normName)
+      ?? (rawName.includes(":") ? animGltf.scene.getObjectByName(rawName.split(":")[1] ?? rawName) : null);
+    if (!mixNode || !mixNode.parent) continue;
+
+    mixNode.getWorldQuaternion(restRotInv).invert();
+    mixNode.parent.getWorldQuaternion(parentRestWorld);
+
+    const values = track.values.slice();
+    for (let i = 0; i < values.length; i += 4) {
+      q.fromArray(values, i);
+      q.premultiply(parentRestWorld).multiply(restRotInv);
+      q.toArray(values, i);
+    }
+
+    // VRM0 needs component inversion for coordinate system compatibility
+    const finalValues = vrm0 ? values.map((v, i) => (i % 2 === 0 ? -v : v)) : values;
+
+    tracks.push(new THREE.QuaternionKeyframeTrack(
+      `${vrmNode.name}.quaternion`, track.times, finalValues
+    ));
+  }
+
+  console.log(`Retarget: ${tracks.length} tracks mapped (clip duration: ${sourceClip.duration.toFixed(2)}s, vrm0: ${vrm0})`);
+  if (tracks.length < 5) { console.warn('Too few tracks — retarget failed'); return null; }
+
+  const clip = new THREE.AnimationClip("idle", sourceClip.duration, tracks);
+  clip.optimize();
+  return clip;
+}
+
+async function loadVRMModule() {
+  const { THREE, threeVrm, GLTFLoader } = await loadModules();
+  window.THREE = THREE;
+  return { VRMLoaderPlugin: threeVrm.VRMLoaderPlugin, VRMUtils: threeVrm.VRMUtils, GLTFLoader, THREE };
+}
+
+async function renderVRM(asset, modules) {
+  const { VRMLoaderPlugin, VRMUtils, GLTFLoader, THREE } = modules;
+  const { id: index, slug, title } = asset;
+  const canvas = document.getElementById(`c${index}`);
+  const label = document.getElementById(`l${index}`);
+  const dlBtn = document.getElementById(`d${index}`);
+  const card = canvas.closest('.card');
+
+  card.className = 'card loading';
+  label.textContent = `Loading ${title}...`;
+
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
+  renderer.setSize(CANVAS_W, CANVAS_H, false);
+  renderer.setPixelRatio(1);
+  renderer.setClearColor(0x0b0f14, 1);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(22, CANVAS_W / CANVAS_H, 0.01, 1000);
+
+  // Lighting
+  const keyLight = new THREE.DirectionalLight(0xffffff, 1.0);
+  keyLight.position.set(1.5, 2.0, 2.0);
+  scene.add(keyLight);
+  const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
+  fillLight.position.set(-1.5, 1.0, 1.0);
+  scene.add(fillLight);
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  scene.add(ambient);
+
+  // Subtle purple gradient on the ground via a simple plane or just render as-is
+  // The background is set via CSS on the canvas.
+
+  try {
+    const loader = new GLTFLoader();
+    loader.register((parser) => new VRMLoaderPlugin(parser));
+
+    const origWarn = console.warn;
+    console.warn = (...args) => {
+      const msg = args.map(a => String(a)).join(' ');
+      if (msg.includes('VRMExpressionLoaderPlugin')) return;
+      origWarn(...args);
+    };
+
+    const gltf = await loader.loadAsync(asset.rawVrmPath);
+    console.warn = origWarn;
+
+    const vrm = gltf.userData.vrm;
+    if (!vrm) throw new Error('Not a VRM');
+
+    if (vrm.humanoid) vrm.humanoid.autoUpdateHumanBones = true;
+    VRMUtils.removeUnnecessaryVertices(vrm.scene);
+    VRMUtils.combineSkeletons(vrm.scene);
+
+    // Center and frame the character — upper body portrait (face + torso)
+    const box = new THREE.Box3().setFromObject(vrm.scene);
+    const center = box.getCenter(new THREE.Vector3());
+    vrm.scene.position.sub(center);
+
+    const box2 = new THREE.Box3().setFromObject(vrm.scene);
+    const size = box2.getSize(new THREE.Vector3());
+    const height = Math.max(0.001, size.y);
+
+    // Normalize all models to standard height so they appear the same size in previews
+    const STANDARD_HEIGHT = 1.0;
+    const scaleFactor = STANDARD_HEIGHT / height;
+    vrm.scene.scale.multiplyScalar(scaleFactor);
+    vrm.scene.updateMatrixWorld(true);
+    const box3 = new THREE.Box3().setFromObject(vrm.scene);
+    const center3 = box3.getCenter(new THREE.Vector3());
+    vrm.scene.position.sub(center3);
+
+    // Use normalized height for consistent framing across characters
+    const sHeight = STANDARD_HEIGHT;
+    const sWidth = size.x * scaleFactor;
+    const sDepth = size.z * scaleFactor;
+    const upperBodyH = Math.max(sWidth, sHeight * 0.55, sDepth);
+    const shoulderY = sHeight * 0.42;
+    const fovRad = (camera.fov * Math.PI) / 180;
+    const fitDist = (upperBodyH * 0.5) / Math.tan(fovRad * 0.5);
+    camera.position.set(0, shoulderY, fitDist);
+    camera.lookAt(0, shoulderY, 0);
+    camera.near = Math.max(0.01, fitDist / 100);
+    camera.far = Math.max(100, fitDist * 100);
+    camera.updateProjectionMatrix();
+
+    scene.add(vrm.scene);
+
+    // Apply idle animation (retarget Mixamo -> VRM)
+    // Load a fresh copy of the idle GLB for each VRM to avoid stale matrices
+    const idleLoader = new GLTFLoader();
+    const idleGltf = await idleLoader.loadAsync('/animations/idle.glb');
+    const mixer = new THREE.AnimationMixer(vrm.scene);
+    const clip = retargetMixamoToVrm(THREE, idleGltf, vrm);
+    if (clip) {
+      const action = mixer.clipAction(clip);
+      action.setLoop(THREE.LoopRepeat, Infinity);
+      action.play();
+      // Simulate the render loop with small time steps to let the
+      // animation system properly interpolate bone transforms.
+      // We skip vrm.update() during simulation to avoid spring bone
+      // (hair) physics — otherwise hair is mid-bounce on the first frames.
+      const targetTime = 4.0;
+      const step = 1 / 30; // 30fps simulation
+      for (let t = 0; t < targetTime; t += step) {
+        mixer.update(step);
+      }
+      // Reset spring bones to rest pose so hair hangs naturally
+      // without any physics bounce, then do a single VRM update.
+      if (vrm.springBoneManager) {
+        vrm.springBoneManager.reset();
+      }
+      vrm.update(0);
+    } else {
+      console.warn(`${slug}: no idle clip, rendering T-pose`);
+    }
+
+    // Frame a tight portrait: head + upper body (chest-up)
+    // Use normalized height (STANDARD_HEIGHT) for consistent framing across all character sizes
+    {
+      const headNode = vrm.humanoid?.getNormalizedBoneNode("head");
+      const chestNode = vrm.humanoid?.getNormalizedBoneNode("chest")
+        ?? vrm.humanoid?.getNormalizedBoneNode("spine");
+      const poseBox = new THREE.Box3().setFromObject(vrm.scene);
+      const poseSize = poseBox.getSize(new THREE.Vector3());
+      const totalHeight = Math.max(0.001, poseSize.y);
+
+      let lookY2, frameDist;
+      if (headNode && chestNode) {
+        const headPos = new THREE.Vector3();
+        const chestPos = new THREE.Vector3();
+        headNode.getWorldPosition(headPos);
+        chestNode.getWorldPosition(chestPos);
+        lookY2 = (headPos.y + chestPos.y) / 2;
+        // Portrait span as fraction of normalized height for consistent framing
+        const portraitSpan = totalHeight * 0.38;
+        const fovRad2 = (camera.fov * Math.PI) / 180;
+        frameDist = (portraitSpan * 0.55) / Math.tan(fovRad2 * 0.5);
+      } else {
+        lookY2 = poseBox.min.y + totalHeight * 0.75;
+        const fovRad2 = (camera.fov * Math.PI) / 180;
+        frameDist = (totalHeight * 0.35 * 0.55) / Math.tan(fovRad2 * 0.5);
+      }
+
+      camera.position.set(0, lookY2, frameDist * 1.1);
+      camera.lookAt(0, lookY2, 0);
+      camera.near = Math.max(0.01, frameDist / 100);
+      camera.far = Math.max(100, frameDist * 100);
+      camera.updateProjectionMatrix();
+    }
+
+    // Render final frame
+    renderer.render(scene, camera);
+
+    // Capture
+    const dataUrl = canvas.toDataURL('image/png');
+    dlBtn.href = dataUrl;
+    dlBtn.style.display = 'inline-block';
+    card.className = 'card done';
+    label.textContent = `${title} ✓`;
+
+    // Cleanup
+    scene.remove(vrm.scene);
+    VRMUtils.deepDispose(vrm.scene);
+    renderer.dispose();
+
+    return dataUrl;
+  } catch (err) {
+    card.className = 'card error';
+    label.textContent = `${title} — ${err.message}`;
+    renderer.dispose();
+    return null;
+  }
+}
+
+let results = [];
+
+runAllBtn.addEventListener('click', async () => {
+  runAllBtn.disabled = true;
+  statusEl.textContent = 'Loading three-vrm module...';
+
+  let modules;
+  try {
+    modules = await loadVRMModule();
+  } catch (err) {
+    statusEl.textContent = `Failed to load three-vrm: ${err.message}. Make sure the vite dev server is running.`;
+    runAllBtn.disabled = false;
+    return;
+  }
+
+  statusEl.textContent = 'Rendering VRMs...';
+  results = [];
+
+  for (const [position, asset] of vrmAssets.entries()) {
+    statusEl.textContent = `Rendering ${asset.title} (${position + 1}/${vrmAssets.length})...`;
+    const dataUrl = await renderVRM(asset, modules);
+    results.push({ asset, dataUrl });
+  }
+
+  statusEl.textContent = `Done! ${results.filter(r => r.dataUrl).length}/${vrmAssets.length} previews generated.`;
+  downloadAllBtn.style.display = 'inline-block';
+  runAllBtn.disabled = false;
+});
+
+downloadAllBtn.addEventListener('click', () => {
+  for (const r of results) {
+    if (!r.dataUrl) continue;
+    const a = document.createElement('a');
+    a.href = r.dataUrl;
+    a.download = `${r.asset.slug}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+});
+</script>
+</body>
+</html>

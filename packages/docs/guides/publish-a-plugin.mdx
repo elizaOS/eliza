@@ -1,0 +1,295 @@
+---
+title: "Publish a Plugin"
+description: "Publish your elizaOS plugin to the elizaOS registry"
+---
+
+<Tip>
+  **Video Tutorial**: [**Create + Publish Your Own
+  Plugin**](https://www.youtube.com/watch?v=3wVxXMwSzX4&list=PLrjBjP4nU8ehOgKAa0-XddHzE0KK0nNvS&index=6)
+</Tip>
+
+<Note>
+  This guide assumes you have a working plugin. If you need to create one first,
+  see [Create a Plugin](/guides/create-a-plugin)
+</Note>
+
+Once you've built and tested your plugin locally, you'll want to publish it so others can discover and use it. You'll need an npm account and GitHub account for authentication.
+
+---
+
+## Step 1: Prepare for Publishing
+
+### Navigate to your plugin
+
+Start from your working plugin directory. If you followed the [Create a Plugin](/guides/create-a-plugin) guide:
+
+```bash Terminal
+cd plugin-fal-ai
+```
+
+### Verify plugin requirements
+
+Your plugin needs these key elements for registry acceptance:
+
+**Required files:**
+
+```
+plugin-fal-ai/
+├── src/
+│   └── index.ts         # Your plugin code
+├── package.json         # Plugin metadata
+├── README.md           # Documentation
+└── dist/               # Built files (from `bun run build`)
+```
+
+**What the registry submission validates:**
+
+- `name` is a public npm package and does not use the reserved `@elizaos/*` scope.
+- `repository` points to a public GitHub repository.
+- `description`, `keywords`, and README content are useful for users.
+- The generated registry metadata matches the third-party package schema.
+
+<Steps>
+  <Step title="Add optional assets">
+    If your plugin has useful branding, add assets to the package and reference
+    them from your plugin metadata or README.
+    
+    ```bash Terminal
+    mkdir -p images
+    ```
+    
+    <Tip>
+    Use assets that represent your plugin's functionality clearly. The registry
+    can also fall back to package metadata when custom assets are not present.
+    </Tip>
+  </Step>
+
+  <Step title="Update package.json description">
+    Replace the default generated description with something descriptive:
+    
+    ```json package.json
+    {
+      "name": "plugin-fal-ai",
+      "version": "1.0.0",
+      "description": "ElizaOS plugin for fal-ai", // [!code --]
+      "description": "Generate videos from text using fal.ai MiniMax Hailuo-02 model", // [!code ++]
+      "keywords": ["plugin", "elizaos"]
+    }
+    ```
+  </Step>
+
+  <Step title="Build your plugin">
+    Ensure your plugin is built and ready:
+    
+    ```bash Terminal
+    bun run build
+    ```
+    
+    This creates the `dist/` folder that npm will publish.
+  </Step>
+</Steps>
+
+---
+
+## Step 2: Check authentication
+
+Make sure you're logged into both npm and GitHub:
+
+### Check npm login
+
+<Steps>
+  <Step title="Check current npm login">
+    ```bash Terminal
+    npm whoami
+    ```
+    
+    If you see your username, you're already logged in. If you see an error, continue to the next step.
+  </Step>
+
+  <Step title="Login to npm (if needed)">
+    ```bash Terminal
+    npm login
+    ```
+    
+    Follow the prompts to enter your:
+    - Username
+    - Password  
+    - Email address
+    - One-time password (if 2FA is enabled)
+  </Step>
+</Steps>
+
+### Check GitHub authentication
+
+```bash Terminal
+gh auth status
+```
+
+If you see your GitHub username, you're logged in. If you see an error or "not logged in":
+
+```bash Terminal
+gh auth login
+```
+
+<Note>
+  If `gh` command is not found, you'll need to install GitHub CLI from
+  [cli.github.com](https://cli.github.com) or the publish command will prompt
+  you to create a token manually.
+</Note>
+
+---
+
+## Step 3: Test Publishing Locally
+
+Before publishing, run the plugin's generated checks and inspect the package contents.
+
+### Run local checks
+
+```bash Terminal
+bun run build
+bun run test
+npm pack --dry-run
+```
+
+These commands will:
+
+- Validate your plugin structure
+- Run component and e2e tests defined by your package
+- Show which files would be included in the npm tarball
+
+<Warning>
+  Address any validation errors before proceeding. Your plugin may be rejected
+  by maintainers if it's missing required assets or has placeholder content.
+</Warning>
+
+---
+
+## Step 4: Publish Your Plugin
+
+Once local checks pass, publish the package with standard npm tooling and submit
+the registry update through the elizaOS CLI.
+
+### Publish to npm
+
+```bash Terminal
+npm login
+npm publish --access public
+```
+
+### Submit the registry pull request
+
+```bash Terminal
+elizaos plugins submit .
+```
+
+The command reads your `package.json`, validates the public npm package and
+GitHub repository, adds one metadata file under
+`entries/third-party/` in your fork of `elizaos-plugins/registry`, and opens a
+pull request. Registered third-party packages are labeled as community
+supported, not first-party supported.
+
+Use `--dry-run` to inspect the generated metadata without opening a PR.
+
+<Note>
+  Make sure to test that your plugin is configured correctly before publishing,
+  as it will cause unnecessary delay if something is wrong.
+</Note>
+
+**Example successful output:**
+
+```
+Prepared registry metadata for @your-scope/plugin-fal-ai
+Pushed branch add-your-scope-plugin-fal-ai to your registry fork
+Opened PR: https://github.com/elizaos-plugins/registry/pull/123
+
+Your plugin is now available at:
+NPM: https://www.npmjs.com/package/@your-scope/plugin-fal-ai
+GitHub: https://github.com/yourusername/plugin-fal-ai
+```
+
+---
+
+## Step 5: Registry Review Process
+
+### What happens next
+
+1. **npm Package** - Available immediately at `https://npmjs.com/package/your-plugin-name`
+2. **GitHub Repo** - Created immediately at `https://github.com/yourusername/plugin-name`
+3. **Registry Pull Request** - Opened at [elizaos-plugins/registry](https://github.com/elizaos-plugins/registry/pulls)
+
+### Registry approval
+
+An elizaOS core team member will review your registry pull request to ensure all requirements are met, the plugin is free of malicious code, and it functions as intended with proper images and a quality description.
+
+**Typical review time:** 1-3 business days
+
+**If approved:** Your plugin appears in the official registry.
+
+**If changes requested:** Address the feedback and update your plugin, then re-submit.
+
+---
+
+## Step 6: Post-Publishing
+
+### Plugin is now live!
+
+Once approved, users can install your plugin to their projects:
+
+```bash Terminal
+bun add @your-scope/plugin-fal-ai
+```
+
+### Future updates
+
+**For plugin updates after initial publishing:**
+
+<Important>
+  Use standard npm and Git workflows for plugin publication and updates.
+</Important>
+
+```bash Terminal
+# 1. Make your changes and test locally
+# 2. Update version in package.json
+npm version patch  # or minor/major
+
+# 3. Build and test
+bun run build
+bun run test
+
+# 4. Publish to npm
+npm publish
+
+# 5. Push to GitHub
+git add .
+git commit -m "Update to version x.y.z"
+git push origin main
+```
+
+The elizaOS registry automatically syncs with npm updates, so you don't need to manually update the registry.
+
+---
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card
+    title="Contribute to Core"
+    icon="heart"
+    href="/guides/contribute-to-core"
+  >
+    Help improve elizaOS by contributing to the core framework
+  </Card>
+  <Card title="Plugin Registry" icon="book" href="/plugin-registry/overview">
+    Explore existing plugins and find inspiration
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Master all elizaOS CLI commands for development
+  </Card>
+  <Card
+    title="Join Discord Community"
+    icon="users"
+    href="https://discord.gg/ai16z"
+  >
+    Share your plugin and get help from the community
+  </Card>
+</CardGroup>

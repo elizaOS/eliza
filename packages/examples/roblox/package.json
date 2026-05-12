@@ -1,0 +1,32 @@
+{
+  "name": "@elizaos/example-roblox-agent",
+  "version": "2.0.0-beta.0",
+  "description": "Roblox ↔ elizaOS agent bridge (TypeScript)",
+  "type": "module",
+  "scripts": {
+    "start": "bun --no-env-file run server.ts",
+    "dev": "bun --no-env-file --watch run server.ts",
+    "test": "vitest run --passWithNoTests",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-roblox": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "express": "^4.21.2",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

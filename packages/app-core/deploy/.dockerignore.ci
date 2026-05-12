@@ -1,0 +1,79 @@
+# CI / production dockerignore for `eliza/packages/app-core/deploy/Dockerfile.ci`.
+# Copy to the repo root as `.dockerignore` before `docker build` (context is `.`).
+# Pre-built `dist/` and `packages/app/dist/` are expected in the build context.
+
+.git
+.git/**
+**/.git
+**/.git/**
+.github
+.claude
+.devin
+.vscode
+.idea
+.eliza.ci-disabled
+.env
+.env.local
+.env.*.local
+node_modules/.cache
+packages/**/node_modules
+!packages/agent/node_modules/
+!packages/agent/node_modules/**
+apps/**/node_modules
+# `plugins/**/node_modules` is intentionally NOT excluded: bun's isolated
+# install puts each workspace plugin's runtime deps under
+# `plugins/<plugin>/node_modules/`. Stripping that breaks plugin loading
+# (cross-spawn, fluent-ffmpeg, fflate, etc.) at runtime. The directories
+# are mostly symlinks into `node_modules/.bun/`, so the size cost is
+# negligible.
+eliza/**/node_modules
+!eliza/plugins/*/node_modules/
+!eliza/plugins/*/node_modules/**
+!eliza/packages/agent/node_modules/
+!eliza/packages/agent/node_modules/**
+eliza/packages/app-core/deploy/**/node_modules
+eliza/.turbo
+eliza/packages/benchmarks
+eliza/packages/examples
+eliza/apps
+eliza/cloud
+!eliza/cloud/
+!eliza/cloud/packages/
+!eliza/cloud/packages/sdk/
+!eliza/cloud/packages/sdk/package.json
+!eliza/cloud/packages/sdk/dist/**
+eliza/plugins/*/rust
+eliza/plugins/*/python
+eliza/plugins/*/.git
+eliza/plugins/*/.eliza
+eliza/plugins/*/.elizadb-test
+packages/app/android
+packages/app/ios
+packages/app-core/platforms/electrobun
+packages/app/.vite
+packages/app/screenshots
+packages/app/test-results
+packages/app/test
+packages/app/.eliza
+apps/homepage
+apps/home
+apps/landing
+apps/chrome-extension
+apps/ui
+docs/
+coverage/
+dev.log
+install.sh
+install.ps1
+packaging/
+artifacts/
+.docker-home
+.tmp
+deploy/
+
+# Other deploy Docker recipes — CI agent build only needs Dockerfile.ci
+eliza/packages/app-core/deploy/Dockerfile.cloud
+eliza/packages/app-core/deploy/Dockerfile.cloud-agent
+eliza/packages/app-core/deploy/Dockerfile.sandbox
+eliza/packages/app-core/deploy/Dockerfile.cloud.dockerignore
+!eliza/packages/app-core/deploy/Dockerfile.ci

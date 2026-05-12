@@ -1,0 +1,24 @@
+{
+  "version": "1.0.0",
+  "generatedAt": "2026-05-12T02:34:40.201Z",
+  "repoUrl": "https://github.com/elizaos/eliza",
+  "templates": [
+    {
+      "id": "plugin",
+      "name": "plugin",
+      "description": "Create an elizaOS plugin starter",
+      "kind": "plugin",
+      "version": 1,
+      "languages": ["typescript"]
+    },
+    {
+      "id": "project",
+      "name": "project",
+      "aliases": ["project"],
+      "description": "Create a package-first elizaOS project with optional local source mode",
+      "kind": "project",
+      "version": 1,
+      "languages": ["typescript"]
+    }
+  ]
+}

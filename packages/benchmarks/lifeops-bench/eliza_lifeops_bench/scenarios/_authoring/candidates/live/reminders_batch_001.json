@@ -1,0 +1,885 @@
+[
+  {
+    "id": "live.reminders.setup_weekly_groceries",
+    "name": "Set weekly grocery reminders",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I need a reminder every Sunday at 18:00 to order groceries. Ask me if I want any extra notes attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Simple recurring reminder, persona expects bullet confirmation before adding notes.",
+    "success_criteria": [
+      "Executor asks whether a note should be added to the reminder.",
+      "Executor creates a weekly reminder on list_work for Sundays at 18:00.",
+      "Executor includes the user\u2011provided note verbatim in the reminder title."
+    ],
+    "world_assertions": [
+      "A new reminder on list_work with cadence=weekly, day=Sunday, time=18:00 and title containing the confirmed note."
+    ]
+  },
+  {
+    "id": "live.reminders.schedule_meditation_sessions",
+    "name": "Schedule meditation reminders",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "I want to meditate each morning but only on weekdays. I'm flexible on the exact time, so ask me what works best.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will reveal preferred time after a probing question, and rejects times before 07:00.",
+    "success_criteria": [
+      "Executor asks the user for a preferred start time range.",
+      "Executor creates a weekday reminder on list_personal with the confirmed time.",
+      "Executor respects the constraint that the time must be 07:00 or later."
+    ],
+    "world_assertions": [
+      "A new reminder on list_personal with cadence=weekly, days=Mon\u2011Fri, time\u226507:00 and title mentioning 'meditate'."
+    ]
+  },
+  {
+    "id": "live.reminders.remind_bike_maintenance",
+    "name": "Bike maintenance reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "My bike needs a check\u2011up every 3 months. I don't remember the last date, so ask me to pick a start month.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will give a start month but will push back if the assistant proposes a date in the past.",
+    "success_criteria": [
+      "Executor asks for the month to start the quarterly cycle.",
+      "Executor creates a quarterly reminder on list_work beginning in the user\u2011chosen month.",
+      "Executor confirms the next occurrence date before creating the reminder."
+    ],
+    "world_assertions": [
+      "A new reminder on list_work with cadence=quarterly, start month matching user input, and title containing 'bike'."
+    ]
+  },
+  {
+    "id": "live.reminders.family_dinner_alert",
+    "name": "Family dinner alert",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "Every Friday at 19:00 I need a reminder to start cooking dinner for the family. Ask me if I want a prep note added.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona may mention that the kids arrive at 19:30, so the reminder should be before that.",
+    "success_criteria": [
+      "Executor asks whether a prep note should be attached.",
+      "Executor creates a weekly Friday reminder at 19:00 on list_personal.",
+      "Executor confirms that the reminder occurs before the kids' arrival time."
+    ],
+    "world_assertions": [
+      "A new reminder on list_personal with day=Friday, time=19:00, cadence=weekly and title referencing 'dinner' and any user\u2011provided note."
+    ]
+  },
+  {
+    "id": "live.reminders.water_intake_tracker",
+    "name": "Water intake reminders",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I want to be reminded to drink water every 2 hours between 09:00 and 21:00. Ask me for the exact interval if needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona will provide a preferred start time but insists on exactly two\u2011hour spacing.",
+    "success_criteria": [
+      "Executor asks for the first reminder time within the window.",
+      "Executor creates multiple daily reminders on list_work spaced exactly two hours apart.",
+      "Executor ensures the last reminder does not exceed 21:00."
+    ],
+    "world_assertions": [
+      "Four new reminders on list_work for the same day with times 09:00, 11:00, 13:00, 15:00, 17:00, 19:00, 21:00 (as appropriate) and title containing 'water'."
+    ]
+  },
+  {
+    "id": "live.reminders.pet_vet_appointment",
+    "name": "Pet vet appointment reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "My cat's vet visit is on 2026-05-20 at 10:30. I need a reminder the day before and an hour before. Ask me if I want any additional notes.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 29,
+    "description": "Persona expects two separate reminders and may reject a reminder scheduled after the appointment.",
+    "success_criteria": [
+      "Executor asks whether a note should be added to each reminder.",
+      "Executor creates a reminder on 2026-05-19 at a user\u2011chosen time before 10:30.",
+      "Executor creates a second reminder on 2026-05-20 at 09:30.",
+      "Executor confirms both times with the user before creation."
+    ],
+    "world_assertions": [
+      "Two new reminders on list_personal: one on 2026-05-19 (time confirmed) and one on 2026-05-20 at 09:30, both with titles mentioning 'cat' or 'vet'."
+    ]
+  },
+  {
+    "id": "live.reminders.project_deadline_checkin",
+    "name": "Project deadline check\u2011in",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I have a project due on 2026-06-01. I want a reminder three days prior and a final check\u2011in on the day. Ask me for preferred times.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona will insist on a 09:00 time for the three\u2011day reminder and a 15:00 time for the same\u2011day reminder.",
+    "success_criteria": [
+      "Executor asks for the preferred times for each reminder.",
+      "Executor creates a reminder on 2026-05-29 at 09:00 on list_work.",
+      "Executor creates a reminder on 2026-06-01 at 15:00 on list_work.",
+      "Executor obtains explicit confirmation before creating each reminder."
+    ],
+    "world_assertions": [
+      "Two new reminders on list_work: 2026-05-29 09:00 and 2026-06-01 15:00 with titles referencing 'project deadline'."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_journal_prompt",
+    "name": "Daily journal prompt",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I want a gentle reminder each evening to write in my journal. I prefer a calm phrasing, but I haven't decided on a specific time yet.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona may reveal a preference for after\u2011dinner, around 20:00, and will reject times before 18:00.",
+    "success_criteria": [
+      "Executor asks for a preferred time window.",
+      "Executor creates a daily reminder on list_inbox at a time the user confirms (likely 20:00).",
+      "Executor uses a calming tone in the reminder title as requested."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_inbox with time \u226518:00, title containing 'journal' and a calm phrasing."
+    ]
+  },
+  {
+    "id": "live.reminders.weekend_gardening_alert",
+    "name": "Weekend gardening alert",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Remind me to water the garden every Saturday morning. I'm usually up by 08:30, but let me know if you need more detail.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona may push back on any reminder earlier than 08:00.",
+    "success_criteria": [
+      "Executor asks whether a specific time before 09:00 is acceptable.",
+      "Executor creates a weekly Saturday reminder at 08:30 on list_personal.",
+      "Executor confirms the time with the user before creation."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_personal for Saturdays at 08:30 with title mentioning 'garden' or 'water'."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_budget_review",
+    "name": "Monthly budget review reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need a reminder on the last day of each month to review my budget. Ask me for a preferred time slot and whether I want a summary attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will provide a time between 16:00\u201118:00 and will reject any reminder after 20:00.",
+    "success_criteria": [
+      "Executor asks for the preferred time on the last day of the month.",
+      "Executor creates a monthly reminder on list_work for the last day at the confirmed time.",
+      "Executor asks if a budget summary note should be attached and includes it if given."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_work with day=last, time within 16:00\u201118:00, and title containing 'budget review' plus any user note."
+    ]
+  },
+  {
+    "id": "live.reminders.medication_refill_notice",
+    "name": "Medication refill notice",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I need a reminder two weeks before my blood pressure medication runs out. I don't know the exact depletion date, so ask me to estimate it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will give an approximate date; assistant must calculate the reminder date and confirm.",
+    "success_criteria": [
+      "Executor asks the user to estimate the depletion date.",
+      "Executor calculates a reminder two weeks prior to the estimated date.",
+      "Executor confirms the calculated reminder date with the user before creating it."
+    ],
+    "world_assertions": [
+      "A new reminder on list_personal with a date exactly 14 days before the user\u2011estimated depletion date and title mentioning 'blood pressure'."
+    ]
+  },
+  {
+    "id": "live.reminders.yearly_tax_deadline",
+    "name": "Yearly tax deadline reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Create a reminder for the tax filing deadline on 2026-04-15 and a follow\u2011up one week before. Ask me for the preferred time of day.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 34,
+    "description": "Persona insists on a morning time (08:00\u201109:00) for both reminders and will reject any afternoon slot.",
+    "success_criteria": [
+      "Executor asks for a morning time slot.",
+      "Executor creates a reminder on 2026-04-08 at the confirmed time.",
+      "Executor creates a reminder on 2026-04-15 at the same confirmed time.",
+      "Executor obtains explicit user confirmation before each creation."
+    ],
+    "world_assertions": [
+      "Two new reminders on list_work: 2026-04-08 and 2026-04-15 with time between 08:00\u201109:00 and titles referencing 'tax'."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_language_practice",
+    "name": "Weekly language practice reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I want to practice Spanish for 30 minutes every Tuesday and Thursday. Ask me when I usually have free time on those days.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will give a time window (e.g., 19:00\u201120:00) and will push back if the assistant proposes a slot before 18:00.",
+    "success_criteria": [
+      "Executor asks for the preferred time window on Tuesdays and Thursdays.",
+      "Executor creates two weekly reminders at the user\u2011confirmed times.",
+      "Executor confirms each reminder's day, time, and duration before creation."
+    ],
+    "world_assertions": [
+      "Two new weekly reminders on list_personal: Tuesday and Thursday at the confirmed times, each with duration 30\u202fmin and title mentioning 'Spanish'."
+    ]
+  },
+  {
+    "id": "live.reminders.nurse_shift_change",
+    "name": "Nurse shift change alert",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My sister works night shifts and changes at 07:00. I need a reminder to call her each day at that time. Ask me if I want a custom message.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona may mention that she prefers the reminder at 06:45 to give a buffer.",
+    "success_criteria": [
+      "Executor asks whether a custom message should be attached.",
+      "Executor creates a daily reminder at 06:45 (or the user\u2011confirmed time) on list_inbox.",
+      "Executor confirms the time and message with the user before creation."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_inbox at the confirmed time with title containing 'call sister' or similar and any custom message."
+    ]
+  },
+  {
+    "id": "live.reminders.annual_vacation_planning",
+    "name": "Annual vacation planning reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Remind me on March 1st to finalize my vacation plans for the summer. I want a concise title and no extra notes.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona expects a bullet\u2011point style confirmation before the reminder is added.",
+    "success_criteria": [
+      "Executor confirms the date (2026-03-01) and that no extra note is needed.",
+      "Executor creates a one\u2011time reminder on list_work for March 1st.",
+      "Executor presents the reminder title in bullet\u2011point format before creation."
+    ],
+    "world_assertions": [
+      "A new reminder on list_work for 2026-03-01 with title 'vacation planning' (or close synonym) and no additional description."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_car_service",
+    "name": "Monthly car service reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I need a reminder on the first Monday of each month to check my car's oil level. Ask me for a preferred time and whether I want a checklist attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona will provide 09:15 as the preferred time and will want a short checklist.",
+    "success_criteria": [
+      "Executor asks for the preferred time and checklist preference.",
+      "Executor creates a monthly reminder on list_work for the first Monday at 09:15.",
+      "Executor includes a brief checklist in the reminder description if the user wants it."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_work on the first Monday at 09:15 with title referencing 'car oil' and, if requested, a checklist in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_stretching_prompt",
+    "name": "Daily stretching prompt",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I want a gentle reminder to stretch every day after I finish work. I finish around 18:00, but please ask me for the exact time.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona prefers a calming tone and will reject times before 17:30.",
+    "success_criteria": [
+      "Executor asks for the exact post\u2011work time.",
+      "Executor creates a daily reminder at the confirmed time on list_inbox.",
+      "Executor uses a calm phrasing in the reminder title as requested."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_inbox with time \u226517:30, title containing 'stretch' and a gentle tone."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_choir_rehearsal",
+    "name": "Weekly choir rehearsal reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Remind me every Thursday at 20:00 for choir practice. Ask me if I want a reminder to bring my music folder.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona may say they sometimes start at 20:30, so the assistant should confirm the exact start time.",
+    "success_criteria": [
+      "Executor asks whether the start time is exactly 20:00 or a later offset.",
+      "Executor creates a weekly Thursday reminder at the user\u2011confirmed time.",
+      "Executor asks if a note about the music folder should be added and includes it if yes."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_personal for Thursday at the confirmed time with title mentioning 'choir' and optional note about the music folder."
+    ]
+  },
+  {
+    "id": "live.reminders.quarterly_tax_estimate",
+    "name": "Quarterly tax estimate reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need a reminder on the 15th of each quarter to estimate my taxes. Ask me for a preferred time and whether I want a template attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will give 10:00 as the preferred time and will expect a concise template.",
+    "success_criteria": [
+      "Executor asks for the preferred time on the 15th.",
+      "Executor creates quarterly reminders on list_work for Jan\u202f15, Apr\u202f15, Jul\u202f15, Oct\u202f15 at 10:00.",
+      "Executor attaches a short tax\u2011estimate template if the user requests it."
+    ],
+    "world_assertions": [
+      "Four new quarterly reminders on list_work with dates 2026\u201101\u201115, 2026\u201104\u201115, 2026\u201107\u201115, 2026\u201110\u201115 at 10:00 and titles referencing 'tax estimate' plus any attached template."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_gym_membership_check",
+    "name": "Monthly gym membership check",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "Remind me on the 5th of each month to verify my gym membership payment. Ask me if I want to include the gym's contact info.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will provide the gym's phone number if asked, and prefers a morning reminder.",
+    "success_criteria": [
+      "Executor asks whether to include the gym contact in the reminder.",
+      "Executor creates a monthly reminder on the 5th at a morning time (e.g., 09:00) on list_personal.",
+      "Executor includes the provided contact info in the reminder description if the user supplies it."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_personal for day=5, time\u224809:00, title containing 'gym membership' and, if given, the gym's contact info in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_family_call",
+    "name": "Weekly family call reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "Set a reminder every Sunday at 20:00 to call my parents. Ask me if I want a short agenda attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona may say they sometimes prefer 20:30, so the assistant should confirm the exact time.",
+    "success_criteria": [
+      "Executor asks whether the call time is exactly 20:00 or a later offset.",
+      "Executor creates a weekly Sunday reminder at the confirmed time on list_inbox.",
+      "Executor asks if an agenda should be attached and includes it if provided."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_inbox for Sunday at the confirmed time with title mentioning 'call parents' and optional agenda."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_water_meditation",
+    "name": "Daily water meditation reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I want a short reminder at 07:30 each morning to drink water and do a breathing exercise. Ask me if I need any extra wording.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona expects a concise title and will reject any reminder after 08:00.",
+    "success_criteria": [
+      "Executor confirms the exact time (07:30) with the user.",
+      "Executor creates a daily reminder at 07:30 on list_work.",
+      "Executor uses a concise title as requested, adding extra wording only if the user approves."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_work at 07:30 with title containing 'water' and 'breathing' and no extra text unless approved."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_credit_card_statement",
+    "name": "Monthly credit card statement reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Remind me on the 3rd of each month to review my credit card statement. I need a confirmation of the time before adding it.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona prefers a time between 08:00\u201109:00 and will reject any afternoon slot.",
+    "success_criteria": [
+      "Executor asks for the preferred time within the morning window.",
+      "Executor creates a monthly reminder on the 3rd at the confirmed time on list_work.",
+      "Executor obtains explicit confirmation before creating the reminder."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_work for day=3, time between 08:00\u201109:00, title mentioning 'credit card statement'."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_plant_watering",
+    "name": "Weekly plant watering reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I need a reminder every Wednesday at 17:00 to water my indoor plants. No extra notes needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona wants bullet\u2011point confirmation before creation.",
+    "success_criteria": [
+      "Executor confirms the day, time, and lack of extra notes in bullet format.",
+      "Executor creates a weekly Wednesday reminder at 17:00 on list_personal.",
+      "Executor does not add any description beyond the title."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_personal for Wednesday at 17:00 with title containing 'water plants' and no additional description."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_workout_log",
+    "name": "Daily workout log reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "Create a daily reminder at the end of my workday (around 18:30) to log my workout. Ask me for the exact time and whether I want a link to my spreadsheet attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona prefers the reminder at 18:30 but will accept a time within \u00b115 minutes.",
+    "success_criteria": [
+      "Executor asks for the exact preferred time within the allowed window.",
+      "Executor creates a daily reminder at the confirmed time on list_work.",
+      "Executor asks if a spreadsheet link should be attached and includes it if the user provides one."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_work with time between 18:15\u201118:45, title referencing 'workout log' and optional spreadsheet link in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_book_club_meeting",
+    "name": "Monthly book club meeting reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Remind me on the second Saturday of each month at 14:00 for my book club. Ask me if I need a list of the book titles attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 33,
+    "description": "Persona will provide a list of titles if asked, and expects confirmation of the date before creation.",
+    "success_criteria": [
+      "Executor confirms the second Saturday of each month as the recurring date.",
+      "Executor asks whether a list of book titles should be attached.",
+      "Executor creates a monthly reminder at 14:00 on list_personal with the optional list included."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_personal for the second Saturday at 14:00 with title mentioning 'book club' and, if supplied, a list of titles in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_budget_review",
+    "name": "Weekly budget review reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I want a gentle reminder every Sunday evening to review my weekly spending. Ask me for a preferred time after dinner.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will suggest 20:30 but will reject any reminder before 19:00.",
+    "success_criteria": [
+      "Executor asks for the preferred time window after dinner.",
+      "Executor creates a weekly Sunday reminder at the confirmed time on list_inbox.",
+      "Executor uses a calm phrasing in the title as requested."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_inbox for Sunday at time \u226519:00 with title containing 'budget review' and a gentle tone."
+    ]
+  },
+  {
+    "id": "live.reminders.quarterly_health_check",
+    "name": "Quarterly health check reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Remind me every 3 months to schedule a health check\u2011up. Ask me for a preferred month and whether I want a doctor contact attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona may pick May, August, and November, and will want the doctor\u2019s email if possible.",
+    "success_criteria": [
+      "Executor asks which months the user wants the reminders.",
+      "Executor creates three quarterly reminders on list_personal for the chosen months at a standard time (e.g., 10:00).",
+      "Executor asks if a doctor contact should be added and includes it if provided."
+    ],
+    "world_assertions": [
+      "Three new reminders on list_personal for the user\u2011chosen months at 10:00 with titles referencing 'health check' and optional doctor contact in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_standup_preparation",
+    "name": "Daily stand\u2011up preparation reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need a reminder at 09:00 each weekday to prepare my stand\u2011up notes. Ask me if I want a template attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona expects a template and will reject any reminder before 08:30.",
+    "success_criteria": [
+      "Executor confirms the 09:00 time and weekday recurrence.",
+      "Executor asks whether a stand\u2011up template should be attached.",
+      "Executor creates a Monday\u2011Friday daily reminder on list_work at 09:00 with the optional template."
+    ],
+    "world_assertions": [
+      "A new weekday reminder on list_work for 09:00 with title containing 'stand\u2011up' and optional template in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_pet_food_order",
+    "name": "Monthly pet food order reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "Set a reminder on the 25th of each month to order pet food. Ask me if I want a link to the preferred retailer included.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will give a retailer URL if asked and prefers a morning reminder.",
+    "success_criteria": [
+      "Executor asks whether to include a retailer link.",
+      "Executor creates a monthly reminder on the 25th at a morning time (e.g., 09:00) on list_personal.",
+      "Executor includes the retailer URL in the description if the user supplies it."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_personal for day=25, time\u224809:00, title referencing 'pet food' and optional retailer link in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_language_exchange",
+    "name": "Weekly language exchange reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Remind me every Friday at 18:00 for my language exchange session. No extra notes, just a concise title.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona expects bullet\u2011point confirmation before adding the reminder.",
+    "success_criteria": [
+      "Executor confirms day, time, and lack of extra notes in bullet format.",
+      "Executor creates a weekly Friday reminder at 18:00 on list_work.",
+      "Executor does not add any description beyond the title."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_work for Friday at 18:00 with title containing 'language exchange' and no additional description."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_meditation_reflection",
+    "name": "Daily meditation reflection reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I want a gentle reminder each evening after my meditation (around 21:00) to jot down reflections. Ask me if I want a short prompt attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona prefers the reminder no earlier than 20:30 and will reject any before that.",
+    "success_criteria": [
+      "Executor asks for the exact preferred time after meditation.",
+      "Executor creates a daily reminder at the confirmed time on list_inbox.",
+      "Executor asks whether a short reflection prompt should be attached and includes it if approved."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_inbox with time \u226520:30, title containing 'reflection' and optional prompt in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.quarterly_software_license_renewal",
+    "name": "Quarterly software license renewal reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I need a reminder on the first day of each quarter to renew my software licenses. Ask me for a preferred time and whether I want the license keys listed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will provide a time of 09:00 and will want the keys attached if they exist.",
+    "success_criteria": [
+      "Executor confirms the quarterly recurrence and the 09:00 time.",
+      "Executor asks if license keys should be added to the reminder.",
+      "Executor creates four quarterly reminders on list_work at 09:00 with titles referencing 'license renewal' and optional keys in the description."
+    ],
+    "world_assertions": [
+      "Four new quarterly reminders on list_work for the first day of each quarter at 09:00 with title containing 'software license' and optional key list."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_charity_donation",
+    "name": "Monthly charity donation reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "Set a reminder on the 10th of each month at 11:00 to transfer my charity donation. Ask me if I want the charity's account details attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 31,
+    "description": "Persona may provide the account details when asked and prefers a concise title.",
+    "success_criteria": [
+      "Executor asks whether to include the charity's account details.",
+      "Executor creates a monthly reminder on the 10th at 11:00 on list_personal.",
+      "Executor includes the account details in the description if the user supplies them."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_personal for day=10, time=11:00, title containing 'charity donation' and optional account details in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_gym_class",
+    "name": "Weekly gym class reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "Remind me every Tuesday at 07:00 for my early\u2011morning gym class. Ask me if I want a warm\u2011up routine attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will confirm the 07:00 slot and may provide a short warm\u2011up list.",
+    "success_criteria": [
+      "Executor confirms the 07:00 time with the user.",
+      "Executor asks whether a warm\u2011up routine should be attached.",
+      "Executor creates a weekly Tuesday reminder at 07:00 on list_work with optional warm\u2011up details."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_work for Tuesday at 07:00 with title containing 'gym class' and optional warm\u2011up routine in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_morning_affirmations",
+    "name": "Daily morning affirmations reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "I want a gentle reminder each morning at 06:30 to do my affirmations. Ask me if I want a specific affirmation phrase included.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona prefers a calm tone and will reject any reminder before 06:00.",
+    "success_criteria": [
+      "Executor asks for the preferred affirmation phrase.",
+      "Executor creates a daily reminder at 06:30 on list_inbox.",
+      "Executor includes the user\u2011provided phrase in the reminder title."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_inbox at 06:30 with title containing the affirmation phrase and a gentle tone."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_vehicle_inspection",
+    "name": "Monthly vehicle inspection reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Remind me on the 15th of each month at 14:00 to schedule my vehicle inspection. Ask me if I need the garage contact added.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will provide the garage phone number if asked and prefers a midday reminder.",
+    "success_criteria": [
+      "Executor confirms the 15th at 14:00 as the recurring slot.",
+      "Executor asks whether to attach the garage contact.",
+      "Executor creates a monthly reminder on list_work with optional garage contact in the description."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_work for day=15, time=14:00 with title referencing 'vehicle inspection' and optional garage contact."
+    ]
+  },
+  {
+    "id": "live.reminders.weekly_finance_review",
+    "name": "Weekly finance review reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Set a reminder every Thursday at 17:00 to review my finances. No extra notes, just a short title.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 21,
+    "description": "Persona expects bullet\u2011point confirmation before creation.",
+    "success_criteria": [
+      "Executor confirms day, time, and lack of extra notes in bullet format.",
+      "Executor creates a weekly Thursday reminder at 17:00 on list_work.",
+      "Executor does not add any description beyond the title."
+    ],
+    "world_assertions": [
+      "A new weekly reminder on list_work for Thursday at 17:00 with title containing 'finance review' and no additional description."
+    ]
+  },
+  {
+    "id": "live.reminders.daily_sleep_hygiene",
+    "name": "Daily sleep hygiene reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need a reminder at 22:00 each night to start my sleep hygiene routine. Ask me if I want a checklist attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will reject any reminder after 23:00 and prefers a concise title.",
+    "success_criteria": [
+      "Executor confirms the 22:00 time with the user.",
+      "Executor asks whether a sleep\u2011hygiene checklist should be attached.",
+      "Executor creates a daily reminder at 22:00 on list_personal with optional checklist."
+    ],
+    "world_assertions": [
+      "A new daily reminder on list_personal at 22:00 with title containing 'sleep hygiene' and optional checklist in the description."
+    ]
+  },
+  {
+    "id": "live.reminders.monthly_utility_bill_payment",
+    "name": "Monthly utility bill payment reminder",
+    "domain": "reminders",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Remind me on the 5th of each month at 09:30 to pay my utility bills. Ask me if I need the account numbers attached.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona prefers a morning slot and will reject any reminder after 10:00.",
+    "success_criteria": [
+      "Executor confirms the 09:30 time and 5th day recurrence.",
+      "Executor asks whether to include utility account numbers.",
+      "Executor creates a monthly reminder on list_work with optional account numbers in the description."
+    ],
+    "world_assertions": [
+      "A new monthly reminder on list_work for day=5 at 09:30 with title referencing 'utility bill' and optional account numbers."
+    ]
+  }
+]

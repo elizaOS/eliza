@@ -1,0 +1,66 @@
+# Headscale config — customer-tunnel coordination for Eliza Cloud.
+#
+# This is the canonical config; deployed to Railway from this service
+# directory. Changes here require a service redeploy.
+
+server_url: https://headscale.elizacloud.ai
+listen_addr: 0.0.0.0:8080
+metrics_listen_addr: 127.0.0.1:9090
+grpc_listen_addr: 127.0.0.1:50443
+grpc_allow_insecure: false
+
+noise:
+  private_key_path: /var/lib/headscale/noise_private.key
+
+# IP pool inside the customer-tunnel tailnet.
+prefixes:
+  v4: 100.64.0.0/10
+  v6: fd7a:115c:a1e0::/48
+
+derp:
+  # Default DERP map. Override with a custom DERP region if you need
+  # geo-localized relays.
+  urls:
+    - https://controlplane.tailscale.com/derpmap/default
+  auto_update_enabled: true
+  update_frequency: 24h
+
+disable_check_updates: true
+
+ephemeral_node_inactivity_timeout: 15m
+node_update_check_interval: 10s
+
+database:
+  type: sqlite
+  debug: false
+  gorm:
+    prepare_stmt: true
+    parameterized_queries: true
+    skip_err_record_not_found: true
+    slow_threshold: 1000
+  sqlite:
+    path: /var/lib/headscale/db.sqlite
+    write_ahead_log: true
+    wal_autocheckpoint: 1000
+
+log:
+  level: info
+  format: json
+
+# Wildcard MagicDNS within the tunnel namespace so customer sessions resolve
+# `<sessionId>.tunnel.eliza.local` inside the tailnet. The reverse proxy
+# rewrites the public host to the tailnet IP.
+dns:
+  magic_dns: true
+  base_domain: tunnel.eliza.local
+  nameservers:
+    global:
+      - 1.1.1.1
+      - 9.9.9.9
+
+policy:
+  mode: file
+  path: /etc/headscale/acl.hujson
+
+unix_socket: /var/lib/headscale/headscale.sock
+unix_socket_permission: "0770"

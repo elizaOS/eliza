@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/example-agent-console",
+  "version": "2.0.0-beta.0",
+  "description": "Live observability dashboard for an elizaOS AgentRuntime — every stage, prompt, tool call, and event in real time.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun --hot run server.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-embedding": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "typescript": "^6.0.3",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

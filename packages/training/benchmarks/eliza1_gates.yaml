@@ -1,0 +1,300 @@
+# eliza1_gates.yaml — per-tier numeric eval gates for Eliza-1 bundles.
+#
+# Source of truth for the publish-blocking eval gates referenced by
+# `packages/inference/AGENTS.md` §8 and the manifest `evals` block
+# (`packages/app-core/src/services/local-inference/manifest/schema.ts` →
+# `Eliza1EvalsSchema`). The publish orchestrator
+# (`packages/training/scripts/publish/orchestrator.py`) loads this file via
+# `benchmarks/eliza1_gates.py::load_gates` and runs `apply_gates(results, tier)`
+# against the measured eval blob; a `required: true` gate that fails for the
+# tier is publish-blocking, and `defaultEligible` is refused unless every
+# required gate passes.
+#
+# `provisional: true` means the threshold is a placeholder that was NOT yet
+# confirmed by an end-to-end measurement on real hardware. Provisional gates
+# are recorded and reported, but they do not flip `defaultEligible` to false
+# on their own — the threshold is calibrated, not yet enforced. Flip
+# `provisional: false` once the e2e harness reproduces the threshold on the
+# tier's reference hardware (see the per-gate `calibration` note).
+#
+# Calibration sources (kernel/quant micro-benchmarks):
+#   - packages/inference/BENCHMARK_2026-05-10.md   §7 (gate suggestions)
+#   - packages/inference/bench_M4Max_2026-05-10.md
+#   - packages/inference/SHADER_REVIEW_2026-05-10.md (dispatch shape)
+#   - packages/inference/reports/kernel-optimization-review.md
+#
+# Hardware-dependent gates (`needs_hardware: true`) cannot be evaluated off
+# device: a publish run on a host that lacks the device records them as
+# "needs-hardware" (a null result), NOT as a pass. The CI matrix runs the
+# device-bound subset on the relevant hardware nightly.
+
+version: 2
+
+# ---------------------------------------------------------------------------
+# Gate definitions — name → comparison op + metadata. The op is applied as
+# `measured <op> threshold`; `>=` for "higher is better", `<=` for "lower is
+# better". `bool` gates take a boolean measurement and pass when true.
+# ---------------------------------------------------------------------------
+gates:
+  format_ok:
+    op: ">="
+    unit: "parsable-output rate 0..1"
+    manifest_field: null
+    description: >-
+      Fraction of held-out bench rows whose generated output parses into the
+      structurally-required shape for its task type — aggregated across
+      eliza_bench.py (buckets[*].format_ok / n) and native_tool_call_bench.py
+      (buckets[*].structure_ok / n). This is a structural gate, not a quality
+      gate: it measures "did the model emit a well-formed TOON/tool-call
+      document at all", which a published tier should reliably do. Not
+      provisional — it is a real measurement the bench self-reports — but it is
+      ONLY evaluated in `mode: full`; smoke-corpus pipeline runs use the
+      separate `format_ok_floor` (0.5) / `format_ok_not_regressed` structural
+      checks in eliza1_gates.py and a few-hundred-record smoke corpus is not
+      expected to clear the full-mode 0.7 floor.
+    calibration: >-
+      0.70 is a defensible publish floor for a real fine-tune run on the full
+      corpus (the SFT target is parsable-format ≈ 0.95+; a tier that falls below
+      0.7 is broken, not merely under-tuned). Tighten per-tier as real run data
+      lands; leave provisional:false but treat 0.70 as the conservative floor,
+      not the target.
+  text_eval:
+    op: ">="
+    unit: "score 0..1"
+    manifest_field: "evals.textEval"
+    description: "Held-out text-quality eval (judge or benchmark suite)."
+  voice_rtf:
+    op: "<="
+    unit: "real-time factor"
+    manifest_field: "evals.voiceRtf"
+    description: "TTS real-time factor — seconds of compute per second of audio."
+    calibration: "BENCHMARK_2026-05-10.md §7 — 0.4 defensible on M4 Max 9b; flip non-provisional after first e2e TTS RTF."
+  asr_wer:
+    op: "<="
+    unit: "word error rate 0..1"
+    manifest_field: "evals.asrWer"
+    description: "ASR word error rate on the held-out speech eval set."
+  vad_latency_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: "evals.vadLatencyMs"
+    description: "Median VAD speech-onset detection latency."
+  vad_boundary_mae_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: "evals.vadLatencyMs.boundaryMs"
+    description: "Median absolute error of detected speech onset against labeled speech start."
+  vad_endpoint_p95_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: "evals.vadLatencyMs.endpointMs"
+    description: "P95 endpoint overhang after labeled speech end."
+  vad_false_bargein_per_hour:
+    op: "<="
+    unit: "events/hour"
+    manifest_field: "evals.vadLatencyMs.falseBargeInRate"
+    description: "Extrapolated false speech-start events per hour over silence/noise fixtures."
+  first_token_latency_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: null
+    description: "Time from speech-end to the response model's first token (LatencyTracer ttftMs.p50)."
+    calibration: "BENCHMARK_2026-05-10.md §7 — single-step decode under TurboQuant Q4 + DFlash should land 50–120 ms on M4 Max; 200 ms keeps headroom."
+  first_audio_latency_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: null
+    description: "Time from speech-end to the first TTS audio chunk played (LatencyTracer ttapMs.p50)."
+    calibration: "BENCHMARK_2026-05-10.md §7 — loose at 400 ms; tighten to 250 ms once the e2e harness reproduces it."
+  barge_in_cancel_ms:
+    op: "<="
+    unit: "ms"
+    manifest_field: null
+    description: "Time from VAD 'words detected' to TTS+LLM cancellation acknowledged (bargein_latency_harness.mjs)."
+  thirty_turn_ok:
+    op: "bool"
+    manifest_field: "evals.thirtyTurnOk"
+    description: "A 30-turn synthetic conversation completed without crash, leak, or RSS exceeding ramBudgetMb.recommended (thirty_turn_endurance_harness.mjs)."
+  e2e_loop_ok:
+    op: "bool"
+    manifest_field: "evals.e2eLoopOk"
+    description: "One mic→speech end-to-end loop completed (all LatencyTracer checkpoints recorded)."
+  dflash_acceptance:
+    op: ">="
+    unit: "ratio 0..1"
+    manifest_field: "evals.dflashAcceptance"
+    description: "DFlash speculative-decode acceptance rate (n_drafted_accepted / n_drafted) over the bench run."
+    calibration: "Depends on the trained drafter — not benchmarkable from kernel numbers; stays provisional until an e2e run with a real drafter (BENCHMARK_2026-05-10.md §7)."
+  dflash_speedup:
+    op: ">="
+    unit: "× (drafter-on tok/s ÷ baseline tok/s)"
+    manifest_field: "evals.dflashSpeedup"
+    description: "End-to-end generation speedup from DFlash speculative decoding, measured by dflash_drafter_runtime_smoke.mjs --bench."
+    calibration: "Placeholder until a trained drafter exists; the bench records null on no-hardware (recorded, not faked)."
+  expressive_tag_faithfulness:
+    op: ">="
+    unit: "ratio 0..1"
+    manifest_field: "evals.expressive.tagFaithfulness"
+    description: "Fraction of emotion/singing tags rendered with the intended affect."
+  expressive_mos:
+    op: ">="
+    unit: "MOS 1..5"
+    manifest_field: "evals.expressive.mosExpressive"
+    description: "Mean opinion score on expressive (emotion/singing) prompts."
+  expressive_tag_leakage:
+    op: "<="
+    unit: "ratio 0..1"
+    manifest_field: "evals.expressive.tagLeakage"
+    description: "Fraction of audio frames where a tag literal ('[happy]') leaked into the spoken output."
+  peak_rss_mb:
+    op: "<="
+    unit: "MB"
+    manifest_field: null
+    needs_hardware: true
+    description: "Mobile peak resident-set size over a representative voice session (mobile_peak_rss_harness.mjs — needs iOS/Android device)."
+  thermal_throttle_pct:
+    op: "<="
+    unit: "% of session"
+    manifest_field: null
+    needs_hardware: true
+    description: "Fraction of a mobile voice session spent thermally throttled (mobile_peak_rss_harness.mjs — needs device)."
+
+# ---------------------------------------------------------------------------
+# DFlash speculative-decoding bench gates. Distinct section so the bench
+# report writer (`dflash_drafter_runtime_smoke.mjs --bench`) and the
+# manifest evals writer can reference it directly. Both thresholds are
+# placeholders that become real once a trained drafter exists — a bench run
+# on hardware without the spec binary / drafter records a null entry
+# ("needs hardware"), never a fabricated number (AGENTS.md §3 / §7).
+dflash:
+  # Minimum acceptance rate (accepted speculative tokens / drafted tokens).
+  minAcceptanceRate: 0.65
+  # Minimum end-to-end generation speedup (drafter-on tok/s ÷ baseline tok/s).
+  minSpeedup: 1.5
+  provisional: true
+  benchReportGlob: "packages/inference/reports/dflash-bench/dflash-bench-*.json"
+  calibration: "BENCHMARK_2026-05-10.md §7 — acceptance threshold is the published target; speedup is a placeholder. Flip provisional:false after a real drafter + e2e run reproduces both."
+
+# ---------------------------------------------------------------------------
+# Per-tier thresholds. `required: true` → publish-blocking for that tier.
+# A gate omitted for a tier is not evaluated for that tier (e.g. the mobile
+# RSS gate is not required for the GH200-class `27b-1m` tier).
+# ---------------------------------------------------------------------------
+tiers:
+  0_6b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+    text_eval: { threshold: 0.55, required: true, provisional: true }
+    voice_rtf: { threshold: 0.5, required: true, provisional: true }
+    asr_wer: { threshold: 0.10, required: true, provisional: true }
+    vad_latency_ms: { threshold: 20, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 220, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 80, required: true, provisional: false }
+    thirty_turn_ok: { threshold: true, required: true, provisional: false }
+    e2e_loop_ok: { threshold: true, required: true, provisional: false }
+    dflash_acceptance: { threshold: 0.60, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.4, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.80, required: false, provisional: true }
+    expressive_mos: { threshold: 3.6, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
+    peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
+    thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
+  1_7b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+    text_eval: { threshold: 0.60, required: true, provisional: true }
+    voice_rtf: { threshold: 0.45, required: true, provisional: true }
+    asr_wer: { threshold: 0.08, required: true, provisional: true }
+    vad_latency_ms: { threshold: 18, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 200, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
+    thirty_turn_ok: { threshold: true, required: true, provisional: false }
+    e2e_loop_ok: { threshold: true, required: true, provisional: false }
+    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.85, required: false, provisional: true }
+    expressive_mos: { threshold: 3.8, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
+    peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
+    thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
+  9b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+    text_eval: { threshold: 0.65, required: true, provisional: true }
+    voice_rtf: { threshold: 0.4, required: true, provisional: true }
+    asr_wer: { threshold: 0.06, required: true, provisional: true }
+    vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 200, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
+    thirty_turn_ok: { threshold: true, required: true, provisional: false }
+    e2e_loop_ok: { threshold: true, required: true, provisional: false }
+    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.90, required: false, provisional: true }
+    expressive_mos: { threshold: 4.0, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
+    peak_rss_mb: { threshold: 9500, required: false, provisional: true, needs_hardware: true }
+    thermal_throttle_pct: { threshold: 15, required: false, provisional: true, needs_hardware: true }
+  27b:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+    text_eval: { threshold: 0.70, required: true, provisional: true }
+    voice_rtf: { threshold: 0.4, required: true, provisional: true }
+    asr_wer: { threshold: 0.05, required: true, provisional: true }
+    vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 220, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
+    thirty_turn_ok: { threshold: true, required: true, provisional: false }
+    e2e_loop_ok: { threshold: true, required: true, provisional: false }
+    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.90, required: false, provisional: true }
+    expressive_mos: { threshold: 4.1, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
+  27b-256k:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+    text_eval: { threshold: 0.70, required: true, provisional: true }
+    voice_rtf: { threshold: 0.4, required: true, provisional: true }
+    asr_wer: { threshold: 0.05, required: true, provisional: true }
+    vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 240, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 420, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
+    thirty_turn_ok: { threshold: true, required: true, provisional: false }
+    e2e_loop_ok: { threshold: true, required: true, provisional: false }
+    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.90, required: false, provisional: true }
+    expressive_mos: { threshold: 4.1, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
+  27b-1m:
+    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
+    text_eval: { threshold: 0.70, required: true, provisional: true }
+    voice_rtf: { threshold: 0.4, required: true, provisional: true }
+    asr_wer: { threshold: 0.05, required: true, provisional: true }
+    vad_latency_ms: { threshold: 16, required: true, provisional: false }
+    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
+    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
+    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 260, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
+    thirty_turn_ok: { threshold: true, required: true, provisional: false }
+    e2e_loop_ok: { threshold: true, required: true, provisional: false }
+    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.5, required: false, provisional: true }

@@ -1,0 +1,70 @@
+{
+    "sender": {
+        "walkera@mcp.com": {
+            "password": "AW0808!6v5nP",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        }
+    },
+    "should_or_shouldnt_receive":{
+        "dcooper@mcp.com": {
+            "password": "cooper$d660s",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        },
+        "turnerj@mcp.com": {
+            "password": "jose_86UKmSi",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        },
+        "anthony_murphy24@mcp.com": {
+            "password": "anthony1997#",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        },
+        "cturner@mcp.com": {
+            "password": "carol2002$ik",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        },
+        "ashley_anderson@mcp.com": {
+            "password": "AA0202@kEpFH",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        },
+        "brenda_rivera81@mcp.com": {
+            "password": "brenda1991$q",
+            "imap_server": "localhost",
+            "imap_port": 1143,
+            "smtp_server": "localhost",
+            "smtp_port": 1587,
+            "use_ssl": false,
+            "use_starttls": false
+        }
+
+    }
+}

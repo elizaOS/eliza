@@ -1,0 +1,1583 @@
+---
+title: "配置"
+sidebarTitle: "配置"
+description: "Eliza 主运行时配置文件、环境变量、CLI 命令及所有配置部分的完整参考。"
+---
+
+Eliza 使用一个主 JSON5 配置文件管理运行时和引导设置。
+本页面记录了配置文件、环境变量覆盖，以及现在驱动托管和提供商选择的规范化运行时路由字段。
+
+<div id="config-file-location">
+
+## 配置文件位置
+
+</div>
+
+默认情况下，Eliza 将其配置存储在：
+
+```
+~/.eliza/eliza.json
+```
+
+<Info>
+配置目录为 `~/.eliza`，配置文件为其中的 `eliza.json`。CLI 二进制文件为 `eliza`，npm 包名为 `elizaai`。
+</Info>
+
+<div id="overriding-the-location">
+
+### 覆盖配置位置
+
+</div>
+
+两个环境变量控制 Eliza 查找配置的位置：
+
+| 变量 | 用途 | 默认值 |
+|----------|---------|---------|
+| `ELIZA_STATE_DIR` | 覆盖整个状态目录 | `~/.eliza` |
+| `ELIZA_CONFIG_PATH` | 直接覆盖配置文件路径 | `~/.eliza/eliza.json` |
+
+`ELIZA_CONFIG_PATH` 优先于 `ELIZA_STATE_DIR`。两者都支持 `~` 展开为主目录。为了向后兼容，旧名称 `ELIZA_STATE_DIR` 和 `ELIZA_CONFIG_PATH` 也作为备用项被接受。
+
+```bash
+# Use a custom state directory (config lives at /opt/eliza/eliza.json)
+ELIZA_STATE_DIR=/opt/eliza eliza start
+
+# Point to a specific config file
+ELIZA_CONFIG_PATH=~/projects/bot/config.json5 eliza start
+```
+
+<div id="other-state-directory-paths">
+
+### 其他状态目录路径
+
+</div>
+
+状态目录还包含：
+
+| 路径 | 用途 |
+|------|---------|
+| `~/.eliza/models/` | 缓存的模型提供商列表（按提供商分的 JSON 文件） |
+| `~/.eliza/credentials/` | OAuth 凭据（可通过 `ELIZA_OAUTH_DIR` 覆盖） |
+| `~/.eliza/credentials/oauth.json` | OAuth 令牌存储 |
+
+<div id="canonical-runtime-routing">
+
+## 规范化运行时路由
+
+</div>
+
+Eliza 保存的运行时拓扑不再从单个 `connection` blob 推断，
+根级 `connection` 字段也不再属于持久化配置模式。规范化的持久化字段为：
+
+| 字段 | 用途 |
+|------|---------|
+| `deploymentTarget` | 活跃服务器运行的位置：`local`、`cloud` 或 `remote` |
+| `linkedAccounts` | 该服务器可用的提供商或云帐户 |
+| `serviceRouting` | 哪个后端处理每项能力（`llmText`、`tts`、`media`、`embeddings`、`rpc`） |
+
+```json5
+{
+  deploymentTarget: {
+    runtime: "cloud",
+    provider: "elizacloud",
+  },
+  linkedAccounts: {
+    elizacloud: {
+      status: "linked",
+      source: "oauth",
+    },
+  },
+  serviceRouting: {
+    llmText: {
+      backend: "anthropic",
+      transport: "direct",
+      primaryModel: "anthropic/claude-sonnet-4.6",
+    },
+    tts: {
+      backend: "elizacloud",
+      transport: "cloud-proxy",
+      accountId: "elizacloud",
+    },
+  },
+}
+```
+
+这意味着服务器可以托管在 Eliza Cloud 上，同时仍然使用 Anthropic、
+OpenAI、OpenRouter 或本地模型进行聊天推理。
+
+<div id="file-format">
+
+## 文件格式
+
+</div>
+
+配置文件支持 **JSON5** 语法，允许：
+
+- 注释（`//` 和 `/* */`）
+- 尾随逗号
+- 不带引号的键名
+- 单引号字符串
+- 多行字符串
+
+```json5
+{
+  // Agent configuration
+  agent: { name: "mila" },
+
+  // API keys (prefer .env for secrets)
+  env: {
+    ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+  },
+}
+```
+
+<div id="include-directive">
+
+### `$include` 指令
+
+</div>
+
+配置支持通过 `$include` 进行模块化组合。包含的文件按顺序进行深度合并，后面的值会覆盖前面的值。
+
+```json5
+{
+  "$include": "./base.json5",
+  // Local overrides merged on top
+  agents: { list: [{ id: "custom", name: "Custom Agent" }] }
+}
+```
+
+```json5
+// Array form: merge multiple base configs
+{
+  "$include": ["./base.json5", "./connectors.json5"],
+  env: { MY_KEY: "override" }
+}
+```
+
+包含支持最多 10 层嵌套。循环包含会被检测并拒绝。
+
+<div id="environment-variables-in-config">
+
+### 配置中的环境变量
+
+</div>
+
+Eliza 从两个来源加载环境变量：
+
+<Tabs>
+  <Tab title="配置文件内联（env 部分）">
+    直接在 `eliza.json` 中设置变量。如果尚未设置，它们会被应用到进程环境中：
+
+    ```json5
+    {
+      env: {
+        ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+        OPENAI_API_KEY: "<OPENAI_API_KEY>",
+        // Structured form under vars:
+        vars: {
+          BRAVE_API_KEY: "<BRAVE_API_KEY>",
+        },
+      },
+    }
+    ```
+
+    顶级字符串值和 `env.vars` 下的值都会合并到进程环境中。
+  </Tab>
+  <Tab title="Shell 环境导入">
+    选择性导入登录 Shell 中的变量：
+
+    ```json5
+    {
+      env: {
+        shellEnv: {
+          enabled: true,
+          timeoutMs: 15000, // default: 15s
+        },
+      },
+    }
+    ```
+
+    这会运行 `$SHELL -l -c 'env -0'` 并导入缺失的变量。
+  </Tab>
+</Tabs>
+
+<Warning>
+配置文件以模式 `0o600`（仅所有者可读写）写入，因为 `env` 部分可能包含 API 密钥。请将机密信息放在 `env` 部分中，或使用单独的 `~/.eliza/.env` 文件。
+</Warning>
+
+<div id="top-level-structure">
+
+## 顶级结构
+
+</div>
+
+以下是 `ElizaConfig` 中的所有顶级键：
+
+```json5
+{
+  meta: {},           // Config metadata (version tracking)
+  auth: {},           // Auth profiles and provider credentials
+  env: {},            // Environment variables and shell env import
+  wizard: {},         // Onboarding wizard state
+  diagnostics: {},    // Diagnostics, OpenTelemetry, cache tracing
+  logging: {},        // Log levels, file output, redaction
+  update: {},         // Auto-update channel and check interval
+  browser: {},        // Browser automation (CDP, profiles, headless)
+  ui: {},             // UI theme, assistant name/avatar
+  skills: {},         // Skill loading, allowlists, per-skill config
+  plugins: {},        // Plugin loading, allow/deny lists, slots
+  models: {},         // Custom model providers, Bedrock discovery
+  nodeHost: {},       // Node host browser proxy settings
+  agents: {},         // Agent definitions, defaults, personality
+  deploymentTarget: {}, // Canonical hosting target (local/cloud/remote)
+  linkedAccounts: {}, // Canonical linked account inventory
+  serviceRouting: {}, // Canonical per-capability routing
+  tools: {},          // Tool profiles, web search/fetch, exec, media
+  bindings: [],       // Agent-to-channel routing rules
+  broadcast: {},      // Multi-agent broadcast configuration
+  audio: {},          // Audio settings (placeholder)
+  messages: {},       // Response prefix, queue, TTS, debounce
+  commands: {},       // Command toggles (bash, config, debug)
+  approvals: {},      // Exec approval forwarding to chat channels
+  session: {},        // Session-level configuration
+  web: {},            // WebSocket/WhatsApp web provider settings
+  cron: {},           // Cron job scheduling
+  hooks: {},          // Webhook hooks, Gmail integration
+  discovery: {},      // mDNS and wide-area service discovery
+  talk: {},           // ElevenLabs voice/Talk mode
+  gateway: {},        // Gateway server (port, bind, TLS, auth)
+  memory: {},         // Memory backend (builtin vs qmd)
+  embedding: {},      // Local embedding model (GGUF, GPU layers)
+  database: {},       // Database provider (PGLite or Postgres)
+  cloud: {},          // Cloud integration (remote provisioning)
+  x402: {},           // HTTP payment protocol
+  media: {},          // Media generation (image, video, audio, vision)
+  connectors: {},     // Messaging connectors (Telegram, Discord, etc.)
+  channels: {},       // [deprecated] Use connectors instead
+  mcp: {},            // MCP server configuration
+  registry: {},       // ERC-8004 agent registry
+  features: {},       // Feature flags (auto-enable plugins)
+  customActions: [],  // User-defined custom actions
+}
+```
+
+<div id="agent-configuration">
+
+## 智能体配置
+
+</div>
+
+智能体在 `agents.list` 下定义。`agents.defaults` 部分提供共享默认值。
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-sonnet-4.6" },
+      workspace: "~/projects/my-agent",
+      thinkingDefault: "medium",
+      timeoutSeconds: 120,
+      maxConcurrent: 1,
+    },
+    list: [
+      {
+        id: "mila",
+        default: true,
+        name: "Mila",
+        model: "anthropic/claude-opus-4.7",
+        workspace: "~/projects/mila-workspace",
+        // Personality (set during onboarding)
+        bio: ["A helpful AI assistant"],
+        system: "You are Mila, a thoughtful assistant.",
+        style: { all: ["concise", "friendly"] },
+        adjectives: ["helpful", "creative"],
+        // Identity for display
+        identity: { name: "Mila" },
+        // Per-agent tool overrides
+        tools: {
+          profile: "standard",
+          exec: { security: "allowlist" },
+        },
+        // Per-agent sandbox settings
+        sandbox: {
+          mode: "non-main",
+          workspaceAccess: "ro",
+          scope: "session",
+        },
+      },
+    ],
+  },
+}
+```
+
+<div id="key-agent-fields">
+
+### 智能体关键字段
+
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `id` | `string` | 唯一的智能体标识符（必填） |
+| `default` | `boolean` | 标记为默认智能体 |
+| `name` | `string` | 显示名称 |
+| `model` | `string \| { primary, fallbacks[] }` | 模型选择，可选备用模型 |
+| `workspace` | `string` | 智能体运行的工作目录 |
+| `skills` | `string[]` | 技能允许列表（省略表示全部，空表示无） |
+| `bio` | `string[]` | 智能体简介行 |
+| `system` | `string` | 系统提示词 |
+| `style` | `{ all?, chat?, post? }` | 通信风格规则 |
+| `identity` | `object` | 显示身份（名称等） |
+| `tools` | `AgentToolsConfig` | 每个智能体的工具策略覆盖 |
+| `sandbox` | `object` | 沙箱隔离设置 |
+| `heartbeat` | `object` | 定期后台心跳运行 |
+| `memorySearch` | `MemorySearchConfig` | 每个智能体的记忆搜索覆盖 |
+
+<div id="agent-defaults">
+
+### 智能体默认值
+
+</div>
+
+`agents.defaults` 控制所有智能体的全局行为：
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-sonnet-4.6", fallbacks: ["openai/gpt-4o"] },
+      workspace: "~/agent-workspace",
+      thinkingDefault: "medium",       // off | minimal | low | medium | high | xhigh
+      verboseDefault: "off",           // off | on | full
+      elevatedDefault: "off",          // off | on | ask | full
+      blockStreamingDefault: "off",    // off | on
+      timeoutSeconds: 120,
+      maxConcurrent: 1,
+      userTimezone: "America/New_York",
+      timeFormat: "auto",              // auto | 12 | 24
+      // Heartbeat (periodic background runs)
+      heartbeat: {
+        every: "30m",
+        model: "anthropic/claude-haiku-3.5",
+        target: "last",
+      },
+      // Sandbox defaults
+      sandbox: {
+        mode: "non-main",
+        workspaceAccess: "ro",
+        scope: "session",
+        docker: {
+          image: "node:20-slim",
+          network: "none",
+        },
+      },
+      // Sub-agent defaults
+      subagents: {
+        maxConcurrent: 1,
+        archiveAfterMinutes: 60,
+        model: "anthropic/claude-haiku-3.5",
+      },
+    },
+  },
+}
+```
+
+<div id="model-configuration">
+
+## 模型配置
+
+</div>
+
+<div id="selecting-models">
+
+### 选择模型
+
+</div>
+
+配置模型最简单的方式是通过 `agents.defaults.model`：
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: ["openai/gpt-4o", "groq/openai/gpt-oss-120b"],
+      },
+    },
+  },
+}
+```
+
+顶级的 `models` 部分允许你定义自定义提供商、覆盖模型定义以及配置 Bedrock：
+
+```json5
+{
+  models: {
+    // "merge" (default) adds to built-in providers; "replace" uses only what's defined here
+    mode: "merge",
+    // Quick model aliases set during onboarding
+    small: "claude-haiku",
+    large: "claude-sonnet-4-6",
+    // Custom or self-hosted providers
+    providers: {
+      "my-provider": {
+        baseUrl: "https://api.example.com/v1",
+        apiKey: "<OPENAI_API_KEY>",
+        api: "openai-completions",   // openai-completions | openai-responses | anthropic-messages | google-generative-ai | bedrock-converse-stream
+        models: [
+          {
+            id: "my-model-v1",
+            name: "My Model v1",
+            reasoning: false,
+            input: ["text", "image"],
+            cost: { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+            contextWindow: 200000,
+            maxTokens: 8192,
+          },
+        ],
+      },
+    },
+    // AWS Bedrock model discovery
+    bedrockDiscovery: {
+      enabled: true,
+      region: "us-east-1",
+      providerFilter: ["anthropic", "meta"],
+      refreshInterval: 3600,
+    },
+  },
+}
+```
+
+<div id="model-provider-auth-modes">
+
+### 模型提供商认证模式
+
+</div>
+
+每个自定义提供商可以指定一种认证模式：
+
+| 模式 | 描述 |
+|------|-------------|
+| `api-key` | 静态 API 密钥（默认） |
+| `aws-sdk` | AWS SDK 凭据（用于 Bedrock） |
+| `oauth` | 可刷新的 OAuth 凭据 |
+| `token` | 静态 Bearer 令牌 |
+
+<div id="plugin-configuration">
+
+## 插件配置
+
+</div>
+
+插件通过连接器、提供商和功能能力扩展 Eliza。
+
+```json5
+{
+  plugins: {
+    enabled: true,             // Master switch
+    allow: ["telegram", "anthropic"],  // Allowlist (plugin short ids)
+    deny: ["experimental"],    // Denylist (takes priority over allow)
+    // Per-plugin configuration
+    entries: {
+      telegram: {
+        enabled: true,
+        config: { /* plugin-specific */ },
+      },
+      browser: {
+        enabled: false,        // Disable a specific plugin
+      },
+    },
+    // Plugin loading
+    load: {
+      paths: ["/path/to/custom-plugin"],  // Additional plugin paths
+    },
+    // Slot assignments
+    slots: {
+      memory: "builtin",      // Which plugin owns the memory slot ("none" disables)
+    },
+  },
+}
+```
+
+<div id="plugin-auto-enable">
+
+### 插件自动启用
+
+</div>
+
+Eliza 根据你的配置自动启用插件。大多数情况下，你不需要手动将插件添加到允许列表中。
+
+**连接器插件**在配置了凭据后会自动启用：
+
+| 连接器 | 插件 | 自动启用触发条件 |
+|-----------|--------|---------------------|
+| `telegram` | `@elizaos/plugin-telegram` | `connectors.telegram.botToken` |
+| `discord` | `@elizaos/plugin-discord` | `connectors.discord.token`（或 `botToken`、`apiKey`） |
+| `slack` | `@elizaos/plugin-slack` | `connectors.slack.botToken` |
+| `twitter` | `@elizaos/plugin-x` | `connectors.twitter.apiKey` |
+| `whatsapp` | `@elizaos/plugin-whatsapp` | `connectors.whatsapp.authDir`（或 `authState`、`sessionPath`，或带 `authDir` 的 `accounts`） |
+| `signal` | `@elizaos/plugin-signal` | `connectors.signal.account`（或 `httpUrl`、`httpHost`、`httpPort`、`cliPath`，或带有已启用条目的 `accounts`） |
+| `farcaster` | `@elizaos/plugin-farcaster` | `connectors.farcaster.apiKey` |
+| `matrix` | `@elizaos/plugin-matrix` | `connectors.matrix.token` |
+| `nostr` | `@elizaos/plugin-nostr` | `connectors.nostr.token` |
+| `msteams` | `@elizaos/plugin-msteams` | `connectors.msteams.token` |
+| `googlechat` | `@elizaos/plugin-google-chat` | `connectors.googlechat.token` |
+| `imessage` | `@elizaos/plugin-imessage` | `connectors.imessage.cliPath` |
+| `lens` | `@elizaos/plugin-lens` | `connectors.lens.token` |
+| `mattermost` | `@elizaos/plugin-mattermost` | `connectors.mattermost.token` |
+| `feishu` | `@elizaos/plugin-feishu` | `connectors.feishu.token` |
+| `blooio` | `@elizaos/plugin-blooio` | `connectors.blooio.apiKey` |
+| `wechat` | `@elizaos/plugin-wechat` | `connectors.wechat.apiKey`（或带 `apiKey` 的 `accounts`） |
+| `twitch` | `@elizaos/plugin-twitch` | `connectors.twitch.accessToken` 或 `clientId` 或 `enabled: true` |
+| `wechat` | `@elizaos/plugin-wechat` | `connectors.wechat.apiKey`（顶层或在 `accounts` 条目中） |
+
+**提供商插件**在设置了对应的 API 密钥环境变量后会自动启用：
+
+| 环境变量 | 插件 |
+|--------------|--------|
+| `ANTHROPIC_API_KEY` / `CLAUDE_API_KEY` | `@elizaos/plugin-anthropic` |
+| `OPENAI_API_KEY` | `@elizaos/plugin-openai` |
+| `AI_GATEWAY_API_KEY` / `AIGATEWAY_API_KEY` | `@elizaos/plugin-vercel-ai-gateway` |
+| `GOOGLE_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` | `@elizaos/plugin-google-genai` |
+| `GOOGLE_CLOUD_API_KEY` | `@elizaos/plugin-google-antigravity` |
+| `GROQ_API_KEY` | `@elizaos/plugin-groq` |
+| `XAI_API_KEY` / `GROK_API_KEY` | `@elizaos/plugin-xai` |
+| `OPENROUTER_API_KEY` | `@elizaos/plugin-openrouter` |
+| `OLLAMA_BASE_URL` | `@elizaos/plugin-ollama` |
+| `ZAI_API_KEY` | `@elizaos/plugin-zai` |
+| `DEEPSEEK_API_KEY` | `@elizaos/plugin-deepseek` |
+| `TOGETHER_API_KEY` | `@elizaos/plugin-together` |
+| `MISTRAL_API_KEY` | `@elizaos/plugin-mistral` |
+| `COHERE_API_KEY` | `@elizaos/plugin-cohere` |
+| `PERPLEXITY_API_KEY` | `@elizaos/plugin-perplexity` |
+| `ELIZAOS_CLOUD_API_KEY` / `ELIZAOS_CLOUD_ENABLED` | `@elizaos/plugin-elizacloud` |
+| `CUA_API_KEY` / `CUA_HOST` | `@elizaos/plugin-cua` |
+| `OBSIDIAN_VAULT_PATH` | `@elizaos/plugin-obsidian` |
+| `REPOPROMPT_CLI_PATH` | `@elizaos/plugin-repoprompt` |
+
+**功能插件**通过 `features` 标志映射自动启用：
+
+```json5
+{
+  features: {
+    browser: true,
+    cron: true,
+    shell: true,
+    imageGen: true,
+    tts: true,
+    webhooks: true,
+    computeruse: true,
+  },
+}
+```
+
+| 功能标志 | 插件 |
+|-------------|--------|
+| `browser` | `@elizaos/plugin-browser` |
+| `cua` | `@elizaos/plugin-cua` |
+| `obsidian` | `@elizaos/plugin-obsidian` |
+| `shell` | `@elizaos/plugin-shell` |
+| `imageGen` | `@elizaos/plugin-image-generation` |
+| `tts` | `@elizaos/plugin-tts` |
+| `stt` | `@elizaos/plugin-stt` |
+| `agentSkills` | `@elizaos/plugin-agent-skills` |
+| `commands` | `@elizaos/plugin-commands` |
+| `diagnosticsOtel` | `@elizaos/plugin-diagnostics-otel` |
+| `webhooks` | `@elizaos/plugin-webhooks` |
+| `gmailWatch` | `@elizaos/plugin-gmail-watch` |
+| `experience` | 内建高级能力 |
+| `form` | 内建高级能力 |
+| `x402` | `@elizaos/plugin-x402` |
+| `fal` | `@elizaos/plugin-fal` |
+| `suno` | `@elizaos/plugin-suno` |
+| `vision` | `@elizaos/plugin-vision` |
+| `computeruse` | `@elizaos/plugin-computeruse` |
+| `repoprompt` | `@elizaos/plugin-repoprompt` |
+
+<Info>
+`vision`、`fal` 和 `suno` 插件在配置了各自的 `media.*` 配置部分时也会自动启用（例如，设置了 `media.vision.provider`，或 `media.image.provider: "fal"` 且 `mode: "own-key"`）。Webhook 插件在设置了 `hooks.token` 时自动启用。Gmail watch 在设置了 `hooks.gmail.account` 时自动启用。
+</Info>
+
+<Tip>
+你始终可以通过设置 `plugins.entries.<id>.enabled: false` 来强制禁用任何自动启用的插件。拒绝列表优先于所有自动启用逻辑。
+</Tip>
+
+<div id="connectors-messaging-channels">
+
+## 连接器（消息通道）
+
+</div>
+
+连接器将 Eliza 与消息平台集成。在 `connectors` 下进行配置：
+
+```json5
+{
+  connectors: {
+    telegram: {
+      enabled: true,
+      botToken: "<TELEGRAM_BOT_TOKEN>",
+      // Additional connector-specific options
+    },
+    discord: {
+      enabled: true,
+      token: "<DISCORD_BOT_TOKEN>",
+    },
+    slack: {
+      enabled: true,
+      botToken: "<SLACK_BOT_TOKEN>",
+      appToken: "<SLACK_APP_TOKEN>",
+    },
+    whatsapp: {
+      enabled: true,
+      authDir: "~/.eliza/whatsapp-auth",
+    },
+  },
+}
+```
+
+<Warning>
+`channels` 键已弃用。请改用 `connectors`。迁移期间两者都支持，但 `connectors` 优先。
+</Warning>
+
+<div id="agent-bindings">
+
+### 智能体绑定
+
+</div>
+
+使用 `bindings` 将特定对话路由到特定智能体：
+
+```json5
+{
+  bindings: [
+    {
+      agentId: "support-bot",
+      match: {
+        channel: "telegram",
+        peer: { kind: "group", id: "-100123456" },
+      },
+    },
+    {
+      agentId: "dm-agent",
+      match: {
+        channel: "discord",
+        peer: { kind: "dm", id: "user-id" },
+      },
+    },
+  ],
+}
+```
+
+<div id="gateway-configuration">
+
+## 网关配置
+
+</div>
+
+网关是处理 WebSocket 连接、HTTP API 和控制界面的中心服务器。
+
+```json5
+{
+  gateway: {
+    port: 18789,                // Default: 18789
+    mode: "local",              // "local" | "remote"
+    bind: "loopback",           // "auto" | "lan" | "loopback" | "tailnet" | "custom"
+    customBindHost: "10.0.0.5", // Only used when bind: "custom"
+    // TLS configuration
+    tls: {
+      enabled: true,
+      autoGenerate: true,       // Auto self-signed cert
+      certPath: "/path/to/cert.pem",
+      keyPath: "/path/to/key.pem",
+    },
+    // Authentication
+    auth: {
+      mode: "token",            // "token" | "password"
+      token: "<API_TOKEN>",
+      allowTailscale: false,
+    },
+    // Control UI (web dashboard)
+    controlUi: {
+      enabled: true,
+      basePath: "/",
+      allowedOrigins: ["https://my-domain.com"],
+      allowInsecureAuth: false,
+    },
+    // Config reload strategy
+    reload: {
+      mode: "hybrid",           // "off" | "restart" | "hot" | "hybrid"
+      debounceMs: 300,
+    },
+    // Tailscale integration
+    tailscale: {
+      mode: "off",              // "off" | "serve" | "funnel"
+      resetOnExit: false,
+    },
+    // Remote gateway connection
+    remote: {
+      url: "wss://remote-host:18789",
+      transport: "direct",      // "ssh" | "direct"
+      token: "<REMOTE_AUTH_TOKEN>",
+      sshTarget: "user@host",
+      sshIdentity: "~/.ssh/id_ed25519",
+    },
+    // HTTP API endpoints
+    http: {
+      endpoints: {
+        chatCompletions: { enabled: false },
+        responses: {
+          enabled: false,
+          maxBodyBytes: 20971520,  // 20MB
+        },
+      },
+    },
+    // Trusted reverse proxies (for x-forwarded-for)
+    trustedProxies: ["172.17.0.1"],
+  },
+}
+```
+
+<div id="bind-modes">
+
+### 绑定模式
+
+</div>
+
+| 模式 | 行为 |
+|------|----------|
+| `auto` | 如果可用则使用回环地址，否则使用所有接口 |
+| `loopback` | 仅 `127.0.0.1`（默认） |
+| `lan` | `0.0.0.0` — 所有接口 |
+| `tailnet` | 如果可用则使用 Tailnet IPv4（`100.64.0.0/10`），否则使用回环地址 |
+| `custom` | 通过 `customBindHost` 用户指定的 IP |
+
+<div id="tools-configuration">
+
+## 工具配置
+
+</div>
+
+`tools` 部分控制工具可用性、网页搜索/抓取、执行权限、媒体理解等。
+
+```json5
+{
+  tools: {
+    profile: "standard",        // Base tool profile
+    allow: ["web_search", "web_fetch"],
+    deny: ["dangerous_tool"],
+    alsoAllow: ["extra_tool"],  // Merged into allow + profile allowlist
+
+    // Web search
+    web: {
+      search: {
+        enabled: true,
+        provider: "brave",     // "brave" | "perplexity"
+        apiKey: "<BRAVE_API_KEY>",
+        maxResults: 5,
+        cacheTtlMinutes: 15,
+      },
+      fetch: {
+        enabled: true,
+        maxChars: 30000,
+        maxCharsCap: 50000,
+        timeoutSeconds: 30,
+        readability: true,
+        firecrawl: {
+          enabled: true,
+          apiKey: "<FIRECRAWL_API_KEY>",
+        },
+      },
+    },
+
+    // Exec tool
+    exec: {
+      host: "sandbox",         // "sandbox" | "gateway" | "node"
+      security: "allowlist",   // "deny" | "allowlist" | "full"
+      ask: "on-miss",          // "off" | "on-miss" | "always"
+      timeoutSec: 60,
+      backgroundMs: 5000,
+      pathPrepend: ["/usr/local/bin"],
+      safeBins: ["cat", "ls", "echo"],
+    },
+
+    // Elevated exec
+    elevated: {
+      enabled: true,
+    },
+
+    // Media understanding
+    media: {
+      concurrency: 2,
+      image: {
+        enabled: true,
+        maxBytes: 10485760,
+        models: [
+          { provider: "openai", model: "gpt-4o" },
+          { provider: "google", model: "gemini-2.0-flash" },
+        ],
+      },
+      audio: { enabled: true },
+      video: { enabled: true },
+    },
+
+    // Sub-agent defaults
+    subagents: {
+      model: "anthropic/claude-haiku-3.5",
+      tools: { allow: ["web_search"], deny: [] },
+    },
+  },
+}
+```
+
+<div id="logging">
+
+## 日志
+
+</div>
+
+```json5
+{
+  logging: {
+    level: "error",            // silent | fatal | error | warn | info | debug | trace
+    consoleLevel: "info",      // Independent console log level
+    consoleStyle: "pretty",    // "pretty" | "compact" | "json"
+    file: "/var/log/eliza.log",
+    redactSensitive: "tools",  // "off" | "tools"
+    redactPatterns: ["sk-[a-zA-Z0-9]+"],
+  },
+}
+```
+
+<Info>
+当不存在配置文件时，Eliza 默认使用 `logging.level: "error"`。
+</Info>
+
+<div id="database">
+
+## 数据库
+
+</div>
+
+Eliza 支持两种数据库后端：
+
+<Tabs>
+  <Tab title="PGLite（默认）">
+    本地嵌入式 PostgreSQL，无需外部依赖：
+
+    ```json5
+    {
+      database: {
+        provider: "pglite",
+        pglite: {
+          dataDir: "~/.eliza/workspace/.eliza/.elizadb",
+        },
+      },
+    }
+    ```
+  </Tab>
+  <Tab title="PostgreSQL">
+    连接到外部 PostgreSQL 服务器：
+
+    ```json5
+    {
+      database: {
+        provider: "postgres",
+        postgres: {
+          // Option 1: Connection string
+          connectionString: "postgresql://user:pass@localhost:5432/eliza",
+          // Option 2: Individual fields
+          host: "localhost",
+          port: 5432,
+          database: "eliza",
+          user: "eliza",
+          password: "<DB_PASSWORD>",
+          ssl: true,
+        },
+      },
+    }
+    ```
+  </Tab>
+</Tabs>
+
+<div id="memory">
+
+## 记忆
+
+</div>
+
+```json5
+{
+  memory: {
+    backend: "builtin",        // "builtin" | "qmd"
+    citations: "auto",         // "auto" | "on" | "off"
+    qmd: {
+      command: "qmd",
+      includeDefaultMemory: true,
+      paths: [
+        { path: "~/notes", name: "Notes", pattern: "**/*.md" },
+      ],
+      sessions: {
+        enabled: true,
+        exportDir: "~/.eliza/qmd-sessions",
+        retentionDays: 30,
+      },
+      update: {
+        interval: "30m",
+        debounceMs: 500,
+        onBoot: true,
+        embedInterval: "1h",
+      },
+      limits: {
+        maxResults: 10,
+        maxSnippetChars: 500,
+        maxInjectedChars: 10000,
+        timeoutMs: 5000,
+      },
+    },
+  },
+}
+```
+
+<div id="embedding">
+
+## 嵌入
+
+</div>
+
+配置用于向量记忆搜索的本地嵌入模型：
+
+```json5
+{
+  embedding: {
+    model: "nomic-embed-text-v1.5.Q5_K_M.gguf",
+    modelRepo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    dimensions: 768,
+    gpuLayers: "auto",              // number | "auto" | "max"
+    idleTimeoutMinutes: 30,         // 0 = never unload
+  },
+}
+```
+
+<div id="browser">
+
+## 浏览器
+
+</div>
+
+通过 Chrome DevTools Protocol 配置浏览器自动化：
+
+```json5
+{
+  browser: {
+    enabled: true,
+    headless: false,
+    noSandbox: false,               // Required for Linux containers
+    attachOnly: false,              // Only attach, never launch
+    executablePath: "/usr/bin/google-chrome",
+    defaultProfile: "chrome",
+    evaluateEnabled: true,          // Allow arbitrary JS evaluation
+    // Named browser profiles
+    profiles: {
+      chrome: {
+        cdpPort: 9222,
+        driver: "eliza",
+        color: "#FF4500",
+      },
+      remote: {
+        cdpUrl: "ws://remote-host:9222",
+      },
+    },
+    snapshotDefaults: {
+      mode: "efficient",
+    },
+  },
+}
+```
+
+<div id="media-generation">
+
+## 媒体生成
+
+</div>
+
+配置图像、视频、音频生成和视觉：
+
+```json5
+{
+  media: {
+    image: {
+      enabled: true,
+      mode: "own-key",              // "cloud" | "own-key"
+      provider: "fal",              // "cloud" | "fal" | "openai" | "google" | "xai"
+      defaultSize: "1024x1024",
+      fal: { apiKey: "<FAL_API_KEY>", model: "flux/schnell" },
+    },
+    video: {
+      enabled: true,
+      mode: "own-key",
+      provider: "fal",
+      fal: { apiKey: "<FAL_API_KEY>" },
+    },
+    audio: {
+      enabled: true,
+      mode: "own-key",
+      provider: "suno",
+      suno: { apiKey: "<SUNO_API_KEY>" },
+    },
+    vision: {
+      enabled: true,
+      provider: "openai",
+      openai: { apiKey: "<OPENAI_API_KEY>", model: "gpt-4o" },
+    },
+  },
+}
+```
+
+<div id="messages-and-tts">
+
+## 消息与 TTS
+
+</div>
+
+```json5
+{
+  messages: {
+    responsePrefix: "[{model}]",    // Template: {model}, {provider}, {thinkingLevel}, {identityName}
+    ackReaction: "eyes",            // Emoji reaction on inbound messages (empty disables)
+    ackReactionScope: "group-mentions", // "group-mentions" | "group-all" | "direct" | "all"
+    removeAckAfterReply: false,
+    // Message queue behavior
+    queue: {
+      mode: "steer",                // steer | followup | collect | steer-backlog | steer+backlog | queue | interrupt
+      debounceMs: 1500,
+      cap: 20,
+      drop: "old",                  // old | new | summarize
+    },
+    // Text-to-speech
+    tts: {
+      auto: "off",                  // off | always | inbound | tagged
+      provider: "elevenlabs",       // elevenlabs | openai | edge
+      elevenlabs: {
+        voiceId: "21m00Tcm4TlvDq8ikWAM",
+        modelId: "eleven_turbo_v2_5",
+      },
+      maxTextLength: 5000,
+      timeoutMs: 30000,
+    },
+  },
+}
+```
+
+<div id="hooks">
+
+## 钩子
+
+</div>
+
+钩子启用 Webhook 集成和 Gmail 监控：
+
+```json5
+{
+  hooks: {
+    enabled: true,
+    path: "/hooks",
+    token: "<WEBHOOK_TOKEN>",
+    maxBodyBytes: 1048576,
+    // Webhook-to-agent mappings
+    mappings: [
+      {
+        match: { path: "/github", source: "github" },
+        action: "agent",
+        sessionKey: "github-events",
+        messageTemplate: "GitHub event: {{body}}",
+      },
+    ],
+    // Gmail integration
+    gmail: {
+      account: "user@gmail.com",
+      label: "INBOX",
+      includeBody: true,
+    },
+    // Internal agent event hooks
+    internal: {
+      enabled: true,
+      handlers: [
+        { event: "session:start", module: "./hooks/on-start.js" },
+      ],
+      entries: {
+        "my-hook": { enabled: true, env: { KEY: "value" } },
+      },
+    },
+  },
+}
+```
+
+<div id="mcp-servers">
+
+## MCP 服务器
+
+</div>
+
+配置模型上下文协议（MCP）服务器：
+
+```json5
+{
+  mcp: {
+    servers: {
+      filesystem: {
+        type: "stdio",
+        command: "bunx",
+        args: ["-y", "@modelcontextprotocol/server-filesystem", "/home/user"],
+      },
+      "remote-server": {
+        type: "sse",
+        url: "https://mcp.example.com/sse",
+        headers: { Authorization: "Bearer token" },
+        timeoutInMillis: 30000,
+      },
+    },
+  },
+}
+```
+
+<div id="cloud-integration">
+
+## 云集成
+
+</div>
+
+```json5
+{
+  cloud: {
+    enabled: false,
+    provider: "elizacloud",
+    baseUrl: "https://elizacloud.ai/api/v1",
+    inferenceMode: "byok",         // "cloud" | "byok" | "local"
+    autoProvision: false,
+    bridge: {
+      reconnectIntervalMs: 3000,
+      maxReconnectAttempts: 20,
+      heartbeatIntervalMs: 30000,
+    },
+    backup: {
+      autoBackupIntervalMs: 3600000, // 1 hour
+      maxSnapshots: 10,
+    },
+  },
+}
+```
+
+<div id="update-channel">
+
+## 更新通道
+
+</div>
+
+```json5
+{
+  update: {
+    channel: "stable",              // "stable" | "beta" | "nightly"
+    checkOnStart: true,
+    checkIntervalSeconds: 14400,    // 4 hours
+  },
+}
+```
+
+<div id="diagnostics">
+
+## 诊断
+
+</div>
+
+```json5
+{
+  diagnostics: {
+    enabled: false,
+    flags: ["telegram.http"],       // Ad-hoc diagnostic flags
+    otel: {
+      enabled: true,
+      endpoint: "https://otel.example.com",
+      protocol: "http/protobuf",    // "http/protobuf" | "grpc"
+      serviceName: "eliza",
+      traces: true,
+      metrics: true,
+      logs: true,
+      sampleRate: 1.0,
+      flushIntervalMs: 30000,
+    },
+    cacheTrace: {
+      enabled: false,
+      filePath: "/tmp/cache-trace.jsonl",
+      includeMessages: true,
+      includePrompt: false,
+      includeSystem: false,
+    },
+  },
+}
+```
+
+<div id="cron-jobs">
+
+## 定时任务
+
+</div>
+
+```json5
+{
+  cron: {
+    enabled: true,
+    store: "~/.eliza/cron-store.json",
+    maxConcurrentRuns: 3,
+  },
+}
+```
+
+<div id="discovery">
+
+## 发现
+
+</div>
+
+```json5
+{
+  discovery: {
+    mdns: {
+      mode: "minimal",             // "off" | "minimal" | "full"
+    },
+    wideArea: {
+      enabled: false,
+      domain: "eliza.internal",
+    },
+  },
+}
+```
+
+<div id="talk-mode-voice">
+
+## 对话模式（语音）
+
+</div>
+
+```json5
+{
+  talk: {
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    modelId: "eleven_turbo_v2_5",
+    outputFormat: "mp3_44100_128",
+    interruptOnSpeech: true,
+    voiceAliases: {
+      narrator: "yoZ06aMxZJJ28mfd3POQ",
+    },
+  },
+}
+```
+
+<div id="ui-theme">
+
+## UI 主题
+
+</div>
+
+```json5
+{
+  ui: {
+    seamColor: "#FF4500",
+    theme: "eliza",                // eliza | qt314 | web2000 | programmer | haxor | psycho
+    assistant: {
+      name: "Mila",
+      avatar: "https://example.com/avatar.png",
+    },
+  },
+}
+```
+
+<div id="auth-profiles">
+
+## 认证配置
+
+</div>
+
+配置多配置文件认证，支持冷却/退避：
+
+```json5
+{
+  auth: {
+    profiles: {
+      "anthropic-main": {
+        provider: "anthropic",
+        mode: "api_key",           // "api_key" | "oauth" | "token"
+        email: "user@example.com",
+      },
+    },
+    order: {
+      anthropic: ["anthropic-main", "anthropic-backup"],
+    },
+    cooldowns: {
+      billingBackoffHours: 5,
+      billingMaxHours: 24,
+      failureWindowHours: 24,
+    },
+  },
+}
+```
+
+<div id="approvals">
+
+## 审批
+
+</div>
+
+将执行审批请求转发到聊天通道：
+
+```json5
+{
+  approvals: {
+    exec: {
+      enabled: true,
+      mode: "session",             // "session" | "targets" | "both"
+      targets: [
+        { channel: "telegram", to: "123456789" },
+      ],
+    },
+  },
+}
+```
+
+<div id="skills">
+
+## 技能
+
+</div>
+
+```json5
+{
+  skills: {
+    allowBundled: ["web", "code"], // Only load these bundled skills
+    denyBundled: ["experimental"], // Block specific bundled skills
+    load: {
+      extraDirs: ["~/my-skills"],  // Additional skill directories
+      watch: true,                 // Watch for changes
+      watchDebounceMs: 500,
+    },
+    install: {
+      preferBrew: false,
+      nodeManager: "npm",          // "npm" | "yarn" | "bun"
+    },
+    entries: {
+      "my-skill": {
+        enabled: true,
+        apiKey: "<OPENAI_API_KEY>",
+        env: { CUSTOM_VAR: "value" },
+        config: { maxRetries: 3 },
+      },
+    },
+  },
+}
+```
+
+<div id="commands">
+
+## 命令
+
+</div>
+
+切换 CLI 和聊天命令：
+
+```json5
+{
+  commands: {
+    native: "auto",                // Enable native command registration
+    nativeSkills: "auto",
+    text: true,                    // Enable text command parsing
+    bash: false,                   // Allow bash command (!)
+    bashForegroundMs: 2000,
+    config: false,                 // Allow /config command
+    debug: false,                  // Allow /debug command
+    restart: false,                // Allow restart commands
+    useAccessGroups: true,
+  },
+}
+```
+
+<div id="environment-variables-reference">
+
+## 环境变量参考
+
+</div>
+
+影响 Eliza 行为的关键环境变量：
+
+<div id="path-overrides">
+
+### 路径覆盖
+
+</div>
+
+| 变量 | 用途 |
+|----------|---------|
+| `ELIZA_STATE_DIR` | 覆盖状态目录（`~/.eliza`） |
+| `ELIZA_CONFIG_PATH` | 直接覆盖配置文件路径 |
+| `ELIZA_OAUTH_DIR` | 覆盖 OAuth 凭据目录 |
+
+<div id="ports-and-networking">
+
+### 端口与网络
+
+</div>
+
+| 变量 | 默认值 | 用途 |
+|----------|---------|---------|
+| `ELIZA_API_PORT` | `31337` | API + WebSocket 端口（仅开发模式；生产环境中 API 在 `ELIZA_PORT` 上提供服务） |
+| `ELIZA_PORT` | `2138` | 仪表盘（Web UI）端口 — 生产环境中也提供 API 服务 |
+| `ELIZA_GATEWAY_PORT` | `18789` | 网关端口 |
+| `ELIZA_HOME_PORT` | `2142` | 主页仪表盘端口 |
+| `ELIZA_WECHAT_WEBHOOK_PORT` | `18790` | 微信 Webhook 端口 |
+
+```bash
+# Custom ports
+ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 eliza start
+```
+
+<div id="model-provider-api-keys">
+
+### 模型提供商 API 密钥
+
+</div>
+
+| 变量 | 提供商 |
+|----------|----------|
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) |
+| `OPENAI_API_KEY` | OpenAI (GPT) |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway |
+| `GOOGLE_API_KEY` | Google Gemini |
+| `GOOGLE_CLOUD_API_KEY` | Google Antigravity |
+| `GROQ_API_KEY` | Groq |
+| `XAI_API_KEY` | xAI (Grok) |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `TOGETHER_API_KEY` | Together AI |
+| `MISTRAL_API_KEY` | Mistral |
+| `COHERE_API_KEY` | Cohere |
+| `PERPLEXITY_API_KEY` | Perplexity |
+| `ZAI_API_KEY` | zAI |
+| `OLLAMA_BASE_URL` | Ollama（本地） |
+
+<div id="feature-specific-variables">
+
+### 功能相关变量
+
+</div>
+
+| 变量 | 用途 |
+|----------|---------|
+| `BRAVE_API_KEY` | Brave 搜索（网页搜索工具） |
+| `FIRECRAWL_API_KEY` | Firecrawl（网页抓取备选） |
+| `ELEVENLABS_API_KEY` | ElevenLabs（TTS 和对话模式） |
+| `FAL_KEY` | FAL.ai（图像/视频生成） |
+
+有关支持的提供商的完整列表，请参阅[模型提供商](/zh/model-providers)页面。
+
+<div id="cli-config-commands">
+
+## CLI 配置命令
+
+</div>
+
+Eliza 提供 CLI 命令来检查配置，无需直接编辑 JSON：
+
+```bash
+# Configuration guidance (common env vars and usage)
+eliza configure
+
+# Read a config value (dot-notation)
+eliza config get agents.defaults.model
+eliza config get gateway.port
+
+# Print the resolved config file path
+eliza config path
+
+# Display all config values grouped by section
+eliza config show
+eliza config show --all    # Include advanced/hidden fields
+eliza config show --json   # Raw JSON output
+```
+
+要更改值，请直接编辑 `~/.eliza/eliza.json`（它支持带注释的 JSON5）。
+
+<Tip>
+使用 `eliza configure` 快速参考常用配置选项和环境变量。要进行本地引导，
+请运行 `eliza setup`，或直接编辑 `~/.eliza/eliza.json`。
+</Tip>
+
+<div id="full-example">
+
+## 完整示例
+
+</div>
+
+展示最常用选项的完整配置：
+
+```json5
+{
+  // Metadata
+  meta: { lastTouchedVersion: "1.0.0" },
+
+  // Environment variables
+  env: {
+    ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+  },
+
+  // Logging
+  logging: { level: "info", consoleStyle: "pretty" },
+
+  // Agent configuration
+  agents: {
+    defaults: {
+      model: { primary: "anthropic/claude-sonnet-4.6" },
+      workspace: "~/agent-workspace",
+      thinkingDefault: "medium",
+      sandbox: { mode: "non-main" },
+    },
+    list: [
+      {
+        id: "mila",
+        default: true,
+        name: "Mila",
+        bio: ["A capable AI assistant"],
+        system: "You are Mila.",
+      },
+    ],
+  },
+
+  // Gateway
+  gateway: {
+    port: 18789,
+    bind: "loopback",
+    auth: { mode: "token" },
+  },
+
+  // Connectors
+  connectors: {
+    telegram: { botToken: "<TELEGRAM_BOT_TOKEN>" },
+  },
+
+  // Tools
+  tools: {
+    exec: { security: "allowlist" },
+    web: {
+      search: { enabled: true, provider: "brave" },
+    },
+  },
+
+  // Feature flags
+  features: {
+    browser: true,
+    cron: true,
+  },
+
+  // Update channel
+  update: { channel: "stable" },
+}
+```

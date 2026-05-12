@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "./dist",
+    "sourceMap": true,
+    "inlineSources": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "noEmit": false,
+    "skipLibCheck": true,
+    "noEmitOnError": false,
+    "types": ["node", "bun-types"]
+  },
+  "include": ["./**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "**/*.test.ts", "**/*.spec.ts", "build.ts"]
+}
