@@ -1,0 +1,90 @@
+# Isolation Alternatives for OpenCode Agent Environment
+
+Docker hat Networking-Probleme verursacht. Hier sind bessere Alternativen:
+
+---
+
+## Option 1: Nix Flakes (Empfohlen für Reproduzierbarkeit)
+
+**Was ist das?**
+Nix ist ein funktionaler Paketmanager. Mit "Flakes" definierst du deine gesamte Umgebung in einer `flake.nix` Datei.
+
+**Vorteile:**
+- ✅ **100% Reproduzierbar**: `flake.lock` pinnt alle Versionen exakt
+- ✅ **Kein Netzwerk-Overhead**: Läuft nativ, nicht in einem Container
+- ✅ **Koexistiert mit deinen Repos**: Beeinflusst dein System nicht
+- ✅ **Portabel**: Funktioniert auf Linux, macOS, WSL
+
+**Nachteile:**
+- ⚠️ Lernkurve für Nix-Sprache
+- ⚠️ Braucht ca. 5-10GB für den Nix Store
+
+**Setup:**
+```bash
+# 1. Nix installieren (mit Flakes enabled)
+sh <(curl -L https://nixos.org/nix/install) --daemon
+# In ~/.config/nix/nix.conf hinzufügen:
+# experimental-features = nix-command flakes
+
+# 2. flake.nix im Projekt erstellen (ich erstelle das für dich)
+# 3. `nix develop` um die Shell zu betreten
+```
+
+---
+
+## Option 2: Dedizierte WSL-Distro (Einfachste Lösung)
+
+**Was ist das?**
+Du klonst deine aktuelle WSL-Distro oder installierst eine neue, nur für dieses Projekt.
+
+**Vorteile:**
+- ✅ **Schnellster Weg**: Volle Isolation in 5 Minuten
+- ✅ **Bekannte Umgebung**: Normales Ubuntu/Debian
+- ✅ **Kein Netzwerk-Overhead**: Direkter Zugang
+
+**Nachteile:**
+- ⚠️ Weniger reproduzierbar als Nix
+- ⚠️ Manuell zu verwalten
+
+**Setup:**
+```powershell
+# PowerShell (Windows):
+# 1. Neue Distro aus dem Store installieren, z.B. "Debian"
+wsl --install -d Debian
+
+# ODER: Aktuelle Distro klonen:
+wsl --export Ubuntu C:\backup\ubuntu.tar
+wsl --import OpenCodeEnv C:\WSL\OpenCodeEnv C:\backup\ubuntu.tar
+
+# 2. In die neue Distro wechseln:
+wsl -d OpenCodeEnv
+```
+
+---
+
+## Option 3: Docker mit Host Network (Aktueller Ansatz, letzte Chance)
+
+Bereits konfiguriert mit `network_mode: host`. Falls immer noch langsam, liegt es nicht am Netzwerk, sondern am Modell/API.
+
+---
+
+## Empfehlung
+
+| Kriterium | Docker | Nix | WSL-Klon |
+|-----------|--------|-----|----------|
+| Reproduzierbarkeit | ⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ |
+| Netzwerk-Performance | ⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ |
+| Setup-Aufwand | ⭐⭐⭐ | ⭐⭐ | ⭐⭐⭐⭐⭐ |
+| Portabilität | ⭐⭐⭐⭐ | ⭐⭐⭐⭐⭐ | ⭐⭐ |
+
+**Meine Empfehlung:**
+1. **Kurzfristig (heute)**: Dedizierte WSL-Distro klonen – schnellste Lösung.
+2. **Langfristig (für PRD-Workflow)**: Nix Flake für das Projekt erstellen – maximale Reproduzierbarkeit.
+
+---
+
+## Nächste Schritte
+
+Welchen Weg möchtest du gehen?
+1. **WSL-Klon**: Ich gebe dir die exakten Befehle.
+2. **Nix**: Ich erstelle eine `flake.nix` für opencode + firecrawl.

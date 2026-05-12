@@ -1,0 +1,25 @@
+# Programmatic Tool Calling MCP Server Configuration
+name: programmatic_tool_calling
+display_name: Programmatic Tool Calling MCP Server
+description: Structured tool calling interface with multi-pass execution
+
+execution:
+  command_type: python
+  script:
+    primary: "gem/tools/mcp_server/programmatic_tool_calling/server.py"
+    fallbacks: []
+
+parameters:
+  workspace_path:
+    required: false
+    default: "."
+    cli_arg: "--workspace"
+    description: "Workspace directory for tool execution"
+    aliases:
+      - workspace_dir
+
+workspace:
+  set_cwd: true
+  cwd_param: workspace_path
+  supports_placeholders: true
+  mkdir_if_needed: true

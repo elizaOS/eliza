@@ -1,0 +1,119 @@
+---
+title: "设置提供商"
+sidebarTitle: "提供商设置"
+description: "为 Eliza 选择并连接一个提供商。"
+---
+
+提供商是为你的智能体消息提供回复的模型服务。
+
+<div id="choose-a-route">
+
+## 选择路线
+
+</div>
+
+| 路线 | 适用场景 |
+|-------|-------------|
+| `Cloud API` | 你已有 API 密钥，希望以最快方式完成设置 |
+| `Ollama` | 你希望 Eliza 完全在本地运行 |
+| `Eliza Cloud` | 你需要一个托管后端 |
+
+常见的云提供商：
+
+- OpenAI
+- Anthropic
+- OpenRouter
+- Gemini
+- Groq
+- xAI
+
+<div id="connect-it-in-eliza">
+
+## 在 Eliza 中连接
+
+</div>
+
+1. 打开 `Settings`。
+2. 打开提供商或 AI 模型部分。
+3. 选择提供商。
+4. 粘贴 API 密钥、登录或输入本地服务器 URL。
+5. 运行连接测试。
+6. 如有需要，选择一个模型。
+
+<div id="ollama">
+
+## Ollama
+
+</div>
+
+在测试之前，请确保 Ollama 正在运行。如果模型尚未下载，请先拉取。
+
+```bash
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
+```
+
+<div id="remote-backends">
+
+## 远程后端
+
+</div>
+
+如果你连接到远程 Eliza 后端，该后端可能已拥有提供商路由。在这种情况下，更改本地密钥可能不会生效。参见[远程连接](/zh/user/connect-remotely)。
+
+<div id="switching-later">
+
+## 稍后切换
+
+</div>
+
+如果你需要在以下方面取得不同的平衡，可以稍后更改提供商：
+
+- 成本
+- 速度
+- 隐私
+- 模型质量
+
+Eliza 会在路线更改时保持相同的聊天记录和智能体状态。
+
+<div id="common-problems">
+
+## 常见问题
+
+</div>
+
+<div id="messages-hang">
+
+### 消息挂起
+
+</div>
+
+检查：
+
+- API 密钥
+- 提供商状态
+- Ollama 进程状态
+- 选择的模型名称
+
+<div id="voice-works-but-chat-does-not">
+
+### 语音可用但聊天不可用
+
+</div>
+
+聊天和语音可以使用不同的提供商。请单独修复聊天路线。
+
+<div id="a-remote-or-cloud-backend-ignores-your-local-key">
+
+### 远程或云后端忽略你的本地密钥
+
+</div>
+
+确认哪台机器拥有提供商路由权。
+
+<div id="next">
+
+## 下一步
+
+</div>
+
+[更改角色](/zh/user/change-character)

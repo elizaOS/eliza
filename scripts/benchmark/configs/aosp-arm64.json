@@ -1,0 +1,38 @@
+{
+  "$schema": "../profile-config.schema.json",
+  "description": "AOSP arm64 profiling matrix. Targets the cuttlefish image (x86_64 emulation of arm64-v8a) and the connected real arm64 device (e.g. ZL8325M37K). Profiles Eliza-1 mobile/desktop tiers across supported KV-cache settings.",
+  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
+  "kvCacheConfigs": [
+    { "name": "baseline-fp16", "k": "f16", "v": "f16" },
+    { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },
+    { "name": "qjl-tbq3", "k": "qjl1_256", "v": "tbq3_0" }
+  ],
+  "dflashConfigs": [
+    { "name": "no-dflash", "drafter": null },
+    { "name": "no-drafter", "drafter": null }
+  ],
+  "prompts": [
+    {
+      "id": "short-q",
+      "text": "What is the capital of France?",
+      "maxTokens": 50
+    },
+    {
+      "id": "med-reason",
+      "text": "Explain in three sentences why the sky is blue.",
+      "maxTokens": 120
+    },
+    {
+      "id": "long-gen",
+      "text": "Write a 200-word story about a small robot who wants to learn to paint.",
+      "maxTokens": 250
+    },
+    {
+      "id": "context-heavy",
+      "text": "PREAMBLE:\nThe Mariana Trench is the deepest known oceanic trench in the world, located in the western Pacific Ocean. It reaches a maximum depth of about 11,034 meters at the Challenger Deep. The trench was first sounded in 1875 by HMS Challenger. Marine life persists even at these depths, including amphipods, sea cucumbers, and microbial mats that thrive on chemosynthesis. Hydrothermal vents along the trench floor support entire ecosystems independent of sunlight. The Trieste bathyscaphe carried Jacques Piccard and Don Walsh to the bottom in 1960, and James Cameron repeated the descent solo in 2012. Pressure at the bottom exceeds 1,000 atmospheres, making engineering exploration extraordinarily difficult. Recent uncrewed vehicles have catalogued new species including the Mariana snailfish, the deepest-dwelling vertebrate ever recorded. Plastic debris has nonetheless been found at the trench floor, indicating that anthropogenic pollution has reached even Earth's most remote habitats.\n\nQUESTION: Summarize the preamble in one sentence.",
+      "maxTokens": 100
+    }
+  ],
+  "iterations": 3,
+  "warmupIterations": 1
+}

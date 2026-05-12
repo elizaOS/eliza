@@ -1,0 +1,9 @@
+d2a073757b6535d18933547973bae4f9  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/ggml-base.dll
+641a6c53dc33085e2c1999c09faa7bd2  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/ggml-cpu.dll
+ed6dc760e6484e1c533ccaadcb4cbc7b  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/ggml.dll
+f2144276f9109da0edd6f4b698910370  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/libllama-common.dll
+87aca51927b11efc3375740360bc7946  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/libllama.dll
+6a5f872b0e31556fef805a18351cd79b  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/libmtmd.dll
+f46168a7ea7e75ce910c34b378dd16a8  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/llama-cli.exe
+537cf1fc8baeed7457d1e9fca5c083bd  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/llama-server.exe
+f60301c5b4b0ba99c2d66ab480f34f07  /home/shaw/.eliza/local-inference/bin/dflash/windows-x64-cpu/llama-speculative-simple.exe

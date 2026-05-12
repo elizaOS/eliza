@@ -1,0 +1,403 @@
+---
+title: elizaOS Cloud Documentation
+description: Build, deploy, and scale intelligent AI agents with elizaOS Cloud.
+---
+
+import { Cards, Callout } from "@/docs/components";
+
+<section className="docs-hero">
+  <div className="docs-hero-content">
+    <div className="docs-hero-badge">
+      <span className="docs-hero-badge-dot"></span>
+      <span>Documentation</span>
+    </div>
+    <h1 className="docs-hero-title">
+      <span className="docs-hero-title-line">
+        <strong>Build</strong> Agents
+      </span>
+    </h1>
+    <p className="docs-hero-description">
+      The complete platform for building, deploying, and scaling intelligent AI
+      agents. Production-ready infrastructure with enterprise-grade reliability.
+    </p>
+    <div className="docs-hero-actions">
+      <a href="/docs/quickstart" className="docs-hero-btn-primary">
+        <span>Get Started</span>
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 16 16"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+        >
+          <path
+            d="M3 8h10M9 4l4 4-4 4"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </a>
+      <a href="/dashboard" className="docs-hero-btn-secondary">
+        Open Dashboard
+      </a>
+    </div>
+  </div>
+</section>
+
+<div className="docs-section">
+
+### Quick Start
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mt-6 mb-8">
+  <a
+    href="/docs/quickstart#using-the-agent-creator"
+    className="docs-quickstart-card no-underline group"
+    style={{ "--card-accent-color": "#ff5800" }}
+  >
+    <span className="corner-tl" aria-hidden="true"></span>
+    <span className="corner-tr" aria-hidden="true"></span>
+    <span className="corner-bl" aria-hidden="true"></span>
+    <span className="corner-br" aria-hidden="true"></span>
+    <div className="relative z-10">
+      <div className="docs-quickstart-icon" aria-hidden="true">
+        🎨
+      </div>
+      <div className="docs-quickstart-title">Visual Builder</div>
+      <div className="docs-quickstart-desc">
+        Create agents with the no-code editor
+      </div>
+      <div className="docs-quickstart-arrow" aria-hidden="true">
+        →
+      </div>
+    </div>
+  </a>
+  <a
+    href="/docs/quickstart#using-the-api"
+    className="docs-quickstart-card no-underline group"
+    style={{ "--card-accent-color": "#0b35f1" }}
+  >
+    <span className="corner-tl" aria-hidden="true"></span>
+    <span className="corner-tr" aria-hidden="true"></span>
+    <span className="corner-bl" aria-hidden="true"></span>
+    <span className="corner-br" aria-hidden="true"></span>
+    <div className="relative z-10">
+      <div className="docs-quickstart-icon" aria-hidden="true">
+        ⚡
+      </div>
+      <div className="docs-quickstart-title">REST API</div>
+      <div className="docs-quickstart-desc">OpenAI-compatible endpoints</div>
+      <div className="docs-quickstart-arrow" aria-hidden="true">
+        →
+      </div>
+    </div>
+  </a>
+  <a
+    href="/docs/quickstart#using-the-cli"
+    className="docs-quickstart-card no-underline group"
+    style={{ "--card-accent-color": "#22c55e" }}
+  >
+    <span className="corner-tl" aria-hidden="true"></span>
+    <span className="corner-tr" aria-hidden="true"></span>
+    <span className="corner-bl" aria-hidden="true"></span>
+    <span className="corner-br" aria-hidden="true"></span>
+    <div className="relative z-10">
+      <div className="docs-quickstart-icon" aria-hidden="true">
+        💻
+      </div>
+      <div className="docs-quickstart-title">CLI Deployment</div>
+      <div className="docs-quickstart-desc">Deploy from your local project</div>
+      <div className="docs-quickstart-arrow" aria-hidden="true">
+        →
+      </div>
+    </div>
+  </a>
+  <a
+    href="/docs/mcp"
+    className="docs-quickstart-card no-underline group"
+    style={{ "--card-accent-color": "#a855f7" }}
+  >
+    <span className="corner-tl" aria-hidden="true"></span>
+    <span className="corner-tr" aria-hidden="true"></span>
+    <span className="corner-bl" aria-hidden="true"></span>
+    <span className="corner-br" aria-hidden="true"></span>
+    <div className="relative z-10">
+      <div className="docs-quickstart-icon" aria-hidden="true">
+        🔌
+      </div>
+      <div className="docs-quickstart-title">MCP Protocol</div>
+      <div className="docs-quickstart-desc">Connect with external tools</div>
+      <div className="docs-quickstart-arrow" aria-hidden="true">
+        →
+      </div>
+    </div>
+  </a>
+</div>
+
+</div>
+
+<div className="docs-section">
+
+### Platform Features
+
+<div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mt-6 mb-8">
+  <div className="docs-feature-card">
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-10 h-10 flex items-center justify-center bg-[#ff5800]/10 border border-[#ff5800]/20">
+        <span className="text-[#ff5800] text-lg">🤖</span>
+      </div>
+      <div className="font-bold text-white">Agent Runtime</div>
+    </div>
+    <div className="text-white/50 text-sm leading-relaxed">
+      Managed runtime with auto-scaling, zero-downtime deployments, and built-in
+      monitoring.
+    </div>
+  </div>
+  <div className="docs-feature-card">
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-10 h-10 flex items-center justify-center bg-[#0b35f1]/10 border border-[#0b35f1]/20">
+        <span className="text-[#0b35f1] text-lg">💬</span>
+      </div>
+      <div className="font-bold text-white">Chat Completions</div>
+    </div>
+    <div className="text-white/50 text-sm leading-relaxed">
+      OpenAI-compatible API with streaming, function calling, and structured
+      outputs.
+    </div>
+  </div>
+  <div className="docs-feature-card">
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-10 h-10 flex items-center justify-center bg-[#22c55e]/10 border border-[#22c55e]/20">
+        <span className="text-[#22c55e] text-lg">🧠</span>
+      </div>
+      <div className="font-bold text-white">Model Gateway</div>
+    </div>
+    <div className="text-white/50 text-sm leading-relaxed">
+      Access configured text, image, video, and embedding providers through a
+      unified API interface.
+    </div>
+  </div>
+  <div className="docs-feature-card">
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-10 h-10 flex items-center justify-center bg-[#a855f7]/10 border border-[#a855f7]/20">
+        <span className="text-[#a855f7] text-lg">📚</span>
+      </div>
+      <div className="font-bold text-white">Knowledge Base</div>
+    </div>
+    <div className="text-white/50 text-sm leading-relaxed">
+      Vector storage for RAG-powered agents with automatic embedding and
+      retrieval.
+    </div>
+  </div>
+  <div className="docs-feature-card">
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-10 h-10 flex items-center justify-center bg-[#f97316]/10 border border-[#f97316]/20">
+        <span className="text-[#f97316] text-lg">🔗</span>
+      </div>
+      <div className="font-bold text-white">MCP Integration</div>
+    </div>
+    <div className="text-white/50 text-sm leading-relaxed">
+      Connect to Model Context Protocol servers for tools and external data.
+    </div>
+  </div>
+  <div className="docs-feature-card">
+    <div className="flex items-center gap-3 mb-4">
+      <div className="w-10 h-10 flex items-center justify-center bg-[#06b6d4]/10 border border-[#06b6d4]/20">
+        <span className="text-[#06b6d4] text-lg">📦</span>
+      </div>
+      <div className="font-bold text-white">Containers</div>
+    </div>
+    <div className="text-white/50 text-sm leading-relaxed">
+      Deploy custom Docker containers with full control over your environment.
+    </div>
+  </div>
+</div>
+
+</div>
+
+<div className="docs-section">
+
+### Generation Studio
+
+<p className="text-white/50 mb-6">
+  Create rich media content with AI-powered generation tools.
+</p>
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 mb-8">
+  <a
+    href="/docs/image-generation"
+    className="docs-generation-card no-underline group"
+    style={{ "--card-accent-color": "#ff5800" }}
+  >
+    <div className="relative z-10">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[#ff5800] text-2xl">🖼️</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#ff5800]/60 px-2 py-1 bg-[#ff5800]/10 border border-[#ff5800]/20">
+          FLUX • SD
+        </span>
+      </div>
+      <div className="font-bold text-white mb-1 group-hover:text-[#ff5800] transition-colors">
+        Image Generation
+      </div>
+      <div className="text-white/40 text-sm">Catalog-driven models</div>
+    </div>
+  </a>
+  <a
+    href="/docs/video-generation"
+    className="docs-generation-card no-underline group"
+    style={{ "--card-accent-color": "#0b35f1" }}
+  >
+    <div className="relative z-10">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[#0b35f1] text-2xl">🎬</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#0b35f1]/60 px-2 py-1 bg-[#0b35f1]/10 border border-[#0b35f1]/20">
+          Video
+        </span>
+      </div>
+      <div className="font-bold text-white mb-1 group-hover:text-[#0b35f1] transition-colors">
+        Video Generation
+      </div>
+      <div className="text-white/40 text-sm">Text & image to video</div>
+    </div>
+  </a>
+  <a
+    href="/docs/voice-cloning"
+    className="docs-generation-card no-underline group"
+    style={{ "--card-accent-color": "#22c55e" }}
+  >
+    <div className="relative z-10">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[#22c55e] text-2xl">🎙️</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-[#22c55e]/60 px-2 py-1 bg-[#22c55e]/10 border border-[#22c55e]/20">
+          ElevenLabs
+        </span>
+      </div>
+      <div className="font-bold text-white mb-1 group-hover:text-[#22c55e] transition-colors">
+        Voice Cloning
+      </div>
+      <div className="text-white/40 text-sm">Custom voice synthesis</div>
+    </div>
+  </a>
+</div>
+
+</div>
+
+<div className="docs-section">
+
+### API Overview
+
+All API requests require authentication via API key:
+
+```bash
+curl https://elizacloud.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "your-agent-id",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'
+```
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6">
+  <a href="/docs/api" className="docs-api-card no-underline group">
+    <div className="font-semibold text-white text-sm group-hover:text-[#ff5800] transition-colors">
+      REST API
+    </div>
+  </a>
+  <a href="/docs/a2a" className="docs-api-card no-underline group">
+    <div className="font-semibold text-white text-sm group-hover:text-[#ff5800] transition-colors">
+      A2A Protocol
+    </div>
+  </a>
+  <a href="/docs/mcp" className="docs-api-card no-underline group">
+    <div className="font-semibold text-white text-sm group-hover:text-[#ff5800] transition-colors">
+      MCP Protocol
+    </div>
+  </a>
+
+</div>
+
+</div>
+
+<div className="docs-section">
+
+### Resources
+
+<div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+  <a href="/docs/sdks" className="docs-resource-card no-underline group">
+    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+      SDKs & Libraries
+    </div>
+    <div className="text-white/40 text-sm">TypeScript, Python, and more</div>
+  </a>
+  <a href="/docs/errors" className="docs-resource-card no-underline group">
+    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+      Error Handling
+    </div>
+    <div className="text-white/40 text-sm">Error codes and troubleshooting</div>
+  </a>
+  <a href="/docs/rate-limits" className="docs-resource-card no-underline group">
+    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+      Rate Limits
+    </div>
+    <div className="text-white/40 text-sm">Usage quotas and limits</div>
+  </a>
+  <a href="/docs/changelog" className="docs-resource-card no-underline group">
+    <div className="font-semibold text-white mb-0.5 group-hover:text-[#ff5800] transition-colors">
+      Changelog
+    </div>
+    <div className="text-white/40 text-sm">Latest updates and releases</div>
+  </a>
+</div>
+
+</div>
+
+<div className="docs-section">
+
+<div className="docs-help-box">
+  <h3 className="!mt-0 !mb-4 !border-0 !text-base font-bold text-white !p-0">
+    Need Help?
+  </h3>
+  <p className="!mb-4 text-white/50 text-sm">
+    Join our community for support, share feedback, or contribute to the
+    project.
+  </p>
+  <div className="social-links">
+    <a
+      href="https://discord.gg/elizaos"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="social-link social-link-primary"
+    >
+      <svg className="social-icon" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+      </svg>
+      <span>Discord</span>
+    </a>
+    <a
+      href="https://github.com/elizaOS/eliza"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="social-link"
+    >
+      <svg className="social-icon" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+      </svg>
+      <span>GitHub</span>
+    </a>
+    <a
+      href="https://twitter.com/elizaOS"
+      target="_blank"
+      rel="noopener noreferrer"
+      className="social-link"
+    >
+      <svg className="social-icon" fill="currentColor" viewBox="0 0 24 24">
+        <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+      </svg>
+      <span>Twitter</span>
+    </a>
+  </div>
+</div>
+
+</div>

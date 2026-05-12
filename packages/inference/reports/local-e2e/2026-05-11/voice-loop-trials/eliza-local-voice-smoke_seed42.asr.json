@@ -1,0 +1,30 @@
+{
+  "wavPath": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.wav",
+  "sourceSampleRateHz": 24000,
+  "asrSampleRateHz": 16000,
+  "model": "openai-whisper tiny.en",
+  "text": "Eliza local voice smoke.",
+  "segments": [
+    {
+      "id": 0,
+      "seek": 0,
+      "start": 0,
+      "end": 2,
+      "text": " Eliza local voice smoke.",
+      "tokens": [
+        50363,
+        2574,
+        23638,
+        1957,
+        3809,
+        7523,
+        13,
+        50463
+      ],
+      "temperature": 0,
+      "avg_logprob": -0.5284337997436523,
+      "compression_ratio": 0.75,
+      "no_speech_prob": 0.1733500361442566
+    }
+  ]
+}

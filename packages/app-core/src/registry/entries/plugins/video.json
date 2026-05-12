@@ -1,0 +1,23 @@
+{
+  "id": "video",
+  "name": "Video",
+  "description": "Video download, audio extraction, and transcription helpers (YouTube, Vimeo, direct MP4).",
+  "npmName": "@elizaos/plugin-video",
+  "version": "0.1.9-alpha.1",
+  "source": "bundled",
+  "tags": ["video", "youtube", "transcription", "media"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Video",
+    "group": "media",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media"
+}

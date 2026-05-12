@@ -1,0 +1,65 @@
+{
+  "name": "@elizaos/capacitor-agent",
+  "version": "2.0.0-beta.1",
+  "description": "Starts, stops, and monitors the embedded Eliza agent runtime.",
+  "keywords": [
+    "agent-runtime",
+    "lifecycle",
+    "chat",
+    "runtime-control"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec",
+    "dist"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "packages/native-plugins/agent"
+  },
+  "scripts": {
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaCapacitorAgent"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

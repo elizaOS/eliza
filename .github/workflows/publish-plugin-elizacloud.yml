@@ -1,0 +1,92 @@
+# Publishes @elizaos/plugin-elizacloud (npm) when the version in
+# plugins/plugin-elizacloud/package.json changes.
+name: Publish @elizaos/plugin-elizacloud
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "plugins/plugin-elizacloud/**"
+      - ".github/workflows/publish-plugin-elizacloud.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-plugin-elizacloud-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify_version:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_publish: ${{ steps.check.outputs.should_publish }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Check package version
+        id: check
+        run: |
+          set -euo pipefail
+          PKG_JSON="plugins/plugin-elizacloud/package.json"
+          CURRENT_VERSION=$(jq -r .version "$PKG_JSON")
+          echo "Current version: $CURRENT_VERSION"
+          PREV_COMMIT=$(git rev-parse HEAD~1 2>/dev/null || git rev-parse HEAD)
+          if git diff --name-only HEAD~1 HEAD | grep -q "$PKG_JSON"; then
+            if git show "$PREV_COMMIT:$PKG_JSON" 2>/dev/null; then
+              PREV_VERSION=$(git show "$PREV_COMMIT:$PKG_JSON" | jq -r .version)
+              echo "Previous version: $PREV_VERSION"
+              if [ "$CURRENT_VERSION" != "$PREV_VERSION" ]; then
+                echo "should_publish=true" >> "$GITHUB_OUTPUT"
+              else
+                echo "should_publish=false" >> "$GITHUB_OUTPUT"
+              fi
+            else
+              echo "should_publish=true" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$CURRENT_VERSION" >> "$GITHUB_OUTPUT"
+
+  publish_npm:
+    needs: verify_version
+    if: needs.verify_version.outputs.should_publish == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Create Git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "plugin-elizacloud-v${{ needs.verify_version.outputs.version }}" -m "plugin-elizacloud v${{ needs.verify_version.outputs.version }}" || true
+          git push origin "plugin-elizacloud-v${{ needs.verify_version.outputs.version }}" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install and build
+        working-directory: plugins/plugin-elizacloud
+        run: |
+          bun install
+          bun run build:ts
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm
+        working-directory: plugins/plugin-elizacloud
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

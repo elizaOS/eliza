@@ -1,0 +1,78 @@
+{
+  "agent": "hermes",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/vending-bench__vending_bench/run_vending_bench_20260511T133949Z_2_5b07d7dd/output"
+  ],
+  "benchmark_directory": "vending-bench",
+  "benchmark_id": "vending_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "avg_net_worth": "467.88",
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "coherence_score": 1.0,
+    "max_net_worth": "467.88",
+    "performance_metrics": {
+      "duration_seconds": 18.436822290997952,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.0
+    },
+    "profitability_rate": 0,
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 0,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 3,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 0
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 18.436822290997952,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.0
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/vending-bench__vending_bench/run_vending_bench_20260511T133949Z_2_5b07d7dd/output/vending-bench-results-20260511_064007.json",
+  "run_group_id": "rg_20260511T133925Z_b17ad294",
+  "run_id": "run_vending_bench_20260511T133949Z_2_5b07d7dd",
+  "score": 467.88,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 0,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 3,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 0
+  },
+  "unit": "usd",
+  "updated_at": "2026-05-12T01:34:00Z"
+}

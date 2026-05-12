@@ -1,0 +1,11 @@
+{
+  "email": "vgarcia@mcp.com",
+  "password": "Vgarcia128jr", 
+  "name": "Store82 Team",
+  "imap_server": "localhost",
+  "imap_port": 1143,
+  "smtp_server": "localhost",
+  "smtp_port": 1587,
+  "use_ssl": false,
+  "use_starttls": false
+}

@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Mac App Store requires App Sandbox -->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!-- Network access for AI provider API calls and local gateway -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+
+	<!-- File access for user data and config -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+
+	<!-- Hardware access -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+	<key>com.apple.security.device.microphone</key>
+	<true/>
+
+	<!-- Personal information access used by native EventKit/CNContactStore paths -->
+	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+
+	<!-- Apple Events for remaining just-in-time Automation paths (Messages, Notes) -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+
+	<!-- JIT for Bun runtime (required for V8/JavaScriptCore JIT) -->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+	<key>com.apple.security.cs.disable-library-validation</key>
+	<true/>
+
+	<!-- Push notifications -->
+	<key>com.apple.developer.push-notifications</key>
+	<true/>
+	<key>aps-environment</key>
+	<string>production</string>
+</dict>
+</plist>

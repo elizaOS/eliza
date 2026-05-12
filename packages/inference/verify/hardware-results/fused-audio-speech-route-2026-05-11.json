@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "status": 200,
+  "contentType": "application/octet-stream",
+  "sampleRate": "24000",
+  "sampleFormat": "f32le",
+  "bytes": 157440,
+  "healthMs": 1026,
+  "speechMs": 1420,
+  "pid": 32142,
+  "model": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf",
+  "tts": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-base-Q4_K_M.gguf",
+  "codec": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf"
+}

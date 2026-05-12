@@ -1,0 +1,188 @@
+---
+title: "Solución de problemas"
+sidebarTitle: "Solución de problemas"
+description: "Soluciona problemas comunes de Eliza con el inicio, proveedores, voz, conectores y acceso remoto."
+---
+
+La mayoría de los fallos provienen de una de estas áreas:
+
+1. inicio de la aplicación
+2. configuración del proveedor
+3. configuración de voz
+4. credenciales de conectores
+5. configuración de URL remota o token
+
+<div id="eliza-will-not-open">
+
+## Eliza no abre
+
+</div>
+
+<div id="macos">
+
+### macOS
+
+</div>
+
+Vuelve a descargar desde la página oficial de [versiones de GitHub](https://github.com/eliza-ai/eliza/releases/latest) si las advertencias de Gatekeeper o notarización parecen sospechosas.
+
+<div id="windows">
+
+### Windows
+
+</div>
+
+Si aparece SmartScreen, usa `More info` y confirma que descargaste el instalador oficial.
+
+<div id="linux">
+
+### Linux
+
+</div>
+
+Si el AppImage no se inicia:
+
+```bash
+chmod +x Eliza.AppImage
+```
+
+<div id="the-first-message-hangs">
+
+## El primer mensaje se queda colgado
+
+</div>
+
+Verifica:
+
+- la clave API
+- si Ollama está en ejecución
+- si el modelo seleccionado existe
+- si un backend remoto controla el enrutamiento del proveedor
+
+<div id="voice-is-silent">
+
+## La voz está en silencio
+
+</div>
+
+Prueba primero la vista previa de voz.
+
+- si la vista previa falla, corrige el proveedor de voz o la salida de audio
+- si la vista previa funciona pero las respuestas permanecen en silencio, corrige el proveedor de habla
+- si el modo de conversación falla, verifica los permisos del micrófono
+
+<div id="a-connector-does-not-reply">
+
+## Un conector no responde
+
+</div>
+
+<div id="discord">
+
+### Discord
+
+</div>
+
+- token incorrecto
+- Message Content Intent desactivado
+- permisos de canal faltantes
+
+<div id="telegram">
+
+### Telegram
+
+</div>
+
+- token incorrecto
+- conector sin conexión
+- modo de privacidad bloqueando comportamiento de grupo
+
+<div id="slack">
+
+### Slack
+
+</div>
+
+- falta `appToken` para Socket Mode
+- `signingSecret` incorrecto para modo HTTP
+
+<div id="whatsapp">
+
+### WhatsApp
+
+</div>
+
+- código QR no escaneado o sesión expirada
+- `authDir` no configurado o sin permisos de escritura
+
+<div id="signal">
+
+### Signal
+
+</div>
+
+- `signal-cli` no está en ejecución o no es accesible en `httpUrl`
+
+<div id="general">
+
+### General
+
+</div>
+
+Para cualquier conector: verifica el token/credencial, confirma que el conector esté activado en la configuración (`connectors.<name>.enabled` no sea `false`) y revisa los logs en busca de errores de inicio.
+
+Guías:
+
+- [Conectar Discord](/es/user/connect-discord)
+- [Conectar Telegram](/es/user/connect-telegram)
+- [Todos los conectores](/es/guides/connectors)
+
+<div id="remote-connection-fails">
+
+## La conexión remota falla
+
+</div>
+
+Verifica:
+
+- la URL
+- el token
+- si el backend está en ejecución
+- si el backend escucha fuera de localhost
+- si el dispositivo actual puede alcanzar esa red
+
+<div id="eliza-is-slow">
+
+## Eliza está lento
+
+</div>
+
+- lento antes del primer token: elige un modelo o proveedor más rápido
+- lento durante todo el proceso: verifica los límites de red o el tamaño del modelo local
+
+<div id="start-over">
+
+## Empezar de nuevo
+
+</div>
+
+Cierra Eliza, renombra el directorio de estado y relanza:
+
+- macOS / Linux: `~/.eliza`
+- Windows: `%USERPROFILE%\\.eliza\\`
+
+<div id="file-a-bug">
+
+## Reportar un error
+
+</div>
+
+Incluye:
+
+- SO
+- local, remoto o Eliza Cloud
+- proveedor seleccionado
+- comportamiento esperado
+- comportamiento real
+
+Rastreador de issues: [eliza-ai/eliza issues](https://github.com/eliza-ai/eliza/issues)

@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/gateway-discord",
+  "version": "1.0.0",
+  "description": "Multi-tenant Discord gateway service for Eliza Cloud",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "dev": "PORT=3001 bun run --env-file ../../.env.local --watch src/index.ts",
+    "dev:local": "PORT=3001 bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target node",
+    "start": "PORT=3001 bun run --env-file ../../.env.local src/index.ts",
+    "start:local": "PORT=3001 bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "docker:build": "docker build -t gateway-discord:local .",
+    "docker:run": "docker run -p 3001:3000 --env-file ../../.env.local gateway-discord:local",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f gateway-discord"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.0.1",
+    "@upstash/redis": "^1.37.0",
+    "discord.js": "^14.26.4",
+    "hashring": "^3.2.0",
+    "hono": "4.12.18"
+  },
+  "devDependencies": {
+    "@types/hashring": "^3.2.5",
+    "@types/node": "22.19.17",
+    "typescript": "^6.0.3"
+  }
+}

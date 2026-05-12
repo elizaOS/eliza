@@ -1,0 +1,13 @@
+{
+  "name": "@elizaos/example-edad",
+  "version": "0.1.0",
+  "description": "eDad — chat-in-place reference: standalone Bun server proxying /v1/messages to Eliza Cloud with affiliate + app-id headers.",
+  "author": "RemilioNubilio",
+  "scripts": {
+    "start": "bun run server.ts",
+    "dev": "bun --hot run server.ts"
+  },
+  "dependencies": {
+    "@elizaos/cloud-sdk": "workspace:*"
+  }
+}

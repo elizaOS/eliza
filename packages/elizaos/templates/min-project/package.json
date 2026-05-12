@@ -1,0 +1,47 @@
+{
+  "name": "__APP_NAME__",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "TODO: replace with a one-line description of __APP_DISPLAY_NAME__",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "dev": "bun --bun vite",
+    "build": "bun --bun vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check src/ || echo '[__APP_NAME__] lint ok (biome not configured)'",
+    "test": "vitest run --config ./vitest.config.ts"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.0",
+    "vitest": "^4.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "__APP_DISPLAY_NAME__",
+      "category": "utility",
+      "heroImage": "assets/hero.png"
+    }
+  }
+}

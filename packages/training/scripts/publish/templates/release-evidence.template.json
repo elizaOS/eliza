@@ -1,0 +1,62 @@
+{
+  "schemaVersion": 1,
+  "tier": "<tier>",
+  "repoId": "elizaos/eliza-1-<tier>",
+  "releaseState": "upload-candidate",
+  "final": {
+    "weights": true,
+    "hashes": true,
+    "evals": true,
+    "licenses": true,
+    "kernelDispatchReports": true,
+    "platformEvidence": true,
+    "sizeFirstRepoIds": true
+  },
+  "weights": [
+    "text/<final-text-weights>.gguf",
+    "tts/<frozen-voice-weights>.gguf",
+    "tts/<frozen-voice-tokenizer>.gguf",
+    "asr/<final-asr-weights>.gguf",
+    "asr/<final-asr-mmproj>.gguf",
+    "vad/silero-vad-int8.onnx",
+    "vision/<final-mmproj>.gguf",
+    "dflash/<final-drafter-weights>.gguf"
+  ],
+  "checksumManifest": "checksums/SHA256SUMS",
+  "evalReports": [
+    "evals/aggregate.json"
+  ],
+  "licenseFiles": [
+    "licenses/LICENSE.text",
+    "licenses/LICENSE.voice",
+    "licenses/LICENSE.dflash",
+    "licenses/LICENSE.eliza-1",
+    "licenses/LICENSE.asr",
+    "licenses/LICENSE.vision",
+    "licenses/LICENSE.vad"
+  ],
+  "kernelDispatchReports": {
+    "metal": "evals/metal_dispatch.json",
+    "vulkan": "evals/vulkan_dispatch.json",
+    "cuda": "evals/cuda_dispatch.json",
+    "rocm": "evals/rocm_dispatch.json",
+    "cpu": "evals/cpu_dispatch.json"
+  },
+  "platformEvidence": {
+    "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
+    "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",
+    "linux-x64-vulkan": "evidence/platform/linux-x64-vulkan.json",
+    "android-adreno-vulkan": "evidence/platform/android-adreno-vulkan.json",
+    "android-mali-vulkan": "evidence/platform/android-mali-vulkan.json",
+    "linux-x64-cuda": "evidence/platform/linux-x64-cuda.json",
+    "linux-x64-rocm": "evidence/platform/linux-x64-rocm.json",
+    "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
+    "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
+    "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
+    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
+  },
+  "hf": {
+    "repoId": "elizaos/eliza-1-<tier>",
+    "status": "pending-upload"
+  }
+}

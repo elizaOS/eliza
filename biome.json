@@ -1,0 +1,103 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+  "root": true,
+  "assist": { "actions": { "source": { "organizeImports": "on" } } },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "maxSize": 1048576,
+    "includes": [
+      "**",
+      "!**/dist/**",
+      "!**/build/**",
+      "!**/.next/**",
+      "!**/node_modules/**",
+      "!**/public",
+      "!packages/elizaos/templates",
+      "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
+      "!packages/benchmarks/evm/metrics",
+      "!packages/benchmarks/openclaw-benchmark/.archived",
+      "!packages/benchmarks/solana/solana-gym-env/metrics",
+      "!packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
+      "!packages/benchmarks/evm/skill_runner/evm_skill.ts",
+      "!packages/examples/app/electron/backend/renderer/assets",
+      "!packages/app-core/src/styles"
+    ]
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedPrivateClassMembers": "warn"
+      },
+      "style": {
+        "noNonNullAssertion": "warn"
+      },
+      "suspicious": {
+        "noExplicitAny": "warn",
+        "noImplicitAnyLet": "warn",
+        "useIterableCallbackReturn": "warn",
+        "noAssignInExpressions": "warn",
+        "useAdjacentOverloadSignatures": "warn"
+      },
+      "complexity": {
+        "noBannedTypes": "warn"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.ts"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "useHookAtTopLevel": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/ui/src/styles/styles.css"],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noImportantStyles": "off"
+          },
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/training/src/benchmark/BenchmarkRunner.ts",
+        "packages/training/src/benchmark/MetricsVisualizer.ts",
+        "packages/training/src/benchmark/ModelBenchmarkService.ts",
+        "packages/training/src/training/ModelUsageVerifier.ts"
+      ],
+      "linter": {
+        "rules": {
+          "complexity": {
+            "noStaticOnlyClass": "off"
+          }
+        }
+      }
+    }
+  ],
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  }
+}

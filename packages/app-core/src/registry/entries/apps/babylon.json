@@ -1,0 +1,27 @@
+{
+  "id": "babylon",
+  "name": "Babylon",
+  "description": "Babylon.js scene host for embodied agents.",
+  "npmName": "@elizaos/app-babylon",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Gamepad",
+    "group": "Curated",
+    "groupOrder": 2,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "game",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "babylon"
+  }
+}

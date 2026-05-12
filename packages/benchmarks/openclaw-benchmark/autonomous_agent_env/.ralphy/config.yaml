@@ -1,0 +1,35 @@
+# Ralphy Configuration
+# https://github.com/michaelshimeles/ralphy
+
+# Project info (auto-detected, edit if needed)
+project:
+  name: "autonomous_agent_env"
+  language: "Unknown"
+  framework: ""
+  description: ""  # Add a brief description
+
+# Commands (auto-detected from package.json/pyproject.toml)
+commands:
+  test: ""
+  lint: ""
+  build: ""
+
+# Rules - instructions the AI MUST follow
+# These are injected into every prompt
+rules:
+  # Examples:
+  # - "Always use TypeScript strict mode"
+  # - "Follow the error handling pattern in src/utils/errors.ts"
+  # - "All API endpoints must have input validation with Zod"
+  # - "Use server actions instead of API routes in Next.js"
+  #
+  # Skills/playbooks (optional):
+  # - "Before coding, read and follow any relevant skill/playbook docs under .opencode/skills or .claude/skills."
+
+# Boundaries - files/folders the AI should not modify
+boundaries:
+  never_touch:
+    # Examples:
+    # - "src/legacy/**"
+    # - "migrations/**"
+    # - "*.lock"

@@ -1,0 +1,112 @@
+{
+  "name": "@elizaos/plugin-agent-skills",
+  "version": "2.0.0-beta.1",
+  "description": "Agent Skills plugin for elizaOS - implement the Agent Skills specification with progressive disclosure",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "agent-skills"
+      ]
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "agent-skills",
+    "clawhub",
+    "otto",
+    "skills",
+    "agents",
+    "progressive-disclosure"
+  ],
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "fflate": "^0.8.2"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@biomejs/biome": "^2.4.14",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "lint": "bunx @biomejs/biome check --write --unsafe --config-path ./biome.json .",
+    "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
+    "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",
+    "format:check": "bunx @biomejs/biome format . --no-errors-on-unmatched",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SKILLS_DIR": {
+        "type": "string",
+        "description": "Directory to install and load skills from (default: ./skills)",
+        "required": false,
+        "example": "./skills"
+      },
+      "SKILLS_AUTO_LOAD": {
+        "type": "boolean",
+        "description": "Automatically load installed skills on startup",
+        "required": false,
+        "example": "true"
+      },
+      "SKILLS_REGISTRY": {
+        "type": "string",
+        "description": "Skill registry URL (default: https://clawhub.ai)",
+        "required": false,
+        "example": "https://clawhub.ai"
+      },
+      "BUNDLED_SKILLS_DIRS": {
+        "type": "string",
+        "description": "Comma-separated list of directories containing bundled (read-only) skills",
+        "required": false,
+        "example": "./bundled-skills,./vendor-skills"
+      },
+      "OTTO_BUNDLED_SKILLS_DIR": {
+        "type": "string",
+        "description": "Legacy: Single directory containing Otto bundled skills",
+        "required": false,
+        "example": "./otto/skills"
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  }
+}

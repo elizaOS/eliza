@@ -1,0 +1,60 @@
+# Local Kind overrides for gateway-discord chart
+
+namespace: "eliza-infra"
+
+image:
+  repository: localhost:5001/gateway-discord
+  tag: dev
+  pullPolicy: Always
+
+imagePullSecrets: []
+
+# Local: use envFrom with flat secret (env var names directly)
+envFrom:
+  - secretRef:
+      name: gateway-discord-secrets
+
+serviceAccount:
+  create: true
+
+# Disable individual secretKeyRef (envFrom handles it)
+secrets:
+  name: "gateway-discord-secrets"
+
+# Eliza App bot enabled locally
+elizaAppBot:
+  enabled: true
+  leaderKey: "discord:eliza-app-bot:leader:local"
+
+# Fast scale-to-zero for dev
+kedaCooldownSeconds: 60
+
+# Local env overrides
+config:
+  nodeEnv: "development"
+  port: "3000"
+  maxBotsPerPod: "100"
+  failoverCheckIntervalMs: "30000"
+  deadPodThresholdMs: "45000"
+
+# Lighter resources for local
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "100m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+# Disable HPA, PDB, Prometheus for local
+hpa:
+  enabled: false
+pdb:
+  enabled: false
+prometheus:
+  enabled: false
+podAnnotations: {}
+
+# Shorter graceful shutdown for local
+terminationGracePeriodSeconds: 30
+preStopDrainSleepSeconds: 10

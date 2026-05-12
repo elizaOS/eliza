@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Response Handler — Field Evaluator Registration Pattern</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --panel2: #1c2128;
+    --border: #30363d;
+    --fg: #c9d1d9;
+    --fg-muted: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #d2a8ff;
+    --good: #3fb950;
+    --bad: #f85149;
+    --warn: #d29922;
+    --code-bg: #0d1117;
+    --tag: #1f6feb;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg); color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+  }
+  body { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+  nav.toc {
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    background: var(--panel); border-right: 1px solid var(--border);
+    padding: 24px 20px; font-size: 13px;
+  }
+  nav.toc h2 { font-size: 12px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 12px; }
+  nav.toc ol { list-style: none; padding: 0; margin: 0; counter-reset: section; }
+  nav.toc li { counter-increment: section; padding: 4px 0; }
+  nav.toc li::before { content: counter(section) ". "; color: var(--fg-muted); }
+  nav.toc a { color: var(--fg); text-decoration: none; }
+  nav.toc a:hover { color: var(--accent); }
+  main { padding: 40px 56px 120px; max-width: 1100px; }
+  header.page-header { margin-bottom: 40px; padding-bottom: 24px; border-bottom: 1px solid var(--border); }
+  header.page-header h1 { font-size: 28px; margin: 0 0 8px; font-weight: 600; }
+  header.page-header .subtitle { color: var(--fg-muted); font-size: 14px; }
+  header.page-header .meta { margin-top: 16px; display: flex; gap: 12px; flex-wrap: wrap; font-size: 12px; }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    background: rgba(31,111,235,0.15); color: var(--accent); border: 1px solid rgba(31,111,235,0.4);
+  }
+  .badge.good { background: rgba(63,185,80,0.15); color: var(--good); border-color: rgba(63,185,80,0.4); }
+  .badge.bad { background: rgba(248,81,73,0.15); color: var(--bad); border-color: rgba(248,81,73,0.4); }
+  .badge.warn { background: rgba(210,153,34,0.15); color: var(--warn); border-color: rgba(210,153,34,0.4); }
+  section { margin: 40px 0; }
+  section h2 { font-size: 22px; margin: 0 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  section h3 { font-size: 17px; margin: 24px 0 12px; color: var(--accent2); }
+  section h4 { font-size: 14px; margin: 16px 0 8px; color: var(--fg-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  p { margin: 10px 0; }
+  code {
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    background: var(--panel2); padding: 1px 6px; border-radius: 4px;
+    font-size: 0.92em; color: var(--accent2);
+  }
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.5;
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+  }
+  pre code { background: transparent; padding: 0; color: inherit; }
+  .verdict {
+    background: linear-gradient(180deg, rgba(31,111,235,0.06), rgba(31,111,235,0.02));
+    border: 1px solid rgba(31,111,235,0.3); border-radius: 8px; padding: 20px 24px;
+  }
+  .verdict h2 { border: none; padding: 0; margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13.5px; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--fg-muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
+  tr:last-child td { border-bottom: none; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 18px 20px; }
+  .card h4 { margin-top: 0; }
+  .keyword { color: #ff7b72; }
+  .string { color: #a5d6ff; }
+  .comment { color: #8b949e; font-style: italic; }
+  .type { color: #ffa657; }
+  .file-ref {
+    display: inline-block; padding: 2px 8px; background: var(--panel2); border-radius: 4px;
+    font-family: "SF Mono", Monaco, Consolas, monospace; font-size: 11.5px;
+    color: var(--accent); border: 1px solid var(--border); margin: 0 2px;
+  }
+  .anchor-target { scroll-margin-top: 12px; }
+  .mermaid { background: var(--panel); padding: 24px; border-radius: 8px; border: 1px solid var(--border); margin: 16px 0; }
+  ul.checklist { list-style: none; padding-left: 0; }
+  ul.checklist li { padding-left: 28px; position: relative; margin: 6px 0; }
+  ul.checklist li::before {
+    content: "□"; position: absolute; left: 0; top: 0;
+    color: var(--fg-muted); font-size: 18px; line-height: 1;
+  }
+  ul.checklist li.done::before { content: "✓"; color: var(--good); }
+  .callout {
+    border-left: 3px solid var(--accent); background: rgba(31,111,235,0.05);
+    padding: 12px 16px; margin: 16px 0; border-radius: 0 6px 6px 0;
+  }
+  .callout.warn { border-color: var(--warn); background: rgba(210,153,34,0.05); }
+  .callout.bad { border-color: var(--bad); background: rgba(248,81,73,0.05); }
+  .callout.good { border-color: var(--good); background: rgba(63,185,80,0.05); }
+  .callout strong { color: var(--accent); }
+  .callout.warn strong { color: var(--warn); }
+  .callout.bad strong { color: var(--bad); }
+  .callout.good strong { color: var(--good); }
+  .field-card {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+    padding: 20px 24px; margin: 16px 0;
+  }
+  .field-card .field-name {
+    font-family: "SF Mono", Monaco, Consolas, monospace;
+    font-size: 16px; color: var(--accent2); font-weight: 600;
+  }
+  .field-card .field-meta {
+    margin-top: 4px; color: var(--fg-muted); font-size: 12.5px;
+  }
+  .field-card .field-section { margin-top: 14px; }
+  .field-card .field-section h5 {
+    margin: 0 0 6px; font-size: 11.5px; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--fg-muted); font-weight: 600;
+  }
+  @media (max-width: 900px) {
+    body { grid-template-columns: 1fr; }
+    nav.toc { position: static; height: auto; }
+    main { padding: 24px 20px 80px; }
+    .grid-2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#verdict">Verdict</a></li>
+    <li><a href="#current">Current architecture</a></li>
+    <li><a href="#proposed">Proposed architecture</a></li>
+    <li><a href="#contract">Field evaluator contract</a></li>
+    <li><a href="#fields">Field walkthroughs</a></li>
+    <li><a href="#cache">Schema composition &amp; caching</a></li>
+    <li><a href="#migration">Migration from hardcoded repairs</a></li>
+    <li><a href="#files">Implementation file map</a></li>
+    <li><a href="#decisions">Open decisions</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="page-header">
+  <h1>Response Handler — Field Evaluator Registration Pattern</h1>
+  <div class="subtitle">Single Stage-1 LLM call. Modular fields. Abort intent is just another thread op.</div>
+  <div class="meta">
+    <span class="badge">Design doc</span>
+    <span class="badge good">v2 — flat schema, all required</span>
+    <span class="badge">Companion to <code>interruptbench-wave0-contract.md</code></span>
+  </div>
+</header>
+
+<section class="anchor-target" id="v2-update">
+<div class="verdict" style="border-color: rgba(63,185,80,0.4); background: linear-gradient(180deg, rgba(63,185,80,0.06), rgba(63,185,80,0.02));">
+<h2 style="margin-top: 0;">v2 — flat schema correction</h2>
+<p>
+  The original sketch in this doc nested fields under <code>plan.*</code> and <code>extract.*</code> with many optionals.
+  After review, the actual schema is dramatically simpler:
+</p>
+<pre><code><span class="keyword">export const</span> HANDLE_RESPONSE_SCHEMA: JSONSchema = {
+  <span class="string">type</span>: <span class="string">"object"</span>,
+  <span class="string">additionalProperties</span>: <span class="keyword">false</span>,
+  <span class="string">properties</span>: {
+    shouldRespond:        { <span class="string">type</span>: <span class="string">"string"</span>, <span class="string">enum</span>: [<span class="string">"RESPOND"</span>, <span class="string">"IGNORE"</span>] },
+    contexts:             { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },  <span class="comment">// includes "simple"</span>
+    intents:              { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    candidateActionNames: { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    replyText:            { <span class="string">type</span>: <span class="string">"string"</span> },
+    facts:                { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    relationships:        { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"object"</span>, <span class="string">properties</span>: {...}, <span class="string">required</span>: [<span class="string">"subject"</span>,<span class="string">"predicate"</span>,<span class="string">"object"</span>] }},
+    addressedTo:          { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    threadOps:            { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="comment">/* registered by app-lifeops; abort lives here */</span> }},
+  },
+  <span class="string">required</span>: [
+    <span class="string">"shouldRespond"</span>, <span class="string">"contexts"</span>, <span class="string">"intents"</span>, <span class="string">"candidateActionNames"</span>,
+    <span class="string">"replyText"</span>, <span class="string">"facts"</span>, <span class="string">"relationships"</span>, <span class="string">"addressedTo"</span>, <span class="string">"threadOps"</span>,
+  ],  <span class="comment">// ALL required. Empty array / empty string for N/A. Strict mode.</span>
+};</code></pre>
+<p style="margin-bottom: 0;">
+  Changes from v1: <strong>flat</strong> (no <code>plan.*</code> / <code>extract.*</code> wrappers) ·
+  <strong>all required</strong> (no optionals — empty value for N/A) ·
+  <strong><code>simple</code> is a context name, not a flag</strong> (<code>contexts: ["simple"]</code>) ·
+  <strong>no <code>STOP</code></strong> (was indistinguishable from <code>IGNORE</code>) ·
+  <strong>no <code>thought</code></strong> (was prompt theater) ·
+  <strong>no <code>requiresTool</code> / <code>simple</code> booleans</strong> (derivable from other fields) ·
+  <strong>new <code>intents</code> field</strong> (short verb phrases for routing).
+  Each registered <code>ResponseHandlerFieldEvaluator</code> owns one of these fields, declares its
+  description + schema-with-parameter-descriptions, and provides one handler that runs in pipeline order.
+</p>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 1. VERDICT -->
+<!-- ============================================================ -->
+<section id="verdict" class="anchor-target">
+<div class="verdict">
+<h2>1. Verdict</h2>
+<p>
+  The current response handler already runs <strong>one LLM call</strong> at <span class="file-ref">message.ts:4222-4232</span>
+  with a static <code>HANDLE_RESPONSE</code> tool schema. The schema is intentionally byte-stable for prompt-cache reasons
+  (the comment at <span class="file-ref">to-tool.ts:14-27</span> says so explicitly).
+</p>
+<p>
+  What's missing is <strong>per-field modularity</strong>. Today, every field of the response is either:
+  hard-coded into <code>HANDLE_RESPONSE_SCHEMA</code> (<span class="file-ref">to-tool.ts:71-123</span>),
+  or hard-coded as a keyword-driven "repair" chain (<span class="file-ref">message.ts:2014-2336</span>),
+  or wired into a post-parse <code>ResponseHandlerEvaluator</code> patcher
+  (<span class="file-ref">response-handler-evaluators.ts</span>).
+</p>
+<p>
+  The fix is to <strong>mirror the existing post-turn <code>Evaluator</code> pattern</strong> — which already does exactly this for the
+  post-turn step (schema fragment + prompt fragment + parse + processors, composed into one LLM call). Apply the same shape
+  to the response handler step. Abort intent then drops in naturally as one operation type in a <code>threadOps</code> field
+  contributed by the work-thread evaluator. No regex. No separate call.
+</p>
+<p style="margin-bottom: 0;">
+  Net effect: Stage 1 becomes a registry of <code>ResponseHandlerFieldEvaluator</code> contributors. Each contributes a schema slice +
+  a prompt slice + a parser + processors. The runtime composes them into one cache-stable LLM call. Hardcoded repair logic dies.
+</p>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. CURRENT ARCHITECTURE -->
+<!-- ============================================================ -->
+<section id="current" class="anchor-target">
+<h2>2. Current architecture</h2>
+
+<p>The Stage-1 response handler today, as traced by the research agents:</p>
+
+<div class="mermaid">
+flowchart TD
+  A[Inbound message] --> B[composeResponseState<br/>message.ts:8106]
+  B --> C{LLM-off?<br/>Muted?<br/>Mention?}
+  C -->|skip| Z1[Drop]
+  C -->|ok| D[runV5MessageRuntimeStage1<br/>message.ts:4102]
+  D --> E[listAvailableContextsForRole]
+  E --> F[createV5MessageContextObject<br/>stable + dynamic segments]
+  F --> G[Build messageHandlerProviderOptions<br/>cacheProviderOptions]
+  G --> H[runtime.useModel ModelType.RESPONSE_HANDLER<br/>messages + HANDLE_RESPONSE tool<br/>message.ts:4222]
+  H --> I[parseMessageHandlerModelOutput<br/>message.ts:2697]
+  I -->|parse fail| J[buildFallbackStage1PlanForKnownToolRequest<br/>chain of 7 hardcoded repair fns<br/>message.ts:2330-2336]
+  I -->|parse ok| K[runResponseHandlerEvaluators<br/>response-handler-evaluators.ts:184]
+  J --> K
+  K --> L[applyResponseHandlerPatch<br/>mutate messageHandler]
+  L --> M{routeMessageHandlerOutput<br/>message.ts:4347}
+  M -->|RESPOND simple| N[generateDirectReplyOnce]
+  M -->|RESPOND planner| O[runPlannerLoop Stage 2]
+  M -->|IGNORE / STOP| Z2[no reply]
+  N --> P[send to channel]
+  O --> P
+  style H fill:#1f6feb,stroke:#58a6ff,color:#fff
+  style J fill:#d29922,stroke:#d29922,color:#000
+  style K fill:#3fb950,stroke:#3fb950,color:#000
+</div>
+
+<h3>What the LLM populates today</h3>
+
+<p>From <span class="file-ref">to-tool.ts:71-123</span> — quoted verbatim:</p>
+
+<pre><code><span class="keyword">export const</span> HANDLE_RESPONSE_SCHEMA: JSONSchema = {
+  <span class="string">type</span>: <span class="string">"object"</span>,
+  <span class="string">additionalProperties</span>: <span class="keyword">false</span>,
+  <span class="string">properties</span>: {
+    processMessage: { <span class="string">type</span>: <span class="string">"string"</span>, <span class="string">enum</span>: [<span class="string">"RESPOND"</span>, <span class="string">"IGNORE"</span>, <span class="string">"STOP"</span>] },
+    plan: {
+      <span class="string">type</span>: <span class="string">"object"</span>,
+      <span class="string">additionalProperties</span>: <span class="keyword">false</span>,
+      <span class="string">properties</span>: {
+        contexts:          { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+        contextSlices:     { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+        candidateActions:  { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+        parentActionHints: { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+        reply:             { <span class="string">type</span>: <span class="string">"string"</span> },
+        requiresTool:      { <span class="string">type</span>: <span class="string">"boolean"</span> },
+        simple:            { <span class="string">type</span>: <span class="string">"boolean"</span> },
+      },
+      <span class="string">required</span>: [<span class="string">"contexts"</span>],
+    },
+    thought:  { <span class="string">type</span>: <span class="string">"string"</span> },
+    extract:  HANDLE_RESPONSE_EXTRACT_SCHEMA,  <span class="comment">// facts, relationships, addressedTo</span>
+  },
+  <span class="string">required</span>: [<span class="string">"processMessage"</span>, <span class="string">"plan"</span>, <span class="string">"thought"</span>],
+};</code></pre>
+
+<h3>The three ways a field gets populated today</h3>
+
+<table>
+<thead>
+<tr><th>Mechanism</th><th>How</th><th>Files</th><th>Examples</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>(a) LLM extraction</td>
+  <td>Field is in <code>HANDLE_RESPONSE_SCHEMA</code> as a tool input; LLM fills it</td>
+  <td><span class="file-ref">to-tool.ts:71</span></td>
+  <td><code>processMessage</code>, <code>plan.contexts</code>, <code>plan.reply</code></td>
+</tr>
+<tr>
+  <td>(b) Hardcoded repair</td>
+  <td>If parse fails or returns empty, fall through a chain of <code>get*RepairPlan</code> functions that match keywords</td>
+  <td><span class="file-ref">message.ts:2014-2336</span></td>
+  <td><code>getStage1ApprovalResolutionRepairPlan</code>, <code>getStage1CalendlyRepairPlan</code>, <code>getStage1PasswordManagerRepairPlan</code></td>
+</tr>
+<tr>
+  <td>(c) Post-parse patch</td>
+  <td><code>ResponseHandlerEvaluator</code> with <code>shouldRun</code> + <code>evaluate</code> returning a typed patch</td>
+  <td><span class="file-ref">response-handler-evaluators.ts</span></td>
+  <td>Current production use is deterministic repair/extraction only; work-thread routing moved to the <code>threadOps</code> field evaluator.</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout bad">
+  <strong>Problem.</strong> Modes (a) and (b) are inflexible. The schema is hardcoded; new fields require core edits.
+  Repairs (b) are AI-slop keyword chains that ought to be domain plugins. Mode (c) post-parse can only
+  <em>react</em> to what the LLM already produced — it can't <em>ask</em> the LLM for new structured data.
+  So if a plugin wants the LLM to extract "thread operations to perform on the user's behalf" in the same call,
+  there's no way to do that today.
+</div>
+
+<h3>The existing post-turn Evaluator pattern — already correct shape</h3>
+
+<p>From <span class="file-ref">types/evaluator.ts:44-58</span>:</p>
+
+<pre><code><span class="keyword">export interface</span> <span class="type">Evaluator</span>&lt;TOutput = JsonValue, TPrepared = unknown&gt; {
+  name: <span class="type">string</span>;
+  description: <span class="type">string</span>;
+  similes?: <span class="type">string</span>[];
+  priority?: <span class="type">number</span>;
+  providers?: <span class="type">string</span>[];
+  schema: <span class="type">JSONSchema</span>;
+  modelType?: <span class="type">ModelTypeName</span>;
+
+  shouldRun(context: <span class="type">EvaluatorRunContext</span>): <span class="type">Promise</span>&lt;<span class="type">boolean</span>&gt;;
+  prepare?(context: <span class="type">EvaluatorRunContext</span> &amp; { state: <span class="type">State</span> }): <span class="type">Promise</span>&lt;TPrepared&gt;;
+  prompt(context: <span class="type">EvaluatorPromptContext</span>&lt;TPrepared&gt;): <span class="type">string</span>;
+  parse?(output: <span class="type">unknown</span>): TOutput | <span class="keyword">null</span>;
+  processors?: <span class="type">Array</span>&lt;<span class="type">EvaluatorProcessor</span>&lt;TOutput, TPrepared&gt;&gt;;
+}</code></pre>
+
+<p>Critically, at <span class="file-ref">services/evaluator.ts:81-89</span> the runtime <strong>merges all active evaluators into ONE JSON schema</strong>:</p>
+
+<pre><code><span class="keyword">function</span> buildMergedSchema(active: PreparedEntry[]): JSONSchema {
+  <span class="keyword">return</span> {
+    <span class="string">type</span>: <span class="string">"object"</span>,
+    <span class="string">properties</span>: Object.fromEntries(
+      active.map(({ evaluator }) =&gt; [evaluator.name, evaluator.schema]),
+    ),
+    <span class="string">required</span>: active.map(({ evaluator }) =&gt; evaluator.name),
+    <span class="string">additionalProperties</span>: <span class="keyword">false</span>,
+  };
+}</code></pre>
+
+<p>One LLM call. N contributors. Each parses its own slice. Each runs its own processors. <strong>This is what we want for the response handler.</strong></p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. PROPOSED ARCHITECTURE -->
+<!-- ============================================================ -->
+<section id="proposed" class="anchor-target">
+<h2>3. Proposed architecture</h2>
+
+<p>
+  Replace the static <code>HANDLE_RESPONSE_SCHEMA</code> with a <strong>composed schema</strong> built from
+  registered <code>ResponseHandlerFieldEvaluator</code>s. Each field — including all the existing ones —
+  becomes an evaluator. The runtime composes their schemas into ONE call.
+</p>
+
+<div class="mermaid">
+flowchart TD
+  A[Inbound message] --> B[composeResponseState]
+  B --> C[Get registered ResponseHandlerFieldEvaluators<br/>from runtime registry]
+  C --> D[shouldRun each in parallel<br/>= keep only active ones]
+  D --> E[prepare each in parallel<br/>= gather TPrepared values]
+  E --> F[Build composed HANDLE_RESPONSE schema<br/>= ONE schema, deterministic ordering]
+  F --> G[Build composed system prompt<br/>= base + each active prompt slice]
+  G --> H[runtime.useModel ModelType.RESPONSE_HANDLER<br/>SINGLE CALL with composed schema]
+  H --> I[Split parsed output by field name<br/>= dispatch slice to each parse]
+  I --> J[Run processors for each field sequentially<br/>= apply patches / side effects]
+  J --> K{routeMessageHandlerOutput}
+  K -->|simple reply| L[Send direct reply]
+  K -->|planner| M[Stage 2 planner]
+  K -->|abort| N[runtime.abortTurn<br/>from threadOps processor]
+  K -->|ignore / stop| O[no reply]
+  style F fill:#3fb950,stroke:#3fb950,color:#000
+  style H fill:#1f6feb,stroke:#58a6ff,color:#fff
+  style J fill:#d2a8ff,stroke:#d2a8ff,color:#000
+</div>
+
+<h3>Key properties</h3>
+
+<table>
+<thead>
+<tr><th>Property</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>One LLM call</td>
+  <td>Stage 1 is still a single <code>useModel(RESPONSE_HANDLER, ...)</code> call. We don't multiply the cost.</td>
+</tr>
+<tr>
+  <td>Cache-stable schema</td>
+  <td>Registered field set is fixed at plugin-load time. Same set every turn → same schema bytes → cache hits.</td>
+</tr>
+<tr>
+  <td>Conditional <em>activation</em>, not conditional schema</td>
+  <td>
+    <code>shouldRun</code> doesn't add/remove fields from the schema; it adds/removes natural-language
+    <em>instructions</em> in the system prompt telling the LLM when to populate the field. The field stays
+    declared (and nullable) in the schema. Cache stays warm. (Pattern lifted from BAML + Anthropic cache hierarchy.)
+  </td>
+</tr>
+<tr>
+  <td>Per-field validation + handler</td>
+  <td>
+    Each field has its own <code>parse</code> (validate/transform the LLM's value for this slice) and its own
+    <code>processors[]</code> (run side effects: thread mutations, abort calls, retrieval kicks, etc.).
+  </td>
+</tr>
+<tr>
+  <td>Error isolation</td>
+  <td>
+    One field's <code>parse</code> failing or processor throwing does not nuke the run.
+    Soft-fail (BAML <code>@check</code>) attaches an error to that field; hard-fail (BAML <code>@assert</code>)
+    drops the field and optionally surfaces a targeted re-ask.
+  </td>
+</tr>
+<tr>
+  <td>Determinism for benchmarks</td>
+  <td>
+    Registration order is sorted by <code>priority</code> then <code>name</code>. Schema is byte-stable across
+    benchmark runs with the same plugin set. InterruptBench's scripted-LLM fixtures stay valid.
+  </td>
+</tr>
+</tbody>
+</table>
+
+<h3>Current vs proposed — side by side</h3>
+
+<div class="grid-2">
+<div class="card">
+  <h4 style="color: var(--bad);">Today</h4>
+  <ul>
+    <li>Static <code>HANDLE_RESPONSE_SCHEMA</code> at <span class="file-ref">to-tool.ts:71</span></li>
+    <li>Fields added by editing core</li>
+    <li>7 hardcoded keyword-repair functions</li>
+    <li>One post-parse evaluator type (no schema contribution)</li>
+    <li>No way for a plugin to ask the LLM for a new field in the same call</li>
+    <li>Abort intent has nowhere clean to live</li>
+  </ul>
+</div>
+<div class="card">
+  <h4 style="color: var(--good);">Proposed</h4>
+  <ul>
+    <li>Composed <code>HANDLE_RESPONSE_SCHEMA</code> assembled from registered field evaluators each boot</li>
+    <li>Plugins contribute fields via <code>responseHandlerFieldEvaluators</code> array</li>
+    <li>Hardcoded repairs migrate to field evaluators (or are deleted)</li>
+    <li>One unified <code>ResponseHandlerFieldEvaluator</code> contract — schema + prompt + parse + processors</li>
+    <li>Plugins ask the LLM for structured data in the same call</li>
+    <li>Abort is one operation in <code>threadOps</code>, contributed by app-lifeops</li>
+  </ul>
+</div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. CONTRACT -->
+<!-- ============================================================ -->
+<section id="contract" class="anchor-target">
+<h2>4. <code>ResponseHandlerFieldEvaluator</code> contract</h2>
+
+<p>The full proposed interface, mirroring <code>Evaluator</code> closely:</p>
+
+<pre><code><span class="keyword">export interface</span> <span class="type">ResponseHandlerFieldEvaluator</span>&lt;TValue = unknown, TPrepared = unknown&gt; {
+  <span class="comment">// Identity. `name` becomes the field's JSON property name in plan.{name}.</span>
+  name: <span class="type">string</span>;
+  description: <span class="type">string</span>;
+  priority?: <span class="type">number</span>; <span class="comment">// default 100. Lower runs first.</span>
+
+  <span class="comment">// === Schema contribution (cache-relevant) ===</span>
+  <span class="comment">// This is the JSON schema for the LLM's value for this field. Always nullable.</span>
+  schema: <span class="type">JSONSchema</span>;
+  <span class="comment">// Whether to include this field at all in the composed schema. Static — evaluated</span>
+  <span class="comment">// once at registration. Use shouldRun for per-turn activation.</span>
+  alwaysDeclare?: <span class="type">boolean</span>; <span class="comment">// default true. Set false only for cross-tenant fields.</span>
+
+  <span class="comment">// === Per-turn activation (does NOT change schema) ===</span>
+  <span class="comment">// Cheap synchronous-ish gate. When false, the system prompt omits this field's</span>
+  <span class="comment">// prompt slice, and the LLM is implicitly told not to populate it. Schema stays</span>
+  <span class="comment">// identical across turns.</span>
+  shouldRun(ctx: <span class="type">ResponseHandlerFieldContext</span>): <span class="type">boolean</span> | <span class="type">Promise</span>&lt;<span class="type">boolean</span>&gt;;
+
+  <span class="comment">// Optional: gather state for the prompt slice and processors.</span>
+  prepare?(ctx: <span class="type">ResponseHandlerFieldContext</span>): <span class="type">Promise</span>&lt;TPrepared&gt;;
+
+  <span class="comment">// === Prompt contribution ===</span>
+  <span class="comment">// Returns the natural-language instructions for the LLM about THIS field.</span>
+  <span class="comment">// Goes into the system prompt's stable cacheable region.</span>
+  prompt(ctx: <span class="type">ResponseHandlerFieldContext</span> &amp; { prepared?: TPrepared }): <span class="type">string</span>;
+
+  <span class="comment">// === Per-field parsing ===</span>
+  <span class="comment">// Validate / transform the LLM's value for this field. Return null to soft-fail.</span>
+  <span class="comment">// Throw to hard-fail (drops field, surfaces error).</span>
+  parse?(value: <span class="type">unknown</span>, ctx: <span class="type">ResponseHandlerFieldContext</span>): TValue | <span class="keyword">null</span>;
+
+  <span class="comment">// === Side-effect processors ===</span>
+  processors?: <span class="type">Array</span>&lt;<span class="type">ResponseHandlerFieldProcessor</span>&lt;TValue, TPrepared&gt;&gt;;
+}
+
+<span class="keyword">export interface</span> <span class="type">ResponseHandlerFieldProcessor</span>&lt;TValue, TPrepared&gt; {
+  name?: <span class="type">string</span>;
+  priority?: <span class="type">number</span>;
+  process(ctx: {
+    runtime: <span class="type">IAgentRuntime</span>;
+    message: <span class="type">Memory</span>;
+    state: <span class="type">State</span>;
+    prepared?: TPrepared;
+    value: TValue;
+    messageHandler: <span class="type">MessageHandlerResult</span>; <span class="comment">// MUTABLE — patch siblings if needed</span>
+    abortSignal: <span class="type">AbortSignal</span>; <span class="comment">// turn-scoped controller</span>
+  }): <span class="type">Promise</span>&lt;<span class="type">void</span>&gt;;
+}
+
+<span class="keyword">export interface</span> <span class="type">ResponseHandlerFieldContext</span> {
+  runtime: <span class="type">IAgentRuntime</span>;
+  message: <span class="type">Memory</span>;
+  state: <span class="type">State</span>;
+  senderRole: <span class="type">SenderRole</span>;
+  availableContexts: <span class="keyword">readonly</span> <span class="type">ContextDefinition</span>[];
+}</code></pre>
+
+<h3>Lifecycle</h3>
+
+<div class="mermaid">
+sequenceDiagram
+  participant R as Runtime
+  participant Reg as Field registry
+  participant LLM as RESPONSE_HANDLER LLM
+  participant E as FieldEvaluator
+  participant P as Processors
+
+  R->>Reg: list registered (sorted by priority, name)
+  par For each evaluator
+    Reg->>E: shouldRun(ctx)
+    E-->>Reg: bool
+  end
+  Reg->>Reg: filter to active set
+  par For each active evaluator
+    Reg->>E: prepare(ctx)
+    E-->>Reg: TPrepared
+  end
+  Reg->>R: composed schema (all declared fields) + composed prompt (active slices)
+  R->>LLM: useModel(RESPONSE_HANDLER, schema, prompt)
+  LLM-->>R: JSON object
+  R->>Reg: dispatch per-field slices
+  par For each active evaluator
+    Reg->>E: parse(value, ctx)
+    E-->>Reg: TValue | null
+  end
+  loop For each active evaluator with parsed value
+    Reg->>P: process(value, ctx)
+    P-->>Reg: void (may mutate messageHandler)
+  end
+  R->>R: routeMessageHandlerOutput → reply / planner / abort
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. FIELD WALKTHROUGHS -->
+<!-- ============================================================ -->
+<section id="fields" class="anchor-target">
+<h2>5. Field walkthroughs</h2>
+
+<p>Every existing response-handler field becomes an evaluator. Plus new ones for thread operations (which subsume abort intent).</p>
+
+<!-- threadOps with abort -->
+<div class="field-card">
+  <div class="field-name">threadOps</div>
+  <div class="field-meta">
+    contributed by <code>app-lifeops</code> · <code>priority: 30</code> · subsumes abort, steer, merge, cancel
+  </div>
+
+  <div class="field-section">
+    <h5>shouldRun</h5>
+    <p>True when the user has access AND any of: (a) there is an active turn for this room, (b) there are active work threads owned by the user, (c) the message has thread-lifecycle intent.</p>
+  </div>
+
+  <div class="field-section">
+    <h5>Schema slice</h5>
+    <pre><code>threadOps: {
+  <span class="string">type</span>: <span class="string">"array"</span>,
+  <span class="string">description</span>: <span class="string">"Operations to perform on work threads. Omit if no thread action needed."</span>,
+  <span class="string">items</span>: {
+    <span class="string">type</span>: <span class="string">"object"</span>,
+    <span class="string">additionalProperties</span>: <span class="keyword">false</span>,
+    <span class="string">properties</span>: {
+      type: { <span class="string">type</span>: <span class="string">"string"</span>, <span class="string">enum</span>: [
+        <span class="string">"create"</span>, <span class="string">"steer"</span>, <span class="string">"stop"</span>, <span class="string">"merge"</span>,
+        <span class="string">"attach_source"</span>, <span class="string">"schedule_followup"</span>,
+        <span class="string">"abort"</span>  <span class="comment">// &lt;-- abort intent lives here</span>
+      ]},
+      workThreadId:        { <span class="string">type</span>: [<span class="string">"string"</span>, <span class="string">"null"</span>] },
+      sourceWorkThreadIds: { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+      instruction:         { <span class="string">type</span>: [<span class="string">"string"</span>, <span class="string">"null"</span>] },
+      reason:              { <span class="string">type</span>: [<span class="string">"string"</span>, <span class="string">"null"</span>] },
+    },
+    <span class="string">required</span>: [<span class="string">"type"</span>],
+  },
+}</code></pre>
+  </div>
+
+  <div class="field-section">
+    <h5>Prompt slice (only emitted when shouldRun is true)</h5>
+    <pre><code>### Thread operations
+You can perform operations on work threads. Active threads visible to you:
+- wt-7faaa3 ("draft the offsite plan"): waiting on confirmation since 12 min ago
+- wt-9b21c0 ("research espresso machines"): running, last update 5s ago
+
+When the user wants to:
+- start a new long-running task → emit { type: "create", instruction: "..." }
+- correct or refocus an ongoing thread → emit { type: "steer", workThreadId, instruction }
+- cancel / stop / abort what the agent is currently doing → emit { type: "abort", workThreadId? }
+- combine two threads → emit { type: "merge", workThreadId: TARGET, sourceWorkThreadIds: [...] }
+
+If the user expresses no thread intent, omit threadOps entirely (or emit []).</code></pre>
+  </div>
+
+  <div class="field-section">
+    <h5>parse</h5>
+    <p>Validate that <code>workThreadId</code> references a real thread the user owns or can mutate; validate that
+    <code>merge</code> sources are all in the current channel; validate that <code>abort</code> only refers to the
+    currently-active turn or an active thread.</p>
+  </div>
+
+  <div class="field-section">
+    <h5>processors</h5>
+    <ol>
+      <li><strong>Abort-first processor.</strong> If any op is <code>{ type: "abort" }</code>, call
+        <code>runtime.abortTurn(roomId, reason)</code> immediately. This signals all in-flight tool calls,
+        sub-agents, and the planner via the shared <code>AbortController</code>. Cleanup window kicks in
+        (5s) for WIP commits.</li>
+      <li><strong>Thread-control processor.</strong> Translate remaining ops to <code>lifeops_thread_control</code>
+        action invocations. Reuses the existing work-thread store, transaction wrapping, optimistic concurrency.</li>
+      <li><strong>Reply-suppression processor.</strong> If <code>abort</code> was performed, suppress the planner
+        route and emit a short ack reply ("stopped — partial work preserved").</li>
+    </ol>
+  </div>
+
+  <div class="field-section">
+    <h5>How abort intent comes through naturally</h5>
+    <p>User says "stop" / "nvm" / "actually wait don't do that". The LLM has the thread context in its prompt
+    (because <code>shouldRun</code> was true). It emits
+    <code>{ threadOps: [{ type: "abort", reason: "user retracted" }] }</code> as part of the same Stage-1 call
+    it was already making. <strong>No keyword regex. No separate intent classifier. No extra LLM call.</strong></p>
+  </div>
+</div>
+
+<!-- contexts -->
+<div class="field-card">
+  <div class="field-name">contexts</div>
+  <div class="field-meta">contributed by <code>core</code> · <code>priority: 10</code> · the existing field</div>
+  <div class="field-section">
+    <h5>shouldRun</h5>
+    <p>Always true. Every Stage-1 call needs context routing.</p>
+  </div>
+  <div class="field-section">
+    <h5>Schema slice</h5>
+    <pre><code>contexts: {
+  <span class="string">type</span>: <span class="string">"array"</span>,
+  <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span>, <span class="string">enum</span>: [<span class="comment">/* dynamically — from availableContexts */</span>] },
+  <span class="string">description</span>: <span class="string">"Routing tags for this turn"</span>,
+}</code></pre>
+  </div>
+  <div class="field-section">
+    <h5>processors</h5>
+    <p>Existing context-routing logic — filter selected contexts by sender role, dedupe, hand to planner provider selection.</p>
+  </div>
+  <div class="callout warn">
+    <strong>Migration nuance.</strong> The enum of valid contexts is per-runtime (depends on registered context plugins).
+    To keep the schema byte-stable across turns of the same runtime, the enum is computed once at evaluator-registry-build
+    time (or invalidated when plugins change). Within a single boot, the schema stays identical.
+  </div>
+</div>
+
+<!-- shouldRespond -->
+<div class="field-card">
+  <div class="field-name">processMessage</div>
+  <div class="field-meta">contributed by <code>core</code> · <code>priority: 5</code> · existing field</div>
+  <div class="field-section">
+    <h5>shouldRun</h5>
+    <p>Always true on group rooms; suppressed on DMs/API where RESPOND is implicit.</p>
+  </div>
+  <div class="field-section">
+    <h5>Schema slice</h5>
+    <pre><code>processMessage: {
+  <span class="string">type</span>: <span class="string">"string"</span>,
+  <span class="string">enum</span>: [<span class="string">"RESPOND"</span>, <span class="string">"IGNORE"</span>, <span class="string">"STOP"</span>],
+}</code></pre>
+  </div>
+  <div class="field-section">
+    <h5>processors</h5>
+    <p>Route to <code>final_reply</code>, <code>ignored</code>, or <code>stopped</code> outcomes.
+    <strong>Composes with <code>threadOps</code></strong>: when threadOps emits <code>abort</code>, the
+    abort-first processor preempts the route decision regardless of <code>processMessage</code>.</p>
+  </div>
+</div>
+
+<!-- candidateActions / parentActionHints -->
+<div class="field-card">
+  <div class="field-name">candidateActions, parentActionHints</div>
+  <div class="field-meta">contributed by <code>core</code> · <code>priority: 40</code> · existing fields, combined into one evaluator</div>
+  <div class="field-section">
+    <h5>Schema slice</h5>
+    <pre><code>actionHints: {
+  <span class="string">type</span>: <span class="string">"object"</span>,
+  <span class="string">properties</span>: {
+    candidateActions:  { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+    parentActionHints: { <span class="string">type</span>: <span class="string">"array"</span>, <span class="string">items</span>: { <span class="string">type</span>: <span class="string">"string"</span> } },
+  },
+}</code></pre>
+  </div>
+  <div class="field-section">
+    <h5>processors</h5>
+    <p>Feed into the action retrieval pipeline at <span class="file-ref">action-retrieval.ts:53</span>
+    (existing behavior, just re-homed).</p>
+  </div>
+</div>
+
+<!-- extract.facts -->
+<div class="field-card">
+  <div class="field-name">extract.facts, extract.relationships, extract.addressedTo</div>
+  <div class="field-meta">contributed by <code>core/memory</code> · <code>priority: 80</code> · existing fields</div>
+  <div class="field-section">
+    <h5>processors</h5>
+    <p>Existing async task at <span class="file-ref">message.ts:4287-4333</span> — fact memory writes,
+    relationship updates, addressed-to graph edges. Moves cleanly into a processor.</p>
+  </div>
+</div>
+
+<!-- approvals / passwords / calendar etc - from hardcoded repairs -->
+<div class="field-card">
+  <div class="field-name">approvalResolution, passwordRequest, checkinRequest, calendarHint, calendlyHint, ...</div>
+  <div class="field-meta">migrated FROM <code>get*RepairPlan</code> hardcoded chain · plugin-owned</div>
+  <div class="field-section">
+    <h5>The migration</h5>
+    <p>
+      Each of the 7 keyword-driven repair functions at <span class="file-ref">message.ts:2014-2336</span>
+      becomes a field evaluator owned by its respective plugin. The schema-fragment + prompt-instruction approach
+      gives the LLM the same routing power without keyword matching.
+    </p>
+    <p>
+      <strong>Example: approval resolution.</strong> Today, if the LLM doesn't return contexts and the message
+      contains <code>"approve"</code> or <code>"reject"</code>, <span class="file-ref">message.ts:2063</span>
+      injects a fallback plan adding the <code>approvals</code> context. With field evaluators, the approvals
+      plugin contributes:
+    </p>
+    <pre><code>{
+  name: <span class="string">"approvalResolution"</span>,
+  shouldRun: (ctx) =&gt; hasOpenApprovals(ctx.runtime, ctx.message),
+  schema: {
+    <span class="string">type</span>: [<span class="string">"object"</span>, <span class="string">"null"</span>],
+    <span class="string">properties</span>: {
+      approvalId: { <span class="string">type</span>: <span class="string">"string"</span> },
+      decision:   { <span class="string">type</span>: <span class="string">"string"</span>, <span class="string">enum</span>: [<span class="string">"approve"</span>, <span class="string">"reject"</span>, <span class="string">"defer"</span>] },
+    },
+  },
+  prompt: () =&gt; <span class="string">"If the user is resolving a pending approval, emit approvalResolution with the matched id and decision."</span>,
+  processors: [{ process: applyApprovalDecision }],
+}</code></pre>
+    <p>The keyword regex is gone. The LLM decides. The plugin owns its surface.</p>
+  </div>
+</div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. CACHING -->
+<!-- ============================================================ -->
+<section id="cache" class="anchor-target">
+<h2>6. Schema composition &amp; caching strategy</h2>
+
+<p>From the cache research: the existing response handler already does the right thing. Tool schema is byte-stable,
+system prompt is built from <code>stable: true</code> segments, providers cache per-turn or per-room. The field
+evaluator pattern preserves all of this — provided we follow a few rules.</p>
+
+<h3>Rule 1: schema is byte-stable across turns of the same boot</h3>
+
+<p>
+  All registered field evaluators with <code>alwaysDeclare !== false</code> contribute their schema to
+  <code>HANDLE_RESPONSE_SCHEMA</code> at runtime startup. The composed schema is computed once and reused
+  for every Stage-1 call. <strong>Plugin load is the only time the schema changes.</strong>
+</p>
+
+<div class="callout good">
+  <strong>Why this works.</strong> Anthropic's cache invalidation rule is that <em>any</em> change to tool
+  definitions invalidates the tools-and-everything-after cache region. By making the schema deterministic
+  (sorted by <code>name</code>, computed once), every Stage-1 call shares the same tools-block bytes.
+  Anthropic gives us cache hits, OpenAI gives us extended-retention prompt cache key matches, Cerebras gets a
+  stable prompt cache key, local Qwen/Ollama get KV slot pinning by <code>conversationId</code>.
+</div>
+
+<h3>Rule 2: <code>shouldRun</code> affects the prompt, not the schema</h3>
+
+<p>
+  Per-turn variability lives in the <em>natural-language prompt instructions</em>, not the schema. When
+  <code>shouldRun</code> returns false, the evaluator's <code>prompt()</code> output is omitted from the system
+  prompt. The schema still lists the field — but the LLM has no instruction to populate it, and any non-null
+  output is ignored by the post-parse step.
+</p>
+
+<p>
+  Because Anthropic places its cache breakpoints at segment boundaries, this means: <strong>each evaluator's
+  prompt slice is its own segment</strong>, marked <code>stable: true</code> if the evaluator's
+  <code>prompt()</code> output depends only on stable data (rare), or non-stable if it depends on per-turn data
+  like the list of active threads (common).
+</p>
+
+<div class="mermaid">
+flowchart LR
+  subgraph "Anthropic cache blocks"
+    direction TB
+    SYS[System prompt<br/>base + stable evaluator slices<br/>= breakpoint 0]
+    TOOLS[Tools<br/>composed HANDLE_RESPONSE schema<br/>= breakpoint 1]
+    DYN[Dynamic provider outputs<br/>active threads, pending prompts, etc.<br/>= breakpoint 2]
+    USER[User message + recent memory<br/>not cached]
+  end
+  SYS --> TOOLS --> DYN --> USER
+  style SYS fill:#3fb950,stroke:#3fb950,color:#000
+  style TOOLS fill:#3fb950,stroke:#3fb950,color:#000
+  style DYN fill:#d29922,stroke:#d29922,color:#000
+  style USER fill:#1c2128,stroke:#30363d,color:#c9d1d9
+</div>
+
+<h3>Rule 3: dynamic data flows through providers, not through schema</h3>
+
+<p>
+  "Active threads in this room right now" is dynamic. It goes into a Provider's output (existing pattern at
+  <span class="file-ref">plugins/app-lifeops/src/providers/work-threads.ts</span>) which is rendered into a
+  dynamic prompt block. The <code>threadOps</code> field evaluator's <code>prompt()</code> reads from this
+  rendered text — but it does <em>not</em> bake the thread list into its prompt slice. Net: cache stays warm,
+  the LLM still sees fresh data.
+</p>
+
+<h3>Cache hit ratio estimates</h3>
+
+<table>
+<thead>
+<tr><th>Provider</th><th>Hit ratio (same room, same plugin set)</th><th>Notes</th></tr>
+</thead>
+<tbody>
+<tr>
+  <td>Anthropic</td>
+  <td>~95% on system+tools prefix</td>
+  <td>Misses only on plugin reload or character change</td>
+</tr>
+<tr>
+  <td>OpenAI (gpt-5.5)</td>
+  <td>~90% (24h extended retention)</td>
+  <td>Prompt cache key includes prefix hash</td>
+</tr>
+<tr>
+  <td>OpenAI (other)</td>
+  <td>~70% (5-min default TTL)</td>
+  <td>Cooler conversations re-pay</td>
+</tr>
+<tr>
+  <td>Cerebras</td>
+  <td>Provider-specific; key passed</td>
+  <td>No published guarantee</td>
+</tr>
+<tr>
+  <td>Local Qwen / Ollama</td>
+  <td>~99% (KV slot pinned by roomId)</td>
+  <td>Pinned slot reused across turns</td>
+</tr>
+</tbody>
+</table>
+
+<h3>What invalidates the cache</h3>
+
+<ul>
+  <li>Registering a new plugin that adds a field evaluator (one-time per boot)</li>
+  <li>Removing or re-ordering field evaluators (rare; only on hot-reload)</li>
+  <li>Changing the contexts enum (when context plugins load)</li>
+  <li>Changing a character's name/identity in the system prompt</li>
+</ul>
+
+<p>None of these happen mid-conversation, so steady-state cache hit ratio is dominated by Rules 1–3.</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. MIGRATION -->
+<!-- ============================================================ -->
+<section id="migration" class="anchor-target">
+<h2>7. Migration from hardcoded repairs</h2>
+
+<p>The 7 keyword-driven repair functions at <span class="file-ref">message.ts:2014-2336</span> are AI-slop debt.
+Each becomes (or is deleted) according to this table:</p>
+
+<table>
+<thead>
+<tr><th>Today</th><th>Owner plugin</th><th>Disposition</th></tr>
+</thead>
+<tbody>
+<tr><td><code>getStage1OwnerPreferenceRepairPlan</code></td><td>core</td><td>Becomes a field evaluator: <code>ownerPreferenceHint</code>. Or delete if owner-context routing already works without it.</td></tr>
+<tr><td><code>getStage1ApprovalResolutionRepairPlan</code></td><td>app-lifeops / approvals</td><td>Field evaluator: <code>approvalResolution</code>. Schema fragment described in §5.</td></tr>
+<tr><td><code>getStage1PasswordManagerRepairPlan</code></td><td>password-manager plugin</td><td>Field evaluator: <code>credentialRequest</code>.</td></tr>
+<tr><td><code>getStage1CheckinRepairPlan</code></td><td>app-lifeops / checkins</td><td>Field evaluator: <code>checkinIntent</code>.</td></tr>
+<tr><td><code>getStage1CalendarTravelRepairPlan</code></td><td>calendar plugin</td><td>Field evaluator: <code>calendarHint</code>.</td></tr>
+<tr><td><code>getStage1CalendarSignatureDeadlineRepairPlan</code></td><td>calendar plugin</td><td>Merged into <code>calendarHint</code>.</td></tr>
+<tr><td><code>getStage1CalendlyRepairPlan</code></td><td>calendar plugin</td><td>Merged into <code>calendarHint</code>.</td></tr>
+</tbody>
+</table>
+
+<h3>Result</h3>
+<p>
+  ~320 lines of hardcoded keyword chains at <span class="file-ref">message.ts:2014-2386</span> get deleted.
+  Each domain becomes a registered field with the LLM handling intent extraction. Plugin authors gain a clean
+  surface to ask the LLM for structured intent without touching core.
+</p>
+
+<h3>Schema migration</h3>
+<p>One database change, batched in Wave 1:</p>
+<pre><code><span class="comment">-- plugins/app-lifeops/src/lifeops/schema.ts</span>
+
+ALTER TABLE app_lifeops.life_work_threads
+  ADD COLUMN version INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE app_lifeops.life_scheduled_tasks
+  ADD COLUMN version INTEGER NOT NULL DEFAULT 1;</code></pre>
+
+<p>Applied automatically by <code>runtime.runPluginMigrations()</code>. <code>DEFAULT 1</code> means
+no data migration; existing rows get <code>version = 1</code> on first read.</p>
+
+<p>
+  No other schema changes. Event log table (<code>life_work_thread_events</code>) already exists and is reused.
+  Idempotency keys for merge come from the existing <code>detail_json</code> payload.
+</p>
+</section>
+
+<!-- ============================================================ -->
+<!-- 8. FILE MAP -->
+<!-- ============================================================ -->
+<section id="files" class="anchor-target">
+<h2>8. Implementation file map</h2>
+
+<p>Concrete file changes for Wave 1.</p>
+
+<h3>New files</h3>
+<table>
+<thead><tr><th>Path</th><th>Purpose</th><th>~LOC</th></tr></thead>
+<tbody>
+<tr><td><code>packages/core/src/runtime/response-handler-field-evaluator.ts</code></td><td>The new contract — <code>ResponseHandlerFieldEvaluator</code>, <code>ResponseHandlerFieldProcessor</code>, <code>ResponseHandlerFieldContext</code>, registry helpers.</td><td>~200</td></tr>
+<tr><td><code>packages/core/src/runtime/response-handler-field-registry.ts</code></td><td>Composed-schema + composed-prompt builders. Per-turn shouldRun gating. Dispatch.</td><td>~250</td></tr>
+<tr><td><code>packages/core/src/runtime/turn-controller.ts</code></td><td><code>TurnControllerRegistry</code> with per-room AbortControllers + <code>abortTurn(roomId, reason)</code>.</td><td>~120</td></tr>
+<tr><td><code>packages/core/src/runtime/room-handler-queue.ts</code></td><td>One-handler-per-room serializer.</td><td>~140</td></tr>
+<tr><td><code>packages/core/src/runtime/cleanup-scope.ts</code></td><td><code>withCleanup(signal, ms, fn)</code> for graceful abort.</td><td>~60</td></tr>
+<tr><td><code>packages/core/src/api/turn-routes.ts</code></td><td><code>POST /api/turns/:roomId/abort</code>.</td><td>~40</td></tr>
+<tr><td><code>plugins/app-lifeops/src/lifeops/work-threads/field-evaluator-thread-ops.ts</code></td><td><strong>threadOps</strong> field evaluator. Includes abort op.</td><td>~220</td></tr>
+<tr><td><code>plugins/app-lifeops/src/lifeops/sql.ts</code> (extend)</td><td>Add <code>withTransaction(runtime, fn)</code>.</td><td>~30 added</td></tr>
+<tr><td><code>packages/benchmarks/interrupt-bench/</code></td><td>Full benchmark package.</td><td>~1500</td></tr>
+</tbody>
+</table>
+
+<h3>Files modified</h3>
+<table>
+<thead><tr><th>Path</th><th>Change</th></tr></thead>
+<tbody>
+<tr><td><span class="file-ref">packages/core/src/services/message.ts</span></td><td>Replace static <code>HANDLE_RESPONSE_SCHEMA</code> usage with composed schema from registry. Wrap handler in <code>RoomHandlerQueue.runWith</code> + <code>TurnControllerRegistry.runWith</code>. Delete the 7 <code>get*RepairPlan</code> functions and the <code>buildFallbackStage1PlanForKnownToolRequest</code> chain.</td></tr>
+<tr><td><span class="file-ref">packages/core/src/actions/to-tool.ts</span></td><td>Keep <code>HANDLE_RESPONSE_TOOL_NAME</code> stable. Replace <code>HANDLE_RESPONSE_SCHEMA</code> constant with a builder that consults the field registry. Cache builder output by registry hash.</td></tr>
+<tr><td><span class="file-ref">packages/core/src/runtime.ts</span></td><td>Add <code>registerResponseHandlerFieldEvaluator</code>, <code>responseHandlerFieldEvaluators</code> array, <code>abortTurn(roomId, reason)</code> method.</td></tr>
+<tr><td><span class="file-ref">packages/core/src/runtime/response-handler-evaluators.ts</span></td><td>Keep existing post-parse <code>ResponseHandlerEvaluator</code> — it's not redundant; it remains useful for deterministic post-parse patches that don't need LLM extraction. But mark the built-in <code>core.known_tool_request_repair</code> as deprecated; its job is taken over by field evaluators.</td></tr>
+<tr><td><span class="file-ref">packages/core/src/types/plugin.ts</span></td><td>Add <code>responseHandlerFieldEvaluators?: ResponseHandlerFieldEvaluator[]</code>.</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/lifeops/schema.ts</span></td><td>Add <code>version</code> column to <code>life_work_threads</code> and <code>life_scheduled_tasks</code>.</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/lifeops/repository.ts</span></td><td><code>upsertWorkThread</code> and <code>upsertScheduledTask</code> accept optional <code>expectedVersion</code>, throw <code>OptimisticLockError</code> on mismatch.</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/lifeops/work-threads/store.ts</span></td><td>Add <code>merge()</code> using <code>withTransaction</code>. Add <code>expectedVersion</code> param to <code>update()</code>.</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/actions/work-thread.ts</span></td><td>Replace non-atomic merge loop with <code>store.merge(...)</code>. Keep <code>workThreadOperationSemaphore</code> as soft in-process throttle.</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/lifeops/scheduled-task/runner.ts</span></td><td>Wrap <code>fire()</code> in <code>withTransaction</code>. Idempotent on duplicate fire.</td></tr>
+<tr><td><span class="file-ref">plugins/app-lifeops/src/plugin.ts</span></td><td>Register the <code>threadOps</code> field evaluator. Do not register a work-thread <code>ResponseHandlerEvaluator</code>; work-thread routing belongs to the field registry.</td></tr>
+</tbody>
+</table>
+
+<h3>Files deleted</h3>
+<ul>
+  <li><span class="file-ref">message.ts:2014-2386</span> — the 7 hardcoded repair functions plus <code>buildFallbackStage1PlanForKnownToolRequest</code>. Replaced by field evaluators owned by each domain plugin.</li>
+</ul>
+</section>
+
+<!-- ============================================================ -->
+<!-- 9. DECISIONS -->
+<!-- ============================================================ -->
+<section id="decisions" class="anchor-target">
+<h2>9. Open decisions</h2>
+
+<p>Before I start writing code, please approve each of these. Defaults shown.</p>
+
+<table>
+<thead><tr><th>Decision</th><th>Default</th><th>Approve?</th></tr></thead>
+<tbody>
+<tr>
+  <td>Replace static <code>HANDLE_RESPONSE_SCHEMA</code> with composed schema</td>
+  <td>Yes — built once at registry-build time, byte-stable thereafter</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Use BAML-style soft/hard validation (<code>parse</code> returning null = soft; throwing = hard)</td>
+  <td>Yes — soft default, hard opt-in</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Keep existing post-parse <code>ResponseHandlerEvaluator</code> alongside new <code>ResponseHandlerFieldEvaluator</code></td>
+  <td>Yes — they're complementary. Post-parse evaluators stay useful for purely deterministic patches.</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Migrate all 7 hardcoded repairs to field evaluators in Wave 1</td>
+  <td>Yes — delete the repair chain entirely once tested</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Abort lives inside <code>threadOps</code> as <code>{ type: "abort", ... }</code> (not its own field)</td>
+  <td>Yes — keeps the surface unified and minimal</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Schema migration: add <code>version</code> column to both <code>life_work_threads</code> and <code>life_scheduled_tasks</code></td>
+  <td>Yes — done together to unlock idempotent <code>fire()</code></td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Run <code>bench --mode=real</code> in Wave 1 (vs deferring to Wave 2)</td>
+  <td>Yes — per user instruction "no defer"</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>CI: full 10-scenario bench on every PR, full 40-scenario nightly</td>
+  <td>Yes — once 40 scenarios land</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Composed schema's <code>contexts</code> enum is computed at registry-build time (not per-turn)</td>
+  <td>Yes — for cache stability</td>
+  <td>☐</td>
+</tr>
+<tr>
+  <td>Field evaluator <code>priority</code> ranges: 0-20 core fields, 30-50 plugin fields, 60-99 plumbing/extract</td>
+  <td>Yes — informal convention, not enforced</td>
+  <td>☐</td>
+</tr>
+</tbody>
+</table>
+
+<div class="callout">
+  <strong>Next step after approval.</strong> I'll start Wave 1 in this order:
+  <ol style="margin-bottom: 0;">
+    <li>Schema migration (<code>version</code> columns) + <code>withTransaction</code> wrapper.</li>
+    <li><code>ResponseHandlerFieldEvaluator</code> contract + registry.</li>
+    <li>Refactor <code>HANDLE_RESPONSE_SCHEMA</code> to composed form. Migrate existing fields one at a time.</li>
+    <li><code>threadOps</code> field evaluator with abort op. Wire to <code>TurnControllerRegistry</code>.</li>
+    <li><code>RoomHandlerQueue</code> + <code>withCleanup</code> + <code>turn-routes.ts</code>.</li>
+    <li>Atomic merge via <code>store.merge</code>. Idempotent <code>scheduled-task/runner.fire</code>.</li>
+    <li>Migrate 7 hardcoded repairs to field evaluators.</li>
+    <li>InterruptBench harness skeleton + 10 scenarios + scoring.</li>
+    <li>Verify: typecheck, build, test, focused integration tests, bench runs.</li>
+  </ol>
+</div>
+</section>
+
+</main>
+
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: "dark",
+    themeVariables: {
+      darkMode: true,
+      background: "#161b22",
+      primaryColor: "#1f6feb",
+      primaryTextColor: "#c9d1d9",
+      primaryBorderColor: "#30363d",
+      lineColor: "#8b949e",
+      secondaryColor: "#1c2128",
+      tertiaryColor: "#0d1117",
+    },
+    flowchart: { curve: "basis", htmlLabels: true },
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "id": "shopify",
+  "name": "Shopify",
+  "description": "Storefront and admin tools for agent-driven commerce.",
+  "npmName": "@elizaos/app-shopify",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Briefcase",
+    "group": "Curated",
+    "groupOrder": 7,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "marketplace",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "shopify",
+    "routePlugin": {
+      "specifier": "@elizaos/app-shopify",
+      "exportName": "shopifyPlugin"
+    }
+  }
+}

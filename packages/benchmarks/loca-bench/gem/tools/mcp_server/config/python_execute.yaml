@@ -1,0 +1,25 @@
+# Python Execute MCP Server Configuration
+name: python_execute
+display_name: Python Execute MCP Server
+description: Execute Python code in isolated workspace
+
+execution:
+  command_type: python
+  script:
+    primary: "gem/tools/mcp_server/python_execute/server.py"
+    fallbacks: []
+
+parameters:
+  workspace_path:
+    required: false
+    default: "."
+    cli_arg: "--workspace"
+    description: "Workspace directory for Python execution"
+    aliases:
+      - workspace_dir
+
+workspace:
+  set_cwd: true
+  cwd_param: workspace_path
+  supports_placeholders: true
+  mkdir_if_needed: true

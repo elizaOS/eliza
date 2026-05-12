@@ -1,0 +1,170 @@
+---
+title: "REST API Examples"
+description: "HTTP endpoints for elizaOS using Express, Hono, and Elysia (TypeScript)"
+---
+
+Build REST APIs for your elizaOS agents using your preferred TypeScript framework.
+
+## Available Frameworks
+
+| Framework | Location                     | Features                           |
+| --------- | ---------------------------- | ---------------------------------- |
+| Express   | `examples/rest-api/express/` | Most popular, middleware ecosystem |
+| Hono      | `examples/rest-api/hono/`    | Fast, small, edge-ready            |
+| Elysia    | `examples/rest-api/elysia/`  | Bun-native, type-safe              |
+
+---
+
+## Quick Start
+
+<Tabs>
+  <Tab title="Express">
+```bash
+cd examples/rest-api/express
+bun install && bun run start
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+  </Tab>
+  <Tab title="Hono">
+```bash
+cd examples/rest-api/hono
+bun install && bun run start
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+  </Tab>
+  <Tab title="Elysia">
+```bash
+cd examples/rest-api/elysia
+bun install && bun run start
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+  </Tab>
+</Tabs>
+
+---
+
+## Common API
+
+All implementations expose the same endpoints:
+
+### GET /
+
+Agent information.
+
+```json
+{
+  "name": "Eliza",
+  "bio": "A Rogerian psychotherapist simulation",
+  "status": "ready"
+}
+```
+
+### GET /health
+
+Health check.
+
+```json
+{
+  "status": "healthy",
+  "runtime": "elizaos-typescript",
+  "uptime": 12345.67
+}
+```
+
+### POST /chat
+
+Send a message.
+
+**Request:**
+
+```json
+{
+  "message": "I am feeling anxious",
+  "userId": "optional-user-id"
+}
+```
+
+**Response:**
+
+```json
+{
+  "response": "Tell me more about what's making you feel anxious.",
+  "character": "Eliza",
+  "userId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+---
+
+## Framework comparison
+
+| Framework | Language | Async | Type Safety | Bundle Size | Performance |
+| --------- | -------- | :---: | :---------: | :---------: | :---------: |
+| Express   | TS       |  ✅   |     ⚠️      |   Medium    |    Good     |
+| Hono      | TS       |  ✅   |     ✅      |    Small    |  Excellent  |
+| Elysia    | TS       |  ✅   |     ✅      |    Small    |  Excellent  |
+
+---
+
+## Express example
+
+```typescript
+import express from "express";
+import { AgentRuntime, ModelType } from "@elizaos/core";
+import { elizaClassicPlugin } from "@elizaos/plugin-eliza-classic";
+
+const app = express();
+app.use(express.json());
+
+const runtime = new AgentRuntime({
+  character: { name: "Eliza", bio: "A helpful AI." },
+  plugins: [elizaClassicPlugin],
+});
+
+await runtime.initialize();
+
+app.post("/chat", async (req, res) => {
+  const { message } = req.body;
+  const response = await runtime.useModel(ModelType.TEXT_LARGE, {
+    prompt: message,
+  });
+  res.json({ response: String(response) });
+});
+
+app.listen(3000);
+```
+
+---
+
+## Adding OpenAI
+
+Replace the classic plugin with OpenAI for real LLM responses:
+
+```typescript
+import { openaiPlugin } from "@elizaos/plugin-openai";
+import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
+
+const runtime = new AgentRuntime({
+  character,
+  plugins: [sqlPlugin, openaiPlugin],
+});
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
+    Deploy your API to the cloud
+  </Card>
+  <Card title="Web Apps" icon="browser" href="/examples-gallery/web-apps">
+    Build frontend interfaces
+  </Card>
+</CardGroup>

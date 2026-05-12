@@ -1,0 +1,106 @@
+{
+  "name": "@elizaos/plugin-tee",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/node/index.js",
+  "module": "dist/node/index.js",
+  "types": "dist/index.d.ts",
+  "description": "Trusted Execution Environment (TEE) integration plugin for elizaOS - Multi-language support (TypeScript, Python, Rust)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-tee.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.js",
+        "default": "./dist/node/index.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.js"
+      },
+      "default": "./dist/node/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@phala/dstack-sdk": "^0.5.7",
+    "@solana/web3.js": "1.98.4",
+    "viem": "^2.48.8"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build:typescript": "tsc --noCheck -p tsconfig.build.json",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "echo \"Typecheck skipped for release\"",
+    "test": "bun run test:typescript",
+    "test:typescript": "vitest run src/__tests__/ --config vitest.config.ts",
+    "test:watch": "vitest",
+    "lint": "echo \"Lint skipped for release\"",
+    "lint:check": "bun run lint",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "646c632924826e2b75c2304a75ee56959fe4a460",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "TEE_MODE": {
+        "type": "string",
+        "description": "Determines the Trusted Execution Environment operation mode (LOCAL, DOCKER, PRODUCTION) and is referenced in error handling to validate provided modes.",
+        "required": true,
+        "sensitive": false
+      },
+      "TEE_VENDOR": {
+        "type": "string",
+        "description": "Specifies which Trusted Execution Environment vendor to initialize (defaults to PHALA).",
+        "required": false,
+        "default": "PHALA",
+        "sensitive": false
+      },
+      "WALLET_SECRET_SALT": {
+        "type": "string",
+        "description": "Secret salt used to deterministically derive Solana and EVM keypairs inside the TEE.",
+        "required": true,
+        "default": "secret_salt",
+        "sensitive": true
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

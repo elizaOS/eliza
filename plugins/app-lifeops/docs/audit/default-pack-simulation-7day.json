@@ -1,0 +1,4421 @@
+{
+  "profile": {
+    "wakeMinuteOfDay": 420,
+    "bedtimeMinuteOfDay": 1380,
+    "morningWindow": {
+      "startMin": 390,
+      "endMin": 510
+    },
+    "afternoonWindow": {
+      "startMin": 720,
+      "endMin": 1080
+    },
+    "eveningWindow": {
+      "startMin": 1140,
+      "endMin": 1320
+    },
+    "morningOrNightWindows": [
+      {
+        "startMin": 390,
+        "endMin": 510
+      },
+      {
+        "startMin": 1260,
+        "endMin": 1350
+      }
+    ],
+    "morningOrEveningWindows": [
+      {
+        "startMin": 420,
+        "endMin": 510
+      },
+      {
+        "startMin": 1140,
+        "endMin": 1260
+      }
+    ],
+    "checkinRepliedByDay": [
+      true,
+      true,
+      false,
+      true,
+      false,
+      true,
+      true
+    ],
+    "gmRepliedByDay": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ],
+    "workoutSkippedDays": {},
+    "followupEmissionsByDay": [
+      0,
+      0,
+      0,
+      0,
+      1,
+      1,
+      1
+    ]
+  },
+  "days": [
+    {
+      "dayLabel": "D0 (Sun)",
+      "dayIndex": 0,
+      "fires": [
+        {
+          "timestamp": "2026-05-10T07:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T23:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:30:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "user_replied_within"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T09:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:30:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T13:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T07:45:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-10T15:00:00.000Z",
+          "dayLabel": "D0 (Sun)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "skipped",
+            "reason": "owner_busy_or_unwell"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    },
+    {
+      "dayLabel": "D1 (Mon)",
+      "dayIndex": 1,
+      "fires": [
+        {
+          "timestamp": "2026-05-11T07:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T23:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:30:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "user_replied_within"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T09:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:30:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:30:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "shower",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T15:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "invisalign",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T13:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T13:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T07:45:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-11T15:00:00.000Z",
+          "dayLabel": "D1 (Mon)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "shower",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "invisalign",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    },
+    {
+      "dayLabel": "D2 (Tue)",
+      "dayIndex": 2,
+      "fires": [
+        {
+          "timestamp": "2026-05-12T07:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T23:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:30:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "expired",
+            "reason": "no_reply_within_window"
+          },
+          "escalationSteps": [
+            {
+              "delayMinutes": 30,
+              "channelKey": "in_app",
+              "intensity": "normal"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-05-12T07:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T09:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:30:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T15:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "invisalign",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T13:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T13:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:45:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T15:00:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T07:30:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "habit-starters",
+          "recordKey": "shave",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-12T08:30:00.000Z",
+          "dayLabel": "D2 (Tue)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin-followup",
+          "anchorKey": null,
+          "fireMinuteOfDay": 510,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "expired",
+            "reason": "no_reply_within_window"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "invisalign",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "shave",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 510,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin-followup",
+              "priority": "low"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    },
+    {
+      "dayLabel": "D3 (Wed)",
+      "dayIndex": 3,
+      "fires": [
+        {
+          "timestamp": "2026-05-13T07:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T23:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:30:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "user_replied_within"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T09:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:30:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:30:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "shower",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T15:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "invisalign",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T13:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T13:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T07:45:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-13T15:00:00.000Z",
+          "dayLabel": "D3 (Wed)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "skipped",
+            "reason": "owner_busy_or_unwell"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "shower",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "invisalign",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    },
+    {
+      "dayLabel": "D4 (Thu)",
+      "dayIndex": 4,
+      "fires": [
+        {
+          "timestamp": "2026-05-14T07:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T23:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:30:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "expired",
+            "reason": "no_reply_within_window"
+          },
+          "escalationSteps": [
+            {
+              "delayMinutes": 30,
+              "channelKey": "in_app",
+              "intensity": "normal"
+            }
+          ]
+        },
+        {
+          "timestamp": "2026-05-14T07:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T09:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:30:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T15:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "invisalign",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T13:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T13:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T07:45:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T15:00:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-14T08:30:00.000Z",
+          "dayLabel": "D4 (Thu)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin-followup",
+          "anchorKey": null,
+          "fireMinuteOfDay": 510,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "expired",
+            "reason": "no_reply_within_window"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "invisalign",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 510,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin-followup",
+              "priority": "low"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    },
+    {
+      "dayLabel": "D5 (Fri)",
+      "dayIndex": 5,
+      "fires": [
+        {
+          "timestamp": "2026-05-15T07:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T23:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:30:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "user_replied_within"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T09:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:30:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:30:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "shower",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T15:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "invisalign",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T13:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T13:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "stretch",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:45:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T15:00:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-15T07:30:00.000Z",
+          "dayLabel": "D5 (Fri)",
+          "packKey": "habit-starters",
+          "recordKey": "shave",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "shower",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "invisalign",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "stretch",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "shave",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    },
+    {
+      "dayLabel": "D6 (Sat)",
+      "dayIndex": 6,
+      "fires": [
+        {
+          "timestamp": "2026-05-16T07:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gm",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T23:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "daily-rhythm",
+          "recordKey": "gn",
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "ack_implicit_low_priority"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:30:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "daily-rhythm",
+          "recordKey": "checkin",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "user_replied_within"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "morning-brief",
+          "recordKey": "morning-brief",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_consolidated"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": false,
+          "outcome": {
+            "state": "completed",
+            "reason": "watcher_emitted"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T09:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "inbox-triage-starter",
+          "recordKey": "daily-9am",
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "delivered_inbox_triage"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:30:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "habit-starters",
+          "recordKey": "brush_teeth",
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T13:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "habit-starters",
+          "recordKey": "drink_water",
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "priority": "low",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T07:45:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "habit-starters",
+          "recordKey": "vitamins",
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "priority": "medium",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "completed",
+            "reason": "owner_acknowledged"
+          },
+          "escalationSteps": []
+        },
+        {
+          "timestamp": "2026-05-16T15:00:00.000Z",
+          "dayLabel": "D6 (Sat)",
+          "packKey": "habit-starters",
+          "recordKey": "workout",
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "priority": "high",
+          "ownerVisible": true,
+          "outcome": {
+            "state": "skipped",
+            "reason": "owner_busy_or_unwell"
+          },
+          "escalationSteps": []
+        }
+      ],
+      "batches": [
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 540,
+          "members": [
+            {
+              "packKey": "inbox-triage-starter",
+              "recordKey": "daily-9am",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "brush_teeth",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 780,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "drink_water",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 465,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "vitamins",
+              "priority": "medium"
+            }
+          ]
+        },
+        {
+          "anchorKey": null,
+          "fireMinuteOfDay": 900,
+          "members": [
+            {
+              "packKey": "habit-starters",
+              "recordKey": "workout",
+              "priority": "high"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 420,
+          "members": [
+            {
+              "packKey": "morning-brief",
+              "recordKey": "morning-brief",
+              "priority": "medium"
+            },
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gm",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "bedtime.target",
+          "fireMinuteOfDay": 1380,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "gn",
+              "priority": "low"
+            }
+          ]
+        },
+        {
+          "anchorKey": "wake.confirmed",
+          "fireMinuteOfDay": 450,
+          "members": [
+            {
+              "packKey": "daily-rhythm",
+              "recordKey": "checkin",
+              "priority": "medium"
+            }
+          ]
+        }
+      ],
+      "watcherEmissions": [
+        {
+          "packKey": "quiet-user-watcher",
+          "recordKey": "quiet-user-watcher",
+          "anchorKey": "wake.confirmed"
+        },
+        {
+          "packKey": "followup-starter",
+          "recordKey": "cadence-watcher",
+          "anchorKey": "wake.confirmed"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "totalFires": 106,
+    "ownerVisibleFires": 92,
+    "watcherEmissions": 14,
+    "completedCount": 99,
+    "skippedCount": 3,
+    "expiredCount": 4,
+    "snoozedCount": 0,
+    "escalationDeliveries": 2,
+    "perPackFireCount": {
+      "daily-rhythm": 23,
+      "morning-brief": 7,
+      "quiet-user-watcher": 7,
+      "followup-starter": 7,
+      "inbox-triage-starter": 7,
+      "habit-starters": 55
+    },
+    "perDayUserFacingNudgeBatches": [
+      9,
+      13,
+      14,
+      13,
+      13,
+      14,
+      9
+    ]
+  },
+  "decisions": [
+    {
+      "timestamp": "2026-05-10T07:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T23:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:30:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "user_replied_within"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T09:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:30:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T13:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T07:45:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-10T15:00:00.000Z",
+      "dayLabel": "D0 (Sun)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "skipped",
+        "reason": "owner_busy_or_unwell"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T23:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:30:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "user_replied_within"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T09:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:30:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:30:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "shower",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T15:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "invisalign",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T13:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T13:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T07:45:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-11T15:00:00.000Z",
+      "dayLabel": "D1 (Mon)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T23:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:30:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "expired",
+        "reason": "no_reply_within_window"
+      },
+      "escalationSteps": [
+        {
+          "delayMinutes": 30,
+          "channelKey": "in_app",
+          "intensity": "normal"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-05-12T07:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T09:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:30:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T15:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "invisalign",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T13:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T13:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:45:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T15:00:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T07:30:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "habit-starters",
+      "recordKey": "shave",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-12T08:30:00.000Z",
+      "dayLabel": "D2 (Tue)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin-followup",
+      "anchorKey": null,
+      "fireMinuteOfDay": 510,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "expired",
+        "reason": "no_reply_within_window"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T23:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:30:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "user_replied_within"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T09:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:30:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:30:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "shower",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T15:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "invisalign",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T13:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T13:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T07:45:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-13T15:00:00.000Z",
+      "dayLabel": "D3 (Wed)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "skipped",
+        "reason": "owner_busy_or_unwell"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T23:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:30:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "expired",
+        "reason": "no_reply_within_window"
+      },
+      "escalationSteps": [
+        {
+          "delayMinutes": 30,
+          "channelKey": "in_app",
+          "intensity": "normal"
+        }
+      ]
+    },
+    {
+      "timestamp": "2026-05-14T07:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T09:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:30:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T15:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "invisalign",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T13:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T13:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T07:45:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T15:00:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-14T08:30:00.000Z",
+      "dayLabel": "D4 (Thu)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin-followup",
+      "anchorKey": null,
+      "fireMinuteOfDay": 510,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "expired",
+        "reason": "no_reply_within_window"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T23:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:30:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "user_replied_within"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T09:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:30:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:30:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "shower",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T15:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "invisalign",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T13:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T13:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "stretch",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:45:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T15:00:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-15T07:30:00.000Z",
+      "dayLabel": "D5 (Fri)",
+      "packKey": "habit-starters",
+      "recordKey": "shave",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gm",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T23:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "daily-rhythm",
+      "recordKey": "gn",
+      "anchorKey": "bedtime.target",
+      "fireMinuteOfDay": 1380,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "ack_implicit_low_priority"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:30:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "daily-rhythm",
+      "recordKey": "checkin",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "user_replied_within"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "morning-brief",
+      "recordKey": "morning-brief",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_consolidated"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "quiet-user-watcher",
+      "recordKey": "quiet-user-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "followup-starter",
+      "recordKey": "cadence-watcher",
+      "anchorKey": "wake.confirmed",
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": false,
+      "outcome": {
+        "state": "completed",
+        "reason": "watcher_emitted"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T09:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "inbox-triage-starter",
+      "recordKey": "daily-9am",
+      "anchorKey": null,
+      "fireMinuteOfDay": 540,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "delivered_inbox_triage"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:30:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "habit-starters",
+      "recordKey": "brush_teeth",
+      "anchorKey": null,
+      "fireMinuteOfDay": 450,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 420,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T13:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "habit-starters",
+      "recordKey": "drink_water",
+      "anchorKey": null,
+      "fireMinuteOfDay": 780,
+      "priority": "low",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T07:45:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "habit-starters",
+      "recordKey": "vitamins",
+      "anchorKey": null,
+      "fireMinuteOfDay": 465,
+      "priority": "medium",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "completed",
+        "reason": "owner_acknowledged"
+      },
+      "escalationSteps": []
+    },
+    {
+      "timestamp": "2026-05-16T15:00:00.000Z",
+      "dayLabel": "D6 (Sat)",
+      "packKey": "habit-starters",
+      "recordKey": "workout",
+      "anchorKey": null,
+      "fireMinuteOfDay": 900,
+      "priority": "high",
+      "ownerVisible": true,
+      "outcome": {
+        "state": "skipped",
+        "reason": "owner_busy_or_unwell"
+      },
+      "escalationSteps": []
+    }
+  ],
+  "scenario": "defaults+habit-starters+inbox",
+  "packsExercised": [
+    "daily-rhythm",
+    "morning-brief",
+    "quiet-user-watcher",
+    "followup-starter",
+    "inbox-triage-starter",
+    "habit-starters"
+  ],
+  "totalDefaultPacksAvailable": 6
+}

@@ -1,0 +1,264 @@
+name: Test Packaging
+
+on:
+  pull_request:
+    paths:
+      - 'packages/app-core/packaging/**'
+      - 'packages/core/**'
+      - 'plugins/*/typescript/**'
+      - 'packages/app-core/scripts/pack-upstreams.mjs'
+      - '.github/workflows/publish-packages.yml'
+      - '.github/workflows/test-packaging.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/app-core/packaging/**'
+      - 'packages/core/**'
+      - 'plugins/*/typescript/**'
+  workflow_dispatch:
+
+concurrency:
+  group: test-packaging-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Validate Packaging Configs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Install validation dependencies
+        run: pip install pyyaml build twine
+
+      - name: Run packaging validation suite
+        run: bash packages/app-core/packaging/test-packaging.sh
+
+  build-pypi:
+    name: Build & Test PyPI Package
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Check for PyPI package directory
+        id: pypi_check
+        run: |
+          if [[ -d packages/app-core/packaging/pypi ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::packages/app-core/packaging/pypi not present in this branch — skipping PyPI build"
+          fi
+
+      - name: Setup Python
+        if: steps.pypi_check.outputs.present == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.14"
+
+      - name: Setup Node.js
+        if: steps.pypi_check.outputs.present == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Build
+        if: steps.pypi_check.outputs.present == 'true'
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install build
+          python -m build
+
+      - name: Check dist
+        if: steps.pypi_check.outputs.present == 'true'
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install twine
+          twine check dist/*
+
+      - name: Install and test
+        if: steps.pypi_check.outputs.present == 'true'
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install dist/*.whl
+
+          # Module import test
+          python -c "
+          import elizaos_app
+          print(f'elizaos_app {elizaos_app.__version__}')
+          assert elizaos_app.__version__
+          assert hasattr(elizaos_app, 'run')
+          assert hasattr(elizaos_app, 'ensure_runtime')
+          assert hasattr(elizaos_app, 'get_version')
+          "
+
+          # Loader unit tests
+          python -c "
+          from elizaos_app.loader import (
+              _parse_version,
+              _find_node,
+              _get_node_version,
+              _check_node,
+              ElizaOSAppError,
+              NodeNotFoundError,
+              RuntimeInstallError,
+          )
+
+          # Version parsing
+          assert _parse_version('v22.12.0') == (22, 12, 0)
+          assert _parse_version('v18.0.0') == (18, 0, 0)
+          assert _parse_version('v1.2.3-nightly') == (1, 2, 3)
+          assert _parse_version('not-a-version') is None
+          assert _parse_version('') is None
+
+          # Node detection (Node.js is installed in this runner)
+          node = _find_node()
+          assert node, 'Node not found on PATH'
+          ver = _get_node_version(node)
+          assert ver and ver >= (22, 0, 0), f'Node version too old: {ver}'
+          checked = _check_node()
+          assert checked == node
+
+          # Exception hierarchy
+          assert issubclass(NodeNotFoundError, ElizaOSAppError)
+          assert issubclass(RuntimeInstallError, ElizaOSAppError)
+
+          print('All loader unit tests passed')
+          "
+
+          # CLI entry point exists
+          which elizaos-app
+
+  build-pypi-matrix:
+    name: PyPI on Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        # PRs run a single Python version; pushes to main/develop run the
+        # full 3.9–3.13 matrix. Release publishing re-runs the full matrix.
+        python: ${{ github.event_name == 'pull_request' && fromJSON('["3.12"]') || fromJSON('["3.9", "3.10", "3.11", "3.12", "3.13"]') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Check for PyPI package directory
+        id: pypi_check
+        run: |
+          if [[ -d packages/app-core/packaging/pypi ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::packages/app-core/packaging/pypi not present in this branch — skipping PyPI matrix build"
+          fi
+
+      - name: Setup Python ${{ matrix.python }}
+        if: steps.pypi_check.outputs.present == 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Setup Node.js
+        if: steps.pypi_check.outputs.present == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Build and test
+        if: steps.pypi_check.outputs.present == 'true'
+        working-directory: packages/app-core/packaging/pypi
+        run: |
+          pip install build
+          python -m build
+          pip install dist/*.whl
+          python -c "import elizaos_app; print(f'OK: elizaos_app {elizaos_app.__version__} on Python ${{ matrix.python }}')"
+
+  pack-and-test-js:
+    name: Pack & Test JS Tarballs
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install dependencies
+        run: bun install --ignore-scripts
+
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+
+      - name: Pack upstream tarballs
+        run: node packages/app-core/scripts/pack-upstreams.mjs
+
+      - name: Verify tarball installation
+        run: |
+          set -euo pipefail
+          ARTIFACTS_DIR="artifacts"
+          tarballs=("$ARTIFACTS_DIR"/*.tgz)
+          if [ ! -f "${tarballs[0]}" ]; then
+            echo "::error::No tarballs found in $ARTIFACTS_DIR"
+            exit 1
+          fi
+
+          TEST_DIR=$(mktemp -d)
+          ROOT_DIR="$PWD"
+          install_paths=()
+          for tarball in "${tarballs[@]}"; do
+            install_paths+=("$ROOT_DIR/$tarball")
+          done
+          cd "$TEST_DIR"
+          echo '{"name":"tarball-test","private":true,"type":"module"}' > package.json
+          npm install "${install_paths[@]}" --ignore-scripts 2>&1
+
+          for tarball in "${tarballs[@]}"; do
+            echo "::group::Checking $(basename "$tarball")"
+            PKG_NAME=$(tar -xOf "$ROOT_DIR/$tarball" package/package.json | node -e "process.stdin.setEncoding('utf8'); let data = ''; process.stdin.on('data', chunk => data += chunk); process.stdin.on('end', () => console.log(JSON.parse(data).name));")
+            PKG_MANIFEST="node_modules/${PKG_NAME}/package.json"
+            test -f "$PKG_MANIFEST"
+            echo "Installed: $PKG_NAME"
+            echo "::endgroup::"
+          done
+
+          cd "$ROOT_DIR"
+          rm -rf "$TEST_DIR"
+          echo "All JS tarballs passed installation test"
+
+      - name: Upload tarball artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: js-tarballs
+          path: artifacts/*.tgz
+          retention-days: 7

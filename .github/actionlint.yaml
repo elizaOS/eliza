@@ -1,0 +1,41 @@
+# actionlint configuration
+# https://github.com/rhysd/actionlint/blob/main/docs/config.md
+
+# Most jobs run on GitHub-hosted runners (ubuntu-24.04 / ubuntu-24.04-arm /
+# windows-2025 / macos-15 etc.). The labels below are self-hosted runner
+# labels we use:
+#   kvm — Linux x86_64 host with /dev/kvm available, used for Cuttlefish/AOSP
+#         builds (.github/workflows/elizaos-cuttlefish.yml).
+#   gpu-cuda-12.6 — Linux x86_64 host with an NVIDIA GPU + CUDA 12.6 driver
+#                   stack, used for the eliza-1 training stack QJL nvcc
+#                   build (.github/workflows/training-stack.yml).
+
+self-hosted-runner:
+  labels:
+    - kvm
+    - gpu-cuda-12.6
+
+paths:
+  .github/workflows/*.yml:
+    ignore:
+      # Keep workflow lint focused on actionable failures. actionlint surfaces
+      # shellcheck `info` and `style` diagnostics as errors by default, which
+      # makes this repo's workflow lint fail without any workflow syntax,
+      # expression, or shell warning/error findings.
+      - "shellcheck reported issue in this script: SC[0-9]+:(info|style):"
+  .github/workflows/*.yaml:
+    ignore:
+      - "shellcheck reported issue in this script: SC[0-9]+:(info|style):"
+  .github/workflows/release.yml:
+    ignore:
+      # Optional signing secrets — linter cannot verify repo secrets exist
+      - "Context access might be invalid:.+"
+  .github/workflows/release-electrobun.yml:
+    ignore:
+      - "Context access might be invalid:.+"
+  .github/workflows/android-release.yml:
+    ignore:
+      - "Context access might be invalid:.+"
+  .github/workflows/apple-store-release.yml:
+    ignore:
+      - "Context access might be invalid:.+"

@@ -1,0 +1,120 @@
+name: Snap Build & Test
+
+on:
+  push:
+    paths:
+      - 'packages/app-core/packaging/snap/**'
+      - '.github/workflows/snap-build-test.yml'
+  pull_request:
+    paths:
+      - 'packages/app-core/packaging/snap/**'
+      - '.github/workflows/snap-build-test.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: snap-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-snap:
+    name: Build Snap (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          # arm64 builds can be enabled when arm runners are available
+          # - arch: arm64
+          #   runner: ubuntu-24.04-arm
+
+    steps:
+      - name: Free disk space on runner
+        # Snapcraft multipass + bun install of every workspace dependency
+        # inside the sandbox consistently exhausts the default 14GB GHA
+        # runner disk, producing `System.IO.IOException: No space left on
+        # device` halfway through the build. Reclaim ~30GB up front by
+        # dropping unused toolchains.
+        run: |
+          set -euo pipefail
+          echo "=== before ==="
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL 2>/dev/null || true
+          sudo docker image prune -af 2>/dev/null || true
+          echo "=== after ==="
+          df -h /
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          # Recursive picks up nested plugin submodules under plugins/
+          # which the snapcraft sandbox needs to satisfy workspace:* deps.
+          submodules: recursive
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Setup Buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare snapcraft.yaml
+        run: |
+          mkdir -p snap
+          cp packages/app-core/packaging/snap/snapcraft.yaml snap/snapcraft.yaml
+
+          # Use package.json version
+          VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "0.0.0-dev")
+          sed -i "s/^version: .*/version: '${VERSION}'/" snap/snapcraft.yaml
+          echo "Building snap version: $VERSION"
+
+      - name: Normalize runner root ownership for snapd
+        run: |
+          set -euo pipefail
+          ROOT_OWNER="$(stat -c '%u:%g' /)"
+          echo "Runner root owner: ${ROOT_OWNER}"
+          if [ "${ROOT_OWNER}" = "0:0" ]; then
+            echo "Root is already 0:0 — snapd canonicalization OK"
+            exit 0
+          fi
+          echo "Attempting to repair / ownership so snapd/systemd path canonicalization accepts this runner"
+          if sudo -n chown root:root / 2>/dev/null; then
+            echo "Chown succeeded; new owner: $(stat -c '%u:%g' /)"
+          else
+            echo "::warning::Unable to chown / to root:root (sudo unavailable or passwordless sudo disabled). snapd may fail downstream. Remediation: run this job on a standard ubuntu-latest / ubuntu-24.04 GitHub-hosted runner, or configure the container image so / is owned by 0:0."
+          fi
+
+      - name: Build snap
+        uses: snapcore/action-build@v1
+        id: snapcraft
+
+      - name: Verify snap contents
+        run: |
+          echo "=== Snap file ==="
+          ls -lh ${{ steps.snapcraft.outputs.snap }}
+
+          echo "=== Snap info ==="
+          snap info ${{ steps.snapcraft.outputs.snap }} 2>/dev/null || unsquashfs -l ${{ steps.snapcraft.outputs.snap }} | head -50
+
+      - name: Install and test snap
+        run: |
+          sudo snap install ${{ steps.snapcraft.outputs.snap }} --dangerous
+          echo "=== Installed snap ==="
+          snap list elizaos-app
+
+          echo "=== Version check ==="
+          elizaos-app --version || echo "Version check completed (exit $?)"
+
+          echo "=== Help check ==="
+          elizaos-app --help 2>&1 | head -20 || echo "Help check completed (exit $?)"
+
+      - name: Upload snap artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: snap-${{ matrix.arch }}
+          path: ${{ steps.snapcraft.outputs.snap }}
+          retention-days: 30

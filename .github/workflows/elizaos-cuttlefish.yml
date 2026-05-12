@@ -1,0 +1,136 @@
+name: ElizaOS Cuttlefish
+
+# Brand-aware AOSP / Cuttlefish build pipeline.
+#
+# Defaults to the elizaOS brand (scripts/distro-android/brand.eliza.json).
+# Downstream brands (e.g. ElizaOS) supply their own brand config + vendor
+# tree via `brand-config` and `vendor-source` inputs and call this workflow
+# either via workflow_dispatch (manual run from this repo) or via
+# workflow_call (cross-repo reusable workflow):
+#
+#   # downstream/.github/workflows/my-brand-cuttlefish.yml
+#   jobs:
+#     build:
+#       uses: elizaOS/eliza/.github/workflows/elizaos-cuttlefish.yml@develop
+#       with:
+#         brand-config: packages/os/android/brand.mybrand.json
+#         vendor-source: packages/os/android/vendor/mybrand
+#         aosp-root: /aosp
+#         launch: true
+
+on:
+  workflow_dispatch:
+    inputs:
+      brand-config:
+        description: "Path to brand config JSON (relative to repo root). Default: eliza."
+        required: false
+        type: string
+        default: "scripts/distro-android/brand.eliza.json"
+      vendor-source:
+        description: "Override path to the vendor tree (relative to repo root). Defaults to brand.vendorDir."
+        required: false
+        type: string
+        default: ""
+      aosp-root:
+        description: "Existing AOSP checkout root on the Linux/KVM runner"
+        required: true
+        type: string
+      jobs:
+        description: "AOSP build parallelism"
+        required: false
+        default: "8"
+        type: string
+      launch:
+        description: "Launch Cuttlefish and run adb boot validation"
+        required: false
+        default: true
+        type: boolean
+  workflow_call:
+    inputs:
+      brand-config:
+        description: "Path to brand config JSON (relative to repo root)."
+        required: false
+        type: string
+        default: "scripts/distro-android/brand.eliza.json"
+      vendor-source:
+        description: "Override path to the vendor tree."
+        required: false
+        type: string
+        default: ""
+      aosp-root:
+        description: "Existing AOSP checkout root."
+        required: true
+        type: string
+      jobs:
+        description: "AOSP build parallelism."
+        required: false
+        type: string
+        default: "8"
+      launch:
+        description: "Launch Cuttlefish and run adb boot validation."
+        required: false
+        type: boolean
+        default: true
+
+jobs:
+  build-and-validate:
+    name: Build and validate brand AOSP image
+    runs-on: [self-hosted, linux, x64, kvm]
+    timeout-minutes: 720
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # The brand validator shells out to `aapt` to inspect the staged APK,
+      # and the brand `build:android:system` runs Gradle which needs a full SDK.
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools build-tools;36.0.0 platforms;android-36"
+
+      - name: Install workspace dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Resolve brand
+        id: brand
+        run: |
+          BRAND_CONFIG="${{ inputs.brand-config }}"
+          if [ ! -f "$BRAND_CONFIG" ]; then
+            echo "::error::Brand config not found: $BRAND_CONFIG"
+            exit 1
+          fi
+          echo "config=$BRAND_CONFIG" >> "$GITHUB_OUTPUT"
+          BUILD_CMD=$(node -e "const c=JSON.parse(require('fs').readFileSync('$BRAND_CONFIG','utf8')); console.log((c.buildAndroidSystemCmd ?? ['bun','run','build:android:system']).join(' '))")
+          echo "build-cmd=$BUILD_CMD" >> "$GITHUB_OUTPUT"
+          DISTRO_NAME=$(node -p "JSON.parse(require('fs').readFileSync('$BRAND_CONFIG','utf8')).distroName")
+          echo "distro-name=$DISTRO_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build privileged APK (${{ steps.brand.outputs.distro-name }})
+        run: ${{ steps.brand.outputs.build-cmd }}
+
+      - name: Static brand validation
+        run: |
+          node scripts/distro-android/validate.mjs \
+            --brand-config "${{ steps.brand.outputs.config }}"
+
+      - name: Sync, build, and optionally boot
+        run: |
+          ARGS=(
+            --brand-config "${{ steps.brand.outputs.config }}"
+            --aosp-root "${{ inputs.aosp-root }}"
+            --jobs "${{ inputs.jobs }}"
+          )
+          if [ -n "${{ inputs.vendor-source }}" ]; then
+            ARGS+=(--source-vendor "${{ inputs.vendor-source }}")
+          fi
+          if [ "${{ inputs.launch }}" = "true" ]; then
+            ARGS+=(--launch --boot-validate)
+          fi
+          node scripts/distro-android/build-aosp.mjs "${ARGS[@]}"

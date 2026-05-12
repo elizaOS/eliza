@@ -1,0 +1,468 @@
+/**
+ * Provider registry.
+ *
+ * Treats every inference source the same way — cloud subscription, cloud
+ * API, Eliza-1 local runtime, paired-device bridge, Capacitor on-device
+ * — each is a `ProviderDefinition` with an `id`, a human label, a set of
+ * supported model slots, and a pluggable `getEnableState()` that inspects
+ * whatever underlying gate controls it (API key presence, subscription
+ * status, env flag, file on disk).
+ *
+ * The cloud-provider status readers are intentionally permissive: they
+ * report what they can introspect without depending on the specific
+ * cloud-plugin internals, and hand off to the existing ProviderSwitcher
+ * UI for actual enable/disable via `configureHref`. That avoids the
+ * "combined enable matrix is an architectural project" problem by making
+ * configuration navigable rather than centralised.
+ */
+
+import fs from "node:fs/promises";
+import type {
+  ProviderEnableState,
+  ProviderId,
+  ProviderMeta,
+  ProviderStatus,
+} from "@elizaos/shared";
+import { getDefaultAccountPool } from "../account-pool";
+import { deviceBridge } from "./device-bridge";
+import { getDflashRuntimeStatus } from "./dflash-server";
+import { handlerRegistry } from "./handler-registry";
+import { localInferenceRoot } from "./paths";
+
+/**
+ * Runtime provider descriptor. Extends the UI-safe `ProviderMeta` with a
+ * callable `getEnableState()` that inspects env vars, fs, or device-bridge
+ * sockets. Server-side only — UI code reads `ProviderMeta` /
+ * `ProviderStatus` from `@elizaos/shared` instead.
+ */
+export interface ProviderDefinition extends ProviderMeta {
+  /**
+   * Read the current enable state. For cloud providers we inspect env
+   * vars or config fragments; for local we check file presence; for
+   * device-bridge we check connected-device count.
+   */
+  getEnableState(): Promise<ProviderEnableState>;
+}
+
+export type { ProviderEnableState, ProviderId, ProviderMeta, ProviderStatus };
+
+/** Resolve which slots have at least one registered handler from this provider. */
+export function getRegisteredSlotsForProvider(providerId: string): string[] {
+  const regs = handlerRegistry.getAll();
+  const slots = new Set<string>();
+  for (const r of regs) {
+    if (r.provider === providerId) slots.add(r.modelType);
+  }
+  return [...slots];
+}
+
+// ── Built-in provider definitions ────────────────────────────────────
+
+const LOCAL_PROVIDER: ProviderDefinition = {
+  id: "eliza-local-inference",
+  label: "Eliza-1 local runtime",
+  kind: "local",
+  description:
+    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves TEXT_EMBEDDING; the voice bridge registers TEXT_TO_SPEECH by default and TRANSCRIPTION only when an ASR-capable local runtime is explicitly enabled.",
+  // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
+  // registers its own model handler against the runtime. We advertise the
+  // slot here so the providers panel reports it as supported by the local
+  // path; actual handler-presence is reflected in `registeredSlots` via
+  // `getRegisteredSlotsForProvider`.
+  // The shared `AgentModelSlot` type does not include voice model types yet,
+  // so TEXT_TO_SPEECH / TRANSCRIPTION support is reported through
+  // `registeredSlots` rather than this UI-facing slot list.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    // Enabled when at least one model file lives under our root and the
+    // binding is loadable. We don't force-load node-llama-cpp here — that
+    // would tie up GPU memory just for a status probe.
+    try {
+      const entries = await fs.readdir(`${localInferenceRoot()}/models`, {
+        withFileTypes: true,
+      });
+      const hasModel = entries.some(
+        (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
+      );
+      if (!hasModel)
+        return { enabled: false, reason: "No local model installed" };
+      const dflash = getDflashRuntimeStatus();
+      return dflash.enabled
+        ? {
+            enabled: true,
+            reason: "Eliza-1 model installed; local acceleration available",
+          }
+        : { enabled: true, reason: "GGUF model installed" };
+    } catch {
+      return { enabled: false, reason: "No local model installed" };
+    }
+  },
+  configureHref: "#local-inference-panel",
+};
+
+const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
+  id: "eliza-device-bridge",
+  label: "Paired device bridge",
+  kind: "device-bridge",
+  description:
+    "Inference on a paired mobile or desktop device over WebSocket. Useful when the agent runs in a container but the model lives on your phone or laptop.",
+  // The bridge can carry an `embed` frame to a paired device that has the
+  // local-embedding plugin loaded; whether the active device actually
+  // serves it is reflected in `registeredSlots`.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const bridgeEnabled =
+      process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
+    if (!bridgeEnabled) {
+      return {
+        enabled: false,
+        reason: "Set ELIZA_DEVICE_BRIDGE_ENABLED=1 to enable",
+      };
+    }
+    const status = deviceBridge.status();
+    if (status.connected) {
+      return {
+        enabled: true,
+        reason: `${status.devices.length} device(s) connected`,
+      };
+    }
+    return {
+      enabled: true,
+      reason: "Waiting for a device to connect",
+    };
+  },
+  configureHref: "#device-bridge-status",
+};
+
+const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
+  id: "capacitor-llama",
+  label: "eliza-1-1_7b runtime",
+  kind: "local",
+  description:
+    "Runs Eliza-1 natively on iOS or Android via Capacitor. Only available in mobile builds.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const cap = (globalThis as Record<string, unknown>).Capacitor as
+      | { isNativePlatform?: () => boolean }
+      | undefined;
+    if (cap?.isNativePlatform?.()) {
+      return {
+        enabled: true,
+        reason: "Native Capacitor runtime detected",
+      };
+    }
+    return {
+      enabled: false,
+      reason: "Only available in iOS/Android builds",
+    };
+  },
+  configureHref: null,
+};
+
+const ANTHROPIC_PROVIDER: ProviderDefinition = {
+  id: "anthropic",
+  label: "Anthropic API",
+  kind: "cloud-api",
+  description: "Claude models via the Anthropic API. Requires an API key.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const key = process.env.ANTHROPIC_API_KEY?.trim();
+    return key
+      ? { enabled: true, reason: "API key set" }
+      : { enabled: false, reason: "No API key" };
+  },
+  configureHref: "#ai-model",
+};
+
+const OPENAI_PROVIDER: ProviderDefinition = {
+  id: "openai",
+  label: "OpenAI API",
+  kind: "cloud-api",
+  description: "GPT models via the OpenAI API. Requires an API key.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const key = process.env.OPENAI_API_KEY?.trim();
+    return key
+      ? { enabled: true, reason: "API key set" }
+      : { enabled: false, reason: "No API key" };
+  },
+  configureHref: "#ai-model",
+};
+
+const GROK_PROVIDER: ProviderDefinition = {
+  id: "grok",
+  label: "Grok API",
+  kind: "cloud-api",
+  description: "xAI Grok models. Requires an API key.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const key =
+      process.env.GROK_API_KEY?.trim() ?? process.env.XAI_API_KEY?.trim();
+    return key
+      ? { enabled: true, reason: "API key set" }
+      : { enabled: false, reason: "No API key" };
+  },
+  configureHref: "#ai-model",
+};
+
+const ELIZACLOUD_PROVIDER: ProviderDefinition = {
+  id: "elizacloud",
+  label: "Eliza Cloud",
+  kind: "cloud-subscription",
+  description:
+    "Eliza-hosted inference routed through your subscription. No API key to manage.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const token =
+      process.env.ELIZA_CLOUD_TOKEN?.trim() ??
+      process.env.ELIZACLOUD_TOKEN?.trim() ??
+      process.env.ELIZAOS_API_KEY?.trim();
+    return token
+      ? { enabled: true, reason: "Cloud token set" }
+      : { enabled: false, reason: "Not signed in" };
+  },
+  configureHref: "#ai-model",
+};
+
+const ANTHROPIC_SUBSCRIPTION_PROVIDER: ProviderDefinition = {
+  id: "anthropic-subscription",
+  label: "Claude subscription",
+  kind: "cloud-subscription",
+  description: "Claude Code task-agent access through linked accounts.",
+  // Claude.ai OAuth subscriptions serve text + structured-object generation
+  // through Anthropic's chat models. Embeddings are not exposed by the
+  // subscription path (Anthropic does not ship an embeddings endpoint), so
+  // TEXT_EMBEDDING is intentionally omitted — that slot needs a separate
+  // API-key provider.
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("anthropic-subscription");
+  },
+  configureHref: "#ai-model",
+};
+
+const OPENAI_CODEX_PROVIDER: ProviderDefinition = {
+  id: "openai-codex",
+  label: "Codex subscription",
+  kind: "cloud-subscription",
+  description: "Codex and ChatGPT subscription access through linked accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("openai-codex");
+  },
+  configureHref: "#ai-model",
+};
+
+const GEMINI_CLI_PROVIDER: ProviderDefinition = {
+  id: "gemini-cli",
+  label: "Gemini CLI subscription",
+  kind: "cloud-subscription",
+  description: "Gemini CLI task-agent access through linked accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("gemini-cli");
+  },
+  configureHref: "#ai-model",
+};
+
+const ZAI_CODING_PROVIDER: ProviderDefinition = {
+  id: "zai-coding",
+  label: "z.ai Coding Plan",
+  kind: "cloud-subscription",
+  description:
+    "GLM coding-plan access through linked z.ai Coding Plan accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("zai-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const KIMI_CODING_PROVIDER: ProviderDefinition = {
+  id: "kimi-coding",
+  label: "Kimi Code",
+  kind: "cloud-subscription",
+  description: "Kimi coding-plan access through linked Kimi Code accounts.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("kimi-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const DEEPSEEK_CODING_PROVIDER: ProviderDefinition = {
+  id: "deepseek-coding",
+  label: "DeepSeek Coding Plan",
+  kind: "cloud-subscription",
+  description:
+    "Unavailable until DeepSeek exposes a first-party coding subscription flow that can be integrated without API-key substitution.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return subscriptionEnableState("deepseek-coding");
+  },
+  configureHref: "#ai-model",
+};
+
+const GOOGLE_PROVIDER: ProviderDefinition = {
+  id: "google",
+  label: "Google (Gemini)",
+  kind: "cloud-api",
+  description: "Gemini models via Google Generative AI. Requires an API key.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const key =
+      process.env.GOOGLE_API_KEY?.trim() ?? process.env.GEMINI_API_KEY?.trim();
+    return key
+      ? { enabled: true, reason: "API key set" }
+      : { enabled: false, reason: "No API key" };
+  },
+  configureHref: "#ai-model",
+};
+
+const MISTRAL_PROVIDER: ProviderDefinition = {
+  id: "mistral",
+  label: "Mistral API",
+  kind: "cloud-api",
+  description: "Mistral models via la Plateforme. Requires an API key.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    const key = process.env.MISTRAL_API_KEY?.trim();
+    return key
+      ? { enabled: true, reason: "API key set" }
+      : { enabled: false, reason: "No API key" };
+  },
+  configureHref: "#ai-model",
+};
+
+const DEEPSEEK_PROVIDER: ProviderDefinition = {
+  id: "deepseek",
+  label: "DeepSeek API",
+  kind: "cloud-api",
+  description: "DeepSeek models via API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("deepseek-api", ["DEEPSEEK_API_KEY"]);
+  },
+  configureHref: "#ai-model",
+};
+
+const ZAI_PROVIDER: ProviderDefinition = {
+  id: "zai",
+  label: "z.ai API",
+  kind: "cloud-api",
+  description: "GLM models via z.ai API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("zai-api", [
+      "ZAI_API_KEY",
+      "Z_AI_API_KEY",
+    ]);
+  },
+  configureHref: "#ai-model",
+};
+
+const MOONSHOT_PROVIDER: ProviderDefinition = {
+  id: "moonshot",
+  label: "Kimi / Moonshot API",
+  kind: "cloud-api",
+  description: "Kimi models via Moonshot API key or linked account pool.",
+  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+  async getEnableState(): Promise<ProviderEnableState> {
+    return apiKeyOrLinkedAccountState("moonshot-api", [
+      "MOONSHOT_API_KEY",
+      "KIMI_API_KEY",
+    ]);
+  },
+  configureHref: "#ai-model",
+};
+
+export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
+  LOCAL_PROVIDER,
+  DEVICE_BRIDGE_PROVIDER,
+  CAPACITOR_LLAMA_PROVIDER,
+  ANTHROPIC_SUBSCRIPTION_PROVIDER,
+  OPENAI_CODEX_PROVIDER,
+  GEMINI_CLI_PROVIDER,
+  ZAI_CODING_PROVIDER,
+  KIMI_CODING_PROVIDER,
+  DEEPSEEK_CODING_PROVIDER,
+  ELIZACLOUD_PROVIDER,
+  ANTHROPIC_PROVIDER,
+  OPENAI_PROVIDER,
+  DEEPSEEK_PROVIDER,
+  ZAI_PROVIDER,
+  MOONSHOT_PROVIDER,
+  GOOGLE_PROVIDER,
+  GROK_PROVIDER,
+  MISTRAL_PROVIDER,
+];
+
+function apiKeyOrLinkedAccountState(
+  providerId: "deepseek-api" | "zai-api" | "moonshot-api",
+  envKeys: readonly string[],
+): ProviderEnableState {
+  const hasEnv = envKeys.some((key) => process.env[key]?.trim());
+  if (hasEnv) return { enabled: true, reason: "API key set" };
+  const accounts = getDefaultAccountPool()
+    .list(providerId)
+    .filter((account) => account.enabled && account.health === "ok");
+  if (accounts.length === 0) {
+    return { enabled: false, reason: "No API key or linked account" };
+  }
+  return {
+    enabled: true,
+    reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
+  };
+}
+
+type SubscriptionProviderStatusId =
+  | "anthropic-subscription"
+  | "openai-codex"
+  | "gemini-cli"
+  | "zai-coding"
+  | "kimi-coding"
+  | "deepseek-coding";
+
+function subscriptionEnableState(
+  providerId: SubscriptionProviderStatusId,
+): ProviderEnableState {
+  if (providerId === "deepseek-coding") {
+    return {
+      enabled: false,
+      reason: "Unavailable: no first-party coding subscription integration",
+    };
+  }
+  const accounts = getDefaultAccountPool()
+    .list(providerId)
+    .filter((account) => account.enabled && account.health === "ok");
+  if (accounts.length === 0) {
+    const reason =
+      providerId === "gemini-cli"
+        ? "No linked account; run gemini auth login"
+        : "No linked account";
+    return { enabled: false, reason };
+  }
+  return {
+    enabled: true,
+    reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
+  };
+}
+
+export async function snapshotProviders(): Promise<ProviderStatus[]> {
+  const entries = await Promise.all(
+    BUILT_IN_PROVIDERS.map(async (def) => {
+      const state = await def.getEnableState();
+      return {
+        id: def.id,
+        label: def.label,
+        kind: def.kind,
+        description: def.description,
+        supportedSlots: def.supportedSlots,
+        configureHref: def.configureHref,
+        enableState: state,
+        registeredSlots: getRegisteredSlotsForProvider(def.id),
+      } satisfies ProviderStatus;
+    }),
+  );
+  return entries;
+}

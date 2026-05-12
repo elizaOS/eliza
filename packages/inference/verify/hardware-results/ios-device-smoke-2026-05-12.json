@@ -1,0 +1,134 @@
+{
+  "status": "failed",
+  "startedAt": "2026-05-12T02:18:32.818Z",
+  "finishedAt": "2026-05-12T02:19:38.231Z",
+  "device": {
+    "section": "CoreDevice",
+    "name": "Shaw’s iPhone",
+    "version": null,
+    "id": "C9130C48-48F1-5DC3-98E9-8BACE231D047",
+    "hostname": "Shaws-iPhone.coredevice.local",
+    "state": "available (paired)",
+    "model": "iPhone 15 Pro (iPhone16,1)",
+    "idSource": "devicectl"
+  },
+  "xcframework": "/Users/shawwalters/.eliza/local-inference/bin/dflash/ios-physical-smoke/LlamaCpp.xcframework",
+  "skippedVoiceAbi": false,
+  "failClosed": {
+    "physicalDeviceOnly": true,
+    "requiresIosArm64XcframeworkSlice": true,
+    "requiresRuntimeSymbols": true,
+    "requiresVoiceAbi": true,
+    "capturesXcodebuildOutput": true
+  },
+  "toolchain": {
+    "xcodebuild": {
+      "command": [
+        "xcodebuild",
+        "-version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "Xcode 26.4.1\nBuild version 17E202\n",
+      "stderr": "",
+      "error": null
+    },
+    "xctrace": {
+      "command": [
+        "xcrun",
+        "xctrace",
+        "version"
+      ],
+      "status": 0,
+      "signal": null,
+      "stdout": "xctrace version 16.0 (17E202)\n",
+      "stderr": "",
+      "error": null
+    }
+  },
+  "xcodebuild": {
+    "command": [
+      "xcodebuild",
+      "test",
+      "-project",
+      "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/ElizaIosRuntimeSmoke.xcodeproj",
+      "-scheme",
+      "ElizaIosRuntimeSmoke",
+      "-destination",
+      "platform=iOS,id=C9130C48-48F1-5DC3-98E9-8BACE231D047",
+      "-derivedDataPath",
+      "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/DerivedData",
+      "-resultBundlePath",
+      "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/ElizaIosRuntimeSmoke.xcresult",
+      "CODE_SIGNING_ALLOWED=YES",
+      "DEVELOPMENT_TEAM=25877RY2EH"
+    ],
+    "cwd": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg",
+    "status": 70,
+    "signal": null,
+    "stdoutTail": "Command line invocation:\n    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild test -project /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/ElizaIosRuntimeSmoke.xcodeproj -scheme ElizaIosRuntimeSmoke -destination platform=iOS,id=C9130C48-48F1-5DC3-98E9-8BACE231D047 -derivedDataPath /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/DerivedData -resultBundlePath /var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/ElizaIosRuntimeSmoke.xcresult CODE_SIGNING_ALLOWED=YES DEVELOPMENT_TEAM=25877RY2EH\n\nBuild settings from command line:\n    CODE_SIGNING_ALLOWED = YES\n    DEVELOPMENT_TEAM = 25877RY2EH\n\nWriting result bundle at path:\n\t/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/ElizaIosRuntimeSmoke.xcresult\n\n",
+    "stderrTail": "xcodebuild: error: Timed out waiting for all destinations matching the provided destination specifier to become available\n\n\n\tAvailable destinations for the \"ElizaIosRuntimeSmoke\" scheme:\n\t\t{ platform:iOS, arch:arm64, id:00008130-001955E91EF8001C, name:Shaw’s iPhone, error:Browsing on the local area network for Shaw’s iPhone, which has previously reported preparation errors Ensure the device is unlocked and attached with a cable or associated with the same local area network as this Mac.\nThe device must be opted into Developer Mode to connect wirelessly. }\n",
+    "error": null,
+    "failureCategory": "developer-mode-disabled"
+  },
+  "blocker": {
+    "category": "developer-mode-disabled",
+    "detail": "xcodebuild test did not complete successfully; see xcodebuild stdoutTail/stderrTail in this report."
+  },
+  "resultBundlePath": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/ElizaIosRuntimeSmoke.xcresult",
+  "derivedDataPath": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg/DerivedData",
+  "connectedPhysicalDeviceCount": 1,
+  "offlinePhysicalDeviceCount": 1,
+  "xcframeworkDeviceSlice": {
+    "infoPlist": "/Users/shawwalters/.eliza/local-inference/bin/dflash/ios-physical-smoke/LlamaCpp.xcframework/Info.plist",
+    "library": {
+      "LibraryPath": "LlamaCpp.framework",
+      "SupportedPlatform": "ios",
+      "BinaryPath": "LlamaCpp.framework/LlamaCpp",
+      "LibraryIdentifier": "ios-arm64",
+      "SupportedArchitectures": [
+        "arm64"
+      ]
+    }
+  },
+  "frameworkBinary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/ios-physical-smoke/LlamaCpp.xcframework/ios-arm64/LlamaCpp.framework/LlamaCpp",
+  "developmentTeam": "25877RY2EH",
+  "tempPackage": "/var/folders/1g/77s889gx10n7mtl6z1nfrxzm0000gn/T/eliza-ios-smoke-bN1sVg",
+  "requiredSymbols": {
+    "llama": [
+      "llama_init_context",
+      "llama_release_context",
+      "llama_completion",
+      "llama_stop_completion",
+      "llama_get_formatted_chat",
+      "llama_toggle_native_log",
+      "llama_embedding",
+      "llama_embedding_register_context",
+      "llama_embedding_unregister_context",
+      "llama_get_model_info",
+      "llama_get_context_ptr",
+      "llama_get_last_error",
+      "llama_free_string"
+    ],
+    "kernels": [
+      "ggml_attn_score_qjl",
+      "ggml_compute_forward_attn_score_qjl",
+      "dequantize_row_qjl1_256",
+      "quantize_qjl1_256",
+      "dequantize_row_q4_polar",
+      "quantize_q4_polar",
+      "llama_decode"
+    ],
+    "voiceAbi": [
+      "eliza_inference_abi_version",
+      "eliza_inference_create",
+      "eliza_inference_destroy",
+      "eliza_inference_mmap_acquire",
+      "eliza_inference_mmap_evict",
+      "eliza_inference_tts_synthesize",
+      "eliza_inference_asr_transcribe",
+      "eliza_inference_free_string"
+    ]
+  },
+  "error": "[ios-smoke] xcodebuild failed: developer-mode-disabled"
+}

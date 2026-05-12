@@ -1,0 +1,923 @@
+---
+title: REST API 参考
+sidebarTitle: API 参考
+description: Eliza REST API 所有端点的完整参考，按资源分组整理。
+---
+
+Eliza API 服务器默认运行在端口 **31337**（`ELIZA_API_PORT`）。所有端点均以 `/api/` 为前缀。当设置了 `ELIZA_API_TOKEN` 时，需要进行身份验证。
+
+<Warning>
+当配置了 `ELIZA_API_TOKEN` 时，请在 `Authorization` 头中以 `Bearer` 令牌的形式包含该令牌，或使用配对流程获取令牌。
+</Warning>
+
+<div id="quick-start">
+## 快速开始
+</div>
+
+以下示例假设 API 运行在 `localhost:31337`。请将 `YOUR_TOKEN` 替换为 `ELIZA_API_TOKEN` 的值或通过配对流程获取的令牌。
+
+<div id="check-agent-status">
+### 检查代理状态
+</div>
+
+```bash
+curl http://localhost:31337/api/status
+```
+
+```json
+{
+  "name": "Eliza",
+  "status": "running",
+  "model": "claude-sonnet-4-6",
+  "uptime": 3600
+}
+```
+
+<div id="authenticate-via-pairing-code">
+### 通过配对码进行身份验证
+</div>
+
+当启用配对功能时，代理会在其终端中显示一个代码。提交该代码即可获取令牌：
+
+```bash
+curl -X POST http://localhost:31337/api/auth/pair \
+  -H "Content-Type: application/json" \
+  -d '{"code": "ABCD-EFGH"}'
+```
+
+```json
+{
+  "token": "your-api-token"
+}
+```
+
+<div id="get-character-info">
+### 获取角色信息
+</div>
+
+```bash
+curl http://localhost:31337/api/character \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="send-a-chat-message">
+### 在对话中发送消息
+</div>
+
+```bash
+curl -X POST http://localhost:31337/api/conversations/YOUR_CONVERSATION_ID/messages \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, what can you do?"}'
+```
+
+<div id="stream-a-chat-response">
+### 流式获取对话响应
+</div>
+
+```bash
+curl -N -X POST http://localhost:31337/api/conversations/YOUR_CONVERSATION_ID/messages/stream \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Tell me about yourself"}'
+```
+
+响应是一个 Server-Sent Events 流。每个事件包含一个带有 JSON 载荷的 `data` 字段。
+
+<div id="list-conversations">
+### 列出对话
+</div>
+
+```bash
+curl http://localhost:31337/api/conversations \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="upload-a-knowledge-document">
+### 上传知识文档
+</div>
+
+```bash
+curl -X POST http://localhost:31337/api/documents \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Company FAQ",
+    "content": "Q: What is Eliza?\nA: A personal AI assistant built on elizaOS."
+  }'
+```
+
+<div id="search-knowledge">
+### 搜索知识
+</div>
+
+```bash
+curl "http://localhost:31337/api/documents/search?q=what+is+eliza&limit=5" \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="list-plugins">
+### 列出插件
+</div>
+
+```bash
+curl http://localhost:31337/api/plugins \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+<div id="get-autonomy-state">
+### 获取自主状态
+</div>
+
+```bash
+curl http://localhost:31337/api/agent/autonomy \
+  -H "Authorization: Bearer YOUR_TOKEN"
+```
+
+```json
+{
+  "enabled": false,
+  "thinking": false
+}
+```
+
+<div id="enable-autonomy">
+### 启用自主模式
+</div>
+
+```bash
+curl -X POST http://localhost:31337/api/agent/autonomy \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"enabled": true}'
+```
+
+---
+
+<div id="authentication">
+## 身份验证
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/auth/status` | 检查是否需要身份验证以及配对功能是否已启用 |
+| `POST` | `/api/auth/pair` | 提交配对码以获取 API 令牌 |
+
+---
+
+<div id="status--runtime">
+## 状态与运行时
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/status` | 获取当前代理状态、名称、模型、运行时间、自主状态和待重启信息 |
+| `GET` | `/api/health` | 结构化子系统健康检查（运行时、数据库、插件、连接器、就绪状态） |
+| `GET` | `/api/runtime` | 获取运行时详情（已加载的插件、服务、能力） |
+
+`GET /api/status` 响应示例：
+
+```json
+{
+  "name": "Eliza",
+  "status": "running",
+  "model": "anthropic/claude-sonnet-4-6",
+  "uptime": 3600,
+  "autonomy": { "enabled": true },
+  "pendingRestart": false
+}
+```
+
+---
+
+<div id="agent-lifecycle">
+## 代理生命周期
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/agent/start` | 启动代理并启用自主模式 |
+| `POST` | `/api/agent/stop` | 停止代理并禁用自主模式 |
+| `POST` | `/api/agent/pause` | 暂停代理（保留运行时间，禁用自主模式） |
+| `POST` | `/api/agent/resume` | 恢复已暂停的代理并重新启用自主模式 |
+
+---
+
+<div id="agent-admin">
+## 代理管理
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/agent/restart` | 重启代理运行时 |
+| `POST` | `/api/agent/reset` | 清除配置、工作区、记忆并返回引导设置 |
+| `POST` | `/api/restart` | 重启进程（部分调用方使用的别名） |
+| `GET` | `/api/agent/self-status` | 结构化自我状态摘要（能力、钱包、插件、感知） |
+
+---
+
+<div id="agent-transfer-export--import">
+## 代理迁移（导出 / 导入）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/agent/export` | 将代理导出为密码加密的 `.eliza-agent` 二进制文件 |
+| `GET` | `/api/agent/export/estimate` | 在下载前估算导出文件大小 |
+| `POST` | `/api/agent/import` | 从密码加密的 `.eliza-agent` 文件导入代理 |
+
+---
+
+<div id="autonomy">
+## 自主模式
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/agent/autonomy` | 获取自主状态（enabled、thinking） |
+| `POST` | `/api/agent/autonomy` | 启用或禁用自主模式（`{ enabled: boolean }`） |
+
+---
+
+<div id="agent-events">
+## 代理事件
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/agent/events` | 获取缓冲的代理事件。参数：`after`（事件 ID 游标）、`limit`（1-1000，默认 200）、`runId`（按运行过滤）、`fromSeq`（最小序列号） |
+
+---
+
+<div id="onboarding">
+## 引导设置
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/onboarding/status` | 检查引导设置是否已完成 |
+| `GET` | `/api/onboarding/options` | 获取可用的引导选项（提供商、风格） |
+| `POST` | `/api/onboarding` | 完成引导设置向导 |
+
+---
+
+<div id="provider">
+## 提供商
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/provider/switch` | 原子性切换当前活跃的 AI 提供商选择，并持久化规范化的路由状态 |
+
+---
+
+<div id="character">
+## 角色
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/character` | 获取当前角色数据（名称、简介、系统提示、风格等） |
+| `PUT` | `/api/character` | 更新角色字段（根据 CharacterSchema 验证） |
+| `GET` | `/api/character/random-name` | 生成随机代理名称 |
+| `POST` | `/api/character/generate` | AI 辅助生成简介、系统提示、风格、chatExamples 或 postExamples |
+| `GET` | `/api/character/schema` | 获取用于 UI 渲染的角色字段架构 |
+
+---
+
+<div id="chat--conversations">
+## 聊天与对话
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/conversations` | 列出所有对话 |
+| `POST` | `/api/conversations` | 创建新对话 |
+| `GET` | `/api/conversations/:id/messages` | 获取对话中的消息 |
+| `POST` | `/api/conversations/:id/messages` | 在对话中发送消息 |
+| `POST` | `/api/conversations/:id/messages/stream` | 在对话中发送消息并流式获取响应（SSE） |
+| `POST` | `/api/conversations/:id/greeting` | 为对话生成问候消息 |
+| `PATCH` | `/api/conversations/:id` | 更新对话元数据（如标题） |
+| `DELETE` | `/api/conversations/:id` | 删除对话 |
+
+<Info>
+对话作用域限于网页聊天界面。每个对话映射到一个具有确定性世界 ID 的 elizaOS 房间。当连接器提供时，来自连接器通道的消息包含额外的发送者身份字段（`from`、`fromUserName`、`avatarUrl`）。
+</Info>
+
+---
+
+<div id="inbox-unified-messages">
+## 收件箱（统一消息）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/inbox/messages` | 在统一信息流中列出所有连接器通道的近期消息 |
+| `GET` | `/api/inbox/chats` | 列出连接器聊天线程（每个外部聊天室一行） |
+| `GET` | `/api/inbox/sources` | 列出代理拥有消息的不同连接器来源标签 |
+
+<Info>
+收件箱将来自所有已连接平台（iMessage、Telegram、Discord、WhatsApp、微信、Slack、Signal、SMS）的消息聚合到单个按时间排序的信息流中。仪表盘网页聊天消息被排除 — 这些可通过[对话 API](/zh/rest/conversations)访问。
+</Info>
+
+---
+
+<div id="config">
+## 配置
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/config` | 获取当前 eliza.json 配置 |
+| `PUT` | `/api/config` | 更新配置字段 |
+| `GET` | `/api/config/schema` | 获取用于 UI 渲染的配置架构 |
+
+---
+
+<div id="connectors">
+## 连接器
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/connectors` | 列出所有已配置的消息连接器 |
+| `POST` | `/api/connectors` | 添加或更新连接器配置 |
+| `DELETE` | `/api/connectors/:name` | 移除连接器配置 |
+
+---
+
+<div id="plugins">
+## 插件
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/plugins` | 列出所有插件及其状态、配置和验证信息 |
+| `PUT` | `/api/plugins/:id` | 更新插件配置（启用/禁用、设置参数） |
+| `POST` | `/api/plugins/:id/test` | 测试插件配置 |
+| `POST` | `/api/plugins/install` | 从注册表安装插件 |
+| `POST` | `/api/plugins/uninstall` | 卸载用户安装的插件 |
+| `POST` | `/api/plugins/:id/eject` | 将捆绑插件弹出为用户管理 |
+| `POST` | `/api/plugins/:id/sync` | 将弹出的插件与上游同步 |
+| `POST` | `/api/plugins/:id/reinject` | 重新注入先前弹出的插件 |
+| `GET` | `/api/plugins/installed` | 列出用户安装的插件 |
+| `GET` | `/api/plugins/ejected` | 列出已弹出的插件 |
+| `GET` | `/api/plugins/core` | 列出核心插件状态 |
+| `POST` | `/api/plugins/core/toggle` | 切换核心插件的开/关状态 |
+
+---
+
+<div id="secrets">
+## 密钥
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/secrets` | 获取所有插件声明的敏感参数及其当前设置/未设置状态 |
+| `PUT` | `/api/secrets` | 更新敏感环境变量（API 密钥、令牌） |
+
+---
+
+<div id="skills">
+## 技能
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/skills` | 列出所有已加载的技能 |
+| `POST` | `/api/skills/refresh` | 刷新技能快照 |
+| `GET` | `/api/skills/:id/scan` | 获取技能的安全扫描报告 |
+| `POST` | `/api/skills/:id/acknowledge` | 确认技能安全扫描 |
+| `POST` | `/api/skills/create` | 创建新技能 |
+| `POST` | `/api/skills/:id/open` | 打开技能目录 |
+| `GET` | `/api/skills/:id/source` | 获取技能源代码 |
+| `PUT` | `/api/skills/:id/source` | 更新技能源代码 |
+| `POST` | `/api/skills/:id/enable` | 启用技能（遵守安全扫描确认） |
+| `POST` | `/api/skills/:id/disable` | 禁用技能 |
+| `PUT` | `/api/skills/:id` | **已弃用** — 请使用 `POST /api/skills/:id/enable` 或 `POST /api/skills/:id/disable` |
+| `DELETE` | `/api/skills/:id` | 删除技能 |
+
+<div id="skills-catalog-marketplace">
+### 技能目录（市场）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/skills/catalog` | 浏览技能目录 |
+| `GET` | `/api/skills/catalog/search` | 搜索目录技能 |
+| `GET` | `/api/skills/catalog/:slug` | 获取目录技能的详情 |
+| `POST` | `/api/skills/catalog/refresh` | 刷新目录缓存 |
+| `POST` | `/api/skills/catalog/install` | 安装目录技能 |
+| `POST` | `/api/skills/catalog/uninstall` | 卸载目录技能 |
+
+<div id="skills-marketplace-npm-based">
+### 技能市场（基于 npm）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/skills/marketplace/search` | 搜索市场技能 |
+| `GET` | `/api/skills/marketplace/installed` | 列出已安装的市场技能 |
+| `POST` | `/api/skills/marketplace/install` | 安装市场技能 |
+| `POST` | `/api/skills/marketplace/uninstall` | 卸载市场技能 |
+| `GET` | `/api/skills/marketplace/config` | 获取市场配置 |
+| `PUT` | `/api/skills/marketplace/config` | 更新市场配置 |
+
+---
+
+<div id="registry-plugin-registry">
+## 注册表（插件注册表）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/registry/plugins` | 列出 elizaOS 注册表中的所有插件 |
+| `GET` | `/api/registry/plugins/:name` | 获取特定注册表插件的详情 |
+| `GET` | `/api/registry/search` | 搜索注册表。参数：`q`（必填）、`limit` |
+| `POST` | `/api/registry/refresh` | 强制刷新注册表缓存 |
+
+---
+
+<div id="on-chain-registry-erc-8004">
+## 链上注册表（ERC-8004）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/registry/status` | 获取链上代理注册状态 |
+| `POST` | `/api/registry/register` | 在链上注册代理 |
+| `POST` | `/api/registry/update-uri` | 更新链上 tokenURI |
+| `POST` | `/api/registry/sync` | 在链上同步代理配置文件 |
+| `GET` | `/api/registry/config` | 获取链上注册表配置（chainId、地址、浏览器） |
+
+---
+
+<div id="knowledge">
+## 知识库
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/documents/stats` | 获取文档和片段数量 |
+| `GET` | `/api/documents` | 列出知识文档。参数：`limit`、`offset` |
+| `GET` | `/api/documents/:id` | 获取包含内容的特定文档 |
+| `POST` | `/api/documents` | 上传文档（base64 内容或文本） |
+| `POST` | `/api/documents/url` | 通过 URL 上传（支持 YouTube 自动转录） |
+| `DELETE` | `/api/documents/:id` | 删除文档及其所有片段 |
+| `GET` | `/api/documents/search` | 语义搜索。参数：`q`（必填）、`threshold`、`limit` |
+| `GET` | `/api/documents/:documentId/fragments` | 列出文档的所有片段 |
+
+---
+
+<div id="database">
+## 数据库
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/database/status` | 获取数据库状态（提供商、连接、表数量） |
+| `GET` | `/api/database/config` | 获取持久化的数据库配置 |
+| `PUT` | `/api/database/config` | 更新数据库提供商配置 |
+| `POST` | `/api/database/test` | 测试 PostgreSQL 连接 |
+| `GET` | `/api/database/tables` | 列出所有数据库表及列信息 |
+| `GET` | `/api/database/tables/:table/rows` | 查询表中的行，支持分页、排序和搜索 |
+| `POST` | `/api/database/tables/:table/rows` | 向表中插入新行 |
+| `PUT` | `/api/database/tables/:table/rows` | 更新表中的行 |
+| `DELETE` | `/api/database/tables/:table/rows` | 删除表中的行 |
+| `POST` | `/api/database/query` | 执行原始 SQL 查询（默认只读） |
+
+---
+
+<div id="triggers">
+## 触发器
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/triggers` | 列出所有触发器 |
+| `POST` | `/api/triggers` | 创建新触发器 |
+| `GET` | `/api/triggers/:id` | 根据 ID 获取触发器 |
+| `PUT` | `/api/triggers/:id` | 更新触发器 |
+| `DELETE` | `/api/triggers/:id` | 删除触发器 |
+| `POST` | `/api/triggers/:id/execute` | 手动执行触发器 |
+| `GET` | `/api/triggers/:id/runs` | 获取触发器的运行历史 |
+| `GET` | `/api/triggers/health` | 获取触发器系统健康快照 |
+
+---
+
+<div id="trajectories">
+## 轨迹
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/trajectories` | 列出和搜索轨迹，支持筛选 |
+| `GET` | `/api/trajectories/:id` | 获取轨迹详情，包含 LLM 调用和提供商访问记录 |
+| `GET` | `/api/trajectories/stats` | 获取轨迹统计数据 |
+| `GET` | `/api/trajectories/config` | 获取轨迹日志配置（启用/禁用） |
+| `PUT` | `/api/trajectories/config` | 启用或禁用轨迹日志记录 |
+| `POST` | `/api/trajectories/export` | 导出轨迹（JSON、CSV、ART 或 ZIP） |
+| `DELETE` | `/api/trajectories` | 删除轨迹（按 ID 或全部） |
+
+---
+
+<div id="training--fine-tuning">
+## 训练与微调
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/training/status` | 获取训练服务状态 |
+| `GET` | `/api/training/trajectories` | 列出用于训练的轨迹。参数：`limit`、`offset` |
+| `GET` | `/api/training/trajectories/:id` | 获取用于训练的轨迹详情 |
+| `GET` | `/api/training/datasets` | 列出训练数据集 |
+| `POST` | `/api/training/datasets/build` | 从轨迹构建新数据集 |
+| `GET` | `/api/training/jobs` | 列出训练任务 |
+| `POST` | `/api/training/jobs` | 启动新的训练任务 |
+| `GET` | `/api/training/jobs/:id` | 获取训练任务状态 |
+| `POST` | `/api/training/jobs/:id/cancel` | 取消正在运行的训练任务 |
+| `GET` | `/api/training/models` | 列出微调模型 |
+| `POST` | `/api/training/models/:id/import-ollama` | 将模型导入到 Ollama |
+| `POST` | `/api/training/models/:id/activate` | 激活微调模型 |
+| `POST` | `/api/training/models/:id/benchmark` | 对微调模型进行基准测试 |
+
+---
+
+<div id="cloud">
+## 云服务
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/cloud/login` | 启动 Eliza Cloud 登录流程（返回浏览器 URL 和会话 ID） |
+| `GET` | `/api/cloud/login/status` | 轮询登录会话状态。参数：`sessionId` |
+| `GET` | `/api/cloud/status` | 获取云连接状态、认证状态和账单 URL |
+| `GET` | `/api/cloud/credits` | 获取云积分余额 |
+| `GET` | `/api/cloud/billing/summary` | 获取应用内计费的云账单摘要 |
+| `GET` | `/api/cloud/billing/payment-methods` | 列出已保存的云账单支付方式 |
+| `GET` | `/api/cloud/billing/history` | 列出最近的云账单活动 |
+| `POST` | `/api/cloud/billing/checkout` | 创建云账单结账会话 |
+| `POST` | `/api/cloud/billing/crypto/quote` | 创建云账单加密货币报价 |
+| `POST` | `/api/cloud/disconnect` | 断开 Eliza Cloud 连接并清除凭据 |
+| `GET` | `/api/cloud/agents` | 列出云代理 |
+| `POST` | `/api/cloud/agents` | 创建新的云代理 |
+| `POST` | `/api/cloud/agents/:id/provision` | 预配云代理 |
+| `POST` | `/api/cloud/agents/:id/shutdown` | 关闭并删除云代理 |
+| `POST` | `/api/cloud/agents/:id/connect` | 连接到现有云代理 |
+| `POST` | `/api/cloud/v1/eliza/agents/:id/pairing-token` | 生成配对令牌，用于在新标签页中打开云代理的 Web UI。返回 `{ success, data: { token, redirectUrl, expiresIn } }` |
+
+<Info>
+`/api/cloud/v1/` 下的路由将作为 `/api/v1/` 转发到云后端，与旧版 `/api/cloud/compat/*` 映射不同。认证同时支持 `Authorization: Bearer` 和 `X-Api-Key` 头部。
+</Info>
+
+---
+
+<div id="subscription-oauth-flows">
+## 订阅（OAuth 流程）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/subscription/status` | 获取订阅认证提供商的状态 |
+| `POST` | `/api/subscription/anthropic/start` | 启动 Anthropic OAuth 流程（返回认证 URL） |
+| `POST` | `/api/subscription/anthropic/exchange` | 用 Anthropic 授权码交换令牌 |
+| `POST` | `/api/subscription/anthropic/setup-token` | 直接接受 Anthropic 设置令牌 |
+| `POST` | `/api/subscription/openai/start` | 启动 OpenAI OAuth 流程（返回认证 URL） |
+| `POST` | `/api/subscription/openai/exchange` | 用 OpenAI 授权码交换令牌 |
+| `DELETE` | `/api/subscription/:provider` | 移除提供商的订阅凭据 |
+
+---
+
+<div id="apps">
+## 应用
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/apps` | 列出可用和已安装的应用 |
+| `GET` | `/api/apps/search` | 搜索应用。参数：`q`、`limit` |
+| `GET` | `/api/apps/installed` | 列出已安装的应用 |
+| `POST` | `/api/apps/launch` | 启动应用（如需要则安装插件） |
+| `POST` | `/api/apps/stop` | 停止正在运行的应用 |
+| `GET` | `/api/apps/info/:name` | 获取应用详情 |
+| `GET` | `/api/apps/plugins` | 列出注册表中的非应用插件 |
+| `GET` | `/api/apps/plugins/search` | 搜索非应用插件。参数：`q`、`limit` |
+| `POST` | `/api/apps/refresh` | 刷新应用注册表缓存 |
+
+<div id="hyperscape-integration">
+### Hyperscape 集成
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/apps/hyperscape/embedded-agents` | 列出嵌入式 Hyperscape 代理 |
+| `POST` | `/api/apps/hyperscape/embedded-agents` | 创建嵌入式 Hyperscape 代理 |
+| `POST` | `/api/apps/hyperscape/embedded-agents/:id/(start\|stop\|pause\|resume\|command)` | 控制嵌入式代理 |
+| `POST` | `/api/apps/hyperscape/agents/:id/message` | 向 Hyperscape 代理发送消息 |
+| `GET` | `/api/apps/hyperscape/agents/:id/goal` | 获取 Hyperscape 代理的当前目标 |
+| `GET` | `/api/apps/hyperscape/agents/:id/quick-actions` | 获取 Hyperscape 代理的可用快捷操作 |
+
+---
+
+<div id="mcp-model-context-protocol">
+## MCP（模型上下文协议）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/mcp/marketplace/search` | 搜索 MCP 市场。参数：`q`、`limit` |
+| `GET` | `/api/mcp/marketplace/details/:name` | 获取 MCP 服务器的详情 |
+| `GET` | `/api/mcp/config` | 获取 MCP 服务器配置 |
+| `POST` | `/api/mcp/config/server` | 添加或更新 MCP 服务器配置 |
+| `DELETE` | `/api/mcp/config/server/:name` | 移除 MCP 服务器配置 |
+| `PUT` | `/api/mcp/config` | 批量更新 MCP 配置 |
+| `GET` | `/api/mcp/status` | 获取所有已配置服务器的 MCP 连接状态 |
+
+---
+
+<div id="models">
+## 模型
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/models` | 列出可用模型。参数：`provider`（可选）、`refresh`（清除缓存） |
+
+---
+
+<div id="core-status">
+## 核心状态
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/core/status` | 获取 elizaOS 核心版本和状态 |
+
+---
+
+<div id="permissions">
+## 权限
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/permissions` | 获取所有系统权限状态 |
+| `GET` | `/api/permissions/:id` | 获取单个权限状态 |
+| `GET` | `/api/permissions/shell` | 获取 Shell 访问开关状态 |
+| `PUT` | `/api/permissions/shell` | 切换 Shell 访问的开/关 |
+| `PUT` | `/api/permissions/state` | 从 Electrobun RPC 更新权限状态 |
+| `POST` | `/api/permissions/refresh` | 强制刷新所有权限状态 |
+| `POST` | `/api/permissions/:id/request` | 请求特定系统权限 |
+| `POST` | `/api/permissions/:id/open-settings` | 打开权限的系统设置 |
+
+---
+
+<div id="custom-actions">
+## 自定义操作
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/custom-actions` | 列出所有用户自定义操作 |
+| `POST` | `/api/custom-actions` | 创建或更新自定义操作 |
+| `POST` | `/api/custom-actions/generate` | AI 辅助自定义操作生成 |
+
+---
+
+<div id="workbench">
+## 工作台
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/workbench/overview` | 获取工作台概览（任务、触发器、待办事项、自主状态） |
+| `GET` | `/api/workbench/tasks` | 列出工作台任务 |
+| `POST` | `/api/workbench/tasks` | 创建或更新工作台任务 |
+| `GET` | `/api/workbench/todos` | 列出工作台待办事项 |
+| `POST` | `/api/workbench/todos` | 创建或更新工作台待办事项 |
+
+---
+
+<div id="diagnostics--logs">
+## 诊断与日志
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/logs` | 获取日志条目。筛选器：`source`、`level`、`tag`、`since` |
+| `GET` | `/api/extension/status` | 检查浏览器扩展中继和路径状态 |
+
+---
+
+<div id="security-audit">
+## 安全审计
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/security/audit` | 查询审计日志。筛选器：`type`、`severity`、`since`、`limit`。支持使用 `stream=1` 的 SSE 流式传输 |
+
+---
+
+<div id="emotes">
+## 表情动作
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/emotes` | 获取 3D 头像动画的完整表情目录 |
+| `POST` | `/api/emote` | 通过 ID 触发表情动画 |
+
+---
+
+<div id="tts-text-to-speech">
+## TTS（文本转语音）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/tts/elevenlabs` | 通过 ElevenLabs 生成语音音频 |
+
+---
+
+<div id="terminal">
+## 终端
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/terminal/run` | 在代理工作区中执行 Shell 命令 |
+
+---
+
+<div id="wallet">
+## 钱包
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/wallet/addresses` | 获取 EVM 和 Solana 钱包地址 |
+| `GET` | `/api/wallet/balances` | 获取所有链上的代币余额 |
+| `GET` | `/api/wallet/nfts` | 获取 EVM 和 Solana 上的 NFT |
+| `GET` | `/api/wallet/config` | 获取钱包 API 密钥配置状态 |
+| `PUT` | `/api/wallet/config` | 更新钱包 API 密钥（Alchemy、Helius 等） |
+| `POST` | `/api/wallet/import` | 导入 EVM 或 Solana 的私钥 |
+| `POST` | `/api/wallet/generate` | 为 EVM、Solana 或两者生成新钱包 |
+| `POST` | `/api/wallet/export` | 导出私钥（需要确认） |
+
+<div id="wallet-cloud">
+### 钱包云
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/wallet/primary` | 为某条链设置主钱包来源（本地或云端）。受 `ENABLE_CLOUD_WALLET` 控制 |
+| `POST` | `/api/wallet/refresh-cloud` | 重新查询 Eliza Cloud 以获取最新的云钱包描述符。受 `ENABLE_CLOUD_WALLET` 控制 |
+
+---
+
+<div id="drop--mint">
+## 空投 / 铸造
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/drop/status` | 获取空投/铸造服务状态 |
+| `POST` | `/api/drop/mint` | 铸造 NFT |
+| `POST` | `/api/drop/mint-whitelist` | 使用白名单验证铸造（Merkle 证明） |
+
+---
+
+<div id="whitelist-verification">
+## 白名单验证
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/whitelist/status` | 获取已连接钱包的白名单资格状态 |
+| `POST` | `/api/whitelist/twitter/message` | 为代理生成 Twitter 验证消息 |
+| `POST` | `/api/whitelist/twitter/verify` | 通过推文 URL 验证 Twitter/X 账户 |
+
+---
+
+<div id="update-management">
+## 更新管理
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/update/status` | 获取当前版本、更新渠道和可用更新 |
+| `PUT` | `/api/update/channel` | 切换更新渠道（stable、beta、nightly） |
+
+---
+
+<div id="share-ingest">
+## 分享导入
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/ingest/share` | 从外部来源导入分享内容 |
+| `GET` | `/api/ingest/share` | 获取排队的分享内容。参数：`consume=1` 出队 |
+
+---
+
+<div id="streaming">
+## 流媒体
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/stream/live` | 使用活跃的目标适配器开始流媒体 |
+| `POST` | `/api/stream/offline` | 停止活跃的流 |
+| `GET` | `/api/stream/status` | 获取当前流的健康状态和配置 |
+| `POST` | `/api/stream/start` | 使用显式 RTMP 参数启动流 |
+| `POST` | `/api/stream/stop` | 停止活跃的 FFmpeg 进程 |
+| `POST` | `/api/stream/frame` | 将原始图像帧传输到 FFmpeg（管道捕获模式） |
+| `POST` | `/api/stream/volume` | 设置音频音量（0–100） |
+| `POST` | `/api/stream/mute` | 静音流音频 |
+| `POST` | `/api/stream/unmute` | 取消静音流音频 |
+| `GET` | `/api/streaming/destinations` | 列出所有已配置的流媒体目标及活跃状态 |
+| `POST` | `/api/streaming/destination` | 切换活跃的流媒体目标（`{ destinationId }`） |
+| `GET` | `/api/stream/overlay-layout` | 获取叠加层布局（可选 `destination` 查询参数） |
+| `POST` | `/api/stream/overlay-layout` | 保存叠加层布局 |
+| `GET` | `/api/stream/voice` | 获取语音/TTS 配置 |
+| `POST` | `/api/stream/voice` | 保存语音/TTS 设置 |
+| `POST` | `/api/stream/voice/speak` | 在直播流中触发 TTS |
+| `GET` | `/api/stream/settings` | 获取视觉流设置。响应包含 `avatarIndex`（1–8），表示代理的 VRM 头像 |
+| `POST` | `/api/stream/settings` | 保存视觉流设置 |
+
+---
+
+<div id="nfa-non-fungible-agent">
+## NFA（非同质化代理）
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/nfa/status` | 获取 NFA 令牌和链上身份状态 |
+| `GET` | `/api/nfa/learnings` | 获取解析的学习条目及 Merkle 根 |
+
+<Info>
+NFA 端点依赖可选的 `@elizaos/plugin-bnb-identity` 插件。当未安装该插件时，`/api/nfa/status` 对 `nfa` 和 `identity` 字段均返回 `null`，`/api/nfa/learnings` 返回空的条目数组和默认 Merkle 根。
+</Info>
+
+---
+
+<div id="sandbox">
+## 沙盒
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/sandbox/platform` | 获取平台信息（Docker/容器可用性） |
+| `GET` | `/api/sandbox/status` | 获取沙盒管理器状态 |
+| `GET` | `/api/sandbox/events` | 获取沙盒事件日志（最近 100 条） |
+| `GET` | `/api/sandbox/capabilities` | 检测可用的沙盒能力 |
+| `POST` | `/api/sandbox/start` | 启动沙盒容器 |
+| `POST` | `/api/sandbox/stop` | 停止沙盒容器 |
+| `POST` | `/api/sandbox/recover` | 恢复失败的沙盒 |
+| `POST` | `/api/sandbox/docker/start` | 尝试启动 Docker Desktop |
+| `POST` | `/api/sandbox/exec` | 在沙盒中执行命令 |
+| `GET` | `/api/sandbox/browser` | 获取浏览器 CDP/WS 端点 |
+
+<div id="sandbox-screen">
+### 沙盒屏幕
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `GET` | `/api/sandbox/screen/screenshot` | 截取屏幕截图（返回 PNG） |
+| `POST` | `/api/sandbox/screen/screenshot` | 截取屏幕截图（返回 base64 JSON，可选区域） |
+| `GET` | `/api/sandbox/screen/windows` | 列出可见窗口 |
+
+<div id="sandbox-audio">
+### 沙盒音频
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/sandbox/audio/record` | 录制音频（返回 base64 WAV）。可选：`durationMs` |
+| `POST` | `/api/sandbox/audio/play` | 播放 base64 数据的音频。字段：`data`、`format` |
+
+<div id="sandbox-computer-use">
+### 沙盒计算机操作
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/sandbox/computer/click` | 在 (x, y) 处执行鼠标点击 |
+| `POST` | `/api/sandbox/computer/type` | 通过键盘输入文本 |
+| `POST` | `/api/sandbox/computer/keypress` | 发送按键事件 |
+
+<div id="sandbox-signing">
+### 沙盒签名
+</div>
+
+| 方法 | 路径 | 描述 |
+|--------|------|-------------|
+| `POST` | `/api/sandbox/sign` | 提交签名请求 |
+| `POST` | `/api/sandbox/sign/approve` | 批准待处理的签名请求 |
+| `POST` | `/api/sandbox/sign/reject` | 拒绝待处理的签名请求 |
+| `GET` | `/api/sandbox/sign/pending` | 列出待处理的签名审批 |
+| `GET` | `/api/sandbox/sign/address` | 获取签名者地址 |
