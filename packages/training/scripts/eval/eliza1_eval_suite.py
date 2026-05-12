@@ -399,6 +399,7 @@ def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
         "--tier", ctx.tier,
         "--backend", backend,
         "--turns", str(turns),
+        "--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3"),
         "--report", str(out_json),
         "--quiet",
     ]
