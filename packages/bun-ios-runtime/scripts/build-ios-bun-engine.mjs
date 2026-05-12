@@ -127,6 +127,7 @@ function generatedToolchainPath(info) {
 function ensureGeneratedToolchain(info) {
   const out = generatedToolchainPath(info);
   fs.mkdirSync(path.dirname(out), { recursive: true });
+  const cmakeIosSdkPathVariable = `\${IOS_SDK_PATH}`;
   const contents = [
     "set(CMAKE_SYSTEM_NAME iOS)",
     "set(CMAKE_SYSTEM_PROCESSOR arm64)",
@@ -141,7 +142,7 @@ function ensureGeneratedToolchain(info) {
     "  OUTPUT_VARIABLE IOS_SDK_PATH",
     "  OUTPUT_STRIP_TRAILING_WHITESPACE",
     ")",
-    ['set(ENV{IOS_SYSROOT} "${', 'IOS_SDK_PATH}")'].join(""),
+    `set(ENV{IOS_SYSROOT} "${cmakeIosSdkPathVariable}")`,
     "",
   ].join("\n");
   fs.writeFileSync(out, contents);
