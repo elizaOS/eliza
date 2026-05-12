@@ -31,6 +31,12 @@ export {
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export {
+  MLX_BACKEND_ID,
+  mlxBackendEligible,
+  mlxLocalServer,
+  MlxLocalServer,
+} from "./mlx-server";
+export {
   estimateQuantizedKvBytesPerToken,
   KV_SPILL_MIN_CONTEXT,
   type KvGeometry,

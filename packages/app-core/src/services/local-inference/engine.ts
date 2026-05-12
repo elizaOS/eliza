@@ -46,6 +46,7 @@ import {
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { MemoryMonitor } from "./memory-monitor";
+import { mlxLocalServer } from "./mlx-server";
 import { listInstalledModels } from "./registry";
 import {
   DEFAULT_SESSION_KEY,
@@ -537,6 +538,12 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
     // right backend at load time and skips this path entirely.
     if (dflashLlamaServer.hasLoadedModel()) {
       return dflashLlamaServer.generate(args);
+    }
+    // Apple-Silicon convenience path: when the MLX adapter has a model
+    // loaded (opt-in via ELIZA_LOCAL_MLX, text-only, never the voice path,
+    // never `defaultEligible`), route text generation to `mlx_lm.server`.
+    if (mlxLocalServer.hasLoadedModel()) {
+      return mlxLocalServer.generate(args);
     }
     const pool = this.sessionPool;
     if (!pool) {
