@@ -123,3 +123,51 @@ export const typeElizaConfig = noop;
 export const typeStartElizaOptions = noop;
 export const UninstallResult = noop;
 export const validateMcpServerConfig = noop;
+
+// ── Extra @elizaos/agent stubs surfaced by plugin dist files ────────
+// Upstream's enumeration only walked app-core/dist; the broader plugin
+// graph (app-companion, app-knowledge, etc.) static-imports additional
+// names. Append rather than edit upstream stubs to keep merge churn
+// minimal.
+export type AccountCredentialRecord = unknown;
+export type BootElizaRuntimeOptions = unknown;
+export type CloudProxyConfigLike = unknown;
+export type ConversationMeta = unknown;
+export type DatabaseSync = unknown;
+export type DocumentAddedByRole = unknown;
+export type DocumentAddedFrom = unknown;
+export type DocumentSearchMode = unknown;
+export type DocumentVisibilityScope = unknown;
+export type DocumentsLoadFailReason = unknown;
+export type DocumentsServiceLike = unknown;
+export type DocumentsServiceResult = unknown;
+export type DropService = unknown;
+export type ElizaConfig = unknown;
+export type PluginModuleShape = unknown;
+export type RegistryService = unknown;
+export type ReleaseChannel = unknown;
+export type StartElizaOptions = unknown;
+export type Trajectory = unknown;
+export type TxService = unknown;
+
+export const computeNextCronRunAtMs = (): number => 0;
+export const createIntegrationTelemetrySpan = noop;
+export const createZipArchive = noop;
+export const extractActionParamsViaLlm = noop;
+export const extractCompatTextContent = (): string => "";
+export const extractPlugin = noop;
+export const gatePluginSessionForHostedApp = <T>(plugin: T): T => plugin;
+export const getAgentEventService = (): null => null;
+export const getDocumentsService = (): null => null;
+export const getDocumentsServiceTimeoutMs = (): number => 0;
+export const getWalletAddresses = (): Record<string, never> =>
+  Object.freeze({});
+export const handleConnectorAccountRoutes = noop;
+export const hasOwnerAccess = (): false => false;
+export const parseCronExpression = noop;
+export const registerEscalationChannel = noop;
+export const renderGroundedActionReply = noop;
+export const resolveOAuthDir = (): string => "";
+export const resolveOwnerEntityId = (): string => "";
+export const runCoordinatorPreflight = noop;
+export const setStewardEvmBridgeActive = noop;
