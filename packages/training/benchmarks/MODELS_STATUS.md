@@ -78,3 +78,34 @@ wrapper drives the local single-GPU stack and the corpus build; the cloud
 scripts handle provisioning + sync + FSDP launch + remote quantize/bench
 themselves). The model registry still drives `micro_batch` / `grad_accum` /
 `seq_len` for the chosen `REGISTRY_KEY`.
+
+## Measured — model geometry, run status, throughput (RTX 5080 Laptop 16 GB, sm_120, CUDA 13; 2026-05-11)
+
+### Base-model geometry (all six published on HF; the `elizaos/eliza-1-*` repos do **not** exist yet — the runtime catalog placeholders re-host upstream Qwen3-GGUF)
+
+| tier | base | arch | layers | n_heads / n_kv | head_dim | hidden | vocab | max_pos | notes |
+|---|---|---|---:|---|---:|---:|---:|---:|---|
+| `eliza-1-0_6b` | Qwen3-0.6B | qwen3 | 28 | 16 / 8 | 128 | 1024 | 151 936 | 40 960 | smallest; full SFT fits 16 GB at seq 4096 |
+| `eliza-1-1_7b` | Qwen3-1.7B | qwen3 | 28 | 16 / 8 | 128 | 2048 | 151 936 | 40 960 | SFT fits 16 GB at **seq ≤ 2048** without Liger (seq 4096 OOMs on the CE step) |
+| `eliza-1-4b`  | Qwen3-4B  | qwen3 | 36 | 32 / 8 | 128 | 2560 | 151 936 | 40 960 | needs ~24 GB for full SFT; calibration fits 16 GB |
+| `eliza-1-2b`  | Qwen3.5-2B | **qwen3_5 (VLM)** | text 24 | 8 / 2 | 256 | 2048 | 248 320 | 262 144 | **hybrid linear-attention** (`full_attention_interval=4` — 3:1 linear:full); 248k vocab → big CE transient; needs Liger or a very short seq for SFT |
+| `eliza-1-9b`  | Qwen3.5-9B | qwen3_5 | text 32 | 16 / 4 | 256 | 4096 | 248 320 | — | cloud only (see above) |
+| `eliza-1-27b` | Qwen3.6-27B | qwen3_6 | text 64 | 24 / 4 | 256 | 5120 | 248 320 | — | cloud only (see above) |
+
+### Run status
+
+| tier | SFT | GGUF | eliza1-bundle (polarquant+qjl+turboquant) | bench (CUDA, `-fa 1 -b 2048 -ngl 99`) |
+|---|---|---|---|---|
+| `eliza-1-0_6b` | ✅ APOLLO `apollo_mini` full-param, 8000 samples / 1 epoch, eval_loss 1.315 (`checkpoints/eliza-1-0_6b-apollo-1778551769/final/`) | ✅ Q4_K_M, 396 MB | ✅ sidecars applied (`polarquant_artifacts.safetensors` + `qjl_config.json` + `turboquant.json` + `eliza1_manifest.json`); GGUF body is **Q8_0**, not native `Q4_POLAR` — `weight_quant.deferred: true` (the fork's `convert_hf_to_gguf.py` doesn't emit `q4_polar` yet; runtime kernels exist) | Q4_K_M: ~27.8 k pp512 / ~384 tg128 @ d0, ~6.6 k pp / ~125 tg @ d16k. eliza1-bundle Q8_0: ~31 k pp512 / ~392 tg128 @ d0 |
+| `eliza-1-1_7b` | 🔄 in progress — seq 4096 OOM'd on the cross-entropy step (16 GB, no Liger, 152k-vocab logits transient); re-running at **`--max-seq-len 2048`** (fits, ~15.3 GB peak) | pending | pending | pending |
+| `eliza-1-4b`  | pending — will try full SFT (expect OOM at seq 4096 on 16 GB → fall back to: download Qwen3-4B → Q4_K_M GGUF → bench + run the quant-chain *calibration* forward passes which do fit 16 GB) | pending | pending | pending |
+| `eliza-1-2b`  | pending — qwen3_5 VLM + hybrid linear-attn; needs the qwen3_5 model class loadable + Liger (248k vocab) or a tiny seq for SFT; will try `--max-samples 1000 --max-seq-len 1024` | pending | pending | pending |
+| `eliza-1-9b` / `eliza-1-27b` | cloud only — `bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b` / `--registry-key qwen3.6-27b` | — | — | — |
+
+### Optimization-applicability per tier
+
+- **Flash attention** (`-fa 1`, `optimizations.flashAttention: true` in `catalog.ts runtimeFor()`) — all tiers. +25 % prefill.
+- **PolarQuant Q4_POLAR weights** (4.25 bpw) — produced as a sidecar for every locally-built tier; *baked into the GGUF* once the fork's converter emits `q4_polar` (currently deferred → q8_0 fallback, honestly recorded).
+- **QJL1_256 K-cache + TBQ3_0/TBQ4_0 V-cache** — catalog default for any context > 8 k; the fork's CUDA `fattn-vec-instance-{tbq3_0,tbq4_0}.cu` kernels implement the TBQ side; the standalone `qjl_*` kernels implement the K side (not yet a `fattn-vec` instance — punch-listed). `llama-cli`/`llama-server` accept `--cache-type-{k,v} tbq3_0|tbq4_0`; `llama-cli` does **not** accept `qjl1_256` (only `llama-server` does), and `llama-bench` accepts neither — so QJL K-cache throughput is measured via the inference team's e2e/kernel benches, not `llama-bench`.
+- **DFlash speculative decode** — wired in `catalog.ts` for 1.7b+ (drafter `Qwen/Qwen3-0.6B` for 1.7b/4b, `Qwen/Qwen3-1.7B` for 9b/27b); ≈ 2–3× gen for the big tiers once a drafter is distilled (`scripts/distill_dflash_drafter.py`). The 0.6b gets no drafter (no smaller-than-itself Qwen3 base).
+- **APOLLO** (`apollo_mini` rank-1 for all but 9b which is full `apollo` rank-512) — the optimizer that makes 0.6b/1.7b full-param SFT fit a consumer GPU. Liger (FLCE chunked CE) is the thing that would let 1.7b SFT at seq 4096 / 2b at seq 8192 on 16 GB — currently broken (Triton can't JIT without `python3.12-dev`); `train_local.py` probes and falls back to HF defaults instead of crashing.
