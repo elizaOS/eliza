@@ -60,7 +60,7 @@ export interface FirstRunStateStore {
   recordAnswer(key: string, value: unknown): Promise<FirstRunRecord>;
   abandon(): Promise<FirstRunRecord>;
   complete(): Promise<FirstRunRecord>;
-  /** Reset the lifecycle entirely (LIFEOPS.wipe + replay re-entry). */
+  /** Reset the lifecycle entirely and replay re-entry. */
   reset(): Promise<void>;
 }
 

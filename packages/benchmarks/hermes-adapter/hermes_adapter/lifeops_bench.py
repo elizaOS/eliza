@@ -30,13 +30,21 @@ _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
 }
 
 
-def _compute_cost_usd(model: str | None, prompt_tokens: int, completion_tokens: int) -> float:
-    """Return USD cost for a Cerebras completion, or 0.0 for unpriced models."""
+def _compute_cost_usd(
+    model: str | None, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Return USD cost for a Cerebras completion.
+
+    Returns :data:`None` when ``model`` is missing or unpriced — per
+    AGENTS.md Cmd #8, "unpriced" is distinct from "free" and a silent
+    ``0.0`` would conflate the two. The runner sums only non-None per-turn
+    costs into ``total_cost_usd``.
+    """
     if not model:
-        return 0.0
+        return None
     pricing = _CEREBRAS_PRICING.get(model)
     if pricing is None:
-        return 0.0
+        return None
     return (
         (prompt_tokens / 1_000_000.0) * pricing["input_per_million_usd"]
         + (completion_tokens / 1_000_000.0) * pricing["output_per_million_usd"]
@@ -194,14 +202,20 @@ def build_lifeops_bench_agent_fn(
         if isinstance(usage, dict):
             attach_usage_cache_fields(turn, usage)
         # Bug B: usage IS returned by Cerebras but never priced. The runner
-        # reads ``cost_usd`` directly off the MessageTurn via getattr; without
-        # this, every turn reports $0.00 even though we spent real Cerebras
+        # reads ``cost_usd`` directly off the MessageTurn; without this,
+        # every turn reports $0.00 even though we spent real Cerebras
         # tokens. Mirror cerebras-direct's pricing table so totals match.
-        in_tok = int(getattr(turn, "input_tokens", 0) or 0)
-        out_tok = int(getattr(turn, "output_tokens", 0) or 0)
+        #
+        # Per AGENTS.md Cmd #8: ``cost_usd`` stays :data:`None` when the
+        # model is unpriced rather than silently masquerading as a free
+        # ``0.0`` call.
+        in_tok_raw = getattr(turn, "input_tokens", None)
+        out_tok_raw = getattr(turn, "output_tokens", None)
+        in_tok = int(in_tok_raw) if isinstance(in_tok_raw, (int, float)) else 0
+        out_tok = int(out_tok_raw) if isinstance(out_tok_raw, (int, float)) else 0
         pricing_model = model_name or bridge.model
         cost = _compute_cost_usd(pricing_model, in_tok, out_tok)
-        setattr(turn, "cost_usd", float(cost))
+        setattr(turn, "cost_usd", cost if cost is None else float(cost))
         return turn
 
     return _agent_fn

@@ -18,7 +18,9 @@ function isNativePlatform(): boolean {
   try {
     const platform = Capacitor.getPlatform();
     return (
-      Capacitor.isNativePlatform() || platform === "ios" || platform === "android"
+      Capacitor.isNativePlatform() ||
+      platform === "ios" ||
+      platform === "android"
     );
   } catch {
     return false;

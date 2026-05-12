@@ -208,7 +208,7 @@ export function describeResumeCondition(cond: ResumeCondition): string {
     case "mention":
       return "you are @-mentioned";
     case "explicit_resume":
-      return "the user explicitly says to resume (LIFEOPS or MESSAGE.handoff verb=resume)";
+      return "the user explicitly asks to resume a handoff";
     case "silence_minutes":
       return `the room has been silent for at least ${cond.minutes} minute${cond.minutes === 1 ? "" : "s"}`;
     case "user_request_help":

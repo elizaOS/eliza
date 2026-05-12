@@ -569,6 +569,8 @@ export const calendarAction: Action & {
     "TIME_BLOCK",
     "DEEP_WORK_BLOCK",
     "FOCUS_BLOCK",
+    "BLOCK_OUT",
+    "BLOCK_OUT_TIME",
     "CARVE_OUT_TIME",
     "RESERVE_TIME",
     // PRD action-catalog aliases. These resolve to CALENDAR subactions via
@@ -701,7 +703,12 @@ export const calendarAction: Action & {
     },
     {
       name: "title",
-      description: "Event title when creating a calendar event.",
+      description:
+        "Event title when creating a calendar event. TOP-LEVEL (flat) field — " +
+        "NEVER place `title` inside `details`. " +
+        "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
+      descriptionCompressed:
+        "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }",
       required: false,
       schema: { type: "string" as const },
     },
@@ -729,7 +736,12 @@ export const calendarAction: Action & {
         "Use `start`/`end` (aliases `startAt`/`endAt` are also accepted). " +
         "For check_availability and propose_times, put time-window fields at the TOP LEVEL — not inside `details`.",
       descriptionCompressed:
-        "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+        "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. " +
+        "`title` is FLAT/TOP-LEVEL — never put it inside details. " +
+        "Time fields use `start`/`end` (aliases startAt/endAt). " +
+        "Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. " +
+        "Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. " +
+        "For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
       required: false,
       schema: {
         type: "object" as const,

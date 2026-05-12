@@ -13,6 +13,7 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
   LifeOpsBenchHandler,
   type LifeOpsBenchTurnRecord,
@@ -78,53 +79,9 @@ if (_loadedEnvPath) {
   elizaLogger.debug(`[bench] Loaded env from ${_loadedEnvPath}`);
 }
 
-// Cerebras auto-wiring. The `.env` in this repo typically defines
-// `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` / `CEREBRAS_MODEL` but does NOT set
-// `OPENAI_BASE_URL` / `OPENAI_API_KEY` / `MILADY_PROVIDER` — the keys the
-// @elizaos/plugin-openai code path actually reads. Without those, the openai
-// plugin is skipped at load time (see the `hasOpenAiCompatibleKey` guard
-// below), no TEXT_LARGE / TEXT_SMALL handler is registered, and every
-// benchmark turn falls back to the "no LLM provider configured" stub.
-// Auto-promote when ALL of these hold:
-//   - CEREBRAS_API_KEY is set
-//   - no competing OpenAI-compat key is present (`OPENAI_API_KEY` /
-//     `OPENAI_BASE_URL` / `MILADY_PROVIDER` are all unset)
-// We never overwrite an existing OPENAI_* or MILADY_PROVIDER value.
-function autoWireCerebras(): void {
-  const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
-  if (!cerebrasKey) return;
-  const hasOpenAiKey = !!process.env.OPENAI_API_KEY?.trim();
-  const hasOpenAiBase = !!process.env.OPENAI_BASE_URL?.trim();
-  const hasMiladyProvider = !!process.env.MILADY_PROVIDER?.trim();
-  if (hasOpenAiKey || hasOpenAiBase || hasMiladyProvider) return;
-
-  const cerebrasBase =
-    process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
-  process.env.OPENAI_BASE_URL = cerebrasBase;
-  process.env.OPENAI_API_KEY = cerebrasKey;
-  process.env.MILADY_PROVIDER = "cerebras";
-
-  // Pin both model tiers to the Cerebras-published id when the operator has
-  // not already set them. The @elizaos/plugin-openai client uses Cerebras's
-  // OpenAI-compatible `/v1/chat/completions` (see `models/text.ts` which
-  // calls `openai.chat(modelName)`), which is the only endpoint Cerebras
-  // exposes. The `/v1/responses` Responses API does not exist on Cerebras,
-  // so pinning a chat-completions-friendly model id and letting the plugin
-  // route through `openai.chat()` is the right behavior.
-  const cerebrasModel = process.env.CEREBRAS_MODEL?.trim() || "gpt-oss-120b";
-  if (!process.env.OPENAI_LARGE_MODEL?.trim()) {
-    process.env.OPENAI_LARGE_MODEL = cerebrasModel;
-  }
-  if (!process.env.OPENAI_SMALL_MODEL?.trim()) {
-    process.env.OPENAI_SMALL_MODEL = cerebrasModel;
-  }
-
-  elizaLogger.info(
-    `[bench] Auto-wired Cerebras: OPENAI_BASE_URL=${cerebrasBase}, ` +
-      `MILADY_PROVIDER=cerebras, OPENAI_LARGE_MODEL=${process.env.OPENAI_LARGE_MODEL}, ` +
-      `OPENAI_SMALL_MODEL=${process.env.OPENAI_SMALL_MODEL}`,
-  );
-}
+// Cerebras auto-wiring. See `./cerebras-autowire.ts` for the rationale and
+// the rules under which `CEREBRAS_API_KEY` / `CEREBRAS_BASE_URL` /
+// `CEREBRAS_MODEL` are promoted to OpenAI-compat env keys.
 autoWireCerebras();
 
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;

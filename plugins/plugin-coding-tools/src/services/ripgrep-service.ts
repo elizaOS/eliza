@@ -72,7 +72,7 @@ export class RipgrepService extends Service {
     options: RipgrepOptions,
     mode: RipgrepMode,
   ): Promise<RipgrepResult> {
-    const args: string[] = [];
+    const args: string[] = ["--no-config"];
     if (mode === "files_with_matches") args.push("--files-with-matches");
     else if (mode === "count") args.push("--count");
     else {
@@ -115,16 +115,6 @@ function runRipgrep(
         timeout: 30_000,
       },
       (error, stdout, stderr) => {
-        if (process.env.CODING_TOOLS_RG_DEBUG === "1") {
-          console.error("rg-debug-execfile", {
-            mode,
-            rg,
-            args,
-            errorCode: (error as NodeJS.ErrnoException | null)?.code,
-            stdout,
-            stderr,
-          });
-        }
         const output = stdout || stderr;
         if (!error) {
           resolve({ mode, output, exitCode: 0, truncated: false });

@@ -208,12 +208,13 @@ From Discord.js `PermissionFlagsBits`:
 
 ### Available Actions
 
-The plugin provides the following actions:
+The plugin exposes shared connector actions only:
 
 | Action                           | Description                                              |
 | -------------------------------- | -------------------------------------------------------- |
 | **MESSAGE**                      | Send, read, search, list, react, edit, delete, pin, join, leave, or get user info through the Discord message connector |
-| **DISCORD_SETUP_CREDENTIALS**    | Set up Discord credential pairing                        |
+
+Credential pairing is handled by connector account providers and owner-only slash commands, not by a Discord-specific planner action.
 
 ### Providers
 
