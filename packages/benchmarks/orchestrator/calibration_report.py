@@ -102,7 +102,8 @@ def build_calibration_report(
         calibration: dict[str, dict[str, Any]] = {}
         calibration_status = "valid"
         missing_calibration: list[str] = []
-        scorer_only = False
+        scorer_payload = False
+        direct_score = False
         flat_scores: list[float] = []
         for agent in CALIBRATION_HARNESSES:
             run = latest.get((benchmark_id, agent))
@@ -120,8 +121,11 @@ def build_calibration_report(
             score = run.get("score")
             score_f = float(score) if isinstance(score, (int, float)) else None
             metrics = dict(run.get("metrics") or {})
-            if str(metrics.get("calibration_depth") or "").startswith("scorer_payload"):
-                scorer_only = True
+            calibration_depth = str(metrics.get("calibration_depth") or "")
+            if calibration_depth.startswith("scorer_payload"):
+                scorer_payload = True
+            elif calibration_depth == "direct_score":
+                direct_score = True
             flat_scores.append(score_f if score_f is not None else float("nan"))
             ok = _is_close(score_f, expected, tolerance)
             calibration[agent] = {
@@ -138,7 +142,12 @@ def build_calibration_report(
             calibration.get(agent, {}).get("ok") is True
             for agent in CALIBRATION_HARNESSES
         ):
-            calibration_status = "valid_scorer_only" if scorer_only else "valid"
+            if direct_score:
+                calibration_status = "valid_direct_score"
+            elif scorer_payload:
+                calibration_status = "valid_scorer_payload"
+            else:
+                calibration_status = "valid"
         else:
             wrong_score = calibration.get("wrong_v1", {}).get("score")
             perfect_score = calibration.get("perfect_v1", {}).get("score")

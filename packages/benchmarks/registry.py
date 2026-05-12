@@ -254,6 +254,8 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 
     results = expect_list(results_raw, ctx="vending_bench:results") if isinstance(results_raw, list) else []
     total_revenue = 0.0
+    total_incremental_revenue = 0.0
+    has_incremental_revenue = False
     total_profit = 0.0
     total_items_sold = 0.0
     total_orders = 0.0
@@ -261,22 +263,34 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
         if not isinstance(item, dict):
             continue
         total_revenue += to_float(item.get("total_revenue"))
+        if item.get("incremental_revenue") is not None:
+            total_incremental_revenue += to_float(item.get("incremental_revenue"))
+            has_incremental_revenue = True
         total_profit += to_float(item.get("profit"))
         total_items_sold += to_float(item.get("items_sold"))
         total_orders += to_float(item.get("orders_placed"))
 
     run_count = len([item for item in results if isinstance(item, dict)])
     avg_revenue = (total_revenue / run_count) if run_count else to_float(metrics.get("avg_revenue"))
+    avg_incremental_revenue = (
+        (total_incremental_revenue / run_count)
+        if run_count and has_incremental_revenue
+        else to_float(metrics.get("avg_incremental_revenue"))
+    )
+    score = avg_incremental_revenue if has_incremental_revenue or metrics.get("avg_incremental_revenue") is not None else avg_revenue
     avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
     max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
-        score=avg_revenue,
-        unit="usd_revenue_per_run",
+        score=score,
+        unit="usd_incremental_revenue_per_run" if has_incremental_revenue or metrics.get("avg_incremental_revenue") is not None else "usd_revenue_per_run",
         higher_is_better=True,
         metrics={
-            "primary_score_note": "Average revenue per run; net worth is tracked as a secondary metric so no-op/no-spend policies do not win smoke runs.",
+            "primary_score_note": "Average incremental revenue over the same no-op/starter-inventory baseline when available; gross revenue and net worth are secondary metrics.",
             "avg_revenue": avg_revenue,
             "total_revenue": total_revenue,
+            "avg_incremental_revenue": avg_incremental_revenue,
+            "total_incremental_revenue": total_incremental_revenue,
+            "avg_starter_baseline_revenue": to_float(metrics.get("avg_starter_baseline_revenue")),
             "avg_profit": avg_profit,
             "max_net_worth": max_net_worth,
             "avg_net_worth": metrics.get("avg_net_worth") or "0",

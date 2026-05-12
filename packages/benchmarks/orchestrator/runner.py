@@ -532,9 +532,11 @@ def _publication_quarantine_reason(
     warnings, not quarantine reasons, because hiding successful rows makes the
     matrix look missing and breaks idempotent tracking.
     """
-    del status, token_metrics, metrics
+    del token_metrics, metrics
     if _is_synthetic_agent(agent):
         return None
+    if status == "incompatible":
+        return "incompatible_harness"
     return None
 
 
@@ -607,8 +609,8 @@ def _write_latest_result_snapshot(
 ) -> Path:
     """Route a snapshot to ``latest/`` or ``baselines/``.
 
-    Real-agent rows always publish to ``latest/`` so that the newest result is
-    visible even when telemetry is incomplete. Synthetic baselines
+    Real-agent rows publish to ``latest/`` unless they are structurally
+    incompatible with the selected harness. Synthetic baselines
     (``perfect_v1`` etc.) are always written to ``baselines/`` and never
     intermingle with ``latest/``.
     """
@@ -622,6 +624,8 @@ def _write_latest_result_snapshot(
     )
     if is_synthetic:
         target_dir = output_root / "baselines"
+    elif quarantine_reason is not None:
+        target_dir = output_root / "quarantine"
     else:
         target_dir = output_root / "latest"
     publication_warnings = [] if is_synthetic else _publication_warnings(
@@ -821,6 +825,9 @@ def _rebuild_latest_result_snapshots(
         if is_synthetic:
             target_dir = baselines_dir
             quarantine_reason = None
+        elif str(row.get("status") or "") == "incompatible":
+            target_dir = quarantine_dir
+            quarantine_reason = "incompatible_harness"
         else:
             quarantine_reason = _publication_quarantine_reason(
                 status=str(row.get("status") or ""),
