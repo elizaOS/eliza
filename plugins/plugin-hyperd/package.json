@@ -1,0 +1,57 @@
+{
+  "name": "@elizaos/plugin-hyperd",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "description": "On-demand DeFi intelligence for elizaOS agents — wallet risk, token security, liquidation alerts, P&L, DEX quotes. Paid per-call in USDC on Base via x402. No API key, no signup.",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@x402/evm": "^2.11.0",
+    "@x402/fetch": "^2.11.0",
+    "tsup": "^8.5.1",
+    "viem": "^2.21.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.14"
+  },
+  "scripts": {
+    "build": "tsup --format esm --dts",
+    "dev": "tsup --format esm --dts --watch",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --write src/",
+    "format": "biome format src/",
+    "format:fix": "biome format --write src/",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:client:1.0.0",
+    "pluginParameters": {
+      "HYPERD_API_BASE": {
+        "type": "string",
+        "description": "Base URL for the hyperD API. Defaults to https://api.hyperd.ai."
+      },
+      "HYPERD_BUYER_PRIVATE_KEY": {
+        "type": "string",
+        "description": "0x-prefixed 32-byte EVM private key for x402 micropayments. The wallet must hold USDC on Base."
+      },
+      "HYPERD_MAX_USDC_PER_CALL": {
+        "type": "string",
+        "description": "Hard cap on USDC payment authorized per call. Defaults to 0.25."
+      }
+    }
+  }
+}
