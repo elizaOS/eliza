@@ -110,6 +110,28 @@ const DEFAULT_GLOBAL_ACTION_MARKERS: ReadonlyArray<string> = [
   "applied everywhere",
 ];
 
+/**
+ * Translate the bench-server `RoleSeedPayload.scopeMode` (snake_case) into
+ * the rubric-internal kebab-case `Mode`. Returns null when the input is not
+ * a known seed-mode tag.
+ *
+ * Mapping (synthesis P0-7):
+ *  - `global_wins`         → `global-applies`
+ *  - `user_wins`           → `per-user-isolation`
+ *  - `conflict_explicit`   → `per-user-isolation` (admin set a global, user
+ *                            override applies in their room only; the
+ *                            leakage check is exactly what catches a leak)
+ *  - `conflict_implicit`   → `user-tries-global-should-refuse`
+ */
+function modeFromSeedScopeMode(value: unknown): Mode | null {
+  if (typeof value !== "string") return null;
+  if (value === "global_wins") return "global-applies";
+  if (value === "user_wins") return "per-user-isolation";
+  if (value === "conflict_explicit") return "per-user-isolation";
+  if (value === "conflict_implicit") return "user-tries-global-should-refuse";
+  return null;
+}
+
 function normalizeMode(rawMode: unknown, rawVariant: unknown): Mode {
   const variant =
     typeof rawVariant === "string" ? rawVariant.toLowerCase() : "";
@@ -119,6 +141,11 @@ function normalizeMode(rawMode: unknown, rawVariant: unknown): Mode {
   ) {
     return "user-tries-global-should-refuse";
   }
+  // Accept the new RoleSeedPayload-shaped tag when it lands on
+  // `personalityExpect.options.scopeMode` (the bench server forwards the
+  // seeded mode into the scenario object during runtime runs).
+  const seeded = modeFromSeedScopeMode(rawMode);
+  if (seeded) return seeded;
   const mode = typeof rawMode === "string" ? rawMode : "";
   if (mode === "user-tries-global-should-refuse") return mode;
   if (

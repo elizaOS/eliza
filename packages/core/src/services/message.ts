@@ -558,6 +558,7 @@ export function resolvePlannerActionName(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actionLookup: Map<string, Action> | undefined,
 	actionName: string,
+	options?: { strict?: boolean },
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
@@ -570,7 +571,9 @@ export function resolvePlannerActionName(
 		return resolved;
 	}
 
-	if (actionLookup) {
+	// In strict mode don't fall back to the full registry — LLM aliases
+	// like WRITE -> FILE would defeat a candidateActions narrow.
+	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
 			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
@@ -1837,6 +1840,7 @@ function buildV5PlannerActionSurface(params: {
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
+		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
@@ -2111,6 +2115,32 @@ function contextAvailableForRepair(
 	);
 }
 
+/**
+ * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
+ * `preferred` that is present in `availableActionNames`. When none of the
+ * preferred umbrellas are present, fall back to `fallback` so legacy callers
+ * (and runtimes that don't expose the umbrella action) still receive a usable
+ * hint.
+ *
+ * Names are compared case-insensitively after the same identifier normalization
+ * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
+ */
+function resolveActionAwareParentHint(
+	preferred: readonly string[],
+	fallback: string,
+	availableActionNames: readonly string[] | undefined,
+): string {
+	const available = new Set(
+		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
+	);
+	for (const candidate of preferred) {
+		if (available.has(normalizeActionIdentifier(candidate))) {
+			return candidate;
+		}
+	}
+	return fallback;
+}
+
 function addRepairPlanToPatch(
 	patch: {
 		setContexts?: AgentContext[];
@@ -2271,6 +2301,7 @@ function getStage1PasswordManagerRepairPlan(args: {
 function getStage1CheckinRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2298,6 +2329,15 @@ function getStage1CheckinRepairPlan(args: {
 	).filter((context) =>
 		contextAvailableForRepair(context, args.availableContexts),
 	);
+	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
+	// runtime exposes it (LifeOps deployments), otherwise fall back to the
+	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
+	// vanilla runtimes.
+	const parentActionHint = resolveActionAwareParentHint(
+		["CHECKIN"],
+		"SCHEDULED_TASKS",
+		args.availableActionNames,
+	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["tasks"],
 		candidateActions: nightIntent
@@ -2305,7 +2345,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["SCHEDULED_TASKS"],
+		parentActionHints: [parentActionHint],
 	};
 }
 
@@ -2448,6 +2488,7 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2467,6 +2508,7 @@ function getStage1KnownToolRepairPlan(args: {
 function buildFallbackStage1PlanForKnownToolRequest(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): MessageHandlerResult | null {
 	const repair = getStage1KnownToolRepairPlan(args);
 	if (!repair) {
@@ -2489,6 +2531,7 @@ function buildFallbackStage1PlanForKnownToolRequest(args: {
 function buildKnownToolRequestResponseHandlerPatch(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): ResponseHandlerPatch | null {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text) {
@@ -2612,10 +2655,13 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 			priority: 20,
 			shouldRun: ({ message }) =>
 				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ message, availableContexts }) =>
+			evaluate: ({ runtime, message, availableContexts }) =>
 				buildKnownToolRequestResponseHandlerPatch({
 					message,
 					availableContexts,
+					availableActionNames: (runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? undefined,
 		},
 	];
@@ -4235,10 +4281,14 @@ async function executeV5PlannedToolCall(
 
 	const actions = args.executorOptions?.actions ?? args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup({ actions });
+	// Different reference means the caller narrowed the surface; resolve
+	// strictly so LLM aliases can't escape through the global fallback.
+	const strictResolve = actions !== args.runtime.actions;
 	const resolvedNames = resolvePlannerActionName(
 		args.runtime,
 		actionLookup,
 		unwrappedToolCall.name,
+		{ strict: strictResolve },
 	);
 	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
 	const forceContactReminderToLife =
@@ -4670,6 +4720,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				buildFallbackStage1PlanForKnownToolRequest({
 					message: args.message,
 					availableContexts,
+					availableActionNames: (args.runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
 		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {

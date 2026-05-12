@@ -105,13 +105,44 @@ export const DIRECTION_KEY_TO_OPTION = {
   looser: "looser",
 };
 
+// Synthesis P1-15: complete mapping for every scope_global_vs_user variant
+// the corpus emits (24 of 40 scenarios were silently falling to the default
+// `per-user-isolation` mode because their variantKey was unmapped).
+//
+// The corpus uses authored variant keys; the judge uses the rubric mode
+// names from `packages/benchmarks/personality-bench/src/judge/rubrics/scope-isolated.ts`.
+// Each scenario variant declares which side wins; the rubric translates
+// that into a per-turn leakage / denial / refuse-and-offer-alternative
+// check.
 export const SCOPE_VARIANT_TO_MODE = {
-  per_user_isolation: "per-user-isolation",
-  user_overrides_persist_across_unrelated_turns: "per-user-isolation",
-  global_applies_to_admin_only: "global-applies",
-  admin_global_setting_applies_to_all: "global-applies",
-  global_rejected_for_non_admin: "global-rejected-for-non-admin",
-  user_tries_global_should_refuse: "user-tries-global-should-refuse",
+  // Refusal family — non-admin tries to apply a global directive, agent
+  // must refuse AND offer a per-user alternative.
+  user_tries_global_should_refuse: "refuse",
+  global_rejected_for_non_admin: "refuse",
+
+  // Override family — admin sets a global, then user overrides for their
+  // own session. The agent must honour the per-user override in the user's
+  // room while keeping the global directive elsewhere.
+  admin_global_then_user_override: "user_overrides_global",
+
+  // Conflict family — global and per-user styles conflict; the per-user
+  // preference wins within the user's room.
+  admin_global_terse_user_verbose: "user_wins_conflict",
+  admin_global_formal_user_casual: "user_wins_conflict",
+
+  // Global-scope family — admin global applies only to admin conversations,
+  // not to regular users.
+  global_applies_to_admin_only: "global_applies_to_admin_only",
+
+  // Global-all family — admin global applies to every user's room.
+  admin_global_setting_applies_to_all: "global_applies_to_all",
+
+  // Persistence family — a per-user override must survive across unrelated
+  // topic changes in the same conversation.
+  user_overrides_persist_across_unrelated_turns: "persistence",
+
+  // Isolation family — a per-user setting in room A must not influence room B.
+  per_user_isolation: "isolation",
 };
 
 export function bridgePersonalityExpect(scenario) {
@@ -213,7 +244,7 @@ export function bridgePersonalityExpect(scenario) {
       if (kw.forbidGlobalChangeFromUser === true) {
         // Tighten the mode: a forbidGlobalChangeFromUser flag overrides
         // anything else — the regular user MUST be refused.
-        options.mode = "user-tries-global-should-refuse";
+        options.mode = "refuse";
       }
       break;
     }

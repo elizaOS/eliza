@@ -633,10 +633,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
       }
     } catch (err) {
       if (!isTransientOptionalFetchFailure(err)) {
-        console.warn(
-          "[eliza][chat:init] failed to hydrate conversations",
-          err,
-        );
+        console.warn("[eliza][chat:init] failed to hydrate conversations", err);
       }
       return null;
     }

@@ -17,6 +17,8 @@ import pytest
 
 from eliza_lifeops_bench.scorer import (
     _canonicalize_action,
+    _classify_scenario_kind,
+    _is_read_only_action,
     _kwargs_match,
     compare_actions,
     output_substring_match,
@@ -220,7 +222,21 @@ def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
 
 
 def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> None:
-    """Repro for openclaw: granular action + state_hash=True is semantically successful."""
+    """Repro for openclaw: granular action + state_hash=True is no longer zeroed.
+
+    NOTE: pre-P0-8 this asserted score=1.0 because the state-hash → action
+    promotion turned partial credit into full credit. P0-8 disables that
+    promotion on read-only scenarios (CALENDAR/check_availability is a
+    runner no-op) because the state-hash trivially matches and isn't real
+    signal. The agent here got the name right but the kwargs wrong
+    (`start`/`end` vs GT `startAt`/`endAt`), so partial action credit
+    (0.5) is the correct semantic outcome.
+
+    READ weights: 0.1 state + 0.7 action + 0.2 substring.
+    state=1.0, action=0.5 (name match, kwarg mismatch), substring=1.0
+    (no required_outputs → defaults to 1.0).
+    → 0.1*1.0 + 0.7*0.5 + 0.2*1.0 = 0.65.
+    """
     scenario = _scenario(
         ground_truth_actions=[
             Action(
@@ -247,9 +263,7 @@ def test_score_scenario_state_match_plus_granular_action_no_longer_zeroed() -> N
         ],
     )
     score = score_scenario(result, scenario)
-    # action_score is promoted to 1.0 because the state hash matched and the
-    # action name matched after canonicalization.
-    assert score == pytest.approx(1.0)
+    assert score == pytest.approx(0.65)
 
 
 def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
@@ -787,3 +801,445 @@ def test_canonicalize_preserves_existing_subaction_kwarg() -> None:
     assert canon.name == "LIFE"
     assert canon.kwargs["subaction"] == "delete"
     assert canon.kwargs["target"] == "reminder_x"
+
+
+# ---------------------------------------------------------------------------
+# P0-8: read-only scenarios get a different scoring weight so the state_hash
+# floor stops gifting 0.5+ on read scenarios where the runner is a no-op.
+#
+# Synthesis §2 T2: read-only `_u_*` operations in runner.py return
+# {ok:True, noop:True} without mutating LifeWorld. State hash trivially
+# matches the seed → every read-only scenario gets a 0.5 floor on state_hash
+# regardless of correctness. This is the "no false positives" fix.
+#
+# New weights:
+#   READ:  0.1 state + 0.7 action + 0.2 substring
+#   WRITE: 0.5 state + 0.4 action + 0.1 substring (unchanged)
+#   MIXED: 0.35 state + 0.5 action + 0.15 substring
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("umbrella", "subaction"),
+    [
+        ("CALENDAR", "check_availability"),
+        ("CALENDAR", "next_event"),
+        ("CALENDAR", "search_events"),
+        ("CALENDAR", "propose_times"),
+        ("CALENDAR", "update_preferences"),
+        ("MESSAGE", "triage"),
+        ("MESSAGE", "search_inbox"),
+        ("MESSAGE", "list_channels"),
+        ("MESSAGE", "read_channel"),
+        ("MESSAGE", "read_with_contact"),
+        ("ENTITY", "list"),
+        ("ENTITY", "log_interaction"),
+        ("LIFE", "review"),
+        ("LIFE", "update"),
+        ("LIFE", "skip"),
+        ("LIFE", "list"),
+        ("HEALTH", "today"),
+        ("HEALTH", "trend"),
+        ("HEALTH", "trends"),
+        ("HEALTH", "by_metric"),
+        ("HEALTH", "status"),
+        ("HEALTH", "summary"),
+        ("MONEY", "dashboard"),
+        ("MONEY", "list_sources"),
+        ("MONEY", "list_transactions"),
+        ("MONEY", "spending_summary"),
+        ("MONEY", "recurring_charges"),
+        ("MONEY", "subscription_audit"),
+        ("MONEY", "subscription_status"),
+        ("BLOCK", "block"),
+        ("BLOCK", "unblock"),
+        ("BLOCK", "status"),
+        ("BLOCK", "list_active"),
+        ("BLOCK", "release"),
+        ("BLOCK", "request_permission"),
+        ("BOOK_TRAVEL", "search"),
+        ("BOOK_TRAVEL", "prepare"),
+        ("BOOK_TRAVEL", "book"),
+        ("BOOK_TRAVEL", "cancel"),
+        ("BOOK_TRAVEL", "hold"),
+        ("SCHEDULED_TASK", "list"),
+        ("SCHEDULED_TASK", "get"),
+        ("SCHEDULED_TASK", "history"),
+    ],
+)
+def test_is_read_only_action_recognizes_runner_noops(
+    umbrella: str, subaction: str
+) -> None:
+    """Every (umbrella, subaction) listed maps to a runner `_u_*` no-op branch."""
+    # MESSAGE umbrella uses `operation` as its discriminator field.
+    field = "operation" if umbrella == "MESSAGE" else "subaction"
+    action = Action(name=umbrella, kwargs={field: subaction})
+    assert _is_read_only_action(action), f"{umbrella}/{subaction} should be read-only"
+
+
+@pytest.mark.parametrize(
+    ("umbrella", "subaction"),
+    [
+        # CALENDAR mutators
+        ("CALENDAR", "create_event"),
+        ("CALENDAR", "update_event"),
+        ("CALENDAR", "delete_event"),
+        # MESSAGE mutators
+        ("MESSAGE", "send"),
+        ("MESSAGE", "manage"),
+        ("MESSAGE", "draft_reply"),
+        # ENTITY mutators
+        ("ENTITY", "add"),
+        ("ENTITY", "set_identity"),
+        ("ENTITY", "set_relationship"),
+        ("ENTITY", "merge"),
+        # LIFE mutators
+        ("LIFE", "create"),
+        ("LIFE", "complete"),
+        ("LIFE", "snooze"),
+        ("LIFE", "delete"),
+        ("LIFE", "policy_set_reminder"),
+        ("LIFE", "policy_configure_escalation"),
+        # MONEY mutators
+        ("MONEY", "subscription_cancel"),
+        ("MONEY", "add_source"),
+        ("MONEY", "remove_source"),
+        ("MONEY", "import_csv"),
+        # SCHEDULED_TASK mutators
+        ("SCHEDULED_TASK", "create"),
+        ("SCHEDULED_TASK", "update"),
+        ("SCHEDULED_TASK", "snooze"),
+        ("SCHEDULED_TASK", "complete"),
+        ("SCHEDULED_TASK", "cancel"),
+    ],
+)
+def test_is_read_only_action_rejects_mutators(umbrella: str, subaction: str) -> None:
+    """Mutating subactions must NOT be classified as reads."""
+    field = "operation" if umbrella == "MESSAGE" else "subaction"
+    action = Action(name=umbrella, kwargs={field: subaction})
+    assert not _is_read_only_action(action), f"{umbrella}/{subaction} mutates"
+
+
+def test_classify_scenario_kind_pure_read() -> None:
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="HEALTH", kwargs={"subaction": "today"}),
+            Action(name="BLOCK", kwargs={"subaction": "block"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "read"
+
+
+def test_classify_scenario_kind_pure_write() -> None:
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "create_event"}),
+            Action(name="LIFE", kwargs={"subaction": "create"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "write"
+
+
+def test_classify_scenario_kind_mixed() -> None:
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "check_availability"}),
+            Action(name="CALENDAR", kwargs={"subaction": "create_event"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "mixed"
+
+
+def test_classify_scenario_kind_empty_gt_is_write() -> None:
+    """LIVE-mode scenarios have no GT actions; classifier defaults to write
+    so LIVE-mode weighting (which doesn't use action_score) is unaffected."""
+    scenario = _scenario(ground_truth_actions=[])
+    assert _classify_scenario_kind(scenario) == "write"
+
+
+def test_classify_scenario_kind_canonicalizes_granular() -> None:
+    """Granular emissions are canonicalized before classification."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="BLOCK_BLOCK", kwargs={}),
+            Action(name="HEALTH_TODAY", kwargs={}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "read"
+
+
+# ---------------------------------------------------------------------------
+# P0-8 integration: end-to-end score behavior on read vs write scenarios.
+# ---------------------------------------------------------------------------
+
+
+def test_p0_8_read_scenario_correct_action_scores_high() -> None:
+    """READ + correct action + matching state_hash → ~1.0 (action dominates)."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "next_event"}),
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "next_event"}),
+        ],
+    )
+    # READ weights: 0.1*1 + 0.7*1.0 + 0.2*1.0 = 1.0
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
+
+
+def test_p0_8_read_scenario_wrong_action_no_longer_inflated_by_state_hash() -> None:
+    """Repro for P0-8 inflation: wrong action + matching state_hash now scores low.
+
+    Pre-P0-8 this scored 0.5 (state) + 0 + 0.1 (empty substring) ≈ 0.6
+    BUT the triviality guard zeroed state/substring when action=0 → 0.0.
+    The real problem case was PARTIAL match: state_hash inflates the score
+    even when the kwargs are wrong. See the next test for that.
+
+    With wrong action_name + triviality guard: score=0.0 (unchanged).
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "next_event"}),
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[Action(name="MAIL", kwargs={"operation": "send"})],
+    )
+    # Triviality guard zeroes state+substring on action=0 → 0.0
+    assert score_scenario(result, scenario) == pytest.approx(0.0)
+
+
+def test_p0_8_read_scenario_partial_action_no_longer_promoted() -> None:
+    """Repro for W5-foc/W5-msg inflation: BLOCK with wrong kwargs no longer gets 1.0.
+
+    Agent emits `BLOCK_BLOCK` with kwargs `apps` / `duration_minutes` /
+    `duration:'2h'` — wrong shapes vs GT `hostnames` / `packageNames` /
+    `durationMinutes`. After canonicalization both are BLOCK/block, so
+    name matches, kwargs don't → action_score = 0.5 partial.
+
+    Pre-P0-8: state_hash=True (BLOCK is a no-op) → action promoted to 1.0
+    → score 0.5 + 0.4 + 0.1 = 1.0. BAD — kwargs were wrong.
+    Post-P0-8: READ weights kick in, no promotion → 0.1 + 0.35 + 0.2 = 0.65.
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="BLOCK",
+                kwargs={
+                    "subaction": "block",
+                    "hostnames": ["news.example.test"],
+                    "packageNames": ["com.example.distract"],
+                    "durationMinutes": 120,
+                },
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="BLOCK_BLOCK",
+                kwargs={
+                    "apps": ["distract"],
+                    "duration_minutes": 120,
+                    "duration": "2h",
+                },
+            )
+        ],
+    )
+    score = score_scenario(result, scenario)
+    # READ weights: 0.1*1 (state) + 0.7*0.5 (partial action) + 0.2*1 (empty subs) = 0.65
+    assert score == pytest.approx(0.65)
+    assert score < 0.9  # contractual: must drop well below pre-P0-8 1.0 inflation
+
+
+def test_p0_8_read_scenario_correct_kwargs_full_credit() -> None:
+    """Counterpart to the inflation test: when the agent gets BLOCK right, it scores high."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="BLOCK",
+                kwargs={
+                    "subaction": "block",
+                    "hostnames": ["news.example.test"],
+                    "durationMinutes": 120,
+                },
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="BLOCK",
+                kwargs={
+                    "subaction": "block",
+                    "hostnames": ["news.example.test"],
+                    "durationMinutes": 120,
+                },
+            )
+        ],
+    )
+    score = score_scenario(result, scenario)
+    # 0.1 + 0.7 + 0.2 = 1.0
+    assert score == pytest.approx(1.0)
+
+
+def test_p0_8_write_scenario_correct_action_holds_at_1() -> None:
+    """WRITE + correct action + state_hash → still 1.0 (no regression)."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "details": {
+                        "calendarId": "cal_primary",
+                        "start": "2026-05-11T10:00:00Z",
+                        "end": "2026-05-11T10:30:00Z",
+                    },
+                },
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "details": {
+                        "calendarId": "cal_primary",
+                        "start": "2026-05-11T10:00:00Z",
+                        "end": "2026-05-11T10:30:00Z",
+                    },
+                },
+            )
+        ],
+    )
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
+
+
+def test_p0_8_write_scenario_state_hash_promotion_still_active() -> None:
+    """WRITE state_hash → action ≥ 0.5 promotion still fires (no regression).
+
+    The W4-A promotion only made sense for writes — the executor verified the
+    world ended up correct, so kwarg spelling drift shouldn't keep the
+    score under pass@1. P0-8 preserves that for writes.
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    "details": {
+                        "calendarId": "cal_primary",
+                        "start": "2026-05-11T10:00:00Z",
+                        "end": "2026-05-11T10:30:00Z",
+                    },
+                },
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "create_event",
+                    "title": "deep work",
+                    # `start_time` instead of `details.start` — partial match.
+                    "start_time": "2026-05-11T10:00:00Z",
+                },
+            )
+        ],
+    )
+    # Promotion fires for write: action 0.5 → 1.0 → 0.5 + 0.4 + 0.1 = 1.0
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
+
+
+def test_p0_8_write_scenario_wrong_action_still_penalized() -> None:
+    """WRITE + wrong action + matching state_hash → 0 (triviality guard)."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={"subaction": "create_event", "title": "x"},
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[Action(name="LIFE", kwargs={"subaction": "create"})],
+    )
+    assert score_scenario(result, scenario) == pytest.approx(0.0)
+
+
+def test_p0_8_message_read_with_zane_source_mismatch_loses_points() -> None:
+    """Repro for W5-msg: openclaw scored 1.0 on `read_with_zane_on_slack`
+    while routing to source=gmail. With P0-8, source mismatch lowers
+    action_score AND the state_hash freebie is mostly gone.
+
+    GT: MESSAGE/read_with_contact with source=slack.
+    Agent: MESSAGE/read_with_contact with source=gmail → name match, kwargs differ.
+    Pre-P0-8: state=True (no-op) → score ~0.7-1.0.
+    Post-P0-8 (READ weights): 0.1*1 + 0.7*0.5 + 0.2*1 = 0.65.
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="MESSAGE",
+                kwargs={
+                    "operation": "read_with_contact",
+                    "source": "slack",
+                    "contact": "Zane",
+                },
+            )
+        ],
+        domain=Domain.MESSAGES,
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="MESSAGE",
+                kwargs={
+                    "operation": "read_with_contact",
+                    "source": "gmail",
+                    "contact": "Zane",
+                },
+            )
+        ],
+    )
+    score = score_scenario(result, scenario)
+    assert score == pytest.approx(0.65)
+    assert score < 0.9  # no longer inflates to 1.0
+
+
+def test_p0_8_mixed_scenario_split_weights() -> None:
+    """MIXED scenarios use intermediate weights so neither pure-read nor pure-write rules dominate."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "check_availability"}),
+            Action(name="CALENDAR", kwargs={"subaction": "create_event", "title": "x"}),
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(name="CALENDAR", kwargs={"subaction": "check_availability"}),
+            Action(name="CALENDAR", kwargs={"subaction": "create_event", "title": "x"}),
+        ],
+    )
+    # Mixed weights: 0.35 + 0.5 + 0.15 = 1.0 on perfect run.
+    assert score_scenario(result, scenario) == pytest.approx(1.0)

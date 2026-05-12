@@ -1,37 +1,40 @@
-import { judgeWithCerebras } from "./lifeops-eval-model.ts";
 import type { SelectedLiveProvider } from "./lifeops-live-harness.ts";
+import { CerebrasJudge } from "../../../../packages/scenario-runner/src/cerebras-judge.ts";
 
 export type LlmJudgeResult = {
   passed: boolean;
   reasoning: string;
   score: number;
+  /** Canonical verdict (additive, non-breaking). */
+  verdict?: "PASS" | "FAIL" | "REVIEW";
 };
 
-function parseJudgeResult(raw: string): LlmJudgeResult | null {
-  const trimmed = raw.trim();
-  const fenced = trimmed.replace(/^```json\s*|\s*```$/g, "");
-  try {
-    const parsed = JSON.parse(fenced) as {
-      passed?: unknown;
-      reasoning?: unknown;
-      score?: unknown;
-    };
-    if (
-      typeof parsed.passed !== "boolean" ||
-      typeof parsed.reasoning !== "string" ||
-      typeof parsed.score !== "number" ||
-      !Number.isFinite(parsed.score)
-    ) {
-      return null;
-    }
-    return {
-      passed: parsed.passed,
-      reasoning: parsed.reasoning.trim(),
-      score: Math.max(0, Math.min(1, parsed.score)),
-    };
-  } catch {
-    return null;
-  }
+/**
+ * Map a parsed CerebrasJudge response onto the lifeops-specific shape.
+ * Lifeops uses `passed`/`reasoning` rather than `verdict`/`reason`. The
+ * `passed` boolean here is unanchored to the minimum-score cutoff — the
+ * caller applies that after; we only validate that the model emitted a
+ * numeric score and reasoning.
+ */
+function parseJudgeResult(parsed: Record<string, unknown> | null):
+  | (LlmJudgeResult & { reasoning: string })
+  | null {
+  if (!parsed) return null;
+  const score =
+    typeof parsed.score === "number"
+      ? parsed.score
+      : Number.parseFloat(String(parsed.score ?? ""));
+  if (!Number.isFinite(score)) return null;
+  // lifeops legacy: reasoning may also be carried in `reason`.
+  const reasoningField = parsed.reasoning ?? parsed.reason;
+  if (typeof reasoningField !== "string") return null;
+  const passedField = parsed.passed;
+  const passed = typeof passedField === "boolean" ? passedField : score >= 0.75;
+  return {
+    passed,
+    reasoning: reasoningField.trim(),
+    score: Math.max(0, Math.min(1, score)),
+  };
 }
 
 function buildJudgePrompt(args: {
@@ -79,13 +82,22 @@ export async function judgeTextWithLlm(args: {
     label: args.label,
     transcript: args.transcript,
   });
-  const raw = await judgeWithCerebras(prompt, { maxTokens: 1024 });
-  const parsed = parseJudgeResult(raw);
+  const judge = new CerebrasJudge();
+  const response = await judge.judge(prompt, { maxTokens: 1024 });
+  const parsed = parseJudgeResult(response.json);
   if (!parsed) {
-    throw new Error(`Judge returned invalid JSON for ${args.label}: ${raw}`);
+    throw new Error(
+      `Judge returned invalid JSON for ${args.label}: ${response.raw}`,
+    );
   }
+  const passed = parsed.passed && parsed.score >= minimumScore;
   return {
     ...parsed,
-    passed: parsed.passed && parsed.score >= minimumScore,
+    passed,
+    verdict: passed
+      ? "PASS"
+      : parsed.score <= 0.25
+        ? "FAIL"
+        : "REVIEW",
   };
 }

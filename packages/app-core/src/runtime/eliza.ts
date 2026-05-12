@@ -687,7 +687,22 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
  * so we do not re-download multi‑GB models. Opt out:
  * `ELIZA_EMBEDDING_WARMUP_NO_REUSE=1`.
  */
+// Deduplicate concurrent callers: two concurrent createWriteStream(dest)
+// would race; the loser's safeUnlink deletes the file mid-write, causing
+// llama.loadModel to throw ENOENT as an uncaughtException.
+let warmupInFlight: Promise<void> | null = null;
+
 async function warmupEmbeddingModel(
+  onProgress?: EmbeddingProgressCallback,
+): Promise<void> {
+  if (warmupInFlight) return warmupInFlight;
+  warmupInFlight = warmupEmbeddingModelImpl(onProgress).finally(() => {
+    warmupInFlight = null;
+  });
+  return warmupInFlight;
+}
+
+async function warmupEmbeddingModelImpl(
   onProgress?: EmbeddingProgressCallback,
 ): Promise<void> {
   // Mobile bundle does not ship `node-llama-cpp` (no Android prebuild) and
