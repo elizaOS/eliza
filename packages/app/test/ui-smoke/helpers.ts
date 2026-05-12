@@ -1,25 +1,35 @@
-import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 
 // One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
-// The preview server used by ui-smoke serves the SPA but not the runtime
-// boot-config's `vrmAssets`, so `getVrmUrl()` falls back to `bundled-1.vrm.gz`
-// which 404s — the gz-decode of a tiny 404 page then throws "Invalid typed
-// array length" inside three-vrm. We mock every `vrms/*.vrm.gz` request with
-// this real asset so the companion canvas loads a model instead.
-const __helpersDir = dirname(fileURLToPath(import.meta.url));
+// The preview server serves the SPA + the real `vrms/eliza-N.vrm.gz` files, but
+// the runtime boot-config it serves has no `vrmAssets`, so `getVrmUrl()` falls
+// back to `bundled-1.vrm.gz` which 404s — the gz-decode of a tiny 404 page then
+// throws "Invalid typed array length" inside three-vrm. We mock every
+// `vrms/*.vrm.gz` request with a real asset so the companion canvas loads a
+// model instead. Playwright bundles the test files, so `import.meta.url` points
+// at the bundle, not source — resolve relative to process.cwd() (= packages/app/)
+// where the suite always runs.
 let cachedVrmGz: Buffer | null | undefined;
 function bundledVrmGz(): Buffer | null {
   if (cachedVrmGz !== undefined) return cachedVrmGz;
-  try {
-    cachedVrmGz = readFileSync(
-      resolve(__helpersDir, "../../dist/vrms/eliza-1.vrm.gz"),
-    );
-  } catch {
-    cachedVrmGz = null;
+  const candidates = [
+    resolve(process.cwd(), "dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "packages/app/dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "../app/dist/vrms/eliza-1.vrm.gz"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      try {
+        cachedVrmGz = readFileSync(c);
+        return cachedVrmGz;
+      } catch {
+        /* try next */
+      }
+    }
   }
+  cachedVrmGz = null;
   return cachedVrmGz;
 }
 
