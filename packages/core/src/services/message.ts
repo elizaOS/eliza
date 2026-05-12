@@ -1837,6 +1837,13 @@ function buildV5PlannerActionSurface(params: {
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
+		// When the upstream messageHandler decided this turn maps to a
+		// specific parent (e.g. `TASKS_SPAWN_AGENT`), narrow tier-A to
+		// that parent so the planner can't pick a competing tier-A action
+		// (e.g. inline `FILE.write`) on weaker LLMs. Other tier-A parents
+		// fall to tier-B for retrieval fallback. No-op when nothing
+		// matches the candidate set.
+		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
