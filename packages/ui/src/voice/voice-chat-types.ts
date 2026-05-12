@@ -67,7 +67,7 @@ export function getSpeechRecognitionCtor(): SpeechRecognitionCtor | undefined {
 // ── Public types ──────────────────────────────────────────────────────
 
 export type SpeechSegmentKind = "full" | "first-sentence" | "remainder";
-export type SpeechProviderKind = "elevenlabs" | "browser";
+export type SpeechProviderKind = "elevenlabs" | "browser" | "local-inference";
 export type VoiceSessionMode =
   | "idle"
   | "compose"
@@ -269,6 +269,8 @@ export const DEFAULT_ELEVEN_MODEL = "eleven_flash_v2_5";
 export const DEFAULT_ELEVEN_VOICE = "EXAVITQu4vr4xnSDxMaL";
 export const MAX_SPOKEN_CHARS = 360;
 export const MAX_CACHED_SEGMENTS = 128;
+/** Cache only short generated clips aggressively; common acknowledgements stay hot. */
+export const SHORT_AUDIO_CACHE_MAX_TOKENS = 10;
 /** First assistant clip: start synthesis after this much speakable text (avoids one-word TTS). */
 export const ASSISTANT_TTS_FIRST_FLUSH_CHARS = 24;
 /** Later clips: batch for better prosody (avoid token-thin slices). */

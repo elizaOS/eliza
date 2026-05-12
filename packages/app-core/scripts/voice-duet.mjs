@@ -668,6 +668,52 @@ async function main() {
     );
     process.exit(1);
   }
+  const dflash = catalogEntry?.runtime?.dflash;
+  const drafter = dflash
+    ? installed.find((m) => m.id === dflash.drafterModelId)
+    : null;
+  if (!dflash || !drafter) {
+    log(
+      c(
+        "red",
+        `[voice-duet] ${args.model} requires a registered DFlash drafter companion; no target-only duet is allowed.`,
+      ),
+    );
+    process.exit(1);
+  }
+  try {
+    const {
+      getDflashRuntimeStatus,
+      validateDflashDrafterCompatibility,
+    } = await import("../src/services/local-inference/dflash-server.ts");
+    const status = getDflashRuntimeStatus();
+    if (!status.enabled || !status.binaryPath) {
+      throw new Error(status.reason);
+    }
+    const report = validateDflashDrafterCompatibility({
+      targetModelPath: target.path,
+      drafterModelPath: drafter.path,
+      binaryPath: status.binaryPath,
+    });
+    if (!report.compatible) {
+      throw new Error(report.reason);
+    }
+    tag("setup", "green", "DFlash drafter GGUF preflight passed");
+  } catch (err) {
+    log(
+      c(
+        "red",
+        `[voice-duet] DFlash drafter preflight failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+    log(
+      c(
+        "dim",
+        "Eliza-1 voice mode requires DFlash; refusing to boot a target-only text server.",
+      ),
+    );
+    process.exit(1);
+  }
   const bundlePath = target.path;
 
   const [{ PushMicSource }, vadMod] = await Promise.all([

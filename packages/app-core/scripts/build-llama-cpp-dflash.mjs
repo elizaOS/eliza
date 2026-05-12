@@ -794,6 +794,41 @@ function patchGgmlTypeTraitDrift(cacheDir, { dryRun = false } = {}) {
   }
 }
 
+function patchSpeculativeReplacementsField(cacheDir, { dryRun = false } = {}) {
+  const argPath = path.join(cacheDir, "common", "arg.cpp");
+  const headerPath = path.join(cacheDir, "common", "common.h");
+  if (!fs.existsSync(argPath) || !fs.existsSync(headerPath)) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeReplacementsField: common arg/header files missing — fork layout broken`,
+    );
+  }
+  const argSource = fs.readFileSync(argPath, "utf8");
+  if (!argSource.includes("params.speculative.replacements.push_back")) {
+    return;
+  }
+  const original = fs.readFileSync(headerPath, "utf8");
+  if (original.includes("std::vector<std::pair<std::string, std::string>> replacements;")) {
+    return;
+  }
+  const anchor = "    common_params_speculative_draft draft;\n";
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeReplacementsField: anchor not found in ${headerPath}`,
+    );
+  }
+  const replacement =
+    anchor +
+    "\n" +
+    "    // Optional target-token-string -> draft-token-string compatibility map used by --spec-replace.\n" +
+    "    std::vector<std::pair<std::string, std::string>> replacements;\n";
+  if (!dryRun) {
+    fs.writeFileSync(headerPath, original.replace(anchor, replacement), "utf8");
+  }
+  console.log(
+    "[dflash-build] patched common_params_speculative with --spec-replace storage",
+  );
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -1589,7 +1624,15 @@ function ensureCheckout(cacheDir, ref) {
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
-  patchDflashDrafterArchImpl(cacheDir, { dryRun });
+  patchSpeculativeReplacementsField(cacheDir, { dryRun });
+  if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
+    console.warn(
+      `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +
+        "allowed only for graph-dispatch smoke bootstrap builds",
+    );
+  } else {
+    patchDflashDrafterArchImpl(cacheDir, { dryRun });
+  }
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
   // stale ggml-cpu/qjl/ snapshot and wire them into the ggml-cpu build. Runs
@@ -1968,6 +2011,7 @@ function writeLegacyDflashDrafterCapabilities({
     lookahead: true,
     ngramDraft: true,
   };
+  const supportedArchitectures = ["dflash-draft"];
   const capabilities = {
     target,
     platform,
@@ -1980,6 +2024,9 @@ function writeLegacyDflashDrafterCapabilities({
     forkRef: LEGACY_DFLASH_DRAFTER_REF,
     forkCommit: runtime.commit || null,
     kernels,
+    dflashDraftArchitecture: true,
+    supportedArchitectures,
+    draftArchitectures: supportedArchitectures,
     publishable: false,
     missingRequiredKernels: requiredKernelsMissing(target, kernels),
     smokeOnlyIncompleteAllowed: true,
@@ -2728,6 +2775,10 @@ function writeCapabilities({
 }) {
   const { platform, arch, backend, fused } = parseTarget(target);
   const kernels = probeKernels(target, buildDir, outDir, cacheDir);
+  const supportsDflashDraftArchitecture = sourceContainsDflashDraft(cacheDir);
+  const supportedArchitectures = supportsDflashDraftArchitecture
+    ? ["dflash-draft"]
+    : [];
   const missing = requiredKernelsMissing(target, kernels);
   const shippedKernels =
     backend === "metal"
@@ -2755,6 +2806,9 @@ function writeCapabilities({
     fork: "elizaOS/llama.cpp",
     forkCommit,
     kernels,
+    dflashDraftArchitecture: supportsDflashDraftArchitecture,
+    supportedArchitectures,
+    draftArchitectures: supportedArchitectures,
     publishable: missing.length === 0,
     missingRequiredKernels: missing,
     smokeOnlyIncompleteAllowed:
