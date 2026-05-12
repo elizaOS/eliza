@@ -48,8 +48,13 @@ type ShellHistoryServiceLike = {
   ) => ShellHistoryEntryLike[];
 };
 
-function normalizeShellSubaction(value: string | undefined): ShellActionSubaction {
-  const normalized = value?.trim().toLowerCase().replace(/[\s-]+/g, "_");
+function normalizeShellSubaction(
+  value: string | undefined,
+): ShellActionSubaction {
+  const normalized = value
+    ?.trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   switch (normalized) {
     case "clear":
     case "clear_history":
@@ -71,7 +76,9 @@ function normalizeShellSubaction(value: string | undefined): ShellActionSubactio
   }
 }
 
-function inferShellSubactionFromText(text: string): ShellActionSubaction | null {
+function inferShellSubactionFromText(
+  text: string,
+): ShellActionSubaction | null {
   const lower = text.toLowerCase();
   if (!/\b(history|terminal|shell|command)\b/.test(lower)) return null;
   if (/\b(show|view|list|display|print)\b/.test(lower)) return "view_history";

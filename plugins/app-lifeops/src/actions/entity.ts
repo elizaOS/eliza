@@ -714,10 +714,11 @@ export const entityAction: Action & {
       });
       // Force-mark this identity as verified — the canonical surface for
       // user-asserted identities per IMPL §5.1.
-      const verifiedIdentities = observation.entity.identities.map((identity) =>
-        identity.platform === platform && identity.handle === handle
-          ? { ...identity, verified: true }
-          : identity,
+      const verifiedIdentities = observation.entity.identities.map(
+        (identity) =>
+          identity.platform === platform && identity.handle === handle
+            ? { ...identity, verified: true }
+            : identity,
       );
       const merged = await entityStore.upsert({
         ...observation.entity,
@@ -831,8 +832,7 @@ export const entityAction: Action & {
     },
     {
       name: "intent",
-      description:
-        "Free-form user intent used to infer action when not set.",
+      description: "Free-form user intent used to infer action when not set.",
       descriptionCompressed: "free-form intent infer action",
       schema: { type: "string" as const },
     },
@@ -900,7 +900,8 @@ export const entityAction: Action & {
       name: "platform",
       description:
         "Identity platform for set_identity (e.g. telegram, slack, email, twitter). Combine with handle.",
-      descriptionCompressed: "set_identity platform e.g. telegram|slack|email|twitter|phone",
+      descriptionCompressed:
+        "set_identity platform e.g. telegram|slack|email|twitter|phone",
       schema: { type: "string" as const },
       examples: ["telegram", "email", "phone", "slack"],
     },

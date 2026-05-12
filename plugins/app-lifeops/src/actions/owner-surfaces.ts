@@ -161,7 +161,8 @@ function makeOwnerLifeAction(args: {
     tags: OWNER_OPERATION_TAGS,
     contexts: OWNER_OPERATION_CONTEXTS,
     roleGate: OWNER_OPERATION_ROLE_GATE,
-    suppressPostActionContinuation: OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
+    suppressPostActionContinuation:
+      OWNER_OPERATION_SUPPRESS_POST_ACTION_CONTINUATION,
     validate: OWNER_OPERATION_VALIDATE,
     parameters: [
       {
@@ -305,12 +306,7 @@ export const ownerGoalsAction: Action = {
 export const ownerTodosAction: Action = {
   ...makeOwnerLifeAction({
     name: "OWNER_TODOS",
-    similes: [
-      "OWNER_TODO",
-      "PERSONAL_TODO",
-      "PERSONAL_TODOS",
-      "PERSONAL_TASK",
-    ],
+    similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
     description:
       "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
     descriptionCompressed:
@@ -318,12 +314,7 @@ export const ownerTodosAction: Action = {
     defaultKind: "definition",
   }),
   name: "OWNER_TODOS",
-  similes: [
-    "OWNER_TODO",
-    "PERSONAL_TODO",
-    "PERSONAL_TODOS",
-    "PERSONAL_TASK",
-  ],
+  similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
   description:
     "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
   descriptionCompressed:
@@ -650,13 +641,7 @@ export const personalAssistantAction: Action = {
   handler: async (runtime, message, state, options, callback) => {
     const action = readStringParam(options, "action")?.trim().toLowerCase();
     if (action === "book_travel") {
-      return runBookTravelHandler(
-        runtime,
-        message,
-        state,
-        options,
-        callback,
-      );
+      return runBookTravelHandler(runtime, message, state, options, callback);
     }
     if (action === "scheduling") {
       return runSchedulingNegotiationHandler(
