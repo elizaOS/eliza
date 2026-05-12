@@ -1082,6 +1082,22 @@ function cmakeFlagsForTarget(target, ctx) {
     platform === "android" || platform === "windows" || platform === "ios";
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
 
+  // ELF/Mach-O runtime: bake an `$ORIGIN`-relative RUNPATH into every
+  // produced binary so the install directory (where `llama-server` and its
+  // sidecar shared libs — `libllama`, `libggml*`, `libmtmd`,
+  // `libelizainference` — are copied side by side) is self-contained.
+  // Without this the linker bakes the absolute *build*-tree path, which
+  // breaks once the build tree is removed/moved. macOS gets the same effect
+  // from `makeDarwinInstallSelfContained` (install_name_tool @loader_path);
+  // Windows resolves DLLs from the executable's directory, no rpath needed.
+  if (platform === "linux") {
+    flags.push(
+      "-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON",
+      "-DCMAKE_BUILD_RPATH=$ORIGIN",
+      "-DCMAKE_INSTALL_RPATH=$ORIGIN",
+    );
+  }
+
   // Disable backends we don't want by default; flip the chosen one back on.
   const offByDefault = ["GGML_METAL", "GGML_CUDA", "GGML_HIP", "GGML_VULKAN"];
   for (const name of offByDefault) flags.push(`-D${name}=OFF`);
