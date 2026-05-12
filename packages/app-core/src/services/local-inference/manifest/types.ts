@@ -6,6 +6,7 @@
 import type { z } from "zod";
 import type {
   ELIZA_1_PROVENANCE_SLOTS,
+  ELIZA_1_RELEASE_CHANNELS,
   ELIZA_1_RELEASE_STATES,
   Eliza1BackendEnumSchema,
   Eliza1EvalsSchema,
@@ -35,6 +36,7 @@ export type Eliza1Voice = z.infer<typeof Eliza1VoiceSchema>;
 export type Eliza1Provenance = z.infer<typeof Eliza1ProvenanceSchema>;
 export type Eliza1ProvenanceSlot = (typeof ELIZA_1_PROVENANCE_SLOTS)[number];
 export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
+export type Eliza1ReleaseChannel = (typeof ELIZA_1_RELEASE_CHANNELS)[number];
 export type Eliza1VerifiedBackendStatus = z.infer<
   typeof Eliza1VerifiedBackendStatusSchema
 >;

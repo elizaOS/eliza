@@ -103,9 +103,30 @@ component.
   (`eliza1_manifest.py`), the platform-plan generator (`eliza1_platform_plan.py`),
   and the publish orchestrator (gates on `releaseState ∈ {base-v1, upload-candidate,
   final}` + the `final.*` flags + `finetuned=false` + the `sourceModels` map).
+- The publish channel split: the manifest carries `releaseChannel` (`"recommended"`
+  | `"base-v1"`); the orchestrator + `publish_all_eliza1.sh` take `--base-v1`
+  (alias `--release-channel base-v1`). The `base-v1` channel forces
+  `defaultEligible: false`, emits the mandatory `provenance` block + the
+  README "upstream-base, NOT the fine-tuned Eliza-1, not a recommended default"
+  banner, relaxes `final.weights` + the held-out text-quality gate — and
+  enforces **every other gate** (kernel verify on every supported backend,
+  every required platform-dispatch report, the runnable-on-base evals, every
+  license attestation) exactly as on the `recommended` channel. The
+  fine-tuned `recommended` release ships in v2.
 - Local release-shaped bundles exist for all five tiers for runtime-layout smoke
   (placeholder/substitute bytes — not yet fork-built from the upstream base
-  weights; `releaseState` is not yet `base-v1`).
+  weights; `releaseState` is `weights-staged`, not `base-v1`).
+- **`--base-v1 --dry-run` verdict (`eliza-1-0_6b` / `eliza-1-1_7b`):** BLOCKED
+  with `EXIT_RELEASE_EVIDENCE_FAIL` (16) — see each bundle's
+  `evidence/base-v1-dry-run-*.log`. Blockers: `releaseState=weights-staged`
+  (substitute bytes, not a real fork build); `final.evals` false (`voice_rtf`
+  ≈6–9× vs ≤0.5 and `asr_wer` 1.0 vs ≤0.1 fail even with text-quality relaxed;
+  VAD/e2e/30-turn missing); `final.kernelDispatchReports` false (Metal/iOS/
+  Android pending); `final.platformEvidence` false (all stubs);
+  `final.sizeFirstRepoIds` false; no `finetuned`/`sourceModels` in the
+  evidence. No upload was performed — the kernel-verification + license gates
+  AGENTS.md §7 forbids bypassing are not yet satisfiable. `RELEASE_V1.md`
+  §10 lists the exact prerequisites.
 
 ## What still needs a GPU or reference hardware
 

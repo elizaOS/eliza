@@ -338,29 +338,49 @@ The lowest-duplication design is lazy regional loading from one bundle:
 ## Publish Critical Path — Status (post-2026-05-11 publish-finish pass)
 
 This is the one coherent picture of what stands between us and an actual
-HF publish to `elizaos/eliza-1-*`. Verdict: **NOT publishable; no
-non-default upload path exists either.** The text weights are
-off-the-shelf Qwen3 0.6B/1.7B substitutes (documented stand-ins for the
-unresolvable Qwen3.5-*), NOT fine-tuned — so the text-eval gate fails,
-which means `defaultEligible` can never be `true` *and* the orchestrator
-has no flag (`--base-v1` / `--allow-base-release` / similar — checked:
-the only flags are `--tier`, `--bundle-dir`, `--repo-id`, `--public`,
-`--metal-verification`, `--gates-path`, `--dry-run`) that would upload a
-non-default release. `validate_release_evidence` hard-requires
-`releaseState ∈ {upload-candidate, final}` and **every** `final.*` flag
+HF publish to `elizaos/eliza-1-*`. Verdict: **NOT publishable on either
+channel.** The text weights are off-the-shelf Qwen3 0.6B/1.7B substitutes
+(documented stand-ins for the unresolvable Qwen3.5-*), NOT fine-tuned.
+
+A **`--base-v1` channel now exists** (orchestrator `--base-v1` /
+`--release-channel base-v1`; `publish_all_eliza1.sh --base-v1`; manifest
+`releaseChannel: "recommended" | "base-v1"`; release-states now include
+`base-v1-candidate`/`base-v1`). The `base-v1` channel forces
+`defaultEligible: false`, requires a `provenance.sourceModels` map +
+`finetuned: false` in `evidence/release.json`, emits the mandatory
+manifest `provenance` block + the README "upstream-base, NOT the
+fine-tuned Eliza-1, not a recommended default" banner, relaxes
+`final.weights` + the held-out *text-quality* gate — and **enforces every
+other gate** (kernel verify 8/8 on every supported backend, every required
+platform-dispatch report `runtimeReady: true`, the runnable-on-base evals
+incl. `voice_rtf`/`asr_wer`/VAD/e2e/30-turn, every license attestation)
+exactly as the `recommended` channel. It does NOT bypass the
+kernel-verification or license gates AGENTS.md §7 forbids touching. The
+fine-tuned `recommended` release adds the text-quality gate on top and
+ships in v2.
+
+`validate_release_evidence` hard-requires `releaseState ∈ {base-v1, final}`
+(base-v1 channel) / `{upload-candidate, final}` (recommended channel) and —
+modulo `final.weights` on the base-v1 channel — **every** `final.*` flag
 true. So: leave `publishEligible=false`, do not upload, document below.
 
 **Publish dry-run result (real bundles, 2026-05-11):**
 `bash packages/training/scripts/publish_all_eliza1.sh --bundles-root
-<root> --dry-run` (with `<root>/{0_6b,1_7b}` symlinked to
-`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle`) →
-**stage 1 (bundle layout incl. license attestation + `license-manifest.json`
-sidecar) PASSES** for `0_6b`; **stage 2 (release evidence) fails, exit
-`16` (`EXIT_RELEASE_EVIDENCE_FAIL`)** for both tiers, blocking on:
-`releaseState must be 'upload-candidate' or 'final'`; `final.evals must
-be true`; `final.kernelDispatchReports must be true`;
-`final.platformEvidence must be true`; `final.sizeFirstRepoIds must be
-true`. Gate behaves correctly.
+<root> [--base-v1] --dry-run` (with `<root>/{0_6b,1_7b}` symlinked to
+`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle`), and the
+per-bundle `python -m scripts.publish.orchestrator --tier <t> --bundle-dir
+<bundle> --base-v1 --dry-run` → **stage 1 (bundle layout incl. license
+attestation + `license-manifest.json` sidecar) PASSES**; **stage 2
+(release evidence) fails, exit `16` (`EXIT_RELEASE_EVIDENCE_FAIL`)** for
+both tiers, blocking on (base-v1 channel): `releaseState must be one of
+('base-v1', 'final')` (got `weights-staged`); `final.evals must be true`
+(`voice_rtf` ≈6–9× vs ≤0.5 and `asr_wer` 1.0 vs ≤0.1 fail even with the
+text-quality gate relaxed; VAD/e2e/30-turn missing); `final.kernelDispatchReports
+must be true` (Metal/iOS/Android pending); `final.platformEvidence must be
+true` (all stubs); `final.sizeFirstRepoIds must be true`; `base-v1
+channel: evidence.finetuned must be false`; `base-v1 channel:
+evidence.sourceModels … must be a non-empty object`. Gate behaves
+correctly. Logs preserved at each bundle's `evidence/base-v1-dry-run-*.log`.
 
 **`evidence/release.json` state per tier (after re-running the
 evidence finalizer at this commit):** `0_6b` and `1_7b` both

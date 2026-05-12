@@ -299,26 +299,104 @@ flags green without the evidence.
 The publish orchestrator (`packages/training/scripts/publish/orchestrator.py`,
 driven by `packages/training/scripts/publish_all_eliza1.sh`) gates on
 `releaseState ∈ {base-v1, upload-candidate, final}` and the `final.*` flags.
-For uploading a single component checkpoint:
+
+### Release channels — `recommended` vs `base-v1`
+
+The manifest carries an optional `releaseChannel` field (`"recommended"` |
+`"base-v1"`):
+
+- **`recommended`** (default, ships in **v2**) — the *fine-tuned* Eliza-1.
+  This is the device default the recommendation engine surfaces. Accepts
+  `releaseState ∈ {upload-candidate, final}` and enforces every gate
+  (incl. the held-out text-quality eval).
+- **`base-v1`** — the *upstream-base + kernel-optimized* release: every
+  quant/kernel trick applied (TurboQuant Q3/Q4 KV, QJL K-cache, PolarQuant
+  V-cache, fused attention, DFlash), but the text weights are the upstream
+  base GGUFs (not the fine-tuned Eliza-1). Run the orchestrator (or
+  `publish_all_eliza1.sh`) with `--base-v1` (alias `--release-channel
+  base-v1`). On this channel:
+  - `defaultEligible` is **forced `false`** — never a device default
+    (inference/AGENTS.md §6); a `base-v1`-channel manifest with
+    `defaultEligible: true` is rejected by both the Zod schema and the
+    Python validator.
+  - the manifest carries a mandatory `provenance` block
+    (`releaseState: "base-v1"`, `finetuned: false`, `sourceModels` →
+    upstream HF repo per shipped component), sourced from the
+    `evidence/release.json` `sourceModels` map.
+  - the README gets a prominent banner: "upstream base models, fully
+    kernel-optimized, NOT the fine-tuned Eliza-1, not a recommended device
+    default" plus the per-component provenance table.
+  - `final.weights` need **not** be `true` (the text bytes ARE the upstream
+    base GGUFs by design); the held-out *text-quality* gate is **N/A**.
+  - **EVERYTHING else stays enforced**: `final.{hashes,evals,licenses,
+    kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` all `true`;
+    every supported-backend kernel verify 8/8 PASS against the shipped
+    bytes; every required platform-dispatch report `runtimeReady: true`
+    (incl. `darwin-arm64-metal` / `ios-arm64-metal` / `android-*-vulkan`);
+    every runnable-on-base eval (voice RTF, ASR WER, VAD, e2e loop,
+    30-turn, dflash bench) passing its tier gate; every license attestation
+    present and verbatim. `base-v1` is **not** "skip the kernel/license
+    gates" — it is "the text weights are upstream-base, but the bundle is
+    still the fully-optimized, fully-verified runtime artifact".
+
+`base-v1-candidate` is the in-progress state of a base-v1 bundle before
+those gates are green — it is **not publishable** (it's the explicit "base-v1
+plan declared, gates not yet met" state).
+
+### Current status — a `base-v1` upload is NOT yet possible
+
+`bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir>
+--base-v1 --dry-run` (and the per-bundle `python -m scripts.publish.orchestrator
+--tier <t> --bundle-dir <bundle> --base-v1 --dry-run`) **fail with
+`EXIT_RELEASE_EVIDENCE_FAIL` (16)** on the staged bundles. The blockers (all
+recorded in each bundle's `evidence/release.json` `publishBlockingReasons`):
+
+1. `releaseState` is `weights-staged` (the bundles carry placeholder/
+   substitute bytes, not a real fork build of the upstream base weights).
+2. `final.evals` is `false` — even with the text-quality gate relaxed for
+   base-v1, the **`voice_rtf`** gate (≈6–9× vs ≤0.5) and the **`asr_wer`**
+   gate (1.0 vs ≤0.1) fail; VAD / e2e / 30-turn measurements are missing.
+   These are runnable-on-base evals — base-v1 does not skip them.
+3. `final.kernelDispatchReports` is `false` — kernels verify runtime-ready on
+   CPU + Vulkan (Intel ANV, RTX 5080) + CUDA (RTX 5080), but **Metal / iOS /
+   Android are pending** (no hardware). The kernel-verification gate is one
+   of the gates AGENTS.md §7 forbids bypassing.
+4. `final.platformEvidence` is `false` — every required `evidence/platform/*`
+   report is still a "not-run" stub.
+5. `final.sizeFirstRepoIds` is `false` (set by the HF-push stage, which
+   never runs because of 1–4).
+6. `evidence/release.json` carries no `finetuned: false` / `sourceModels`
+   map (the provenance the base-v1 channel requires).
+
+**Prerequisites to flip to a real `base-v1` upload** (in order): (a) acquire
+the upstream base weights and run the fork's `convert_hf_to_gguf.py` +
+`gguf_eliza1_apply.py --release-state base-v1` to produce the real
+Milady-typed GGUFs (CPU-safe — §2/§3); (b) run the quant recipes + DFlash
+distill on a GPU (§4/§5); (c) re-stage the bundle and regenerate
+`evidence/release.json` with `releaseState=base-v1`, `finetuned=false`, the
+`sourceModels` map; (d) run the runnable-on-base evals on a GPU + reference
+HW until `voice_rtf` / `asr_wer` / VAD / e2e / 30-turn pass their tier gates
+(§7); (e) run `metal_verify` / `vulkan_verify` / `cuda_verify` 8/8 PASS
+against the shipped quantized bytes on each backend's hardware, and the
+platform-dispatch smoke on every required device (§7/§8); (f) only then
+`HF_TOKEN=… bash packages/training/scripts/publish_all_eliza1.sh
+--bundles-root <dir> --base-v1 --public`. Then capture the upload commit/URL
+in `evidence/release.json` (`hf.uploadEvidence`). The `recommended`
+(fine-tuned) release adds the held-out text-quality gate on top and ships
+in v2.
 
 ```bash
-# Dry-run (safe; no network):
-uv run python packages/training/scripts/push_model_to_hf.py \
-  --registry-key eliza-1-9b \
-  --checkpoint out/eliza-1-9b/text \
-  --release-state base-v1 \
-  --repo-id elizaos/eliza-1-9b \
-  --dry-run
-# → model card gets a "base model, not fine-tuned" banner; preflight checks any
-#   *.provenance.json next to the checkpoint agrees with --release-state.
+# Dry-run (safe; no network) — exercises every check:
+bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --base-v1 --dry-run
+python -m scripts.publish.orchestrator --tier 9b --bundle-dir <bundle> --base-v1 --dry-run
 
 # Real upload (needs HF_TOKEN with write access to elizaos/*; not done in CI):
-HF_TOKEN=hf_xxx uv run python packages/training/scripts/push_model_to_hf.py \
-  --registry-key eliza-1-9b --checkpoint out/eliza-1-9b/text \
-  --release-state base-v1 --repo-id elizaos/eliza-1-9b --public
+HF_TOKEN=hf_xxx bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --base-v1 --public
 
-# Or the whole-bundle orchestrator path:
-bash packages/training/scripts/publish_all_eliza1.sh   # aborts on first failing tier; propagates exit code
+# Single component checkpoint:
+uv run python packages/training/scripts/push_model_to_hf.py \
+  --registry-key eliza-1-9b --checkpoint out/eliza-1-9b/text \
+  --release-state base-v1 --repo-id elizaos/eliza-1-9b --dry-run
 ```
 
 Do NOT upload until every eval gate, every supported-backend kernel verify,

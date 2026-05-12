@@ -18,6 +18,7 @@ benchmarks/*
 !benchmarks/OPTIMIZATION_INVENTORY.md
 !benchmarks/APOLLO_TUNING.md
 !benchmarks/CUDA_KERNEL_PUNCHLIST.md
+!benchmarks/MODELS_STATUS.md
 previews/
 local-corpora/
 wandb/
