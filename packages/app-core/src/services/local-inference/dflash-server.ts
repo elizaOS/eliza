@@ -930,6 +930,28 @@ function findPython(): string | null {
   return null;
 }
 
+/**
+ * Cache of `llama-server --help` text keyed by binary path. The help text
+ * lists every accepted flag, so we grep it to gate version-dependent args
+ * (`--reasoning`, etc.) instead of letting llama-server reject the whole
+ * invocation with `error: invalid argument: --reasoning`.
+ */
+const serverHelpTextCache = new Map<string, string>();
+
+function llamaServerSupportsFlag(binaryPath: string, flag: string): boolean {
+  let helpText = serverHelpTextCache.get(binaryPath);
+  if (helpText === undefined) {
+    const result = spawnSync(binaryPath, ["--help"], {
+      encoding: "utf8",
+      env: process.env,
+      maxBuffer: 4 * 1024 * 1024,
+    });
+    helpText = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+    serverHelpTextCache.set(binaryPath, helpText);
+  }
+  return helpText.includes(flag);
+}
+
 function maybeRepairDflashDrafter(
   binaryPath: string,
   targetModelPath: string,
@@ -2090,7 +2112,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       "--jinja",
     ];
     if (plan.disableThinking) {
-      args.push("--reasoning", "off");
+      // `--reasoning off` suppresses reasoning-token emission, but only newer
+      // llama-server builds parse it; older binaries reject the whole launch
+      // with `error: invalid argument: --reasoning`. The `enable_thinking`
+      // chat-template kwarg is the portable knob (the Qwen chat template reads
+      // it directly under `--jinja`), so always pass that and only add the
+      // `--reasoning` flag when the installed binary advertises it.
+      if (
+        status.binaryPath &&
+        llamaServerSupportsFlag(status.binaryPath, "--reasoning")
+      ) {
+        args.push("--reasoning", "off");
+      }
       args.push("--chat-template-kwargs", '{"enable_thinking":false}');
     }
     const cacheTypeKSource = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim()
