@@ -318,6 +318,151 @@ The lowest-duplication design is lazy regional loading from one bundle:
   dry-run against both real bundles exits `16` (`EXIT_RELEASE_EVIDENCE_FAIL`) —
   gate behaves correctly. No `HF_TOKEN` here — upload is the operator's.
 
+## Publish Critical Path — Status (post-2026-05-11 publish-finish pass)
+
+This is the one coherent picture of what stands between us and an actual
+HF publish to `elizaos/eliza-1-*`. Verdict: **NOT publishable; no
+non-default upload path exists either.** The text weights are
+off-the-shelf Qwen3 0.6B/1.7B substitutes (documented stand-ins for the
+unresolvable Qwen3.5-*), NOT fine-tuned — so the text-eval gate fails,
+which means `defaultEligible` can never be `true` *and* the orchestrator
+has no flag (`--base-v1` / `--allow-base-release` / similar — checked:
+the only flags are `--tier`, `--bundle-dir`, `--repo-id`, `--public`,
+`--metal-verification`, `--gates-path`, `--dry-run`) that would upload a
+non-default release. `validate_release_evidence` hard-requires
+`releaseState ∈ {upload-candidate, final}` and **every** `final.*` flag
+true. So: leave `publishEligible=false`, do not upload, document below.
+
+**Publish dry-run result (real bundles, 2026-05-11):**
+`bash packages/training/scripts/publish_all_eliza1.sh --bundles-root
+<root> --dry-run` (with `<root>/{0_6b,1_7b}` symlinked to
+`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle`) →
+**stage 1 (bundle layout incl. license attestation + `license-manifest.json`
+sidecar) PASSES** for `0_6b`; **stage 2 (release evidence) fails, exit
+`16` (`EXIT_RELEASE_EVIDENCE_FAIL`)** for both tiers, blocking on:
+`releaseState must be 'upload-candidate' or 'final'`; `final.evals must
+be true`; `final.kernelDispatchReports must be true`;
+`final.platformEvidence must be true`; `final.sizeFirstRepoIds must be
+true`. Gate behaves correctly.
+
+**`evidence/release.json` state per tier (after re-running the
+evidence finalizer at this commit):** `0_6b` and `1_7b` both
+`releaseState=weights-staged`, `publishEligible=false`,
+`defaultEligible=false`, `hf.status=blocked-weights-staged`.
+`final = { weights: true, hashes: true, licenses: true, evals: false,
+kernelDispatchReports: false, platformEvidence: false,
+sizeFirstRepoIds: false }`. (Re-run was needed because the licenses
+module changed after the predecessor's finalizer pass — the per-component
+`license-manifest.json` sidecar is now regenerated to match
+`eliza1_licenses.py` HEAD, which is why stage 1 now passes.) The 21
+platform-evidence JSONs are present (`evidence/platform/<target>.json`)
+— `linux-x64-cpu.json` / `linux-x64-vulkan.json` carry real
+`partialEvidence` blocks (CPU reference + AVX-VNNI bench; Intel-ANV
+vulkan-verify 8/8 + multi-block 8/8 + fused 1920/1920 + dispatch-smoke
+7/7) but stay `status: pending` because there is no verify-on-device pass
+against the *staged bundle bytes*; the rest are honest `status: pending`
+stubs with the exact runner command. `evals/{cpu,metal,vulkan}_dispatch.json`
+are likewise `runtimeReady: false` pending stubs (cpu/vulkan carry
+partial-evidence notes). `evidence/platform/linux-x64-cuda.json` does
+not exist yet — the CUDA sibling produced `verify/hardware-results/
+cuda-linux-thismachine-2026-05-11.pending.json` (`status:
+pending-hardware`, RTX 5080 present but `nvidia.ko` not loaded + no
+CUDA Toolkit ≥12.8) — fold in real CUDA evidence once `cuda_runner.sh`
+produces a `passRecordable: true` JSON.
+
+**What's left, who/what unblocks each item, the exact command:**
+
+1. **Real fine-tuned text + drafter weights per tier** — the only thing
+   that clears `final.evals`. *Unblocker:* the GPU/training workstream
+   (bigger box: 9b/27b backbones + GPU training). Off-the-shelf
+   substitutes will always fail the text-eval gate. *Command (after
+   training):* `stage_local_eliza1_bundle.py` → re-run evals →
+   `finalize_eliza1_evidence.py <bundle>`.
+2. **verify-on-device passes against the staged bytes, per backend** —
+   clears `final.kernelDispatchReports`. *Unblocker:* run the engine's
+   verify-on-device (`load → 1-token text → 1-phrase voice → barge-in
+   cancel`) against the actual bundle GGUFs on a CPU host, an
+   Apple-silicon host (Metal), and an Intel/AMD/NVIDIA GPU (Vulkan), and
+   write the result into `evals/<backend>_dispatch.json` +
+   `evidence/platform/<target>.json`. Operator has the boxes (the dev
+   workstation does CPU + Intel-ANV Vulkan; needs a Mac for Metal). The
+   kernel-verify (synthetic-fixture) side is already green on those
+   classes; the missing piece is "against the shipped bytes".
+3. **Platform evidence `status: pass` on every required target** —
+   clears `final.platformEvidence`. Per tier the required set is in
+   `eliza1_platform_plan.REQUIRED_PLATFORM_EVIDENCE_BY_TIER` (10 targets:
+   darwin/ios metal, linux-x64 cpu+vulkan, windows-x64/arm64 cpu+vulkan,
+   android adreno/mali vulkan). Each is `pending` until item 2 runs on
+   that platform class. *Unblocker:* the same hardware passes; the
+   Windows/Android/Mac runners exist and are fail-closed
+   (`windows_runner.ps1`, `android_vulkan_smoke.sh`, the iOS
+   `build-xcframework.mjs --verify` + `run-physical-device-smoke.mjs`).
+4. **`releaseState` → `upload-candidate` / `final`** — set by the
+   staging step that produces real fork-build GGUFs + `provenance.sourceModels`
+   + runnable-on-base evals. Today the bundles are `weights-staged`.
+   *Unblocker:* items 1–3 land, then `finalize_eliza1_evidence.py`
+   promotes it (the finalizer only promotes when every `final.*` is true
+   AND `releaseState=base-v1` + `finetuned: false` + `sourceModels` — or
+   the full `final` set; the runtime/operator does not flip this by hand).
+5. **`final.sizeFirstRepoIds`** — set by the HF-push stage itself, so it
+   only flips on a real (non-dry-run) `orchestrator` run that uploads the
+   size-first repo ids. It is therefore the *last* gate to clear and is
+   not an independent prereq.
+6. **Operator host bring-up:** nothing left except (optionally)
+   `cuda-toolkit-12.8` on the RTX-5080 box (for `sm_120` device code;
+   PTX-JIT via `compute_90` works without it) + loading `nvidia.ko`, so
+   `cuda_runner.sh` can produce real CUDA evidence and a
+   `linux-x64-cuda.json` platform JSON.
+
+**Exact publish command (will still fail at stage 2 today, by design):**
+```
+export HF_TOKEN=$(cat ~/.cache/huggingface/token)
+# layout: <root>/<tier>/ — symlink the real bundles in:
+mkdir -p /tmp/eliza1-bundles-root
+ln -sfn ~/.eliza/local-inference/models/eliza-1-0_6b.bundle /tmp/eliza1-bundles-root/0_6b
+ln -sfn ~/.eliza/local-inference/models/eliza-1-1_7b.bundle /tmp/eliza1-bundles-root/1_7b
+bash packages/training/scripts/publish_all_eliza1.sh --bundles-root /tmp/eliza1-bundles-root --dry-run
+# drop --dry-run only once the dry-run is green; upload only to elizaos/eliza-1-*
+```
+
+### Done in the 2026-05-11 publish-finish pass (this commit's deltas)
+
+- Re-ran `finalize_eliza1_evidence.py` on both real bundles so the
+  `license-manifest.json` sidecar matches `eliza1_licenses.py` HEAD —
+  publish dry-run stage 1 (layout + license attestation) now passes for
+  `0_6b`; stage 2 still (correctly) fails with exit `16`.
+- `recommendation.ts`: `canBundleBeDefaultOnDevice(installed, hardware)`
+  + `deviceCapsFromProbe(probe)` — the recommendation-engine gate now
+  consults the bundle's `eliza-1.manifest.json`
+  (`kernels.verifiedBackends`, `evals`, `defaultEligible`) via the
+  manifest validator's `canSetAsDefault`, against the device's backends +
+  RAM, AND requires `InstalledModel.bundleVerifiedAt` (unverified bundles
+  cannot auto-default). Distinct machine-readable reasons
+  (`no-manifest` / `not-default-eligible` / `ram-below-floor` /
+  `kernels-unverified-on-device` / `not-verified-on-device`) mirror the
+  downloader's `BundleIncompatibleError`. Tests in `recommendation.test.ts`.
+  *Closes the "have the recommendation engine consult
+  manifest.kernels.verifiedBackends; canSetAsDefault is not yet called"
+  item above.*
+- Wake-word: the shipped `wake/hey-eliza.onnx` is the upstream
+  openWakeWord `hey_jarvis` head renamed (it fires on "hey jarvis", not
+  the Eliza-1 wake phrase). `isPlaceholderWakeWordHead` /
+  `OPENWAKEWORD_PLACEHOLDER_HEADS = {hey-eliza, hey_jarvis}` mark it; the
+  engine emits a one-time warning whenever a voice session enables a
+  placeholder head. New doc
+  [`wakeword-head-plan.md`](./wakeword-head-plan.md): steps to train a
+  head on the approved Eliza-1 wake phrase via openWakeWord's
+  TTS-augmented pipeline.
+- Known pre-existing test breakage (NOT from this pass — introduced by
+  the catch-all `89e4d49bc6 "updates to many things"` commit that added
+  VAD eval-gate keys + changed manifest error-message text without
+  updating the fixtures): `test_orchestrator.py::{test_dry_run_succeeds_on_fixture,
+  test_real_publish_finalizes_and_uploads_hf_evidence,
+  test_dry_run_tag_is_printed_not_executed, test_alias_opt_in_allows_publish_with_warning}`
+  and `test_eliza1_manifest.py::test_default_eligible_requires_asr_and_vad_components`.
+  Owner: the eval-suite agent — the orchestrator's runtime behaviour is
+  correct (real-bundle dry-run gives the expected exit `16`).
+
 ## Known Non-Goals For This Wave
 
 - A literal single GGUF containing text + TTS + ASR + vision + drafter. The
