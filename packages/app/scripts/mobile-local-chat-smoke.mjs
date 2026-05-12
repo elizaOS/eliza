@@ -179,6 +179,16 @@ function writeDefaultsString(domainPath, key, value) {
   );
 }
 
+function flushIosPreferencesCache(udid) {
+  // `defaults write <container>/Library/Preferences/<bundle-id>` updates the
+  // plist on disk, but a booted simulator can keep the old domain cached in
+  // cfprefsd. Kill it before app launch so Capacitor Preferences sees the
+  // pre-seeded values on first read.
+  tryExec("xcrun", ["simctl", "spawn", udid, "killall", "cfprefsd"], {
+    allowFailure: true,
+  });
+}
+
 function preseedIosLocalRuntime(udid, id) {
   const dataContainer = requireExec(
     "xcrun",
@@ -202,6 +212,7 @@ function preseedIosLocalRuntime(udid, id) {
   writeDefaultsString(preferencesDomain, "eliza:mobile-runtime-mode", "local");
   writeDefaultsString(preferencesDomain, "eliza:onboarding-complete", "1");
   writeDefaultsString(preferencesDomain, "elizaos:active-server", activeServer);
+  flushIosPreferencesCache(udid);
   console.log(
     `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
   );
