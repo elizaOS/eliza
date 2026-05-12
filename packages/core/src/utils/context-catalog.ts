@@ -78,7 +78,6 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	NAVIGATE: ["browser"],
 	CLICK: ["browser"],
 	TYPE_TEXT: ["browser"],
-	EXTRACT_PAGE: ["browser", "documents"],
 	SPAWN_AGENT: ["code", "automation"],
 	SEND_TO_AGENT: ["code", "automation"],
 	LIST_AGENTS: ["code", "automation"],

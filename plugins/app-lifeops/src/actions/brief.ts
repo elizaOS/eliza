@@ -107,8 +107,9 @@ interface BriefActionParameters {
  * sources explicitly).
  *
  * TODO Wave-2: replace these with real composition of CALENDAR.feed,
- * MESSAGE.triage, LIFE.due_today, MONEY.recurring_charges via the umbrella
- * dispatchers rather than direct loaders. Wave-1 leaves the seams open so the
+ * MESSAGE.triage, OWNER_TODOS/OWNER_REMINDERS due-today, and
+ * OWNER_FINANCES.recurring_charges via the umbrella dispatchers rather than
+ * direct loaders. Wave-1 leaves the seams open so the
  * unit tests can mock per-domain inputs without standing up the full
  * connector graph.
  */

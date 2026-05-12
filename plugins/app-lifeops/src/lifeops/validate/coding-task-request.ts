@@ -13,11 +13,12 @@ import {
 } from "@elizaos/shared";
 
 /**
- * Build-an-app / coding-task requests. LIFE shares verbs ("make", "create",
- * "add") with code-work prompts; this predicate lets validate() decline so
- * the orchestrator's CREATE_TASK can take the route. Greedy by design — a
- * borderline match (e.g. "add a habit to build an app every day") drops
- * LIFE rather than risk a coding prompt landing in LifeOps.
+ * Build-an-app / coding-task requests. Owner task/routine creation shares verbs
+ * ("make", "create", "add") with code-work prompts; this predicate lets
+ * validate() decline so the orchestrator's CREATE_TASK can take the route.
+ * Greedy by design — a borderline match (e.g. "add a habit to build an app
+ * every day") drops the owner-operation route rather than risk a coding prompt
+ * landing in LifeOps.
  */
 export function looksLikeCodingTaskRequest(text: string): boolean {
   const trimmed = text.trim();

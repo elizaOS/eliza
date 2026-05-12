@@ -176,6 +176,18 @@ const stubCatalogApps = [
     category: "social",
   }),
   stubCatalogApp({
+    name: "@elizaos/app-steward",
+    displayName: "Steward",
+    description: "Review wallet approvals and inventory status.",
+    capabilities: ["wallet", "approvals", "inventory"],
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-elizamaker",
+    displayName: "ElizaMaker",
+    description: "Run drop, mint, whitelist, and verification workflows.",
+    capabilities: ["drops", "minting", "whitelist"],
+  }),
+  stubCatalogApp({
     name: "@elizaos/app-shopify",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
@@ -186,6 +198,20 @@ const stubCatalogApps = [
     displayName: "Vincent",
     description: "Manage Vincent DeFi account access and trading context.",
     category: "platform",
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-hyperliquid",
+    displayName: "Hyperliquid",
+    description: "Inspect Hyperliquid markets, positions, and order status.",
+    category: "platform",
+    capabilities: ["hyperliquid", "trading", "wallet"],
+  }),
+  stubCatalogApp({
+    name: "@elizaos/app-polymarket",
+    displayName: "Polymarket",
+    description: "Browse prediction markets and native trading readiness.",
+    category: "platform",
+    capabilities: ["polymarket", "prediction-markets", "wallet"],
   }),
 ];
 
@@ -396,6 +422,113 @@ const emptyWalletMarketOverview = {
   prices: [],
   movers: [],
   predictions: [],
+};
+
+const stubHyperliquidStatus = {
+  publicReadReady: true,
+  signerReady: false,
+  executionReady: false,
+  executionBlockedReason:
+    "Signed Hyperliquid exchange mutations are disabled in UI smoke.",
+  accountAddress: null,
+  apiBaseUrl: "https://api.hyperliquid.xyz",
+  credentialMode: "none",
+  readiness: {
+    publicReads: true,
+    accountReads: false,
+    signer: false,
+    execution: false,
+  },
+  account: {
+    address: null,
+    source: "none",
+    guidance:
+      "Connect a managed vault or configure an account address for account reads.",
+  },
+  vault: {
+    configured: false,
+    ready: false,
+    address: null,
+    guidance: "Public market reads do not require a vault.",
+  },
+  apiWallet: {
+    configured: false,
+    guidance: "API-wallet delegation is optional.",
+  },
+};
+
+const stubHyperliquidMarkets = {
+  markets: [
+    {
+      name: "BTC",
+      index: 0,
+      szDecimals: 5,
+      maxLeverage: 50,
+      onlyIsolated: false,
+      isDelisted: false,
+    },
+    {
+      name: "ETH",
+      index: 1,
+      szDecimals: 4,
+      maxLeverage: 50,
+      onlyIsolated: false,
+      isDelisted: false,
+    },
+  ],
+  source: "hyperliquid-info-meta",
+  fetchedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const stubPolymarketStatus = {
+  publicReads: {
+    ready: true,
+    reason: null,
+    gammaApiBase: "https://gamma-api.polymarket.com",
+    dataApiBase: "https://data-api.polymarket.com",
+  },
+  trading: {
+    ready: false,
+    credentialsReady: false,
+    missing: [
+      "POLYMARKET_PRIVATE_KEY",
+      "CLOB_API_KEY",
+      "CLOB_API_SECRET",
+      "CLOB_API_PASSPHRASE",
+    ],
+    reason: "Trading is disabled in UI smoke.",
+    clobApiBase: "https://clob.polymarket.com",
+  },
+};
+
+const stubPolymarketMarket = {
+  id: "ui-smoke-market",
+  slug: "ui-smoke-market",
+  question: "Will the UI smoke suite stay green?",
+  description: "Deterministic fixture market for app-window QA.",
+  category: "QA",
+  active: true,
+  closed: false,
+  archived: false,
+  restricted: false,
+  enableOrderBook: true,
+  conditionId: "0xsmoke",
+  clobTokenIds: ["yes-token", "no-token"],
+  outcomes: [
+    { name: "Yes", price: "0.72" },
+    { name: "No", price: "0.28" },
+  ],
+  liquidity: "10000",
+  volume: "42000",
+  volume24hr: "1200",
+  lastTradePrice: "0.72",
+  bestBid: "0.71",
+  bestAsk: "0.73",
+  image: null,
+  icon: null,
+  endDate: null,
+  startDate: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 const smokeGeneratedAt = "2026-01-01T00:00:00.000Z";
@@ -1128,6 +1261,102 @@ const server = http.createServer(async (req, res) => {
       connected: false,
       connectedAt: null,
       tradingVenues: ["hyperliquid", "polymarket"],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/status") {
+    sendJson(req, res, 200, stubHyperliquidStatus);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/markets") {
+    sendJson(req, res, 200, stubHyperliquidMarkets);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/positions") {
+    sendJson(req, res, 200, {
+      accountAddress: null,
+      positions: [],
+      readBlockedReason:
+        "Connect an account address to read Hyperliquid positions.",
+      fetchedAt: null,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/hyperliquid/orders") {
+    sendJson(req, res, 200, {
+      accountAddress: null,
+      orders: [],
+      readBlockedReason: "Connect an account address to read open orders.",
+      fetchedAt: null,
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/status") {
+    sendJson(req, res, 200, stubPolymarketStatus);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/markets") {
+    sendJson(req, res, 200, {
+      markets: [stubPolymarketMarket],
+      source: { api: "gamma", endpoint: "/markets" },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/market") {
+    sendJson(req, res, 200, {
+      market: stubPolymarketMarket,
+      source: { api: "gamma", endpoint: "/markets" },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/orderbook") {
+    sendJson(req, res, 200, {
+      tokenId: url.searchParams.get("token_id") ?? "yes-token",
+      market: stubPolymarketMarket.id,
+      assetId: null,
+      bids: [{ price: "0.71", size: "100" }],
+      asks: [{ price: "0.73", size: "100" }],
+      bestBid: "0.71",
+      bestBidSize: "100",
+      bestAsk: "0.73",
+      bestAskSize: "100",
+      midpoint: "0.72",
+      spread: "0.02",
+      bidLevels: 1,
+      askLevels: 1,
+      lastTradePrice: "0.72",
+      tickSize: "0.01",
+      source: { api: "clob", endpoint: "/book" },
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/orders") {
+    sendJson(req, res, 200, {
+      enabled: false,
+      reason: "Trading is disabled in UI smoke.",
+      requiredForTrading: [
+        "POLYMARKET_PRIVATE_KEY",
+        "CLOB_API_KEY",
+        "CLOB_API_SECRET",
+        "CLOB_API_PASSPHRASE",
+      ],
+    });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/polymarket/positions") {
+    sendJson(req, res, 200, {
+      positions: [],
+      source: { api: "data", endpoint: "/positions" },
     });
     return;
   }

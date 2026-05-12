@@ -460,9 +460,6 @@ export const entityAction: Action & {
 } = {
   name: "ENTITY",
   similes: [
-    // Wave-2 W2-A: RELATIONSHIP is preserved as a one-release simile so
-    // the planner does not regress on cached prompts.
-    "RELATIONSHIP",
     "CONTACTS",
     "ROLODEX",
     "LOG_INTERACTION",
@@ -474,11 +471,11 @@ export const entityAction: Action & {
     "SET_RELATIONSHIP",
   ],
   description:
-    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASK for follow-up cadence; use LIFE for one-off dated reminders to call/text someone.",
+    "Manage people, organizations, projects, and concepts the owner cares about, plus typed relationships between them. Subactions: create, read, set_identity, set_relationship, log_interaction, merge. For rolodex/contact lifecycle (CRUD on a single contact's profile) use CONTACT; ENTITY is the owner-graph umbrella for identity, relationships, and interaction history. Use SCHEDULED_TASKS for follow-up cadence; use OWNER_REMINDERS for one-off dated reminders to call/text someone.",
   descriptionCompressed:
     "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
   routingHint:
-    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASK; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> LIFE',
+    'people/contacts/relationships ("add Pat to my contacts", "Pat is my manager") -> ENTITY; follow-up cadence ("follow up with David", "how long since I talked to X", "who is overdue") -> SCHEDULED_TASKS; one-off dated reminders to call/text someone ("remember to call mom Sunday") -> OWNER_REMINDERS',
   tags: [
     "domain:contacts",
     "capability:read",
