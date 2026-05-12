@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "runner": "cuda_runner.sh",
+  "status": "pass",
+  "passRecordable": true,
+  "exitCode": 0,
+  "failureReason": null,
+  "startedAt": "2026-05-12T02:30:00Z",
+  "finishedAt": "2026-05-12T03:15:00Z",
+  "host": { "os": "Linux", "arch": "x86_64" },
+  "target": "linux-x64-cuda",
+  "remoteDelegated": false,
+  "requirements": {
+    "os": "Linux",
+    "toolchain": ["nvcc", "nvidia-smi"],
+    "hardware": "NVIDIA GPU reported by nvidia-smi",
+    "fixtures": "make cuda-verify all seven fixtures (turbo3, turbo4, turbo3_tcq, qjl, polar, polar_qjl, fused_attn_qjl_tbq)",
+    "graphSmoke": "required"
+  },
+  "evidence": {
+    "gpuInfo": "NVIDIA GeForce RTX 5080 Laptop GPU, 580.142, 12.0",
+    "toolchainInfo": "nvcc release 12.0 V12.0.140 (distro nvidia-cuda-toolkit). sm_90/89/86/80 SASS + compute_90 PTX; the 580 driver JIT-compiles the compute_90 PTX to Blackwell sm_120. nvcc 12.0 does not target sm_100/sm_120 directly (CUDA >= 12.8 needed for native Blackwell SASS); cudaArchListFlag() / the verify Makefile gate sm_100/sm_120 SASS on nvcc support, so a 12.8+ rebuild would add native sm_120 SASS on top.",
+    "cmakeFlags": "-DCMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80 (PTX+SASS each); -DGGML_CUDA_FUSED_ATTN_QJL=ON; -DGGML_CUDA_QJL=ON; -DGGML_CUDA_POLARQUANT=ON; -DGGML_CUDA_TBQ3_TCQ=ON",
+    "model": "~/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf",
+    "modelSha256": "a8fb6f0b36b62b3d400080438ae6835436d5f64b7e028ee3e304788d9415843a",
+    "fixtureParity": {
+      "target": "make cuda-verify + make cuda-verify-fused",
+      "results": {
+        "turbo3": "8/8 PASS, max diff 2.86e-6",
+        "turbo4": "8/8 PASS, max diff 5.72e-6",
+        "turbo3_tcq": "8/8 PASS, max diff 5.72e-6",
+        "qjl": "8/8 PASS, max diff 9.54e-6 (DP4A int8-sketch cross-check: 1.43e-1 round-trip, expected)",
+        "polar": "8/8 PASS, max diff 7.63e-6",
+        "polar_qjl": "8/8 PASS, max diff 5.72e-6",
+        "fused_attn_qjl_tbq": "1920/1920 outputs PASS across 4 GQA/n_kv cases, max diff 3.28e-7"
+      }
+    },
+    "graphDispatch": {
+      "tool": "llama-bench (the fork's llama-cli is conversation-only and busy-loops on stdin EOF; llama-bench is the non-interactive equivalent and exercises the same prompt-eval + token-gen graph passes)",
+      "binDir": "~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/bin",
+      "model": "eliza-1-0_6b-32k.gguf, -ngl 99",
+      "routes": {
+        "f16 (baseline)": "backend=CUDA, pp512 6699 t/s, pp4096 2676 t/s, tg128 53.9 t/s",
+        "GGML_OP_ATTN_SCORE_TBQ / turbo3 (--cache-type-k tbq3_0 --cache-type-v tbq3_0 -fa 1)": "backend=CUDA, pp64 1014 t/s, pp512 685 t/s, pp4096 178 t/s, tg128 40.9 t/s",
+        "GGML_OP_ATTN_SCORE_TBQ / turbo4 (--cache-type-k tbq4_0 --cache-type-v tbq4_0 -fa 1)": "backend=CUDA, pp64 1679 t/s, pp512 1097 t/s, tg8 262 t/s"
+      },
+      "note": "The fork registers turbo3/turbo4 as --cache-type-k storage types (tbq3_0/tbq4_0) but registers QJL / Polar / TBQ3-TCQ as score-side ops (GGML_OP_ATTN_SCORE_QJL/POLAR), not --cache-type-k storage aliases — same as the Vulkan path, where the QJL/Polar built-fork graph route was verified via the vulkan-dispatch-smoke C++ harness, not llama-cli --cache-type-k. The CUDA equivalent of that built-fork numeric op gate is make cuda-verify (the fixture-parity harness ports the same reference algorithm into __device__ kernels operating on the on-disk fixture byte layouts and matched the C references 8/8 / 1920/1920 on the RTX 5080)."
+    }
+  }
+}

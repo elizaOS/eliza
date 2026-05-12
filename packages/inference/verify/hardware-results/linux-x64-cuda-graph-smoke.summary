@@ -1,0 +1,9 @@
+target=linux-x64-cuda
+bin_dir=/home/shaw/.cache/eliza-dflash/milady-llama-cpp/build-cuda/bin
+model=/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf
+tokens=4
+ngl=99
+cache_runs=tbq3_0:tbq3_0 tbq4_0:tbq4_0
+backend_pattern=CUDA|cuda|cuBLAS|ggml_cuda|NVIDIA
+started_at=2026-05-12T03:01:36Z
+uname=Linux BEAST 6.17.0-23-generic #23~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue Apr 14 16:11:48 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
