@@ -60,7 +60,11 @@ def test_training_spec_uses_only_active_split(publish_dataset):
     names = {p.name for p in spec.files}
     train_src = names & {"train.jsonl", "train_final.jsonl"}
     assert len(train_src) == 1, f"expected one of train.jsonl|train_final.jsonl, got {names}"
-    assert {"val.jsonl", "test.jsonl", "manifest_final.json"} <= names
+    val_src = names & {"val.jsonl", "validation.jsonl"}
+    manifest_src = names & {"manifest.json", "manifest_final.json"}
+    assert len(val_src) == 1
+    assert "test.jsonl" in names
+    assert len(manifest_src) == 1
     # Explicit denylist — historical/WIP files that must never be in the spec.
     forbidden = {"train_v8.jsonl", "train_rewritten.review.jsonl"}
     assert names.isdisjoint(forbidden)
@@ -69,6 +73,57 @@ def test_training_spec_uses_only_active_split(publish_dataset):
     assert spec.path_in_repo[final] == "train.jsonl"
     manifest = spec.files[3]
     assert spec.path_in_repo[manifest] == "manifest.json"
+
+
+def test_training_spec_can_publish_candidate_as_root_splits(publish_dataset, tmp_path):
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    for name in ("train.jsonl", "validation.jsonl", "test.jsonl"):
+        (data / name).write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (candidate / "manifest.json").write_text("{}")
+
+    spec = publish_dataset._spec_training_from_dir(candidate)
+
+    by_target = {target: path.name for path, target in spec.path_in_repo.items()}
+    assert by_target == {
+        "train.jsonl": "train.jsonl",
+        "val.jsonl": "validation.jsonl",
+        "test.jsonl": "test.jsonl",
+        "manifest.json": "manifest.json",
+    }
+
+
+def test_hf_load_preflight_accepts_matching_candidate_splits(
+    publish_dataset, tmp_path
+):
+    pytest.importorskip("datasets")
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    row = '{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"ok"}]}\n'
+    for name in ("train.jsonl", "validation.jsonl", "test.jsonl"):
+        (data / name).write_text(row)
+    (candidate / "manifest.json").write_text("{}")
+
+    assert publish_dataset.validate_hf_loadable(
+        publish_dataset._spec_training_from_dir(candidate)
+    )
+
+
+def test_hf_load_preflight_rejects_split_feature_drift(publish_dataset, tmp_path):
+    pytest.importorskip("datasets")
+    candidate = tmp_path / "lifeops-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    (data / "train.jsonl").write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (data / "validation.jsonl").write_text('{"messages":"bad"}\n')
+    (data / "test.jsonl").write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    (candidate / "manifest.json").write_text("{}")
+
+    assert not publish_dataset.validate_hf_loadable(
+        publish_dataset._spec_training_from_dir(candidate)
+    )
 
 
 def test_scambench_spec_only_includes_scambench(publish_dataset):

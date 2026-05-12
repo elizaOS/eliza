@@ -22,7 +22,7 @@ the eliza runtime actually parses for each `metadata.task_type`:
                                  chosen action MUST be TASK_CALL or the tool
                                  name itself.
 
-  shell_command               JSON with `command` field; SHELL_COMMAND must
+  shell_command               JSON with `command` field; SHELL must
                                  be in availableActions.
 
   agent_trace (planning)      JSON envelope: `thought` + `actions`,
@@ -84,7 +84,7 @@ ACTION_IGNORE = "IGNORE"
 ACTION_STOP = "STOP"
 ACTION_REPLY = "REPLY"
 ACTION_TASK_CALL = "TASK_CALL"
-ACTION_SHELL_COMMAND = "SHELL_COMMAND"
+ACTION_SHELL = "SHELL"
 ROUTING_ACTIONS = {ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP}
 
 # DATASET_REVIEW.md-flagged default-thought leaks. Single source of truth
@@ -372,28 +372,28 @@ def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, st
         errs.append(("shell_decoded_not_object",
                      f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
-    # Either a top-level `command: ...` or a planner envelope whose
-    # SHELL_COMMAND action carries `params.command`.
+    # Either a top-level `command: ...` or a planner envelope whose canonical
+    # SHELL action carries `params.command`.
     command = decoded.get("command")
     if not (isinstance(command, str) and command.strip()):
         planner_actions = _planner_actions(decoded) or []
         cmd_action = next((a for a in planner_actions
-                           if a.get("name") == ACTION_SHELL_COMMAND), None)
+                           if a.get("name") == ACTION_SHELL), None)
         if cmd_action is None:
             errs.append(("shell_missing_command_field",
                          "shell_command task needs `command:` or "
-                         "planner `actions: [{name: SHELL_COMMAND, params: {command}}]`"))
+                         "planner `actions: [{name: SHELL, params: {command}}]`"))
         else:
             params = cmd_action.get("params") or {}
             if not (isinstance(params, dict)
                     and isinstance(params.get("command"), str)
                     and params.get("command", "").strip()):
                 errs.append(("shell_action_missing_params_command",
-                             "SHELL_COMMAND action needs params.command non-empty"))
+                             "SHELL action needs params.command non-empty"))
     actions = set(_action_names(rec.get("availableActions", [])))
-    if ACTION_SHELL_COMMAND not in actions:
-        errs.append(("shell_missing_SHELL_COMMAND_action",
-                     "availableActions must contain SHELL_COMMAND for task_type=shell_command"))
+    if ACTION_SHELL not in actions:
+        errs.append(("shell_missing_SHELL_action",
+                     "availableActions must contain SHELL for task_type=shell_command"))
     return errs
 
 

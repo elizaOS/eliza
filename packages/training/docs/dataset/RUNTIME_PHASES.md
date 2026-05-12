@@ -175,7 +175,7 @@ tool_calls[0]
 - `reply` — minimal plan (REPLY-only)
 - `tool_call` — plan whose first action is `TASK_CALL`
 - `mcp_tool_call` — same wire shape; tool comes from an MCP server
-- `shell_command` — plan whose first action is `SHELL_COMMAND`
+- `shell_command` — plan whose first action is `SHELL`
 - `reasoning_cot` — plan with embedded reasoning trace
 - `claude_distill` — plan distilled from a Claude teacher
 
