@@ -1,11 +1,15 @@
 # Patch audit — `build-llama-cpp-dflash.mjs` vs elizaOS/llama.cpp
 
-> Superseded status note, 2026-05-11: keep this file as historical context.
-> The current post-QJL-dispatch blocker ledger is
-> `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md`.
-> In particular, Metal QJL attention-score graph dispatch is now
-> runtime-ready; Metal TurboQuant/PolarQuant and Vulkan graph dispatch remain
-> blocked.
+> Superseded status note: keep this file as historical context only — it is the
+> 2026-05-10 audit that *triggered* the kernel-wiring work. Its "no-op log
+> sentinel" / "MISLEADING" / "decorative" observations no longer hold: since
+> then the Metal and Vulkan kernel patch hooks were rewritten into the real
+> `patchMetalKernelsImpl` / `patchVulkanKernelsImpl` (run unconditionally, no
+> env opt-in), Metal graph dispatch is runtime-ready for all five kernel
+> families on Apple Silicon, and Vulkan graph dispatch is runtime-ready on
+> Intel-ANV. For current state see
+> `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md`,
+> `packages/inference/README.md`, and `packages/inference/AGENTS.md`.
 
 Date: 2026-05-10
 Auditor: bounded read-only audit (no commits, no kernel edits).
@@ -200,11 +204,11 @@ Operators targeting older cards override via
 
 `make -C packages/inference/verify verify-fork` re-runs `metal_verify`
 and `vulkan_verify` against the **fork's** in-tree shader paths
-(`~/.cache/eliza-dflash/milady-llama-cpp/ggml/src/ggml-metal/milady-kernels/*.metal`
+(`~/.cache/eliza-dflash/eliza-llama-cpp/ggml/src/ggml-metal/milady-kernels/*.metal`
 and `.../ggml-vulkan/vulkan-shaders/*.comp`) using the same
 `fixtures/*.json` the standalone reference runs use. Behavior:
 
-- If `~/.cache/eliza-dflash/milady-llama-cpp/.git` is missing, prints a
+- If `~/.cache/eliza-dflash/eliza-llama-cpp/.git` is missing, prints a
   clear "fork not present, please run build first" message and exits 1.
 - Metal: runs each of the five fork shaders against its matching
   fixture. Reports per-kernel pass/fail.

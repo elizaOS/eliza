@@ -30,7 +30,7 @@ gates), `packages/training/AGENTS.md`, `ELIZA_1_GGUF_READINESS.md`,
 | Text 27B | `batiai/Qwen3.6-27B-GGUF` (`Qwen-Qwen3.6-27B-Q4_K_M.gguf` ref) | same | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` + fused-attn + DFlash | `27b-256k`, `27b-1m` are context variants of this tier |
 | Voice (TTS) | `Serveurperso/OmniVoice-GGUF` (`omnivoice-base-<quant>.gguf` + `omnivoice-tokenizer-<quant>.gguf`) | already GGUF | fused-omnivoice runtime; quant per `VOICE_QUANT_BY_TIER` (Q4_K_M on 0.6B/1.7B, Q8_0 on 9B+) | non-commercial CC-compatible licensing per inference/AGENTS.md §1 |
 | ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | already GGUF | tokenizer fused with the text backbone (zero re-tokenization) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` |
-| VAD | `onnx-community/silero-vad` (MIT) | ONNX, int8 → `vad/silero-vad-int8.onnx` | none (sidecar ONNX, intentionally not a GGUF) | drives barge-in / silence gating |
+| VAD | Silero VAD v5.1.2 (MIT) | native GGML `vad/silero-vad-v5.1.2.ggml.bin` (the release path; legacy bundles may also carry the `vad/silero-vad-int8.onnx` ONNX fallback) | none (not a GGUF) | drives barge-in / silence gating |
 | Embedding | `Qwen/Qwen3-Embedding-0.6B-GGUF` (1.7B+ tiers) | already GGUF | none beyond fork conversion | 0.6B tier omits it (pools from the text backbone with `--pooling last`) |
 | Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) FROM each tier's base text model; published under `elizaos/eliza-1-<tier>` | `distill_dflash_drafter.py` → fork `convert_hf_to_gguf.py` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` |
 | Voice preset cache | placeholder from W13 until a real fused build emits one | n/a | n/a | `cache/voice-preset-default.bin` |
@@ -42,18 +42,24 @@ records all of this; it must agree with the tier's manifest
 
 ---
 
-## 1. Submodule the fork; build it
+## 1. The fork is in-tree; build it
 
-WF1 owns submoduling `elizaOS/llama.cpp` (v0.4.0-milady — adds the Milady
-GGML types `TBQ3_0=43`, `TBQ4_0=44`, `QJL1_256=46`, `Q4_POLAR=47` and the
-fused attention/omnivoice patches). The converter we use is
-`<submodule>/convert_hf_to_gguf.py`.
+The patched llama.cpp (`elizaOS/llama.cpp @ v1.0.0-eliza`, upstream base
+`b8198` — adds the Milady GGML types `TBQ3_0`, `TBQ4_0`, `QJL1_256`,
+`Q4_POLAR`, the fused attention/omnivoice patches, and the split
+`tools/server/server-{task,common,context,http}.cpp` with `grammar_lazy` /
+`json_schema` / `response_format` / structured output already present) ships
+in-tree as a git submodule at `packages/inference/llama.cpp` — `bun install`
+runs `git submodule update --init --recursive`. The converter we use is
+`packages/inference/llama.cpp/convert_hf_to_gguf.py`. (A rebase of the fork
+onto current upstream is a separate, deferred effort — see
+`docs/porting/upstream-rebase-plan.md` — and does NOT block the
+structured-output path, which is already in the fork.)
 
 ```bash
 # CPU host is fine for the converter; the build needs the target backend
 # (Metal / CUDA / Vulkan / ...) — see packages/inference/AGENTS.md §8.
-export MILADY_LLAMACPP_DIR=<path-to-elizaOS-llama.cpp-checkout>   # used by distill_dflash_drafter.py
-export LLAMA_CPP_DIR=$MILADY_LLAMACPP_DIR                          # used by gguf_milady_apply.py
+export LLAMA_CPP_DIR=$PWD/packages/inference/llama.cpp   # used by gguf_milady_apply.py / distill_dflash_drafter.py (both also fall back to the in-repo submodule)
 node packages/app-core/scripts/build-llama-cpp-dflash.mjs          # kernel patches + build (per supported backend)
 make -C packages/inference/verify reference-test                   # CPU host: must be clean
 ```
@@ -87,14 +93,14 @@ produce the base GGUF, then apply the Milady metadata wrapper:
 
 ```bash
 # Direct converter:
-uv run python "$MILADY_LLAMACPP_DIR/convert_hf_to_gguf.py" <hf-checkpoint-dir> \
+uv run python packages/inference/llama.cpp/convert_hf_to_gguf.py <hf-checkpoint-dir> \
   --outtype q4_k_m --outfile out/eliza-1-9b/text/eliza-1-9b-64k.gguf
 
 # Or, with the Milady type wrapper + provenance recording (CPU-safe, idempotent):
 uv run python packages/training/scripts/quantization/gguf_milady_apply.py \
   --checkpoint <hf-checkpoint-dir-with-polarquant-codes> \
   --output     out/eliza-1-9b/text/eliza-1-9b-64k.gguf \
-  --llama-cpp-dir "$MILADY_LLAMACPP_DIR" \
+  --llama-cpp-dir packages/inference/llama.cpp \
   --outtype q4_polar \
   --release-state base-v1 \
   --source-repo  unsloth/Qwen3.5-9B-GGUF
@@ -202,7 +208,7 @@ uv run python packages/training/scripts/manifest/stage_local_eliza1_bundle.py \
 ```
 
 This assembles the exact layout (`text/`, `tts/` + tokenizer, `asr/` +
-mmproj, `vad/silero-vad-int8.onnx`, `vision/mmproj-*` on 9B+,
+mmproj, `vad/silero-vad-v5.1.2.ggml.bin`, `vision/mmproj-*` on 9B+,
 `dflash/drafter-*.gguf` + `dflash/target-meta.json`,
 `cache/voice-preset-default.bin`, `evals/*.json`, `licenses/*`,
 `checksums/SHA256SUMS`, `evidence/release.json`, `quantization/*.json`).
@@ -323,12 +329,11 @@ and every platform-dispatch report is green for the exact shipped bytes, and
 
 | Step | Host |
 |---|---|
-| Fork converter (`convert_hf_to_gguf.py`), `gguf_milady_apply.py`, sidecar generation, bundle staging, checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only` | CPU host (this environment can run these once the fork checkout + source weights are present) |
+| Fork converter (`convert_hf_to_gguf.py`), `gguf_milady_apply.py`, sidecar generation, bundle staging, checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only` | CPU host (the fork is in-tree at `packages/inference/llama.cpp`; this environment can run these once the source weights are present) |
 | Fork build with kernel patches, `metal_verify` / `vulkan_verify` / `cuda_verify` / `rocm_verify`, platform-dispatch smokes | the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for the `27b-1m` tier) |
 | PolarQuant code generation, TurboQuant skip-layer calibration, DFlash distillation, text perplexity / RTF / WER / VAD / dflash / e2e / 30-turn evals | a GPU big enough for the tier (consumer GPU for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B) |
 
-This environment is CPU-only with no fork checkout and no source weights yet,
-so the GPU/HW rows are wired (correct invocations above) but not executed
-here. Everything in the CPU row is implemented and tested
-(`python -m pytest packages/training/scripts/manifest/`,
+This environment is CPU-only with no source weights staged yet, so the GPU/HW
+rows are wired (correct invocations above) but not executed here. Everything in
+the CPU row is implemented and tested (`python -m pytest packages/training/scripts/manifest/`,
 `packages/training/scripts/quantization/test_recipes_smoke.py`).
