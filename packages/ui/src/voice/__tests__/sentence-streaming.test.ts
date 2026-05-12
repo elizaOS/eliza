@@ -9,7 +9,7 @@
  * back the hook so regressions surface without requiring a full React
  * render.
  */
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   queueableSpeechPrefix,
   remainderAfter,

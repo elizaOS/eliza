@@ -3,7 +3,15 @@
  * packages/inference/omnivoice.cpp/src/omnivoice.h with TS-friendly names.
  */
 
-import type { Emotion } from "./emotion";
+/** Emotion taxonomy — keep in sync with packages/ui/src/voice/emotion.ts. */
+export type Emotion =
+  | "neutral"
+  | "happy"
+  | "sad"
+  | "angry"
+  | "surprised"
+  | "fearful"
+  | "disgusted";
 
 export type OmnivoiceLang = "" | "en" | "zh" | "English" | "Chinese" | string;
 
