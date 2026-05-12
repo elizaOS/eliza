@@ -27,6 +27,7 @@ export type {
 } from "./store.js";
 export {
   assertCarrotPayload,
+  buildCarrotRuntimeContext,
   CarrotStoreError,
   ensureCarrotSourceDirectory,
   getCarrotStorePaths,

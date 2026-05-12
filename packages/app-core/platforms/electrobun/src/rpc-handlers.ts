@@ -42,6 +42,14 @@ import {
 	readConversationMessagesViaHttp,
 	readConversationsListViaHttp,
 } from "./conversations-and-character-rpc";
+import {
+	composeAgentSelfStatusSnapshot,
+	composeCorePluginsSnapshot,
+	composeTriggerHealthSnapshot,
+	readAgentSelfStatusViaHttp,
+	readCorePluginsViaHttp,
+	readTriggerHealthViaHttp,
+} from "./dashboard-rpc";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import {
@@ -326,6 +334,21 @@ export function buildBunRpcHandlers({
 				resolveRpcAgentPort(agent.getStatus().port),
 				params,
 				readRuntimeSnapshotViaHttp,
+			),
+		getAgentSelfStatus: async () =>
+			composeAgentSelfStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAgentSelfStatusViaHttp,
+			),
+		getTriggerHealth: async () =>
+			composeTriggerHealthSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readTriggerHealthViaHttp,
+			),
+		getCorePlugins: async () =>
+			composeCorePluginsSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readCorePluginsViaHttp,
 			),
 		/**
 		 * Aggregated boot snapshot — typed counterpart to renderer
