@@ -73,13 +73,13 @@ import {
 } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
-import { ProvisioningChatView } from "./ProvisioningChatView";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
 import { Input } from "../ui/input";
 import { Spinner } from "../ui/spinner";
 import { TooltipHint } from "../ui/tooltip";
+import { ProvisioningChatView } from "./ProvisioningChatView";
 
 const MONO_FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -1473,7 +1473,9 @@ export function RuntimeGate() {
               ? t("runtimegate.cloudHeaderLogin", {
                   defaultValue: "Sign in to Eliza Cloud",
                 })
-              : cloudStage === "auto-creating" || cloudStage === "loading"
+              : cloudStage === "auto-creating" ||
+                  cloudStage === "loading" ||
+                  cloudStage === "chat"
                 ? t("runtimegate.cloudHeaderProvisioning", {
                     defaultValue: "Setting up your agent",
                   })
@@ -1492,8 +1494,9 @@ export function RuntimeGate() {
         />
 
         {/* Local embeddings preference — visible whenever the cloud path is
-            active and the user can still interact (not yet connecting). */}
-        {cloudStage !== "connecting" && (
+            active and the user can still interact (not yet connecting or in
+            provisioning chat). */}
+        {cloudStage !== "connecting" && cloudStage !== "chat" && (
           <LocalEmbeddingsCheckbox
             checked={useLocalEmbeddings}
             onCheckedChange={setUseLocalEmbeddings}
@@ -1537,6 +1540,33 @@ export function RuntimeGate() {
               </p>
             )}
             <BackButton t={t} onClick={() => setSubView("chooser")} />
+          </div>
+        )}
+
+        {cloudStage === "chat" && (
+          <div className="mt-4 flex w-full max-w-[28rem] flex-col gap-3">
+            <ProvisioningChatView
+              agentId={currentAgentId}
+              cloudApiBase={client.getBaseUrl()}
+              onContainerReady={(bridgeUrl) => {
+                void client
+                  .getCloudCompatAgent(currentAgentId ?? "")
+                  .then((agentRes) => {
+                    if (agentRes.success) {
+                      void finishAsCloud({
+                        ...agentRes.data,
+                        bridge_url: bridgeUrl ?? agentRes.data.bridge_url,
+                        containerUrl: bridgeUrl ?? agentRes.data.containerUrl,
+                      });
+                    }
+                  })
+                  .catch(() => {
+                    // provisionAndConnect is still running in the background;
+                    // let it complete and call finishAsCloud when ready.
+                  });
+              }}
+              onBack={() => setCloudStage("loading")}
+            />
           </div>
         )}
 
