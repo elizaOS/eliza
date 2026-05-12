@@ -55,6 +55,12 @@ function getUtilizationColor(utilization: number): string {
   return "text-green-500";
 }
 
+function getUtilizationBarColor(utilization: number): string {
+  if (utilization >= 80) return "bg-red-500";
+  if (utilization >= 60) return "bg-yellow-500";
+  return "bg-green-500";
+}
+
 function getUtilizationBadge(utilization: number): UtilizationBadgeVariant {
   if (utilization >= 80) return "destructive";
   if (utilization >= 60) return "default";
@@ -192,7 +198,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
             {/* Progress bar */}
             <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden">
               <div
-                className={`h-full transition-all duration-500 ${getUtilizationColor(metrics.cpu_utilization).replace("text-", "bg-")}`}
+                className={`h-full transition-all duration-500 ${getUtilizationBarColor(metrics.cpu_utilization)}`}
                 style={{ width: `${Math.min(metrics.cpu_utilization, 100)}%` }}
               />
             </div>
@@ -219,7 +225,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
             {/* Progress bar */}
             <div className="mt-3 h-2 bg-muted rounded-full overflow-hidden">
               <div
-                className={`h-full transition-all duration-500 ${getUtilizationColor(metrics.memory_utilization).replace("text-", "bg-")}`}
+                className={`h-full transition-all duration-500 ${getUtilizationBarColor(metrics.memory_utilization)}`}
                 style={{
                   width: `${Math.min(metrics.memory_utilization, 100)}%`,
                 }}
