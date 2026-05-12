@@ -2,7 +2,9 @@
 
 Measured 2026-05-11 on an **RTX 5080 Laptop GPU** (16 GB, Blackwell sm_120,
 driver 580.142, CUDA 13.0 runtime / nvcc 12.0 toolkit) + an Intel Arrow Lake-U
-CPU (8 threads used). Model: `eliza-1-0_6b` (Qwen3-0.6B arch, 596 M params).
+CPU (8 threads used). Historical model: `eliza-1-0_8b` (Qwen3.5-0.8B arch,
+596 M params). This predates the Qwen3.5 tier migration; it is retained as a
+measurement record, not release evidence for the current `eliza-1-0_8b` tier.
 `run_pipeline.py` stage 6c writes a per-run `checkpoints/<run>/evals/throughput.json`
 with the same `llama-bench` numbers for whatever GGUFs the run produced.
 
@@ -42,7 +44,7 @@ the bigger tiers and for VRAM-constrained hosts.
   for the recipe. **Build the fork's CUDA backend with `-j2`**,
   not `-j$(nproc)`, on a ≤ 32 GB-RAM box: the custom `fattn-vec-instance-*`
   instantiations ~1.6× the standard set of fattn template TUs, each `fattn*.cu`
-  nvcc eats ~1.5–2 GB during template metaprogramming, and at full parallelism
+  nvcc eats ~1.5–4 GB during template metaprogramming, and at full parallelism
   on a 30 GB laptop the concurrent nvcc's get OOM-killed on `fattn.cu.o`. (The
   *stock* llama.cpp CUDA build is fine at `-j$(nproc)` — fewer fattn TUs.)
 - **Flash attention on** — `optimizations.flashAttention: true` is already set
@@ -63,17 +65,16 @@ the bigger tiers and for VRAM-constrained hosts.
   → faster `tg` for the bigger tiers. *Currently deferred* — the fork's
   `convert_hf_to_gguf.py` doesn't emit `q4_polar` yet (the runtime kernels
   exist; the converter side lags), so `gguf_eliza1_apply.py` falls back to
-  `q8_0` and records `weight_quant.deferred: true` in `<gguf>.milady.json`.
+  `q8_0` and records `weight_quant.deferred: true` in `<gguf>.eliza.json`.
   Closing that gap (add `Q4_POLAR` to the fork's `gguf-py` + a Python
   `quantize_q4_polar` packer) is the inference team's converter work.
 - **DFlash speculative decode** is the #1 model-level `tg` lever for the
-  *bigger* tiers — a 0.6 B Qwen3 drafter verifying for a 4 B / 9 B / 27 B model
+  *bigger* tiers — a Qwen3.5 drafter verifying for a 4 B / 9 B / 27 B model
   can 2–3× generation. `distill_dflash_drafter.py --tier <t> --student-base
-  Qwen/Qwen3-0.6B` distils one; the catalog `runtimeFor()` already wires
+  Qwen/Qwen3.5-0.8B` or `Qwen/Qwen3.5-2B` distils one; the catalog `runtimeFor()` already wires
   `dflash.specType: "dflash"` + `draftGpuLayers: "auto"`. The 0.6 B tier
-  itself gets *no* drafter (there is no smaller-than-0.6 B Qwen3 base, so the
-  tokenizer-match contract can't be satisfied) — its `tg` is already ~400 t/s
-  on a consumer GPU, so spec decode isn't needed there.
+  0.8 B tier is release-gated on measured net latency because its default
+  student is the same size family as the target.
 
 ### Kernel (fork — coordinate with the inference team)
 - The fork's CUDA flash-attn kernels for the custom KV types
@@ -98,7 +99,7 @@ the bigger tiers and for VRAM-constrained hosts.
   ~30–60 min compile against the system CUDA) speeds up SFT for the bigger
   tiers; marginal for 0.6 B.
 - **FP8 training** — `te_fp8.py` exists but only swaps on sm_90 unless
-  `MILADY_FP8_TRAIN=1`; `transformer_engine` is not installed. Blackwell
+  `ELIZA_FP8_TRAIN=1`; `transformer_engine` is not installed. Blackwell
   (sm_120) has native FP8/FP4 tensor cores, so FP8 SFT would be a real win for
   the bigger tiers — needs `transformer_engine[pytorch]` installed + the arch
   gate in `te_fp8.py` extended to include sm_120.
@@ -111,5 +112,5 @@ packages/inference/llama.cpp/build/bin/llama-bench \
   -m <path-to>.gguf -ngl 99 -fa 1 -b 2048 -p 256,512 -n 64,128
 
 # As part of a pipeline run (writes evals/throughput.json):
-uv run --extra train python scripts/run_pipeline.py --registry-key qwen3-0.6b ... # stage 6c runs automatically
+uv run --extra train python scripts/run_pipeline.py --registry-key qwen3.5-0.8b ... # stage 6c runs automatically
 ```

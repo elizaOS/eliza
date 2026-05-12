@@ -58,8 +58,8 @@ DPO has a clean preference signal without paying for a teacher rollout.
 ```bash
 uv run --extra train python scripts/train_dpo.py \
     --registry-key qwen3.5-2b \
-    --sft-checkpoint checkpoints/qwen3-06b-eliza-toon-v3/final \
-    --output-dir checkpoints/qwen3-06b-dpo-smoke \
+    --sft-checkpoint checkpoints/eliza-1-0_8b-sft/final \
+    --output-dir checkpoints/eliza-1-0_8b-dpo-smoke \
     --max-steps 5 --max-samples 64
 ```
 
@@ -67,7 +67,7 @@ uv run --extra train python scripts/train_dpo.py \
 
 | size | command | hardware | wall time |
 |------|---------|----------|-----------|
-| 0.6b | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-0.6b --sft-checkpoint checkpoints/eliza-1-0.6b-sft/final --output-dir checkpoints/eliza-1-0.6b-dpo` | 1× consumer 16 GB | ~10 min |
+| 0.8b | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-0.8b --sft-checkpoint checkpoints/eliza-1-0_8b-sft/final --output-dir checkpoints/eliza-1-0_8b-dpo` | 1× consumer 16 GB | ~10 min |
 | 2b   | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-2b   --sft-checkpoint checkpoints/eliza-1-2b-sft/final   --output-dir checkpoints/eliza-1-2b-dpo`   | 1× H200 SXM | ~1 h |
 | 9b   | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-9b   --sft-checkpoint checkpoints/eliza-1-9b-sft/final   --output-dir checkpoints/eliza-1-9b-dpo`   | 1× H200 SXM | ~5 h |
 | 27b  | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.6-27b  --sft-checkpoint checkpoints/eliza-1-27b-sft/final  --output-dir checkpoints/eliza-1-27b-dpo`  | 2× B200 (FSDP) | ~12 h |

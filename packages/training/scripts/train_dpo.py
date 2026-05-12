@@ -259,9 +259,8 @@ def main() -> int:
     log.info("loading policy + ref from %s", args.sft_checkpoint)
     policy = AutoModelForCausalLM.from_pretrained(args.sft_checkpoint, **model_kwargs)
     # Frozen reference. We deliberately keep a separate copy in memory rather
-    # than passing `ref_model=None` (which would have TRL re-create one with
-    # peft adapter-disable tricks) — at our model sizes that's both clearer
-    # and faster.
+    # than passing `ref_model=None`; at our model sizes that's both clearer
+    # and faster, and it keeps the DPO path full-parameter/APOLLO-only.
     ref_model = AutoModelForCausalLM.from_pretrained(args.sft_checkpoint, **model_kwargs)
     for p in ref_model.parameters():
         p.requires_grad_(False)
@@ -293,12 +292,14 @@ def main() -> int:
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if os.environ.get("MILADY_TRAINER_OPTIM"):
+    if os.environ.get("ELIZA_TRAINER_OPTIM"):
         raise SystemExit(
-            "MILADY_TRAINER_OPTIM is disabled. DPO always builds "
+            "ELIZA_TRAINER_OPTIM is disabled. DPO always builds "
             "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
-    trainer_optim = "adafactor"
+    # IMPORTANT: DPO uses the same APOLLO-only optimizer policy as SFT. The
+    # custom DPOTrainer.create_optimizer below is the sole optimizer path so
+    # full-parameter tuning remains viable on smaller GPU memory budgets.
     dpo_cfg = DPOConfig(
         output_dir=str(out_dir),
         num_train_epochs=args.epochs,
@@ -308,7 +309,6 @@ def main() -> int:
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         weight_decay=0.0,
-        optim=trainer_optim,
         bf16=device == "cuda",
         beta=args.beta,
         max_length=args.max_seq_len,
@@ -364,7 +364,7 @@ def main() -> int:
                 weight_decay=dpo_cfg.weight_decay,
             )
 
-    class _MiladyDPOTrainer(DPOTrainer):
+    class _ElizaDPOTrainer(DPOTrainer):
         def create_optimizer(self, model=None):
             if self.optimizer is None:
                 target = model or self.model
@@ -372,7 +372,7 @@ def main() -> int:
                 return self.optimizer
             return self.optimizer
 
-    trainer = _MiladyDPOTrainer(
+    trainer = _ElizaDPOTrainer(
         model=policy,
         ref_model=ref_model,
         args=dpo_cfg,

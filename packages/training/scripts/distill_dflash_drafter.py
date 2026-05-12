@@ -274,12 +274,12 @@ def _git_commit() -> str | None:
 
 
 def _find_convert_script() -> Path | None:
-    """Locate the fork's convert_hf_to_gguf.py. Order: $MILADY_LLAMACPP_DIR /
+    """Locate the fork's convert_hf_to_gguf.py. Order: $ELIZA_LLAMACPP_DIR /
     $LLAMA_CPP_DIR → the in-repo fork submodule (packages/inference/llama.cpp,
     the single canonical llama.cpp checkout) → the standalone clone at
     ~/.cache/eliza-dflash/eliza-llama-cpp."""
     candidates: list[Path] = []
-    for var in ("MILADY_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
+    for var in ("ELIZA_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
         env = os.environ.get(var)
         if env:
             candidates.append(Path(env) / "convert_hf_to_gguf.py")
@@ -428,6 +428,10 @@ def _build_manifest(
             "batchSize": args.batch_size,
             "gradAccum": args.grad_accum,
             "lr": args.lr,
+            "optimizer": args.optimizer,
+            "apolloRank": args.apollo_rank,
+            "apolloScale": args.apollo_scale,
+            "apolloUpdateProjGap": args.apollo_update_proj_gap,
             "temperature": args.temperature,
             "ceWeight": args.ce_weight,
             "topKLogits": args.top_k_logits,
@@ -581,7 +585,34 @@ def _run_distillation(args: argparse.Namespace) -> int:
     loader = DataLoader(
         examples, batch_size=args.batch_size, shuffle=True, collate_fn=collate
     )
-    opt = torch.optim.AdamW(student.parameters(), lr=args.lr)
+    # IMPORTANT: Eliza-1 fine-tuning and drafter distillation use APOLLO only.
+    # APOLLO's projected optimizer state is what makes full-parameter updates
+    # practical on smaller GPUs where standard moment buffers do not fit.
+    try:
+        from training.optimizer import (
+            build_apollo_mini_optimizer,
+            build_apollo_optimizer,
+        )
+        if args.optimizer == "apollo":
+            opt = build_apollo_optimizer(
+                student,
+                lr=args.lr,
+                weight_decay=0.0,
+                rank=args.apollo_rank,
+                scale=args.apollo_scale,
+                update_proj_gap=args.apollo_update_proj_gap,
+            )
+        else:
+            opt = build_apollo_mini_optimizer(
+                student,
+                lr=args.lr,
+                weight_decay=0.0,
+            )
+    except ImportError as exc:
+        raise SystemExit(
+            "apollo-torch is required for DFlash drafter distillation; "
+            "install the training extra before running a real distillation."
+        ) from exc
     temperature = args.temperature
     ce_weight = args.ce_weight
     top_k = args.top_k_logits
@@ -648,7 +679,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
     drafter_gguf = out_dir / f"drafter-{args.tier}.gguf"
     if convert is None:
         log.warning(
-            "convert_hf_to_gguf.py not found (set MILADY_LLAMACPP_DIR). "
+            "convert_hf_to_gguf.py not found (set ELIZA_LLAMACPP_DIR). "
             "Skipping GGUF conversion — run it manually then re-run with "
             "--stamp-only --drafter-gguf %s --target-gguf <text gguf>.",
             drafter_gguf,
@@ -767,6 +798,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--grad-accum", type=int, default=4)
     p.add_argument("--lr", type=float, default=2e-4)
+    p.add_argument(
+        "--optimizer",
+        choices=("apollo", "apollo_mini"),
+        default="apollo_mini",
+        help="APOLLO optimizer variant. Drafter distillation is APOLLO-only.",
+    )
+    p.add_argument("--apollo-rank", type=int, default=256)
+    p.add_argument("--apollo-scale", type=float, default=1.0)
+    p.add_argument("--apollo-update-proj-gap", type=int, default=200)
     p.add_argument("--temperature", type=float, default=1.0)
     p.add_argument(
         "--ce-weight",
