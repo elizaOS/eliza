@@ -51,6 +51,16 @@ const hfModel: CatalogModel = {
   blurb: "Custom GGUF search result.",
 };
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 function renderSearch(
   overrides: { onDownload?: (model: CatalogModel) => void } = {},
 ) {
@@ -137,5 +147,51 @@ describe("CustomModelSearch", () => {
     expect(download.disabled).toBe(false);
     fireEvent.click(download);
     expect(onDownload).toHaveBeenCalledWith(msModel);
+  });
+
+  it("does not render a completed stale search while the next query is debouncing", async () => {
+    vi.useFakeTimers();
+    const first = deferred<{ models: CatalogModel[] }>();
+    const nextModel: CatalogModel = {
+      ...hfModel,
+      id: "hf:Meta/Llama-3.2-1B-GGUF::llama-3.2-1b-q4_k_m.gguf",
+      displayName: "Llama 3.2 1B GGUF",
+      hfRepo: "Meta/Llama-3.2-1B-GGUF",
+      ggufFile: "llama-3.2-1b-q4_k_m.gguf",
+      params: "1B",
+    };
+    const second = deferred<{ models: CatalogModel[] }>();
+    searchHuggingFaceGguf
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise);
+    renderSearch();
+
+    const input = screen.getByPlaceholderText(
+      "Search custom Hugging Face GGUF repos",
+    );
+    fireEvent.change(input, { target: { value: "qwen" } });
+    await act(async () => {
+      vi.advanceTimersByTime(450);
+      await Promise.resolve();
+    });
+
+    fireEvent.change(input, { target: { value: "llama" } });
+    await act(async () => {
+      first.resolve({ models: [hfModel] });
+      await first.promise;
+    });
+
+    expect(screen.queryByText("Qwen3.5 0.8B GGUF")).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(450);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      second.resolve({ models: [nextModel] });
+      await second.promise;
+    });
+
+    expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
   });
 });
