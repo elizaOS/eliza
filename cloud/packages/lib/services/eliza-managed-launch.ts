@@ -4,6 +4,7 @@ import { cache } from "@/lib/cache/client";
 import { OPENROUTER_DEFAULT_TEXT_MODEL } from "@/lib/models";
 import {
   type ManagedElizaEnvironmentResult,
+  type PrepareManagedElizaSharedEnvironmentParams,
   prepareManagedElizaSharedEnvironment,
   resolveCloudPublicUrl,
   resolveElizaAppUrl,
@@ -97,7 +98,11 @@ async function ensureManagedOnboarding(
   token: string,
   userApiKey: string,
 ): Promise<void> {
-  const statusResponse = await requestManagedAgent(apiBase, token, "/api/onboarding/status");
+  const statusResponse = await requestManagedAgent(
+    apiBase,
+    token,
+    "/api/onboarding/status",
+  );
 
   if (!statusResponse.ok) {
     throw new ManagedElizaLaunchError(
@@ -130,10 +135,15 @@ async function ensureManagedOnboarding(
     ],
   };
 
-  const onboardingResponse = await requestManagedAgent(apiBase, token, "/api/onboarding", {
-    method: "POST",
-    body: JSON.stringify(onboardingBody),
-  });
+  const onboardingResponse = await requestManagedAgent(
+    apiBase,
+    token,
+    "/api/onboarding",
+    {
+      method: "POST",
+      body: JSON.stringify(onboardingBody),
+    },
+  );
 
   if (!onboardingResponse.ok) {
     const text = await onboardingResponse.text().catch(() => "");
@@ -148,18 +158,19 @@ async function ensureManagedOnboarding(
   await requestManagedAgent(apiBase, token, "/api/agent/restart", {
     method: "POST",
   }).catch((error) => {
-    logger.warn("[agent-managed-launch] Agent restart after onboarding failed", {
-      agentId: sandbox.id,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn(
+      "[agent-managed-launch] Agent restart after onboarding failed",
+      {
+        agentId: sandbox.id,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
   });
 }
 
-export async function prepareManagedElizaEnvironment(params: {
-  existingEnv?: Record<string, string> | null;
-  organizationId: string;
-  userId: string;
-}): Promise<ManagedElizaEnvironmentResult> {
+export async function prepareManagedElizaEnvironment(
+  params: PrepareManagedElizaSharedEnvironmentParams,
+): Promise<ManagedElizaEnvironmentResult> {
   return prepareManagedElizaSharedEnvironment(params);
 }
 
@@ -176,7 +187,10 @@ export async function launchManagedElizaAgent(params: {
   organizationId: string;
   userId: string;
 }): Promise<ManagedLaunchResult> {
-  let sandbox = await elizaSandboxService.getAgent(params.agentId, params.organizationId);
+  let sandbox = await elizaSandboxService.getAgent(
+    params.agentId,
+    params.organizationId,
+  );
   if (!sandbox) {
     throw new ManagedElizaLaunchError("Agent not found", 404);
   }
@@ -185,6 +199,7 @@ export async function launchManagedElizaAgent(params: {
     existingEnv: sandbox.environment_vars,
     organizationId: params.organizationId,
     userId: params.userId,
+    agentSandboxId: sandbox.id,
   });
 
   if (managedEnvironment.changed) {
@@ -197,19 +212,29 @@ export async function launchManagedElizaAgent(params: {
     };
 
     if (sandbox.status === "running") {
-      const shutdownResult = await elizaSandboxService.shutdown(sandbox.id, params.organizationId);
+      const shutdownResult = await elizaSandboxService.shutdown(
+        sandbox.id,
+        params.organizationId,
+      );
       if (!shutdownResult.success) {
         throw new ManagedElizaLaunchError(
           shutdownResult.error || "Failed to refresh sandbox environment",
           shutdownResult.error === "Agent not found" ? 404 : 409,
         );
       }
-      sandbox = (await elizaSandboxService.getAgent(sandbox.id, params.organizationId)) ?? sandbox;
+      sandbox =
+        (await elizaSandboxService.getAgent(
+          sandbox.id,
+          params.organizationId,
+        )) ?? sandbox;
     }
   }
 
   if (sandbox.status !== "running" || !sandbox.health_url) {
-    const provisionResult = await elizaSandboxService.provision(sandbox.id, params.organizationId);
+    const provisionResult = await elizaSandboxService.provision(
+      sandbox.id,
+      params.organizationId,
+    );
 
     if (!provisionResult.success) {
       throw new ManagedElizaLaunchError(
@@ -237,7 +262,7 @@ export async function launchManagedElizaAgent(params: {
     sandbox,
     apiBase,
     managedEnvironment.apiToken,
-    managedEnvironment.userApiKey,
+    managedEnvironment.agentApiKey,
   );
 
   const connection: ManagedLaunchConnection = {

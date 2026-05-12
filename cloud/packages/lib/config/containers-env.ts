@@ -44,13 +44,19 @@ export const containersEnv = {
   /** SSH user for connecting to Docker nodes. Defaults to "root". */
   sshUser(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.ELIZA_SSH_USER) ?? "root";
+    return (
+      pick(env.CONTAINERS_SSH_USER, env.AGENT_SSH_USER, env.ELIZA_SSH_USER) ??
+      "root"
+    );
   },
 
   /** Docker network name created on every node. Containers attach to this. */
   dockerNetwork(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_DOCKER_NETWORK, env.AGENT_DOCKER_NETWORK) ?? "containers-isolated";
+    return (
+      pick(env.CONTAINERS_DOCKER_NETWORK, env.AGENT_DOCKER_NETWORK) ??
+      "containers-isolated"
+    );
   },
 
   /** Username used for Docker registry pulls on container nodes. */
@@ -80,7 +86,10 @@ export const containersEnv = {
   /** Filesystem path to a Docker registry token for container node pulls. */
   registryTokenFile(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_REGISTRY_TOKEN_FILE, env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE);
+    return pick(
+      env.CONTAINERS_REGISTRY_TOKEN_FILE,
+      env.ELIZA_APP_IMAGE_REGISTRY_TOKEN_FILE,
+    );
   },
 
   /**
@@ -89,7 +98,7 @@ export const containersEnv = {
    * without code changes.
    */
   defaultAgentImage(): string {
-    return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:latest";
+    return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:stable";
   },
 
   /** Explicit operator-pinned agent image, without the hardcoded fallback. */
@@ -133,7 +142,10 @@ export const containersEnv = {
   /** Application port baked into the canonical Eliza agent image. */
   agentPort(): string {
     const env = getCloudAwareEnv();
-    return pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT, env.ELIZA_AGENT_PORT) ?? "3000";
+    return (
+      pick(env.ELIZA_AGENT_PORT, env.AGENT_AGENT_PORT, env.ELIZA_AGENT_PORT) ??
+      "3000"
+    );
   },
 
   /** Bridge port the agent listens on inside the container (for agent-server bridge). */
@@ -157,7 +169,11 @@ export const containersEnv = {
   /** Hetzner Cloud API token for elastic node provisioning. Optional. */
   hetznerCloudToken(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.HCLOUD_TOKEN, env.HETZNER_CLOUD_TOKEN, env.HETZNER_CLOUD_API_KEY);
+    return pick(
+      env.HCLOUD_TOKEN,
+      env.HETZNER_CLOUD_TOKEN,
+      env.HETZNER_CLOUD_API_KEY,
+    );
   },
 
   /**
@@ -169,7 +185,10 @@ export const containersEnv = {
    */
   publicBaseDomain(): string | undefined {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_PUBLIC_BASE_DOMAIN, env.ELIZA_CLOUD_AGENT_BASE_DOMAIN);
+    return pick(
+      env.CONTAINERS_PUBLIC_BASE_DOMAIN,
+      env.ELIZA_CLOUD_AGENT_BASE_DOMAIN,
+    );
   },
 
   /**
@@ -189,7 +208,9 @@ export const containersEnv = {
    */
   defaultHcloudServerType(): string {
     const env = getCloudAwareEnv();
-    return pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "cpx32";
+    return (
+      pick(env.CONTAINERS_HCLOUD_SERVER_TYPE, env.HCLOUD_SERVER_TYPE) ?? "cpx32"
+    );
   },
 
   // ── Warm pool ───────────────────────────────────────────────────────────
@@ -214,7 +235,9 @@ export const containersEnv = {
     const env = getCloudAwareEnv();
     const raw = pick(env.WARM_POOL_MAX_SIZE);
     const parsed = raw ? Number(raw) : Number.NaN;
-    return Number.isFinite(parsed) && parsed >= 1 ? Math.min(50, Math.floor(parsed)) : 10;
+    return Number.isFinite(parsed) && parsed >= 1
+      ? Math.min(50, Math.floor(parsed))
+      : 10;
   },
 
   /**
