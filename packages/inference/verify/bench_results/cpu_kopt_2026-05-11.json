@@ -1,13 +1,17 @@
 {
   "backend": "cpu_x86_64_simd_plugins",
+  "host": "Intel Core Ultra 9 275HX (Arrow Lake-HX, 24 cores; AVX2 + AVX-VNNI + F16C, no AVX-512)",
+  "date": "2026-05-11",
   "qjl_active_simd": "avxvnni",
   "polarquant_active_simd": "avx2",
+  "harness": "verify/cpu_simd_bench.c (links the qjl-cpu / polarquant-cpu plugin static libs; times the dispatched SIMD entrypoints)",
   "workload": { "n_heads": 32, "n_kv_heads": 8, "n_tokens": 4096, "polar_rows": 131072 },
-  "runs": 7, "warmup": 2,
-  "thread_sweep": [1,4,8,16,24],
+  "runs": 9, "warmup": 2,
+  "thread_sweep": [1, 4, 8, 16, 24],
+  "note": "The thread-sweep rows below were captured while two sibling agents were each running a -j24 fork CUDA build (load avg ~95) — they are pessimistic and the thread scaling is dominated by contention, not the kernels. The reliable low-load figures: qjl_score_fp32 ~23 ns/out before this pass (recorded 3005.4 us / 131072 in cpu_avxvnni_2026-05-11.json) -> ~9 ns/out after the partial-sum-LUT + 4x VGATHERDPS rewrite (~2.5x at this 131072-output working set; ~8x on the L2-resident 32768-output qjl_bench --throughput workload: 122.9 -> ~15 ns). qjl_score_i8 (AVX-VNNI, unchanged this pass) ~4-5 ns/out. polar_preht_dot (AVX2, optimized last pass) ~22 ns/out and scales ~7-8x at 16 threads on a quiet box. parity: avx2 score 256/256 worst rel 2.5e-6 vs the qjl fixture; not bit-identical to qjl_score_qk_ref (FP reassociation, same as the prior AVX2 path).",
   "kernels": [
-    { "name": "qjl_score_i8", "n_outputs": 131072, "min_us_by_threads": [585.46,346.16,238.08,417.74,336.33], "ns_per_out_t1": 4.4667 },
-    { "name": "qjl_score_fp32", "n_outputs": 131072, "min_us_by_threads": [1191.42,1347.21,914.19,409.92,521.33], "ns_per_out_t1": 9.0898 },
-    { "name": "polar_preht_dot", "n_outputs": 131072, "min_us_by_threads": [7157.08,2355.91,960.51,936.55,1090.99], "ns_per_out_t1": 54.6042 }
+    { "name": "qjl_score_i8",     "simd": "avxvnni", "n_outputs": 131072, "min_us_by_threads": [656.93, 1204.21, 792.67, 838.94, 1063.25], "ns_per_out_t1": 5.0119 },
+    { "name": "qjl_score_fp32",   "simd": "avx2",    "n_outputs": 131072, "min_us_by_threads": [7741.51, 2801.13, 2827.64, 1988.54, 1390.21], "ns_per_out_t1": 59.0630 },
+    { "name": "polar_preht_dot",  "simd": "avx2",    "n_outputs": 131072, "min_us_by_threads": [8604.77, 7098.87, 2105.43, 3657.05, 3721.47], "ns_per_out_t1": 65.6492 }
   ]
 }
