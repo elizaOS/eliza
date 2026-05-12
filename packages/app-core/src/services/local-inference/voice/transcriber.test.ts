@@ -18,6 +18,7 @@ import {
   ASR_SAMPLE_RATE,
   AsrUnavailableError,
   createStreamingTranscriber,
+  FfiBatchTranscriber,
   FfiStreamingTranscriber,
   parseWhisperStdout,
   resampleLinear,
@@ -310,15 +311,109 @@ describe("createStreamingTranscriber — adapter chain", () => {
     t.dispose();
   });
 
-  it("falls through to the whisper adapter when the fused decoder is unavailable but a decoder is injected", () => {
-    const ffi = makeFakeFfi({ streamSupported: false });
+  it("selects the fused-batch interim when the fused build is loaded but advertises no streaming decoder", () => {
+    const ffi = makeFakeFfi({
+      streamSupported: false,
+      transcribe: () => "interim",
+    });
     const t = createStreamingTranscriber({
       ffi,
       getContext: () => 1n,
       asrBundlePresent: true,
+      // A whisper decoder is offered but must be ignored — the contract-clean
+      // fused-batch path takes priority over the second-ggml whisper adapter.
+      whisper: { decoder: async () => "fallback" },
+    });
+    expect(t).toBeInstanceOf(FfiBatchTranscriber);
+    t.dispose();
+  });
+
+  it("prefer=ffi-batch selects the fused-batch interim", () => {
+    const ffi = makeFakeFfi({
+      streamSupported: false,
+      transcribe: () => "interim",
+    });
+    const t = createStreamingTranscriber({
+      prefer: "ffi-batch",
+      ffi,
+      getContext: () => 1n,
+      asrBundlePresent: true,
+    });
+    expect(t).toBeInstanceOf(FfiBatchTranscriber);
+    t.dispose();
+    // No fused handle → ffi-batch is unavailable, hard error (no silent degrade).
+    expect(() => createStreamingTranscriber({ prefer: "ffi-batch" })).toThrow(
+      AsrUnavailableError,
+    );
+  });
+
+  it("falls through to the whisper legacy interim only when no fused handle is present", () => {
+    const t = createStreamingTranscriber({
+      // no ffi → fused-streaming and fused-batch both unavailable
       whisper: { decoder: async () => "fallback" },
     });
     expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
+    t.dispose();
+  });
+});
+
+describe("FfiBatchTranscriber — windowed batch ASR (interim)", () => {
+  it("commits a prefix in window-sized chunks and re-decodes only the tail; flush finalizes", async () => {
+    const calls: number[] = [];
+    const ffi = makeFakeFfi({
+      streamSupported: false,
+      transcribe: (pcm) => {
+        calls.push(pcm.length);
+        return "x";
+      },
+    });
+    const t = new FfiBatchTranscriber({
+      ffi,
+      getContext: () => 1n,
+      // small window so a couple of frames overflow it
+      windowSeconds: 1,
+      overlapSeconds: 0.25,
+      stepSeconds: 0.5,
+    });
+    // ~2.4 s of audio at 16 kHz, fed in 0.6 s frames → at least one commit + a tail decode.
+    for (let i = 0; i < 4; i++) {
+      t.feed({
+        pcm: new Float32Array(ASR_SAMPLE_RATE * 0.6).fill(0.05),
+        sampleRate: ASR_SAMPLE_RATE,
+        timestampMs: i * 600,
+      });
+    }
+    const final = await t.flush();
+    expect(typeof final.partial).toBe("string");
+    expect(final.isFinal).toBe(true);
+    // Every batch decode was bounded by ≈ window + overlap (≤ ~1.25 s), never the whole 2.4 s buffer.
+    expect(calls.length).toBeGreaterThan(0);
+    for (const n of calls) expect(n).toBeLessThanOrEqual(ASR_SAMPLE_RATE * 1.3);
+    t.dispose();
+  });
+
+  it("resamples non-16 kHz frames before the batch decode", async () => {
+    const fed: number[] = [];
+    const ffi = makeFakeFfi({
+      streamSupported: false,
+      transcribe: (pcm) => {
+        fed.push(pcm.length);
+        return "x";
+      },
+    });
+    const t = new FfiBatchTranscriber({
+      ffi,
+      getContext: () => 1n,
+      stepSeconds: 0.01,
+    });
+    // 48 kHz frame of 4800 samples (0.1 s) → ~1600 samples at 16 kHz.
+    t.feed({
+      pcm: new Float32Array(4800).fill(0.05),
+      sampleRate: 48_000,
+      timestampMs: 0,
+    });
+    await t.flush();
+    expect(fed.some((n) => n === 1600)).toBe(true);
     t.dispose();
   });
 });
@@ -430,6 +525,7 @@ function makeFakeFfi(opts: {
   partial?: () => { partial: string; tokens?: number[] };
   finish?: () => { partial: string; tokens?: number[] };
   onClose?: () => void;
+  transcribe?: (pcm: Float32Array) => string;
 }): ElizaInferenceFfi {
   let streamHandle = 0n;
   return {
@@ -448,7 +544,8 @@ function makeFakeFfi(opts: {
     ttsSynthesize: () => {
       throw new Error("not used");
     },
-    asrTranscribe: () => {
+    asrTranscribe: ({ pcm }) => {
+      if (opts.transcribe) return opts.transcribe(pcm);
       throw new Error("not used");
     },
     ttsStreamSupported: () => false,
@@ -457,6 +554,13 @@ function makeFakeFfi(opts: {
     },
     cancelTts: () => {},
     setVerifierCallback: () => ({ close: () => {} }),
+    vadSupported: () => false,
+    vadOpen: () => {
+      throw new Error("not used");
+    },
+    vadProcess: () => 0,
+    vadReset: () => {},
+    vadClose: () => {},
     asrStreamSupported: () => opts.streamSupported,
     asrStreamOpen: () => {
       streamHandle += 1n;
