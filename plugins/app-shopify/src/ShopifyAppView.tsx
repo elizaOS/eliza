@@ -47,7 +47,7 @@ function ShopifySetupCard() {
                 <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
                   Store domain
                 </div>
-                <div className="mt-1 font-mono text-xs text-txt">
+                <div className="mt-1 break-all font-mono text-xs text-txt">
                   SHOPIFY_STORE_DOMAIN=your-store.myshopify.com
                 </div>
               </div>
@@ -56,7 +56,7 @@ function ShopifySetupCard() {
                 <div className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted/70">
                   Access token
                 </div>
-                <div className="mt-1 font-mono text-xs text-txt">
+                <div className="mt-1 break-all font-mono text-xs text-txt">
                   SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx
                 </div>
               </div>
@@ -65,19 +65,19 @@ function ShopifySetupCard() {
 
           <p className="text-xs text-muted">
             Restart after setting these env vars. Required scopes:{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
+            <code className="break-all rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
               read_products
             </code>
             ,{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
+            <code className="break-all rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
               read_orders
             </code>
             ,{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
+            <code className="break-all rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
               read_inventory
             </code>
             , and{" "}
-            <code className="rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
+            <code className="break-all rounded bg-bg-accent px-1 py-0.5 font-mono text-2xs">
               read_customers
             </code>{" "}
             scopes.

@@ -3,6 +3,7 @@ import {
   Button,
   type CloudOAuthConnection,
   client,
+  isAppWindowRoute,
   isWebPlatform,
   openExternalUrl,
   PagePanel,
@@ -476,11 +477,13 @@ function LifeOpsWorkspaceInner() {
     select({ eventId, messageId });
   }, [eventId, messageId, select]);
   const appEnabled = lifeOpsApp.enabled;
+  const appWindowRoute =
+    typeof window !== "undefined" ? isAppWindowRoute(window.location) : false;
 
   const runtimeReady =
     startupCoordinator.phase === "ready" &&
-    agentStatus?.state === "running" &&
-    backendConnection?.state === "connected";
+    backendConnection?.state === "connected" &&
+    (agentStatus?.state === "running" || appWindowRoute);
 
   const loadGithub = useCallback(async () => {
     if (!appEnabled || !elizaCloudConnected) {
