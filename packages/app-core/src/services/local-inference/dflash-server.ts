@@ -589,6 +589,12 @@ export interface DflashBinaryCapabilities {
     ngramDraft: boolean;
   };
   binaries: string[];
+  /** True when the binary can load GGUFs with `general.architecture=dflash-draft`. */
+  dflashDraftArchitecture?: boolean;
+  /** GGUF architecture names the binary advertises as loadable. */
+  supportedArchitectures?: string[];
+  /** Draft-model GGUF architecture names the binary advertises as loadable. */
+  draftArchitectures?: string[];
   /**
    * True for `*-fused` targets — the omnivoice-grafted build where
    * `llama-server` links `omnivoice-core` and serves `/v1/audio/speech`
@@ -2728,17 +2734,20 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           binaryPath: status.binaryPath,
         });
         if (!compatibility.compatible) {
-          drafterEnabled = false;
-          disabledDrafterReason = compatibility.reason;
-          console.warn(
-            `[local-inference] DFlash drafter rejected before llama-server startup; launching target without -md so DFlash is not reported active. ${compatibility.reason}`,
+          throw new Error(
+            `[dflash] DFlash drafter rejected before llama-server startup; refusing to launch target-only because Eliza-1 requires DFlash. ${compatibility.reason}`,
           );
         }
       } catch (err) {
-        drafterEnabled = false;
+        if (
+          err instanceof Error &&
+          err.message.startsWith("[dflash] DFlash drafter rejected")
+        ) {
+          throw err;
+        }
         disabledDrafterReason = `could not validate DFlash drafter GGUF metadata (${err instanceof Error ? err.message : String(err)})`;
-        console.warn(
-          `[local-inference] DFlash drafter rejected before llama-server startup; launching target without -md so DFlash is not reported active. ${disabledDrafterReason}`,
+        throw new Error(
+          `[dflash] DFlash drafter rejected before llama-server startup; refusing to launch target-only because Eliza-1 requires DFlash. ${disabledDrafterReason}`,
         );
       }
     }
