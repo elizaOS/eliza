@@ -213,42 +213,39 @@ def _looks_like_hf_id(value: str) -> bool:
 
 
 def _load_causal_lm(source: str, *, dtype: Any, trust_remote_code: bool = True):
-    """Load a causal LM from an HF id or local dir, transparently unwrapping a
-    multimodal `*ForConditionalGeneration` (e.g. `Qwen3_5ForConditionalGeneration`)
-    to its text-only causal sub-model so the drafter is a pure text model."""
+    """Load a causal LM from an HF id or local dir.
+
+    Tries `AutoModelForCausalLM.from_pretrained` first — for `qwen3_5` the auto
+    map resolves the multimodal `Qwen3_5ForConditionalGeneration` to a model
+    that exposes an lm-head over the text decoder, which is exactly what we
+    need (the vision tower is allocated but unused — a small ~10M-param ViT,
+    cheap for a frozen target; the student we build separately from the text
+    config alone). If that fails (older transformers, no auto map), fall back
+    to building the text decoder from `text_config` and transplanting the
+    language-model weights from the full multimodal checkpoint."""
     from transformers import AutoConfig, AutoModel, AutoModelForCausalLM  # noqa: PLC0415
 
-    cfg = AutoConfig.from_pretrained(source, trust_remote_code=trust_remote_code)
-    archs = list(getattr(cfg, "architectures", None) or [])
-    is_conditional_gen = any(a.endswith("ForConditionalGeneration") for a in archs)
-    if is_conditional_gen and getattr(cfg, "text_config", None) is not None:
-        # Build the text decoder from `text_config` alone so we never touch the
-        # vision tower / MTP head — those are dead weight for a draft model.
-        text_cfg = cfg.text_config
-        model = AutoModelForCausalLM.from_config(
-            text_cfg, trust_remote_code=trust_remote_code, torch_dtype=dtype
-        )
-        full = AutoModel.from_pretrained(
+    try:
+        return AutoModelForCausalLM.from_pretrained(
             source, trust_remote_code=trust_remote_code, torch_dtype=dtype
         )
-        # The text submodule on a Qwen3.x-VL stack is `.model` (the language
-        # model); copy its weights into the standalone causal LM.
-        lm = getattr(full, "model", None) or getattr(full, "language_model", None)
-        if lm is not None:
-            missing, unexpected = model.model.load_state_dict(lm.state_dict(), strict=False)
-            if missing or unexpected:
-                log.warning(
-                    "text-submodel weight transfer: %d missing, %d unexpected keys",
-                    len(missing),
-                    len(unexpected),
-                )
-        del full
-        # Tied embeddings: re-tie after the transfer.
-        model.tie_weights()
-        return model.to(dtype=dtype)
-    return AutoModelForCausalLM.from_pretrained(
-        source, trust_remote_code=trust_remote_code, torch_dtype=dtype
-    )
+    except Exception as exc:  # noqa: BLE001 - many possible failure modes here
+        log.warning("AutoModelForCausalLM.from_pretrained(%s) failed (%s); trying text-config extraction", source, exc)
+
+    cfg = AutoConfig.from_pretrained(source, trust_remote_code=trust_remote_code)
+    text_cfg = getattr(cfg, "text_config", None)
+    if text_cfg is None:
+        raise RuntimeError(f"cannot load a causal LM from {source}: no text_config and AutoModelForCausalLM failed")
+    model = AutoModelForCausalLM.from_config(text_cfg, trust_remote_code=trust_remote_code, torch_dtype=dtype)
+    full = AutoModel.from_pretrained(source, trust_remote_code=trust_remote_code, torch_dtype=dtype)
+    lm = getattr(full, "language_model", None) or getattr(full, "model", None)
+    if lm is not None:
+        missing, unexpected = model.model.load_state_dict(lm.state_dict(), strict=False)
+        if missing or unexpected:
+            log.warning("text-submodel weight transfer: %d missing, %d unexpected keys", len(missing), len(unexpected))
+    del full
+    model.tie_weights()
+    return model.to(dtype=dtype)
 
 
 def _build_student_from_config(config_path: Path, *, dtype: Any, trust_remote_code: bool = True):
