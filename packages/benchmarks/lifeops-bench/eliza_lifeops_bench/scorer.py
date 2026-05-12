@@ -231,6 +231,131 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
 }
 
 
+# Read-only subactions per umbrella. Mirrors the runner's `_u_*` no-op
+# branches: any (umbrella, subaction) pair listed here does NOT mutate
+# LifeWorld, so the state hash trivially matches the seed regardless of
+# how correct the agent's call was. This is the source of the P0-8
+# inflation pattern (W5-foc / W5-msg / W5-mail): every read-only scenario
+# floor-scored 0.5+ on state_hash alone.
+#
+# `score_scenario` consults this map to re-weight reads so action
+# correctness dominates instead of state-hash. Keep in lockstep with
+# runner.py — when the runner gains a real mutation for a previously
+# no-op subaction, drop the entry from the matching frozenset.
+_READ_ONLY_SUBACTIONS: dict[str, frozenset[str]] = {
+    # CALENDAR: search_events, check_availability, next_event are pure
+    # queries; propose_times and update_preferences are runner no-ops
+    # (planner-config, not modeled in LifeWorld). create/update/delete_event
+    # mutate.
+    "CALENDAR": frozenset(
+        {
+            "search_events",
+            "check_availability",
+            "next_event",
+            "propose_times",
+            "update_preferences",
+        }
+    ),
+    # MESSAGE: every read-listing operation is a runner no-op. draft_reply
+    # for non-gmail sources is also a no-op but is omitted here because the
+    # GT typically uses source=gmail (which writes a draft); the partial
+    # no-op variant doesn't appear in any read-only scenario today.
+    "MESSAGE": frozenset(
+        {
+            "triage",
+            "search_inbox",
+            "list_channels",
+            "read_channel",
+            "read_with_contact",
+        }
+    ),
+    # ENTITY: log_interaction and list are no-ops; add and set_identity
+    # mutate the contact store.
+    "ENTITY": frozenset({"log_interaction", "list"}),
+    # LIFE: review/update/skip/list are no-ops in the runner because
+    # alarm definitions and skip logs aren't modeled. create/complete/snooze
+    # do mutate reminders. policy_* are configuration writes — treat as
+    # write so a wrong policy doesn't get the state-hash freebie.
+    "LIFE": frozenset({"review", "update", "skip", "list"}),
+    # HEALTH: every subaction is a read (runner is fully no-op).
+    "HEALTH": frozenset({"today", "trend", "trends", "by_metric", "status", "summary"}),
+    # MONEY: read verbs are all no-ops. subscription_cancel mutates
+    # when confirmed=True; add_source / remove_source / import_csv mutate.
+    "MONEY": frozenset(
+        {
+            "dashboard",
+            "list_sources",
+            "list_transactions",
+            "spending_summary",
+            "recurring_charges",
+            "subscription_audit",
+            "subscription_status",
+        }
+    ),
+    # BLOCK: focus blocks are not modeled in LifeWorld, so every BLOCK
+    # subaction is a no-op. This is the W5-foc inflation root cause.
+    "BLOCK": frozenset(
+        {
+            "block",
+            "unblock",
+            "status",
+            "request_permission",
+            "release",
+            "list_active",
+        }
+    ),
+    # BOOK_TRAVEL: every subaction is a no-op (no travel state modeled).
+    "BOOK_TRAVEL": frozenset({"search", "prepare", "book", "cancel", "hold"}),
+    # SCHEDULED_TASK: list/get/history are reads. The mutating verbs
+    # (create/update/snooze/skip/complete/etc.) actually persist via the
+    # reminders store, except create-without-seed which the runner also
+    # no-ops. Conservative: only the unambiguous reads land here.
+    "SCHEDULED_TASK": frozenset({"list", "get", "history"}),
+}
+
+
+def _is_read_only_action(action: Action) -> bool:
+    """True if the (canonical umbrella, subaction) is a runner no-op.
+
+    The caller should canonicalize first (`_canonicalize_action`) so this
+    sees the umbrella shape regardless of granular vs umbrella spelling.
+    """
+    reads = _READ_ONLY_SUBACTIONS.get(action.name)
+    if reads is None:
+        return False
+    field, _ = _UMBRELLA_SUBACTIONS.get(action.name, ("subaction", frozenset()))
+    sub = action.kwargs.get(field)
+    if isinstance(sub, str):
+        return sub in reads
+    return False
+
+
+def _classify_scenario_kind(scenario: Scenario) -> str:
+    """Classify a scenario as 'read', 'write', or 'mixed' from its GT actions.
+
+    A scenario is `read` only when EVERY ground-truth action canonicalizes
+    to a known read-only (umbrella, subaction) pair. Any unrecognized
+    name (or any known write) flips it to `write` / `mixed`. Scenarios
+    with no ground-truth actions stay `write` so we don't accidentally
+    re-weight LIVE-mode scoring.
+    """
+    if not scenario.ground_truth_actions:
+        return "write"
+    saw_read = False
+    saw_write = False
+    for action in scenario.ground_truth_actions:
+        canon = _canonicalize_action(action)
+        if _is_read_only_action(canon):
+            saw_read = True
+        else:
+            saw_write = True
+    if saw_read and not saw_write:
+        return "read"
+    if saw_write and not saw_read:
+        return "write"
+    return "mixed"
+
+
 # Owner-surface aliases. The personal-assistant front controller exposes a
 # parallel `OWNER_<AREA>_<VERB>` naming scheme; folding these into the
 # matching umbrella lets the scorer compare them against the canonical
@@ -517,8 +642,31 @@ def output_substring_match(
 def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
     """Compose state-hash + action-overlap + output-substring into a normalized score in [0, 1].
 
-    STATIC weighting: 0.5 state_hash + 0.4 action_score + 0.1 substring_score.
-    LIVE   weighting: 0.7 state_hash +                    0.3 substring_score.
+    STATIC weighting depends on whether the scenario's ground-truth
+    actions all canonicalize to runner-no-op reads:
+
+    * WRITE scenarios (at least one mutating GT action):
+          0.5 state_hash + 0.4 action_score + 0.1 substring_score.
+      State hash is the executor's verdict on whether the world ended up
+      where it was supposed to, so it's the dominant signal.
+
+    * READ scenarios (every GT action is a runner no-op like
+      CALENDAR/check_availability, MONEY/dashboard, HEALTH/today, …):
+          0.1 state_hash + 0.7 action_score + 0.2 substring_score.
+      The runner can't tell correct from incorrect read calls — both
+      replays produce identical state hashes. Re-weighting forces
+      action correctness to dominate so a malformed BLOCK or a
+      `source: gmail`-mismatched MESSAGE/read_with_contact actually
+      loses points instead of getting the 0.5 state_hash freebie.
+
+    * MIXED scenarios (some reads + some writes): split the difference,
+      keeping state_hash credibility for the write portion while
+      penalizing wrong reads — 0.35 state_hash + 0.5 action_score +
+      0.15 substring_score.
+
+    LIVE weighting (no GT actions, judged by world hash + judge):
+          0.7 state_hash + 0.3 substring_score.
+
     Errors / timeouts / cost overruns force 0.
     """
     if result.error is not None or result.terminated_reason in (
@@ -540,21 +688,31 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
     if scenario.mode is ScenarioMode.STATIC:
         predicted_actions = [a for turn in result.turns for a in turn.agent_actions]
         action_component = compare_actions(predicted_actions, scenario.ground_truth_actions)
-        if result.state_hash_match and action_component >= 0.5:
-            # The executor is the semantic authority for state-changing
-            # behavior. If the final world hash matches and the agent emitted
-            # structurally matching action names, kwarg spelling differences
-            # such as start_time vs details.start should not keep an otherwise
-            # successful trajectory below pass@1.
+
+        kind = _classify_scenario_kind(scenario)
+
+        # The state-hash → action promotion only makes sense for writes:
+        # on a write scenario the world ending up correct is strong
+        # evidence the agent's call did the right thing, even if kwarg
+        # spellings drift (e.g. `start_time` vs `details.start`). On a
+        # read scenario the state hash always matches trivially, so
+        # promoting partial action credit to full is exactly the
+        # inflation P0-8 exists to remove.
+        if (
+            kind == "write"
+            and result.state_hash_match
+            and action_component >= 0.5
+        ):
             action_component = 1.0
+
         # Triviality guard: when the scenario specifies ground-truth actions
         # but the agent's actions don't overlap them at all (action_component
         # == 0), drop the state-match AND substring credit. Otherwise
         # read-only scenarios where the gt actions are no-ops would give
         # every agent — including WrongAgent and a do-nothing refusal —
-        # the 0.5 state-match plus the 0.1 empty-substring "bonus" for
-        # free. The substring component defaults to 1.0 when
-        # `required_outputs` is empty, so the guard has to cover both.
+        # the state-match plus the empty-substring "bonus" for free. The
+        # substring component defaults to 1.0 when `required_outputs` is
+        # empty, so the guard has to cover both.
         #
         # Carve-out: if the agent emitted at least one structurally correct
         # action (name canonicalizes to a GT name), it isn't trivial — the
@@ -563,10 +721,18 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
         if scenario.ground_truth_actions and action_component == 0.0:
             state_component = 0.0
             substring_component = 0.0
+
+        if kind == "read":
+            state_weight, action_weight, substring_weight = 0.1, 0.7, 0.2
+        elif kind == "mixed":
+            state_weight, action_weight, substring_weight = 0.35, 0.5, 0.15
+        else:
+            state_weight, action_weight, substring_weight = 0.5, 0.4, 0.1
+
         return (
-            0.5 * state_component
-            + 0.4 * action_component
-            + 0.1 * substring_component
+            state_weight * state_component
+            + action_weight * action_component
+            + substring_weight * substring_component
         )
 
     return 0.7 * state_component + 0.3 * substring_component
