@@ -353,6 +353,23 @@ this HTTP-bench number alone.
 
 ## Training And Publishing Remaining Work
 
+**Master harness benchmark (2026-05-12):** one comparison run across every Eliza-1
+model + kernel artifact on this box — `packages/training/reports/eliza1-harness-benchmark-2026-05-12.{md,json}`,
+mirrored to the `elizaos/eliza-1-evals` HF dataset (`bench/`, top-level
+`harness-benchmark-2026-05-12.md`). Numbers: test-SFT 0_6b beat base on every text
+metric (`format_ok` 0.0857→0.20, `claude_distill` format 27.3→63.6%, `reply`
+parse-errs 8→0); CPU `llama-bench` d0 — test-SFT Q4_K_M 500 pp / 75.6 tg, eliza1-bundle
+0_6b Q3_K_M 331 / 77.7, q4_polar/Q8-body 432 / 61.1, 1_7b 219 / 39.6; RTX5080-Vulkan d0 —
+0_6b 3421 / 194, 1_7b 1317 / 112; dflash accept 0_6b 0.87 (clears 0.6) / 1_7b 0.55 (misses
+0.65); text-eval ppl→0..1 0_6b 0.2779 / 1_7b 0.328 (neither clears the gate — stand-in
+weights); voice RTF 8.62 / 5.91 (CPU stand-in TTS), ASR WER 1.0 (stand-in chain),
+guided-decode 28% forced-token (static); kernel-verify CPU pass / CUDA runtime-ready (8/8
+RTX 5080) / Vulkan pass / Metal needs-hardware. Pending: full-corpus SFT 0_6b in flight
+(ETA ~2026-05-13); 1_7b SFT re-running at seq 2048; action-selection + personality benches
+(need a live LLM provider + judge); d16k CPU/CUDA `llama-bench` sweep (CPU 16k-prompt too
+slow under SFT contention, CUDA build OOM'd — needs an idle host); real ASR WER (needs real
+WAV+.txt pairs + the tokenizer-fused Qwen3-ASR weights).
+
 - Keep base-lineage names internal to training. Public catalogs, manifests,
   model cards, and default UI must say Eliza-1. Internal registry keys may
   retain upstream lineage until checkpoint conversion is complete.
