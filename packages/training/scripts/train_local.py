@@ -253,10 +253,9 @@ def main() -> int:
         ):
             raise SystemExit(
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
-                "is an UNVERIFIED placeholder with no published checkpoint as of "
-                "2026-05; loading it will fail. Use a real key "
-                "(qwen3-0.6b / qwen3-1.7b / qwen3-4b → eliza-1-0_6b / eliza-1-1_7b / "
-                "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
+                "is flagged unverified_base — its hf_id does not resolve to a "
+                "published checkpoint; loading it will fail. Use a verified key, "
+                "pass an explicit --model <real-hf-id>, or set "
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
         if args.model == ap.get_default("model"):

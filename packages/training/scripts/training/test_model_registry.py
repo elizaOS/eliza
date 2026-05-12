@@ -1,12 +1,11 @@
 """Smoke tests for model_registry. CPU-only.
 
-The registry holds the eliza-1 size ladder. Three of the bases are real,
-published Qwen3 checkpoints we fine-tune from (0.6B / 1.7B / 4B → eliza-1-0_6b
-/ 1_7b / 4b); the larger three (qwen3.5-2b / qwen3.5-9b / qwen3.6-27b → eliza-1-
-2b / 9b / 27b) are planned tiers whose bases are not yet verified to exist
-(`unverified_base=True`). `eliza_short_name` / `eliza_repo_id` are filled for
-every entry — they're the planned HuggingFace repo names; the `unverified_base`
-flag is what signals "don't trust the base checkpoint yet".
+The registry holds the eliza-1 size ladder. The smaller three bases are
+the Qwen3 dense checkpoints (0.6B / 1.7B / 4B → eliza-1-0_6b / 1_7b / 4b);
+the larger three are the next-gen Qwen3.5/3.6 dense checkpoints
+(Qwen3.5-2B / Qwen3.5-9B / Qwen3.6-27B → eliza-1-2b / 9b / 27b). All six
+bases are published on the Hub. `eliza_short_name` / `eliza_repo_id` are
+filled for every entry — they're the HuggingFace repo names we publish to.
 """
 
 from __future__ import annotations
@@ -16,14 +15,14 @@ import pytest
 from scripts.training.model_registry import REGISTRY, Tier, by_tier, get, summary_table
 
 
-# Real-base tiers: published Qwen3 checkpoints, fine-tunable today.
-VERIFIED_KEYS = ("qwen3-0.6b", "qwen3-1.7b", "qwen3-4b")
-VERIFIED_PUBLIC_NAMES = ("eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-4b")
-# Larger tiers: planned, base checkpoint not yet verified.
-UNVERIFIED_KEYS = ("qwen3.5-2b", "qwen3.5-9b", "qwen3.6-27b")
-UNVERIFIED_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-9b", "eliza-1-27b")
-ALL_KEYS = VERIFIED_KEYS + UNVERIFIED_KEYS
-ALL_PUBLIC_NAMES = VERIFIED_PUBLIC_NAMES + UNVERIFIED_PUBLIC_NAMES
+# Smaller tiers: Qwen3 dense checkpoints.
+SMALL_KEYS = ("qwen3-0.6b", "qwen3-1.7b", "qwen3-4b")
+SMALL_PUBLIC_NAMES = ("eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-4b")
+# Larger tiers: Qwen3.5/3.6 dense checkpoints.
+LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-9b", "qwen3.6-27b")
+LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-9b", "eliza-1-27b")
+ALL_KEYS = SMALL_KEYS + LARGE_KEYS
+ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
 
 
 def test_registry_is_the_eliza_1_size_ladder() -> None:
@@ -40,18 +39,11 @@ def test_every_entry_has_publish_metadata() -> None:
         assert e.abliteration_repo_id == f"elizaos/{public}-uncensored"
 
 
-def test_verified_bases_are_not_flagged_unverified() -> None:
-    for key in VERIFIED_KEYS:
+def test_no_entry_is_flagged_unverified() -> None:
+    for key in ALL_KEYS:
         assert getattr(get(key), "unverified_base", False) is False, (
-            f"{key} base ({get(key).hf_id}) should be a real published checkpoint"
-        )
-
-
-def test_larger_bases_are_flagged_unverified() -> None:
-    for key in UNVERIFIED_KEYS:
-        assert getattr(get(key), "unverified_base", False) is True, (
-            f"{key} base ({get(key).hf_id}) is not a verified published checkpoint — "
-            "keep unverified_base=True until it is"
+            f"{key} base ({get(key).hf_id}) — every registry base is a published "
+            "checkpoint; nothing should carry unverified_base=True"
         )
 
 
@@ -123,7 +115,7 @@ def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
 def test_small_real_tiers_fit_a_consumer_gpu() -> None:
     """0.6B/1.7B/4B are the "fine-tune on one consumer GPU" tier — full-param
     APOLLO SFT, modest seq_len, single-GPU memory budgets."""
-    for key in VERIFIED_KEYS:
+    for key in SMALL_KEYS:
         e = get(key)
         assert e.tier == Tier.LOCAL
         assert e.seq_len <= 8192
