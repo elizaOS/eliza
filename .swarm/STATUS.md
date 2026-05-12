@@ -202,3 +202,90 @@ Per the brief: after each tier's gate report lands green, launch the next via `R
 ### FINALIZE-5 commits on `develop`
 - `5954c7731f` — training(eliza-1): finish wiring qwen3.5-{2b,4b,9b,27b}-Base + Qwen/Qwen3.5-27B (registry + run-on-cloud tier_to_registry_key + gates yaml 2b/4b blocks + tests).
 - `fef2d45500` — training(eliza-1): align with 2026-05-12 Qwen3.5-only directive (post-purge test/wrapper/schema reconciliation).
+
+## E2E-AUDIT punch items 7 + 8 — DONE (2026-05-12, this run)
+
+Closes audit items 7 (thread the `2b` tier through downstream
+enumerations) and 8 (execute the legacy-Qwen3 tier-drop decision per the
+2026-05-12 operator directive) from
+`packages/inference/reports/porting/2026-05-12/eliza1-e2e-audit-2026-05-12.md`.
+
+### Item 7 — `2b` tier through every downstream enumeration: **DONE**
+
+- `packages/shared/src/local-inference/catalog.ts` — added `eliza-1-2b`
+  to `ELIZA_1_TIER_IDS`, the `MODEL_CATALOG` entry (Qwen3.5-2B-Base
+  mid-local tier), the drafter companion, the `sourceModelForTier`
+  mapping.
+- `packages/app-core/src/services/local-inference/recommendation.ts` +
+  `packages/ui/src/services/local-inference/recommendation.ts` —
+  threaded `TIER_2B` through all six platform-class slot ladders;
+  ordered so the Qwen3.5 tiers (0_8b / 2b) lead the legacy Qwen3 tiers
+  (1_7b / 0_6b) on every platform.
+- `packages/app-core/src/services/local-inference/manifest/schema.ts`
+  — added `2b` (and `4b`) to `ELIZA_1_TIERS`,
+  `REQUIRED_KERNELS_BY_TIER`, `SUPPORTED_BACKENDS_BY_TIER`.
+- `packages/training/scripts/manifest/eliza1_manifest.py` — added
+  `2b` / `4b` to `ELIZA_1_TIERS`, `REQUIRED_KERNELS_BY_TIER`,
+  `SUPPORTED_BACKENDS_BY_TIER`, `VOICE_QUANT_BY_TIER`.
+- `packages/training/scripts/manifest/eliza1_platform_plan.py` —
+  added `2b` / `4b` to `TEXT_QUANT_BY_TIER`, `CONTEXTS_BY_TIER`, and
+  `REQUIRED_PLATFORM_EVIDENCE_BY_TIER` (small-tier desktop/mobile
+  matrix; CUDA stays out of the manifest layer until per-tier dispatch
+  reports land).
+- `packages/training/scripts/publish/publish_eliza1_all.py` — added
+  `2b` to `BUNDLE_TIERS` so the orchestrator dry-run reports its
+  publish status.
+
+### Item 8 — legacy-Qwen3 tier-drop decision executed: **DONE**
+
+Per the directive ("we're using qwen3.5 0.8 and 2b param, NOT the qwen3
+models"), the legacy Qwen3 dense bases were dropped from the training
+pipeline. The runtime catalog keeps the deprecated tier ids
+(`eliza-1-0_6b` / `eliza-1-1_7b` / `eliza-1-4b`) so existing user bundles
+and downloads still resolve — but no new SFT runs target them and the
+HF cards say DEPRECATED:
+
+- `packages/training/scripts/training/model_registry.py` — already
+  pruned to Qwen3.5-only by sibling commits. Verified the file's
+  intent matches (16/16 registry tests green).
+- `packages/shared/src/local-inference/catalog.ts` —
+  `FIRST_RUN_DEFAULT_MODEL_ID` flipped from `eliza-1-1_7b` to
+  `eliza-1-0_8b` (Qwen3.5-0.8B-Base, the new small default).
+- `packages/training/scripts/cloud/run-on-cloud.sh` — tier accept-list
+  drops `0_6b` / `1_7b` (no registry key to map them to); default
+  `TIER` flipped to `0_8b`; help block reflects the Qwen3.5 line.
+- `packages/training/scripts/publish/deprecate_legacy_qwen3_repos.py`
+  — new operator script; **executed against HF**: 11/14 repo cards
+  updated to DEPRECATED (`elizaos/eliza-1-{0_6b,1_7b,4b}` parent +
+  `eliza-1-{0_6b,1_7b}-{optimized,drafter,sft}` + `-0_6b-sft-weights`
+  + the `eliza-1-0_6b-sft` dataset marked DEPRECATED-NAME, since the
+  JSONL itself stays reusable on the Qwen3.5 line). The three
+  not-yet-created 4b-companion repos returned 404 and were skipped.
+- Per-test updates so `bun run test` stays green:
+  `recommendation.test.ts` (app-core + ui) — TEXT_SMALL/TEXT_LARGE
+  expectations flipped to the Qwen3.5 tiers;
+  `catalog.test.ts` (app-core + ui) — added `eliza-1-0_8b` /
+  `eliza-1-2b` to the contextLength tier matrix;
+  `auto-download-recommended.test.ts` (ui) — iOS 8 GB simulator now
+  lands on `eliza-1-2b` for TEXT_LARGE.
+
+### Commits on `develop` (this audit-item closeout)
+- `64aca9f6db` — feat(local-inference): add eliza-1-0_8b catalog tier
+  (committed by sibling at the start of this run; the 2b-tier
+  threading + ladder reorder + ELIZA_1_TIER_IDS expansion landed in
+  `d6c3055436` below).
+- `d6c3055436` — fix(ui): biome format recommendation.ts (eliza-1-0_8b
+  ladder) — also carries the broader 2b-threading + ladder reorder +
+  FIRST_RUN_DEFAULT_MODEL_ID flip + run-on-cloud / publish_eliza1_all /
+  manifest / platform-plan / model-registry test updates from this
+  agent's pass.
+- `34e315e621` — test(ui): wire eliza-1-2b into catalog.test + flip
+  auto-download-recommended to the Qwen3.5 mid tier.
+- `98e12f3e09` — training(publish): deprecate_legacy_qwen3_repos.py —
+  mark legacy Qwen3 HF repos DEPRECATED.
+
+### Verification
+- `bunx turbo run typecheck --filter=@elizaos/shared --filter=@elizaos/app-core --filter=@elizaos/ui` — 3/3 PASS.
+- `bunx vitest run packages/app-core/src/services/local-inference/{recommendation,active-model,readiness,catalog}.test.ts packages/ui/src/services/local-inference/{recommendation,catalog}.test.ts packages/ui/src/onboarding/auto-download-recommended.test.ts packages/app-core/scripts/eliza1-gates-yaml.test.ts` — 90/90 PASS.
+- `python3 -m pytest packages/training/scripts/{manifest,eval,publish,training/test_model_registry.py} packages/training/benchmarks` — 217/217 PASS.
+- HF deprecation: 11/14 cards uploaded (3 skipped: 4b-companion repos don't exist).
