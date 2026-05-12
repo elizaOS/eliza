@@ -5,6 +5,32 @@ export {
   type CancelSignal,
 } from "./barge-in";
 export {
+  type CheckpointHandle,
+  CheckpointHandleInvalidError,
+  CheckpointManager,
+  type CheckpointManagerLike,
+  type CheckpointManagerOptions,
+  MockCheckpointManager,
+  type MockCheckpointSnapshot,
+  type MockSnapshotSource,
+} from "./checkpoint-manager";
+export {
+  prefillOptimistic,
+  type PrefillOptimisticArgs,
+  type PrefillOptimisticOptions,
+  type PrefillOptimisticResult,
+} from "./prefill-client";
+export {
+  type DrafterAbortReason,
+  type DrafterHandle,
+  type StartDrafterFn,
+  VoiceStateMachine,
+  type VoiceStateMachineEvents,
+  type VoiceStateMachineOptions,
+  type VoiceState,
+  type VoiceStateEvent,
+} from "./voice-state-machine";
+export {
   buildLocalEmbeddingRoute,
   EMBEDDING_DIR_REL_PATH,
   EMBEDDING_FULL_DIM,

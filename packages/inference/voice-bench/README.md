@@ -59,10 +59,20 @@ fixtures by default and only writes WAVs when you ask it to.
 |---|---|---|
 | `short-turn` | 1.5 s utterance | Baseline TTFA on a healthy pipeline |
 | `long-turn` | 8 s utterance | Verifier coverage; no token drop |
-| `false-end-of-speech` | utterance with 400 ms mid-clause pause | Optimistic decode rollback |
+| `false-end-of-speech` | utterance with 400 ms mid-clause pause | Voice state machine `PAUSE_TENTATIVE → LISTENING` rollback (C1 discard) |
 | `barge-in` | utterance + overlay at t=3 s | Hard-stop within 200 ms |
+| `barge-in-mid-response` | utterance + overlay at t=5 s | Voice state machine `SPEAKING → LISTENING` rollback (C1 restore) |
 | `cold-start` | first turn on a fresh process | Load-side latency |
 | `warm-start` | second turn after prewarm | Steady-state TTFA |
+
+Rollback scenarios report two extra fields on top of the per-fixture
+`BenchMetrics`:
+
+- `rollbackCount` — number of `rollback-drop` events the pipeline emitted
+  (one per C1 discard or C1 restore).
+- `rollbackWasteTokens` — drafter tokens thrown away because the state
+  machine rolled back. The driver may supply this directly; otherwise the
+  harness sums `data.tokens` from each `rollback-drop` event.
 
 ## Eval gates
 
