@@ -33,7 +33,11 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
 )
 
+# `0_8b` is the new smallest tier on the Qwen3.5-0.8B backbone (the small
+# tiers move to the Qwen3.5 family); `0_6b` / `1_7b` are kept as a legacy
+# Qwen3 line — see packages/shared/src/local-inference/catalog.ts.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
+    "0_8b",
     "0_6b",
     "1_7b",
     "9b",
@@ -117,6 +121,7 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
 )
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "9b": (
@@ -150,6 +155,7 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("metal", "vulkan", "cpu"),
     "0_6b": ("metal", "vulkan", "cpu"),
     "1_7b": ("metal", "vulkan", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -163,6 +169,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
+    "0_8b": "Q4_K_M",
     "0_6b": "Q4_K_M",
     "1_7b": "Q4_K_M",
     "9b": "Q8_0",
