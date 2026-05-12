@@ -1,8 +1,8 @@
 import {
-  System,
   type AndroidRoleName,
   type AndroidRoleStatus,
   type DeviceSettingsStatus,
+  System,
   type SystemStatus,
   type SystemVolumeStatus,
   type SystemVolumeStream,
@@ -57,16 +57,20 @@ function roleStatusLabel(role: AndroidRoleStatus): string {
   return "Not assigned";
 }
 
-type SavingKey = "brightness" | `volume:${SystemVolumeStream}` | `role:${AndroidRoleName}` | null;
+type SavingKey =
+  | "brightness"
+  | `volume:${SystemVolumeStream}`
+  | `role:${AndroidRoleName}`
+  | null;
 
 export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
   const [deviceSettings, setDeviceSettings] =
     useState<DeviceSettingsStatus | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [brightness, setBrightness] = useState(0.75);
-  const [volumes, setVolumes] = useState<Partial<Record<SystemVolumeStream, number>>>(
-    {},
-  );
+  const [volumes, setVolumes] = useState<
+    Partial<Record<SystemVolumeStream, number>>
+  >({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<SavingKey>(null);
   const [error, setError] = useState<string | null>(null);
@@ -149,7 +153,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
             ),
           };
         });
-        setNotice(`${VOLUME_LABELS[volume.stream] ?? volume.stream} volume updated.`);
+        setNotice(
+          `${VOLUME_LABELS[volume.stream] ?? volume.stream} volume updated.`,
+        );
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -273,14 +279,18 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
             <div className="mt-5 flex flex-col gap-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted">Level</span>
-                <span className="font-mono text-txt">{percent(brightness)}%</span>
+                <span className="font-mono text-txt">
+                  {percent(brightness)}%
+                </span>
               </div>
               <input
                 type="range"
                 min={0}
                 max={100}
                 value={percent(brightness)}
-                onChange={(event) => setBrightness(Number(event.target.value) / 100)}
+                onChange={(event) =>
+                  setBrightness(Number(event.target.value) / 100)
+                }
                 className="w-full accent-info"
                 aria-label="Brightness"
                 data-testid="device-settings-brightness"
@@ -323,7 +333,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 <Settings className="h-5 w-5 text-muted" />
               </span>
               <div>
-                <h2 className="text-sm font-semibold text-txt">Android settings</h2>
+                <h2 className="text-sm font-semibold text-txt">
+                  Android settings
+                </h2>
                 <p className="text-xs text-muted">
                   Jump to the device panels that still require system UI.
                 </p>
@@ -397,7 +409,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                         ) : (
                           <Volume2 className="h-4 w-4 text-muted" />
                         )}
-                        <div className="text-sm font-medium text-txt">{label}</div>
+                        <div className="text-sm font-medium text-txt">
+                          {label}
+                        </div>
                       </div>
                       <div className="font-mono text-xs text-muted">
                         {streamPercent({ ...volume, current: value })}%
@@ -447,7 +461,9 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                 <ShieldCheck className="h-5 w-5 text-muted" />
               </span>
               <div>
-                <h2 className="text-sm font-semibold text-txt">Default roles</h2>
+                <h2 className="text-sm font-semibold text-txt">
+                  Default roles
+                </h2>
                 <p className="text-xs text-muted">
                   Manage Android system roles this device app can own.
                 </p>
@@ -478,7 +494,11 @@ export function DeviceSettingsAppView({ exitToApps, t }: OverlayAppContext) {
                     variant={role.held ? "ghost" : "outline"}
                     size="sm"
                     className="mt-3 w-full rounded-lg"
-                    disabled={!role.available || role.held || saving === `role:${role.role}`}
+                    disabled={
+                      !role.available ||
+                      role.held ||
+                      saving === `role:${role.role}`
+                    }
                     onClick={() => void requestRole(role.role)}
                     data-testid={`device-settings-request-role-${role.role}`}
                   >

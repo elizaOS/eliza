@@ -20,5 +20,5 @@ export const omnivoicePlugin: Plugin = {
 
 export default omnivoicePlugin;
 
-export type { Emotion } from "./types";
 export { OmnivoiceNotInstalled } from "./errors";
+export type { Emotion } from "./types";

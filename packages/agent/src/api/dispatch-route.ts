@@ -16,10 +16,10 @@
  */
 
 import { Buffer } from "node:buffer";
-import {
-  type IncomingMessage,
-  type IncomingHttpHeaders,
-  type ServerResponse,
+import type {
+  IncomingHttpHeaders,
+  IncomingMessage,
+  ServerResponse,
 } from "node:http";
 import { Readable } from "node:stream";
 
@@ -133,7 +133,9 @@ function buildLegacyShim(args: {
       return "";
     }
   })();
-  const readable = Readable.from(bodyText ? [Buffer.from(bodyText, "utf8")] : []);
+  const readable = Readable.from(
+    bodyText ? [Buffer.from(bodyText, "utf8")] : [],
+  );
   const req = readable as unknown as IncomingMessage & {
     query: Record<string, string | string[]>;
     params: Record<string, string>;
@@ -212,7 +214,8 @@ function buildLegacyShim(args: {
         json(data: unknown) {
           if (captured.ended) return;
           captured.headers["content-type"] =
-            captured.headers["content-type"] ?? "application/json; charset=utf-8";
+            captured.headers["content-type"] ??
+            "application/json; charset=utf-8";
           writeChunk(JSON.stringify(data));
           captured.ended = true;
         },

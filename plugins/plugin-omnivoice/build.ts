@@ -25,7 +25,9 @@ async function build() {
     console.error(nodeResult.logs);
     throw new Error("Node build failed");
   }
-  console.log(`Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`,
+  );
 
   console.log("Building @elizaos/plugin-omnivoice for Browser (stub)...");
   const browserStart = Date.now();
@@ -43,7 +45,9 @@ async function build() {
     console.error(browserResult.logs);
     throw new Error("Browser build failed");
   }
-  console.log(`Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
+  );
 
   console.log("Generating TypeScript declarations...");
   const dtsStart = Date.now();
@@ -66,9 +70,13 @@ async function build() {
     "dist/browser/index.d.ts",
     `export * from '../index';\nexport { default } from '../index';\n`,
   );
-  console.log(`Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `Declarations generated in ${((Date.now() - dtsStart) / 1000).toFixed(2)}s`,
+  );
 
-  console.log(`All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`);
+  console.log(
+    `All builds finished in ${((Date.now() - totalStart) / 1000).toFixed(2)}s`,
+  );
 }
 
 build().catch((err) => {

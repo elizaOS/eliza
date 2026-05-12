@@ -83,10 +83,9 @@ vi.mock("../chat-routes.ts", async () => {
 // `buildUserMessages` and other helpers in server-helpers.ts dive into runtime
 // internals; stub the surface the handler actually needs.
 vi.mock("../server-helpers.ts", async () => {
-  const actual =
-    await vi.importActual<typeof import("../server-helpers.ts")>(
-      "../server-helpers.ts",
-    );
+  const actual = await vi.importActual<typeof import("../server-helpers.ts")>(
+    "../server-helpers.ts",
+  );
   return {
     ...actual,
     buildUserMessages: vi.fn(({ prompt, userId, agentId, roomId }) => ({
@@ -118,11 +117,11 @@ vi.mock("../character-routes.ts", async () => {
   return actual;
 });
 
-import { handleConversationRoutes } from "../conversation-routes.ts";
 import type {
   ConversationRouteContext,
   ConversationRouteState,
 } from "../conversation-routes.ts";
+import { handleConversationRoutes } from "../conversation-routes.ts";
 
 interface MockResponseRecord {
   writes: string[];

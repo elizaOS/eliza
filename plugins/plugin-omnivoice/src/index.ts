@@ -15,8 +15,16 @@
  * GGUFs are large and out-of-band.
  */
 
-import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
-import { OmnivoiceModelMissing, OmnivoiceTranscriptionNotSupported } from "./errors";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  type Plugin,
+} from "@elizaos/core";
+import {
+  OmnivoiceModelMissing,
+  OmnivoiceTranscriptionNotSupported,
+} from "./errors";
 import { OmnivoiceContext } from "./ffi";
 import { registerOmnivoiceCloser } from "./shutdown";
 import { getSingingContext, runSingingSynthesis } from "./singing";
@@ -50,7 +58,9 @@ function getSetting(
   fallback?: string,
 ): string | undefined {
   const env =
-    typeof process !== "undefined" && process.env ? process.env[key] : undefined;
+    typeof process !== "undefined" && process.env
+      ? process.env[key]
+      : undefined;
   return (runtime.getSetting(key) as string | undefined) ?? env ?? fallback;
 }
 
@@ -62,7 +72,10 @@ function loadSettings(runtime: IAgentRuntime): RuntimeSettings {
     singingModelPath: getSetting(runtime, "OMNIVOICE_SINGING_MODEL_PATH"),
     lang: getSetting(runtime, "OMNIVOICE_LANG", "English"),
     instruct: getSetting(runtime, "OMNIVOICE_INSTRUCT"),
-    useFa: (getSetting(runtime, "OMNIVOICE_USE_FA", "true") ?? "true").toLowerCase() !== "false",
+    useFa:
+      (
+        getSetting(runtime, "OMNIVOICE_USE_FA", "true") ?? "true"
+      ).toLowerCase() !== "false",
   };
 }
 
@@ -82,10 +95,14 @@ export function closeSpeechContext(): void {
 
 registerOmnivoiceCloser(closeSpeechContext);
 
-async function getSpeechContext(settings: RuntimeSettings): Promise<OmnivoiceContext> {
+async function getSpeechContext(
+  settings: RuntimeSettings,
+): Promise<OmnivoiceContext> {
   if (speechCtx) return speechCtx;
-  if (!settings.modelPath) throw new OmnivoiceModelMissing("model_path", undefined);
-  if (!settings.codecPath) throw new OmnivoiceModelMissing("codec_path", undefined);
+  if (!settings.modelPath)
+    throw new OmnivoiceModelMissing("model_path", undefined);
+  if (!settings.codecPath)
+    throw new OmnivoiceModelMissing("codec_path", undefined);
   if (settings.libPath) {
     process.env.OMNIVOICE_LIB_PATH = settings.libPath;
   }
@@ -101,9 +118,11 @@ function buildSynthesisOptions(
   input: OmnivoiceTtsInput,
   settings: RuntimeSettings,
 ): OmnivoiceSynthesizeOptions {
-  const design: OmnivoiceVoiceDesign | undefined = input.design ?? (
-    input.emotion ? { emotion: input.emotion as OmnivoiceVoiceDesign["emotion"] } : undefined
-  );
+  const design: OmnivoiceVoiceDesign | undefined =
+    input.design ??
+    (input.emotion
+      ? { emotion: input.emotion as OmnivoiceVoiceDesign["emotion"] }
+      : undefined);
   return {
     text: input.text,
     lang: input.lang ?? settings.lang ?? "English",
@@ -135,7 +154,10 @@ export const omnivoicePlugin: Plugin = {
       let result;
       if (opts.singing) {
         if (!settings.singingModelPath || !settings.codecPath) {
-          throw new OmnivoiceModelMissing("model_path", settings.singingModelPath);
+          throw new OmnivoiceModelMissing(
+            "model_path",
+            settings.singingModelPath,
+          );
         }
         const ctx = await getSingingContext({
           modelPath: settings.singingModelPath,
@@ -147,7 +169,11 @@ export const omnivoicePlugin: Plugin = {
         const ctx = await getSpeechContext(settings);
         result = await runSynthesis(ctx, opts);
       }
-      return pcmFloatToWavBuffer(result.samples, result.sampleRate, result.channels);
+      return pcmFloatToWavBuffer(
+        result.samples,
+        result.sampleRate,
+        result.channels,
+      );
     },
     [ModelType.TRANSCRIPTION]: async (
       _runtime: IAgentRuntime,
@@ -160,17 +186,25 @@ export const omnivoicePlugin: Plugin = {
 
 export default omnivoicePlugin;
 
-export type { Emotion, OmnivoiceSynthesizeOptions, OmnivoiceVoiceDesign } from "./types";
-export { OmnivoiceContext } from "./ffi";
 export {
   OmnivoiceModelMissing,
   OmnivoiceNotInstalled,
   OmnivoiceSynthesisFailed,
   OmnivoiceTranscriptionNotSupported,
 } from "./errors";
-export { runSynthesis, pcmFloatToWavBuffer } from "./synth";
-export { runSingingSynthesis, getSingingContext, closeSingingContext } from "./singing";
+export { OmnivoiceContext } from "./ffi";
 export {
   closeOmnivoiceShutdown,
   registerOmnivoiceShutdownHooks,
 } from "./shutdown";
+export {
+  closeSingingContext,
+  getSingingContext,
+  runSingingSynthesis,
+} from "./singing";
+export { pcmFloatToWavBuffer, runSynthesis } from "./synth";
+export type {
+  Emotion,
+  OmnivoiceSynthesizeOptions,
+  OmnivoiceVoiceDesign,
+} from "./types";

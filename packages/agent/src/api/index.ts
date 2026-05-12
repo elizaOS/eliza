@@ -27,6 +27,10 @@ export * from "./connector-health.ts";
 export * from "./credit-detection.ts";
 export * from "./database.ts";
 export * from "./diagnostics-routes.ts";
+export {
+  type DispatchRouteArgs,
+  dispatchRoute,
+} from "./dispatch-route.ts";
 export * from "./documents-routes.ts";
 export * from "./documents-service-loader.ts";
 export * from "./early-logs.ts";
@@ -50,10 +54,6 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.ts";
-export {
-  dispatchRoute,
-  type DispatchRouteArgs,
-} from "./dispatch-route.ts";
 export * from "./subscription-routes.ts";
 export * from "./terminal-run-limits.ts";
 export * from "./training-backend-check.ts";
