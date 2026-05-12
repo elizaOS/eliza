@@ -938,7 +938,7 @@ function findPython(): string | null {
  */
 const serverHelpTextCache = new Map<string, string>();
 
-function llamaServerSupportsFlag(binaryPath: string, flag: string): boolean {
+function llamaServerHelpText(binaryPath: string): string {
   let helpText = serverHelpTextCache.get(binaryPath);
   if (helpText === undefined) {
     const result = spawnSync(binaryPath, ["--help"], {
@@ -949,7 +949,19 @@ function llamaServerSupportsFlag(binaryPath: string, flag: string): boolean {
     helpText = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
     serverHelpTextCache.set(binaryPath, helpText);
   }
-  return helpText.includes(flag);
+  return helpText;
+}
+
+/**
+ * Whether the installed llama-server advertises `flag` exactly — matched as
+ * a whole token so `--reasoning` does not falsely match `--reasoning-format`
+ * / `--reasoning-budget` (which is what newer builds carry instead).
+ */
+function llamaServerSupportsFlag(binaryPath: string, flag: string): boolean {
+  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|\\s)${escaped}(\\s|=|$)`, "m").test(
+    llamaServerHelpText(binaryPath),
+  );
 }
 
 function maybeRepairDflashDrafter(
@@ -2112,19 +2124,22 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       "--jinja",
     ];
     if (plan.disableThinking) {
-      // `--reasoning off` suppresses reasoning-token emission, but only newer
-      // llama-server builds parse it; older binaries reject the whole launch
-      // with `error: invalid argument: --reasoning`. The `enable_thinking`
-      // chat-template kwarg is the portable knob (the Qwen chat template reads
-      // it directly under `--jinja`), so always pass that and only add the
-      // `--reasoning` flag when the installed binary advertises it.
-      if (
-        status.binaryPath &&
-        llamaServerSupportsFlag(status.binaryPath, "--reasoning")
-      ) {
-        args.push("--reasoning", "off");
-      }
+      // The `enable_thinking` chat-template kwarg is the portable
+      // thinking-suppression knob — the Qwen chat template reads it directly
+      // under `--jinja`, so always pass that. The llama-server CLI knob for
+      // the same thing has changed shape across builds: very old forks took
+      // `--reasoning off`; current builds take `--reasoning-budget 0`. Passing
+      // a flag the installed binary doesn't parse aborts the entire launch
+      // (`error: invalid argument: --reasoning`), so each CLI knob is gated
+      // behind a `--help` capability probe.
       args.push("--chat-template-kwargs", '{"enable_thinking":false}');
+      if (status.binaryPath) {
+        if (llamaServerSupportsFlag(status.binaryPath, "--reasoning-budget")) {
+          args.push("--reasoning-budget", "0");
+        } else if (llamaServerSupportsFlag(status.binaryPath, "--reasoning")) {
+          args.push("--reasoning", "off");
+        }
+      }
     }
     const cacheTypeKSource = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim()
       ? "ELIZA_DFLASH_CACHE_TYPE_K"
