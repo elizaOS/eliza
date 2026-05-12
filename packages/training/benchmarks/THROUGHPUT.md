@@ -2,7 +2,7 @@
 
 Measured 2026-05-11 on an **RTX 5080 Laptop GPU** (16 GB, Blackwell sm_120,
 driver 580.142, CUDA 13.0 runtime / nvcc 12.0 toolkit) + an Intel Arrow Lake-U
-CPU (8 threads used). Historical model: `eliza-1-0_8b` (Qwen3.5-0.8B arch,
+CPU (8 threads used). Historical model: `eliza-1-0_6b` (Qwen3.5-0.6B arch,
 596 M params). This predates the Qwen3.5 tier migration; it is retained as a
 measurement record, not release evidence for the current `eliza-1-0_8b` tier.
 `run_pipeline.py` stage 6c writes a per-run `checkpoints/<run>/evals/throughput.json`
@@ -114,3 +114,29 @@ packages/inference/llama.cpp/build/bin/llama-bench \
 # As part of a pipeline run (writes evals/throughput.json):
 uv run --extra train python scripts/run_pipeline.py --registry-key qwen3.5-0.8b ... # stage 6c runs automatically
 ```
+
+## Depth scaling (fork CUDA build, `eliza-1-0_6b` Q8_0, f16 KV, idle GPU — measured 2026-05-11)
+
+| context depth | prefill (pp512) t/s | gen (tg128) t/s |
+|---:|---:|---:|
+| 0 | ~28 000 | ~399 |
+| 16 384 | ~6 350 | ~123 |
+| 65 536 | ~1 510 | ~39 |
+
+At 64 k tokens, gen falls to ~39 t/s — the f16 KV-cache reads (~64 k × 114.7 kB
+≈ 7.5 GB per token step on the 0.6 B) dominate. This is what the fork's KV
+compression targets: `qjl1_256` K (1-bit) + `tbq3_0` V (3-bit) ≈ 4× smaller
+cache ⇒ ≈ 4× the KV read bandwidth ⇒ roughly 4× the `tg` at long context
+(~150 t/s at 64 k instead of ~39), and it's the deciding factor for whether
+the long context fits in VRAM at all on a 16–24 GB card. Caveat: stock
+`llama-bench` rejects the fork's custom cache-type names (`-ctk qjl1_256` →
+"invalid parameter"); the fork's `llama-server` accepts them, and the
+inference team's e2e/kernel benches (`inference/cuda: RTX 5080 hardware
+verification`) measure these directly — or use `llama-cli --cache-type-k
+qjl1_256 --cache-type-v tbq3_0` + timing for a quick number.
+
+Note: the fork's own CUDA build (`~/.cache/eliza-dflash/milady-llama-cpp/
+build-cuda/`, `-j2`) benches at ~28 k pp / ~399 tg for the 0.6 B at depth 0 —
+on par with / slightly ahead of the stock CUDA build, so there's no
+custom-op dispatch penalty for standard-quant tensors. (An earlier run showing
+~64 tg was GPU-contended by a concurrent SFT; ignore it.)
