@@ -76,8 +76,7 @@ export function useProvisioningChat(
               {
                 id: generateId(),
                 role: "assistant",
-                content:
-                  "Your container is ready! Transferring you now...",
+                content: "Your container is ready! Transferring you now...",
               },
             ]);
           }

@@ -6,8 +6,8 @@
  * bridge URL and the caller transitions to the normal connect flow.
  */
 
-import * as React from "react";
 import { ChevronLeft } from "lucide-react";
+import * as React from "react";
 import { useProvisioningChat } from "../../hooks/useProvisioningChat";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -27,8 +27,14 @@ export function ProvisioningChatView({
   onContainerReady,
   onBack,
 }: ProvisioningChatViewProps) {
-  const { messages, sendMessage, containerStatus, bridgeUrl, isLoading, isContainerReady } =
-    useProvisioningChat({ agentId, cloudApiBase });
+  const {
+    messages,
+    sendMessage,
+    containerStatus,
+    bridgeUrl,
+    isLoading,
+    isContainerReady,
+  } = useProvisioningChat({ agentId, cloudApiBase });
 
   const [inputValue, setInputValue] = React.useState("");
   const messagesEndRef = React.useRef<HTMLDivElement>(null);
@@ -117,7 +123,9 @@ export function ProvisioningChatView({
             <ChevronLeft size={16} />
           </button>
         )}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+        <div
+          style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}
+        >
           {/* Pulsing dot */}
           <span
             style={{
@@ -126,7 +134,9 @@ export function ProvisioningChatView({
               height: "8px",
               borderRadius: "50%",
               backgroundColor: statusColor,
-              animation: isContainerReady ? "none" : "pulse 2s ease-in-out infinite",
+              animation: isContainerReady
+                ? "none"
+                : "pulse 2s ease-in-out infinite",
               flexShrink: 0,
             }}
           />
@@ -187,7 +197,10 @@ export function ProvisioningChatView({
                     : "1px solid rgba(255,255,255,0.12)",
                 fontSize: "12px",
                 lineHeight: "1.5",
-                color: msg.role === "user" ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.75)",
+                color:
+                  msg.role === "user"
+                    ? "rgba(255,255,255,0.9)"
+                    : "rgba(255,255,255,0.75)",
               }}
             >
               {msg.content}
@@ -218,7 +231,9 @@ export function ProvisioningChatView({
         <Input
           ref={inputRef}
           type="text"
-          placeholder={isContainerReady ? "Container ready!" : "Ask me anything..."}
+          placeholder={
+            isContainerReady ? "Container ready!" : "Ask me anything..."
+          }
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={handleKeyDown}
