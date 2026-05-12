@@ -23,7 +23,10 @@ import re
 import unicodedata
 from typing import Any
 
-from compactbench.scoring import run_check
+try:
+    from compactbench.scoring import run_check as _compactbench_run_check
+except ImportError:  # pragma: no cover - exercised only in lightweight test envs.
+    _compactbench_run_check = None
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _SPACE_RE = re.compile(r"\s+")
@@ -111,6 +114,40 @@ class ValidHitResult:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def run_check(expected: dict[str, Any], response: str) -> float:
+    """Run CompactBench's official check, with a lightweight local fallback."""
+
+    if _compactbench_run_check is not None:
+        return float(_compactbench_run_check(expected, response))
+    return _fallback_run_check(expected, response)
+
+
+def _fallback_run_check(expected: dict[str, Any], response: str) -> float:
+    check_type = str(expected.get("check", ""))
+    value = expected.get("value", "")
+    normalized_response = normalize_text(response)
+
+    if check_type == "contains_normalized":
+        return float(isinstance(value, str) and normalize_text(value) in normalized_response)
+
+    if check_type == "forbidden_absent":
+        return float(not (isinstance(value, str) and normalize_text(value) in normalized_response))
+
+    if check_type == "set_match":
+        raw_values = expected.get("values", [])
+        values = [candidate for candidate in raw_values if isinstance(candidate, str)]
+        if not values:
+            return 0.0
+        matches = sum(
+            1 for candidate in values if normalize_text(candidate) in normalized_response
+        )
+        return matches / len(values)
+
+    if isinstance(value, str):
+        return float(normalize_text(value) == normalized_response)
+    return 0.0
 
 
 def evaluate_valid_hit(expected: dict[str, Any], response: str) -> ValidHitResult:
