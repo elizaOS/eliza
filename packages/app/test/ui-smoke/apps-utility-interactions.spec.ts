@@ -56,7 +56,10 @@ function installIssueGuards(page: Page): string[] {
     const pathname = new URL(url).pathname;
     const failureText = request.failure()?.errorText ?? "";
     if (/\/api\/avatar\/(vrm|background)/.test(pathname)) return;
-    if (pathname === "/api/stream/settings" && failureText === "net::ERR_ABORTED") {
+    if (
+      pathname === "/api/stream/settings" &&
+      failureText === "net::ERR_ABORTED"
+    ) {
       return;
     }
     issues.push(`requestfailed: ${url} ${failureText}`);

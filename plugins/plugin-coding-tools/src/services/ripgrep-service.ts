@@ -1,7 +1,11 @@
 import { execFile } from "node:child_process";
 import { statSync } from "node:fs";
 import * as path from "node:path";
-import { type IAgentRuntime, Service, logger as coreLogger } from "@elizaos/core";
+import {
+  logger as coreLogger,
+  type IAgentRuntime,
+  Service,
+} from "@elizaos/core";
 import { CODING_TOOLS_LOG_PREFIX, RIPGREP_SERVICE } from "../types.js";
 
 const VCS_EXCLUDES = [".git", ".svn", ".hg", ".bzr", ".jj", ".sl"];
@@ -88,9 +92,12 @@ export class RipgrepService extends Service {
     if (options.maxCount && mode === "content") {
       args.push("-m", String(options.maxCount));
     }
-    if (options.contextBefore !== undefined) args.push("-B", String(options.contextBefore));
-    if (options.contextAfter !== undefined) args.push("-A", String(options.contextAfter));
-    if (options.contextAround !== undefined) args.push("-C", String(options.contextAround));
+    if (options.contextBefore !== undefined)
+      args.push("-B", String(options.contextBefore));
+    if (options.contextAfter !== undefined)
+      args.push("-A", String(options.contextAfter));
+    if (options.contextAround !== undefined)
+      args.push("-C", String(options.contextAround));
     for (const dir of VCS_EXCLUDES) {
       args.push("-g", `!${dir}/**`);
     }

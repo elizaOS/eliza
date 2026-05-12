@@ -113,7 +113,6 @@
       ],
       "descriptionCompressed": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
       "similes": [
-        "block out 2 hours for deep work",
         "SELFCONTROL",
         "SITE_BLOCKER",
         "HOSTS_BLOCK",
@@ -161,15 +160,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["compose_morning", "compose_evening", "compose_weekly"]
-          }
-        },
-        {
           "name": "period",
           "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
           "required": false,
@@ -204,7 +194,6 @@
           "params": {
             "BRIEF": {
               "action": "compose_morning",
-              "subaction": "compose_morning",
               "period": "today",
               "include": "example",
               "format": "narrative"
@@ -255,40 +244,6 @@
               "cursor_move",
               "cursor_hide",
               "autofill_login"
-            ]
-          }
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "back",
-              "click",
-              "close",
-              "forward",
-              "get",
-              "hide",
-              "navigate",
-              "open",
-              "press",
-              "reload",
-              "screenshot",
-              "show",
-              "snapshot",
-              "state",
-              "tab",
-              "type",
-              "wait",
-              "realistic-click",
-              "realistic-fill",
-              "realistic-type",
-              "realistic-press",
-              "cursor-move",
-              "cursor-hide",
-              "autofill-login"
             ]
           }
         },
@@ -445,7 +400,6 @@
         "CONTROL_BROWSER",
         "CONTROL_BROWSER_SESSION",
         "MANAGE_ELIZA_BROWSER_WORKSPACE",
-        "MANAGE_LIFEOPS_BROWSER",
         "NAVIGATE_SITE",
         "OPEN_SITE",
         "USE_BROWSER",
@@ -465,7 +419,6 @@
           "params": {
             "BROWSER": {
               "action": "back",
-              "subaction": "back",
               "tabAction": "close",
               "domain": "example",
               "username": "example",
@@ -950,15 +903,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["scan_today", "scan_week", "scan_event_proposal"]
-          }
-        },
-        {
           "name": "range",
           "description": "Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
           "required": false,
@@ -983,7 +927,6 @@
           "params": {
             "CONFLICT_DETECT": {
               "action": "scan_today",
-              "subaction": "scan_today",
               "range": "example",
               "proposal": "example"
             }
@@ -1848,15 +1791,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["list", "search", "summarize"]
-          }
-        },
-        {
           "name": "platforms",
           "description": "Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
           "required": false,
@@ -1900,7 +1834,6 @@
           "params": {
             "INBOX_UNIFIED": {
               "action": "list",
-              "subaction": "list",
               "platforms": "example",
               "since": "example",
               "limit": 1,
@@ -1971,15 +1904,6 @@
             "type": "string",
             "enum": ["install", "reveal_folder", "open_manager", "refresh"]
           }
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["install", "reveal_folder", "open_manager", "refresh"]
-          }
         }
       ],
       "descriptionCompressed": "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
@@ -2012,8 +1936,7 @@
           "actions": ["MANAGE_BROWSER_BRIDGE"],
           "params": {
             "MANAGE_BROWSER_BRIDGE": {
-              "action": "install",
-              "subaction": "install"
+              "action": "install"
             }
           }
         }
@@ -2048,30 +1971,6 @@
           "descriptionCompressed": "Action."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "connect",
-              "disconnect",
-              "goto",
-              "stop",
-              "look",
-              "control",
-              "waypoint_goto",
-              "dig",
-              "place",
-              "chat",
-              "attack",
-              "waypoint_set",
-              "waypoint_delete"
-            ]
-          },
-          "descriptionCompressed": "Legacy action alias."
-        },
-        {
           "name": "params",
           "description": "Optional JSON object containing the fields required by the chosen op.",
           "required": false,
@@ -2089,7 +1988,6 @@
           "params": {
             "MC": {
               "action": "connect",
-              "subaction": "connect",
               "params": "example"
             }
           }
@@ -2308,8 +2206,8 @@
           }
         },
         {
-          "name": "operation",
-          "description": "Structured routing operation when using set_routing (set_mode, start_route, …).",
+          "name": "routingAction",
+          "description": "Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
           "required": false,
           "schema": {
             "type": "string"
@@ -2422,7 +2320,7 @@
               "song": "example",
               "limit": 1,
               "confirmed": false,
-              "operation": "example",
+              "routingAction": "example",
               "mode": "example",
               "sourceId": "example",
               "targetIds": "example",
@@ -2545,22 +2443,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "request_signature",
-              "request_approval",
-              "track_deadline",
-              "upload_asset",
-              "collect_id",
-              "close_request"
-            ]
-          }
-        },
-        {
           "name": "documentRequestId",
           "description": "Existing DocumentRequest id. Required for track_deadline and close_request.",
           "required": false,
@@ -2658,7 +2540,6 @@
           "params": {
             "OWNER_DOCUMENTS": {
               "action": "request_signature",
-              "subaction": "request_signature",
               "documentRequestId": "example",
               "requesteeEntityId": "example",
               "documentTitle": "example",
@@ -2909,15 +2790,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Accepts place-order as place_order.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["read", "place_order", "place-order"]
-          }
-        },
-        {
           "name": "kind",
           "description": "read only: status | markets | market | positions | funding.",
           "required": false,
@@ -2969,7 +2841,6 @@
             "PERPETUAL_MARKET": {
               "target": "hyperliquid",
               "action": "read",
-              "subaction": "read",
               "kind": "status",
               "coin": "example",
               "side": "buy",
@@ -3067,15 +2938,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["rank_todos", "rank_threads", "rank_decisions"]
-          }
-        },
-        {
           "name": "subject",
           "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
           "required": false,
@@ -3109,7 +2971,6 @@
           "params": {
             "PRIORITIZE": {
               "action": "rank_todos",
-              "subaction": "rank_todos",
               "subject": "todos",
               "topN": 1,
               "criteria": "example"
@@ -3405,15 +3266,6 @@
           "descriptionCompressed": "Action."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "descriptionCompressed": "Legacy op alias."
-        },
-        {
           "name": "params",
           "description": "Optional JSON object containing the fields required by the chosen op.",
           "required": false,
@@ -3431,7 +3283,6 @@
           "params": {
             "RS_2004": {
               "action": "walk_to",
-              "subaction": "example",
               "params": "example"
             }
           }
@@ -3460,15 +3311,6 @@
             ]
           },
           "descriptionCompressed": "Action."
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "descriptionCompressed": "Legacy op alias."
         },
         {
           "name": "params",
@@ -3511,7 +3353,6 @@
           "params": {
             "SCAPE": {
               "action": "walk_to",
-              "subaction": "example",
               "params": "example"
             }
           }
@@ -4913,25 +4754,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "list",
-              "focus",
-              "switch",
-              "arrange",
-              "move",
-              "minimize",
-              "maximize",
-              "restore",
-              "close"
-            ]
-          }
-        },
-        {
           "name": "windowId",
           "description": "Window identifier.",
           "required": false,
@@ -4981,7 +4803,6 @@
           "params": {
             "WINDOW": {
               "action": "list",
-              "subaction": "list",
               "windowId": "example",
               "windowTitle": "example",
               "arrangement": "example",

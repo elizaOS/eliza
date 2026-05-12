@@ -2696,7 +2696,6 @@ export const allActionsSpec = {
       ],
       "descriptionCompressed": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
       "similes": [
-        "block out 2 hours for deep work",
         "SELFCONTROL",
         "SITE_BLOCKER",
         "HOSTS_BLOCK",
@@ -2751,20 +2750,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Canonical brief operation: compose_morning | compose_evening | compose_weekly."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "compose_morning",
-              "compose_evening",
-              "compose_weekly"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action. Prefer action for new planner output."
-        },
-        {
           "name": "period",
           "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
           "required": false,
@@ -2811,7 +2796,6 @@ export const allActionsSpec = {
           "params": {
             "BRIEF": {
               "action": "compose_morning",
-              "subaction": "compose_morning",
               "period": "today",
               "include": "example",
               "format": "narrative"
@@ -2865,41 +2849,6 @@ export const allActionsSpec = {
             ]
           },
           "descriptionCompressed": "Browser action to perform. Snake_case values are canonical. legacy kebab-case and subaction are also accepted."
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "back",
-              "click",
-              "close",
-              "forward",
-              "get",
-              "hide",
-              "navigate",
-              "open",
-              "press",
-              "reload",
-              "screenshot",
-              "show",
-              "snapshot",
-              "state",
-              "tab",
-              "type",
-              "wait",
-              "realistic-click",
-              "realistic-fill",
-              "realistic-type",
-              "realistic-press",
-              "cursor-move",
-              "cursor-hide",
-              "autofill-login"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action."
         },
         {
           "name": "tabAction",
@@ -3077,7 +3026,6 @@ export const allActionsSpec = {
         "CONTROL_BROWSER",
         "CONTROL_BROWSER_SESSION",
         "MANAGE_ELIZA_BROWSER_WORKSPACE",
-        "MANAGE_LIFEOPS_BROWSER",
         "NAVIGATE_SITE",
         "OPEN_SITE",
         "USE_BROWSER",
@@ -3099,7 +3047,6 @@ export const allActionsSpec = {
           "params": {
             "BROWSER": {
               "action": "back",
-              "subaction": "back",
               "tabAction": "close",
               "domain": "example",
               "username": "example",
@@ -3628,20 +3575,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Canonical conflict scan operation: scan_today | scan_week | scan_event_proposal."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "scan_today",
-              "scan_week",
-              "scan_event_proposal"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action. Prefer action for new planner output."
-        },
-        {
           "name": "range",
           "description": "Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
           "required": false,
@@ -3670,7 +3603,6 @@ export const allActionsSpec = {
           "params": {
             "CONFLICT_DETECT": {
               "action": "scan_today",
-              "subaction": "scan_today",
               "range": "example",
               "proposal": "example"
             }
@@ -4679,20 +4611,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Canonical inbox operation: list | search | summarize."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "list",
-              "search",
-              "summarize"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action. Prefer action for new planner output."
-        },
-        {
           "name": "platforms",
           "description": "Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",
           "required": false,
@@ -4742,7 +4660,6 @@ export const allActionsSpec = {
           "params": {
             "INBOX_UNIFIED": {
               "action": "list",
-              "subaction": "list",
               "platforms": "example",
               "since": "example",
               "limit": 1,
@@ -4822,21 +4739,6 @@ export const allActionsSpec = {
             ]
           },
           "descriptionCompressed": "Bridge management action. Use refresh for show/settings/status/connection-state requests. Use open_manager only for explicit chrome://extensions or..."
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "install",
-              "reveal_folder",
-              "open_manager",
-              "refresh"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action."
         }
       ],
       "descriptionCompressed": "Manage LifeOps Browser Bridge: refresh shows settings/status; install setup; reveal_folder build folder; open_manager chrome://extensions.",
@@ -4871,8 +4773,7 @@ export const allActionsSpec = {
           ],
           "params": {
             "MANAGE_BROWSER_BRIDGE": {
-              "action": "install",
-              "subaction": "install"
+              "action": "install"
             }
           }
         }
@@ -4907,30 +4808,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Action."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "connect",
-              "disconnect",
-              "goto",
-              "stop",
-              "look",
-              "control",
-              "waypoint_goto",
-              "dig",
-              "place",
-              "chat",
-              "attack",
-              "waypoint_set",
-              "waypoint_delete"
-            ]
-          },
-          "descriptionCompressed": "Legacy action alias."
-        },
-        {
           "name": "params",
           "description": "Optional JSON object containing the fields required by the chosen op.",
           "required": false,
@@ -4950,7 +4827,6 @@ export const allActionsSpec = {
           "params": {
             "MC": {
               "action": "connect",
-              "subaction": "connect",
               "params": "example"
             }
           }
@@ -5187,13 +5063,13 @@ export const allActionsSpec = {
           "descriptionCompressed": "Must be true when the underlying operation requires confirmation."
         },
         {
-          "name": "operation",
-          "description": "Structured routing operation when using set_routing (set_mode, start_route, …).",
+          "name": "routingAction",
+          "description": "Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
           "required": false,
           "schema": {
             "type": "string"
           },
-          "descriptionCompressed": "Structured routing operation when using set_routing (set_mode, start_route, …)."
+          "descriptionCompressed": "Structured routing action when using set_routing (set_mode, start_route, status, stop_route)."
         },
         {
           "name": "mode",
@@ -5314,7 +5190,7 @@ export const allActionsSpec = {
               "song": "example",
               "limit": 1,
               "confirmed": false,
-              "operation": "example",
+              "routingAction": "example",
               "mode": "example",
               "sourceId": "example",
               "targetIds": "example",
@@ -5457,23 +5333,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "request_signature",
-              "request_approval",
-              "track_deadline",
-              "upload_asset",
-              "collect_id",
-              "close_request"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action. Prefer action for new planner output."
-        },
-        {
           "name": "documentRequestId",
           "description": "Existing DocumentRequest id. Required for track_deadline and close_request.",
           "required": false,
@@ -5588,7 +5447,6 @@ export const allActionsSpec = {
           "params": {
             "OWNER_DOCUMENTS": {
               "action": "request_signature",
-              "subaction": "request_signature",
               "documentRequestId": "example",
               "requesteeEntityId": "example",
               "documentTitle": "example",
@@ -5879,20 +5737,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Perpetual market operation: read or place_order."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Accepts place-order as place_order.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "read",
-              "place_order",
-              "place-order"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action. Accepts place-order as place_order."
-        },
-        {
           "name": "kind",
           "description": "read only: status | markets | market | positions | funding.",
           "required": false,
@@ -5960,7 +5804,6 @@ export const allActionsSpec = {
             "PERPETUAL_MARKET": {
               "target": "hyperliquid",
               "action": "read",
-              "subaction": "read",
               "kind": "status",
               "coin": "example",
               "side": "buy",
@@ -6069,20 +5912,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Canonical prioritization operation: rank_todos | rank_threads | rank_decisions."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action. Prefer action for new planner output.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "rank_todos",
-              "rank_threads",
-              "rank_decisions"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action. Prefer action for new planner output."
-        },
-        {
           "name": "subject",
           "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
           "required": false,
@@ -6125,7 +5954,6 @@ export const allActionsSpec = {
           "params": {
             "PRIORITIZE": {
               "action": "rank_todos",
-              "subaction": "rank_todos",
               "subject": "todos",
               "topN": 1,
               "criteria": "example"
@@ -6455,15 +6283,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Action."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "descriptionCompressed": "Legacy op alias."
-        },
-        {
           "name": "params",
           "description": "Optional JSON object containing the fields required by the chosen op.",
           "required": false,
@@ -6483,7 +6302,6 @@ export const allActionsSpec = {
           "params": {
             "RS_2004": {
               "action": "walk_to",
-              "subaction": "example",
               "params": "example"
             }
           }
@@ -6512,15 +6330,6 @@ export const allActionsSpec = {
             ]
           },
           "descriptionCompressed": "Action."
-        },
-        {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string"
-          },
-          "descriptionCompressed": "Legacy op alias."
         },
         {
           "name": "params",
@@ -6565,7 +6374,6 @@ export const allActionsSpec = {
           "params": {
             "SCAPE": {
               "action": "walk_to",
-              "subaction": "example",
               "params": "example"
             }
           }
@@ -8142,26 +7950,6 @@ export const allActionsSpec = {
           "descriptionCompressed": "Window operation verb."
         },
         {
-          "name": "subaction",
-          "description": "Legacy alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "list",
-              "focus",
-              "switch",
-              "arrange",
-              "move",
-              "minimize",
-              "maximize",
-              "restore",
-              "close"
-            ]
-          },
-          "descriptionCompressed": "Legacy alias for action."
-        },
-        {
           "name": "windowId",
           "description": "Window identifier.",
           "required": false,
@@ -8223,7 +8011,6 @@ export const allActionsSpec = {
           "params": {
             "WINDOW": {
               "action": "list",
-              "subaction": "list",
               "windowId": "example",
               "windowTitle": "example",
               "arrangement": "example",

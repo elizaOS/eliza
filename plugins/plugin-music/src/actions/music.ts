@@ -528,9 +528,9 @@ export const musicAction: Action = {
       schema: { type: "boolean", default: false },
     },
     {
-      name: "operation",
+      name: "routingAction",
       description:
-        "Structured routing operation when using set_routing (set_mode, start_route, …).",
+        "Structured routing action when using set_routing (set_mode, start_route, status, stop_route).",
       required: false,
       schema: { type: "string" },
     },

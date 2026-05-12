@@ -183,10 +183,13 @@ function resolveTarget(
   if (fromParams) return fromParams;
   const subactionRaw = params.action ?? params.subaction;
   const fromSubaction = inferTargetFromSubaction(
-    typeof subactionRaw === "string" ? subactionRaw.trim().toLowerCase() : undefined,
+    typeof subactionRaw === "string"
+      ? subactionRaw.trim().toLowerCase()
+      : undefined,
   );
   if (fromSubaction) return fromSubaction;
-  const text = typeof message.content?.text === "string" ? message.content.text : "";
+  const text =
+    typeof message.content?.text === "string" ? message.content.text : "";
   return inferTargetFromText(text);
 }
 
@@ -243,7 +246,10 @@ const examples: ActionExample[][] = [
     },
   ],
   [
-    { name: "{{name1}}", content: { text: "Is there a website block running?" } },
+    {
+      name: "{{name1}}",
+      content: { text: "Is there a website block running?" },
+    },
     {
       name: "{{agentName}}",
       content: {
@@ -362,13 +368,15 @@ export const blockAction: Action & {
     },
     {
       name: "ruleId",
-      description: "(target=website, action=release) ID of the managed block rule to release.",
+      description:
+        "(target=website, action=release) ID of the managed block rule to release.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
-      description: "(target=website, action=release) Optional reason recorded on the rule when released.",
+      description:
+        "(target=website, action=release) Optional reason recorded on the rule when released.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -424,7 +432,7 @@ export const blockAction: Action & {
     if (!target) {
       return {
         success: false,
-        text: "BLOCK requires `target: \"app\"` or `target: \"website\"`.",
+        text: 'BLOCK requires `target: "app"` or `target: "website"`.',
         data: { actionName: ACTION_NAME, error: "MISSING_TARGET" },
       };
     }

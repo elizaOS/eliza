@@ -167,14 +167,26 @@ function launchIosSimulatorApp() {
   return { udid, installed: true };
 }
 
-function writeDefaultsString(plistPath, key, value) {
+function writeIosDefaultsString(udid, domain, key, value) {
   // Capacitor Preferences stores the default group as `CapacitorStorage.<key>`
   // in iOS UserDefaults. The JS API strips that prefix; simulator pre-seed has
-  // to write the native key directly because the app is not running yet.
+  // to write the native key directly because the app is not running yet. Use
+  // the simulator's `defaults` tool so the same cfprefsd domain that the app's
+  // UserDefaults.standard reads is updated.
   const nativeKey = `CapacitorStorage.${key}`;
   requireExec(
-    "defaults",
-    ["write", plistPath, nativeKey, "-string", value],
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "write",
+      domain,
+      nativeKey,
+      "-string",
+      value,
+    ],
     `Failed to write iOS preference ${key}.`,
   );
 }
@@ -190,17 +202,6 @@ function flushIosPreferencesCache(udid) {
 }
 
 function preseedIosLocalRuntime(udid, id) {
-  const dataContainer = requireExec(
-    "xcrun",
-    ["simctl", "get_app_container", udid, id, "data"],
-    `Failed to locate ${id} data container on ${udid}.`,
-  );
-  const preferencesPlist = path.join(
-    dataContainer,
-    "Library",
-    "Preferences",
-    `${id}.plist`,
-  );
   const activeServer = JSON.stringify({
     id: "local:mobile",
     kind: "remote",
@@ -209,9 +210,9 @@ function preseedIosLocalRuntime(udid, id) {
   });
 
   tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
-  writeDefaultsString(preferencesPlist, "eliza:mobile-runtime-mode", "local");
-  writeDefaultsString(preferencesPlist, "eliza:onboarding-complete", "1");
-  writeDefaultsString(preferencesPlist, "elizaos:active-server", activeServer);
+  writeIosDefaultsString(udid, id, "eliza:mobile-runtime-mode", "local");
+  writeIosDefaultsString(udid, id, "eliza:onboarding-complete", "1");
+  writeIosDefaultsString(udid, id, "elizaos:active-server", activeServer);
   flushIosPreferencesCache(udid);
   console.log(
     `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
