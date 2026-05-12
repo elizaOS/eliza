@@ -2647,6 +2647,14 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
  * baseline by exporting `RESPONSE_TASK_BASELINE_INSTRUCTIONS` from this
  * module if needed.
  */
+// This prompt runs ONLY when the structured response-handler stage failed
+// to produce a parseable plan and the runtime fell back to a plain
+// direct reply (`generateDirectReplyOnce`). It is the LAST line of defence
+// against the model fabricating tool-execution outcomes — at this point
+// no tool / sub-agent / action has run this turn, so the model must not
+// claim otherwise. The "you have not executed" rule is factual, not
+// regex-on-output: it describes the actual state of the turn the model
+// is replying to.
 const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"task: Write one direct reply to the user.",
 	"",
@@ -2654,6 +2662,8 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- answer directly in the agent's voice",
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
+	"- you have NOT executed any tools, actions, or sub-agents on this turn — do not claim to have done so",
+	"- if the user asked you to perform an action you cannot complete in plain text, say you couldn't run it this turn and ask them to try again",
 ].join("\n");
 
 async function generateDirectReplyOnce(args: {
