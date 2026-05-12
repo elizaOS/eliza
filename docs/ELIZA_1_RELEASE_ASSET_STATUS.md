@@ -167,6 +167,39 @@ green in this checkout.
     kernel-verify are **not** there — no hardware yet.
   - **Voice/ASR/VAD** — [`elizaos/eliza-1-assets`](https://huggingface.co/elizaos/eliza-1-assets)
     (frozen `1_7b` voice/ASR/VAD bytes), unchanged.
+  - **Full `elizaos/*` repo set (as of 2026-05-12, refreshed by the HF-publish agent):**
+    bundle repos `elizaos/eliza-1-{0_6b,1_7b,9b,27b,27b-256k,27b-1m}` (the
+    `27b*` three are SKELETON — honest "STATUS: pending — blocked on the
+    fork-built GGUFs + hardware evidence" card + a manifest skeleton with the
+    per-component lineage; the auto-publish path fills them); raw-fine-tune
+    repos `elizaos/eliza-1-{0_6b,1_7b,9b,27b}-sft` (pending cards — auto-publish
+    on a green SFT gate; the 0.6b test-SFT candidate lives at
+    `eliza-1-0_6b-sft-weights`); fused-kernel single-GGUF repos
+    `elizaos/eliza-1-{0_6b,1_7b,9b,27b}-optimized` (renamed off the legacy
+    `-milady-optimized` infix; pending cards); DFlash drafter companion repos
+    `elizaos/eliza-1-{0_6b,1_7b,9b,27b}-drafter` (renamed off `-milady-drafter`;
+    pending cards); datasets `elizaos/eliza-1-{training,0_6b-sft,sft-0_6b,evals}`
+    (`eliza-1-0_6b-sft` is canonical, refreshed with the structured_decode +
+    voice_emotion + tool_use tasks; `eliza-1-sft-0_6b` is a pointer alias;
+    `eliza-1-evals` refreshed with `eliza1_gates.yaml`/`.py` thresholds).
+    `huggingface_hub` ≥ 1.x ships `hf` not `huggingface-cli`; `scripts/hf-transfer-eliza1.sh`
+    auto-detects either. The `milady-ai/*` → `elizaos/*` org transfer is a
+    **no-op** — `milady-ai` has no Eliza-1 model/dataset repos to move (the
+    pre-rename pipeline never uploaded there, or they were moved earlier);
+    `scripts/hf-transfer-eliza1.sh --execute` ran cleanly (all "skipped: not
+    found"; the canonical `elizaos/eliza-1-<tier>` repos `repo create --exist-ok`).
+  - **Auto-publish hook:** `packages/training/scripts/run_pipeline.py` stage 7
+    now auto-selects the publish channel (`recommended` if the held-out
+    text-quality gate is green, else `base-v1`), passes `--base-v1`/
+    `--metal-verification` to `scripts.publish.orchestrator`, and emits a clear
+    `published: <url>` / `blocked: <gate>` line. A red eval gate already aborts
+    at stage 4b before quantize. `bun run publish:eliza1` (= `packages/training/
+    scripts/publish/publish_eliza1_all.py`) publishes everything-currently-
+    publishable (the SFT datasets + the evals) and prints a PUBLISHED/PENDING
+    summary with the per-tier orchestrator-dry-run verdict for the gated bundles;
+    `bun run publish:eliza1:dry-run` reports without pushing. Tests:
+    `python3 -m pytest packages/training/scripts/{test_hf_publish.py,publish/,manifest/,test_publish_eliza1_dataset_candidate.py}` →
+    157 passed, 1 skipped.
   No production `base-v1` bundle weights have been pushed to any
   `elizaos/eliza-1-<tier>` main revision — the full-corpus SFT + the
   fork-build + the hardware-evidence work produce those. The fine-tuned
@@ -174,7 +207,12 @@ green in this checkout.
   only fine-tune runs present
   (`packages/training/checkpoints/eliza-1-{0_6b,1_7b}-apollo-*`) are
   smoke/slice-mode with FAILED absolute gates (`format_ok` 0.2–0.33 < 0.5
-  floor) — published only as the `eliza-1-0_6b-sft-weights` candidate.
+  floor) — published only as the `eliza-1-0_6b-sft-weights` candidate. The
+  0.6b full-corpus APOLLO SFT run (`checkpoints/eliza-1-0_6b-apollo-fullcorpus-*`)
+  is at ~checkpoint-1000 with no `final/` checkpoint yet (no live trainer process
+  observed); `eliza-1-0_6b-sft` (model weights) + the `eliza-1-0_6b` bundle
+  auto-publish the moment that run produces a `final/` checkpoint with a green
+  `gate_report.json` that beats the `Qwen3-0.6B` baseline.
 - DFlash drafters staged + stamped for `0_6b`/`1_7b`: `dflash/drafter-<tier>.gguf`
   (the `Qwen/Qwen3-0.6B` substitute), `qwen3` arch, plain-AR shape, shared
   151,936-token vocab with the `tokenizer.ggml.merges` repair intact,
