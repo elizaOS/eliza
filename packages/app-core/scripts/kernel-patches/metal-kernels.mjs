@@ -548,7 +548,7 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
-        /* tokens_per_threadgroup = */ 32u,
+        /* tokens_per_threadgroup = */ milady_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
     };`,
     );
     upgraded = upgraded.replace(
@@ -650,7 +650,7 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
-        /* tokens_per_threadgroup = */ 32u,
+        /* tokens_per_threadgroup = */ milady_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_qjl(lib);
