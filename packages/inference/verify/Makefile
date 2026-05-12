@@ -661,6 +661,14 @@ cpu-dispatch-smoke:
 	$(CC) -O2 -I"$(GGML_INC_DIR)" qjl_mt_check.c -o qjl_mt_check \
 	  -L"$(CPU_BIN_DIR)" -lggml-cpu -lggml-base -lggml -lm -Wl,-rpath,"$(CPU_BIN_DIR)"
 	LD_LIBRARY_PATH="$(CPU_BIN_DIR)" ./qjl_mt_check
+	# QJL/Polar K/V -> F16 cast -> flash_attn_ext regression smoke.
+	# Guards the fix in elizaOS/llama.cpp src/llama-graph.cpp (commit cb700767)
+	# which dequantizes the K-cache-only QJL1_256/Q4_POLAR types before
+	# the generic flash_attn_ext path that would otherwise call a NULL
+	# kq_vec_dot fn-ptr and segfault.
+	$(CC) -O2 -I"$(GGML_INC_DIR)" cpu_qjl_polar_attn_smoke.c -o cpu_qjl_polar_attn_smoke \
+	  -L"$(CPU_BIN_DIR)" -lggml-cpu -lggml-base -lggml -lm -Wl,-rpath,"$(CPU_BIN_DIR)"
+	LD_LIBRARY_PATH="$(CPU_BIN_DIR)" ./cpu_qjl_polar_attn_smoke
 
 # Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
 # and the fork's in-tree shaders. Both ship the same kernel symbols and decode
