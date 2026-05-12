@@ -121,6 +121,7 @@ def initialize_database(conn: sqlite3.Connection) -> None:
             turn_index INTEGER NOT NULL,
             prompt_tokens INTEGER NOT NULL DEFAULT 0,
             completion_tokens INTEGER NOT NULL DEFAULT 0,
+            total_tokens INTEGER NOT NULL DEFAULT 0,
             cached_tokens INTEGER NOT NULL DEFAULT 0,
             cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
             latency_ms REAL,
@@ -140,6 +141,13 @@ def initialize_database(conn: sqlite3.Connection) -> None:
         CREATE INDEX IF NOT EXISTS idx_benchmark_run_trajectories_run
             ON benchmark_run_trajectories(run_id);
         """
+    )
+    conn.commit()
+    _ensure_column(
+        conn,
+        "benchmark_run_trajectories",
+        "total_tokens",
+        "INTEGER NOT NULL DEFAULT 0",
     )
     conn.commit()
     ensure_comparison_id_column(conn)
@@ -448,11 +456,12 @@ def replace_run_trajectories(
                 turn_index,
                 prompt_tokens,
                 completion_tokens,
+                total_tokens,
                 cached_tokens,
                 cache_creation_tokens,
                 latency_ms,
                 prompt_chars
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -461,6 +470,13 @@ def replace_run_trajectories(
                     int(row.get("turn_index") or row.get("index") or 0),
                     int(row.get("prompt_tokens") or 0),
                     int(row.get("completion_tokens") or 0),
+                    int(
+                        row.get("total_tokens")
+                        or (
+                            int(row.get("prompt_tokens") or 0)
+                            + int(row.get("completion_tokens") or 0)
+                        )
+                    ),
                     int(row.get("cached_tokens") or 0),
                     int(row.get("cache_creation_tokens") or 0),
                     _float_or_none(row.get("latency_ms")),
