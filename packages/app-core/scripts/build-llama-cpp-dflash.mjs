@@ -662,6 +662,59 @@ target_include_directories(ggml-base PRIVATE ggml-cpu ggml-cpu/qjl ggml-cpu/qjl/
   );
 }
 
+// The current elizaOS/llama.cpp pin carries a Q1_0 copy/paste drift in
+// ggml-quants.c: the second Q1_0 reference quantizer should be the g32
+// variant declared in ggml-quants.h and used by quantize_q1_0_g32().
+// Keep this as a build-source patch so every clean submodule reset produces a
+// compilable fork without relying on untracked submodule edits.
+function patchGgmlQ1G32Quantizer(cacheDir, { dryRun = false } = {}) {
+  const quantsPath = path.join(cacheDir, "ggml", "src", "ggml-quants.c");
+  if (!fs.existsSync(quantsPath)) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: ${quantsPath} missing — fork layout broken`,
+    );
+  }
+  const original = fs.readFileSync(quantsPath, "utf8");
+  if (original.includes("void quantize_row_q1_0_g32_ref(")) {
+    return;
+  }
+  const marker = "// reference implementation for deterministic creation of model files\nvoid quantize_row_q1_0_ref(";
+  const first = original.indexOf(marker);
+  const second = first >= 0 ? original.indexOf(marker, first + marker.length) : -1;
+  if (first < 0 || second < 0) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: duplicate q1_0_ref anchor not found in ${quantsPath}`,
+    );
+  }
+  const nextMarker = original.indexOf(
+    "// reference implementation for deterministic creation of model files\nvoid quantize_row_q4_0_ref(",
+    second + marker.length,
+  );
+  if (nextMarker < 0) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: q4_0 anchor not found after duplicate q1_0_ref in ${quantsPath}`,
+    );
+  }
+  const before = original.slice(0, second);
+  const duplicate = original.slice(second, nextMarker);
+  const after = original.slice(nextMarker);
+  const g32 = duplicate
+    .replace("void quantize_row_q1_0_ref(", "void quantize_row_q1_0_g32_ref(")
+    .replace("block_q1_0 * GGML_RESTRICT y", "block_q1_0_g32 * GGML_RESTRICT y")
+    .replace("static const int qk = QK1_0;", "static const int qk = QK1_0_g32;");
+  if (g32 === duplicate) {
+    throw new Error(
+      `[dflash-build] patchGgmlQ1G32Quantizer: replacement did not modify duplicate q1_0_ref in ${quantsPath}`,
+    );
+  }
+  if (!dryRun) {
+    fs.writeFileSync(quantsPath, before + g32 + after, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched ggml-quants.c duplicate q1_0_ref into q1_0_g32_ref",
+  );
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -1455,6 +1508,7 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchDflashDrafterArchImpl(cacheDir, { dryRun });
   // Wave A1: mirror the verified standalone QJL CPU SIMD TUs (AVX-VNNI int8
   // score path, ARMv8.4 dotprod, runtime-cpuid dispatcher) over the fork's
