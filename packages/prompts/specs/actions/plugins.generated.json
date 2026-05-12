@@ -3,7 +3,7 @@
   "actions": [
     {
       "name": "BLOCK",
-      "description": "Block or unblock specific phone apps (Family Controls / Usage Access) ",
+      "description": "Block or unblock specific phone apps (Family Controls / Usage Access) and ",
       "parameters": [
         {
           "name": "target",
@@ -111,7 +111,7 @@
           }
         }
       ],
-      "descriptionCompressed": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+      "descriptionCompressed": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
       "similes": [
         "block out 2 hours for deep work",
         "WEBSITE_BLOCKER",
@@ -528,11 +528,12 @@
         },
         {
           "name": "title",
-          "description": "Event title when creating a calendar event.",
+          "description": "Event title when creating a calendar event. TOP-LEVEL (flat) field — ",
           "required": false,
           "schema": {
             "type": "string"
-          }
+          },
+          "descriptionCompressed": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
         },
         {
           "name": "query",
@@ -619,7 +620,7 @@
               }
             }
           },
-          "descriptionCompressed": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only"
+          "descriptionCompressed": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. "
         },
         {
           "name": "durationMinutes",
