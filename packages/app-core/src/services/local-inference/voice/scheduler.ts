@@ -1,4 +1,5 @@
 import { BargeInController } from "./barge-in";
+import { inferenceTelemetry } from "../inference-telemetry";
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import { PhraseCache } from "./phrase-cache";
 import { PhraseChunker } from "./phrase-chunker";
@@ -570,6 +571,23 @@ export class VoiceScheduler {
           samples: pcm.length,
           sampleRate: chunk.sampleRate,
         });
+        // T2 — emit per-chunk metrics so consumers can detect whether TTS is
+        // streaming short chunks (good) or batching whole phrases (bad). The
+        // backend constructor name is the cheapest available identity label
+        // without threading a separate config field.
+        const chunkDurationMs =
+          chunk.sampleRate > 0
+            ? (pcm.length / chunk.sampleRate) * 1000
+            : 0;
+        const ttsBackendName = backend.constructor.name;
+        inferenceTelemetry.record("tts.chunk_size_ms", chunkDurationMs, {
+          backend: ttsBackendName,
+        });
+        inferenceTelemetry.record(
+          "tts.chunk_size_bytes",
+          pcm.length * 4, // Float32: 4 bytes per sample
+          { backend: ttsBackendName },
+        );
         this.commitAudio(
           {
             phraseId: phrase.id,

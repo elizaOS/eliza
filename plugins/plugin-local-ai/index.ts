@@ -1066,7 +1066,7 @@ export const localAiPlugin: Plugin = {
       logger.warn("- LOCAL_SMALL_MODEL: Path to small language model file");
       logger.warn("- LOCAL_LARGE_MODEL: Path to large language model file");
       logger.warn("- LOCAL_EMBEDDING_MODEL: Path to embedding model file");
-      logger.warn("Example: LOCAL_SMALL_MODEL=text/eliza-1-mobile-1_7b-32k.gguf");
+      logger.warn("Example: LOCAL_SMALL_MODEL=text/eliza-1-2b-32k.gguf");
     }
 
     const modelsDir = config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");

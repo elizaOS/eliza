@@ -59,36 +59,36 @@ export interface ModelSpecs {
 
 export const MODEL_SPECS: ModelSpecs = {
   small: {
-    name: "text/eliza-1-mobile-1_7b-32k.gguf",
-    repo: "elizaos/eliza-1-mobile-1_7b",
-    size: "1.7B",
+    name: "text/eliza-1-2b-32k.gguf",
+    repo: "elizaos/eliza-1",
+    size: "2B",
     quantization: "fused GGUF",
     contextSize: 32768,
     tokenizer: {
-      name: "elizaos/eliza-1-mobile-1_7b",
+      name: "elizaos/eliza-1",
       type: "eliza1",
     },
   },
   medium: {
-    name: "text/eliza-1-desktop-9b-64k.gguf",
-    repo: "elizaos/eliza-1-desktop-9b",
+    name: "text/eliza-1-9b-64k.gguf",
+    repo: "elizaos/eliza-1",
     size: "9B",
     quantization: "fused GGUF",
     contextSize: 65536,
     tokenizer: {
-      name: "elizaos/eliza-1-desktop-9b",
+      name: "elizaos/eliza-1",
       type: "eliza1",
     },
   },
   embedding: {
-    name: "text/eliza-1-lite-0_6b-32k.gguf",
-    repo: "elizaos/eliza-1-lite-0_6b",
+    name: "text/eliza-1-0_8b-32k.gguf",
+    repo: "elizaos/eliza-1",
     size: "512 MB",
     quantization: "fused GGUF",
     contextSize: 32768,
     dimensions: 1024,
     tokenizer: {
-      name: "elizaos/eliza-1-lite-0_6b",
+      name: "elizaos/eliza-1",
       type: "eliza1",
     },
   },

@@ -54,8 +54,8 @@ def test_v2_yaml_loads() -> None:
     assert doc["gates"]["thirty_turn_ok"]["op"] == "bool"
     # Structural parsable-output gate (full mode only).
     assert doc["gates"]["format_ok"]["op"] == ">="
-    assert doc["tiers"]["0_6b"]["format_ok"]["threshold"] == 0.70
-    assert doc["tiers"]["0_6b"]["format_ok"]["required"] is True
+    assert doc["tiers"]["0_8b"]["format_ok"]["threshold"] == 0.70
+    assert doc["tiers"]["0_8b"]["format_ok"]["required"] is True
 
 
 def test_normalize_tier() -> None:

@@ -92,21 +92,21 @@
         "type": "string",
         "description": "Filename of the small local AI model.",
         "required": false,
-        "default": "text/eliza-1-mobile-1_7b-32k.gguf",
+        "default": "text/eliza-1-2b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_LARGE_MODEL": {
         "type": "string",
         "description": "Filename of the large local AI model.",
         "required": false,
-        "default": "text/eliza-1-desktop-9b-64k.gguf",
+        "default": "text/eliza-1-9b-64k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL": {
         "type": "string",
         "description": "Filename of the embedding model used for vector embeddings.",
         "required": false,
-        "default": "text/eliza-1-lite-0_6b-32k.gguf",
+        "default": "text/eliza-1-0_8b-32k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_DIMENSIONS": {

@@ -1,0 +1,1362 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Eliza Onboarding Reimagined Prototype</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        --sky-0: #1d91e8;
+        --sky-1: #47b8ff;
+        --sky-2: #9bdcff;
+        --orange: #ff8a24;
+        --orange-soft: rgba(255, 138, 36, 0.22);
+        --white: #ffffff;
+        --black: #06131f;
+        --ink: rgba(6, 19, 31, 0.84);
+        --line: rgba(255, 255, 255, 0.26);
+        --glass: rgba(255, 255, 255, 0.18);
+        --glass-strong: rgba(255, 255, 255, 0.78);
+        --shadow: 0 28px 90px rgba(3, 28, 58, 0.28);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        background: var(--sky-0);
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        overflow-x: hidden;
+        background: var(--sky-0);
+        color: var(--white);
+        font-family: "Open Sans", Arial, sans-serif;
+        letter-spacing: 0;
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      button {
+        border: 0;
+        cursor: pointer;
+      }
+
+      .sky {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 76% 18%, rgba(255, 255, 255, 0.35), transparent 18rem),
+          linear-gradient(180deg, #1178da 0%, var(--sky-1) 52%, var(--sky-2) 100%);
+        z-index: -3;
+      }
+
+      .sky::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+        background-size: 48px 48px;
+        opacity: 0.12;
+        mask-image: linear-gradient(to bottom, transparent, black 16%, transparent 92%);
+      }
+
+      .cloud-lane {
+        position: absolute;
+        left: -55vw;
+        width: 210vw;
+        height: 34vh;
+        min-height: 210px;
+        background-repeat: repeat-x;
+        transform: translate3d(0, 0, 0);
+        will-change: transform;
+        pointer-events: none;
+      }
+
+      .clouds-a {
+        top: 8vh;
+        opacity: 0.42;
+        filter: blur(0.4px);
+        animation: drift-a 92s linear infinite;
+        background-size: 520px 220px;
+        background-image:
+          radial-gradient(ellipse at 12% 60%, rgba(255, 255, 255, 0.9) 0 28px, transparent 29px),
+          radial-gradient(ellipse at 23% 48%, rgba(255, 255, 255, 0.92) 0 42px, transparent 43px),
+          radial-gradient(ellipse at 34% 58%, rgba(255, 255, 255, 0.82) 0 34px, transparent 35px),
+          radial-gradient(ellipse at 48% 45%, rgba(255, 255, 255, 0.72) 0 58px, transparent 59px),
+          radial-gradient(ellipse at 66% 63%, rgba(255, 255, 255, 0.75) 0 38px, transparent 39px);
+      }
+
+      .clouds-b {
+        top: 42vh;
+        opacity: 0.34;
+        animation: drift-b 128s linear infinite;
+        background-size: 720px 260px;
+        background-image:
+          radial-gradient(ellipse at 8% 64%, rgba(255, 255, 255, 0.82) 0 36px, transparent 37px),
+          radial-gradient(ellipse at 18% 54%, rgba(255, 255, 255, 0.8) 0 58px, transparent 59px),
+          radial-gradient(ellipse at 33% 67%, rgba(255, 255, 255, 0.7) 0 42px, transparent 43px),
+          radial-gradient(ellipse at 54% 52%, rgba(255, 255, 255, 0.78) 0 72px, transparent 73px),
+          radial-gradient(ellipse at 76% 64%, rgba(255, 255, 255, 0.62) 0 52px, transparent 53px);
+      }
+
+      .clouds-c {
+        bottom: -3vh;
+        opacity: 0.72;
+        animation: drift-c 156s linear infinite;
+        background-size: 880px 300px;
+        background-image:
+          radial-gradient(ellipse at 7% 82%, rgba(255, 255, 255, 0.92) 0 58px, transparent 59px),
+          radial-gradient(ellipse at 19% 75%, rgba(255, 255, 255, 0.86) 0 86px, transparent 87px),
+          radial-gradient(ellipse at 37% 84%, rgba(255, 255, 255, 0.82) 0 64px, transparent 65px),
+          radial-gradient(ellipse at 57% 78%, rgba(255, 255, 255, 0.88) 0 92px, transparent 93px),
+          radial-gradient(ellipse at 82% 84%, rgba(255, 255, 255, 0.82) 0 70px, transparent 71px);
+      }
+
+      @keyframes drift-a {
+        from {
+          transform: translate3d(0, 0, 0);
+        }
+        to {
+          transform: translate3d(-520px, 0, 0);
+        }
+      }
+
+      @keyframes drift-b {
+        from {
+          transform: translate3d(0, 0, 0);
+        }
+        to {
+          transform: translate3d(-720px, 0, 0);
+        }
+      }
+
+      @keyframes drift-c {
+        from {
+          transform: translate3d(0, 0, 0);
+        }
+        to {
+          transform: translate3d(-880px, 0, 0);
+        }
+      }
+
+      .app {
+        width: min(1480px, calc(100vw - 40px));
+        margin: 0 auto;
+        padding: 30px 0 56px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 26px;
+      }
+
+      .brand {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .brand strong {
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .brand span,
+      .navlink {
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 13px;
+      }
+
+      .navlinks {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .navlink {
+        padding: 9px 13px;
+        border-radius: 999px;
+        background: rgba(6, 19, 31, 0.16);
+        color: rgba(255, 255, 255, 0.86);
+        text-decoration: none;
+        transition: opacity 0.16s ease, background 0.16s ease;
+      }
+
+      .navlink:hover {
+        opacity: 0.78;
+        background: rgba(6, 19, 31, 0.24);
+      }
+
+      .stage {
+        display: grid;
+        grid-template-columns: minmax(360px, 1fr) minmax(340px, 430px);
+        gap: 32px;
+        align-items: start;
+      }
+
+      .phone-wrap {
+        display: grid;
+        place-items: center;
+        min-height: 820px;
+      }
+
+      .phone {
+        position: relative;
+        width: min(430px, 92vw);
+        aspect-ratio: 430 / 900;
+        padding: 16px;
+        border-radius: 54px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.22), transparent 22%),
+          #07111b;
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.22) inset,
+          0 36px 90px rgba(0, 0, 0, 0.3);
+      }
+
+      .phone::before {
+        content: "";
+        position: absolute;
+        top: 12px;
+        left: 50%;
+        width: 92px;
+        height: 24px;
+        border-radius: 0 0 18px 18px;
+        transform: translateX(-50%);
+        background: #07111b;
+        z-index: 4;
+      }
+
+      .screen {
+        position: relative;
+        height: 100%;
+        overflow: hidden;
+        border-radius: 40px;
+        background: #1d91e8;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+      }
+
+      .screen .sky {
+        position: absolute;
+        border-radius: inherit;
+      }
+
+      .status {
+        position: absolute;
+        inset: 13px 18px auto;
+        z-index: 5;
+        display: flex;
+        justify-content: space-between;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .state {
+        position: absolute;
+        inset: 0;
+        z-index: 3;
+        display: none;
+        flex-direction: column;
+        padding: 58px 22px 22px;
+      }
+
+      .state.active {
+        display: flex;
+      }
+
+      .centered {
+        justify-content: center;
+      }
+
+      .state h1,
+      .state h2,
+      .panel h2 {
+        margin: 0;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .state h1 {
+        font-size: 33px;
+        line-height: 1.08;
+      }
+
+      .state h2 {
+        font-size: 25px;
+      }
+
+      .state p {
+        margin: 9px 0 0;
+        color: rgba(255, 255, 255, 0.78);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      .choice-list {
+        display: grid;
+        gap: 12px;
+        margin-top: 26px;
+      }
+
+      .choice {
+        display: grid;
+        gap: 4px;
+        padding: 15px 16px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.18);
+        color: var(--white);
+        text-align: left;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+        transition: background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+      }
+
+      .choice:hover {
+        transform: translateY(-1px);
+        background: rgba(255, 255, 255, 0.3);
+      }
+
+      .choice.selected {
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--black);
+      }
+
+      .choice strong {
+        font-size: 17px;
+      }
+
+      .choice span {
+        font-size: 12px;
+        opacity: 0.72;
+        line-height: 1.4;
+      }
+
+      .footer-actions {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+      }
+
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        min-height: 44px;
+        padding: 0 16px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--black);
+        font-size: 13px;
+        font-weight: 700;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+      }
+
+      .btn:hover {
+        opacity: 0.86;
+      }
+
+      .btn:active {
+        transform: scale(0.98);
+      }
+
+      .btn.secondary {
+        background: rgba(6, 19, 31, 0.18);
+        color: rgba(255, 255, 255, 0.92);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+      }
+
+      .btn.orange {
+        background: var(--orange);
+        color: #fff7ee;
+      }
+
+      .lang-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .language {
+        min-height: 70px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.18);
+        color: var(--white);
+        font-weight: 700;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+      }
+
+      .language.selected {
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--black);
+      }
+
+      .speaker-card,
+      .mic-card,
+      .chat-card {
+        margin-top: 22px;
+        border-radius: 24px;
+        background: rgba(6, 19, 31, 0.2);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+        padding: 18px;
+      }
+
+      .speaker-card .line {
+        color: rgba(255, 255, 255, 0.92);
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .audio-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 18px;
+        flex-wrap: wrap;
+      }
+
+      .select {
+        width: 100%;
+        height: 44px;
+        margin-top: 14px;
+        padding: 0 14px;
+        border-radius: 14px;
+        border: 0;
+        color: var(--black);
+        background: rgba(255, 255, 255, 0.92);
+      }
+
+      .mic-meter {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 110px;
+        margin-top: 15px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.14);
+        overflow: hidden;
+      }
+
+      .bars {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        height: 70px;
+      }
+
+      .bars i {
+        display: block;
+        width: 4px;
+        height: 20px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.9);
+        animation: meter 1.1s ease-in-out infinite;
+      }
+
+      .bars i:nth-child(2n) {
+        animation-delay: -0.25s;
+      }
+
+      .bars i:nth-child(3n) {
+        animation-delay: -0.55s;
+      }
+
+      .bars i:nth-child(4n) {
+        animation-delay: -0.78s;
+      }
+
+      @keyframes meter {
+        0%,
+        100% {
+          transform: scaleY(0.28);
+        }
+        50% {
+          transform: scaleY(1);
+        }
+      }
+
+      .personal-stack {
+        display: grid;
+        gap: 10px;
+        margin-top: 20px;
+      }
+
+      .text-input {
+        min-height: 48px;
+        resize: none;
+        border: 0;
+        border-radius: 18px;
+        padding: 14px;
+        color: var(--black);
+        background: rgba(255, 255, 255, 0.92);
+        outline: none;
+      }
+
+      .home {
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .avatar {
+        position: relative;
+        display: grid;
+        place-items: center;
+        flex: 1;
+        min-height: 370px;
+      }
+
+      .wave-avatar {
+        width: 260px;
+        height: 160px;
+      }
+
+      .avatar-label {
+        position: absolute;
+        top: 64%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 14px;
+      }
+
+      .message-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 150px;
+        overflow-y: auto;
+        padding-right: 2px;
+        mask-image: linear-gradient(to top, black 76%, transparent);
+      }
+
+      .message-stack.show-all {
+        max-height: 260px;
+        mask-image: none;
+      }
+
+      .message {
+        align-self: flex-start;
+        max-width: 84%;
+        min-height: 34px;
+        padding: 9px 12px;
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.18);
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 12px;
+        overflow: hidden;
+        transition: max-height 0.2s ease, background 0.2s ease;
+      }
+
+      .message.user {
+        align-self: flex-end;
+        background: rgba(255, 255, 255, 0.84);
+        color: var(--black);
+      }
+
+      .message .body {
+        display: none;
+        margin-top: 5px;
+        line-height: 1.35;
+      }
+
+      .message.expanded .body,
+      .message-stack.show-all .message .body {
+        display: block;
+      }
+
+      .composer {
+        display: grid;
+        grid-template-columns: 38px 1fr 38px 44px;
+        align-items: center;
+        gap: 8px;
+        min-height: 58px;
+        border-radius: 999px;
+        padding: 7px;
+        background: rgba(6, 19, 31, 0.26);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+          0 18px 46px rgba(0, 0, 0, 0.16);
+      }
+
+      .composer.voice-active {
+        grid-template-columns: 38px 1fr 38px 44px;
+      }
+
+      .icon-btn {
+        display: grid;
+        place-items: center;
+        width: 38px;
+        height: 38px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.16);
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      .icon-btn.primary {
+        width: 44px;
+        height: 44px;
+        background: rgba(255, 255, 255, 0.94);
+        color: var(--black);
+      }
+
+      .composer input {
+        min-width: 0;
+        height: 38px;
+        border: 0;
+        outline: none;
+        background: transparent;
+        color: var(--white);
+      }
+
+      .composer input::placeholder {
+        color: rgba(255, 255, 255, 0.66);
+      }
+
+      .voice-line {
+        display: none;
+        align-items: center;
+        gap: 3px;
+        min-width: 0;
+      }
+
+      .composer.voice-active input {
+        display: none;
+      }
+
+      .composer.voice-active .voice-line {
+        display: flex;
+      }
+
+      .voice-line i {
+        display: block;
+        flex: 1;
+        max-width: 6px;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.76);
+        animation: meter 0.86s ease-in-out infinite;
+      }
+
+      .panel {
+        display: grid;
+        gap: 18px;
+      }
+
+      .panel-card {
+        border-radius: 26px;
+        background: rgba(255, 255, 255, 0.14);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+          var(--shadow);
+        padding: 20px;
+        backdrop-filter: blur(16px);
+      }
+
+      .panel-card h2 {
+        font-size: 18px;
+      }
+
+      .panel-card p {
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 13px;
+        line-height: 1.5;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .tab {
+        padding: 9px 12px;
+        border-radius: 999px;
+        color: rgba(255, 255, 255, 0.84);
+        background: rgba(6, 19, 31, 0.16);
+      }
+
+      .tab.active {
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--black);
+      }
+
+      .preset-grid,
+      .view-grid {
+        display: grid;
+        gap: 10px;
+      }
+
+      .preset,
+      .view-item,
+      .bg-code {
+        border-radius: 18px;
+        background: rgba(6, 19, 31, 0.18);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+        padding: 13px;
+      }
+
+      .preset {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        color: rgba(255, 255, 255, 0.9);
+      }
+
+      .preset.selected {
+        background: rgba(255, 255, 255, 0.86);
+        color: var(--black);
+      }
+
+      .view-item strong,
+      .preset strong {
+        display: block;
+        font-size: 14px;
+      }
+
+      .view-item span,
+      .preset span {
+        display: block;
+        margin-top: 3px;
+        font-size: 12px;
+        opacity: 0.68;
+      }
+
+      .bg-code {
+        overflow: auto;
+        color: rgba(255, 255, 255, 0.84);
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+      }
+
+      .desktop-preview {
+        position: relative;
+        min-height: 174px;
+        border-radius: 22px;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent),
+          rgba(6, 19, 31, 0.2);
+        overflow: hidden;
+      }
+
+      .desktop-bar {
+        position: absolute;
+        left: 20px;
+        right: 20px;
+        bottom: 18px;
+        display: grid;
+        grid-template-columns: 34px 1fr 36px;
+        align-items: center;
+        gap: 8px;
+        height: 40px;
+        padding: 4px;
+        border-radius: 999px;
+        background: rgba(7, 16, 25, 0.78);
+        box-shadow:
+          0 0 22px rgba(255, 84, 64, 0.18),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.13);
+      }
+
+      .desktop-bar.open {
+        height: 112px;
+        grid-template-columns: 34px 1fr 36px;
+        align-items: end;
+        border-radius: 24px;
+      }
+
+      .desktop-bar .recent {
+        display: none;
+        grid-column: 1 / -1;
+        color: rgba(255, 255, 255, 0.78);
+        padding: 0 12px 8px;
+        font-size: 12px;
+      }
+
+      .desktop-bar.open .recent {
+        display: block;
+      }
+
+      .glow {
+        color: #ff6b57;
+      }
+
+      svg {
+        width: 18px;
+        height: 18px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      @media (max-width: 980px) {
+        .app {
+          width: min(100vw - 24px, 720px);
+          padding-top: 18px;
+        }
+
+        .stage {
+          grid-template-columns: 1fr;
+        }
+
+        .phone-wrap {
+          min-height: 760px;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .cloud-lane,
+        .bars i,
+        .voice-line i {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sky" aria-hidden="true">
+      <div class="cloud-lane clouds-a"></div>
+      <div class="cloud-lane clouds-b"></div>
+      <div class="cloud-lane clouds-c"></div>
+    </div>
+
+    <main class="app">
+      <header class="topbar">
+        <div class="brand">
+          <strong>Eliza onboarding prototype</strong>
+          <span>Cloud setup, voice calibration, companion chat, avatar and views controls.</span>
+        </div>
+        <nav class="navlinks" aria-label="Prototype documents">
+          <a class="navlink" href="../../product/onboarding-reimagined-prd.md">PRD</a>
+          <a class="navlink" href="../../product/onboarding-reimagined-research-report.md">Research</a>
+          <a class="navlink" href="../../product/onboarding-reimagined-implementation-plan.md">Plan</a>
+        </nav>
+      </header>
+
+      <section class="stage" aria-label="Interactive onboarding prototype">
+        <div class="phone-wrap">
+          <div class="phone" aria-label="iPhone preview frame">
+            <div class="screen">
+              <div class="sky" aria-hidden="true">
+                <div class="cloud-lane clouds-a"></div>
+                <div class="cloud-lane clouds-b"></div>
+                <div class="cloud-lane clouds-c"></div>
+              </div>
+              <div class="status"><span>10:30</span><span>5G 100%</span></div>
+
+              <section class="state centered active" id="state-setup">
+                <h1>Where should I run?</h1>
+                <p>Choose once. You can change it later in settings.</p>
+                <div class="choice-list" role="list">
+                  <button class="choice selected" data-runtime="cloud">
+                    <strong>Cloud</strong>
+                    <span>Sign in, talk immediately, and move into your container when it is ready.</span>
+                  </button>
+                  <button class="choice" data-runtime="remote">
+                    <strong>Remote</strong>
+                    <span>Connect to an agent URL you already host.</span>
+                  </button>
+                  <button class="choice" data-runtime="local">
+                    <strong>Local</strong>
+                    <span>Download the preferred Eliza-1 model and run on this device.</span>
+                  </button>
+                </div>
+                <div class="chat-card" id="runtime-note">
+                  Cloud creates one tenant-isolated agent. No agent picker.
+                </div>
+                <div class="footer-actions">
+                  <button class="btn orange" data-next="language">Continue</button>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-language">
+                <h1>Choose language</h1>
+                <p>This sets the app language and the agent language.</p>
+                <div class="lang-grid">
+                  <button class="language selected" data-lang="English">English</button>
+                  <button class="language" data-lang="Spanish">Spanish</button>
+                  <button class="language" data-lang="Japanese">Japanese</button>
+                  <button class="language" data-lang="Korean">Korean</button>
+                </div>
+                <div class="footer-actions">
+                  <button class="btn secondary" data-prev="setup">Back</button>
+                  <button class="btn orange" data-next="speaker">Continue</button>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-speaker">
+                <h1>Can I say hello?</h1>
+                <p>We will test the speaker before asking for the microphone.</p>
+                <div class="speaker-card">
+                  <div class="line" id="speaker-line">Hey, can you hear me?</div>
+                  <div class="audio-row">
+                    <button class="btn orange" data-audio="hello">Play</button>
+                    <button class="btn secondary" data-next="mic" data-audio="great_mic">Yes</button>
+                    <button class="btn secondary" data-audio-cycle>Try again</button>
+                    <button class="btn secondary" data-next="personal">Skip</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-mic">
+                <h1>Now I listen</h1>
+                <p>Enable the microphone and pick an input if there is more than one.</p>
+                <div class="mic-card">
+                  <button class="btn orange" id="mic-permission">Enable microphone</button>
+                  <select class="select" aria-label="Audio input">
+                    <option>MacBook Pro Microphone</option>
+                    <option>Studio Display Microphone</option>
+                    <option>USB Audio Interface</option>
+                  </select>
+                  <div class="mic-meter" aria-label="Microphone level preview">
+                    <div class="bars" id="mic-bars"></div>
+                  </div>
+                  <p id="mic-hint">If you are speaking, I should see the waveform move.</p>
+                  <div class="audio-row">
+                    <button class="btn secondary" data-audio-cycle>Try again</button>
+                    <button class="btn orange" data-next="personal">I see it</button>
+                    <button class="btn secondary" data-next="personal">Skip</button>
+                  </div>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-personal">
+                <h1>What should I know?</h1>
+                <p>Short answers are fine. I will remember only useful owner facts.</p>
+                <div class="personal-stack">
+                  <textarea class="text-input" placeholder="Your name"></textarea>
+                  <textarea class="text-input" placeholder="Family, friends, relationships"></textarea>
+                  <textarea class="text-input" placeholder="Work, interests, goals"></textarea>
+                </div>
+                <div class="footer-actions">
+                  <button class="btn secondary" data-prev="mic">Back</button>
+                  <button class="btn orange" data-next="home" data-audio="setup_done">Finish</button>
+                </div>
+              </section>
+
+              <section class="state home" id="state-home">
+                <div class="avatar">
+                  <canvas class="wave-avatar" id="avatar-canvas" width="520" height="320"></canvas>
+                  <div class="avatar-label">I am listening</div>
+                </div>
+                <div class="message-stack" id="messages" aria-label="Recent messages">
+                  <button class="message expanded">
+                    Eliza
+                    <span class="body">Everything is set up. I am running from your new agent now.</span>
+                  </button>
+                  <button class="message user">
+                    You
+                    <span class="body">Can you remember that my brother is visiting next week?</span>
+                  </button>
+                  <button class="message">
+                    Eliza
+                    <span class="body">Yes. I will keep it as a relationship fact and avoid asking for it again.</span>
+                  </button>
+                </div>
+                <form class="composer" id="composer">
+                  <button class="icon-btn" type="button" aria-label="Attach">
+                    <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+                  </button>
+                  <input id="chat-text" placeholder="Ask anything" autocomplete="off" />
+                  <div class="voice-line" id="voice-line" aria-hidden="true"></div>
+                  <button class="icon-btn" id="dictate" type="button" aria-label="Dictate">
+                    <svg viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v2" /></svg>
+                  </button>
+                  <button class="icon-btn primary" id="send-or-voice" type="button" aria-label="Voice mode">
+                    <svg id="action-icon" viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /></svg>
+                  </button>
+                </form>
+              </section>
+            </div>
+          </div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-card">
+            <div class="tabs" aria-label="Preview controls">
+              <button class="tab active" data-panel="onboarding">Onboarding</button>
+              <button class="tab" data-panel="avatar">Avatar</button>
+              <button class="tab" data-panel="views">Views</button>
+              <button class="tab" data-panel="desktop">Desktop</button>
+            </div>
+          </div>
+
+          <div class="panel-card" data-panel-card="onboarding">
+            <h2>Flow</h2>
+            <p>Prototype path: runtime choice, language, speaker, microphone, owner facts, then companion chat.</p>
+            <div class="footer-actions">
+              <button class="btn secondary" data-jump="setup">Restart</button>
+              <button class="btn secondary" data-jump="home">Skip to chat</button>
+            </div>
+          </div>
+
+          <div class="panel-card" data-panel-card="avatar" hidden>
+            <h2>Avatar presets</h2>
+            <p>These are dynamically loaded avatar modules. Agent actions can create or replace them.</p>
+            <div class="preset-grid">
+              <button class="preset selected" data-avatar="waveform">
+                <span><strong>Waveform shader</strong><span>Reactive voice line and particles.</span></span>
+              </button>
+              <button class="preset" data-avatar="jarvis">
+                <span><strong>Jarvis</strong><span>Thin rings and orange system accents.</span></span>
+              </button>
+              <button class="preset" data-avatar="vrm">
+                <span><strong>VRM 3D model</strong><span>Three.js/VRM character placeholder.</span></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="panel-card" data-panel-card="views" hidden>
+            <h2>Views</h2>
+            <p>Plugins register React views. Agents can create, edit, revert, delete, and restore generated views.</p>
+            <div class="view-grid">
+              <div class="view-item"><strong>Companion</strong><span>The current screen, registered as a view.</span></div>
+              <div class="view-item"><strong>LifeOps</strong><span>Tasks, recaps, reminders, and approvals.</span></div>
+              <div class="view-item"><strong>Character</strong><span>Identity, avatar, style, facts, examples.</span></div>
+            </div>
+          </div>
+
+          <div class="panel-card" data-panel-card="desktop" hidden>
+            <h2>Desktop tray bar</h2>
+            <p>Collapsed by default. Click or press Ctrl Space to expand. Hold mic for push-to-talk.</p>
+            <div class="desktop-preview">
+              <div class="desktop-bar" id="desktop-bar">
+                <button class="icon-btn" type="button" aria-label="Add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
+                <input class="text-input" placeholder="Ask Eliza" />
+                <button class="icon-btn glow" type="button" aria-label="Mic"><svg viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /></svg></button>
+                <div class="recent">Eliza: I heard that. I will respond only when it sounds like you are addressing me.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h2>BACKGROUND_EDIT</h2>
+            <p>Mock agent action swaps the background module without changing the rest of the app.</p>
+            <div class="footer-actions">
+              <button class="btn orange" id="background-edit">Rewrite background</button>
+            </div>
+            <pre class="bg-code" id="bg-code">registerBackground({
+  id: "slow-clouds",
+  kind: "css-compositor",
+  fpsBudget: 1,
+  action: "BACKGROUND_EDIT"
+});</pre>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <audio id="voice-audio" preload="none"></audio>
+
+    <script>
+      const states = Array.from(document.querySelectorAll(".state"));
+      const runtimeNote = document.querySelector("#runtime-note");
+      const audio = document.querySelector("#voice-audio");
+      const tryLines = [
+        "try_again_01",
+        "try_again_02",
+        "try_again_03",
+        "try_again_04",
+        "try_again_05",
+        "try_again_06",
+        "try_again_07",
+        "try_again_08",
+        "try_again_09",
+        "try_again_10"
+      ];
+      const tryText = [
+        "Uhhh, how about now?",
+        "If you're speaking, I can't hear you yet.",
+        "Eh, still nothing.",
+        "Helloooooo.",
+        "Testing, testing, one two, one two.",
+        "I mean it has to work this time.",
+        "Okay, this is getting a bit ridiculous.",
+        "Maybe the mic is shy.",
+        "I am listening as hard as software can listen.",
+        "Last one before I start blaming the cable."
+      ];
+      let tryIndex = 0;
+      let runtime = "cloud";
+      let avatarMode = "waveform";
+
+      function showState(id) {
+        states.forEach((state) => state.classList.toggle("active", state.id === `state-${id}`));
+        if (id === "home") {
+          startAvatar();
+        }
+      }
+
+      function playLine(key) {
+        audio.src = `audio/${key}.wav`;
+        audio.play().catch(() => {});
+      }
+
+      document.querySelectorAll("[data-next]").forEach((button) => {
+        button.addEventListener("click", () => {
+          if (button.dataset.audio) playLine(button.dataset.audio);
+          showState(button.dataset.next);
+          if (button.dataset.next === "home" && runtime === "local") {
+            setTimeout(() => playLine("local_downloading"), 450);
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-prev]").forEach((button) => {
+        button.addEventListener("click", () => showState(button.dataset.prev));
+      });
+
+      document.querySelectorAll("[data-jump]").forEach((button) => {
+        button.addEventListener("click", () => showState(button.dataset.jump));
+      });
+
+      document.querySelectorAll("[data-runtime]").forEach((button) => {
+        button.addEventListener("click", () => {
+          runtime = button.dataset.runtime;
+          document.querySelectorAll("[data-runtime]").forEach((choice) => choice.classList.toggle("selected", choice === button));
+          const notes = {
+            cloud: "Cloud creates one tenant-isolated agent. No agent picker.",
+            remote: "Remote verifies the URL and streams setup status from your server.",
+            local: "Local starts the Eliza-1 download immediately. Hardware and disk checks warn before you continue."
+          };
+          runtimeNote.textContent = notes[runtime];
+        });
+      });
+
+      document.querySelectorAll("[data-lang]").forEach((button) => {
+        button.addEventListener("click", () => {
+          document.querySelectorAll("[data-lang]").forEach((option) => option.classList.toggle("selected", option === button));
+        });
+      });
+
+      document.querySelectorAll("[data-audio]").forEach((button) => {
+        button.addEventListener("click", () => playLine(button.dataset.audio));
+      });
+
+      document.querySelectorAll("[data-audio-cycle]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const key = tryLines[tryIndex % tryLines.length];
+          const text = tryText[tryIndex % tryText.length];
+          tryIndex += 1;
+          document.querySelector("#speaker-line").textContent = text;
+          document.querySelector("#mic-hint").textContent = text;
+          playLine(key);
+        });
+      });
+
+      const micBars = document.querySelector("#mic-bars");
+      micBars.innerHTML = Array.from({ length: 26 }, (_, index) => `<i style="animation-delay:${-index * 0.045}s"></i>`).join("");
+
+      const voiceLine = document.querySelector("#voice-line");
+      voiceLine.innerHTML = Array.from({ length: 34 }, (_, index) => `<i style="animation-delay:${-index * 0.035}s"></i>`).join("");
+
+      const composer = document.querySelector("#composer");
+      const chatText = document.querySelector("#chat-text");
+      const actionIcon = document.querySelector("#action-icon");
+      const dictate = document.querySelector("#dictate");
+      const sendOrVoice = document.querySelector("#send-or-voice");
+      let dictateMode = false;
+      let voiceMode = false;
+
+      function updateComposer() {
+        const hasText = chatText.value.trim().length > 0;
+        composer.classList.toggle("voice-active", voiceMode);
+        if (dictateMode) {
+          dictate.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>';
+          actionIcon.innerHTML = '<path d="M5 13l4 4L19 7" />';
+          return;
+        }
+        dictate.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v2" /></svg>';
+        actionIcon.innerHTML = hasText
+          ? '<path d="M5 12h14" /><path d="M13 6l6 6-6 6" />'
+          : '<path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" />';
+      }
+
+      chatText.addEventListener("input", updateComposer);
+      dictate.addEventListener("click", () => {
+        dictateMode = !dictateMode;
+        voiceMode = dictateMode;
+        updateComposer();
+      });
+      sendOrVoice.addEventListener("click", () => {
+        if (dictateMode) {
+          dictateMode = false;
+          voiceMode = false;
+        } else if (!chatText.value.trim()) {
+          voiceMode = !voiceMode;
+        } else {
+          addMessage("You", chatText.value.trim(), true);
+          chatText.value = "";
+          setTimeout(() => addMessage("Eliza", "I saved that as an owner fact and will not ask for it again.", false), 420);
+        }
+        updateComposer();
+      });
+
+      function addMessage(label, body, user) {
+        const messages = document.querySelector("#messages");
+        const button = document.createElement("button");
+        button.className = `message expanded${user ? " user" : ""}`;
+        button.innerHTML = `${label}<span class="body">${body}</span>`;
+        button.addEventListener("click", () => button.classList.toggle("expanded"));
+        messages.append(button);
+        messages.scrollTop = messages.scrollHeight;
+      }
+
+      document.querySelectorAll(".message").forEach((message) => {
+        message.addEventListener("click", () => message.classList.toggle("expanded"));
+      });
+
+      const messages = document.querySelector("#messages");
+      messages.addEventListener("wheel", () => messages.classList.add("show-all"), { passive: true });
+      messages.addEventListener("touchmove", () => messages.classList.add("show-all"), { passive: true });
+
+      document.querySelectorAll(".tab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".tab").forEach((item) => item.classList.toggle("active", item === tab));
+          document.querySelectorAll("[data-panel-card]").forEach((card) => {
+            card.hidden = card.dataset.panelCard !== tab.dataset.panel;
+          });
+        });
+      });
+
+      document.querySelectorAll("[data-avatar]").forEach((button) => {
+        button.addEventListener("click", () => {
+          avatarMode = button.dataset.avatar;
+          document.querySelectorAll("[data-avatar]").forEach((item) => item.classList.toggle("selected", item === button));
+          startAvatar();
+        });
+      });
+
+      document.querySelector("#desktop-bar").addEventListener("click", (event) => {
+        event.currentTarget.classList.toggle("open");
+      });
+
+      document.addEventListener("keydown", (event) => {
+        if (event.ctrlKey && event.code === "Space") {
+          event.preventDefault();
+          document.querySelector("#desktop-bar").classList.toggle("open");
+        }
+      });
+
+      const bgCode = document.querySelector("#bg-code");
+      const edits = [
+        'registerBackground({\\n  id: "slow-clouds",\\n  kind: "css-compositor",\\n  fpsBudget: 1,\\n  action: "BACKGROUND_EDIT"\\n});',
+        'registerBackground({\\n  id: "sunset-cirrus",\\n  kind: "css-compositor",\\n  palette: ["#1178da", "#ff8a24"],\\n  action: "BACKGROUND_EDIT"\\n});',
+        'registerBackground({\\n  id: "quiet-grid",\\n  kind: "canvas-worker",\\n  maxCpuMsPerFrame: 1.6,\\n  action: "BACKGROUND_EDIT"\\n});'
+      ];
+      let editIndex = 0;
+      document.querySelector("#background-edit").addEventListener("click", () => {
+        editIndex = (editIndex + 1) % edits.length;
+        bgCode.textContent = edits[editIndex];
+      });
+
+      const canvas = document.querySelector("#avatar-canvas");
+      const ctx = canvas.getContext("2d");
+      let frame = 0;
+      let avatarStarted = false;
+
+      function drawAvatar() {
+        frame += 1;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.save();
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        if (avatarMode === "jarvis") {
+          for (let ring = 0; ring < 5; ring += 1) {
+            ctx.strokeStyle = ring % 2 ? "rgba(255,138,36,0.72)" : "rgba(255,255,255,0.72)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(0, 0, 32 + ring * 20 + Math.sin(frame / 28 + ring) * 4, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+        } else if (avatarMode === "vrm") {
+          ctx.fillStyle = "rgba(255,255,255,0.86)";
+          ctx.beginPath();
+          ctx.arc(0, -38, 34, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = "rgba(6,19,31,0.22)";
+          ctx.beginPath();
+          ctx.roundRect(-54, 4, 108, 96, 26);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(255,138,36,0.78)";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        } else {
+          ctx.strokeStyle = "rgba(255,255,255,0.94)";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let x = -220; x <= 220; x += 4) {
+            const amp = 8 + 54 * Math.exp(-Math.abs(x) / 82);
+            const y = Math.sin(x / 9 + frame / 10) * amp * (0.35 + 0.65 * Math.sin(frame / 30) ** 2);
+            if (x === -220) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+          ctx.fillStyle = "rgba(255,255,255,0.4)";
+          for (let i = 0; i < 36; i += 1) {
+            const angle = i * 0.9 + frame / 80;
+            const radius = 18 + ((i * 17 + frame) % 98);
+            ctx.beginPath();
+            ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.55, 1.3, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+        requestAnimationFrame(drawAvatar);
+      }
+
+      function startAvatar() {
+        if (!avatarStarted) {
+          avatarStarted = true;
+          drawAvatar();
+        }
+      }
+
+      if (!CanvasRenderingContext2D.prototype.roundRect) {
+        CanvasRenderingContext2D.prototype.roundRect = function (x, y, width, height, radius) {
+          this.beginPath();
+          this.moveTo(x + radius, y);
+          this.lineTo(x + width - radius, y);
+          this.quadraticCurveTo(x + width, y, x + width, y + radius);
+          this.lineTo(x + width, y + height - radius);
+          this.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+          this.lineTo(x + radius, y + height);
+          this.quadraticCurveTo(x, y + height, x, y + height - radius);
+          this.lineTo(x, y + radius);
+          this.quadraticCurveTo(x, y, x + radius, y);
+          this.closePath();
+        };
+      }
+
+      updateComposer();
+    </script>
+  </body>
+</html>

@@ -31,6 +31,11 @@ export {
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export {
+  InferenceTelemetry,
+  inferenceTelemetry,
+  type TelemetryTags,
+} from "./inference-telemetry";
+export {
   estimateQuantizedKvBytesPerToken,
   KV_SPILL_MIN_CONTEXT,
   type KvGeometry,
