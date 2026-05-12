@@ -1,0 +1,35 @@
+[2026-02-09 14:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 14:00:02 CST] [INFO] Gateway is healthy
+[2026-02-09 14:30:01 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 14:30:01 CST] [INFO] Gateway is healthy
+[2026-02-09 15:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 15:00:02 CST] [INFO] Gateway is healthy
+[2026-02-09 15:30:01 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 15:30:01 CST] [INFO] Gateway is healthy
+[2026-02-09 16:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 16:00:07 CST] [WARN] Gateway is not responding after 3 attempts
+[2026-02-09 16:00:07 CST] [INFO] Restart attempt 1/3
+[2026-02-09 16:00:07 CST] [INFO] Attempting to restart OpenClaw gateway...
+[2026-02-09 16:01:08 CST] [INFO] Gateway recovered after restart (attempt 1)
+[2026-02-09 16:30:01 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 16:30:01 CST] [INFO] Gateway is healthy
+[2026-02-09 17:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 17:00:02 CST] [INFO] Gateway is healthy
+[2026-02-09 17:30:01 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 17:30:01 CST] [INFO] Gateway is healthy
+[2026-02-09 18:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 18:00:02 CST] [INFO] Gateway is healthy
+[2026-02-09 22:00:01 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-09 22:00:01 CST] [INFO] Gateway is healthy
+[2026-02-10 02:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-10 02:00:02 CST] [INFO] Gateway is healthy
+[2026-02-10 02:30:01 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-10 02:30:01 CST] [INFO] Gateway is healthy
+[2026-02-10 03:00:02 CST] [INFO] Starting gateway health check (127.0.0.1:3578)
+[2026-02-10 03:00:07 CST] [WARN] Gateway is not responding after 3 attempts
+[2026-02-10 03:00:07 CST] [INFO] Restart attempt 1/3
+[2026-02-10 03:00:07 CST] [INFO] Attempting to restart OpenClaw gateway...
+[2026-02-10 03:01:08 CST] [WARN] Gateway still not healthy after restart attempt 1
+[2026-02-10 03:01:08 CST] [INFO] Restart attempt 2/3
+[2026-02-10 03:01:08 CST] [INFO] Attempting to restart OpenClaw gateway...
+[2026-02-10 03:02:09 CST] [INFO] Gateway recovered after restart (attempt 2)

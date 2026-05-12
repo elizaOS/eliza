@@ -1,0 +1,10 @@
+name: jax-scan
+description: Run scan-based RNN forward
+inputs:
+  seq: jax.Array
+  Wx: jax.Array
+  Wh: jax.Array
+  b: jax.Array
+outputs:
+  hseq: jax.Array
+implementation: jax_skills.rnn_scan

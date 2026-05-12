@@ -1,0 +1,38 @@
+{
+  "user_id": "usr_20250812_vp_047",
+  "display_name": "VideoCreator",
+  "domain_expertise": [
+    "video production",
+    "motion graphics",
+    "skill development"
+  ],
+  "frequent_terms": [
+    "视频项目",
+    "技能方案",
+    "迭代优化",
+    "Adobe Premiere",
+    "After Effects",
+    "关键帧"
+  ],
+  "preferred_language": "zh-CN",
+  "session_count": 47,
+  "first_session_date": "2025-11-02T08:30:00Z",
+  "last_active": "2026-03-18T14:29:00Z",
+  "tools_used": [
+    "Adobe Premiere Pro",
+    "Adobe After Effects",
+    "Microsoft Excel",
+    "Microsoft Word"
+  ],
+  "skill_level": "intermediate-advanced",
+  "interests": [
+    "keyframe animation",
+    "color grading",
+    "workflow optimization",
+    "motion graphics templates"
+  ],
+  "notification_preferences": {
+    "session_summary": true,
+    "skill_progress_updates": true
+  }
+}

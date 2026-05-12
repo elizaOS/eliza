@@ -1,0 +1,31 @@
+{
+  "token": "LA",
+  "protocol_name": "LAOS Network",
+  "chain": "Ethereum L2",
+  "tvl_current": 52300000,
+  "tvl_7d_ago": 48700000,
+  "tvl_change_7d": "+7.4%",
+  "tvl_30d_ago": 39500000,
+  "tvl_change_30d": "+32.4%",
+  "tvl_breakdown": {
+    "native_staking": 9100000,
+    "bridged_assets": 43200000
+  },
+  "tvl_organic_excl_staking": 43200000,
+  "tvl_note": "native_staking includes auto-compounded rewards which may overstate actual locked capital; tvl_organic_excl_staking reflects TVL excluding staking-derived components",
+  "mainnet_launch_status": "on track, ETA Dec 5",
+  "testnet_tps": 2400,
+  "daily_active_users": 12400,
+  "dau_change_7d": "+3.1%",
+  "daily_transactions": 87500,
+  "token_unlock_next": "none within 30 days",
+  "circulating_supply": "450M",
+  "total_supply": "1B",
+  "partnerships_recent": [
+    "Integration with ChainBridge announced Nov 19"
+  ],
+  "github_commits_7d": 47,
+  "github_contributors_active": 18,
+  "last_updated": "2024-11-20T13:45:00Z",
+  "source": "LAOS Network Dashboard & CoinGecko"
+}

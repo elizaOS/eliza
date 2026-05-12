@@ -1,0 +1,62 @@
+{
+  "schema_name": "social_media_profile",
+  "version": "2.1",
+  "description": "Template schema for generating social media profiles from entity definitions",
+  "required_fields": {
+    "bio": {
+      "type": "string",
+      "max_length": 200,
+      "description": "Short biography summarizing the entity's identity and focus"
+    },
+    "handle": {
+      "type": "string",
+      "description": "Social media handle/username"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Public-facing display name"
+    },
+    "profile_type": {
+      "type": "string",
+      "enum": ["individual", "group", "institutional", "corporate"],
+      "description": "Category of the profile"
+    },
+    "topics": {
+      "type": "array",
+      "items": "string",
+      "description": "List of primary topics the profile covers"
+    },
+    "pinned_content": {
+      "type": "string",
+      "description": "Featured or pinned post content"
+    },
+    "follower_persona": {
+      "type": "string",
+      "description": "Description of the typical follower demographic"
+    },
+    "posting_style": {
+      "type": "string",
+      "description": "Tone and style of posts (e.g., analytical, casual, data-driven)"
+    },
+    "key_narratives": {
+      "type": "array",
+      "items": "string",
+      "description": "Core narratives or themes the profile promotes"
+    },
+    "linked_entities": {
+      "type": "array",
+      "items": "string",
+      "description": "Related entities referenced in the profile"
+    },
+    "credibility_markers": {
+      "type": "array",
+      "items": "string",
+      "description": "Indicators of authority or expertise"
+    }
+  },
+  "optional_fields": {
+    "website_url": {"type": "string"},
+    "location": {"type": "string"},
+    "joined_date": {"type": "string", "format": "YYYY-MM"}
+  }
+}

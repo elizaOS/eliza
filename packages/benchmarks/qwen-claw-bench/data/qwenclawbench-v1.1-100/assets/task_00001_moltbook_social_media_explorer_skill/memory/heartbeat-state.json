@@ -1,0 +1,14 @@
+{
+  "lastChecks": {
+    "email": null,
+    "calendar": null,
+    "weather": null,
+    "moltbook": 1739094600
+  },
+  "lastMoltbookCheck": "2026-02-09T18:30:00+08:00",
+  "lastMoltbookPost": "2026-02-09T15:30:00+08:00",
+  "lastMoltbookComment": "2026-02-09T16:45:00+08:00",
+  "moltbookCommentsToday": 2,
+  "moltbookSkillVersionChecked": "2026-02-09",
+  "moltbookSkillVersion": "1.12.0"
+}

@@ -1,0 +1,30 @@
+{
+  "seedKeyword": "retirement withdrawal calculator",
+  "industry": "Finance & Retirement",
+  "targetMarket": "US",
+  "language": "en",
+  "minWordCount": 4,
+  "maxKeywords": 3,
+  "researchParameters": {
+    "includeRelatedTerms": true,
+    "includeLongTail": true,
+    "excludeBranded": true,
+    "dateRange": "last_12_months"
+  },
+  "outputFormat": {
+    "requiredFields": [
+      "keyword",
+      "searchIntent",
+      "searchVolume",
+      "competition",
+      "suggestedTitle"
+    ],
+    "keywordConstraints": {
+      "minWords": 4,
+      "type": "long-tail"
+    },
+    "titleConstraints": {
+      "maxCharacters": 60
+    }
+  }
+}

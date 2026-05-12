@@ -1,0 +1,23 @@
+{
+    "_comment": "Legacy PWM configuration — from XMC4400 center-aligned project (Rev 1.x)",
+    "_last_modified": "2023-03-10",
+    "_status": "DEPRECATED — see motor_params.json for current settings",
+    "pwm": {
+        "pwm_period": 999,
+        "pwm_mode": "center_aligned",
+        "pwm_frequency_hz": 20000,
+        "compare_range_min": 0,
+        "compare_range_max": 999,
+        "dead_time_ns": 500,
+        "clock_divider": 1
+    },
+    "channels": {
+        "phase_u": {"channel_id": 0, "pin": "P0.0"},
+        "phase_v": {"channel_id": 1, "pin": "P0.1"},
+        "phase_w": {"channel_id": 2, "pin": "P0.2"}
+    },
+    "interrupts": {
+        "period_match": true,
+        "compare_match": false
+    }
+}

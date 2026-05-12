@@ -1,0 +1,155 @@
+task_id: T113zh_meeting_preparation
+task_name: 会议准备材料整理
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T113zh_meeting_preparation/fixtures/calendar/events.json
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T113zh_meeting_preparation/fixtures/contacts/contacts.json
+
+prompt:
+  text: |
+    请帮我准备明天的会议材料：
+    1. 查看明天所有会议的安排
+    2. 汇总每个会议的参会者清单
+    3. 在通讯录中查找每位参会者的联系方式和职位
+    4. 输出一份会议准备材料，包含：每个会议的时间/地点/参会者详情
+    5. 特别标注外部参会者（不在通讯录中的人）和最忙的同事
+  language: zh
+
+tools:
+  - name: calendar_list_events
+    description: 查看日历事件
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+
+  - name: calendar_get_event
+    description: 获取事件详情
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: 事件ID
+      required: [event_id]
+
+  - name: contacts_search
+    description: 搜索内部通讯录
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词
+        department:
+          type: string
+          description: 按部门筛选
+      required: [query]
+
+  - name: contacts_get
+    description: 获取联系人详情
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: 联系人ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-26"
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: attendee_coverage
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否完整列出所有参会者并找到其联系方式"
+  - name: schedule_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否正确标注外部人员(陈总)和最忙同事(李华3场)"
+  - name: material_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "会议材料的结构是否清晰、信息是否完整"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的会议准备材料质量。
+
+  ## 正确信息
+  1. 明天4个会议：产品方案评审(9:00)、客户演示(11:00)、技术选型(14:00)、全员周会(16:00)
+  2. 参会者去重后：6个内部人员 + 1个外部人员（陈总）
+     - 王明：3场（评审+周会），技术总监
+     - 李华：3场（评审+选型+周会），最忙同事
+     - 赵蕾：3场（评审+演示+周会），客户经理
+     - 张伟：2场（演示+周会），安全经理
+     - 马强：2场（选型+周会），运维主管
+     - 周明：2场（选型+周会），前端组长
+     - 陈总：外部人员，不在通讯录
+  3. 李华参加3场会议，是最忙的同事
+  4. 陈总不在内部通讯录，需要标注为外部人员
+
+  评分：
+  - 0.8-1.0: 覆盖全部会议和参会者，正确标注外部人员和最忙同事
+  - 0.5-0.7: 大部分会议覆盖，遗漏部分细节
+  - 0.2-0.4: 仅列出部分会议
+  - 0.0-0.1: 未完成会议材料
+
+reference_solution: |
+  1. calendar_list_events(start_date="2026-03-27") → 4个会议
+  2. 逐个查看会议详情和参会者
+  3. contacts_search("王明"), contacts_search("李华"), etc. → 查找6位内部人员
+  4. "陈总"搜索无结果 → 标注为外部人员
+  5. 统计每人参会次数：李华最多(3场)
+  6. 输出结构化会议准备材料
+
+primary_dimensions: [completion, robustness, communication]

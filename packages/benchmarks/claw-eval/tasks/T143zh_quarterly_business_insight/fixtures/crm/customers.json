@@ -1,0 +1,68 @@
+[
+  {
+    "customer_id": "CUS-901",
+    "name": "鼎新软件",
+    "tier": "vip",
+    "status": "active",
+    "industry": "软件开发",
+    "annual_revenue": 1080000,
+    "contract_end": "2026-09-30",
+    "notes": "核心客户，持续增购中",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-902",
+    "name": "瀚海电商",
+    "tier": "standard",
+    "status": "active",
+    "industry": "电子商务",
+    "annual_revenue": 540000,
+    "contract_end": "2026-06-15",
+    "notes": "使用稳定，续约意向待确认",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-903",
+    "name": "万通物流",
+    "tier": "vip",
+    "status": "active",
+    "industry": "物流运输",
+    "annual_revenue": 1440000,
+    "contract_end": "2026-12-31",
+    "notes": "大客户，近期对价格敏感",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-904",
+    "name": "前锋科技",
+    "tier": "standard",
+    "status": "active",
+    "industry": "科技制造",
+    "annual_revenue": 360000,
+    "contract_end": "2026-04-30",
+    "notes": "已降级至基础版，合同即将到期",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-905",
+    "name": "阳光传媒",
+    "tier": "vip",
+    "status": "active",
+    "industry": "传媒广告",
+    "annual_revenue": 780000,
+    "contract_end": "2026-11-30",
+    "notes": "新VIP客户，增长势头好",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-906",
+    "name": "公共机构",
+    "tier": "standard",
+    "status": "churned",
+    "industry": "政府机关",
+    "annual_revenue": 0,
+    "contract_end": "2026-01-31",
+    "notes": "已于1月底流失，预算削减导致",
+    "contact_person": ""
+  }
+]

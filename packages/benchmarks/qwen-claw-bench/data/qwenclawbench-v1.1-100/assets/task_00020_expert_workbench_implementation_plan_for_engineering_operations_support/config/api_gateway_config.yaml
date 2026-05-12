@@ -1,0 +1,270 @@
+# ============================================================
+# API Gateway Configuration
+# Expert Workbench Platform
+# Environment: Production
+# Last Modified: 2025-01-12
+# Maintainer: Platform Development Team
+# ============================================================
+
+gateway:
+  name: "expert-workbench-gateway"
+  version: "2.1.0"
+  listen_port: 8443
+  admin_port: 9090
+  protocol: "HTTPS"
+  log_level: "INFO"
+
+# --- TLS Configuration ---
+tls:
+  enabled: true
+  min_version: "TLS1.2"
+  preferred_version: "TLS1.3"
+  certificate_path: "/etc/ssl/certs/gateway.pem"
+  private_key_path: "/etc/ssl/private/gateway-key.pem"
+  ca_bundle_path: "/etc/ssl/certs/ca-chain.pem"
+  cipher_suites:
+    - "TLS_AES_256_GCM_SHA384"
+    - "TLS_CHACHA20_POLY1305_SHA256"
+    - "TLS_AES_128_GCM_SHA256"
+
+# --- Authentication ---
+authentication:
+  provider: "OAuth2"
+  issuer_url: "https://auth.engineering-ops.internal/realms/workbench"
+  jwks_uri: "https://auth.engineering-ops.internal/realms/workbench/protocol/openid-connect/certs"
+  token_validation: "online"
+  required_scopes:
+    - "workbench:read"
+    - "workbench:write"
+  service_account:
+    client_id: "gateway-service"
+    client_secret_ref: "vault:secret/gateway/oauth-client-secret"
+
+# --- CORS Configuration ---
+cors:
+  enabled: true
+  allowed_origins:
+    - "https://workbench.engineering-ops.internal"
+    - "https://mobile.engineering-ops.internal"
+    - "https://ar-client.engineering-ops.internal"
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"]
+  allowed_headers: ["Authorization", "Content-Type", "X-Request-ID", "X-Correlation-ID"]
+  expose_headers: ["X-Request-ID", "X-RateLimit-Remaining"]
+  max_age_seconds: 3600
+  allow_credentials: true
+
+# --- Global Rate Limiting ---
+# NOTE: All rate limits in this section are specified per MINUTE
+global_rate_limits:
+  default:
+    requests: 500
+    unit: "per_minute"
+    burst_size: 50
+  authenticated:
+    requests: 1000
+    unit: "per_minute"
+    burst_size: 100
+
+# --- Global Timeouts ---
+global_timeouts:
+  connect_timeout: 5000      # milliseconds
+  read_timeout: 30000         # milliseconds
+  write_timeout: 30000        # milliseconds
+  idle_timeout: 120000        # milliseconds
+
+# --- Route Definitions ---
+routes:
+  # Expert Workbench Core API
+  - path: "/expert-workbench/api/v1/*"
+    upstream: "http://workbench-core-svc.workbench.svc.cluster.local:8080"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_prefix: false
+    rate_limit:
+      requests: 1000
+      unit: "per_minute"    # 1000 requests per minute for this endpoint
+      burst_size: 100
+    timeout:
+      connect: 5000          # milliseconds
+      read: 30               # seconds — allows for complex queries
+      write: 30              # seconds
+    retry:
+      attempts: 3
+      backoff_ms: 500
+    circuit_breaker:
+      threshold: 5
+      timeout_seconds: 30
+
+  # Expert Session Management
+  - path: "/expert-workbench/api/v1/sessions/*"
+    upstream: "http://session-mgr-svc.workbench.svc.cluster.local:8081"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_prefix: false
+    rate_limit:
+      requests: 1000
+      unit: "per_second"    # CAUTION: This says per_second but should be per_minute like the parent route
+      burst_size: 100
+    timeout:
+      connect: 5000
+      read: 60000            # milliseconds — longer for streaming sessions
+      write: 60000           # milliseconds
+    websocket:
+      enabled: true
+      ping_interval_seconds: 30
+
+  # AI Model Inference
+  - path: "/expert-workbench/api/v1/inference/*"
+    upstream: "http://model-inference-svc.workbench.svc.cluster.local:8082"
+    methods: ["POST"]
+    strip_prefix: false
+    rate_limit:
+      requests: 200
+      unit: "per_minute"
+      burst_size: 20
+    timeout:
+      connect: 5000
+      read: 120000           # milliseconds — AI inference can be slow
+      write: 30000
+    retry:
+      attempts: 2
+      backoff_ms: 1000
+    circuit_breaker:
+      threshold: 3
+      timeout_seconds: 60
+
+  # Knowledge Base Search
+  - path: "/expert-workbench/api/v1/knowledge/*"
+    upstream: "http://knowledge-api-svc.workbench.svc.cluster.local:8083"
+    methods: ["GET", "POST"]
+    strip_prefix: false
+    rate_limit:
+      requests: 800
+      unit: "per_minute"
+      burst_size: 80
+    timeout:
+      connect: 3000
+      read: 15000
+      write: 10000
+
+  # Video Streaming
+  - path: "/expert-workbench/api/v1/video/*"
+    upstream: "http://video-stream-svc.workbench.svc.cluster.local:8084"
+    methods: ["GET", "POST"]
+    strip_prefix: false
+    rate_limit:
+      requests: 100
+      unit: "per_minute"
+      burst_size: 10
+    timeout:
+      connect: 3000
+      read: 300000           # milliseconds — long-lived video streams
+      write: 300000
+    websocket:
+      enabled: true
+      ping_interval_seconds: 15
+      max_message_size_mb: 10
+
+  # SCADA Data Integration
+  - path: "/expert-workbench/api/v1/scada/*"
+    upstream: "http://scada-connector-svc.workbench.svc.cluster.local:8085"
+    methods: ["GET"]
+    strip_prefix: false
+    rate_limit:
+      requests: 2000
+      unit: "per_minute"
+      burst_size: 200
+    timeout:
+      connect: 10000         # SCADA systems can be slow to connect
+      read: 30000
+      write: 5000
+    additional_headers:
+      X-SCADA-Auth: "vault:secret/scada/api-token"
+
+  # Incident Management
+  - path: "/expert-workbench/api/v1/incidents/*"
+    upstream: "http://incident-mgr-svc.workbench.svc.cluster.local:8086"
+    methods: ["GET", "POST", "PUT", "PATCH"]
+    strip_prefix: false
+    rate_limit:
+      requests: 500
+      unit: "per_minute"
+      burst_size: 50
+    timeout:
+      connect: 5000
+      read: 30000
+      write: 30000
+
+  # File Upload/Download
+  - path: "/expert-workbench/api/v1/files/*"
+    upstream: "http://file-storage-svc.workbench.svc.cluster.local:8087"
+    methods: ["GET", "POST", "DELETE"]
+    strip_prefix: false
+    rate_limit:
+      requests: 100
+      unit: "per_minute"
+      burst_size: 10
+    timeout:
+      connect: 5000
+      read: 120000
+      write: 300000          # Large file uploads
+    max_body_size_mb: 500
+
+  # Audit and Compliance
+  - path: "/expert-workbench/api/v1/audit/*"
+    upstream: "http://audit-logger-svc.workbench.svc.cluster.local:8088"
+    methods: ["GET", "POST"]
+    strip_prefix: false
+    rate_limit:
+      requests: 300
+      unit: "per_minute"
+      burst_size: 30
+    timeout:
+      connect: 3000
+      read: 15000
+      write: 10000
+
+# --- Health Check Endpoints ---
+health_checks:
+  gateway:
+    path: "/health"
+    interval_seconds: 10
+    timeout_seconds: 5
+    healthy_threshold: 2
+    unhealthy_threshold: 3
+  
+  upstream_checks:
+    - name: "workbench-core"
+      url: "http://workbench-core-svc.workbench.svc.cluster.local:8080/actuator/health"
+      interval_seconds: 15
+      timeout_seconds: 5
+    - name: "session-manager"
+      url: "http://session-mgr-svc.workbench.svc.cluster.local:8081/actuator/health"
+      interval_seconds: 15
+      timeout_seconds: 5
+    - name: "model-inference"
+      url: "http://model-inference-svc.workbench.svc.cluster.local:8082/actuator/health"
+      interval_seconds: 30
+      timeout_seconds: 10
+    - name: "knowledge-api"
+      url: "http://knowledge-api-svc.workbench.svc.cluster.local:8083/actuator/health"
+      interval_seconds: 15
+      timeout_seconds: 5
+    - name: "video-stream"
+      url: "http://video-stream-svc.workbench.svc.cluster.local:8084/actuator/health"
+      interval_seconds: 15
+      timeout_seconds: 5
+
+# --- Logging and Observability ---
+observability:
+  access_log:
+    enabled: true
+    format: "json"
+    fields: ["timestamp", "method", "path", "status", "latency_ms", "client_ip", "user_agent", "x_request_id"]
+  metrics:
+    enabled: true
+    endpoint: "/metrics"
+    format: "prometheus"
+  tracing:
+    enabled: true
+    provider: "jaeger"
+    endpoint: "http://jaeger-collector.observability.svc.cluster.local:14268/api/traces"
+    sample_rate: 0.1

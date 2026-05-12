@@ -1,0 +1,58 @@
+[
+  {
+    "integration_id": "INT-1501",
+    "name": "Supplier API v2",
+    "service": "supplier_api",
+    "status": "active",
+    "endpoint": "https://supplier-api.example.com/v2/data",
+    "api_key": "sk-supplier-v2-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": null,
+    "last_verified": "2026-03-19T10:00:00Z",
+    "monthly_calls": 720,
+    "error_rate": 1.0,
+    "notes": "v2 has been returning 404 since March 20; the supplier has migrated the API to v3 and this endpoint is deprecated. Currently still configured as active; needs to be switched to INT-1502."
+  },
+  {
+    "integration_id": "INT-1502",
+    "name": "Supplier API v3",
+    "service": "supplier_api",
+    "status": "inactive",
+    "endpoint": "https://supplier-api.example.com/v3/data",
+    "api_key": "sk-supplier-v3-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": "https://api.ourapp.com/webhooks/supplier-v3",
+    "last_verified": "2026-03-25T14:00:00Z",
+    "monthly_calls": 0,
+    "error_rate": 0.0,
+    "notes": "New API version is live and has passed verification tests, but has not yet been activated in production. JOB-1501's data source needs to be switched from v2 to v3."
+  },
+  {
+    "integration_id": "INT-1503",
+    "name": "Inventory Management System",
+    "service": "inventory_system",
+    "status": "active",
+    "endpoint": "https://inventory.internal.example.com/api/v1",
+    "api_key": "sk-inv-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": null,
+    "last_verified": "2026-03-26T08:00:00Z",
+    "monthly_calls": 15200,
+    "error_rate": 0.002,
+    "notes": "Operating normally"
+  },
+  {
+    "integration_id": "INT-1504",
+    "name": "Order System",
+    "service": "order_system",
+    "status": "active",
+    "endpoint": "https://orders.internal.example.com/api/v2",
+    "api_key": "sk-ord-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": null,
+    "last_verified": "2026-03-26T09:00:00Z",
+    "monthly_calls": 32000,
+    "error_rate": 0.001,
+    "notes": "Operating normally"
+  }
+]

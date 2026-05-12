@@ -1,0 +1,68 @@
+[
+  {
+    "contact_id": "CT-1401",
+    "name": "Ma Qiang",
+    "department": "Technology",
+    "title": "Senior DBA",
+    "email": "maqiang@company.com",
+    "phone": "13900141001",
+    "location": "Beijing Office",
+    "specialization": "Database",
+    "notes": "Database expert, responsible for all database-related troubleshooting including connection pools, slow queries, and primary-replica synchronization"
+  },
+  {
+    "contact_id": "CT-1402",
+    "name": "Li Hua",
+    "department": "Technology",
+    "title": "Architect",
+    "email": "lihua@company.com",
+    "phone": "13900141002",
+    "location": "Shanghai HQ",
+    "specialization": "API & System Architecture",
+    "notes": "API expert, responsible for system architecture design and API performance optimization, handles API-related technical issues"
+  },
+  {
+    "contact_id": "CT-1403",
+    "name": "Wang Ming",
+    "department": "Technology",
+    "title": "Technical Director",
+    "email": "wangming@company.com",
+    "phone": "13900141003",
+    "location": "Shanghai HQ",
+    "specialization": "Technical Management",
+    "notes": "Head of Technology department, escalation point for all P0/P1 level incidents, responsible for cross-department technical coordination"
+  },
+  {
+    "contact_id": "CT-1404",
+    "name": "Zhao Lei",
+    "department": "Customer Success",
+    "title": "Key Account Manager",
+    "email": "zhaolei@company.com",
+    "phone": "13900141004",
+    "location": "Shanghai HQ",
+    "specialization": "VIP Customer Management",
+    "notes": "Dedicated liaison for VIP customers including Wantong Logistics and Dingxin Software, responsible for VIP customer relationship maintenance and escalation communication"
+  },
+  {
+    "contact_id": "CT-1405",
+    "name": "Zhang Wei",
+    "department": "Technology",
+    "title": "Operations Engineer",
+    "email": "zhangwei@company.com",
+    "phone": "13900141005",
+    "location": "Beijing Office",
+    "specialization": "Operations",
+    "notes": "Responsible for server operations, deployment, and daily monitoring"
+  },
+  {
+    "contact_id": "CT-1406",
+    "name": "Zhou Ming",
+    "department": "Technology",
+    "title": "Frontend Engineer",
+    "email": "zhouming@company.com",
+    "phone": "13900141006",
+    "location": "Shanghai HQ",
+    "specialization": "Frontend Development",
+    "notes": "Responsible for frontend UI development and report display module"
+  }
+]

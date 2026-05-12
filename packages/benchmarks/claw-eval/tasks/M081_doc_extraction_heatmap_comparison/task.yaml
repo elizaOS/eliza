@@ -1,0 +1,47 @@
+task_id: M081_doc_extraction_heatmap_comparison
+task_name: Document Extraction - Heatmap Comparison
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher analyzing video understanding benchmarks. Please download
+    and read this PDF: https://arxiv.org/pdf/2406.04264
+
+    Please find Table 2. Extract the scores of GPT-4o and LLaVA-Onevision on
+    7 multiple-choice tasks:
+    TR (Topic Reasoning), AR (Anomaly Recognition), NQA (Needle QA),
+    ER (Ego Reasoning), PQA (Plot QA), AO (Action Order), AC (Action Count).
+
+    Requirements:
+    1. Create a CSV file /workspace/mlvu_gpt4o_vs_llava_ov.csv with columns:
+       Task, GPT-4o, LLaVA-Onevision, Delta
+       (Delta = GPT-4o - LLaVA-Onevision)
+    2. Generate a heatmap /workspace/mlvu_delta_heatmap.png with rows as the two
+       models and columns as the 7 tasks; cell values are scores with color
+       intensity representing score magnitude
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/mlvu_gpt4o_vs_llava_ov.csv
+  - /workspace/mlvu_delta_heatmap.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download MLVU PDF, extract Table 2 scores for GPT-4o and LLaVA-Onevision
+  on 7 tasks, compute delta, save CSV and heatmap with score annotations.
+primary_dimensions:
+  - completion
+  - robustness

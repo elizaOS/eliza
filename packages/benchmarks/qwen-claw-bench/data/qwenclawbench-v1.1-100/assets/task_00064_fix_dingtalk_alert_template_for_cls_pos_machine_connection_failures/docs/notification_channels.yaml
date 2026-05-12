@@ -1,0 +1,96 @@
+# Notification Channel Configuration
+# Last updated: 2024-01-10
+# Maintainer: ops-team@company.example.com
+
+channels:
+  dingtalk:
+    name: "DingTalk Ops Alert Group"
+    enabled: true
+    webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=a3f8c9d2e1b04567890abcdef1234567890abcdef1234567890abcdef12345678"
+    secret: "SEC9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9"
+    sign_enabled: true
+    keywords:
+      - "告警"
+      - "alarm"
+    rate_limit_per_minute: 20
+    retry_count: 3
+    retry_interval_seconds: 5
+
+  dingtalk_backup:
+    name: "DingTalk Backup Channel"
+    enabled: false
+    webhook_url: "https://oapi.dingtalk.com/robot/send?access_token=b4e7d8c1f2a3456789012345678901234567890123456789012345678901234567"
+    secret: "SECf1e2d3c4b5a6978869504132abcdef0123456789abcdef0123456789abcdef01"
+    sign_enabled: true
+    keywords:
+      - "告警"
+    rate_limit_per_minute: 20
+
+  wecom:
+    name: "WeCom Bot - Infrastructure"
+    enabled: true
+    webhook_url: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=6f8a9b0c-1d2e-3f4a-5b6c-7d8e9f0a1b2c"
+    mentioned_list:
+      - "zhangsan"
+      - "lisi"
+    mentioned_mobile_list:
+      - "138xxxxxxxx00"
+
+  email:
+    name: "Email - Ops Team"
+    enabled: true
+    smtp:
+      host: "smtp.company.example.com"
+      port: 465
+      ssl: true
+      username: "alerts@company.example.com"
+      password_env: "SMTP_ALERT_PASSWORD"
+    from: "alerts@company.example.com"
+    to:
+      - "ops-team@company.example.com"
+      - "oncall@company.example.com"
+    cc:
+      - "manager@company.example.com"
+    subject_template: "[{{severity}}] {{alarm_name}} - {{time}}"
+    body_format: "html"
+
+  sms:
+    name: "SMS - Critical Alerts Only"
+    enabled: true
+    provider: "aliyun"
+    api_endpoint: "https://dysmsapi.aliyuncs.com"
+    access_key_id: "LTAI5tBx9K3mR7vN2pQw"
+    access_key_secret_env: "SMS_ACCESS_KEY_SECRET"
+    sign_name: "运维告警"
+    template_code: "SMS_234567890"
+    phone_numbers:
+      - "139xxxxxxxx00"
+      - "137xxxxxxxx00"
+      - "136xxxxxxxx00"
+    severity_filter:
+      - "critical"
+      - "emergency"
+
+# Routing rules: which alerts go to which channels
+routing:
+  - match:
+      severity: "critical"
+    channels:
+      - "dingtalk"
+      - "sms"
+      - "email"
+  - match:
+      severity: "warning"
+    channels:
+      - "dingtalk"
+      - "email"
+  - match:
+      severity: "info"
+    channels:
+      - "email"
+  - match:
+      rule_name: "收款机连接失败告警"
+    channels:
+      - "dingtalk"
+      - "wecom"
+      - "sms"

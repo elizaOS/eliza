@@ -1,0 +1,78 @@
+# Civil Contractor Interface Notes
+# Prepared by: Zhongda Construction Engineering Co., Ltd.
+# Contact: Project Manager Wang Jianguo
+# Date: 2024-01-30
+# Reference: APC-2024-0087 Anechoic Chamber Civil Works
+
+contractor_name: "Zhongda Construction Engineering Co., Ltd."
+contract_number: "ZD-2024-C0156"
+interface_document_rev: "02"
+date_issued: "2024-01-30"
+
+# --- Building Reference Levels ---
+chamber_floor_elevation_m: "+0.000"  # Relative to project datum
+roof_truss_bottom_chord_elevation_m: "+18.500"
+roof_ridge_elevation_m: "+21.200"
+ground_floor_slab_top_elevation_m: "-0.150"  # Below chamber floor
+
+# --- Column Grid References ---
+column_grid_longitudinal: ["1", "2", "3", "4", "5"]
+column_grid_transverse: ["A", "B", "C"]
+column_grid_longitudinal_spacing_m: 6
+column_grid_transverse_spacing_m: 8
+
+# --- Lifting Point Interface Data ---
+# NOTE: Values below are from the approved specification, converted to
+# contractor's preferred units for coordination with formwork subcontractor.
+
+hoist_track_point_spacing_cm: 100
+# Hoist track lifting points at 100 cm (1 m) centers along chamber centerline
+
+embed_plate_thickness_inch: 0.787
+# Embed plate thickness: 0.787 inches (equivalent to 20 mm)
+# Inch dimension provided for coordination with imported fastener supplier
+
+single_point_capacity_kg: 1000
+# Standard lifting point rated capacity: 1000 kg per point
+
+hoist_point_capacity_kg: 2000
+# Hoist track lifting point rated capacity: 2000 kg per point
+
+embed_plate_plan_size_mm: "250 x 250"
+# Embed plate plan dimensions remain in mm per structural drawings
+
+# --- Concrete Interface ---
+concrete_grade: "C35"
+concrete_cover_to_anchor_mm: 50
+anchor_bolt_embedment_mm: 200
+formwork_pocket_size_mm: "280 x 280"  # 15mm clearance each side for grouting
+grout_material: "non-shrink cementitious grout"
+
+# --- Coordination Notes ---
+coordination_notes:
+  - "All embed plates to be set in position before concrete pour. No post-installed anchors permitted."
+  - "Contractor to provide temporary support frames for embed plates during pour."
+  - "Shielding contractor to verify RF continuity at each embed plate location after concrete cure."
+  - "Embed plate position survey required within 48 hours of formwork strip."
+  - "Contractor responsible for protecting exposed embed plate surfaces from concrete splatter."
+
+# --- Schedule Interface ---
+concrete_pour_sequence:
+  - zone: "Roof Zone 1 (Grid 1-3, A-C)"
+    planned_date: "2024-04-15"
+    embed_plates_required_by: "2024-04-10"
+  - zone: "Roof Zone 2 (Grid 3-5, A-C)"
+    planned_date: "2024-04-22"
+    embed_plates_required_by: "2024-04-17"
+
+# --- Open Items ---
+open_items:
+  - item: "Confirm final hoist track alignment with shielding contractor"
+    responsible: "Design Team"
+    due_date: "2024-02-15"
+  - item: "Provide anchor bolt material certificates"
+    responsible: "Zhongda Construction"
+    due_date: "2024-03-01"
+  - item: "Coordinate fire-retardant coating schedule with embed plate installation"
+    responsible: "Both parties"
+    due_date: "2024-03-15"

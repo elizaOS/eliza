@@ -1,0 +1,53 @@
+SVG Export Notes
+================
+
+Date: 2023-11-20
+Author: Project Team
+
+Overview:
+---------
+SVG (Scalable Vector Graphics) is a vector-based image format that uses XML to
+describe 2D graphics. Unlike raster formats (PNG, JPEG), SVG images can be scaled
+to any size without loss of quality.
+
+Using svgwrite Library:
+-----------------------
+The `svgwrite` Python library can be used to programmatically generate SVG files.
+
+    pip install svgwrite
+
+Example usage:
+
+    import svgwrite
+
+    dwg = svgwrite.Drawing('doraemon.svg', size=('800px', '800px'))
+    dwg.add(dwg.circle(center=(400, 400), r=200, fill='#0093D6', stroke='black'))
+    dwg.save()
+
+Advantages of SVG:
+- Vector-based: infinitely scalable without pixelation
+- Small file sizes for simple graphics
+- Editable in text editors and vector graphics software (Inkscape, Illustrator)
+- Native browser support for web display
+- CSS and JavaScript can manipulate SVG elements
+
+Disadvantages:
+- Not ideal for complex photographic images
+- Rendering can vary slightly between browsers
+- Some Python drawing libraries have limited SVG support
+
+Comparison with PNG:
+- PNG is raster-based, fixed resolution
+- PNG is better for sharing final rendered images
+- PNG is universally supported by all image viewers
+- For this project, PNG output via matplotlib is the primary target
+
+Note: This document is for reference only. The main project uses matplotlib's
+savefig() function to export directly to PNG format. SVG export is not part
+of the current project scope.
+
+Related Libraries:
+- svgwrite: Pure Python SVG generation
+- drawSvg: Higher-level SVG drawing
+- CairoSVG: SVG to PNG/PDF conversion
+- matplotlib: Can also export to SVG via savefig('output.svg')

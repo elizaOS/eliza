@@ -1,0 +1,45 @@
+# Encryption and Data Protection Settings
+# Service: memory-sync-service
+# Last reviewed: 2024-08-20
+
+encryption:
+  algorithm: AES-256-GCM
+  key_length_bits: 256
+  key_rotation_frequency: 24  # hours
+  key_derivation_function: PBKDF2
+  kdf_iterations: 600000
+
+transit_encryption:
+  protocol: TLS
+  min_version: "1.3"
+  cipher_suites:
+    - TLS_AES_256_GCM_SHA384
+    - TLS_CHACHA20_POLY1305_SHA256
+  certificate_authority: "internal-ca.agentops.io"
+  mutual_tls_enabled: true
+
+at_rest_encryption:
+  enabled: true
+  provider: "aws-kms"
+  key_alias: "alias/agent-memory-master"
+  per_agent_keys: true
+  shared_namespace_key: "managed_by_kms"
+
+data_protection:
+  pii_masking_enabled: false
+  pii_detection_engine: "presidio-v2"
+  masking_strategy: "redaction"
+  field_level_encryption: false
+  data_tokenization: false
+
+key_management:
+  kms_endpoint: "https://kms.internal.agentops.io"
+  key_store: "hashicorp-vault"
+  vault_path: "secret/agent-memory/keys"
+  auto_rotation: true
+  rotation_notification_hours: 48
+
+audit:
+  log_key_access: true
+  log_encryption_operations: true
+  alert_on_rotation_failure: true

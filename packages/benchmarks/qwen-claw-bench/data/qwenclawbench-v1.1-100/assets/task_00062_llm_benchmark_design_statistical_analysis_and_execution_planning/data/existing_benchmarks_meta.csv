@@ -1,0 +1,26 @@
+benchmark_name,num_dimensions,total_questions,avg_completion_hours,year_published,known_issues,dimension_list
+MMLU-Pro,57,14042,8.5,2024,Data contamination widely reported; ceiling effects on easy categories,STEM;Humanities;Social Sciences;Other
+HumanEval-Plus,1,164,0.5,2023,Limited to Python; no multi-file context,Code Generation
+MBPP-Extended,1,974,1.2,2023,Simple function-level tasks only; no system design,Code Generation
+GSM8K,1,1319,1.0,2021,Grade school level only; saturated by top models,Mathematics
+MATH-500,5,500,2.0,2023,Subset selection bias; limited to competition math,Algebra;Geometry;Number Theory;Combinatorics;Calculus
+BIG-Bench Hard,23,6511,12.0,2023,Inconsistent difficulty across tasks; some tasks trivial,Reasoning;Language;Math;Knowledge;Code;Social;Creativity;Logic;Comprehension;Science;Translation;Analogy;Causal;Temporal;Spatial;Ethical;Planning;Abstraction;Commonsense;Disambiguation;Sarcasm;Penguins;Navigation
+ARC-Challenge,1,1172,0.8,2018,Multiple choice only; outdated science questions,Scientific Reasoning
+HellaSwag,1,10042,3.5,2019,Near-saturated; adversarial filtering may not generalize,Common Sense
+WinoGrande,1,1767,0.6,2020,Binary choice limits discrimination; ceiling effects,Coreference Resolution
+TruthfulQA,2,817,1.5,2022,Subjective truth criteria; limited to English,Truthfulness;Informativeness
+DROP,1,9536,4.0,2019,Discrete reasoning focus; extraction-heavy,Reading Comprehension
+QuALITY,1,2523,3.0,2022,Long-context only; limited question diversity,Long-form Comprehension
+GPQA,3,448,2.5,2024,Expert-level only; small sample size per domain,Physics;Biology;Chemistry
+IFEval,1,541,0.8,2023,Instruction following only; binary scoring,Instruction Following
+MT-Bench,8,80,0.3,2023,Very small; LLM-as-judge reliability concerns,Writing;Roleplay;Reasoning;Math;Coding;Extraction;STEM;Humanities
+AlpacaEval-2,1,805,1.0,2024,Length bias in evaluation; single-turn only,General Instruction Following
+LMSYS-Chat-Hard,1,500,1.5,2024,Preference-based; no ground truth,Conversational Quality
+MedQA,1,1273,2.0,2021,Domain-specific; US medical licensing focus,Medical Knowledge
+LegalBench,6,1800,4.0,2023,US legal system bias; requires domain expertise to evaluate,Legal Reasoning;Statutory Interpretation;Contract Analysis;Issue Spotting;Rule Application;Rhetorical Analysis
+SWE-Bench,1,2294,6.0,2024,Requires execution environment; high infrastructure cost,Software Engineering
+AIME-2024,1,30,0.5,2024,Extremely small; competition math only,Advanced Mathematics
+LiveCodeBench,4,713,2.0,2024,Temporal contamination risk; requires frequent updates,Code Generation;Code Debugging;Code Optimization;System Design
+SimpleQA,1,4326,1.5,2024,Factual recall only; no reasoning required,Fact Retrieval
+BFCL,3,1700,3.0,2024,Tool use focus; limited to function calling patterns,Simple Function Call;Multiple Function Call;Parallel Function Call
+Chatbot Arena Elo,1,0,0.0,2024,Crowdsourced; no reproducible question set; preference-based,Overall Quality

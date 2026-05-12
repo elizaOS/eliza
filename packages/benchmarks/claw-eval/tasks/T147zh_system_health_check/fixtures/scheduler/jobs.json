@@ -1,0 +1,167 @@
+[
+  {
+    "job_id": "JOB-1001",
+    "name": "数据备份",
+    "schedule": "0 2 * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T02:00:00Z",
+    "last_status": "success",
+    "description": "每天凌晨2点执行全量数据库备份",
+    "tags": [
+      "backup",
+      "daily"
+    ],
+    "cron_expression": "0 2 * * *",
+    "enabled": true,
+    "action": "每天凌晨2点执行全量数据库备份",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T02:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1002",
+    "name": "邮件通知",
+    "schedule": "*/10 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T09:30:00Z",
+    "last_status": "failed",
+    "error_message": "SMTP连接超时: Connection to smtp.company.com:587 timed out after 30s",
+    "description": "每10分钟检查待发送邮件队列并批量发送",
+    "tags": [
+      "notification",
+      "email"
+    ],
+    "failure_count": 12,
+    "first_failure": "2026-03-19T10:00:00",
+    "cron_expression": "*/10 * * * *",
+    "enabled": true,
+    "action": "每10分钟检查待发送邮件队列并批量发送",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T09:30:00Z",
+        "status": "failed",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1003",
+    "name": "数据仓库ETL",
+    "schedule": "*/30 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T09:00:00Z",
+    "last_status": "failed",
+    "error_message": "同步超时: ETL pipeline exceeded 1800s limit, partial sync completed (72%)",
+    "description": "每30分钟执行生产数据到数据仓库的增量同步",
+    "tags": [
+      "etl",
+      "sync"
+    ],
+    "failure_count": 6,
+    "first_failure": "2026-03-23T12:00:00",
+    "cron_expression": "*/30 * * * *",
+    "enabled": true,
+    "action": "每30分钟执行生产数据到数据仓库的增量同步",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T09:00:00Z",
+        "status": "failed",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1004",
+    "name": "监控巡检",
+    "schedule": "*/5 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T09:55:00Z",
+    "last_status": "success",
+    "description": "每5分钟检查各服务健康状态并上报",
+    "tags": [
+      "monitoring",
+      "health"
+    ],
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "action": "每5分钟检查各服务健康状态并上报",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T09:55:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1005",
+    "name": "日志清理",
+    "schedule": "0 3 * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T03:00:00Z",
+    "last_status": "success",
+    "description": "每天凌晨3点清理超过30天的归档日志",
+    "tags": [
+      "maintenance",
+      "cleanup"
+    ],
+    "cron_expression": "0 3 * * *",
+    "enabled": true,
+    "action": "每天凌晨3点清理超过30天的归档日志",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T03:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1006",
+    "name": "报表生成",
+    "schedule": "0 8 * * *",
+    "status": "disabled",
+    "last_run": "2026-03-20T08:00:00Z",
+    "last_status": "success",
+    "description": "每天8点生成业务日报和运营报表",
+    "tags": [
+      "report",
+      "daily"
+    ],
+    "disabled_reason": "手动禁用 - 报表模块维护升级中，预计3月28日恢复",
+    "disabled_by": "admin",
+    "disabled_at": "2026-03-21T10:00:00",
+    "cron_expression": "0 8 * * *",
+    "enabled": false,
+    "action": "每天8点生成业务日报和运营报表",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-20T08:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  }
+]

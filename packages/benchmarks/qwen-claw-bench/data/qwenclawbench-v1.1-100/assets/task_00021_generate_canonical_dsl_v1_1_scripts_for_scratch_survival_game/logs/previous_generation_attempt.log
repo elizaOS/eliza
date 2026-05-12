@@ -1,0 +1,44 @@
+[2024-03-15 14:22:01.003] INFO  [DSLGenerator] Starting DSL generation for project 极限生存挑战
+[2024-03-15 14:22:01.004] INFO  [DSLGenerator] Loading project metadata from config/project_metadata.json
+[2024-03-15 14:22:01.015] INFO  [DSLGenerator] Found 3 sprites: Player, Enemy, Apple
+[2024-03-15 14:22:01.016] INFO  [DSLGenerator] Found 4 variables: 分数, 生命, 时间, 状态
+[2024-03-15 14:22:01.020] INFO  [DSLGenerator] Resolving DSL spec configuration...
+[2024-03-15 14:22:01.102] INFO  [ScriptBuilder] Generating scripts for sprite: Player
+[2024-03-15 14:22:01.203] INFO  [ScriptBuilder] Generated 2 scripts for Player
+[2024-03-15 14:22:01.305] INFO  [ScriptBuilder] Generating scripts for sprite: Enemy
+[2024-03-15 14:22:01.410] INFO  [ScriptBuilder] Generated 3 scripts for Enemy
+[2024-03-15 14:22:01.502] INFO  [ScriptBuilder] Generating scripts for sprite: Apple
+[2024-03-15 14:22:01.601] INFO  [ScriptBuilder] Generated 2 scripts for Apple
+[2024-03-15 14:22:01.700] INFO  [Validator] Starting validation pass...
+[2024-03-15 14:22:01.701] INFO  [Validator] Checking top-level structure...
+[2024-03-15 14:22:01.702] ERROR [Validator] Structural validation failed — top-level schema does not match expected format
+  at com.scratch.dsl.validator.StructureValidator.validate(StructureValidator.java:88)
+  at com.scratch.dsl.validator.Pipeline.run(Pipeline.java:45)
+[2024-03-15 14:22:01.800] WARN  [Validator] Continuing validation with partial schema match...
+[2024-03-15 14:22:01.900] INFO  [Validator] Validating script objects...
+[2024-03-15 14:22:02.001] ERROR [Validator] Script object at index 2 failed schema validation (1 constraint violation)
+  at com.scratch.dsl.validator.ScriptValidator.validateScript(ScriptValidator.java:142)
+  at com.scratch.dsl.validator.ScriptValidator.validateAll(ScriptValidator.java:87)
+  at com.scratch.dsl.generator.DSLGenerator.generate(DSLGenerator.java:203)
+[2024-03-15 14:22:02.105] WARN  [Validator] Variable name encoding issue detected for '分数' - verifying UTF-8 encoding
+[2024-03-15 14:22:02.106] WARN  [Validator] Variable name encoding issue detected for '生命' - verifying UTF-8 encoding
+[2024-03-15 14:22:02.107] INFO  [Validator] UTF-8 encoding verified OK for all variable names
+[2024-03-15 14:22:02.300] ERROR [Validator] Opcode validation failed at script[0].blocks[0] — entry not found in active registry
+  at com.scratch.dsl.validator.OpcodeValidator.validate(OpcodeValidator.java:56)
+  at com.scratch.dsl.validator.ScriptValidator.validateBlocks(ScriptValidator.java:178)
+  at com.scratch.dsl.validator.ScriptValidator.validateScript(ScriptValidator.java:145)
+[2024-03-15 14:22:02.500] ERROR [Validator] Opcode validation failed at script[3].blocks[2] — entry not found in active registry
+  at com.scratch.dsl.validator.OpcodeValidator.validate(OpcodeValidator.java:56)
+  at com.scratch.dsl.validator.ScriptValidator.validateBlocks(ScriptValidator.java:178)
+  at com.scratch.dsl.validator.ScriptValidator.validateScript(ScriptValidator.java:145)
+[2024-03-15 14:22:03.001] WARN  [Validator] Script index 4 uses 'control_forever' without SUBSTACK - empty loop body
+[2024-03-15 14:22:03.200] INFO  [Validator] Validation complete: 4 errors, 4 warnings
+[2024-03-15 14:22:03.201] INFO  [Validator] Error summary:
+  - 1x structural validation failure
+  - 1x script schema violation
+  - 2x opcode registry mismatch
+[2024-03-15 14:22:04.001] FATAL [DSLGenerator] Generation aborted due to validation errors
+  at com.scratch.dsl.generator.DSLGenerator.generate(DSLGenerator.java:245)
+  at com.scratch.dsl.generator.Main.main(Main.java:42)
+[2024-03-15 14:22:04.002] INFO  [DSLGenerator] Partial output saved to output/scratch_dsl_script.partial.json
+[2024-03-15 14:22:04.003] INFO  [DSLGenerator] Process exited with code 1

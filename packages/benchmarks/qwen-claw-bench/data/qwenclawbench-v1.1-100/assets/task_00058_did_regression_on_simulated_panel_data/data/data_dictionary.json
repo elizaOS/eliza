@@ -1,0 +1,28 @@
+{
+  "panel_data.csv": {
+    "description": "Balanced panel dataset for DID regression analysis of a 2020 policy shock on firm revenue growth.",
+    "rows": 300,
+    "columns": {
+      "firm_id": "Unique firm identifier (F001-F030)",
+      "year": "Observation year (2015-2024)",
+      "treated": "1 if firm is in the treatment group, 0 otherwise",
+      "post": "1 if year >= 2020 (post-policy), 0 otherwise",
+      "did": "Interaction term: treated * post (DID estimator)",
+      "revenue_growth_pct": "Outcome variable: annual revenue growth percentage",
+      "log_assets": "Natural log of total assets (control)",
+      "leverage": "Debt-to-asset ratio (control)",
+      "roa": "Return on assets (control)",
+      "employees_thousands": "Number of employees in thousands (control)",
+      "rd_intensity": "R&D expenditure as fraction of revenue (control)",
+      "industry": "Industry classification",
+      "region": "Geographic region"
+    },
+    "notes": [
+      "30 firms, 10 years each (balanced panel)",
+      "12 firms treated, 18 control",
+      "Policy shock occurs in 2020",
+      "Cluster standard errors at firm_id level",
+      "True DGP DID coefficient: 3.5"
+    ]
+  }
+}

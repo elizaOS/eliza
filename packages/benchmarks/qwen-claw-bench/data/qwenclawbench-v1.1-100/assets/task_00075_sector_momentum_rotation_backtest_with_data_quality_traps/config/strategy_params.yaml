@@ -1,0 +1,29 @@
+strategy:
+  name: Sector Momentum Rotation
+  version: '2.1'
+  description: Weekly momentum-based sector rotation with risk controls
+momentum:
+  lookback_weeks: 12
+  skip_recent_weeks: 1
+  score_formula: simple_return
+portfolio:
+  top_n: 3
+  weighting: equal
+  initial_capital: 1000000
+rebalancing:
+  frequency_weeks: 4
+  first_rebalance_week: 14
+constraints:
+  max_sector_weight: 40%
+  min_sector_weight: 5
+  max_turnover_per_period: 1.0
+risk:
+  annualization_factor: 52
+  risk_free_rate: 0.05
+missing_data:
+  method: linear_interpolation
+  max_consecutive_missing: 5
+output:
+  report_file: backtest_report.md
+  results_file: backtest_results.json
+  script_file: backtest.py

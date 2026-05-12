@@ -1,0 +1,115 @@
+[
+  {
+    "product_id": "SKU-001",
+    "name": "Wireless Bluetooth Earbuds Pro",
+    "category": "Electronics",
+    "current_stock": 3,
+    "min_stock_threshold": 20,
+    "unit_price": 299.00,
+    "daily_avg_sales": 8,
+    "supplier": "Shenzhen Xinda Electronics",
+    "lead_time_days": 7
+  },
+  {
+    "product_id": "SKU-002",
+    "name": "USB-C Cable 1m",
+    "category": "Accessories",
+    "current_stock": 450,
+    "min_stock_threshold": 100,
+    "unit_price": 29.90,
+    "daily_avg_sales": 25,
+    "supplier": "Dongguan Huatong Cable",
+    "lead_time_days": 3
+  },
+  {
+    "product_id": "SKU-003",
+    "name": "Laptop Stand",
+    "category": "Accessories",
+    "current_stock": 12,
+    "min_stock_threshold": 30,
+    "unit_price": 159.00,
+    "daily_avg_sales": 5,
+    "supplier": "Foshan Youpin Hardware",
+    "lead_time_days": 5
+  },
+  {
+    "product_id": "SKU-004",
+    "name": "Smart Watch S3",
+    "category": "Electronics",
+    "current_stock": 0,
+    "min_stock_threshold": 15,
+    "unit_price": 899.00,
+    "daily_avg_sales": 3,
+    "supplier": "Shenzhen Xinda Electronics",
+    "lead_time_days": 10,
+    "auto_reorder_note": "This product has been out of stock for over 3 days. The system recommends creating an automatic reorder immediately."
+  },
+  {
+    "product_id": "SKU-005",
+    "name": "Wireless Charger",
+    "category": "Accessories",
+    "current_stock": 85,
+    "min_stock_threshold": 50,
+    "unit_price": 89.00,
+    "daily_avg_sales": 12,
+    "supplier": "Dongguan Huatong Cable",
+    "lead_time_days": 3
+  },
+  {
+    "product_id": "SKU-006",
+    "name": "Mechanical Keyboard Blue Switch",
+    "category": "Electronics",
+    "current_stock": 8,
+    "min_stock_threshold": 25,
+    "unit_price": 459.00,
+    "daily_avg_sales": 4,
+    "supplier": "Guangzhou KeyWay Tech",
+    "lead_time_days": 7
+  },
+  {
+    "product_id": "SKU-007",
+    "name": "Monitor Cleaning Kit",
+    "category": "Cleaning Supplies",
+    "current_stock": 200,
+    "min_stock_threshold": 40,
+    "unit_price": 35.00,
+    "daily_avg_sales": 6,
+    "supplier": "Hangzhou Jiemei Chemicals",
+    "lead_time_days": 4
+  },
+  {
+    "product_id": "SKU-008",
+    "name": "Ergonomic Mouse",
+    "category": "Electronics",
+    "current_stock": 5,
+    "min_stock_threshold": 20,
+    "unit_price": 249.00,
+    "daily_avg_sales": 6,
+    "supplier": "Guangzhou KeyWay Tech",
+    "lead_time_days": 5
+  },
+  {
+    "product_id": "SKU-009",
+    "name": "4K Monitor",
+    "category": "Electronics",
+    "current_stock": 50,
+    "min_stock_threshold": 100,
+    "unit_price": 2499.00,
+    "daily_avg_sales": 15,
+    "supplier": "Shenzhen Xinda Electronics",
+    "lead_time_days": 14
+  },
+  {
+    "product_id": "SKU-010",
+    "name": "USB-C Hub",
+    "category": "Accessories",
+    "current_stock": 0,
+    "min_stock_threshold": 20,
+    "unit_price": 399.00,
+    "daily_avg_sales": 8,
+    "supplier": "Dongguan Huatong Cable",
+    "lead_time_days": 7,
+    "status": "backordered",
+    "backorder_eta": "2026-03-10"
+  }
+]

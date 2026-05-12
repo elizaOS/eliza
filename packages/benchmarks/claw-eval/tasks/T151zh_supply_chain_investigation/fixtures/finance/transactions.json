@@ -1,0 +1,123 @@
+[
+  {
+    "transaction_id": "TXN-1101",
+    "date": "2026-03-05",
+    "amount": 150000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "网络设备",
+    "description": "采购供应商A 智能路由器X1 50台 × 3000元/台",
+    "status": "cancelled",
+    "reference": "ITEM-1101",
+    "supplier": "供应商A",
+    "cancel_reason": "供应商暂停发货"
+  },
+  {
+    "transaction_id": "TXN-1102",
+    "date": "2026-03-06",
+    "amount": 80000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "网络设备",
+    "description": "采购供应商A 交换机S200 20台 × 4000元/台",
+    "status": "cancelled",
+    "reference": "ITEM-1102",
+    "supplier": "供应商A",
+    "cancel_reason": "供应商暂停发货"
+  },
+  {
+    "transaction_id": "TXN-1103",
+    "date": "2026-03-07",
+    "amount": 60000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "安全设备",
+    "description": "采购供应商A 防火墙F500 10台 × 6000元/台",
+    "status": "cancelled",
+    "reference": "ITEM-1103",
+    "supplier": "供应商A",
+    "cancel_reason": "供应商暂停发货"
+  },
+  {
+    "transaction_id": "TXN-1104",
+    "date": "2026-03-08",
+    "amount": 45000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "网络设备",
+    "description": "采购供应商A 光纤模块 30个 × 1500元/个",
+    "status": "cancelled",
+    "reference": "ITEM-1108",
+    "supplier": "供应商A",
+    "cancel_reason": "供应商暂停发货"
+  },
+  {
+    "transaction_id": "TXN-1105",
+    "date": "2026-03-10",
+    "amount": 25000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "配件",
+    "description": "采购供应商B 网线Cat6 500箱 × 50元/箱",
+    "status": "completed",
+    "reference": "ITEM-1104",
+    "supplier": "供应商B"
+  },
+  {
+    "transaction_id": "TXN-1106",
+    "date": "2026-03-12",
+    "amount": 35000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "电力设备",
+    "description": "采购供应商B UPS电源 10台 × 3500元/台",
+    "status": "completed",
+    "reference": "ITEM-1106",
+    "supplier": "供应商B"
+  },
+  {
+    "transaction_id": "TXN-1107",
+    "date": "2026-03-11",
+    "amount": 240000.00,
+    "currency": "CNY",
+    "type": "采购",
+    "category": "服务器",
+    "description": "采购供应商C 服务器R720 8台 × 30000元/台",
+    "status": "completed",
+    "reference": "ITEM-1105",
+    "supplier": "供应商C"
+  },
+  {
+    "transaction_id": "TXN-1108",
+    "date": "2026-03-15",
+    "amount": 180000.00,
+    "currency": "CNY",
+    "type": "销售收款",
+    "category": "客户收款",
+    "description": "客户CUS-1101鼎新软件 订单#A001收款 路由器+交换机",
+    "status": "completed",
+    "reference": "CUS-1101"
+  },
+  {
+    "transaction_id": "TXN-1109",
+    "date": "2026-03-16",
+    "amount": 95000.00,
+    "currency": "CNY",
+    "type": "销售收款",
+    "category": "客户收款",
+    "description": "客户CUS-1102瀚海电商 订单#A002收款 交换机+防火墙",
+    "status": "completed",
+    "reference": "CUS-1102"
+  },
+  {
+    "transaction_id": "TXN-1110",
+    "date": "2026-03-17",
+    "amount": 220000.00,
+    "currency": "CNY",
+    "type": "销售收款",
+    "category": "客户收款",
+    "description": "客户CUS-1103万通物流 订单#A003收款 路由器+防火墙+光纤模块",
+    "status": "completed",
+    "reference": "CUS-1103"
+  }
+]

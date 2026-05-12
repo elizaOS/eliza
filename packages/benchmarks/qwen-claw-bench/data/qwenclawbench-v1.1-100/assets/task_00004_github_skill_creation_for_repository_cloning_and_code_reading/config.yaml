@@ -1,0 +1,32 @@
+# Moltbot Agent Configuration
+agent:
+  name: Moltbot
+  version: 3.2.1
+  language: zh-CN
+
+gateway:
+  whatsapp:
+    enabled: true
+    reconnect_interval_ms: 3000
+    max_retries: 5
+  telegram:
+    enabled: false
+    bot_token: ""
+
+skills:
+  directory: ./skills
+  manifest: ./skills.json
+  auto_update: false
+
+logging:
+  level: info
+  output: ./data/gateway-events.log
+  rotate_daily: true
+
+memory:
+  directory: ./memory
+  long_term: ./MEMORY.md
+
+workspace:
+  root: /home/user/clawd
+  data: ./data

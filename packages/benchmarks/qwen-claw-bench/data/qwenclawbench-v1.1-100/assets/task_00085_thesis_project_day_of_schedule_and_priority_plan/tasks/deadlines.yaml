@@ -1,0 +1,26 @@
+# Thesis Project Deadlines and Milestones
+# Last updated: 2024-06-15
+
+deadlines:
+  thesis_submission_deadline: '2024-06-15T15:00:00'
+  defense_ppt_due: '2024-06-15T14:30:00'
+  advisor_review_cutoff: '2024-06-15T13:00:00'
+
+current_time: '2024-06-15T08:00:00'
+
+notes:
+  - "All times are local timezone."
+  - "Late submissions will not be accepted."
+  - "Defense PPT must be uploaded before the thesis submission."
+  - "Advisor review requires at least 2 hours before final submission."
+
+milestones:
+  - name: "Advisor Review Complete"
+    target: '2024-06-15T13:00:00'
+    status: "pending"
+  - name: "PPT Upload"
+    target: '2024-06-15T14:30:00'
+    status: "pending"
+  - name: "Final Thesis Submission"
+    target: '2024-06-15T15:00:00'
+    status: "pending"

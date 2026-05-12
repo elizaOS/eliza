@@ -1,0 +1,48 @@
+[
+  {
+    "product_id": "EQ-001",
+    "name": "MacBook Pro 14寸",
+    "category": "办公电脑",
+    "current_stock": 8,
+    "status": "normal",
+    "unit_price": 14999.00,
+    "notes": ""
+  },
+  {
+    "product_id": "EQ-002",
+    "name": "MacBook Air",
+    "category": "办公电脑",
+    "current_stock": 0,
+    "status": "out_of_stock",
+    "unit_price": 8999.00,
+    "restock_date": "2026-03-10",
+    "notes": "预计3月10日到货15台"
+  },
+  {
+    "product_id": "EQ-003",
+    "name": "高配工作站",
+    "category": "办公电脑",
+    "current_stock": 3,
+    "status": "normal",
+    "unit_price": 25999.00,
+    "notes": ""
+  },
+  {
+    "product_id": "EQ-004",
+    "name": "标准显示器",
+    "category": "外设",
+    "current_stock": 20,
+    "status": "normal",
+    "unit_price": 2499.00,
+    "notes": ""
+  },
+  {
+    "product_id": "EQ-005",
+    "name": "办公桌椅套装",
+    "category": "办公家具",
+    "current_stock": 10,
+    "status": "normal",
+    "unit_price": 3599.00,
+    "notes": ""
+  }
+]

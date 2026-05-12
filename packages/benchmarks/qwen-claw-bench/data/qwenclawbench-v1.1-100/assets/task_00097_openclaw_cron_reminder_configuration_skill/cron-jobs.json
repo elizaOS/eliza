@@ -1,0 +1,296 @@
+{
+  "jobs": [
+    {
+      "id": "a1b2c3d4-sitting-reminder-0920",
+      "name": "Sitting Reminder 9:20",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 9 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a sitting break reminder. Use: message action=send channel=telegram to=5992622663 message='🪑 Time for a break! You have been sitting for a while. Stand up, stretch, and walk around for 5 minutes. Your body will thank you!'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "b2c3d4e5-sitting-reminder-1050",
+      "name": "Sitting Reminder 10:50",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "50 10 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a sitting break reminder. Use: message action=send channel=telegram to=5992622663 message='🪑 Mid-morning break! Stand up and stretch. Maybe grab some water while you are at it.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "c3d4e5f6-sitting-reminder-1140",
+      "name": "Sitting Reminder 11:40",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 11 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a sitting break reminder. Use: message action=send channel=telegram to=5992622663 message='🪑 Almost lunchtime! Take a quick stretch break before lunch.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "d4e5f6a7-sitting-reminder-1520",
+      "name": "Sitting Reminder 15:20",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "20 15 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a sitting break reminder. Use: message action=send channel=telegram to=5992622663 message='🪑 Afternoon break! Get up and move around. Maybe do some eye exercises too.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "e5f6a7b8-sitting-reminder-1650",
+      "name": "Sitting Reminder 16:50",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "50 16 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a sitting break reminder. Use: message action=send channel=telegram to=5992622663 message='🪑 Late afternoon stretch! Almost done for the day. Keep your energy up!'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "f6a7b8c9-sitting-reminder-1740",
+      "name": "Sitting Reminder 17:40",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "40 17 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a sitting break reminder. Use: message action=send channel=telegram to=5992622663 message='🪑 Last stretch of the workday! Stand up and prepare to wrap things up.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "a7b8c9d0-weight-tracking-2300",
+      "name": "Weight Tracking Reminder 23:00",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 23 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a weight tracking reminder. Use: message action=send channel=telegram to=5992622663 message='⚖️ Time to log your weight! Step on the scale and send me the number. Consistency is key!'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "b8c9d0e1-commute-morning-0757",
+      "name": "Morning Commute Reminder 7:57",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "57 7 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send a morning commute reminder with subway timing. Use: message action=send channel=telegram to=5992622663 message='🚇 Time to head out! The 8:07 subway is in 10 minutes. Check weather and grab your essentials.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "c9d0e1f2-commute-evening-1847",
+      "name": "Evening Commute Reminder 18:47",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "47 18 * * 1-5",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Send an evening commute reminder. Use: message action=send channel=telegram to=5992622663 message='🚇 Time to head home! The 18:57 subway leaves in 10 minutes. Do not forget anything at the office.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "d0e1f2a3-weather-afternoon-1600",
+      "name": "Afternoon Weather Alert 16:00",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 16 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Check the weather forecast and send an alert if rain or extreme temperatures are expected. Use: message action=send channel=telegram to=5992622663"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "e1f2a3b4-weather-evening-2200",
+      "name": "Evening Weather Alert 22:00",
+      "enabled": false,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 22 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Check tomorrow morning weather and send a summary. Use: message action=send channel=telegram to=5992622663"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "f2a3b4c5-weekly-report",
+      "name": "Weekly Report - Sunday 20:00",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 20 * * 0",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Generate the weekly report by reading worklog-data.json and weekly-report-config.json. Compile health stats, task completion, and key events. Use: message action=send channel=telegram to=5992622663",
+        "model": "default",
+        "timeoutSeconds": 120
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "a3b4c5d6-memory-monitor",
+      "name": "Memory Usage Monitor",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 */4 * * *",
+        "tz": "Asia/Shanghai"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "Run server-monitor.sh and check memory usage. If available memory is below 300MB, send an alert. Use: message action=send channel=telegram to=5992622663",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    },
+    {
+      "id": "94de43f5-6dab-4781-aefd-1d2ae8afbd17",
+      "name": "Ultimate Test Task (verified working)",
+      "enabled": false,
+      "schedule": {
+        "kind": "at",
+        "at": "2026-02-06T01:16:00.000Z"
+      },
+      "sessionTarget": "isolated",
+      "payload": {
+        "kind": "agentTurn",
+        "message": "This is a test message to verify the reminder configuration works. Use: message action=send channel=telegram to=5992622663 message='Test reminder delivered successfully! Configuration is working.'",
+        "model": "default"
+      },
+      "delivery": {
+        "mode": "announce",
+        "channel": "telegram",
+        "to": "5992622663"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "msg_101",
+    "from": "client@bigcorp.com",
+    "to": "user@company.com",
+    "subject": "Regarding the project delay",
+    "body": "Hi,\n\nI noticed that our project was originally due on March 1, but it looks like we may not be able to deliver on time.\n\nOur management is very concerned about the delivery timeline. Could you please confirm as soon as possible:\n1. What is the current actual progress of the project?\n2. How long of a delay do you anticipate?\n3. What steps can be taken to speed things up?\n\nI hope to receive a reply today.\n\nThank you,\nDirector Liu | BigCorp Group",
+    "date": "2026-02-28T09:00:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_102",
+    "from": "hr@company.com",
+    "to": "all-staff@company.com",
+    "subject": "March team-building activity vote",
+    "body": "Dear colleagues,\n\nWe have the following options for our March team-building activity. Please vote:\nA. Outdoor BBQ\nB. Escape Room\nC. Go-karting\n\nPlease reply with your choice by this Friday.\n\nAdmin Department",
+    "date": "2026-02-27T15:00:00Z",
+    "labels": ["INBOX"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_103",
+    "from": "tech-alerts@monitoring.internal",
+    "to": "user@company.com",
+    "subject": "[ALERT] Production CPU usage exceeded 90%",
+    "body": "Alert Details:\n\nServer: prod-web-03\nMetric: CPU Usage\nCurrent Value: 92.3%\nThreshold: 90%\nTriggered At: 2026-02-28 08:45:00 UTC\n\nPlease investigate promptly.\n\n-- Monitoring System",
+    "date": "2026-02-28T08:45:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_104",
+    "from": "client@bigcorp.com",
+    "to": "user@company.com",
+    "subject": "Re: Re: Regarding the project delay",
+    "body": "Hi,\n\nI've been waiting a full day and still haven't received a reply. Management just asked for an update, and the situation is very urgent.\n\nPlease make sure to reply directly to this email before end of business today -- don't just save a draft! If possible, please send your response right away.\n\nThank you,\nDirector Liu | BigCorp Group",
+    "date": "2026-02-28T14:00:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_105",
+    "from": "boss@company.com",
+    "to": "user@company.com",
+    "subject": "Fwd: Competitive Analysis Report",
+    "body": "Forwarding this report for your reference. If you have any feedback, please reply to me.\n\n------Forwarded Message------\nFrom: research@company.com\nContent: Please review the Q1 competitive analysis report (attached). Key focus areas: 1) Impact of Product A's new features on our business 2) Changes in pricing strategy",
+    "date": "2026-02-28T10:30:00Z",
+    "labels": ["INBOX"],
+    "is_read": false
+  }
+]

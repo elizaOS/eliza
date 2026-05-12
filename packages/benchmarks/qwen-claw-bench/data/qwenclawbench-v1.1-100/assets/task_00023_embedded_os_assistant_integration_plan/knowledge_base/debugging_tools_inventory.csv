@@ -1,0 +1,19 @@
+tool_name,category,supported_os,target_arch,license_type,cost_usd,integration_api,notes
+GDB,debugger,Linux;macOS;Windows,ARM;RISC-V;x86;MIPS;Xtensa,GPL-3.0,0,yes,Standard GNU debugger with remote debugging support via gdbserver
+OpenOCD,debugger,Linux;macOS;Windows,ARM;RISC-V;MIPS,GPL-2.0,0,yes,Open-source JTAG/SWD debug adapter; supports many probes
+J-Link,debugger,Linux;macOS;Windows,ARM;RISC-V,Commercial,500,yes,SEGGER J-Link debug probe; EDU version available at $60
+Lauterbach TRACE32,debugger,Linux;Windows,ARM;RISC-V;PowerPC;TriCore;x86,Commercial,15000,yes,Industry-leading hardware trace debugger for complex SoCs
+Segger SystemView,tracer,Linux;macOS;Windows,ARM;RISC-V,Commercial (free eval),0,yes,Real-time recording and visualization of RTOS runtime behavior
+Valgrind,analyzer,Linux;macOS,x86;ARM (limited),GPL-2.0,0,no,Memory error detector; limited embedded use via host simulation
+perf,profiler,Linux,ARM;RISC-V;x86;MIPS,GPL-2.0,0,yes,Linux kernel performance counters; useful for embedded Linux targets
+ftrace,tracer,Linux,ARM;RISC-V;x86,GPL-2.0,0,no,Kernel function tracer built into Linux; low overhead
+LTTng,tracer,Linux,ARM;RISC-V;x86,LGPL-2.1/GPL-2.0,0,yes,High-performance tracing framework for Linux kernel and userspace
+QEMU,emulator,Linux;macOS;Windows,ARM;RISC-V;x86;MIPS;PowerPC;Xtensa,GPL-2.0,0,yes,Full system emulator; widely used for firmware testing without hardware
+Renode,emulator,Linux;macOS;Windows,ARM;RISC-V;Xtensa,MIT,0,yes,Multi-node embedded system simulation framework by Antmicro
+PlatformIO Debugger,debugger,Linux;macOS;Windows,ARM;RISC-V;AVR;Xtensa,Apache-2.0,0,yes,Integrated debugging in PlatformIO IDE; wraps GDB and OpenOCD
+pyOCD,debugger,Linux;macOS;Windows,ARM Cortex-M,Apache-2.0,0,yes,Python-based tool for programming and debugging ARM Cortex-M via CMSIS-DAP
+Black Magic Probe,debugger,Linux;macOS;Windows,ARM Cortex-M;ARM Cortex-A,GPL-3.0,75,yes,Open-source JTAG/SWD probe with built-in GDB server on the probe itself
+Ozone,debugger,Linux;macOS;Windows,ARM;RISC-V,Commercial (free eval),0,yes,SEGGER graphical debugger with advanced timeline and code profiling
+ARM Development Studio,debugger,Linux;Windows,ARM Cortex-M;ARM Cortex-A;ARM Cortex-R,Commercial,8000,yes,Comprehensive ARM debug and trace IDE with Streamline profiler
+Percepio Tracealyzer,tracer,Linux;macOS;Windows,ARM;RISC-V;Xtensa,Commercial,2400,yes,"Visual trace diagnostics for FreeRTOS, Zephyr, ThreadX, and others"
+Saleae Logic Analyzer,analyzer,Linux;macOS;Windows,Protocol-level (SPI;I2C;UART;JTAG),Commercial,500,no,USB logic analyzer with protocol decoding; useful for bus-level debugging

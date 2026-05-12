@@ -1,0 +1,13 @@
+[2026-02-10 14:42:18 UTC] INFO  WhatsApp session initializing...
+[2026-02-10 14:42:19 UTC] INFO  Auth store loaded from ./data/whatsapp-auth
+[2026-02-10 14:42:21 UTC] INFO  WhatsApp gateway connected successfully
+[2026-02-10 14:42:21 UTC] INFO  Session ID: wa-session-main | Phone: +8618911136980
+[2026-02-10 14:45:03 UTC] INFO  Inbound message from +8618911136980: "NAS状态怎么样了" [msgId: 3A35C694B365E252B0A1]
+[2026-02-10 14:45:08 UTC] INFO  Outbound reply to +8618911136980: "Checking NAS status now..." [msgId: out-20260210-144508]
+[2026-02-10 14:45:12 UTC] INFO  Outbound reply to +8618911136980: "NAS array is degraded - disk 3 (WD-WCC7K0RD4215) failed at 12:30 UTC. Rebuild started on hot spare. ETA ~6 hours." [msgId: out-20260210-144512]
+[2026-02-10 14:46:01 UTC] INFO  Inbound message from +8618911136980: "先别动其他盘，等rebuild完成" [msgId: 3A35C694B365E252B0A5]
+[2026-02-10 14:46:05 UTC] INFO  Outbound reply to +8618911136980: "Understood. Leaving other disks untouched until rebuild completes." [msgId: out-20260210-144605]
+[2026-02-10 14:55:00 UTC] INFO  Heartbeat OK - WhatsApp session active
+[2026-02-10 15:00:00 UTC] INFO  Heartbeat OK - WhatsApp session active
+[2026-02-10 15:05:00 UTC] INFO  Heartbeat OK - WhatsApp session active
+[2026-02-10 15:07:11 UTC] INFO  Inbound message from +8618911136980: "恢复了吗" [msgId: 3A35C694B365E252B0C9]

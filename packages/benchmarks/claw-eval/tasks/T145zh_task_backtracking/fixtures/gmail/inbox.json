@@ -1,0 +1,67 @@
+[
+  {
+    "message_id": "msg_1001",
+    "from": "boss@company.com",
+    "to": "me@company.com",
+    "subject": "Q1总结报告进度如何？",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "这个报告下周一要用，请尽快给我一个进度更新。——王总",
+    "labels": [
+      "inbox",
+      "催办"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1002",
+    "from": "client_zhangming@dingxin.com",
+    "to": "me@company.com",
+    "subject": "定制方案什么时候能交付？",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "您好，我们上次会议讨论的定制方案，原定3月20日交付，但到现在还没收到。请尽快确认交付时间。——张明，鼎新软件",
+    "labels": [
+      "inbox",
+      "客户",
+      "催办"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1003",
+    "from": "hr_liwei@company.com",
+    "to": "me@company.com",
+    "subject": "绩效评估表还没提交",
+    "date": "2026-03-24T09:00:00Z",
+    "body": "请注意，本季度绩效评估表的截止日期是3月25日，你的还没有提交。请尽快完成。——李维，HR部",
+    "labels": [
+      "inbox",
+      "催办"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1004",
+    "from": "colleague@company.com",
+    "to": "me@company.com",
+    "subject": "分享一篇好文章",
+    "date": "2026-03-24T09:00:00Z",
+    "body": "推荐你看看这个关于AI趋势的文章，很有意思。",
+    "labels": [
+      "inbox"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1005",
+    "from": "system@company.com",
+    "to": "me@company.com",
+    "subject": "系统维护通知",
+    "date": "2026-03-23T09:00:00Z",
+    "body": "本周日凌晨2:00-6:00进行系统维护。",
+    "labels": [
+      "inbox",
+      "通知"
+    ],
+    "is_read": true
+  }
+]

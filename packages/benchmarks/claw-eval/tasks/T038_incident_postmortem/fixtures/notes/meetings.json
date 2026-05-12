@@ -1,0 +1,40 @@
+[
+  {
+    "note_id": "NOTE-601",
+    "title": "Friday Deployment Review Meeting",
+    "type": "meeting",
+    "participants": [
+      "Development Lead",
+      "DBA Wang",
+      "Ops On-Call",
+      "Project Manager"
+    ],
+    "tags": [
+      "release",
+      "review",
+      "deployment"
+    ],
+    "content": "## Deployment Review Meeting\n\nDate: February 27, 2026\n\n### Change List\n1. **CRM Sync Query Refactor** -- Development stated the performance impact would be minimal; no load testing was performed. The development lead believed it was only a modification to the WHERE clause and would not cause performance issues.\n2. **Order Search Improvement** -- Passed load testing; QPS increased by 30% with no performance regression.\n3. **Payment Page Optimization** -- Pure frontend change, no backend changes, low risk.\n\n### Discussion Notes\n- DBA Wang pointed out that the CRM sync change involves a JOIN query and recommended running performance tests in the staging environment first\n- The development lead stated that the client was pushing hard for this feature and suggested deploying first and monitoring\n- The project manager agreed to deploy first and roll back immediately if issues arise\n- DBA Wang's recommendation was not adopted; this has been noted in the meeting record\n\n### Meeting Conclusions\n- The CRM sync change skipped DBA performance review due to time pressure\n- DBA recommended additional performance testing, but it was not adopted\n- Planned to deploy on Monday (actually deployed Friday evening)\n- The other two changes passed review normally",
+    "created_at": "2026-02-27",
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-602",
+    "title": "Incident Postmortem Preliminary Discussion",
+    "type": "meeting",
+    "participants": [
+      "CTO",
+      "VP of Operations",
+      "DBA Wang",
+      "Development Lead"
+    ],
+    "tags": [
+      "incident",
+      "postmortem",
+      "discussion"
+    ],
+    "content": "## Incident Postmortem Preliminary Discussion\n\nDate: March 1, 2026 (morning)\n\n### Discussion Points\n1. CTO demanded a thorough root cause investigation -- cannot just look at surface symptoms\n2. VP of Operations noted that the monitoring system issued alerts at 20:15, but root cause identification took 30 minutes\n3. DBA Wang suspects the CRM sync task is the culprit; at 20:45 discovered that the process was consuming a large number of database connections\n4. Development lead confirmed that the CRM sync SQL change was deployed last Friday\n5. CTO asked: didn't we have a similar incident in December? Has the TODO to migrate CRM sync to a read replica been completed?\n6. VP of Operations confirmed: among the improvement measures from the December incident, the CRM read replica migration was marked as TODO and has still not been completed\n\n### Action Items\n- Produce a complete incident postmortem report (including timeline, root cause, improvement measures)\n- Review the deployment process for review gaps\n- Investigate whether there are other similar potential risks",
+    "created_at": "2026-03-01",
+    "duration_minutes": 60
+  }
+]

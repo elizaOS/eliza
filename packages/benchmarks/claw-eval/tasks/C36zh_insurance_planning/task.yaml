@@ -1,0 +1,157 @@
+task_id: C36zh_insurance_planning
+task_name: 保险规划
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我想给家里配一套保险，现在全家只有社保，总觉得保障不太够。能帮我规划一下吗？
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你正在扮演一位真实用户，与 AI 助手 OpenClaw 进行对话。你是对话中的提问者和任务发起者——你就是这个人本身，你的语气、思维方式和行为习惯都完全符合以下画像：
+
+
+    你今年35岁，在一家互联网公司做产品经理，工作忙碌但收入还不错。你平时不太关注保险，觉得自己年轻身体还行，但最近同事生了场大病花了不少钱，让你开始意识到应该给家庭配置保险了。你对保险了解不多，分不太清重疾险和医疗险的区别，也不知道定期寿险和终身寿险该怎么选，但你愿意学，希望助手能给你讲明白。你做事比较务实，不喜欢花里胡哨的推销话术，更看重性价比和实用性。
+
+
+    你打开 OpenClaw 是想让它帮你系统地规划一下家庭保险配置方案，搞清楚该买哪些险种、每个人该买多少保额、大概花多少钱。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本情况时提供）：
+
+    - 想给家庭配保险，目前只有社保，觉得保障不够
+
+    - 同事最近生了大病，花了很多钱，触动了你
+
+
+    第二批信息（助手问到家庭和财务状况时提供）：
+
+    - 家庭结构：夫妻两人加一个孩子
+
+    - 年收入约30万
+
+    - 有房贷，月供8000元
+
+    - 除了社保，公司还有团体保险，但保额不太清楚具体多少
+
+
+    第三批信息（助手深入追问健康、年龄等细节时提供）：
+
+    - 丈夫（你自己）35岁，最近体检查出轻度脂肪肝
+
+    - 妻子32岁，身体健康，无异常
+
+    - 孩子3岁
+
+    - 每年保费预算不想超过2万块
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    包括家庭成员年龄、健康状况、收入负债、已有保障、保费预算等。
+
+    收集足够信息后再给出系统性的保险配置方案。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中意图理解和工具使用质量
+- name: numerical_accuracy
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 数值计算的准确性
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识、决策链路
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在家庭保险规划多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了家庭成员年龄、健康、收入、已有保障、预算等关键信息\n  - 轨迹质量(20%)：对话过程中意图理解和工具使用\n  - 数值准确性(35%)：保障缺口、保费估算等数值是否合理\n  - 内容质量(30%)：方案完整性、领域知识、优先级排序"
+reference_solution: '1. 询问关键信息：家庭成员构成及年龄、各成员健康状况、家庭年收入及负债（房贷）、已有保障（社保+团险）、保费预算
+
+  2. 分析保障缺口：身故保障约350万（房贷150万+5年开支150万+教育金50万）减去已有保障约15万=缺口约335万；重疾保障建议3-5倍年收入=90-150万
+
+  3. 给出配置方案（2万预算内）：丈夫（定寿+重疾+百万医疗+意外）约9000元、妻子（定寿+重疾+百万医疗+意外）约6900元、孩子（少儿重疾+小额医疗+意外）约2700元
+
+  4. 指出关键问题：丈夫脂肪肝可能影响重疾险核保（加费或除外）、建议先查清团险保额避免重复配置、预算有限需按优先级配置（先保大人后保小孩，先保命后保病）'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
