@@ -18,6 +18,13 @@ import { logger } from "../logger.ts";
 
 const warnedAliases = new Set<string>();
 
+/** Process env, or an empty object in non-Node runtimes (browser). */
+function defaultEnv(): NodeJS.ProcessEnv {
+	return typeof process !== "undefined" && process.env
+		? process.env
+		: ({} as NodeJS.ProcessEnv);
+}
+
 /** Trim and treat empty strings as unset, matching dotenv semantics. */
 function readRaw(env: NodeJS.ProcessEnv, key: string): string | undefined {
 	const value = env[key];
@@ -47,7 +54,7 @@ export function readEnv(
 	legacyAliases: readonly string[] = [],
 	options: ReadEnvOptions = {},
 ): string | undefined {
-	const env = options.env ?? process.env;
+	const env = options.env ?? defaultEnv();
 	const canonical = readRaw(env, canonicalKey);
 	if (canonical !== undefined) return canonical;
 	for (const alias of legacyAliases) {

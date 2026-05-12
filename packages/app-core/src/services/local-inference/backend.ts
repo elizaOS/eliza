@@ -179,7 +179,7 @@ function envFlag(name: string): boolean {
  * §4): when the installed `llama-server` binary does not advertise the
  * custom Eliza-1 KV kernels (`turbo3`/`qjl_full`/`polarquant`/…) — i.e. the
  * fork hasn't been built with those kernels dispatched on this backend yet —
- * setting `MILADY_LOCAL_ALLOW_STOCK_KV=1` lets the model load anyway with
+ * setting `ELIZA_LOCAL_ALLOW_STOCK_KV=1` lets the model load anyway with
  * stock `f16` KV cache instead of hard-refusing. The voice pipeline runs;
  * it just runs without the KV-compression speedups on that backend. A loud
  * one-time warning is emitted (see `warnReducedOptimizationLocalMode`).
@@ -194,7 +194,11 @@ function envFlag(name: string): boolean {
  * and `defaultEligible` bundles still require the verified kernels.
  */
 export function localAllowStockKv(): boolean {
-  return envFlag("MILADY_LOCAL_ALLOW_STOCK_KV");
+  // Canonical `ELIZA_LOCAL_ALLOW_STOCK_KV`; the legacy `MILADY_LOCAL_ALLOW_STOCK_KV` is still honored.
+  return (
+    envFlag("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
+    envFlag("MILADY_LOCAL_ALLOW_STOCK_KV")
+  );
 }
 
 let reducedModeWarned = false;
@@ -203,7 +207,7 @@ export function warnReducedOptimizationLocalMode(detail: string): void {
   reducedModeWarned = true;
   console.warn(
     `\n[local-inference] ⚠️  REDUCED-OPTIMIZATION LOCAL MODE — ${detail}\n` +
-      `  MILADY_LOCAL_ALLOW_STOCK_KV=1 is set, so the model is loading with stock\n` +
+      `  ELIZA_LOCAL_ALLOW_STOCK_KV=1 is set, so the model is loading with stock\n` +
       `  f16 KV cache instead of the Eliza-1 TurboQuant/QJL/PolarQuant KV kernels.\n` +
       `  The voice pipeline will run, but slower and using more memory than a build\n` +
       `  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
@@ -449,7 +453,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
         }
       } else {
         throw new Error(
-          `[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama-server binary does not advertise them in CAPABILITIES.json. Rebuild the fork with the matching backend (e.g. node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>), pick a different model, or set MILADY_LOCAL_ALLOW_STOCK_KV=1 to load with stock f16 KV (reduced-optimization local mode — loud warning, not publishable).`,
+          `[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama-server binary does not advertise them in CAPABILITIES.json. Rebuild the fork with the matching backend (e.g. node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>), pick a different model, or set ELIZA_LOCAL_ALLOW_STOCK_KV=1 to load with stock f16 KV (reduced-optimization local mode — loud warning, not publishable).`,
         );
       }
     }
