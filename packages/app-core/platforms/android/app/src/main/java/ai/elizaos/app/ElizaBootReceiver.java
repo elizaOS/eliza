@@ -34,7 +34,7 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         allowUsageStatsAppOp(context);
         GatewayConnectionService.start(context);
         // Only auto-start the on-device agent on branded devices (AOSP /
-        // MiladyOS) or when the user has opted into Local runtime mode.
+        // ElizaOS) or when the user has opted into Local runtime mode.
         // See ElizaAgentService.shouldAutoStart for the exact gate.
         if (ElizaAgentService.shouldAutoStart(context)) {
             ElizaAgentService.start(context);

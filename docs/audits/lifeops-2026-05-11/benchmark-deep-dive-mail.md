@@ -4,15 +4,15 @@ Wave 5, sub-agent W5-mail. Read-only analysis of the 25-scenario mail
 domain across the three lifeops-bench harnesses (eliza, hermes, openclaw).
 Sources:
 
-- `~/.milady/runs/lifeops/lifeops-hermes-baseline-1778514429/` — Hermes
+- `~/.eliza/runs/lifeops/lifeops-hermes-baseline-1778514429/` — Hermes
   agent on gpt-oss-120b (2026-05-11 08:50 PT).
-- `~/.milady/runs/lifeops/lifeops-openclaw-baseline-1778514437/` — Openclaw
+- `~/.eliza/runs/lifeops/lifeops-openclaw-baseline-1778514437/` — Openclaw
   agent on gpt-oss-120b (2026-05-11 08:48 PT).
-- `~/.milady/runs/lifeops/lifeops-eliza-baseline-1778515576/` — Eliza
+- `~/.eliza/runs/lifeops/lifeops-eliza-baseline-1778515576/` — Eliza
   runtime agent on gpt-oss-120b (2026-05-11 09:37 PT).
 
 No fresh runs were spun up — the three baselines above are the only
-mail-domain corpora in `~/.milady/runs/lifeops/`. The
+mail-domain corpora in `~/.eliza/runs/lifeops/`. The
 `lifeops-anthropic-final-*` and `lifeops-cerebras-multi-*` runs from the
 W1-3 era turned out to cover only the habit / self-care suite and contain
 no mail trajectories; all post-w1-9 `lifeops-multiagent-*` runs are
@@ -290,7 +290,7 @@ Every one of them lands at exactly 0.7.
   (`eliza-tool-call-fix.md`, commit `11822f4b52`) was supposed to
   resolve — the eliza-baseline run at 09:37 PT predates the W1-9
   commit landing at 10:19 PT, so this baseline does NOT include the
-  fix. There is no post-W1-9 mail rerun in `~/.milady/runs/lifeops/`;
+  fix. There is no post-W1-9 mail rerun in `~/.eliza/runs/lifeops/`;
   every newer `lifeops-multiagent-*` run targets the calendar suite.
 - Eliza's prose fabricates outcomes prolifically: "The newsletter
   thread (thread_01464) has been archived" / "I've searched your

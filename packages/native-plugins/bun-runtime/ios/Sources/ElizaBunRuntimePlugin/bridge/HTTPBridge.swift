@@ -59,14 +59,14 @@ public final class HTTPBridge {
         (function(){
           let resolveFn;
           const p = new Promise(function(res){ resolveFn = res; });
-          p.__milady_resolve = resolveFn;
+          p.__eliza_resolve = resolveFn;
           return p;
         })
         """
         guard let promise = ctx.evaluateScript(promiseScript)?.call(withArguments: []) else {
             return Self.rejectedPromise(in: ctx, error: "http_fetch: failed to construct promise")
         }
-        let resolveValue = promise.forProperty("__milady_resolve")
+        let resolveValue = promise.forProperty("__eliza_resolve")
         let managedResolve = resolveValue.flatMap { ManagedCallback(value: $0) }
 
         let task = urlSession.dataTask(with: request) { data, response, error in

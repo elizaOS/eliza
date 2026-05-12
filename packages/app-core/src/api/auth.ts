@@ -30,7 +30,7 @@ export function extractHeaderValue(
 }
 
 /**
- * Read the configured API token from env (`ELIZA_API_TOKEN` / `MILADY_API_TOKEN`).
+ * Read the configured API token from env (`ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`).
  * Returns `null` when no token is configured (open access).
  */
 export function getCompatApiToken(): string | null {

@@ -4,7 +4,7 @@
 > 1 hand-authored TS scenario (`payments.plaid-mfa-fail`) in
 > `test/scenarios/lifeops.payments/`.
 > No saved per-scenario JSON exists for the finance domain in
-> `~/.milady/runs/lifeops/` — the multiagent-best run only covers calendar.
+> `~/.eliza/runs/lifeops/` — the multiagent-best run only covers calendar.
 > This audit is sourced directly from scenarios + handler code + seed data.
 
 ## 1. What this benchmark tests
@@ -66,10 +66,10 @@ substring requirement on the 14 reads (`required_outputs` strings like
 ## 2. Per-harness headline
 
 **No saved run data for finance.** The "best" multiagent run
-(`~/.milady/runs/lifeops/lifeops-multiagent-best/`) only contains 25
+(`~/.eliza/runs/lifeops/lifeops-multiagent-best/`) only contains 25
 calendar scenarios across `eliza`, `hermes`, `openclaw`. No
 `scenario_id.startswith("finance.")` entries exist in any saved JSON I
-could scan in `~/.milady/runs/lifeops/`. The Python finance corpus
+could scan in `~/.eliza/runs/lifeops/`. The Python finance corpus
 (17 static + 30 live = 47 scenarios) appears to have never been executed
 end-to-end and persisted under that run dir.
 
@@ -460,7 +460,7 @@ This is a code-readability concern, not a bench correctness issue.
   W5 audit cycle about "finance pass rate" or "recurring detection
   accuracy" would be fabricated unless backed by a real run. The
   bench-results corpus I scanned (~25 multiagent + ~10 single-agent
-  runs in `~/.milady/runs/lifeops/`) contained 0 finance scenarios.
+  runs in `~/.eliza/runs/lifeops/`) contained 0 finance scenarios.
 - **The MONEY action vocabulary aliasing layer is large.**
   `MONEY_LEGACY_SIMILES` in `money.ts` lists 13 user-facing similes
   (`PAYMENTS`, `SUBSCRIPTIONS`, `SPENDING`, `ROCKET_MONEY`, `BUDGET`,

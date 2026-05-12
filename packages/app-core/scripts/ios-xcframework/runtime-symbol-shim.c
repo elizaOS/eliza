@@ -326,25 +326,25 @@ void eliza_inference_free_string(char * str) {
 
 /* ---- Swift direct llama.cpp bridge helpers ------------------------ */
 
-void milady_llama_batch_append(
+void eliza_llama_batch_append(
     struct llama_batch * batch,
     llama_token token,
     llama_pos pos,
     bool logits_out);
 
-void milady_llama_model_params_set_n_gpu_layers(
+void eliza_llama_model_params_set_n_gpu_layers(
     struct llama_model_params * params,
     int32_t n) {
     if (params != NULL) params->n_gpu_layers = n;
 }
 
-void milady_llama_context_params_set_n_ctx(
+void eliza_llama_context_params_set_n_ctx(
     struct llama_context_params * params,
     uint32_t n) {
     if (params != NULL) params->n_ctx = n;
 }
 
-void milady_llama_context_params_set_n_threads(
+void eliza_llama_context_params_set_n_threads(
     struct llama_context_params * params,
     int32_t n,
     int32_t n_batch) {
@@ -353,17 +353,17 @@ void milady_llama_context_params_set_n_threads(
     params->n_threads_batch = n_batch;
 }
 
-void milady_llama_batch_set_single(
+void eliza_llama_batch_set_single(
     struct llama_batch * batch,
     llama_token token,
     llama_pos pos,
     bool logits_out) {
     if (batch == NULL) return;
     batch->n_tokens = 0;
-    milady_llama_batch_append(batch, token, pos, logits_out);
+    eliza_llama_batch_append(batch, token, pos, logits_out);
 }
 
-void milady_llama_batch_append(
+void eliza_llama_batch_append(
     struct llama_batch * batch,
     llama_token token,
     llama_pos pos,
@@ -378,14 +378,14 @@ void milady_llama_batch_append(
     batch->n_tokens++;
 }
 
-void milady_llama_batch_reset(struct llama_batch * batch) {
+void eliza_llama_batch_reset(struct llama_batch * batch) {
     if (batch != NULL) batch->n_tokens = 0;
 }
 
-void milady_llama_log_silence(void) {
+void eliza_llama_log_silence(void) {
     llama_log_set(NULL, NULL);
 }
 
-bool milady_llama_has_metal(void) {
+bool eliza_llama_has_metal(void) {
     return llama_supports_gpu_offload();
 }

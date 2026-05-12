@@ -1,14 +1,14 @@
 # Messages benchmark deep-dive — W5-msg
 
 > Source runs: small fresh smoke (no full 25-scenario messages run exists on
-> disk; the `lifeops-multiagent-*` runs in `~/.milady/runs/lifeops/` ran
+> disk; the `lifeops-multiagent-*` runs in `~/.eliza/runs/lifeops/` ran
 > calendar-only). W5-msg ran a 5-scenario STATIC smoke against hermes and
 > openclaw on Cerebras `gpt-oss-120b`. The numbers below are scoped to
 > that smoke — the qualitative gaps were verified against the full 43-LIVE
 > + 35-STATIC scenario corpus and the runner / fake-backend source.
 >
-> - `~/.milady/runs/lifeops/messages-w5-1778555699/` — hermes, 5 STATIC
-> - `~/.milady/runs/lifeops/messages-w5-openclaw2-1778555738/` — openclaw, 5 STATIC
+> - `~/.eliza/runs/lifeops/messages-w5-1778555699/` — hermes, 5 STATIC
+> - `~/.eliza/runs/lifeops/messages-w5-openclaw2-1778555738/` — openclaw, 5 STATIC
 > - eliza adapter NOT run — the TS bench-server's
 >   `LifeOpsFakeBackend.applyAction()` does not implement the MESSAGE
 >   umbrella (see [section 4.3](#43-eliza-bench-server-backend-only-implements-messagessend)
@@ -475,7 +475,7 @@ would exercise:
 - `MESSAGE source=imessage` → blocked
 - Fallback to `MESSAGE source=sms` (Twilio)
 
-…but nothing today tests this path. The `MILADY_PROTECTED_APPS` env
+…but nothing today tests this path. The `ELIZA_PROTECTED_APPS` env
 + `BlucliService` orchestration cluster would benefit from coverage.
 
 ### 7.4 Reactions / edits / pins / deletes — schema-only, scenarios-none
@@ -527,12 +527,12 @@ set -a; . /Users/shawwalters/milaidy/eliza/.env; set +a
 # Hermes 5-scenario STATIC smoke (this run)
 python -m eliza_lifeops_bench --agent hermes --domain messages --mode static \
   --limit 5 --concurrency 1 --max-cost-usd 1 --per-scenario-timeout-s 60 \
-  --output-dir ~/.milady/runs/lifeops/messages-w5-$(date +%s)
+  --output-dir ~/.eliza/runs/lifeops/messages-w5-$(date +%s)
 
 # Openclaw 5-scenario STATIC smoke (this run)
 python -m eliza_lifeops_bench --agent openclaw --domain messages --mode static \
   --limit 5 --concurrency 1 --max-cost-usd 1 --per-scenario-timeout-s 60 \
-  --output-dir ~/.milady/runs/lifeops/messages-w5-openclaw-$(date +%s)
+  --output-dir ~/.eliza/runs/lifeops/messages-w5-openclaw-$(date +%s)
 ```
 
 Eliza adapter is NOT reproducible against the current TS bench-server
@@ -543,7 +543,7 @@ umbrella the scenarios drive. Fix 5.1 unblocks reproduction.
 ## Data gap notes
 
 - No prior 25-scenario messages run exists on disk; the `lifeops-multiagent-*`
-  runs in `~/.milady/runs/lifeops/` ran calendar-only. The deep-dive
+  runs in `~/.eliza/runs/lifeops/` ran calendar-only. The deep-dive
   numbers are scoped to the 5-scenario W5 smoke.
 - LIVE-mode messages scenarios (43 of them) were not run; the smoke
   used STATIC scenarios because the LIVE corpus needs the

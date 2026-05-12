@@ -12,7 +12,7 @@ scenarios).
 
 Saved-runs filter `^health\.` — **no on-disk results for the health
 domain exist yet on `develop`** (the W4-Z final rebaseline at
-`/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778550766550`
+`/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550766550`
 ran 25 calendar scenarios only, per
 [`final-rebaseline-report.md`](./final-rebaseline-report.md) §"Headline
 numbers"). The first measured health run is a Wave-5 P3 follow-up

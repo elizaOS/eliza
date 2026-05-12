@@ -12,7 +12,7 @@ Sources:
   `/Users/shawwalters/milaidy/eliza/test/scenarios/personality/INDEX.md`
   and `.../hold_style/_distribution.md`.
 - Latest multi-agent run (25-scenario aggressive-only sweep,
-  2026-05-11): `~/.milady/runs/personality/personality-multiagent-best/`
+  2026-05-11): `~/.eliza/runs/personality/personality-multiagent-best/`
   (symlink to `personality-multiagent-1778553884807/`) plus the four
   sibling `personality-<profile>-1778553884807/` directories, each
   holding `verdicts.json`, `report.md`, and per-scenario trajectories
@@ -33,7 +33,7 @@ Sources:
 > **Important caveat about the corpus.** The latest multi-agent sweep
 > (`run_id 1778553884807`) covered only **5 of 40** `hold_style`
 > scenarios per profile — the five `aggression=aggressive` ones (`019`,
-> `004`, `039`, `034`, `009`). All older `~/.milady/runs/personality/*`
+> `004`, `039`, `034`, `009`). All older `~/.eliza/runs/personality/*`
 > runs are 3–10-scenario smokes. There is **no full-40-scenario
 > `hold_style` run on disk** for any profile. The pass-rate numbers
 > below reflect the aggressive subset, not the full bucket. Worse, the
@@ -81,7 +81,7 @@ trajectory on disk**, and the styles `haiku`, `limerick`, and
 
 ## 2. Per-profile pass/fail/needs_review for `hold_style` (5-scenario subset)
 
-From `~/.milady/runs/personality/personality-<profile>-1778553884807/verdicts.json`:
+From `~/.eliza/runs/personality/personality-<profile>-1778553884807/verdicts.json`:
 
 | profile | pass | fail | needs_review | tokens (in/out) | cost | wall (ms) |
 |---|---:|---:|---:|---|---:|---:|

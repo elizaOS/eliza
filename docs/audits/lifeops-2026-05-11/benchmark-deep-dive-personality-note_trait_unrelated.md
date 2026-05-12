@@ -12,7 +12,7 @@ Sources:
   `/Users/shawwalters/milaidy/eliza/test/scenarios/personality/INDEX.md`
   and `.../note_trait_unrelated/_distribution.md`.
 - Latest multi-agent run (25-scenario aggressive-only sweep,
-  2026-05-11): `~/.milady/runs/personality/personality-multiagent-1778553884807/`
+  2026-05-11): `~/.eliza/runs/personality/personality-multiagent-1778553884807/`
   (symlinked as `personality-multiagent-best/`) and the four sibling
   `personality-<profile>-1778553884807/` directories, each holding
   `verdicts.json`, `report.md`, and per-scenario trajectories under

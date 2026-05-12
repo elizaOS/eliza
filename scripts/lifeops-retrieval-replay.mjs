@@ -60,15 +60,15 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv.slice(2));
 
 function defaultStateDir() {
-  // Env wins (MILADY_STATE_DIR / ELIZA_STATE_DIR), then check both legacy
+  // Env wins (ELIZA_STATE_DIR / ELIZA_STATE_DIR), then check both legacy
   // and current default dirs so the script works in mixed environments.
   const envDir =
-    process.env.MILADY_STATE_DIR?.trim() ||
-    process.env.ELIZA_STATE_DIR?.trim();
+    process.env.ELIZA_STATE_DIR?.trim() ||
+    process.env.MILADY_STATE_DIR?.trim();
   if (envDir) return envDir;
-  const milady = path.join(os.homedir(), ".milady");
   const eliza = path.join(os.homedir(), ".eliza");
-  if (fs.existsSync(path.join(milady, "trajectories"))) return milady;
+  const eliza = path.join(os.homedir(), ".eliza");
+  if (fs.existsSync(path.join(eliza, "trajectories"))) return eliza;
   return eliza;
 }
 

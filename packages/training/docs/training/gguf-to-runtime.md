@@ -104,7 +104,7 @@ Once a model is installed (either source), three layers route a
 Relevant env vars / files (no hardcoded ports here, this is all
 state-dir + mode):
 
-- `ELIZA_STATE_DIR` / `MILADY_STATE_DIR` — root for
+- `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` — root for
   `<state-dir>/local-inference/{models,registry.json,assignments.json,routing.json,downloads}`.
 - Runtime mode — local-inference handlers only register when the runtime
   mode is `local` or `local-only` (`shouldRegisterLocalInferenceHandlers`).

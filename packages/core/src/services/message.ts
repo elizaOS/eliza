@@ -5423,7 +5423,7 @@ export function buildFailureReplyPrompt(recentMessages: string): string {
 		"  if the answer looks obvious from context (a SHA, a count, a price,",
 		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
 		"  The trajectory that would have GROUNDED the answer failed, so any",
-		"  factual claim you make here is by definition ungrounded — the user",
+		"  factual claim you make here is by definition ungrounded. The user",
 		"  will retry, the real run will produce the grounded answer, and",
 		"  meanwhile you must not invent one from recent-conversation context.",
 		"- Do not paraphrase or echo the user's question as if you were about",

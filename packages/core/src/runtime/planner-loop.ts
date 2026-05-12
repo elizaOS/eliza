@@ -1031,10 +1031,11 @@ async function callPlanner(params: {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
-		// `modelName` lets the per-model context-window lookup fire when the
-		// caller provides one. The lookup is authoritative over the legacy
-		// `contextWindowTokens` default; an explicit reserve only wins when the
-		// caller actually supplied `compactionReserveTokens`.
+		// `modelName` lets the per-model context-window lookup fire.
+		// The lookup result wins over contextWindowTokens (see buildModelInputBudget
+		// resolution order). Note: contextWindowTokens defaults to 128_000 so the
+		// spread is always non-empty; the lookup will still override it when
+		// contextWindowModelName resolves.
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
@@ -2339,6 +2340,7 @@ export function actionResultToPlannerToolResult(
 	return {
 		success: result.success,
 		text: result.text,
+		userFacingText: result.userFacingText,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
 		continueChain: result.continueChain,

@@ -12,7 +12,7 @@ Sources:
   `/Users/shawwalters/milaidy/eliza/test/scenarios/personality/INDEX.md`
   and `.../shut_up/_distribution.md`.
 - Latest multi-agent run (25-scenario aggressive-only sweep,
-  2026-05-11): `~/.milady/runs/personality/personality-multiagent-1778553884807/`
+  2026-05-11): `~/.eliza/runs/personality/personality-multiagent-1778553884807/`
   and the four sibling `personality-<profile>-1778553884807/`
   directories, each holding `verdicts.json`, `report.md`, and
   per-scenario trajectories under `scenarios/`.
@@ -28,7 +28,7 @@ Sources:
 > **Important caveat about the corpus.** The latest multi-agent sweep
 > (run_id `1778553884807`) covered only **5 of 40** `shut_up` scenarios
 > per profile — the five `aggression=aggressive` ones (`019`, `004`,
-> `039`, `034`, `009`). All older `~/.milady/runs/personality/*` runs are
+> `039`, `034`, `009`). All older `~/.eliza/runs/personality/*` runs are
 > 3-scenario smokes. There is **no full-40-scenario `shut_up` run on
 > disk** for any profile. The pass-rate numbers below therefore reflect
 > the aggressive subset, not the full bucket.
@@ -67,7 +67,7 @@ have no trajectories on disk.
 
 ## 2. Per-profile pass/fail/needs_review for `shut_up` (5-scenario subset)
 
-From `~/.milady/runs/personality/personality-<profile>-1778553884807/verdicts.json`.
+From `~/.eliza/runs/personality/personality-<profile>-1778553884807/verdicts.json`.
 
 | profile | pass | fail | needs_review | tokens (in/out) | cost | wall (ms) |
 |---|---:|---:|---:|---|---:|---:|

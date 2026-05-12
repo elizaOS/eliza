@@ -1,6 +1,6 @@
 # Personality benchmark — `escalation` bucket deep-dive — W5-esc
 
-> Source run: `~/.milady/runs/personality/personality-multiagent-best/`
+> Source run: `~/.eliza/runs/personality/personality-multiagent-best/`
 >   (multiagent-1778553884807; 25 scenarios × 4 profiles)
 > Source scenarios: `test/scenarios/personality/escalation/` (40 scenarios)
 > Rubric: `packages/benchmarks/personality-bench/src/judge/rubrics/escalation-delta.ts`
@@ -225,7 +225,7 @@ write anything to its personality store from the injection payload
 (none of the structured trait/gate setters fire for these turns).
 This bucket therefore does not surface refuse-vs-comply or
 escalate-back behavior at the saved-run sample. To get that signal an
-operator needs to run with `MILADY_PERSONALITY_LIMIT ≥ 40` so the
+operator needs to run with `ELIZA_PERSONALITY_LIMIT ≥ 40` so the
 hostile slice is exercised, or override the interleaver to bias
 toward escalation.
 
@@ -307,7 +307,7 @@ Three of these four are **harness defects**, not agent defects:
    `less_responsive` as "produce shorter prose" because that's the
    only structured mechanism available.
 
-6. **Re-run the bench with `MILADY_PERSONALITY_LIMIT ≥ 40`** (P2 —
+6. **Re-run the bench with `ELIZA_PERSONALITY_LIMIT ≥ 40`** (P2 —
    gives hostile-aggression slice, all 8 ladders, all 8 format
    axes). The current `LIMIT=25` interleaving exercises exactly 5
    escalation scenarios from the `aggressive` aggression slice

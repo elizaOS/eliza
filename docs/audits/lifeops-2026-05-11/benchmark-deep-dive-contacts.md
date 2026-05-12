@@ -9,7 +9,7 @@
 > `docs/audits/lifeops-2026-05-11/eliza-tool-call-fix.md` line 121); the
 > `LIFEOPS_BENCH_GAPS.md` runtime contract; the `_u_entity` dispatch in
 > `runner.py`. No saved per-scenario JSON exists for any contacts scenario
-> in `~/.milady/runs/lifeops/`: every multiagent and baseline run we have
+> in `~/.eliza/runs/lifeops/`: every multiagent and baseline run we have
 > on disk targeted mail/calendar/reminder/sleep/focus only. The
 > contacts/identity surface is **untested by the multiagent corpus**.
 
@@ -68,7 +68,7 @@ memoryWriteOccurred + judgeRubric stack — not the LifeOpsBench formula.
 ## 2. Per-harness headline
 
 **There is no per-harness data to report.** Every multiagent and
-baseline run in `~/.milady/runs/lifeops/` (37 directories) targets
+baseline run in `~/.eliza/runs/lifeops/` (37 directories) targets
 mail/calendar/reminders/sleep/focus. The closest signal is one row from
 the W4-Z per-domain sanity rerun:
 

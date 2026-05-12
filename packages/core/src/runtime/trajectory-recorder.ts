@@ -9,7 +9,7 @@
  *
  * Persistence model:
  * - One JSON file per trajectory at
- *   `${ELIZA_TRAJECTORY_DIR ?? `${ELIZA_STATE_DIR ?? `${MILADY_STATE_DIR ?? ~/.eliza`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
+ *   `${ELIZA_TRAJECTORY_DIR ?? `${ELIZA_STATE_DIR ?? `${ELIZA_STATE_DIR ?? ~/.eliza`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
  * - Atomic writes: write to `<id>.json.tmp`, rename to `<id>.json`.
  * - Append-only stages: `recordStage` rewrites the whole file (small files,
  *   sub-100 KB typical).
@@ -357,17 +357,16 @@ function envFlagEnabled(key: string, defaultValue = false): boolean {
  * Resolve the on-disk trajectory directory. Precedence per PLAN.md §18.1:
  *   ELIZA_TRAJECTORY_DIR
  *   ELIZA_STATE_DIR/trajectories
- *   ELIZA_STATE_DIR/trajectories
+ *   ELIZA_STATE_DIR/trajectories (legacy alias)
  *   ~/.eliza/trajectories
  */
 export function resolveTrajectoryDir(): string {
 	const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
 	if (explicit) return explicit;
 
-	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
-	if (elizaState) return path.join(elizaState, "trajectories");
-
-	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+	const elizaState =
+		process.env.ELIZA_STATE_DIR?.trim() ||
+		process.env.MILADY_STATE_DIR?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
 	return path.join(homedir(), ".eliza", "trajectories");

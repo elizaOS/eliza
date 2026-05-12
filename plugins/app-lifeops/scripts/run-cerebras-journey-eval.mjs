@@ -20,12 +20,12 @@ import dotenv from "dotenv";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const elizaRoot = path.resolve(packageRoot, "..", "..");
-const miladyRoot = path.resolve(elizaRoot, "..");
+const elizaRoot = path.resolve(elizaRoot, "..");
 
 const envCandidates = [
   path.join(packageRoot, ".env"),
   path.join(elizaRoot, ".env"),
-  path.join(miladyRoot, ".env"),
+  path.join(elizaRoot, ".env"),
 ];
 for (const candidate of envCandidates) {
   if (fs.existsSync(candidate)) {
@@ -53,7 +53,7 @@ const child = spawn(
   "bunx",
   ["vitest", "run", "--config", vitestConfig, testFile],
   {
-    cwd: miladyRoot,
+    cwd: elizaRoot,
     stdio: "inherit",
     env: process.env,
   },

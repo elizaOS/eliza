@@ -3,7 +3,7 @@
  *
  * Canonical precedence (highest first):
  *   1. `ELIZA_STATE_DIR`
- *   2. `MILADY_STATE_DIR` (legacy alias, kept for backward compatibility)
+ *   2. `ELIZA_STATE_DIR` (legacy alias, kept for backward compatibility)
  *   3. `<homedir>/.${ELIZA_NAMESPACE ?? "eliza"}`
  *
  * Every caller that touches persisted user state (skills, training,
@@ -47,7 +47,7 @@ export function getElizaNamespace(
 
 /**
  * Resolve the per-user state directory, honoring the documented precedence:
- * `ELIZA_STATE_DIR` > `MILADY_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}`.
+ * `ELIZA_STATE_DIR` > `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}`.
  */
 export function resolveStateDir(
 	env: NodeJS.ProcessEnv = process.env,

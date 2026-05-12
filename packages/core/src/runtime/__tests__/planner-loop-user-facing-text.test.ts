@@ -10,8 +10,8 @@ import { runPlannerLoop } from "../planner-loop";
  * Before this PR, `latestToolResultText` returned `step.result.text` —
  * the tool's log-shaped projection. Tools like BASH emit:
  *
- *   $ find /home/milady/.milady/trajectories -type f
- *   [exit 0] (cwd=/home/milady/iqlabs/milady/eliza, took=37ms)
+ *   $ find /home/eliza/.eliza/trajectories -type f
+ *   [exit 0] (cwd=/home/eliza/iqlabs/eliza/eliza, took=37ms)
  *   --- stdout ---
  *   443
  *
@@ -33,7 +33,7 @@ describe("planner-loop — user-facing tool text isolation", () => {
 		// shell log and *no* userFacingText must NOT have its log become
 		// the user-facing reply.
 		const bashWrapper =
-			"$ find /tmp -type f\n[exit 0] (cwd=/home/milady, took=12ms)\n--- stdout ---\n443";
+			"$ find /tmp -type f\n[exit 0] (cwd=/home/eliza, took=12ms)\n--- stdout ---\n443";
 		const runtime = {
 			useModel: vi
 				.fn()

@@ -1,7 +1,7 @@
 [submodule "packages/inference/llama.cpp"]
 	# The single canonical llama.cpp checkout for the whole repo. This is the
 	# elizaOS/llama.cpp fork (@ v1.0.0-eliza, commit 08032d57): the unified
-	# fork with the milady kernels (Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0
+	# fork with the eliza kernels (Q4_POLAR / QJL1_256 / TBQ4_0 / TBQ3_0
 	# GGML types + Metal/Vulkan/CUDA kernels) and DFlash spec-decode. The
 	# host build (build-llama-cpp-dflash.mjs) + AOSP cross-compile
 	# (aosp/compile-libllama.mjs) default to this submodule; bun's postinstall

@@ -638,7 +638,7 @@ Commands:
     <task>            Required positional: should_respond | context_routing |
                       action_planner | response | media_description
     --store-root DIR  Override the optimized-prompts store root (default:
-                      $ELIZA_STATE_DIR / $MILADY_STATE_DIR / ~/.eliza/optimized-prompts)
+                      $ELIZA_STATE_DIR / $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

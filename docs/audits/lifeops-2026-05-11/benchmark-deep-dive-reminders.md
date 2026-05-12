@@ -1,7 +1,7 @@
 # Reminders benchmark deep-dive — W5-rem
 
 > Saved trajectory sources:
-> - `~/.milady/runs/lifeops/lifeops-multi-tier-2026-05-12T03-14-04-023Z/large/{hermes,openclaw}/lifeops_gpt-oss-120b_2026*.json` — 1 reminders scenario each (after W4-D's manifest patch)
+> - `~/.eliza/runs/lifeops/lifeops-multi-tier-2026-05-12T03-14-04-023Z/large/{hermes,openclaw}/lifeops_gpt-oss-120b_2026*.json` — 1 reminders scenario each (after W4-D's manifest patch)
 > - W1-9 (hand-noted in `eliza-tool-call-fix.md`) — eliza-side data point for the same scenario
 > Scope: 36 static reminder scenarios are defined in
 > `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/scenarios/reminders.py`,
@@ -475,11 +475,11 @@ codepath has zero bench coverage.
   `_ACTION_HANDLERS` keys in `runner.py:1345-1419` directly.
 - Scorer canonicalization gap (LIFE not in `_UMBRELLA_SUBACTIONS`)
   confirmed by reading `scorer.py:89-120`.
-- Post-W4-D arg shape unchanged: `~/.milady/runs/lifeops/lifeops-multi-
+- Post-W4-D arg shape unchanged: `~/.eliza/runs/lifeops/lifeops-multi-
   tier-2026-05-12T03-14-04-023Z/large/openclaw/lifeops_gpt-oss-
   120b_20260511_201444.json` shows openclaw still emitting `details:
   {title, time, type}`.
-- Cross-checked: no `~/.milady/runs/lifeops/**` JSON other than the two
+- Cross-checked: no `~/.eliza/runs/lifeops/**` JSON other than the two
   multi-tier-2026-05-12 files contains a `reminders.*` scenario — the
   35 unrun scenarios cannot be assessed.
 

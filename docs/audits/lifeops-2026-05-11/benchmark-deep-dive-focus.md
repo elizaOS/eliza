@@ -150,7 +150,7 @@ action in the runtime today.**
 
 ### 2.3 Saved run coverage for focus
 
-Filter `^focus\.` across every JSON under `~/.milady/runs/lifeops/**/*.json`:
+Filter `^focus\.` across every JSON under `~/.eliza/runs/lifeops/**/*.json`:
 
 ```
 hits = 0 across 60+ run directories.
@@ -425,7 +425,7 @@ is consistent. No bypass found.
    or delete the scenarios.
 
 3. **Focus domain has zero saved-run coverage.** Across 60+ run directories
-   under `~/.milady/runs/lifeops/`, no JSON contains a `focus.*` scenario.
+   under `~/.eliza/runs/lifeops/`, no JSON contains a `focus.*` scenario.
    Every multi-agent baseline (W2-9 / W4-D) ran the calendar slice. We are
    shipping action changes (block.ts description, calendar similes) with
    no representative focus benchmark history.
