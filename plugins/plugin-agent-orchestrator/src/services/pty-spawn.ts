@@ -555,6 +555,13 @@ export function buildSpawnConfig(
               : {}),
           }
         : {}),
+      // OpenCode `run` mode reads the task as a positional CLI arg
+      // (not stdin). Mirror codex-exec-mode's `initialPrompt` convention
+      // so OpencodeAdapter.getArgs can append it. The orchestrator's
+      // non-interactive spawn flow (the default) routes opencode here.
+      ...(options.agentType === "opencode" && options.initialTask?.trim()
+        ? { initialPrompt: options.initialTask.trim() }
+        : {}),
       approvalPreset:
         options.agentType === "codex" && !codexExecMode
           ? undefined
