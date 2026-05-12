@@ -30,9 +30,17 @@ const DEFAULT_MAX_TOKENS_PER_PHRASE = 30;
  * flush. When a phrase has been accumulating in the buffer for this long
  * without hitting a punctuation / phoneme / cap boundary, force a flush
  * so the next phrase reaches TTS instead of stalling behind a slow
- * producer.
+ * producer. Override via `MILADY_PHRASE_FLUSH_MS` env var.
  */
-const DEFAULT_MAX_ACCUMULATION_MS = 200;
+function resolveDefaultMaxAccumulationMs(): number {
+  const raw = process.env["MILADY_PHRASE_FLUSH_MS"]?.trim();
+  if (raw) {
+    const v = Number.parseInt(raw, 10);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
+  return 200;
+}
+const DEFAULT_MAX_ACCUMULATION_MS = resolveDefaultMaxAccumulationMs();
 
 /** Wall-clock source the chunker uses. Tests inject a deterministic clock. */
 export type ClockMs = () => number;
