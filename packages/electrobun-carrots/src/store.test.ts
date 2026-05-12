@@ -8,6 +8,7 @@ import {
   ensureCarrotSourceDirectory,
   getCarrotStorePaths,
   installPrebuiltCarrot,
+  loadCarrotListEntries,
   loadCarrotStoreSnapshot,
   loadInstalledCarrot,
   loadInstalledCarrots,
@@ -184,6 +185,29 @@ describe("carrot store", () => {
         ],
       });
       expect(JSON.stringify(snapshot)).not.toContain(storeRoot);
+    }));
+
+  it("builds compact list entries from installed carrots", () =>
+    withTempDir((dir) => {
+      const storeRoot = join(dir, "store");
+      const payloadDir = writePayload(dir);
+      installPrebuiltCarrot(storeRoot, payloadDir, {
+        devMode: true,
+        now: () => 1700000000000,
+      });
+
+      expect(loadCarrotListEntries(storeRoot)).toEqual([
+        {
+          id: "bunny.search",
+          name: "Search",
+          description: "Search helper",
+          version: "1.0.0",
+          mode: "window",
+          permissions: ["host:windows", "bun:read", "isolation:shared-worker"],
+          status: "installed",
+          devMode: true,
+        },
+      ]);
     }));
 
   it("rejects payload paths that escape the carrot root", () =>

@@ -20,6 +20,7 @@ import type {
   CarrotInstallRecord,
   CarrotInstallSource,
   CarrotIsolation,
+  CarrotListEntry,
   CarrotManifest,
   CarrotPermissionGrant,
   CarrotRegistry,
@@ -669,6 +670,22 @@ export function toInstalledCarrotSnapshot(
   };
 }
 
+export function toCarrotListEntry(carrot: InstalledCarrot): CarrotListEntry {
+  const { install, manifest } = carrot;
+  return {
+    id: manifest.id,
+    name: manifest.name,
+    description: manifest.description,
+    version: manifest.version,
+    mode: manifest.mode,
+    permissions: flattenCarrotPermissions(
+      normalizeCarrotPermissions(install.permissionsGranted),
+    ),
+    status: install.status,
+    devMode: install.devMode ?? false,
+  };
+}
+
 export function loadCarrotStoreSnapshot(
   storeRoot: string,
 ): CarrotStoreSnapshot {
@@ -676,6 +693,10 @@ export function loadCarrotStoreSnapshot(
     version: REGISTRY_VERSION,
     carrots: loadInstalledCarrots(storeRoot).map(toInstalledCarrotSnapshot),
   };
+}
+
+export function loadCarrotListEntries(storeRoot: string): CarrotListEntry[] {
+  return loadInstalledCarrots(storeRoot).map(toCarrotListEntry);
 }
 
 export function installPrebuiltCarrot(

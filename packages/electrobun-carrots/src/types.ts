@@ -280,6 +280,6 @@ export interface CarrotListEntry {
   version: string;
   mode: CarrotMode;
   permissions: CarrotPermissionTag[];
-  status: string;
+  status: CarrotInstallStatus;
   devMode: boolean;
 }
