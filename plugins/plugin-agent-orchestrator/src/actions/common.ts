@@ -59,12 +59,27 @@ export type HandlerOptionsLike =
   | { parameters?: Record<string, unknown> }
   | Record<string, unknown>;
 
+/**
+ * Resolve the live coding-agent spawn service. Despite the historical
+ * `getAcpService` name, the PTYService (the orchestrator path that spawns
+ * via `coding-agent-adapters` — claude/codex/gemini/aider, plus opencode)
+ * is preferred — that's the working path live deployments actually use.
+ * ACP-prefixed services remain as fallbacks for environments where someone
+ * has wired `acpx` (Agent Communication Protocol) as the primary route.
+ *
+ * Before this preference change, ACP_SUBPROCESS_SERVICE was tried first
+ * and (when present + registered) silently shadowed the working PTY path,
+ * so the same `TASKS_SPAWN_AGENT` / `TASKS:create` action surface produced
+ * different spawn pipelines depending on whether `acpx` happened to
+ * register cleanly. Prefer-PTY makes the planner-visible spawn path
+ * deterministic: it's always the orchestrator, regardless of ACP state.
+ */
 export function getAcpService(
   runtime: IAgentRuntime,
 ): AcpActionService | undefined {
-  return (runtime.getService?.("ACP_SERVICE") ??
+  return (runtime.getService?.("PTY_SERVICE") ??
+    runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
-    runtime.getService?.("PTY_SERVICE") ??
     undefined) as AcpActionService | undefined;
 }
 
