@@ -30,23 +30,15 @@ export type TierActionResultsInput = {
 	maxTierBParents?: number;
 	protocolActions?: readonly Tier0ProtocolAction[];
 	/**
-	 * When provided, tier-A is narrowed to parents that match at least one
-	 * of these candidate action names (matched by parent normalized name OR
-	 * any child normalized name — so virtual sub-actions like
-	 * `TASKS_SPAWN_AGENT` correctly map back to their `TASKS` parent).
+	 * When provided, tier-A is narrowed to parents matching at least one
+	 * candidate name (by parent normalized name OR any child normalized name,
+	 * so TASKS_SPAWN_AGENT maps back to TASKS). Non-matching tier-A and tier-B
+	 * parents go to tier-C (omitted entirely — not tier-B, which would still
+	 * expose umbrella parent names to the planner). No-op when no tier-A
+	 * parent matches, to prevent accidental surface collapse.
 	 *
-	 * Non-matching parents are demoted to tier-B (their parent name stays
-	 * exposed as a retrieval fallback, but their child names are dropped).
-	 *
-	 * The narrowing is suppressed (i.e. no-op) when NO tier-A parent matches
-	 * any candidate — preventing accidental loss of the full surface when
-	 * the candidate set points at a non-tier-A parent.
-	 *
-	 * This turns `candidateActions` from a soft hint into a hard filter,
-	 * which is what the upstream messageHandler stage actually intends —
-	 * if it decided "this turn should run TASKS", the planner shouldn't be
-	 * free to pick `FILE.write` instead just because both happen to score
-	 * highly in retrieval.
+	 * Applied before the maxTierAParents cap so a candidate parent ranked
+	 * outside the cap isn't silently displaced before the narrow runs.
 	 */
 	narrowToCandidateActions?: readonly string[];
 };
@@ -105,15 +97,11 @@ export function tierActionResults(
 	tierBParents.sort(compareTieredParents);
 	tierCParents.sort(compareTieredParents);
 
-	if (tierAParents.length > maxTierAParents) {
-		tierBParents.push(
-			...tierAParents
-				.splice(maxTierAParents)
-				.map((parent) => parentOnlyTieredParent(parent)),
-		);
-		tierBParents.sort(compareTieredParents);
-	}
-
+	// Narrow before the cap: if the candidate parent is the 9th-best
+	// tier-A entry and maxTierAParents=8, running the cap first would push
+	// it to tier-B and the no-op safety would fire, leaving FILE/BASH in
+	// tier-A. By narrowing first we collapse tier-A to only the candidates,
+	// and the cap then applies to that smaller set.
 	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
 	if (narrowSet.size > 0 && tierAParents.length > 0) {
 		const matchesCandidate = (parent: TieredParentAction): boolean => {
@@ -140,14 +128,6 @@ export function tierActionResults(
 			tierAParents.length = 0;
 			tierAParents.push(...kept);
 
-			// Demoted tier-A parents go to tier-C (omitted), not tier-B.
-			// Tier-B exposes the parent name to the LLM, and many parents
-			// are parameter-driven umbrellas (e.g. `FILE` with
-			// `action=read/write/edit`). If we left them in tier-B the
-			// planner could still call `FILE` with `action=write` and
-			// bypass the narrow. Tier-C removes them from the prompt
-			// entirely, which is what the candidate filter means to do.
-			// Tier-B parents not in tier-A are unaffected.
 			const tierBKept: TieredParentAction[] = [];
 			for (const parent of tierBParents) {
 				if (matchesCandidate(parent)) {
@@ -161,6 +141,15 @@ export function tierActionResults(
 			tierCParents.push(...demotedFromTierA);
 			tierCParents.sort(compareTieredParents);
 		}
+	}
+
+	if (tierAParents.length > maxTierAParents) {
+		tierBParents.push(
+			...tierAParents
+				.splice(maxTierAParents)
+				.map((parent) => parentOnlyTieredParent(parent)),
+		);
+		tierBParents.sort(compareTieredParents);
 	}
 
 	if (tierBParents.length > maxTierBParents) {
