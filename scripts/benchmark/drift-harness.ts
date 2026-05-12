@@ -1472,9 +1472,6 @@ function isIsolatedExactRecallAnswer(
 
   const normalizedActual = normalizeRecallText(actual);
   const normalizedExpected = normalizeRecallText(expected);
-  const expectedPattern = new RegExp(escapeRegExp(normalizedExpected), "gi");
-  const matches = [...normalizedActual.matchAll(expectedPattern)];
-  if (matches.length !== 1) return false;
 
   const identifierPattern =
     /\b[A-F0-9]{6}-\d{1,3}\b|\b\d{12,13}\b|\b[A-Za-z]{1,3}\d{2,5}\b|\b[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;

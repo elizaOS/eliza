@@ -824,6 +824,30 @@ describe("planToolCalls and tool-call probes", () => {
     expect(outcome.correct).toBe(true);
   });
 
+  it("accepts repeated copies of the same tool-call value", async () => {
+    const client: ModelClient = {
+      chat: async () => ({
+        content: "ABC123-22\n\nABC123-22",
+      }),
+    };
+
+    const outcome = await probeToolCall({
+      client,
+      model: "fake",
+      history: [],
+      systemPrompt: "test",
+      toolCall: {
+        id: "tool_25",
+        turn: 25,
+        toolName: "fetch_metric",
+        toolValue: "ABC123-22",
+        question: "What did the fetch_metric tool return at turn 25?",
+      },
+    });
+
+    expect(outcome.correct).toBe(true);
+  });
+
   it("emits tool_call/tool_result turn events alongside the user/assistant pair", async () => {
     const args: CliArgs = {
       ...DEFAULT_TEST_ARGS,

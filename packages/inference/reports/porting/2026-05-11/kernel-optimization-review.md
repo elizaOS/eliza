@@ -77,7 +77,10 @@ single run as truth:
 | Metal QJL multiblock | best saved runs `81-103 us`; N=16/32 are more stable for p99 than the occasional lower-median N=4 |
 | Metal Polar raw | `593-657 us` median across current runs |
 | Metal Polar preHT | `312-365 us` median, about 1.8-2.1x faster |
+| Metal default rerun 2026-05-12 | raw Polar `681 us`, Polar preHT `339 us`, same 2.0x result |
+| Metal multiblock autotune 2026-05-12 | Turbo3 best `92 us @ N=8`, Turbo4 `84 us @ N=8/32`, TCQ `79 us @ N=16`, QJL `70 us @ N=32` |
 | CPU scalar verify bench | Turbo3 `30.34 ms`, Turbo4 `24.80 ms`, TCQ `23.69 ms`, QJL `23.33 ms`, Polar `36.29 ms` |
+| CPU SIMD plugin on M4 Max | QJL i8 NEON-dotprod `13.0 ns/out`, QJL fp32 NEON `39.7 ns/out`, Polar preHT NEON `45.2 ns/out` |
 | QJL CPU NEON/dotprod plugin | score `65.3 ns/(qh,tok)` in the direct CMake build; int8 reference is not default-on |
 | Polar CPU NEON plugin | raw dot `80.93 ns/row`; preHT dot `34.42 ns/row`, about 2.35x faster |
 
