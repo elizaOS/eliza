@@ -263,13 +263,7 @@ function IconOnlyLabel({
   );
 }
 
-function ModeLabel({
-  mode,
-  label,
-}: {
-  mode: VisibleConnectorMode;
-  label: string;
-}) {
+function ModeLabel({ label }: { label: string }) {
   return (
     <IconOnlyLabel label={label}>
       <HardDrive className="h-3.5 w-3.5" aria-hidden />
@@ -632,10 +626,7 @@ function GoogleConnectorSideCard({
             items={VISIBLE_CONNECTOR_MODES.map((mode) => ({
               value: mode,
               label: (
-                <ModeLabel
-                  mode={mode}
-                  label={modeLabel(mode as LifeOpsConnectorMode, t)}
-                />
+                <ModeLabel label={modeLabel(mode as LifeOpsConnectorMode, t)} />
               ),
               disabled: controlDisabled,
             }))}
@@ -883,8 +874,6 @@ function GoogleConnectorSideCard({
     </section>
   );
 }
-
-type HealthConnectorController = ReturnType<typeof useLifeOpsHealthConnectors>;
 
 const HEALTH_PROVIDER_META: Record<
   LifeOpsHealthConnectorProvider,
