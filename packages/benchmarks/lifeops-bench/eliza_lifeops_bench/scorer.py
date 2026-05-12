@@ -120,6 +120,8 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
     # LIFE umbrella covers reminders + alarms write-ops. hermes/openclaw
     # frequently emit `LIFE_CREATE` / `LIFE_COMPLETE` granular forms; GT
     # scenarios use the umbrella `LIFE(subaction=create, ...)` shape.
+    # `policy_set_reminder` / `policy_configure_escalation` are the two
+    # policy-shape subactions declared by `life.ts`.
     "LIFE": (
         "subaction",
         frozenset(
@@ -132,15 +134,23 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
                 "update",
                 "skip",
                 "list",
+                "policy_set_reminder",
+                "policy_configure_escalation",
             }
         ),
     ),
-    # HEALTH read-ops (today / trend / by_metric / status). Without this,
-    # `HEALTH_TODAY` from a granular emitter scores 0 against GT
-    # `HEALTH(subaction=today)`.
+    # HEALTH read-ops. Three views currently coexist in the bench (see
+    # W5-hlt deep-dive): `runner._DISCRIMINATORS` uses {by_metric,
+    # summary, trends}, the action source-of-truth `health.ts` uses
+    # {today, trend, by_metric, status}, and the owner surface declares
+    # the same `today/trend/by_metric/status` quartet. Union both spellings
+    # so an emission like `HEALTH_TRENDS` (runner) or `HEALTH_TREND`
+    # (manifest) both canonicalize cleanly into `HEALTH(subaction=…)`.
+    # `compare_actions` still treats a kwarg-level subaction mismatch as
+    # partial credit, not full, so we are not over-rewarding wrong reads.
     "HEALTH": (
         "subaction",
-        frozenset({"today", "trend", "by_metric", "status"}),
+        frozenset({"today", "trend", "trends", "by_metric", "status", "summary"}),
     ),
     # BLOCK umbrella: focus / DND blocking. Note `BLOCK_BLOCK` is the
     # canonical granular form for the "place a block" verb.
@@ -157,15 +167,42 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
             }
         ),
     ),
-    # ENTITY umbrella: contacts / identity surface.
+    # ENTITY umbrella: contacts / identity surface. `set_relationship` is
+    # an additional surface some agents emit interchangeably with
+    # `set_identity` for the relationship-only update path.
     "ENTITY": (
         "subaction",
-        frozenset({"add", "set_identity", "log_interaction", "list", "merge"}),
+        frozenset(
+            {
+                "add",
+                "list",
+                "set_identity",
+                "set_relationship",
+                "log_interaction",
+                "merge",
+            }
+        ),
     ),
-    # SCHEDULED_TASK is the runner's name for delayed-task primitives.
+    # SCHEDULED_TASK — delayed-task primitives. Source of truth:
+    # `plugins/app-lifeops/src/actions/scheduled-task.ts` SUBACTIONS.
     "SCHEDULED_TASK": (
         "subaction",
-        frozenset({"create", "update", "snooze", "cancel", "complete", "list"}),
+        frozenset(
+            {
+                "list",
+                "get",
+                "create",
+                "update",
+                "snooze",
+                "skip",
+                "complete",
+                "acknowledge",
+                "dismiss",
+                "cancel",
+                "reopen",
+                "history",
+            }
+        ),
     ),
     # MONEY umbrella: finance dashboard + transactions + subscription audit.
     "MONEY": (
@@ -201,11 +238,15 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
 # only the four areas with an obvious umbrella mapping are aliased.
 _OWNER_SURFACE_ALIASES: dict[str, str] = {
     "OWNER_HEALTH": "HEALTH",
-    # Both OWNER_ALARMS_* and OWNER_REMINDERS_* fold into LIFE; the
-    # alarm-vs-reminder distinction is carried by other kwargs (e.g.
-    # `kind`), not by a separate umbrella.
+    # OWNER_ALARMS_*, OWNER_REMINDERS_*, OWNER_TODOS_*, OWNER_GOALS_*,
+    # and OWNER_ROUTINES_* all fold into LIFE; the kind distinction is
+    # carried by other kwargs (e.g. `kind`), not by a separate umbrella.
+    # Source of truth: `plugins/app-lifeops/src/actions/owner-surfaces.ts`.
     "OWNER_ALARMS": "LIFE",
     "OWNER_REMINDERS": "LIFE",
+    "OWNER_TODOS": "LIFE",
+    "OWNER_GOALS": "LIFE",
+    "OWNER_ROUTINES": "LIFE",
     "OWNER_FINANCES": "MONEY",
 }
 
