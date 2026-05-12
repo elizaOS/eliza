@@ -236,6 +236,16 @@ vulkan-native-smoke:
 android-vulkan-smoke:
 	./android_vulkan_smoke.sh
 
+# Cuttlefish (cvd) Android x86_64 CPU kernel-reference parity smoke. Cross-
+# compiles gen_fixture with the NDK x86_64-linux-android clang, pushes it to
+# a live cvd via adb, runs `gen_fixture --self-test` (canonical C-reference
+# parity for all six required kernels + fused-attn + tbq V-cache), and asserts
+# bit-identical output vs the host build. The recordable evidence is
+# evidence/platform/android-x86_64-cpu.json. Vulkan-on-cvd is SwiftShader
+# (software) and is run as DIAGNOSTIC-ONLY (not recordable per fail-closed).
+cuttlefish-x86_64-smoke:
+	./cuttlefish_x86_64_smoke.sh
+
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
 metal_verify: metal_verify.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
