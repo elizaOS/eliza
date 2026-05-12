@@ -257,3 +257,60 @@ provision→ssh→teardown path. Then the 0_6b full-corpus run was launched:
   `scp`-ing a `tar czf` of `data/final/{train,val,test}.jsonl` +
   `datasets/eliza1-sft-0_6b/{train,val,test}.jsonl` into `/opt/training/` before
   `sync`, which then matches & skips).
+
+### Caveats / known issues for whoever picks this up
+
+- The H200 run was launched with `train_nebius.sh run` (not `full`), so there is
+  no built-in fetch+teardown at the tail. A side watcher `/tmp/nebius-finish.sh`
+  on the build host polls `/opt/training/run_<run>.log` for the
+  `RUN_PIPELINE_EXIT=` sentinel, then runs `train_nebius.sh fetch` + prints
+  `checkpoints/<run>/gate_report.json` + `train_nebius.sh teardown`. If that
+  process is gone, run those three steps by hand (`NEBIUS_PROJECT_ID=... HF_TOKEN=...
+  REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_NAME=eliza-train-h200-0_6b RUN_NAME=eliza-1-0_6b-apollo-fullcorpus-h200-1778581740
+  bash scripts/train_nebius.sh fetch && ... teardown`) — **don't leave the H200
+  billing**.
+- `eliza_bench.py` / `native_tool_call_bench.py` run the 0.6B *on CPU* on this
+  Nebius image (transformers/accelerate falls back: "Device 0 seems unavailable"),
+  so the base + finetuned benchmark passes are slow (~30–60 min each on the
+  16-vCPU box) even though `train_local.py`'s SFT itself runs on the H200. Setting
+  `CUDA_VISIBLE_DEVICES=0` in the runner did not change it — the actual cause is
+  in `eliza_bench.py`'s model placement (`device_map="auto"` not landing on the
+  H200 here); not chased further this session. If you re-launch, `BENCHMARK_AFTER=0`
+  passes `--skip-base-bench` to halve the wall time (the base column for the
+  delta is in `reports/eliza1-0_6b-apollo-sft-2026-05-11.manifest.json::benchmark_table`).
+- When the run completes: read `checkpoints/<run>/gate_report.json` — `format_ok ≥
+  0.70` (the `0_6b` floor). GREEN → re-run `scripts/quantization/gguf_eliza1_apply.py`
+  against the new `final/`, assemble the eliza1 bundle, **push `final/` + Q4_K_M
+  GGUF + the eliza1 sidecar bundle to `elizaos/eliza-1-0_6b`** (exists; 200) with a
+  "full-corpus APOLLO SFT, clears the format_ok gate, base-v1 candidate" model
+  card, update `evidence/release.json` + `benchmarks/MODELS_STATUS.md` + the
+  harness benchmark report's full-corpus column, and **kill the local run**
+  (`pkill -f fullcorpus-1778563093`). RED → the iteration is to make the new
+  `datasets/eliza1-sft-0_6b/` rows pass `validate_corpus.py` (they're ChatML, so
+  `validate_corpus.py` can't even parse them — that validator is native-record
+  only; the build-time `format_for_training.format_record` gate is what vets
+  ChatML) and/or bump `ELIZA1_FULLCORPUS_UPSAMPLE` higher (was 8), then re-run.
+- Other tiers (`1_7b` → `--tier 1_7b`, `4b` → `--tier 4b` [HF repo `elizaos/eliza-1-4b`
+  returns 401 — create it or it's private], `9b` → `--tier 9b`): same flow,
+  single H200, `bash scripts/train_nebius.sh full` with `REGISTRY_KEY=qwen3-1.7b /
+  qwen3-4b / qwen3.5-9b` and a fresh `NEBIUS_VM_NAME` + `RUN_NAME`. Use the
+  *broad* `data/final/` corpus (not the upsampled combined one) unless the 0_6b
+  gate result says otherwise — those tiers don't have the `format_pct=0%` history
+  the 0_6b test-SFT had.
+- **27b / 27b-256k / 27b-1m — HELD, needs explicit operator confirmation.** The
+  Nebius H200 platform (`gpu-h200-sxm`) has no 2-GPU preset; the only multi-GPU
+  preset is `8gpu-128vcpu-1600gb` (8× H200), so a Nebius 27b run rents 8× H200
+  + FSDP. At Nebius H200 list pricing (~$3.50–4/GPU-h), 8× ≈ **~$28–32/h**; a 1-epoch
+  27b SFT at 65 k context is ~6–10 GPU-h aggregate ⇒ ~$30–40 of compute, plus
+  ~$5–10 idle for provision + the slow bench passes ⇒ **~$40–50 total**. Vast
+  (`scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b`) can
+  target a 2× or 4× H200/B200 box and is cheaper for 27b — prefer it. Commands
+  held (do NOT run without confirmation):
+  ```bash
+  # Nebius 27b (8x H200, expensive):
+  NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> HF_TOKEN=<hf> \
+  bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 27b --yes-i-will-pay
+  # (27b-256k / 27b-1m: same, --tier 27b-256k / --tier 27b-1m — longer context, even more GPU-h)
+  # Preferred: Vast 27b (2x/4x H200 or B200):
+  VAST_API_KEY=<key> bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1
+  ```
