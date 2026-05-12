@@ -992,6 +992,16 @@ ElizaClient.prototype.getRuntimeSnapshot = async function (
   this: ElizaClient,
   opts?,
 ) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<RuntimeDebugSnapshot>({
+      rpcMethod: "getRuntimeSnapshot",
+      ipcChannel: "agent",
+      params: opts,
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   const params = new URLSearchParams();
   if (typeof opts?.depth === "number") params.set("depth", String(opts.depth));
   if (typeof opts?.maxArrayLength === "number") {
@@ -1240,6 +1250,17 @@ ElizaClient.prototype.submitAnthropicSetupToken = async function (
 ElizaClient.prototype.getSubscriptionStatus = async function (
   this: ElizaClient,
 ) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<SubscriptionStatusResponse>(
+      {
+        rpcMethod: "getSubscriptionStatus",
+        ipcChannel: "agent",
+      },
+    );
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch<SubscriptionStatusResponse>("/api/subscription/status");
 };
 

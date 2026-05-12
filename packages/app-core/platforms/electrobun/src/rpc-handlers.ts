@@ -100,6 +100,14 @@ import {
 	isRuntimePermissionId,
 	mergeRuntimePermissionStates,
 } from "./runtime-permissions";
+import {
+	composeRuntimeSnapshot,
+	readRuntimeSnapshotViaHttp,
+} from "./runtime-rpc";
+import {
+	composeSubscriptionStatusSnapshot,
+	readSubscriptionStatusViaHttp,
+} from "./subscription-rpc";
 import { isDetachedSurface } from "./surface-windows";
 import type { SendToWebview } from "./types.js";
 import {
@@ -307,6 +315,17 @@ export function buildBunRpcHandlers({
 			composeExtensionStatusSnapshot(
 				resolveRpcAgentPort(agent.getStatus().port),
 				readExtensionStatusViaHttp,
+			),
+		getSubscriptionStatus: async () =>
+			composeSubscriptionStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readSubscriptionStatusViaHttp,
+			),
+		getRuntimeSnapshot: async (params) =>
+			composeRuntimeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				readRuntimeSnapshotViaHttp,
 			),
 		/**
 		 * Aggregated boot snapshot — typed counterpart to renderer

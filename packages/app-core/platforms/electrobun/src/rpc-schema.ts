@@ -256,7 +256,11 @@ export type {
 	PermissionStatus,
 } from "@elizaos/shared";
 
-import type { PermissionId, PermissionState } from "@elizaos/shared";
+import type {
+	PermissionId,
+	PermissionState,
+	SubscriptionStatusResponse,
+} from "@elizaos/shared";
 
 export type SystemPermissionId = PermissionId;
 
@@ -557,6 +561,67 @@ export interface ExtensionStatusSnapshot {
 	releaseManifest?: Record<string, unknown> | null;
 }
 
+export interface RuntimeDebugSnapshotParams {
+	depth?: number;
+	maxArrayLength?: number;
+	maxObjectEntries?: number;
+	maxStringLength?: number;
+}
+
+export interface RuntimeDebugSerializeSettings {
+	maxDepth: number;
+	maxArrayLength: number;
+	maxObjectEntries: number;
+	maxStringLength: number;
+}
+
+export interface RuntimeOrderItem {
+	index: number;
+	name: string;
+	className: string;
+	id: string | null;
+}
+
+export interface RuntimeServiceOrderItem {
+	index: number;
+	serviceType: string;
+	count: number;
+	instances: RuntimeOrderItem[];
+}
+
+export interface RuntimeDebugSnapshot {
+	runtimeAvailable: boolean;
+	generatedAt: number;
+	settings: RuntimeDebugSerializeSettings;
+	meta: {
+		agentId?: string;
+		agentState: AgentStatusState;
+		agentName: string;
+		model: string | null;
+		pluginCount: number;
+		actionCount: number;
+		providerCount: number;
+		evaluatorCount: number;
+		serviceTypeCount: number;
+		serviceCount: number;
+	};
+	order: {
+		plugins: RuntimeOrderItem[];
+		actions: RuntimeOrderItem[];
+		providers: RuntimeOrderItem[];
+		evaluators: RuntimeOrderItem[];
+		services: RuntimeServiceOrderItem[];
+	};
+	sections: {
+		runtime: unknown;
+		plugins: unknown;
+		actions: unknown;
+		providers: unknown;
+		evaluators: unknown;
+		services: unknown;
+	};
+}
+
 export interface DesktopStartupDiagnostics {
 	state: "not_started" | "starting" | "running" | "stopped" | "error";
 	phase: string;
@@ -795,6 +860,14 @@ export type ElizaDesktopRPCSchema = {
 			getExtensionStatus: {
 				params: undefined;
 				response: ExtensionStatusSnapshot;
+			};
+			getSubscriptionStatus: {
+				params: undefined;
+				response: SubscriptionStatusResponse;
+			};
+			getRuntimeSnapshot: {
+				params: RuntimeDebugSnapshotParams | undefined;
+				response: RuntimeDebugSnapshot;
 			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the
