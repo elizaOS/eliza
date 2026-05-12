@@ -14,6 +14,9 @@ Stages (skippable individually; see flags):
       auto-on if the elizaOS/llama.cpp fork is       (Q4_POLAR GGUF + qjl_config.json +
       found): optimize_for_milady.py +                turboquant.json + milady_manifest.json),
       optional DFlash drafter (--dflash-drafter)     checkpoints/<run>/dflash/drafter-<tier>.gguf
+  6c. Throughput bench (llama-bench on the GGUFs)  → checkpoints/<run>/evals/throughput.json
+      — prefill + gen tokens/sec, CUDA build if       (best -fa 1 -b 2048 -ngl 99 on GPU)
+      available; --skip-throughput-bench to skip
   7. Publish (--publish, requires --bundle-dir)   → python -m scripts.publish.orchestrator
 
 Usage:
@@ -46,6 +49,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import subprocess
 import sys
 import time
@@ -101,6 +105,68 @@ def _resolve_milady_llama_cpp() -> Path | None:
         if (c / "convert_hf_to_gguf.py").is_file():
             return c
     return None
+
+
+def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
+    """Find a `llama-bench` binary, preferring the fastest backend available:
+    a CUDA build > the fork's Vulkan build > the stock CPU build > $PATH."""
+    import shutil
+    cands: list[Path] = []
+    vendor = ROOT / "vendor" / "llama.cpp"
+    cands += [vendor / "build-cuda" / "bin" / "llama-bench"]
+    if fork_dir is not None:
+        cands += [
+            fork_dir / "build-cuda" / "bin" / "llama-bench",
+            fork_dir / "build" / "linux-x64-cuda" / "bin" / "llama-bench",
+            fork_dir / "build" / "linux-x64-vulkan" / "bin" / "llama-bench",
+        ]
+    cands += [vendor / "build" / "bin" / "llama-bench"]
+    for c in cands:
+        if c.is_file() and os.access(c, os.X_OK):
+            return c
+    w = shutil.which("llama-bench")
+    return Path(w) if w else None
+
+
+def _cuda_available() -> bool:
+    try:
+        import torch  # type: ignore
+        return bool(torch.cuda.is_available())
+    except Exception:
+        return False
+
+
+def _throughput_bench(gguf: Path, bench_bin: Path, *, gpu: bool) -> dict | None:
+    """Run llama-bench on a GGUF and return {backend, results:[{n_prompt,n_gen,
+    avg_ts,stddev_ts}], cmd}. Best-effort — returns None on any failure."""
+    cmd = [str(bench_bin), "-m", str(gguf), "-p", "256,512", "-n", "64,128",
+           "-o", "json"]
+    if gpu:
+        cmd += ["-ngl", "99", "-fa", "1", "-b", "2048"]
+    else:
+        cmd += ["-t", str(min(8, os.cpu_count() or 4))]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+    except (subprocess.TimeoutExpired, OSError) as e:
+        log.warning("llama-bench failed for %s: %s", gguf, e)
+        return None
+    if proc.returncode != 0:
+        log.warning("llama-bench rc=%d for %s; stderr tail: %s",
+                    proc.returncode, gguf, (proc.stderr or "")[-300:])
+        return None
+    try:
+        rows = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        log.warning("llama-bench output not JSON for %s", gguf)
+        return None
+    backend = rows[0].get("backend") if rows else None
+    results = [
+        {"n_prompt": r.get("n_prompt"), "n_gen": r.get("n_gen"),
+         "avg_ts": r.get("avg_ts"), "stddev_ts": r.get("stddev_ts")}
+        for r in rows
+    ]
+    return {"gguf": str(gguf), "backend": backend, "results": results,
+            "cmd": " ".join(cmd)}
 
 
 def _format_ok_rate(summary: dict | None) -> float | None:
@@ -228,6 +294,11 @@ def main() -> int:
                          "this tier (distill_dflash_drafter.py). Needs a GPU for "
                          "a real run; uses --synthetic-smoke when --eval-mode "
                          "smoke so the pipeline still validates on CPU.")
+    ap.add_argument("--skip-throughput-bench", action="store_true",
+                    help="Skip stage 6c (llama-bench tokens/sec on the produced "
+                         "GGUFs — prefill + generation t/s, CUDA build if "
+                         "available, written to checkpoints/<run>/evals/"
+                         "throughput.json).")
     args = ap.parse_args()
 
     if args.publish and not args.bundle_dir:
@@ -545,6 +616,43 @@ def main() -> int:
                 "manifest": str(manifest) if manifest.exists() else None,
             }
             log.info("Milady bundle exit=%d → %s", rc, opt_dir)
+
+    # ───────────── stage 6c: throughput bench (tokens/sec) ────────────
+    # llama-bench on every produced GGUF: prefill (pp) + generation (tg) t/s.
+    # Picks the fastest backend available (CUDA build > fork Vulkan > CPU) and
+    # the optimal flags (-fa 1 -b 2048 -ngl 99 on GPU). Written to
+    # checkpoints/<run>/evals/throughput.json — gives the pipeline a tokens/sec
+    # number alongside the format/structure eval rates.
+    if not args.skip_throughput_bench:
+        bench_bin = _resolve_llama_bench(fork_dir)
+        ggufs = sorted({p for p in ckpt_dir.rglob("*.gguf")})
+        if bench_bin is None:
+            summary["stages"]["throughput_bench"] = {"skipped": "no llama-bench binary"}
+        elif not ggufs:
+            summary["stages"]["throughput_bench"] = {"skipped": "no GGUF produced"}
+        else:
+            gpu = _cuda_available() or "vulkan" in bench_bin.parts or "cuda" in str(bench_bin)
+            tp = {"bench_binary": str(bench_bin), "gpu_flags": gpu, "ggufs": []}
+            for g in ggufs:
+                log.info("llama-bench %s (%s)", g.name, "GPU" if gpu else "CPU")
+                r = _throughput_bench(g, bench_bin, gpu=gpu)
+                if r is not None:
+                    tp["ggufs"].append(r)
+            tp_path = ckpt_dir / "evals" / "throughput.json"
+            tp_path.parent.mkdir(parents=True, exist_ok=True)
+            tp_path.write_text(json.dumps(tp, indent=2))
+            # Headline numbers: best pp + best tg across produced GGUFs.
+            best_pp = max((res["avg_ts"] for gg in tp["ggufs"] for res in gg["results"]
+                           if res.get("n_gen") in (0, None) and res.get("avg_ts")), default=None)
+            best_tg = max((res["avg_ts"] for gg in tp["ggufs"] for res in gg["results"]
+                           if res.get("n_prompt") in (0, None) and res.get("avg_ts")), default=None)
+            summary["stages"]["throughput_bench"] = {
+                "path": str(tp_path), "backend": (tp["ggufs"][0]["backend"] if tp["ggufs"] else None),
+                "best_prompt_ts": best_pp, "best_gen_ts": best_tg,
+            }
+            log.info("throughput: best prefill=%.1f t/s, best gen=%.1f t/s (%s)",
+                     best_pp or 0.0, best_tg or 0.0,
+                     tp["ggufs"][0]["backend"] if tp["ggufs"] else "?")
 
     # ───────────── stage 7: publish ───────────────────────────────────
     if args.publish:
