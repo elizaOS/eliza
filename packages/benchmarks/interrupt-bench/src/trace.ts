@@ -17,7 +17,10 @@ export class Trace {
 
   constructor(private readonly getVirtualNow: () => number) {}
 
-  push(type: TraceEventType, extras: Omit<TraceEvent, "t" | "type"> = {}): void {
+  push(
+    type: TraceEventType,
+    extras: Omit<TraceEvent, "t" | "type"> = {},
+  ): void {
     if (this.sealed) return;
     this.events.push({
       t: this.getVirtualNow(),

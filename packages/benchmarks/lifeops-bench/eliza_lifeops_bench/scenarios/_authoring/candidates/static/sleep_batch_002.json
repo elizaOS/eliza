@@ -22,10 +22,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bedtime",
-      "10:30"
-    ],
+    "required_outputs": ["bedtime", "10:30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -55,9 +52,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "wind\u2011down"
-    ],
+    "required_outputs": ["wind\u2011down"],
     "first_question_fallback": {
       "canned_answer": "Just tonight, not recurring.",
       "applies_when": "agent asks if it should recur"
@@ -86,9 +81,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "conflict"
-    ],
+    "required_outputs": ["conflict"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -111,20 +104,14 @@
           "details": {
             "kind": "alarm",
             "cadence": "weekly",
-            "dayOfWeek": [
-              "Saturday",
-              "Sunday"
-            ],
+            "dayOfWeek": ["Saturday", "Sunday"],
             "timeOfDay": "23:00",
             "listId": "list_personal"
           }
         }
       }
     ],
-    "required_outputs": [
-      "11:00",
-      "weekend"
-    ],
+    "required_outputs": ["11:00", "weekend"],
     "first_question_fallback": {
       "canned_answer": "Yes, only on weekends.",
       "applies_when": "agent asks if it should apply every day"
@@ -153,9 +140,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "10:30"
-    ],
+    "required_outputs": ["10:30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -181,10 +166,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "skip",
-      "tomorrow"
-    ],
+    "required_outputs": ["skip", "tomorrow"],
     "first_question_fallback": {
       "canned_answer": "Yes, just for tomorrow.",
       "applies_when": "agent asks which date to skip"
@@ -213,10 +195,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted",
-      "nap"
-    ],
+    "required_outputs": ["deleted", "nap"],
     "first_question_fallback": {
       "canned_answer": "Yes, the 2\u202fpm daily nap alarm.",
       "applies_when": "agent asks which nap alarm to delete"
@@ -248,10 +227,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "7:00",
-      "wake\u2011up"
-    ],
+    "required_outputs": ["7:00", "wake\u2011up"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -274,10 +250,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "average",
-      "hours"
-    ],
+    "required_outputs": ["average", "hours"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -307,10 +280,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "nap",
-      "2:00"
-    ],
+    "required_outputs": ["nap", "2:00"],
     "first_question_fallback": {
       "canned_answer": "Just once a day, at 2\u202fpm.",
       "applies_when": "agent asks about recurrence"
@@ -340,10 +310,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family",
-      "conflict"
-    ],
+    "required_outputs": ["family", "conflict"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -373,10 +340,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "10:00",
-      "Eastern"
-    ],
+    "required_outputs": ["10:00", "Eastern"],
     "first_question_fallback": {
       "canned_answer": "Yes, Eastern Time (America/New_York).",
       "applies_when": "agent asks which time zone to use"
@@ -402,10 +366,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "hours",
-      "night"
-    ],
+    "required_outputs": ["hours", "night"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -427,10 +388,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "deleted",
-      "sleep_quality"
-    ],
+    "required_outputs": ["deleted", "sleep_quality"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -460,10 +418,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "nap",
-      "30"
-    ],
+    "required_outputs": ["nap", "30"],
     "first_question_fallback": {
       "canned_answer": "Just today, not recurring.",
       "applies_when": "agent asks if the nap should repeat"
@@ -490,10 +445,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "10",
-      "minutes"
-    ],
+    "required_outputs": ["10", "minutes"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -516,10 +468,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "trend",
-      "sleep"
-    ],
+    "required_outputs": ["trend", "sleep"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -549,10 +498,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "9:00",
-      "sleep"
-    ],
+    "required_outputs": ["9:00", "sleep"],
     "first_question_fallback": {
       "canned_answer": "Just once a day, at 9\u202fpm.",
       "applies_when": "agent asks about recurrence"
@@ -582,10 +528,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "work",
-      "conflict"
-    ],
+    "required_outputs": ["work", "conflict"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -621,10 +564,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "10:30",
-      "weekday"
-    ],
+    "required_outputs": ["10:30", "weekday"],
     "first_question_fallback": {
       "canned_answer": "Yes, only on weekdays.",
       "applies_when": "agent asks if it should apply on weekends"
@@ -654,9 +594,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "9:30"
-    ],
+    "required_outputs": ["9:30"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -679,9 +617,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "alarm"
-    ],
+    "required_outputs": ["alarm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -702,18 +638,12 @@
           "kind": "definition",
           "title": "All Sleep Alarms",
           "details": {
-            "skipDates": [
-              "2026-05-13",
-              "2026-05-14"
-            ]
+            "skipDates": ["2026-05-13", "2026-05-14"]
           }
         }
       }
     ],
-    "required_outputs": [
-      "disabled",
-      "Saturday"
-    ],
+    "required_outputs": ["disabled", "Saturday"],
     "first_question_fallback": {
       "canned_answer": "Yes, just for Saturday and Sunday.",
       "applies_when": "agent asks which days to disable"
@@ -746,10 +676,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "45",
-      "nap"
-    ],
+    "required_outputs": ["45", "nap"],
     "first_question_fallback": {
       "canned_answer": "Just a daily reminder, not recurring on weekends.",
       "applies_when": "agent asks about weekend recurrence"
@@ -775,9 +702,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sleep_quality"
-    ],
+    "required_outputs": ["sleep_quality"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -807,10 +732,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "11:00",
-      "rest"
-    ],
+    "required_outputs": ["11:00", "rest"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

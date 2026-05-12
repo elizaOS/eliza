@@ -6,8 +6,8 @@
  * counts. Verbose trace is included in JSON only (markdown stays scannable).
  */
 
-import type { BenchmarkReport, ScenarioResult } from "./types.ts";
 import { passTier } from "./scorer.ts";
+import type { BenchmarkReport, ScenarioResult } from "./types.ts";
 
 export function aggregateScore(results: readonly ScenarioResult[]): {
   aggregate: number;
@@ -30,7 +30,10 @@ export function aggregateScore(results: readonly ScenarioResult[]): {
   }
   const aggregate = weightTotal === 0 ? 0 : (100 * weightedSum) / weightTotal;
   // Normalize judge bonus to a fixed +5 cap (regardless of scenario count).
-  const judgeBonus = judgeBonusCap === 0 ? 0 : (5 * judgeBonusTotal) / Math.max(1, results.length);
+  const judgeBonus =
+    judgeBonusCap === 0
+      ? 0
+      : (5 * judgeBonusTotal) / Math.max(1, results.length);
   const finalScore = Math.max(0, aggregate - boundaryPenalty + judgeBonus);
   return { aggregate, judgeBonus, finalScore };
 }
@@ -72,7 +75,9 @@ export function renderMarkdown(report: BenchmarkReport): string {
   lines.push("");
   lines.push("## Per-scenario");
   lines.push("");
-  lines.push("| ID | Category | Weight | Score | Boundary | State | Intent | Routing | Trace | Latency | Judge |");
+  lines.push(
+    "| ID | Category | Weight | Score | Boundary | State | Intent | Routing | Trace | Latency | Judge |",
+  );
   lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
   for (const r of report.scenarios) {
     const judgeCell = r.judge ? (r.judge.pass ? "PASS" : "fail") : "—";
@@ -84,7 +89,14 @@ export function renderMarkdown(report: BenchmarkReport): string {
   lines.push("## Notes (per scenario)");
   for (const r of report.scenarios) {
     const noteBlock: string[] = [];
-    for (const axisName of ["state", "intent", "routing", "trace", "boundary", "latency"] as const) {
+    for (const axisName of [
+      "state",
+      "intent",
+      "routing",
+      "trace",
+      "boundary",
+      "latency",
+    ] as const) {
       const ax = r.axes[axisName];
       if (ax.notes.length > 0) {
         for (const n of ax.notes) noteBlock.push(`  - [${axisName}] ${n}`);

@@ -25,6 +25,11 @@
       "!packages/benchmarks/solana/solana-gym-env/metrics",
       "!packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
       "!packages/benchmarks/evm/skill_runner/evm_skill.ts",
+      "!packages/benchmarks/OSWorld/**",
+      "!packages/benchmarks/HyperliquidBench/**",
+      "!packages/benchmarks/loca-bench/gem/**",
+      "!packages/benchmarks/loca-bench/vis_traj/**",
+      "!packages/benchmarks/**/*.html",
       "!packages/examples/app/electron/backend/renderer/assets",
       "!packages/app-core/src/styles"
     ]

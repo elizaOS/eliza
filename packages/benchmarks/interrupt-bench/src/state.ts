@@ -81,7 +81,10 @@ export class SimulatorState {
   }
 
   countRepliesInChannel(channel: string): number {
-    return this.replies.reduce((n, r) => (r.channel === channel ? n + 1 : n), 0);
+    return this.replies.reduce(
+      (n, r) => (r.channel === channel ? n + 1 : n),
+      0,
+    );
   }
 
   repliesInChannel(channel: string): ReplyRecord[] {

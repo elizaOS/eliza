@@ -13,11 +13,31 @@
     "memory": []
   },
   "script": [
-    { "t": 0,    "channel": "dm-alice", "sender": "alice", "text": "i want a recipe" },
-    { "t": 500,  "channel": "dm-alice", "sender": "alice", "text": "italian" },
-    { "t": 1000, "channel": "dm-alice", "sender": "alice", "text": "gluten free" },
-    { "t": 1500, "channel": "dm-alice", "sender": "alice", "text": "under 30 minutes" },
-    { "t": 2000, "channel": "dm-alice", "sender": "alice", "text": "for 4 people" }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "i want a recipe"
+    },
+    { "t": 500, "channel": "dm-alice", "sender": "alice", "text": "italian" },
+    {
+      "t": 1000,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "gluten free"
+    },
+    {
+      "t": 1500,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "under 30 minutes"
+    },
+    {
+      "t": 2000,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "for 4 people"
+    }
   ],
   "quiesceAfterMs": 5000,
   "expectedFinalState": {

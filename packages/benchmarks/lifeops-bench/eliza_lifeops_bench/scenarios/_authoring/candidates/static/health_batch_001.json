@@ -16,10 +16,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "ml",
-      "water"
-    ],
+    "required_outputs": ["ml", "water"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -50,10 +47,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "systolic",
-      "diastolic"
-    ],
+    "required_outputs": ["systolic", "diastolic"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -76,9 +70,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "calorie"
-    ],
+    "required_outputs": ["calorie"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -101,10 +93,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "kg",
-      "weight"
-    ],
+    "required_outputs": ["kg", "weight"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -127,10 +116,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "percent",
-      "fat"
-    ],
+    "required_outputs": ["percent", "fat"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -153,10 +139,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bpm",
-      "heart"
-    ],
+    "required_outputs": ["bpm", "heart"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -179,10 +162,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "quality",
-      "sleep"
-    ],
+    "required_outputs": ["quality", "sleep"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -205,9 +185,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "steps"
-    ],
+    "required_outputs": ["steps"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -230,10 +208,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "percent",
-      "oxygen"
-    ],
+    "required_outputs": ["percent", "oxygen"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -264,10 +239,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "LDL",
-      "HDL"
-    ],
+    "required_outputs": ["LDL", "HDL"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -290,10 +262,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "mg/dL",
-      "glucose"
-    ],
+    "required_outputs": ["mg/dL", "glucose"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -316,10 +285,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "ms",
-      "HRV"
-    ],
+    "required_outputs": ["ms", "HRV"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -342,10 +308,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "\u00b0C",
-      "temperature"
-    ],
+    "required_outputs": ["\u00b0C", "temperature"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -368,10 +331,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "hours",
-      "sleep"
-    ],
+    "required_outputs": ["hours", "sleep"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -394,10 +354,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bpm",
-      "heart"
-    ],
+    "required_outputs": ["bpm", "heart"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -420,10 +377,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "ml",
-      "water"
-    ],
+    "required_outputs": ["ml", "water"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -446,10 +400,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "kg",
-      "weight"
-    ],
+    "required_outputs": ["kg", "weight"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -472,10 +423,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "calorie",
-      "burned"
-    ],
+    "required_outputs": ["calorie", "burned"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -498,10 +446,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "percent",
-      "fat"
-    ],
+    "required_outputs": ["percent", "fat"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -524,10 +469,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "percent",
-      "efficiency"
-    ],
+    "required_outputs": ["percent", "efficiency"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -550,10 +492,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bpm",
-      "average"
-    ],
+    "required_outputs": ["bpm", "average"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -576,10 +515,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "percent",
-      "oxygen"
-    ],
+    "required_outputs": ["percent", "oxygen"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -602,10 +538,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "calorie",
-      "intake"
-    ],
+    "required_outputs": ["calorie", "intake"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -628,10 +561,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "score",
-      "sleep"
-    ],
+    "required_outputs": ["score", "sleep"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -654,10 +584,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "steps",
-      "average"
-    ],
+    "required_outputs": ["steps", "average"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -680,10 +607,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "\u00b0C",
-      "temperature"
-    ],
+    "required_outputs": ["\u00b0C", "temperature"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -706,10 +630,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "mg/dL",
-      "glucose"
-    ],
+    "required_outputs": ["mg/dL", "glucose"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -732,10 +653,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "bpm",
-      "heart"
-    ],
+    "required_outputs": ["bpm", "heart"],
     "first_question_fallback": {
       "canned_answer": "My resting heart rate is 62 bpm.",
       "applies_when": "agent asks which day"
@@ -761,10 +679,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "kg",
-      "weight"
-    ],
+    "required_outputs": ["kg", "weight"],
     "first_question_fallback": {
       "canned_answer": "Your weight is 68 kg.",
       "applies_when": "agent asks for the date"

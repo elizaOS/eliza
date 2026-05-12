@@ -13,16 +13,15 @@
  * violation.
  */
 
+import type { SimulatorState } from "./state.ts";
+import type { Trace } from "./trace.ts";
 import type {
   AxisScore,
-  ExpectedFinalState,
   ExpectedThread,
   Scenario,
   ScenarioResult,
   TraceEvent,
 } from "./types.ts";
-import type { SimulatorState } from "./state.ts";
-import type { Trace } from "./trace.ts";
 
 const AXIS_WEIGHTS = {
   state: 0.3,
@@ -37,10 +36,7 @@ const AXIS_WEIGHTS = {
 // Per-axis evaluators
 // ---------------------------------------------------------------------------
 
-function scoreState(
-  scenario: Scenario,
-  finalState: SimulatorState,
-): AxisScore {
+function scoreState(scenario: Scenario, finalState: SimulatorState): AxisScore {
   const exp = scenario.expectedFinalState;
   const notes: string[] = [];
   const checks: boolean[] = [];
@@ -64,14 +60,16 @@ function scoreState(
       const containsOk = (expected.descriptionContains ?? []).every((s) =>
         text.includes(s.toLowerCase()),
       );
-      const excludesOk = (expected.descriptionExcludes ?? []).every((s) =>
-        !text.includes(s.toLowerCase()),
+      const excludesOk = (expected.descriptionExcludes ?? []).every(
+        (s) => !text.includes(s.toLowerCase()),
       );
       return ownerOk && containsOk && excludesOk;
     });
     checks.push(ok);
     if (!ok) {
-      notes.push(`scheduledTask mismatch: expected ${JSON.stringify(expected)}`);
+      notes.push(
+        `scheduledTask mismatch: expected ${JSON.stringify(expected)}`,
+      );
     }
   }
 
@@ -81,30 +79,43 @@ function scoreState(
     const inBounds = count >= spec.count.min && count <= spec.count.max;
     checks.push(inBounds);
     if (!inBounds) {
-      notes.push(`reply count for ${channel}: got ${count}, expected ${spec.count.min}-${spec.count.max}`);
+      notes.push(
+        `reply count for ${channel}: got ${count}, expected ${spec.count.min}-${spec.count.max}`,
+      );
     }
     if (spec.mustContain) {
-      const allText = finalState.repliesInChannel(channel).map((r) => r.text.toLowerCase()).join(" \n ");
+      const allText = finalState
+        .repliesInChannel(channel)
+        .map((r) => r.text.toLowerCase())
+        .join(" \n ");
       for (const needle of spec.mustContain) {
         const ok = allText.includes(needle.toLowerCase());
         checks.push(ok);
-        if (!ok) notes.push(`reply in ${channel} missing required content: ${needle}`);
+        if (!ok)
+          notes.push(`reply in ${channel} missing required content: ${needle}`);
       }
     }
     if (spec.shortAck) {
       const replies = finalState.repliesInChannel(channel);
-      const ok = replies.length === 0 || replies.every((r) => r.text.length <= 80);
+      const ok =
+        replies.length === 0 || replies.every((r) => r.text.length <= 80);
       checks.push(ok);
-      if (!ok) notes.push(`reply in ${channel} expected to be a short ack (<=80 chars)`);
+      if (!ok)
+        notes.push(
+          `reply in ${channel} expected to be a short ack (<=80 chars)`,
+        );
     }
   }
 
   // External side effects
   if (exp.externalSideEffects?.emailsSent !== undefined) {
-    const ok = finalState.external.emailsSent === exp.externalSideEffects.emailsSent;
+    const ok =
+      finalState.external.emailsSent === exp.externalSideEffects.emailsSent;
     checks.push(ok);
     if (!ok) {
-      notes.push(`emailsSent: got ${finalState.external.emailsSent}, expected ${exp.externalSideEffects.emailsSent}`);
+      notes.push(
+        `emailsSent: got ${finalState.external.emailsSent}, expected ${exp.externalSideEffects.emailsSent}`,
+      );
     }
   }
 
@@ -120,12 +131,16 @@ function scoreState(
       if (expectedSpec.resolved !== undefined) {
         const ok = p.resolved === expectedSpec.resolved;
         checks.push(ok);
-        if (!ok) notes.push(`pendingPrompt ${id}: resolved=${p.resolved}, expected ${expectedSpec.resolved}`);
+        if (!ok)
+          notes.push(
+            `pendingPrompt ${id}: resolved=${p.resolved}, expected ${expectedSpec.resolved}`,
+          );
       }
     }
   }
 
-  const raw = checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
+  const raw =
+    checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
   return {
     raw,
     weight: AXIS_WEIGHTS.state,
@@ -134,7 +149,10 @@ function scoreState(
   };
 }
 
-function matchThread(expected: ExpectedThread, finalState: SimulatorState): boolean {
+function matchThread(
+  expected: ExpectedThread,
+  finalState: SimulatorState,
+): boolean {
   if (expected.id) {
     const t = finalState.threads.get(expected.id);
     if (!t) return false;
@@ -172,25 +190,40 @@ function matchThread(expected: ExpectedThread, finalState: SimulatorState): bool
 function scoreIntent(scenario: Scenario, trace: Trace): AxisScore {
   const expected = scenario.expectedTrace.intent;
   if (!expected) {
-    return { raw: 1, weight: AXIS_WEIGHTS.intent, weighted: AXIS_WEIGHTS.intent, notes: [] };
+    return {
+      raw: 1,
+      weight: AXIS_WEIGHTS.intent,
+      weighted: AXIS_WEIGHTS.intent,
+      notes: [],
+    };
   }
   const responses = trace.filter((e) => e.type === "stage1_response");
   if (responses.length === 0) {
-    return { raw: 0, weight: AXIS_WEIGHTS.intent, weighted: 0, notes: ["no stage1_response trace events"] };
+    return {
+      raw: 0,
+      weight: AXIS_WEIGHTS.intent,
+      weighted: 0,
+      notes: ["no stage1_response trace events"],
+    };
   }
   // For RESPOND intent: at least one stage1_response showed shouldRespond=RESPOND.
   // For IGNORE intent: all responses are IGNORE.
   const recordedIntents = responses
     .map((e) => (e.detail?.shouldRespond as string | undefined) ?? null)
     .filter(Boolean);
-  const matches = expected === "RESPOND"
-    ? recordedIntents.includes("RESPOND")
-    : recordedIntents.every((v) => v === "IGNORE");
+  const matches =
+    expected === "RESPOND"
+      ? recordedIntents.includes("RESPOND")
+      : recordedIntents.every((v) => v === "IGNORE");
   return {
     raw: matches ? 1 : 0,
     weight: AXIS_WEIGHTS.intent,
     weighted: matches ? AXIS_WEIGHTS.intent : 0,
-    notes: matches ? [] : [`expected intent ${expected}, observed ${recordedIntents.join(",") || "(none)"}`],
+    notes: matches
+      ? []
+      : [
+          `expected intent ${expected}, observed ${recordedIntents.join(",") || "(none)"}`,
+        ],
   };
 }
 
@@ -200,7 +233,9 @@ function scoreRouting(
 ): AxisScore {
   const notes: string[] = [];
   const checks: boolean[] = [];
-  const expectedChannels = new Set(Object.keys(scenario.expectedFinalState.repliesByChannel));
+  const expectedChannels = new Set(
+    Object.keys(scenario.expectedFinalState.repliesByChannel),
+  );
   // Every emitted reply must be in an expected channel.
   for (const r of finalState.replies) {
     const ok = expectedChannels.has(r.channel);
@@ -208,14 +243,23 @@ function scoreRouting(
     if (!ok) notes.push(`reply emitted in unexpected channel '${r.channel}'`);
   }
   // Every channel with min>=1 must have replies.
-  for (const [channel, spec] of Object.entries(scenario.expectedFinalState.repliesByChannel)) {
+  for (const [channel, spec] of Object.entries(
+    scenario.expectedFinalState.repliesByChannel,
+  )) {
     if (spec.count.min < 1) continue;
     const ok = finalState.countRepliesInChannel(channel) >= spec.count.min;
     checks.push(ok);
-    if (!ok) notes.push(`channel ${channel} expected >=${spec.count.min} replies`);
+    if (!ok)
+      notes.push(`channel ${channel} expected >=${spec.count.min} replies`);
   }
-  const raw = checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
-  return { raw, weight: AXIS_WEIGHTS.routing, weighted: raw * AXIS_WEIGHTS.routing, notes };
+  const raw =
+    checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
+  return {
+    raw,
+    weight: AXIS_WEIGHTS.routing,
+    weighted: raw * AXIS_WEIGHTS.routing,
+    notes,
+  };
 }
 
 function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
@@ -223,39 +267,59 @@ function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
   const checks: boolean[] = [];
 
   const stage1 = trace.count("stage1_call");
-  const stage1Ok = stage1 >= scenario.expectedTrace.stage1Calls.min && stage1 <= scenario.expectedTrace.stage1Calls.max;
+  const stage1Ok =
+    stage1 >= scenario.expectedTrace.stage1Calls.min &&
+    stage1 <= scenario.expectedTrace.stage1Calls.max;
   checks.push(stage1Ok);
   if (!stage1Ok) {
-    notes.push(`stage1Calls=${stage1}, expected ${scenario.expectedTrace.stage1Calls.min}-${scenario.expectedTrace.stage1Calls.max}`);
+    notes.push(
+      `stage1Calls=${stage1}, expected ${scenario.expectedTrace.stage1Calls.min}-${scenario.expectedTrace.stage1Calls.max}`,
+    );
   }
 
   if (scenario.expectedTrace.plannerCalls) {
     const planner = trace.count("planner_call");
-    const ok = planner >= scenario.expectedTrace.plannerCalls.min && planner <= scenario.expectedTrace.plannerCalls.max;
+    const ok =
+      planner >= scenario.expectedTrace.plannerCalls.min &&
+      planner <= scenario.expectedTrace.plannerCalls.max;
     checks.push(ok);
-    if (!ok) notes.push(`plannerCalls=${planner}, expected ${scenario.expectedTrace.plannerCalls.min}-${scenario.expectedTrace.plannerCalls.max}`);
+    if (!ok)
+      notes.push(
+        `plannerCalls=${planner}, expected ${scenario.expectedTrace.plannerCalls.min}-${scenario.expectedTrace.plannerCalls.max}`,
+      );
   }
 
   if (scenario.expectedTrace.abortFired !== undefined) {
     const fired = trace.count("abort_fired") > 0;
     const ok = fired === scenario.expectedTrace.abortFired;
     checks.push(ok);
-    if (!ok) notes.push(`abortFired=${fired}, expected ${scenario.expectedTrace.abortFired}`);
+    if (!ok)
+      notes.push(
+        `abortFired=${fired}, expected ${scenario.expectedTrace.abortFired}`,
+      );
   }
 
   if (scenario.expectedTrace.preemptMode) {
     const ev = trace.find((e) => e.type === "preempt");
     const ok = ev?.preemptMode === scenario.expectedTrace.preemptMode;
     checks.push(ok);
-    if (!ok) notes.push(`preemptMode=${ev?.preemptMode ?? "(none)"}, expected ${scenario.expectedTrace.preemptMode}`);
+    if (!ok)
+      notes.push(
+        `preemptMode=${ev?.preemptMode ?? "(none)"}, expected ${scenario.expectedTrace.preemptMode}`,
+      );
   }
 
   if (scenario.expectedTrace.threadOpsContains) {
-    const observed = trace.filter((e) => e.type === "thread_op").map((e) => (e.detail?.type as string | undefined) ?? "");
+    const observed = trace
+      .filter((e) => e.type === "thread_op")
+      .map((e) => (e.detail?.type as string | undefined) ?? "");
     for (const t of scenario.expectedTrace.threadOpsContains) {
       const ok = observed.includes(t);
       checks.push(ok);
-      if (!ok) notes.push(`expected threadOp '${t}', observed ${observed.join(",") || "(none)"}`);
+      if (!ok)
+        notes.push(
+          `expected threadOp '${t}', observed ${observed.join(",") || "(none)"}`,
+        );
     }
   }
 
@@ -264,23 +328,39 @@ function scoreTrace(scenario: Scenario, trace: Trace): AxisScore {
       const ok = trace.find((e) => {
         if (e.type !== "thread_op") return false;
         if (e.detail?.type !== expectedOp.type) return false;
-        if (expectedOp.workThreadId && e.detail?.workThreadId !== expectedOp.workThreadId) return false;
+        if (
+          expectedOp.workThreadId &&
+          e.detail?.workThreadId !== expectedOp.workThreadId
+        )
+          return false;
         return true;
       });
       checks.push(!!ok);
-      if (!ok) notes.push(`expected threadOp matching ${JSON.stringify(expectedOp)}`);
+      if (!ok)
+        notes.push(`expected threadOp matching ${JSON.stringify(expectedOp)}`);
     }
   }
 
-  const raw = checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
-  return { raw, weight: AXIS_WEIGHTS.trace, weighted: raw * AXIS_WEIGHTS.trace, notes };
+  const raw =
+    checks.length === 0 ? 1 : checks.filter(Boolean).length / checks.length;
+  return {
+    raw,
+    weight: AXIS_WEIGHTS.trace,
+    weighted: raw * AXIS_WEIGHTS.trace,
+    notes,
+  };
 }
 
-function scoreBoundary(scenario: Scenario, trace: Trace): { axis: AxisScore; violated: boolean } {
+function scoreBoundary(
+  scenario: Scenario,
+  trace: Trace,
+): { axis: AxisScore; violated: boolean } {
   const violations = trace.count("boundary_violation");
   const limit = scenario.expectedTrace.boundaryViolations;
   const ok = violations <= limit;
-  const notes = ok ? [] : [`boundaryViolations=${violations}, expected <=${limit}`];
+  const notes = ok
+    ? []
+    : [`boundaryViolations=${violations}, expected <=${limit}`];
   return {
     axis: {
       raw: ok ? 1 : 0,
@@ -309,11 +389,19 @@ function scoreLatency(trace: Trace): AxisScore {
     }
   }
   if (durations.length === 0) {
-    return { raw: 1, weight: AXIS_WEIGHTS.latency, weighted: AXIS_WEIGHTS.latency, notes: ["no handler runs to measure"] };
+    return {
+      raw: 1,
+      weight: AXIS_WEIGHTS.latency,
+      weighted: AXIS_WEIGHTS.latency,
+      notes: ["no handler runs to measure"],
+    };
   }
   durations.sort((a, b) => a - b);
   const p50 = durations[Math.floor(durations.length * 0.5)] ?? 0;
-  const p95Idx = Math.min(durations.length - 1, Math.floor(durations.length * 0.95));
+  const p95Idx = Math.min(
+    durations.length - 1,
+    Math.floor(durations.length * 0.95),
+  );
   const p95 = durations[p95Idx] ?? 0;
   const notes: string[] = [];
   const checks: boolean[] = [];
@@ -324,7 +412,12 @@ function scoreLatency(trace: Trace): AxisScore {
   checks.push(p95Ok);
   if (!p95Ok) notes.push(`p95=${p95}ms, expected <3000ms`);
   const raw = checks.filter(Boolean).length / checks.length;
-  return { raw, weight: AXIS_WEIGHTS.latency, weighted: raw * AXIS_WEIGHTS.latency, notes };
+  return {
+    raw,
+    weight: AXIS_WEIGHTS.latency,
+    weighted: raw * AXIS_WEIGHTS.latency,
+    notes,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -373,7 +466,9 @@ export function scoreScenario(args: {
   };
 }
 
-export function passTier(finalScore: number): "fail" | "70" | "82" | "90" | "95" {
+export function passTier(
+  finalScore: number,
+): "fail" | "70" | "82" | "90" | "95" {
   if (finalScore >= 95) return "95";
   if (finalScore >= 90) return "90";
   if (finalScore >= 82) return "82";
