@@ -146,7 +146,7 @@ Full per-wave detail in [`INDEX.md`](./INDEX.md). Headline commits:
 |----------------------------------------|------:|:-------|
 | Cache stability                        |    10 | pass   |
 | Benchmarks lib (TS)                    |    44 | pass   |
-| DSPy primitives (TS)                   |    11 | pass   |
+| DSPy primitives (TS)                   |     9 | pass   |
 | Action-retrieval measurement (TS)      |     7 | pass   |
 | Retrieval defaults (TS)                |    10 | pass   |
 | Retrieval funnel script (TS)           |     3 | pass   |
