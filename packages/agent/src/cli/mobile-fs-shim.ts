@@ -94,21 +94,10 @@ const BLOCKED_ROOT_PREFIXES = [
   "/run",
 ];
 
-// File extensions that indicate executable / loadable code.
-const EXECUTABLE_EXTENSIONS = new Set([
-  ".js",
-  ".mjs",
-  ".cjs",
-  ".ts",
-  ".cts",
-  ".mts",
-  ".jsx",
-  ".tsx",
-  ".so",
-  ".dylib",
-  ".node",
-  ".wasm",
-]);
+// Native binary extensions that must never be written at runtime.
+// .js / .ts user scripts inside the workspace are intentionally allowed —
+// the write guard only blocks native code loaders (.so / .dylib / .node).
+const NATIVE_BINARY_EXTENSIONS = new Set([".so", ".dylib", ".node"]);
 
 // ---------------------------------------------------------------------------
 // Path helpers

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No extra permissions required: the Bun runtime is managed by
+         ElizaAgentService in the host app, and this plugin routes all
+         traffic over the loopback HTTP surface that the service owns. -->
+</manifest>
