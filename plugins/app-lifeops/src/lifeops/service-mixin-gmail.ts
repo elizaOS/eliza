@@ -1,4 +1,3 @@
-// @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
 import crypto from "node:crypto";
 import type {
   CreateLifeOpsGmailBatchReplyDraftsRequest,
@@ -9,6 +8,7 @@ import type {
   GetLifeOpsGmailTriageRequest,
   GetLifeOpsGmailUnrespondedRequest,
   IngestLifeOpsGmailEventRequest,
+  LifeOpsConnectorGrant,
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
   LifeOpsGmailBatchReplyDraftsFeed,
@@ -164,6 +164,21 @@ const GOOGLE_GMAIL_MAILBOX = "me";
 const DEFAULT_GMAIL_TRIAGE_MAX_RESULTS = 12;
 const DEFAULT_GMAIL_SEARCH_LIMIT = 25;
 
+type GmailMixinDependencies = LifeOpsServiceBase & {
+  requireGoogleGmailGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+  requireGoogleGmailSendGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+};
+
 function maxResults(value: unknown, fallback: number): number {
   return Math.max(
     1,
@@ -255,7 +270,9 @@ function draftForMessage(
 export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsGmailService> {
-  return class extends Base {
+  const GmailBase = Base as unknown as Constructor<GmailMixinDependencies>;
+
+  return class extends GmailBase {
     private async syncGmailMessages(args: {
       requestUrl: URL;
       mode?: LifeOpsConnectorMode;
@@ -265,7 +282,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       maxResults: number;
       now?: Date;
     }): Promise<{
-      grant: unknown;
+      grant: LifeOpsConnectorGrant;
       query: string;
       messages: LifeOpsGmailMessageSummary[];
       syncedAt: string;
@@ -471,6 +488,8 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
         source: "synced",
         syncedAt: triage.syncedAt,
         summary: summarizeGmailRecommendations([]),
+      } as LifeOpsGmailRecommendationsFeed & {
+        messages: LifeOpsGmailMessageSummary[];
       };
     }
 
@@ -982,5 +1001,5 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       return { ok: true, sentCount: request.items?.length ?? 0 };
     }
-  } as MixinClass<TBase, LifeOpsGmailService>;
+  } as unknown as MixinClass<TBase, LifeOpsGmailService>;
 }

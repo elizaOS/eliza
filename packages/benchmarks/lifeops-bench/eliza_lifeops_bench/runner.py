@@ -132,6 +132,14 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
     "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
     "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
     "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+    "MESSAGE_SEND": ("MESSAGE", "operation", "send"),
+    "MESSAGE_DRAFT_REPLY": ("MESSAGE", "operation", "draft_reply"),
+    "MESSAGE_MANAGE": ("MESSAGE", "operation", "manage"),
+    "MESSAGE_TRIAGE": ("MESSAGE", "operation", "triage"),
+    "MESSAGE_SEARCH_INBOX": ("MESSAGE", "operation", "search_inbox"),
+    "MESSAGE_LIST_CHANNELS": ("MESSAGE", "operation", "list_channels"),
+    "MESSAGE_READ_CHANNEL": ("MESSAGE", "operation", "read_channel"),
+    "MESSAGE_READ_WITH_CONTACT": ("MESSAGE", "operation", "read_with_contact"),
 }
 
 
@@ -320,6 +328,20 @@ def _details(kwargs: dict[str, Any]) -> dict[str, Any]:
     """Return the kwargs.details dict if present, else {}."""
     raw = kwargs.get("details")
     return raw if isinstance(raw, dict) else {}
+
+
+def _string_list(value: Any) -> list[str]:
+    """Normalize a string-or-list field into a list of non-empty strings."""
+    if isinstance(value, str):
+        stripped = value.strip()
+        return [stripped] if stripped else []
+    if isinstance(value, list):
+        return [
+            item.strip()
+            for item in value
+            if isinstance(item, str) and item.strip()
+        ]
+    return []
 
 
 def _synthetic_id(prefix: str, payload: dict[str, Any]) -> str:
@@ -688,7 +710,11 @@ def _u_message(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any
 
 
 def _send_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str, Any]:
-    to_emails = list(kw.get("to_emails") or kw.get("to") or [])
+    to_emails = (
+        _string_list(kw.get("to_emails"))
+        or _string_list(kw.get("to"))
+        or _string_list(kw.get("target"))
+    )
     if not to_emails:
         raise KeyError("MESSAGE/send (gmail) requires to_emails")
     subject = kw.get("subject") or ""
@@ -1416,6 +1442,15 @@ _ACTION_HANDLERS: dict[
     "CALENDAR_CHECK_AVAILABILITY": _u_calendar,
     "CALENDAR_NEXT_EVENT": _u_calendar,
     "CALENDAR_UPDATE_PREFERENCES": _u_calendar,
+    # Promoted MESSAGE_* names mirror the same top-level manifest shape.
+    "MESSAGE_SEND": _u_message,
+    "MESSAGE_DRAFT_REPLY": _u_message,
+    "MESSAGE_MANAGE": _u_message,
+    "MESSAGE_TRIAGE": _u_message,
+    "MESSAGE_SEARCH_INBOX": _u_message,
+    "MESSAGE_LIST_CHANNELS": _u_message,
+    "MESSAGE_READ_CHANNEL": _u_message,
+    "MESSAGE_READ_WITH_CONTACT": _u_message,
 }
 
 
@@ -1827,13 +1862,14 @@ class LifeOpsBenchRunner:
                     satisfied, _reason = await self.evaluator.judge_satisfaction(  # type: ignore[union-attr]
                         scenario, history, world
                     )
+                    await self._charge(
+                        self.evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
+                        scenario.id,
+                        seed,
+                        bucket="eval",
+                    )
+                    pre_eval_cost = self.evaluator.cost_usd  # type: ignore[union-attr]
                     if satisfied:
-                        await self._charge(
-                            self.evaluator.cost_usd - pre_eval_cost,  # type: ignore[union-attr]
-                            scenario.id,
-                            seed,
-                            bucket="eval",
-                        )
                         terminated_reason = "satisfied"
                         turns.append(turn_result)
                         break

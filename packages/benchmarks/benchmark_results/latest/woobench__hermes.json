@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output"
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081717Z_5c98d942/woobench__woobench/run_woobench_20260512T081728Z_1_172eb743/output"
   ],
   "benchmark_directory": "woobench",
   "benchmark_id": "woobench",
@@ -9,7 +9,7 @@
     "cache_creation_input_tokens": 0,
     "cache_hit_ratio": 0.0,
     "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "turns_with_cached_field": 9
   },
   "error": null,
   "higher_is_better": true,
@@ -18,61 +18,62 @@
       "cache_creation_input_tokens": 0,
       "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "turns_with_cached_field": 9
     },
+    "canonical_entries": 0,
     "failed_scenarios": 0,
-    "overall_score": 99.99999999999999,
+    "overall_score": 23.076923076923077,
     "performance_metrics": {
-      "duration_seconds": 36.15943245799281,
-      "mean_latency_ms": null,
-      "p95_latency_ms": null,
-      "throughput_per_second": 0.24889771183371018
+      "duration_seconds": 19.50183670804836,
+      "mean_latency_ms": 2075.4521204443236,
+      "p95_latency_ms": 2424.015042022802,
+      "throughput_per_second": 0.9229899865058067
     },
     "resilience_score": 0.0,
     "return_code": 0,
     "revenue_efficiency": 0.0,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 9,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "avg_completion_tokens": 541.1111111111111,
+      "avg_prompt_tokens": 55.666666666666664,
+      "completion_tokens": 9740,
+      "llm_call_count": 18,
+      "prompt_tokens": 1002,
+      "total_tokens": 10742
     },
     "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 35884,
+      "files": 2,
+      "prompt_chars": 34305,
       "repeated_prefixes": [],
-      "turns": 9
+      "turns": 18
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 36.15943245799281,
-    "mean_latency_ms": null,
-    "p95_latency_ms": null,
-    "throughput_per_second": 0.24889771183371018
+    "duration_seconds": 19.50183670804836,
+    "mean_latency_ms": 2075.4521204443236,
+    "p95_latency_ms": 2424.015042022802,
+    "throughput_per_second": 0.9229899865058067
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output/woobench_gpt-oss-120b_20260511_062113.json",
-  "run_group_id": "rg_20260511T132037Z_22582b34",
-  "run_id": "run_woobench_20260511T132037Z_1_abc19cf8",
-  "score": 0.9999999999999999,
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T081717Z_5c98d942/woobench__woobench/run_woobench_20260512T081728Z_1_172eb743/output/woobench_gpt-oss-120b_20260512_011747.json",
+  "run_group_id": "rg_20260512T081717Z_5c98d942",
+  "run_id": "run_woobench_20260512T081728Z_1_172eb743",
+  "score": 0.23076923076923075,
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 9,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "avg_completion_tokens": 541.1111111111111,
+    "avg_prompt_tokens": 55.666666666666664,
+    "completion_tokens": 9740,
+    "llm_call_count": 18,
+    "prompt_tokens": 1002,
+    "total_tokens": 10742
   },
   "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 35884,
+    "files": 2,
+    "prompt_chars": 34305,
     "repeated_prefixes": [],
-    "turns": 9
+    "turns": 18
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:34:00Z"
+  "updated_at": "2026-05-12T08:17:47.601676+00:00"
 }

@@ -10,9 +10,57 @@ cost/latency telemetry attached.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from ..types import MessageTurn
+
+
+def _ensure_hermes_adapter_importable() -> None:
+    """Make the sibling hermes-adapter source tree importable in repo checkouts."""
+    try:
+        import hermes_adapter  # noqa: F401
+        return
+    except ImportError:
+        pass
+
+    benchmarks_dir = Path(__file__).resolve().parents[3]
+    candidate = benchmarks_dir / "hermes-adapter"
+    if (candidate / "hermes_adapter").is_dir():
+        candidate_str = str(candidate)
+        if candidate_str not in sys.path:
+            sys.path.insert(0, candidate_str)
+
+
+class HermesLifeOpsAgent:
+    """Callable wrapper that adds runner-readable cumulative telemetry."""
+
+    def __init__(
+        self,
+        inner: Callable[[list[MessageTurn], list[dict[str, Any]]], Awaitable[MessageTurn]],
+    ) -> None:
+        self._inner = inner
+        self.total_cost_usd: float = 0.0
+        self.total_input_tokens: int = 0
+        self.total_output_tokens: int = 0
+
+    async def __call__(
+        self,
+        history: list[MessageTurn],
+        tools: list[dict[str, Any]],
+    ) -> MessageTurn:
+        turn = await self._inner(history, tools)
+        cost = getattr(turn, "cost_usd", None)
+        if isinstance(cost, (int, float)):
+            self.total_cost_usd += float(cost)
+        input_tokens = getattr(turn, "input_tokens", None)
+        if isinstance(input_tokens, (int, float)):
+            self.total_input_tokens += int(input_tokens)
+        output_tokens = getattr(turn, "output_tokens", None)
+        if isinstance(output_tokens, (int, float)):
+            self.total_output_tokens += int(output_tokens)
+        return turn
 
 
 def build_hermes_agent(
@@ -39,6 +87,7 @@ def build_hermes_agent(
     bypasses the source harness setup.
     """
     del temperature, reasoning_effort, max_tokens
+    _ensure_hermes_adapter_importable()
     try:
         from hermes_adapter.client import HermesClient
         from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
@@ -61,7 +110,7 @@ def build_hermes_agent(
         client_kwargs["api_key"] = api_key
     client = HermesClient(**client_kwargs)
 
-    return build_lifeops_bench_agent_fn(
+    inner = build_lifeops_bench_agent_fn(
         client=client,
         model_name=model,
         system_prompt=(
@@ -69,3 +118,4 @@ def build_hermes_agent(
             "when they are needed, and keep responses concise."
         ),
     )
+    return HermesLifeOpsAgent(inner)

@@ -1,0 +1,29 @@
+{
+  "agent": "full-sweep",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T150629Z_65f5b86d/tau-bench__tau_bench/run_tau_bench_20260505T150637Z_1_794962cd/output"
+  ],
+  "benchmark_directory": "tau-bench",
+  "benchmark_id": "tau_bench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "overall_policy_compliance": 1.0,
+    "overall_success_rate": 1.0,
+    "overall_tool_accuracy": 1.0,
+    "return_code": 0
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T150629Z_65f5b86d/tau-bench__tau_bench/run_tau_bench_20260505T150637Z_1_794962cd/output/tau-bench-results.json",
+  "run_group_id": "rg_20260505T150629Z_65f5b86d",
+  "run_id": "run_tau_bench_20260505T150637Z_1_794962cd",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T15:06:39.362194+00:00"
+}

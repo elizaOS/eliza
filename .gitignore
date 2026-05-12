@@ -464,6 +464,8 @@ benchmark_results/
 # src/main/assets/agent/ at build time; committing the 33 MB bundle
 # blob and 5 MB pglite.data into the repo is wrong.
 packages/agent/dist-mobile/
+packages/agent/dist-mobile-ios/
+packages/agent/dist-mobile-ios-jsc/
 packages/benchmarks/benchmark_results/
 packages/benchmarks/benchmark_results
 packages/swe-bench-workspace/
@@ -492,6 +494,18 @@ test/mocks/mockoon/.mockoon-pids/
 lifeops_bench_results/
 reports/ai-qa/
 scripts/ai-qa/.static-stack.json
+
+# Generated inference verification output and hardware evidence.
+packages/inference/reports/
+packages/inference/verify/bench_results/
+packages/inference/verify/hardware-results/
+packages/inference/verify/android-vulkan-smoke/
+packages/inference/verify/cpu_bench
+packages/inference/verify/cpu_simd_bench
+packages/inference/verify/cuda_verify
+packages/inference/verify/dispatch_smoke
+packages/inference/verify/metal_bench
+packages/inference/verify/vulkan_dispatch_smoke
 
 # omnivoice-fuse stub library — a build artifact of `make -C
 # packages/app-core/scripts/omnivoice-fuse`, not source. The fused-ABI

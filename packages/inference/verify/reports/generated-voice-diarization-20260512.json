@@ -1,0 +1,320 @@
+{
+  "available": true,
+  "generatedAt": "2026-05-12T06:06:06.370Z",
+  "bundleRoot": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+  "vad": {
+    "available": true,
+    "provider": "silero-onnx",
+    "vadModelPath": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/vad/silero-vad-int8.onnx",
+    "wavPath": "/tmp/eliza-generated-voice-vad-diarization.wav",
+    "wav": {
+      "sampleRateHz": 24000,
+      "samples": 115200,
+      "audioSeconds": 4.8,
+      "sha256": "b3b5a169712aa51f38d5403370e48a2e243cbc7bb0f6abbb73ecedfb56220ebf"
+    },
+    "resampled": {
+      "sampleRateHz": 16000,
+      "samples": 76800,
+      "audioSeconds": 4.8
+    },
+    "summary": {
+      "speechDetected": true,
+      "speechStarts": 1,
+      "speechEnds": 1,
+      "firstSpeechStartMs": 128,
+      "firstSpeechEndMs": 4800,
+      "speechDurationMs": 4672,
+      "computeMsMedian": 0.43129099999987375,
+      "computeMsP95": 1.7594589999998789
+    },
+    "events": [
+      {
+        "type": "speech-start",
+        "timestampMs": 128,
+        "probability": 0.6434437036514282
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 384,
+        "probability": 0.970699667930603,
+        "speechDurationMs": 256
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 608,
+        "probability": 0.8042476177215576,
+        "speechDurationMs": 480
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 832,
+        "probability": 0.5486189126968384,
+        "speechDurationMs": 704
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 1056,
+        "probability": 0.09799045324325562,
+        "speechDurationMs": 928
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1152,
+        "pauseDurationMs": 224
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1184,
+        "pauseDurationMs": 256
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1216,
+        "pauseDurationMs": 288
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1248,
+        "pauseDurationMs": 320
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1280,
+        "pauseDurationMs": 352
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1312,
+        "pauseDurationMs": 384
+      },
+      {
+        "type": "speech-pause",
+        "timestampMs": 1344,
+        "pauseDurationMs": 416
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 1376,
+        "probability": 0.9246878027915955,
+        "speechDurationMs": 1248
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 1600,
+        "probability": 0.9981746673583984,
+        "speechDurationMs": 1472
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 1824,
+        "probability": 0.9972808957099915,
+        "speechDurationMs": 1696
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 2048,
+        "probability": 0.9542514085769653,
+        "speechDurationMs": 1920
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 2272,
+        "probability": 0.9959843754768372,
+        "speechDurationMs": 2144
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 2496,
+        "probability": 0.9969146251678467,
+        "speechDurationMs": 2368
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 2720,
+        "probability": 0.997367262840271,
+        "speechDurationMs": 2592
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 2944,
+        "probability": 0.9989732503890991,
+        "speechDurationMs": 2816
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 3168,
+        "probability": 0.9976091384887695,
+        "speechDurationMs": 3040
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 3392,
+        "probability": 0.998254656791687,
+        "speechDurationMs": 3264
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 3616,
+        "probability": 0.9992380142211914,
+        "speechDurationMs": 3488
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 3840,
+        "probability": 0.9938682317733765,
+        "speechDurationMs": 3712
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 4064,
+        "probability": 0.9978882074356079,
+        "speechDurationMs": 3936
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 4288,
+        "probability": 0.9991070032119751,
+        "speechDurationMs": 4160
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 4512,
+        "probability": 0.9938315749168396,
+        "speechDurationMs": 4384
+      },
+      {
+        "type": "speech-active",
+        "timestampMs": 4736,
+        "probability": 0.96649169921875,
+        "speechDurationMs": 4608
+      },
+      {
+        "type": "speech-end",
+        "timestampMs": 4800,
+        "speechDurationMs": 4672
+      }
+    ]
+  },
+  "speakerAttribution": {
+    "mode": "attribution_only_supplied_embeddings",
+    "expectedEntityIds": [
+      "entity-owner",
+      "entity-guest"
+    ],
+    "predictedEntityIds": [
+      "entity-owner",
+      "entity-guest"
+    ],
+    "accuracy": 1,
+    "summary": {
+      "totalObservations": 2,
+      "matchedObservations": 2,
+      "unmatchedObservations": 0,
+      "meanConfidence": 0.8994185788908092,
+      "meanSimilarity": 0.9998724951654143
+    },
+    "primarySpeakerEntityId": "entity-owner",
+    "segments": [
+      {
+        "id": "seg-generated-owner-1",
+        "text": "generated voice sample",
+        "startMs": 128,
+        "endMs": 4800,
+        "speaker": {
+          "id": "entity-owner",
+          "label": "Generated owner voice",
+          "displayName": "Generated owner voice",
+          "source": {
+            "kind": "file",
+            "sourceId": "/tmp/eliza-generated-voice-vad-diarization.wav",
+            "metadata": {
+              "generatedVoice": true,
+              "wavSha256": "b3b5a169712aa51f38d5403370e48a2e243cbc7bb0f6abbb73ecedfb56220ebf"
+            }
+          },
+          "imprintClusterId": "cluster-generated-owner",
+          "imprintObservationId": "obs-generated-owner-1",
+          "entityId": "entity-owner",
+          "confidence": 0.9190616074973762,
+          "metadata": {
+            "attributionOnly": true,
+            "matchSimilarity": 0.9997960016298644,
+            "embeddingModel": "eliza-voice-embed-v1"
+          }
+        },
+        "speakerId": "entity-owner",
+        "source": {
+          "kind": "file",
+          "sourceId": "/tmp/eliza-generated-voice-vad-diarization.wav",
+          "metadata": {
+            "generatedVoice": true,
+            "wavSha256": "b3b5a169712aa51f38d5403370e48a2e243cbc7bb0f6abbb73ecedfb56220ebf"
+          }
+        },
+        "confidence": 0.9190616074973762,
+        "metadata": {
+          "attributionOnly": true,
+          "embeddingModel": "eliza-voice-embed-v1",
+          "imprintObservationId": "obs-generated-owner-1",
+          "imprintClusterId": "cluster-generated-owner",
+          "entityId": "entity-owner",
+          "matchSimilarity": 0.9997960016298644
+        }
+      },
+      {
+        "id": "seg-generated-guest-1",
+        "text": "second supplied segment embedding",
+        "startMs": 0,
+        "endMs": 1000,
+        "speaker": {
+          "id": "entity-guest",
+          "label": "Generated guest voice",
+          "displayName": "Generated guest voice",
+          "source": {
+            "kind": "unknown",
+            "metadata": {
+              "suppliedEmbeddingFixture": true
+            }
+          },
+          "imprintClusterId": "cluster-generated-guest",
+          "imprintObservationId": "obs-generated-guest-1",
+          "entityId": "entity-guest",
+          "confidence": 0.8797755502842423,
+          "metadata": {
+            "attributionOnly": true,
+            "matchSimilarity": 0.9999489887009642,
+            "embeddingModel": "eliza-voice-embed-v1"
+          }
+        },
+        "speakerId": "entity-guest",
+        "source": {
+          "kind": "unknown",
+          "metadata": {
+            "suppliedEmbeddingFixture": true
+          }
+        },
+        "confidence": 0.8797755502842423,
+        "metadata": {
+          "attributionOnly": true,
+          "embeddingModel": "eliza-voice-embed-v1",
+          "imprintObservationId": "obs-generated-guest-1",
+          "imprintClusterId": "cluster-generated-guest",
+          "entityId": "entity-guest",
+          "matchSimilarity": 0.9999489887009642
+        }
+      }
+    ]
+  },
+  "diarization": {
+    "localMultiSpeakerImplemented": false,
+    "der": null,
+    "reason": "No local multi-speaker segmentation and speaker-embedding extractor is wired yet; this harness validates VAD on generated voice and attribution-only imprint matching on supplied segment embeddings.",
+    "requiredForDer": [
+      "local speaker segmentation or clustering over overlapping speech",
+      "speaker embedding extractor calibrated on generated and real microphone speech",
+      "labelled multi-speaker local fixtures with RTTM-style reference spans"
+    ]
+  },
+  "harness": "packages/inference/verify/speaker_imprint_diarization_harness.mjs"
+}

@@ -749,8 +749,29 @@ function shouldSkipEmptyVitestScript(cwd, scriptName, scripts) {
  * - --pattern      → VITEST_TEST_PATH_PATTERN forwarded for package scripts
  *   that respect it. (Most do, via the shared default vitest config; package
  *   scripts that don't will simply ignore the env var.)
+ * - ELIZA_LIVE_TEST defaults to 0 for ordinary package `test` scripts. Set
+ *   ELIZA_LIVE_TEST=1 explicitly, run TEST_LANE=post-merge, or run a
+ *   `*:live` script to opt into live-provider behavior.
  */
-function buildLaneEnv() {
+function isLiveScriptName(scriptName) {
+  return (
+    scriptName === "test:live" ||
+    scriptName.endsWith(":live") ||
+    scriptName.includes(":live:")
+  );
+}
+
+function resolveLiveTestValue(scriptName = "") {
+  if (process.env.ELIZA_LIVE_TEST !== undefined) {
+    return process.env.ELIZA_LIVE_TEST;
+  }
+  if (TEST_LANE === "post-merge" || isLiveScriptName(scriptName)) {
+    return "1";
+  }
+  return "0";
+}
+
+function buildLaneEnv(scriptName = "") {
   const extra = {};
 
   if (TEST_LANE === "pr") {
@@ -769,6 +790,8 @@ function buildLaneEnv() {
     extra.VITEST_UNIT_ONLY = "1";
   }
 
+  extra.ELIZA_LIVE_TEST = resolveLiveTestValue(scriptName);
+
   if (patternFlag) {
     // Forwarded to vitest via env so package-level configs / wrapper scripts
     // can apply --testPathPattern when needed without reflowing CLI args.
@@ -776,6 +799,17 @@ function buildLaneEnv() {
   }
 
   return extra;
+}
+
+function getDefaultTaskSkipReason(relativeDir, scriptName) {
+  if (
+    relativeDir === "packages/app-core/platforms/electrobun" &&
+    scriptName === "test" &&
+    process.env.ELIZA_INCLUDE_ELECTROBUN_TESTS !== "1"
+  ) {
+    return "Electrobun-only tests are opt-in; set ELIZA_INCLUDE_ELECTROBUN_TESTS=1";
+  }
+  return null;
 }
 
 /**
@@ -813,7 +847,7 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
       env: {
         ...testRuntimeEnv,
         NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
-        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "0",
         PWD: cwd,
         ...extraEnv,
       },
@@ -862,7 +896,7 @@ function runDirectTask(label, command, args, cwd, extraEnv = {}) {
       env: {
         ...testRuntimeEnv,
         NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
-        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "0",
         PWD: cwd,
         ...extraEnv,
       },
@@ -966,9 +1000,9 @@ function runCloudTests() {
       env: {
         ...testRuntimeEnv,
         NODE_NO_WARNINGS: testRuntimeEnv.NODE_NO_WARNINGS || "1",
-        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "1",
+        ELIZA_LIVE_TEST: testRuntimeEnv.ELIZA_LIVE_TEST || "0",
         PWD: cloudDir,
-        ...buildLaneEnv(),
+        ...buildLaneEnv(scriptName),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -1049,6 +1083,14 @@ for (const packageJsonPath of packageJsonPaths) {
     if (!taskMatchesSelection(label, scriptName, relativeDir)) {
       continue;
     }
+    const defaultTaskSkipReason = getDefaultTaskSkipReason(
+      relativeDir,
+      scriptName,
+    );
+    if (defaultTaskSkipReason) {
+      console.log(`[eliza-test] SKIP ${label} (${defaultTaskSkipReason})`);
+      continue;
+    }
     if (shouldSkipEmptyVitestScript(cwd, scriptName, scripts)) {
       console.log(
         `[eliza-test] SKIP ${label} (no local test files for vitest script)`,
@@ -1056,7 +1098,7 @@ for (const packageJsonPath of packageJsonPaths) {
       continue;
     }
 
-    const extraEnv = buildLaneEnv();
+    const extraEnv = buildLaneEnv(scriptName);
 
     console.log(`[eliza-test] START ${label}`);
     const startedAt = Date.now();

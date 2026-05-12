@@ -360,6 +360,9 @@ export function VrmViewer(props: VrmViewerProps) {
     void engine.whenReady().then(
       () => {
         if (!mountedRef.current) return;
+        if (props.environmentTheme) {
+          engine.setEnvironmentTheme(props.environmentTheme);
+        }
         resize();
         applyDesktopBatteryPolicy();
         applyVisibilityAndBackgroundPolicy();

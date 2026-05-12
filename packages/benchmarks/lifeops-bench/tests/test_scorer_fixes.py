@@ -19,6 +19,7 @@ from eliza_lifeops_bench.scorer import (
     _canonicalize_action,
     _kwargs_match,
     compare_actions,
+    compile_benchmark_result,
     output_substring_match,
     score_scenario,
 )
@@ -71,6 +72,7 @@ def _result(
     agent_actions: list[Action],
     required_outputs: list[str] | None = None,
     output_substring_matches: list[bool] | None = None,
+    terminated_reason: str = "respond",
 ) -> ScenarioResult:
     turns = [
         TurnResult(
@@ -93,7 +95,7 @@ def _result(
         output_substring_matches=matches,
         total_score=0.0,
         max_score=1.0,
-        terminated_reason="respond",
+        terminated_reason=terminated_reason,  # type: ignore[arg-type]
         total_cost_usd=0.0,
         total_latency_ms=0,
     )
@@ -152,9 +154,8 @@ def test_compare_actions_granular_matches_umbrella_gt() -> None:
             },
         )
     ]
-    # Names align after canonicalization; kwargs partial overlap (different
-    # key naming `startAt`/`start`), so 0.5 partial credit.
-    assert compare_actions(predicted, gt) == 0.5
+    # Names and structural kwarg aliases align after canonicalization.
+    assert compare_actions(predicted, gt) == 1.0
 
 
 def test_compare_actions_umbrella_matches_granular_gt() -> None:
@@ -202,6 +203,21 @@ def test_kwargs_match_required_field_missing_still_fails() -> None:
     expected = {"subaction": "next_event", "calendarId": "cal_primary"}
     predicted = {"subaction": "next_event"}
     assert _kwargs_match(predicted, expected) is False
+
+
+def test_kwargs_match_structural_aliases_are_equivalent() -> None:
+    """Adapters and authored GT use both camelCase and snake_case fields."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "subaction": "check_availability",
+        "start": "2026-05-14T09:00:00Z",
+        "end": "2026-05-14T10:00:00Z",
+    }
+    assert _kwargs_match(predicted, expected) is True
 
 
 def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
@@ -340,6 +356,21 @@ def test_output_substring_match_normalizes_unicode_hyphen() -> None:
     assert matches == [True]
 
 
+def test_output_substring_match_rejects_embedded_word() -> None:
+    """Required output terms must not match inside unrelated words."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="The email is already archived.",
+            )
+        ],
+        ["read"],
+    )
+
+    assert matches == [False]
+
+
 def test_score_scenario_state_match_plus_partial_action_and_synonym_passes() -> None:
     """Cerebras smoke: correct state + alias kwargs + calendar confirmation should pass."""
     scenario = _scenario(
@@ -436,3 +467,95 @@ def test_score_scenario_triviality_guard_still_zeros_no_action() -> None:
     result = _result(state_hash_match=True, agent_actions=[])
     score = score_scenario(result, scenario)
     assert score == 0.0
+
+
+def test_score_scenario_readonly_same_action_wrong_kwargs_scores_zero() -> None:
+    """State hash cannot validate read-only lookups, so wrong params get no credit."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "check_availability",
+                    "startAt": "2026-05-14T09:00:00Z",
+                    "endAt": "2026-05-14T10:00:00Z",
+                },
+            )
+        ],
+        required_outputs=["free"],
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "check_availability",
+                    "start": "2026-05-14T11:00:00Z",
+                    "end": "2026-05-14T12:00:00Z",
+                },
+            )
+        ],
+        required_outputs=["free"],
+        output_substring_matches=[True],
+    )
+
+    assert score_scenario(result, scenario) == 0.0
+
+
+def test_compile_benchmark_result_counts_missing_expected_runs_as_failures() -> None:
+    """pass@1 is over expected scenario/seed pairs, not only returned rows."""
+    scenario_a = _scenario(ground_truth_actions=[])
+    scenario_b = Scenario(
+        id="missing_scenario",
+        name="missing",
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.STATIC,
+        persona=_PERSONA,
+        instruction="",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=1,
+    )
+    result_a = _result(state_hash_match=True, agent_actions=[])
+    aggregate = compile_benchmark_result(
+        [result_a],
+        {scenario_a.id: scenario_a, scenario_b.id: scenario_b},
+        seeds=1,
+        model_name="m",
+        judge_model_name="j",
+        timestamp="2026-05-12T00:00:00Z",
+    )
+
+    assert aggregate.pass_at_1 == pytest.approx(0.5)
+    assert aggregate.mean_score_per_domain["calendar"] == pytest.approx(0.5)
+
+
+def test_live_score_requires_judge_satisfaction() -> None:
+    """LIVE mode must not pass just because no scripted state changed."""
+    scenario = Scenario(
+        id="live.test",
+        name="live",
+        domain=Domain.MAIL,
+        mode=ScenarioMode.LIVE,
+        persona=_PERSONA,
+        instruction="draft the reply",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=0,
+    )
+    unsatisfied = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="max_turns",
+    )
+    satisfied = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+
+    assert score_scenario(unsatisfied, scenario) == 0.0
+    assert score_scenario(satisfied, scenario) == pytest.approx(1.0)

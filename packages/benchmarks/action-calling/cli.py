@@ -241,7 +241,10 @@ def _generate(
                 "temperature": temperature,
             },
         )
-        return response.text or ""
+        # Score the actual model-visible response text. Do not synthesize a
+        # TOON action envelope from adapter-captured action params; that would
+        # measure harness instrumentation instead of strict-format generation.
+        return str(getattr(response, "text", "") or "")
 
     if provider == "anthropic":
         system = "\n\n".join(str(m.get("content") or "") for m in messages if m.get("role") == "system")
@@ -403,6 +406,7 @@ def main() -> int:
     summary = {
         "model": args.model,
         "provider": args.provider,
+        "generation_source": "mock_expected_text" if args.provider == "mock" else "model_text",
         "n": n,
         "elapsed_s": round(time.perf_counter() - t0, 2),
         "metrics": {

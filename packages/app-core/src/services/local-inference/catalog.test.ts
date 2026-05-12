@@ -88,15 +88,17 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_6b": 32768,
-      "eliza-1-1_7b": 32768,
+      "eliza-1-0_8b": 32768,
+      "eliza-1-2b": 32768,
+      "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
+      "eliza-1-27b-1m": 1_048_576,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -183,8 +185,22 @@ describe("local inference catalog", () => {
       expect(drafter.hiddenFromCatalog).toBe(true);
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
       expect(drafter.companionForModelId).toBeTruthy();
-      expect(drafter.tokenizerFamily).toBe("eliza1");
+      expect(drafter.tokenizerFamily).toBe("qwen35");
     }
+  });
+
+  it("records 27b-1m text and vision source provenance", () => {
+    const model = findCatalogModel("eliza-1-27b-1m");
+    expect(model?.sourceModel?.finetuned).toBe(false);
+    const components = model?.sourceModel?.components;
+    expect(components?.text).toEqual({
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+    });
+    expect(components?.vision).toEqual({
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+    });
   });
 
   it("does not leak implementation-family names in visible catalog copy", () => {

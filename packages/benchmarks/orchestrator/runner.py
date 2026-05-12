@@ -22,8 +22,10 @@ from .db import (
     get_latest_succeeded_run_for_signature,
     initialize_database,
     insert_run_start,
+    list_runs,
     next_attempt_for_signature,
     recover_stale_running_runs,
+    repair_nonzero_returncode_statuses,
     replace_run_trajectories,
     update_run_result,
 )
@@ -402,6 +404,77 @@ def _write_latest_result_snapshot(
     return snapshot_path
 
 
+def _rebuild_latest_result_snapshots(conn, output_root: Path) -> None:
+    """Rebuild latest snapshots from SQLite.
+
+    This keeps ``benchmark_results/latest`` idempotent even when a single
+    benchmark is rerun, a stale snapshot was manually removed, or a compatibility
+    rule changes. The latest row per ``(benchmark_id, agent)`` is the source of
+    truth; files not represented by SQLite are pruned.
+    """
+
+    latest_dir = output_root / "latest"
+    latest_dir.mkdir(parents=True, exist_ok=True)
+
+    latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in list_runs(conn, limit=100000):
+        benchmark_id = str(row.get("benchmark_id") or "")
+        agent = str(row.get("agent") or "")
+        if not benchmark_id or not agent:
+            continue
+        key = (benchmark_id, agent)
+        if key not in latest_by_key:
+            latest_by_key[key] = row
+
+    expected_paths: set[Path] = set()
+    index: dict[str, Any] = {"updated_at": _utc_now(), "latest": {}}
+    for (benchmark_id, agent), row in sorted(latest_by_key.items()):
+        snapshot_path = latest_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
+        expected_paths.add(snapshot_path)
+        payload = {
+            "updated_at": row.get("ended_at") or row.get("started_at") or _utc_now(),
+            "benchmark_id": benchmark_id,
+            "benchmark_directory": row.get("benchmark_directory"),
+            "run_group_id": row.get("run_group_id"),
+            "run_id": row.get("run_id"),
+            "status": row.get("status"),
+            "agent": agent,
+            "provider": row.get("provider"),
+            "model": row.get("model"),
+            "score": row.get("score"),
+            "unit": row.get("unit"),
+            "higher_is_better": row.get("higher_is_better"),
+            "metrics": row.get("metrics") or {},
+            "trajectory_summary": row.get("trajectory_summary") or {},
+            "token_metrics": row.get("token_metrics") or {},
+            "cache_metrics": row.get("cache_metrics") or {},
+            "performance_metrics": row.get("performance_metrics") or {},
+            "result_json_path": row.get("result_json_path"),
+            "artifacts": row.get("artifacts") or [],
+            "error": row.get("error"),
+        }
+        snapshot_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
+            encoding="utf-8",
+        )
+        index["latest"][f"{benchmark_id}::{agent}"] = {
+            "path": str(snapshot_path),
+            "run_id": row.get("run_id"),
+            "status": row.get("status"),
+            "updated_at": payload["updated_at"],
+        }
+
+    index_path = latest_dir / "index.json"
+    expected_paths.add(index_path)
+    for path in latest_dir.glob("*.json"):
+        if path not in expected_paths:
+            path.unlink()
+    index_path.write_text(
+        json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True),
+        encoding="utf-8",
+    )
+
+
 def _run_random_v1_outcome(
     conn,
     *,
@@ -587,6 +660,7 @@ def run_benchmarks(
         stale_before=stale_before_iso,
         ended_at=_utc_now(),
     )
+    repair_nonzero_returncode_statuses(conn)
 
     repo_meta = _repo_meta(workspace_root)
     base_env = _default_env(workspace_root, request)
@@ -1000,6 +1074,10 @@ def run_benchmarks(
         if adapter.env_builder is not None:
             env_overrides.update({k: str(v) for k, v in adapter.env_builder(ctx, adapter).items()})
         run_env = merged_environment(base_env, env_overrides)
+        run_env["BENCHMARK_RUN_ID"] = run_id
+        run_env["BENCHMARK_RUN_ROOT"] = str(bench_run_root)
+        run_env["BENCHMARK_OUTPUT_ROOT"] = str(bench_output_root)
+        run_env["BENCHMARK_TELEMETRY_JSONL"] = str(bench_output_root / "harness-telemetry.jsonl")
 
         insert_run_start(
             conn,
@@ -1082,6 +1160,11 @@ def run_benchmarks(
                 status = "succeeded"
                 if effective_returncode != 0:
                     metrics["nonzero_return_code_with_result"] = effective_returncode
+                    status = "failed"
+                    error = (
+                        "Command produced a result JSON but exited with "
+                        f"return code {effective_returncode}"
+                    )
             except Exception as exc:
                 status = "failed"
                 error = f"Score extraction failed: {exc}"
@@ -1204,6 +1287,8 @@ def run_benchmarks(
         )
 
     finish_run_group(conn, run_group_id=run_group_id, finished_at=_utc_now())
+    repair_nonzero_returncode_statuses(conn)
+    _rebuild_latest_result_snapshots(conn, output_root)
     viewer_snapshot = _ensure_viewer_snapshot(conn, workspace_root=workspace_root)
     conn.close()
     return run_group_id, outcomes, viewer_snapshot

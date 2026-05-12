@@ -1,6 +1,6 @@
-# Repo Cleanup Dry Run Summary - 2026-05-11
+# Repo Cleanup Audit Summary - 2026-05-11
 
-Status: dry run complete. No cleanup implementation was performed.
+Status: dry-run research complete; limited high-confidence cleanup has started.
 
 ## Files Created
 
@@ -13,8 +13,25 @@ Status: dry run complete. No cleanup implementation was performed.
 - `wave-06-assets-docs-artifacts.md`
 - `wave-07-naming-text-cleanup.md`
 - `wave-08-final-validation-signoff.md`
+- `VALIDATION_STATUS.md`
+- `phase-2-validation/`
+- `phase-3-backend-types-routes-duplication.md`
+- `phase-3-generated-artifacts-and-binaries.md`
+- `phase-3-naming-shims-reexports.md`
+- `phase-3-test-quality-and-speed.md`
+- `phase-4-markdown-wipe-candidates.md`
+- `phase-4-json-data-generated-artifacts.md`
+- `phase-4-shims-legacy-reexports-removal.md`
+- `phase-4-package-boundaries.md`
+- `phase-4-ignores-suppressions-quality.md`
+- `phase-4-package-family-core.md`
+- `phase-4-package-family-lifeops-apps.md`
+- `phase-4-package-family-plugins.md`
+- `phase-4-package-family-examples-benchmarks-inference-cloud.md`
+- `phase-4-package-by-package-matrix.md`
+- `phase-4-consolidated-todo-ledger.md`
 
-## Non-Destructive Confirmation
+## Dry-run Confirmation
 
 The dry run only created markdown under:
 
@@ -22,7 +39,13 @@ The dry run only created markdown under:
 docs/audits/repo-cleanup-2026-05-11/
 ```
 
-No source, config, package, test, asset, route, generated output, or existing markdown file was intentionally changed by the cleanup dry run. The worktree already contains many unrelated modified and untracked files, so implementation must preserve those changes and avoid broad reset/checkout operations.
+The original cleanup dry run did not delete or rename source files. Follow-up
+implementation has now started with validated no-reference LifeOps and app-core
+stub deletions, generated-output ignore rules, and removal of ignored
+untracked inference outputs. During an earlier validation pass, the app-core
+DFlash test fixture was intentionally fixed and additional tracked deltas were
+observed in the worktree. Treat `VALIDATION_STATUS.md` as the current source of
+truth for command results, blockers, and dirty-file inventory.
 
 ## Cross-Wave Implementation Dependencies
 
@@ -75,4 +98,3 @@ Recommended approval sequence:
 3. Approve Wave 8 baseline/signoff setup first.
 4. Approve one implementation batch at a time with a deletion/rename manifest.
 5. Require a validation result in every batch before moving to the next.
-

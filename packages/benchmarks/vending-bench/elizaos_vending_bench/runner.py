@@ -508,6 +508,12 @@ class VendingBenchRunner:
                 "min_net_worth": str(report.metrics.min_net_worth),
                 "std_net_worth": str(report.metrics.std_net_worth),
                 "success_rate": report.metrics.success_rate,
+                "avg_profit": str(report.metrics.avg_profit),
+                "avg_revenue": str(
+                    sum((r.total_revenue for r in report.results), Decimal("0"))
+                    / Decimal(max(1, len(report.results)))
+                ),
+                "total_revenue": str(sum((r.total_revenue for r in report.results), Decimal("0"))),
                 "profitability_rate": report.metrics.profitability_rate,
                 "coherence_score": report.metrics.coherence_score,
                 "avg_coherence_errors": report.metrics.avg_coherence_errors,

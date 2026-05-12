@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import {
   loadOwnerContactRoutingHints,
@@ -33,6 +26,7 @@ import type {
   LifeOpsManualOverrideResult,
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
+  LifeOpsOwnership,
   LifeOpsReminderAttempt,
   LifeOpsReminderAttemptOutcome,
   LifeOpsReminderChannel,
@@ -51,6 +45,7 @@ import type {
   SnoozeLifeOpsOccurrenceRequest,
   UpsertLifeOpsChannelPolicyRequest,
 } from "../contracts/index.js";
+import type { LifeOpsScheduleMealLabel } from "@elizaos/shared";
 import {
   LIFEOPS_CHANNEL_TYPES,
   LIFEOPS_CIRCADIAN_STATES,
@@ -69,7 +64,10 @@ import {
   readNativeAppleReminderMetadata,
   updateNativeAppleReminderLikeItem,
 } from "./apple-reminders.js";
-import { CheckinService } from "./checkin/checkin-service.js";
+import {
+  CheckinService,
+  type CheckinSourceService,
+} from "./checkin/checkin-service.js";
 import { resolveCheckinSchedule } from "./checkin/schedule-resolver.js";
 import {
   buildSleepRecapFromSchedule,
@@ -164,10 +162,15 @@ import {
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
   isReminderBusyDay,
+  isReminderChannel,
   isReminderReviewClosed,
+  normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
+  normalizeActivitySignalState as normalizeReminderActivitySignalState,
   normalizeReminderIntensityInput,
+  normalizeOptionalIdleState as normalizeReminderOptionalIdleState,
   parseReminderOwnerResponseSemanticClassification,
   type ReminderRouteCandidate,
+  type ReminderReviewResponseEvidence,
   readReminderAttemptLifecycle,
   readReminderEscalationProfile,
   readReminderPreferenceSettingFromMetadata,
@@ -186,6 +189,7 @@ import type {
   LifeOpsServiceBase,
   MixinClass,
 } from "./service-mixin-core.js";
+import type { ReminderActivityProfileSnapshot } from "./service-types.js";
 import {
   fail,
   lifeOpsErrorMessage,
@@ -471,6 +475,8 @@ function normalizeOptionalRecord(
   return { ...value } as Record<string, unknown>;
 }
 
+const LIFEOPS_PRIVACY_CLASSES = ["public", "private", "shared"] as const;
+
 function normalizePhoneNumber(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
     fail(400, `${field} must be a non-empty phone number string`);
@@ -485,22 +491,57 @@ function normalizePhoneNumber(value: unknown, field: string): string {
 function normalizePrivacyClass(
   value: unknown,
   field?: string,
-  fallback?: string,
-): string {
+  fallback?: LifeOpsChannelPolicy["privacyClass"],
+): LifeOpsChannelPolicy["privacyClass"] {
   if (value === undefined || value === null) {
-    return typeof fallback === "string" ? fallback : "private";
+    return fallback ?? "private";
   }
   if (typeof value !== "string" || value.trim().length === 0) {
-    if (typeof fallback === "string") return fallback;
+    if (fallback) return fallback;
     fail(400, `${field ?? "privacyClass"} must be a string`);
   }
-  return value.trim();
+  return normalizeEnumValue(
+    value.trim(),
+    field ?? "privacyClass",
+    LIFEOPS_PRIVACY_CLASSES,
+  );
 }
 
 const LIFEOPS_OWNER_CONTACTS_LOAD_CONTEXT = {
-  fallbackToEnv: true,
-  envPrefix: "LIFEOPS_OWNER_",
+  boundary: "lifeops.owner_contacts",
+  operation: "load_owner_contacts",
+  message:
+    "[lifeops] Failed to load owner contacts; using empty owner contacts config.",
 } as const;
+
+const LIFEOPS_SCHEDULE_MEAL_LABELS = [
+  "breakfast",
+  "lunch",
+  "dinner",
+] as const;
+
+function normalizeOptionalScheduleMealLabel(
+  value: unknown,
+  field: string,
+): LifeOpsScheduleMealLabel | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  return normalizeEnumValue(value, field, LIFEOPS_SCHEDULE_MEAL_LABELS);
+}
+
+function normalizeOptionalScheduleObservationSnapshot(
+  value: unknown,
+  field: string,
+): SyncLifeOpsScheduleObservationInput["snapshot"] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  return requireRecord(value, field);
+}
 
 /** Delay between the first and second reminder-delivery attempt when the
  *  runtime returns a transient send failure. Keeps the dispatcher from
@@ -582,7 +623,7 @@ function buildReminderVoiceContext(runtime: IAgentRuntime): string {
   if (runtime.character.name) {
     parts.push(`Name: ${runtime.character.name}`);
   }
-  const bio = runtime.character.bio;
+  const bio: unknown = runtime.character.bio;
   if (typeof bio === "string" && bio.trim().length > 0) {
     parts.push(`Bio: ${bio.trim()}`);
   } else if (Array.isArray(bio)) {
@@ -750,6 +791,21 @@ function formatNearbyReminderTitlesForPrompt(titles: string[]): string {
   return titles.map((title) => `- ${title}`).join("\n");
 }
 
+function normalizeScreenContextFocus(
+  value: unknown,
+): ReminderActivityProfileSnapshot["screenContextFocus"] {
+  switch (value) {
+    case "work":
+    case "leisure":
+    case "transition":
+    case "idle":
+    case "unknown":
+      return value;
+    default:
+      return null;
+  }
+}
+
 function collectNearbyReminderTitles(args: {
   currentOwnerId: string;
   currentAnchorAt: string | null;
@@ -839,29 +895,25 @@ function buildActiveCalendarEventReminders(
   return rows;
 }
 
-function normalizeActivitySignalSource(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be a non-empty string`);
-  }
-  return value.trim();
+function normalizeActivitySignalSource(
+  value: unknown,
+  field: string,
+): LifeOpsActivitySignal["source"] {
+  return normalizeReminderActivitySignalSource(value, field);
 }
 
-function normalizeActivitySignalState(value: unknown, field: string): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be a non-empty string`);
-  }
-  return value.trim();
+function normalizeActivitySignalState(
+  value: unknown,
+  field: string,
+): LifeOpsActivitySignal["state"] {
+  return normalizeReminderActivitySignalState(value, field);
 }
 
 function normalizeOptionalIdleState(
   value: unknown,
   field: string,
-): string | null {
-  if (value === undefined || value === null) return null;
-  if (typeof value !== "string" || value.trim().length === 0) {
-    fail(400, `${field} must be a non-empty string`);
-  }
-  return value.trim();
+): LifeOpsActivitySignal["idleState"] {
+  return normalizeReminderOptionalIdleState(value, field);
 }
 
 function normalizeWebsiteListForComparison(websites: string[]): string[] {
@@ -899,7 +951,25 @@ function isWebsiteAccessGrantActive(
 export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsReminderService> {
-  return class LifeOpsRemindersServiceMixin extends Base {
+  return class LifeOpsRemindersServiceMixin
+    extends Base
+    implements LifeOpsReminderService, CheckinSourceService
+  {
+    declare getInbox?: CheckinSourceService["getInbox"];
+    declare getGmailTriage?: CheckinSourceService["getGmailTriage"];
+    declare getCalendarFeed?: CheckinSourceService["getCalendarFeed"];
+    declare syncXDms?: CheckinSourceService["syncXDms"];
+    declare getXDms?: CheckinSourceService["getXDms"];
+    declare syncXFeed?: CheckinSourceService["syncXFeed"];
+    declare getXFeedItems?: CheckinSourceService["getXFeedItems"];
+    declare runDueWorkflows: ScheduledWorkflowRunner["runDueWorkflows"];
+    declare runDueEventWorkflows: ScheduledWorkflowRunner["runDueEventWorkflows"];
+    declare snoozeOccurrence: (
+      occurrenceId: string,
+      request: SnoozeLifeOpsOccurrenceRequest,
+      now?: Date,
+    ) => Promise<LifeOpsOccurrenceView>;
+
     /**
      * UTC date key of the last successful telemetry rollup+retention run.
      * Gates the daily maintenance call inside the scheduler tick so it only
@@ -1058,23 +1128,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       attempt: LifeOpsReminderAttempt;
       competingAttempts?: LifeOpsReminderAttempt[];
       now: Date;
-    }): Promise<{
-      decision:
-        | "no_response"
-        | "unrelated"
-        | "needs_clarification"
-        | "explicit_resolution";
-      resolution: "acknowledged" | "completed" | "skipped" | "snoozed" | null;
-      snoozeRequest: SnoozeLifeOpsOccurrenceRequest | null;
-      respondedAt: string | null;
-      responseText: string | null;
-      confidence: number;
-      reason: string;
-      classifierSource?: string;
-      semanticReason?: string | null;
-    }> {
+    }): Promise<ReminderReviewResponseEvidence> {
       const noResponse = {
-        decision: "no_response" as const,
+        decision: "no_response",
         resolution: null,
         snoozeRequest: null,
         respondedAt: null,
@@ -1083,7 +1139,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         reason: "no_owner_response",
         classifierSource: "none",
         semanticReason: null,
-      };
+      } satisfies ReminderReviewResponseEvidence;
       if (
         args.subjectType !== "owner" ||
         typeof this.runtime.getRoomsForParticipants !== "function" ||
@@ -1149,17 +1205,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           args.competingAttempts && args.competingAttempts.length > 0
             ? args.competingAttempts
             : [args.attempt];
-        let latestUnrelated: {
-          decision: "unrelated";
-          resolution: null;
-          snoozeRequest: null;
-          respondedAt: string;
-          responseText: string;
-          confidence: number;
-          reason: string;
-          classifierSource?: string;
-          semanticReason?: string | null;
-        } | null = null;
+        let latestUnrelated: ReminderReviewResponseEvidence | null = null;
         for (const response of ownerResponses) {
           const responseClaim = buildReminderResponseClaim({
             attempt: args.attempt,
@@ -1856,19 +1902,15 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             `observations[${index}].windowEndAt`,
           ),
           mealLabel:
-            record.mealLabel === undefined || record.mealLabel === null
-              ? null
-              : requireNonEmptyString(
-                  record.mealLabel,
-                  `observations[${index}].mealLabel`,
-                ),
+            normalizeOptionalScheduleMealLabel(
+              record.mealLabel,
+              `observations[${index}].mealLabel`,
+            ),
           snapshot:
-            record.snapshot === undefined
-              ? undefined
-              : (normalizeOptionalRecord(
-                  record.snapshot,
-                  `observations[${index}].snapshot`,
-                ) ?? null),
+            normalizeOptionalScheduleObservationSnapshot(
+              record.snapshot,
+              `observations[${index}].snapshot`,
+            ),
           metadata:
             record.metadata === undefined
               ? undefined
@@ -2431,14 +2473,9 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             typeof profile.currentActivityCycleStartedAt === "number"
               ? profile.currentActivityCycleStartedAt
               : null,
-          screenContextFocus:
-            isRecord(profile) &&
-            typeof profile.screenContextFocus === "string" &&
-            ["work", "leisure", "transition", "idle", "unknown"].includes(
-              profile.screenContextFocus,
-            )
-              ? profile.screenContextFocus
-              : null,
+          screenContextFocus: isRecord(profile)
+            ? normalizeScreenContextFocus(profile.screenContextFocus)
+            : null,
           screenContextBusy:
             isRecord(profile) && profile.screenContextBusy === true,
           screenContextAvailable:
@@ -2620,13 +2657,23 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
             typeof this.runtime.sendMessageToTarget === "function",
           resolvePrimaryChannelPolicy: (channel) =>
             this.resolvePrimaryChannelPolicy(channel),
-          hasRuntimeTarget: async (channel, policy) =>
-            (await this.resolveRuntimeReminderTarget(
+          hasRuntimeTarget: async (channel, policy) => {
+            if (
+              channel === "in_app" ||
+              channel === "sms" ||
+              channel === "voice"
+            ) {
+              return false;
+            }
+            return (
+              (await this.resolveRuntimeReminderTarget(
               channel,
               policy,
               ownerContacts,
               ownerContactHints,
-            )) !== null,
+              )) !== null
+            );
+          },
         },
       });
     }
@@ -3113,7 +3160,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
               this.agentId(),
               nowIso,
               args.limit,
-              `lifeops:${this.agentId()}`,
+              crypto.randomUUID(),
             )
           : await this.repository.listDueReminderReviewAttempts(
               this.agentId(),
@@ -5028,12 +5075,8 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       now: string;
       reminderAttempts: LifeOpsReminderAttempt[];
       workflowRuns: LifeOpsWorkflowRun[];
-      scheduledTaskFires: Awaited<
-        ReturnType<typeof processDueScheduledTasks>
-      >["fires"];
-      scheduledTaskCompletionTimeouts: Awaited<
-        ReturnType<typeof processDueScheduledTasks>
-      >["completionTimeouts"];
+      scheduledTaskFires: Array<Record<string, unknown>>;
+      scheduledTaskCompletionTimeouts: Array<Record<string, unknown>>;
     }> {
       const now =
         request.now === undefined
@@ -5142,11 +5185,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         });
         if (inserted) {
           lifeOpsEvents.push(event);
-          await this.runtime.emitEvent(event.kind, {
+          const eventPayload = {
+            runtime: this.runtime,
             occurredAt: event.occurredAt,
             confidence: event.confidence,
             payload: event.payload,
-          });
+          };
+          await this.runtime.emitEvent(event.kind, eventPayload);
         }
       }
       const reminderResult = await this.processReminders({
@@ -5178,9 +5223,13 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
         workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
-        scheduledTaskFires: scheduledTaskResult.fires,
+        scheduledTaskFires: scheduledTaskResult.fires.map((fire) => ({
+          ...fire,
+        })),
         scheduledTaskCompletionTimeouts:
-          scheduledTaskResult.completionTimeouts,
+          scheduledTaskResult.completionTimeouts.map((timeout) => ({
+            ...timeout,
+          })),
       };
     }
 
@@ -5422,5 +5471,5 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       return { ok: true };
     }
-  } as MixinClass<TBase, LifeOpsReminderService>;
+  } as unknown as MixinClass<TBase, LifeOpsReminderService>;
 }

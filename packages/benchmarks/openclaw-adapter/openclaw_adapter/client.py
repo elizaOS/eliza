@@ -20,9 +20,11 @@ import os
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from ._retry import (
     MAX_ATTEMPTS,
@@ -65,6 +67,87 @@ class MessageResponse:
     thought: str | None
     actions: list[str]
     params: dict[str, object]
+
+
+def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
+    if not context:
+        return text
+    parts: list[str] = []
+    system_prompt = context.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        parts.append(system_prompt.strip())
+    messages = context.get("messages")
+    if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
+        for item in messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if isinstance(role, str) and content is not None:
+                parts.append(f"{role}: {content}")
+    if text:
+        parts.append(f"user: {text}")
+    return "\n".join(parts) if parts else text
+
+
+def _jsonable(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_jsonable(v) for v in value]
+    return str(value)
+
+
+def _write_telemetry(
+    *,
+    harness: str,
+    provider: str,
+    model: str,
+    text: str,
+    context: Mapping[str, object] | None,
+    latency_ms: float,
+    task_id: str | None,
+    benchmark: str | None,
+    response: MessageResponse | None = None,
+    error: str | None = None,
+) -> None:
+    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if not telemetry_path:
+        return
+    usage: object = {}
+    if response is not None:
+        usage_raw = response.params.get("usage")
+        if isinstance(usage_raw, Mapping):
+            usage = dict(usage_raw)
+        else:
+            meta_raw = response.params.get("_meta")
+            if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
+                usage = dict(meta_raw["usage"])  # type: ignore[index]
+    prompt = _prompt_text(text, context)
+    record: dict[str, Any] = {
+        "harness": harness,
+        "provider": provider,
+        "model": model,
+        "benchmark": benchmark,
+        "task_id": task_id,
+        "prompt_text": prompt,
+        "prompt_chars": len(prompt),
+        "latency_ms": latency_ms,
+        "usage": _jsonable(usage),
+        "actions": list(response.actions) if response is not None else [],
+        "response_text": response.text if response is not None else "",
+    }
+    if error:
+        record["error"] = error
+    try:
+        path = Path(telemetry_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+    except OSError as exc:
+        logger.debug("failed to write openclaw telemetry: %s", exc)
 
 
 class OpenClawClient:
@@ -181,6 +264,7 @@ class OpenClawClient:
         """Spawn one ``openclaw agent --local --json`` turn and parse it."""
         argv = self.build_argv(text, context)
         env = self.build_env()
+        started = time.monotonic()
         try:
             result = subprocess.run(
                 argv,
@@ -191,6 +275,17 @@ class OpenClawClient:
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"TimeoutExpired: {exc}",
+            )
             raise RuntimeError(
                 f"openclaw CLI timed out after {self.timeout_s}s\n"
                 f"argv: {argv}\n"
@@ -199,6 +294,17 @@ class OpenClawClient:
             ) from exc
 
         if result.returncode != 0:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"openclaw CLI failed rc={result.returncode}",
+            )
             raise RuntimeError(
                 f"openclaw CLI failed rc={result.returncode}\n"
                 f"argv: {argv}\n"
@@ -207,7 +313,19 @@ class OpenClawClient:
             )
 
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
-        return _response_from_payload(payload)
+        response = _response_from_payload(payload)
+        _write_telemetry(
+            harness="openclaw",
+            provider=self.provider,
+            model=self.model,
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            task_id=self._task_id,
+            benchmark=self._benchmark,
+            response=response,
+        )
+        return response
 
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)
@@ -269,10 +387,10 @@ class OpenClawClient:
         which key the operator set.
         """
         env: dict[str, str] = {**os.environ}
-        api_key = env.get(self.api_key_env, "")
+        api_key = self.api_key or env.get(self.api_key_env, "")
         if api_key:
             env[self.api_key_env] = api_key
-            env.setdefault("OPENAI_API_KEY", api_key)
+            env["OPENAI_API_KEY"] = api_key
         base_url = env.get(self.base_url_env, "")
         if base_url:
             env.setdefault("OPENAI_BASE_URL", base_url)
@@ -530,20 +648,65 @@ def _text_from_payloads(payload: Mapping[str, object]) -> str:
 
 
 def _usage_from_meta(payload: Mapping[str, object]) -> dict[str, object]:
+    direct_usage = payload.get("usage") or payload.get("token_usage")
+    if isinstance(direct_usage, Mapping):
+        normalized = _normalize_usage(direct_usage)
+        if normalized:
+            return normalized
     meta = payload.get("meta")
     if not isinstance(meta, Mapping):
         return {}
     agent_meta = meta.get("agentMeta")
-    if not isinstance(agent_meta, Mapping):
+    if isinstance(agent_meta, Mapping):
+        usage = agent_meta.get("lastCallUsage") or agent_meta.get("usage")
+        if isinstance(usage, Mapping):
+            normalized = _normalize_usage(usage)
+            if normalized:
+                return normalized
+    meta_usage = meta.get("usage") or meta.get("lastCallUsage")
+    if isinstance(meta_usage, Mapping):
+        normalized = _normalize_usage(meta_usage)
+        if normalized:
+            return normalized
+    return {}
+
+
+def _normalize_usage(usage: Mapping[str, object]) -> dict[str, object]:
+    input_tokens = (
+        usage.get("prompt_tokens")
+        or usage.get("input_tokens")
+        or usage.get("input")
+        or usage.get("promptTokens")
+        or 0
+    )
+    output_tokens = (
+        usage.get("completion_tokens")
+        or usage.get("output_tokens")
+        or usage.get("output")
+        or usage.get("completionTokens")
+        or 0
+    )
+    total = usage.get("total_tokens") or usage.get("total") or usage.get("totalTokens") or 0
+    details = usage.get("prompt_tokens_details")
+    details_map = details if isinstance(details, Mapping) else {}
+    cache_read = (
+        usage.get("cache_read_input_tokens")
+        or usage.get("cached_tokens")
+        or usage.get("cacheRead")
+        or details_map.get("cached_tokens")
+        or details_map.get("cache_read_input_tokens")
+        or 0
+    )
+    cache_write = (
+        usage.get("cache_creation_input_tokens")
+        or usage.get("cache_write_tokens")
+        or usage.get("cacheWrite")
+        or details_map.get("cache_creation_input_tokens")
+        or details_map.get("cache_write_tokens")
+        or 0
+    )
+    if not any((input_tokens, output_tokens, total, cache_read, cache_write)):
         return {}
-    usage = agent_meta.get("lastCallUsage") or agent_meta.get("usage")
-    if not isinstance(usage, Mapping):
-        return {}
-    input_tokens = usage.get("input", 0)
-    output_tokens = usage.get("output", 0)
-    cache_read = usage.get("cacheRead", 0)
-    cache_write = usage.get("cacheWrite", 0)
-    total = usage.get("total", 0)
     return {
         "prompt_tokens": input_tokens,
         "completion_tokens": output_tokens,

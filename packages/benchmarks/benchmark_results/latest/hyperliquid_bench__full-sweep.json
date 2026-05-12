@@ -1,0 +1,37 @@
+{
+  "agent": "full-sweep",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T162340Z_ceaa48b9/hyperliquidbench__hyperliquid_bench/run_hyperliquid_bench_20260505T162349Z_1_2e48a34d/output"
+  ],
+  "benchmark_directory": "HyperliquidBench",
+  "benchmark_id": "hyperliquid_bench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "base": 5.0,
+    "bonus": 1.0,
+    "demo_mode": true,
+    "final_score": 6.0,
+    "mode": "eliza",
+    "model": "openai/gpt-oss-120b",
+    "network": "testnet",
+    "passed_scenarios": 1,
+    "penalty": 0,
+    "return_code": 0,
+    "total_scenarios": 1,
+    "total_score": 6.0
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T162340Z_ceaa48b9/hyperliquidbench__hyperliquid_bench/run_hyperliquid_bench_20260505T162349Z_1_2e48a34d/output/hyperliquid_bench-eliza-20260505-092449.json",
+  "run_group_id": "rg_20260505T162340Z_ceaa48b9",
+  "run_id": "run_hyperliquid_bench_20260505T162349Z_1_2e48a34d",
+  "score": 6.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "score",
+  "updated_at": "2026-05-05T16:24:49.247136+00:00"
+}

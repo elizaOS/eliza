@@ -355,6 +355,15 @@ describe("createStreamingTranscriber — adapter chain", () => {
     expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
     t.dispose();
   });
+
+  it("blocks whisper fallback when fused ASR is mandatory", () => {
+    expect(() =>
+      createStreamingTranscriber({
+        allowWhisperFallback: false,
+        whisper: { decoder: async () => "fallback" },
+      }),
+    ).toThrow(AsrUnavailableError);
+  });
 });
 
 describe("FfiBatchTranscriber — windowed batch ASR (interim)", () => {

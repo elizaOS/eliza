@@ -159,11 +159,23 @@ class ElizaClient:
             body["context"] = dict(context)
 
         raw = self._post("/api/benchmark/message", body)
+        params = dict(raw.get("params", {}))
+        captured_actions = raw.get("captured_actions")
+        if isinstance(captured_actions, list) and "BENCHMARK_ACTIONS" not in params:
+            normalized_actions: list[object] = []
+            for action in captured_actions:
+                if not isinstance(action, dict):
+                    continue
+                action_params = action.get("params")
+                if isinstance(action_params, dict):
+                    normalized_actions.append(action_params)
+            if normalized_actions:
+                params["BENCHMARK_ACTIONS"] = normalized_actions
         return MessageResponse(
             text=str(raw.get("text", "")),
             thought=raw.get("thought") if isinstance(raw.get("thought"), str) else None,
             actions=list(raw.get("actions", [])),
-            params=dict(raw.get("params", {})),
+            params=params,
         )
 
     def is_ready(self) -> bool:

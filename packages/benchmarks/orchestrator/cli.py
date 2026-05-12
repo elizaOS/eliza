@@ -15,9 +15,10 @@ from .db import (
     initialize_database,
     list_runs_for_comparison,
     recover_stale_running_runs,
+    repair_nonzero_returncode_statuses,
     tag_run_with_comparison,
 )
-from .runner import run_benchmarks
+from .runner import _rebuild_latest_result_snapshots, run_benchmarks
 from .types import RunRequest
 from .viewer_server import serve_viewer
 from .viewer_data import build_viewer_dataset
@@ -165,6 +166,9 @@ def _cmd_export_viewer(args: argparse.Namespace) -> int:
     db_path = workspace_root / "benchmarks" / "benchmark_results" / "orchestrator.sqlite"
     conn = connect_database(db_path)
     initialize_database(conn)
+    output_root = workspace_root / "benchmarks" / "benchmark_results"
+    repair_nonzero_returncode_statuses(conn)
+    _rebuild_latest_result_snapshots(conn, output_root)
     out = _rebuild_viewer_json(workspace_root, conn)
     conn.close()
     print(str(out))
@@ -190,10 +194,13 @@ def _cmd_recover_stale(args: argparse.Namespace) -> int:
     stale_before = datetime.fromtimestamp(stale_before_epoch, tz=UTC).isoformat()
     ended_at = datetime.now(UTC).isoformat()
     recovered = recover_stale_running_runs(conn, stale_before=stale_before, ended_at=ended_at)
+    repaired = repair_nonzero_returncode_statuses(conn)
+    _rebuild_latest_result_snapshots(conn, workspace_root / "benchmarks" / "benchmark_results")
     viewer_snapshot = _rebuild_viewer_json(workspace_root, conn)
     conn.close()
 
     print(f"Recovered runs: {len(recovered)}")
+    print(f"Repaired nonzero-return-code statuses: {len(repaired)}")
     for run_id in recovered:
         print(f"- {run_id}")
     print(f"Viewer snapshot: {viewer_snapshot}")

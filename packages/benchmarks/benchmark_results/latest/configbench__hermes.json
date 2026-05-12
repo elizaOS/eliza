@@ -1,77 +1,28 @@
 {
   "agent": "hermes",
-  "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131529Z_ae06a00c/configbench__configbench/run_configbench_20260511T131529Z_2_d14cc037/output"
-  ],
+  "artifacts": [],
   "benchmark_directory": "configbench",
   "benchmark_id": "configbench",
-  "cache_metrics": {
-    "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
-  },
-  "error": null,
-  "higher_is_better": true,
+  "cache_metrics": {},
+  "error": "Benchmark 'configbench' is not compatible with harness 'hermes' (supported: eliza)",
+  "higher_is_better": null,
   "metrics": {
-    "cache_metrics": {
-      "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
-    },
-    "capabilityScore": 100,
-    "overallScore": 100,
-    "performance_metrics": {
-      "duration_seconds": 0.04409912499249913,
-      "mean_latency_ms": 0.6666666666666666,
-      "p95_latency_ms": 1.0,
-      "throughput_per_second": 68.02856066895372
-    },
-    "return_code": 0,
-    "securityScore": 100,
-    "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 3,
-      "prompt_tokens": 0,
-      "total_tokens": 0
-    },
-    "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 0,
-      "repeated_prefixes": [],
-      "turns": 3
-    }
+    "harness": "hermes",
+    "reason": "harness_not_in_compatibility",
+    "supported_harnesses": [
+      "eliza"
+    ]
   },
   "model": "gpt-oss-120b",
-  "performance_metrics": {
-    "duration_seconds": 0.04409912499249913,
-    "mean_latency_ms": 0.6666666666666666,
-    "p95_latency_ms": 1.0,
-    "throughput_per_second": 68.02856066895372
-  },
+  "performance_metrics": {},
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131529Z_ae06a00c/configbench__configbench/run_configbench_20260511T131529Z_2_d14cc037/output/configbench-results-2026-05-11T13-15-29-132Z.json",
-  "run_group_id": "rg_20260511T131529Z_ae06a00c",
-  "run_id": "run_configbench_20260511T131529Z_2_d14cc037",
-  "score": 1.0,
-  "status": "succeeded",
-  "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 3,
-    "prompt_tokens": 0,
-    "total_tokens": 0
-  },
-  "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 0,
-    "repeated_prefixes": [],
-    "turns": 3
-  },
-  "unit": "ratio",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "result_json_path": null,
+  "run_group_id": "rg_20260512T060800Z_24d07cad",
+  "run_id": "incompat_configbench_20260512T060800Z_3_f3234bda",
+  "score": null,
+  "status": "incompatible",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": null,
+  "updated_at": "2026-05-12T06:08:00.699794+00:00"
 }

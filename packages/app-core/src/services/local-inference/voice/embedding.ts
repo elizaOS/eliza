@@ -2,10 +2,10 @@
  * Local embedding wiring for Eliza-1 bundles.
  *
  * Per `packages/inference/AGENTS.md` §1:
- *   - On the `0_6b` tier the **embedding model IS the text backbone**,
+ *   - On the `0_8b` tier the **embedding model IS the text backbone**,
  *     served with `--pooling last` — there is no separate `embedding/`
  *     GGUF, no duplicate weights.
- *   - On `1_7b` / `9b` / `27b` / `27b-256k` / `27b-1m` a dedicated
+ *   - On `2b` / `9b` / `27b` / `27b-256k` / `27b-1m` a dedicated
  *     `embedding/` GGUF region (Qwen3-Embedding-0.6B, Apache-2.0,
  *     1024-dim Matryoshka, 32k ctx) is acquired lazily through the same
  *     engine / `SharedResourceRegistry`. **Do not collapse it to pooled
@@ -26,7 +26,7 @@ import path from "node:path";
 import type { Eliza1TierId } from "../catalog";
 import { VoiceStartupError } from "./errors";
 
-/** Bundle-relative directory holding a dedicated embedding GGUF (non-0_6b tiers). */
+/** Bundle-relative directory holding a dedicated embedding GGUF (non-0_8b tiers). */
 export const EMBEDDING_DIR_REL_PATH = "embedding";
 
 /** Full output dimensionality of the Eliza-1 embedding model. */
@@ -96,13 +96,13 @@ function l2Normalize(vec: number[]): number[] {
 
 export type LocalEmbeddingSource =
   | {
-      /** `0_6b`: reuse the text backbone GGUF; serve with `--pooling last`. */
+      /** `0_8b`: reuse the text backbone GGUF; serve with `--pooling last`. */
       readonly kind: "pooled-text";
       readonly textModelPath: string;
       readonly poolingType: "last";
     }
   | {
-      /** Non-`0_6b`: a dedicated `embedding/<name>.gguf` region. */
+      /** Non-`0_8b`: a dedicated `embedding/<name>.gguf` region. */
       readonly kind: "dedicated-region";
       readonly embeddingModelPath: string;
       /** 1024-dim Matryoshka (the published Qwen3-Embedding-0.6B contract). */
@@ -130,21 +130,21 @@ function firstGguf(dir: string): string | null {
 
 /**
  * Tiers whose embedding model is the text backbone with `--pooling last`
- * (no separate GGUF). Only `0_6b` per AGENTS.md §1.
+ * (no separate GGUF). Only `0_8b` per AGENTS.md §1.
  */
 export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
-  "eliza-1-0_6b",
+  "eliza-1-0_8b",
 ]);
 
 /**
  * Resolve the embedding source for an activated Eliza-1 bundle.
  *
  * @param bundleRoot   Bundle directory on disk.
- * @param tierId       The Eliza-1 tier id (`eliza-1-0_6b`, …).
+ * @param tierId       The Eliza-1 tier id (`eliza-1-0_8b`, …).
  * @param textModelPath Absolute path of the activated text GGUF (needed for
  *                      the `pooled-text` case).
  *
- * Hard-fails (AGENTS.md §3) when a non-`0_6b` tier is missing its
+ * Hard-fails (AGENTS.md §3) when a non-`0_8b` tier is missing its
  * `embedding/` region — no silent fallback to pooled text, which would
  * regress dimensions from 1024 to whatever the text model emits.
  */
@@ -171,7 +171,7 @@ export function resolveLocalEmbeddingSource(args: {
   if (!gguf) {
     throw new VoiceStartupError(
       "missing-bundle-root",
-      `[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 0_6b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
+      `[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 0_8b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
     );
   }
   return {
@@ -205,7 +205,7 @@ export interface LocalEmbeddingRoute {
   /**
    * `llama-server` flags for the embedding server process — always
    * `--embeddings --pooling last`. The embedding server is a lazily-started
-   * sidecar over the route's GGUF (the text backbone on `0_6b`, the
+   * sidecar over the route's GGUF (the text backbone on `0_8b`, the
    * `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
    * chat `llama-server` is left untouched (completions-only) — these flags
    * do NOT go on it.
@@ -228,7 +228,7 @@ export function buildLocalEmbeddingRoute(args: {
     );
   }
   // Both modes serve through a sidecar `llama-server --embeddings --pooling
-  // last` (over the text GGUF on 0_6b, over the embedding/ GGUF on larger
+  // last` (over the text GGUF on 0_8b, over the embedding/ GGUF on larger
   // tiers). The chat server is never given these flags.
   const serverFlags = ["--embeddings", "--pooling", source.poolingType];
   return {

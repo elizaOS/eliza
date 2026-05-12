@@ -199,7 +199,7 @@ public final class ElizaBunRuntime {
             let host = FullBunEngineHost.shared
             if host.isAvailable {
                 try host.start(
-                    bundlePath: try resolveAgentBundlePath(override: bundlePath),
+                    bundlePath: try resolveFullBunAgentBundlePath(override: bundlePath),
                     argv: argv,
                     env: env,
                     appSupportDir: SandboxPaths().appSupport.path
@@ -287,6 +287,22 @@ public final class ElizaBunRuntime {
 
     private func loadAgentSource(override: String?) throws -> String {
         return try String(contentsOfFile: resolveAgentBundlePath(override: override), encoding: .utf8)
+    }
+
+    private func resolveFullBunAgentBundlePath(override: String?) throws -> String {
+        if let override = override, !override.isEmpty {
+            return override
+        }
+        if let url = Bundle.main.url(
+            forResource: "agent-bundle",
+            withExtension: "js",
+            subdirectory: "public/agent"
+        ) {
+            return url.path
+        }
+        throw makeError(
+            "public/agent/agent-bundle.js not found in app bundle resources for full Bun engine"
+        )
     }
 
     private func resolveAgentBundlePath(override: String?) throws -> String {

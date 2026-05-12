@@ -129,8 +129,22 @@ def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]] | None) -> list[ToolC
     """Parse OpenAI-format tool_calls into the benchmark ToolCall shape."""
     if not raw_tool_calls:
         return []
+    if not isinstance(raw_tool_calls, list):
+        raise ProviderError(
+            f"Cerebras tool_calls must be a list, got {type(raw_tool_calls).__name__}",
+            status=None,
+            body=json.dumps(raw_tool_calls),
+            provider="cerebras",
+        )
     parsed: list[ToolCall] = []
     for tc in raw_tool_calls:
+        if not isinstance(tc, dict):
+            raise ProviderError(
+                f"Cerebras tool_call must be an object, got {type(tc).__name__}",
+                status=None,
+                body=json.dumps(tc),
+                provider="cerebras",
+            )
         function = tc.get("function") or {}
         name = function.get("name")
         if not isinstance(name, str) or not name:
@@ -142,7 +156,15 @@ def _parse_tool_calls(raw_tool_calls: list[dict[str, Any]] | None) -> list[ToolC
             )
         raw_args = function.get("arguments", "{}")
         if isinstance(raw_args, str):
-            arguments = json.loads(raw_args) if raw_args else {}
+            try:
+                arguments = json.loads(raw_args) if raw_args else {}
+            except json.JSONDecodeError as exc:
+                raise ProviderError(
+                    "Cerebras tool_call arguments were not valid JSON",
+                    status=None,
+                    body=json.dumps(tc),
+                    provider="cerebras",
+                ) from exc
         elif isinstance(raw_args, dict):
             arguments = raw_args
         else:

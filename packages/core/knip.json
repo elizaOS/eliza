@@ -1,6 +1,10 @@
 {
 	"$schema": "https://unpkg.com/knip@5/schema.json",
+	"playwright": false,
+	"playwright-ct": false,
+	"playwright-test": false,
 	"entry": ["src/index.ts"],
+	"project": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],
 	"ignore": [
 		"e2e/**",
 		"test/**",

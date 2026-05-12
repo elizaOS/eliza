@@ -1,9 +1,9 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { AgentRuntime } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import { logger, Service } from "@elizaos/core";
 
 // Kamino API constants
 const KAMINO_API_BASE_URL = "https://api.kamino.finance";
+const KAMINO_LIQUIDITY_PROGRAM_ID = "kamino-rest-api";
 
 // Known token addresses for reference
 const KNOWN_TOKENS = {
@@ -13,7 +13,7 @@ const KNOWN_TOKENS = {
 };
 
 // Interfaces for type safety
-interface KaminoStrategy {
+export interface KaminoStrategy {
   address: string;
   strategyType: string;
   estimatedTvl: number;
@@ -34,14 +34,14 @@ interface KaminoStrategy {
   };
 }
 
-interface KaminoPosition {
+export interface KaminoPosition {
   type: string;
   range: string;
   liquidity: number;
   feesEarned: number;
 }
 
-interface TokenLiquidityStats {
+export interface TokenLiquidityStats {
   tokenIdentifier: string;
   normalizedToken: string;
   tokenName: string;
@@ -53,7 +53,7 @@ interface TokenLiquidityStats {
   poolCount: number;
 }
 
-interface TokenInfo {
+export interface TokenInfo {
   name: string;
   symbol: string;
   address: string;
@@ -124,7 +124,7 @@ interface KaminoMarketStatistics {
   };
 }
 
-interface KaminoPoolInfoWithStrategy {
+export interface KaminoPoolInfoWithStrategy {
   address: string;
   strategy: KaminoStrategy;
   tokenInfo: TokenInfo | null;
@@ -140,20 +140,22 @@ interface KaminoPoolInfoWithStrategy {
   };
 }
 
-interface KaminoPoolInfoTokenFallback {
+export interface KaminoPoolInfoTokenFallback {
   address: string;
   tokenInfo: TokenInfo;
   timestamp: string;
   note: string;
 }
 
-type KaminoPoolByAddressResult =
+export type KaminoPoolByAddressResult =
   | KaminoPoolInfoWithStrategy
   | KaminoPoolInfoTokenFallback
   | null;
 
 interface KaminoLiquidityConnectionTest {
   apiBaseUrl: string;
+  programId: string;
+  rpcEndpoint: string;
   connectionTest: boolean;
   stakingYieldsTest: boolean;
   limoTradesTest: boolean;
@@ -176,6 +178,19 @@ interface LimoTrade {
   order: string;
 }
 
+function getStringSetting(
+  runtime: IAgentRuntime | undefined,
+  key: string,
+  fallback: string,
+): string {
+  const value = runtime?.getSetting(key);
+  return typeof value === "string" && value.length > 0 ? value : fallback;
+}
+
+function formatLogError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Kamino Liquidity Protocol Service
  * Handles interactions with Kamino liquidity protocol using the official API
@@ -189,11 +204,14 @@ export class KaminoLiquidityService extends Service {
   capabilityDescription =
     "Provides detailed access to Kamino liquidity protocol pools and strategies for specific tokens via the official API." as const;
 
-  constructor(runtime: AgentRuntime) {
+  constructor(runtime?: IAgentRuntime) {
     super(runtime);
 
-    this.apiBaseUrl =
-      runtime.getSetting("KAMINO_API_URL") || KAMINO_API_BASE_URL;
+    this.apiBaseUrl = getStringSetting(
+      runtime,
+      "KAMINO_API_URL",
+      KAMINO_API_BASE_URL,
+    );
 
     logger.log(
       `KaminoLiquidityService initialized with API: ${this.apiBaseUrl}`,
@@ -225,7 +243,10 @@ export class KaminoLiquidityService extends Service {
 
       return await response.json();
     } catch (error) {
-      logger.error(`API request failed for ${endpoint}:`, error);
+      logger.error(
+        `API request failed for ${endpoint}:`,
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -304,7 +325,7 @@ export class KaminoLiquidityService extends Service {
     } catch (error) {
       logger.error(
         `Error resolving token ${tokenIdentifier} with Birdeye:`,
-        error,
+        formatLogError(error),
       );
       return null;
     }
@@ -321,7 +342,7 @@ export class KaminoLiquidityService extends Service {
       logger.log(`Found ${yields.length} staking yields`);
       return yields;
     } catch (error) {
-      logger.error("Error fetching staking yields:", error);
+      logger.error("Error fetching staking yields:", formatLogError(error));
       return [];
     }
   }
@@ -338,7 +359,10 @@ export class KaminoLiquidityService extends Service {
       logger.log(`Found ${yields.length} median staking yields`);
       return yields;
     } catch (error) {
-      logger.error("Error fetching median staking yields:", error);
+      logger.error(
+        "Error fetching median staking yields:",
+        formatLogError(error),
+      );
       return [];
     }
   }
@@ -366,7 +390,7 @@ export class KaminoLiquidityService extends Service {
       logger.log(`Found ${trades.length} Limo trades`);
       return trades;
     } catch (error) {
-      logger.error("Error fetching Limo trades:", error);
+      logger.error("Error fetching Limo trades:", formatLogError(error));
       return [];
     }
   }
@@ -434,7 +458,10 @@ export class KaminoLiquidityService extends Service {
       logger.log("Market statistics retrieved successfully");
       return stats;
     } catch (error) {
-      logger.error("Error fetching market statistics:", error);
+      logger.error(
+        "Error fetching market statistics:",
+        formatLogError(error),
+      );
       return null;
     }
   }
@@ -512,7 +539,7 @@ export class KaminoLiquidityService extends Service {
       logger.log(`Found ${strategies.length} strategies from API data`);
       return strategies;
     } catch (error) {
-      logger.error("Error getting all strategies:", error);
+      logger.error("Error getting all strategies:", formatLogError(error));
       return [];
     }
   }
@@ -602,7 +629,10 @@ export class KaminoLiquidityService extends Service {
       logger.log(`No strategy found for address: ${strategyAddress}`);
       return null;
     } catch (error) {
-      logger.error("Error getting strategy by address:", error);
+      logger.error(
+        "Error getting strategy by address:",
+        formatLogError(error),
+      );
       return null;
     }
   }
@@ -621,13 +651,13 @@ export class KaminoLiquidityService extends Service {
 
       if (strategy) {
         // Get additional token information if available
-        let tokenInfo = null;
+        let tokenInfo: TokenInfo | null = null;
         try {
           tokenInfo = await this.resolveTokenWithBirdeye(strategy.tokenA);
         } catch (error) {
           logger.warn(
             `Could not resolve token info for ${strategy.tokenA}:`,
-            error,
+            formatLogError(error),
           );
         }
 
@@ -664,7 +694,10 @@ export class KaminoLiquidityService extends Service {
           };
         }
       } catch (error) {
-        logger.warn(`Could not resolve token info for ${poolAddress}:`, error);
+        logger.warn(
+          `Could not resolve token info for ${poolAddress}:`,
+          formatLogError(error),
+        );
       }
 
       logger.log(
@@ -672,7 +705,7 @@ export class KaminoLiquidityService extends Service {
       );
       return null;
     } catch (error) {
-      logger.error("Error getting pool by address:", error);
+      logger.error("Error getting pool by address:", formatLogError(error));
       return null;
     }
   }
@@ -803,7 +836,10 @@ export class KaminoLiquidityService extends Service {
           logger.log(`No strategies found involving token: ${normalizedToken}`);
         }
       } catch (apiError) {
-        logger.error("Error fetching strategies via API:", apiError);
+        logger.error(
+          "Error fetching strategies via API:",
+          formatLogError(apiError),
+        );
         logger.log(
           `API method failed, returning basic token info for ${normalizedToken}`,
         );
@@ -811,7 +847,10 @@ export class KaminoLiquidityService extends Service {
 
       return stats;
     } catch (error) {
-      logger.error("Error getting token liquidity info:", error);
+      logger.error(
+        "Error getting token liquidity info:",
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -1011,6 +1050,8 @@ export class KaminoLiquidityService extends Service {
 
       const results = {
         apiBaseUrl: this.apiBaseUrl,
+        programId: KAMINO_LIQUIDITY_PROGRAM_ID,
+        rpcEndpoint: this.apiBaseUrl,
         connectionTest: false,
         stakingYieldsTest: false,
         limoTradesTest: false,
@@ -1027,7 +1068,7 @@ export class KaminoLiquidityService extends Service {
           `API connection test passed. Found ${stakingYields.length} staking yields`,
         );
       } catch (error) {
-        logger.error("API connection test failed:", error);
+        logger.error("API connection test failed:", formatLogError(error));
       }
 
       // Test Limo trades endpoint
@@ -1038,7 +1079,7 @@ export class KaminoLiquidityService extends Service {
           `Limo trades test passed. Found ${limoTrades.length} trades`,
         );
       } catch (error) {
-        logger.error("Limo trades test failed:", error);
+        logger.error("Limo trades test failed:", formatLogError(error));
       }
 
       // Test strategy discovery
@@ -1049,30 +1090,30 @@ export class KaminoLiquidityService extends Service {
           `Strategy discovery test: ${strategies.length} strategies found`,
         );
       } catch (error) {
-        logger.error("Strategy discovery test failed:", error);
+        logger.error("Strategy discovery test failed:", formatLogError(error));
       }
 
       logger.log("Connection test completed");
       return results;
     } catch (error) {
-      logger.error("Error in connection test:", error);
+      logger.error("Error in connection test:", formatLogError(error));
       throw error;
     }
   }
 
   // Service lifecycle methods
 
-  static async create(runtime: AgentRuntime): Promise<KaminoLiquidityService> {
+  static async create(runtime: IAgentRuntime): Promise<KaminoLiquidityService> {
     return new KaminoLiquidityService(runtime);
   }
 
-  static async start(runtime: AgentRuntime): Promise<KaminoLiquidityService> {
+  static async start(runtime: IAgentRuntime): Promise<KaminoLiquidityService> {
     const service = new KaminoLiquidityService(runtime);
     await service.start();
     return service;
   }
 
-  static async stop(runtime: AgentRuntime): Promise<void> {
+  static async stop(runtime: IAgentRuntime): Promise<void> {
     const service = runtime.getService(
       "KAMINO_LIQUIDITY_SERVICE",
     ) as KaminoLiquidityService;
@@ -1092,12 +1133,15 @@ export class KaminoLiquidityService extends Service {
 
       // Test connection on startup
       const testResults = await this.testConnection();
-      logger.log("Startup connection test results:", testResults);
+      logger.log({ testResults }, "Startup connection test results");
 
       this.isRunning = true;
       logger.log("KaminoLiquidityService started successfully");
     } catch (error) {
-      logger.error("Failed to start KaminoLiquidityService:", error);
+      logger.error(
+        "Failed to start KaminoLiquidityService:",
+        formatLogError(error),
+      );
       throw error;
     }
   }
@@ -1112,7 +1156,10 @@ export class KaminoLiquidityService extends Service {
       this.isRunning = false;
       logger.log("KaminoLiquidityService stopped successfully");
     } catch (error) {
-      logger.error("Failed to stop KaminoLiquidityService:", error);
+      logger.error(
+        "Failed to stop KaminoLiquidityService:",
+        formatLogError(error),
+      );
       throw error;
     }
   }

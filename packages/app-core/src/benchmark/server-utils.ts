@@ -304,9 +304,19 @@ export function composeBenchmarkPrompt(params: {
     );
   }
 
-  segments.push(
-    "Respond using normal Eliza action output so actions/params can be executed and evaluated.",
-  );
+  const benchmark =
+    typeof params.context?.benchmark === "string"
+      ? params.context.benchmark
+      : undefined;
+  if (benchmark === "action-calling") {
+    segments.push(
+      "This is an action-calling strict-format benchmark. Follow the requested planner TOON envelope exactly. Do not answer in prose and do not use normal Eliza action output.",
+    );
+  } else {
+    segments.push(
+      "Respond using normal Eliza action output so actions/params can be executed and evaluated.",
+    );
+  }
 
   return segments.join("\n\n");
 }

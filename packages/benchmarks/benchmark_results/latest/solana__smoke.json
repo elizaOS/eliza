@@ -1,0 +1,30 @@
+{
+  "agent": "smoke",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T093848Z_4ace8cae/solana__solana/run_solana_20260505T093848Z_2_376dcb30/output"
+  ],
+  "benchmark_directory": "solana",
+  "benchmark_id": "solana",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "final_programs": 0,
+    "final_reward": 0.0,
+    "model": "openai/gpt-oss-120b",
+    "return_code": 0,
+    "run_id": "eliza_26-05-05_023848_893742a7"
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T093848Z_4ace8cae/solana__solana/run_solana_20260505T093848Z_2_376dcb30/output/eliza_26-05-05_023848_893742a7_metrics.json",
+  "run_group_id": "rg_20260505T093848Z_4ace8cae",
+  "run_id": "run_solana_20260505T093848Z_2_376dcb30",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "unique_instructions",
+  "updated_at": "2026-05-05T09:38:48.469541+00:00"
+}

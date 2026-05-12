@@ -20,6 +20,12 @@ import type { RealTestRuntimeResult } from "../helpers/real-runtime.ts";
 
 const BENCHMARK_REPORT_PATH = "action-benchmark-report.md";
 const BENCHMARK_TRAJECTORY_DIR = "action-benchmark-report";
+const mockRuntimeModuleUrl = new URL(
+  "../../../../test/mocks/helpers/mock-runtime.ts",
+  import.meta.url,
+).href;
+const computerUsePluginSpecifier: string = "@elizaos/plugin-computeruse";
+const browserPluginSpecifier: string = "@elizaos/plugin-browser";
 
 const USE_MOCKED_APIS = process.env.ELIZA_BENCHMARK_USE_MOCKS === "1";
 const RUN_ACTION_BENCHMARK =
@@ -41,10 +47,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
 
   if (USE_MOCKED_APIS) {
     const { createMockedTestRuntime, prepareMockedTestEnvironment } =
-      await import(
-        // @ts-expect-error — path is outside the package, resolved relative to repo root
-        "../../../../test/mocks/helpers/mock-runtime.ts"
-      );
+      await import(mockRuntimeModuleUrl);
     const previousBackgroundEnv = {
       ELIZA_DISABLE_LIFEOPS_SCHEDULER:
         process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER,
@@ -57,14 +60,8 @@ async function createBenchmarkRuntimeFactory(): Promise<{
     process.env.ELIZA_TEST_COMPUTERUSE_BACKEND = "1";
     process.env.COMPUTER_USE_ENABLED = "1";
     const environment = await prepareMockedTestEnvironment();
-    const { computerUsePlugin } = await import(
-      // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/plugin-computeruse"
-    );
-    const { browserPlugin } = await import(
-      // @ts-expect-error — workspace package resolved at runtime
-      "@elizaos/plugin-browser"
-    );
+    const { computerUsePlugin } = await import(computerUsePluginSpecifier);
+    const { browserPlugin } = await import(browserPluginSpecifier);
     return {
       createCaseRuntime: async () =>
         createMockedTestRuntime({
@@ -112,10 +109,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   const { appLifeOpsPlugin } = await import(
     "@elizaos/app-lifeops"
   );
-  const { computerUsePlugin } = await import(
-    // @ts-expect-error — workspace package resolved at runtime
-    "@elizaos/plugin-computeruse"
-  );
+  const { computerUsePlugin } = await import(computerUsePluginSpecifier);
   const { createRealTestRuntime } = await import("../helpers/real-runtime.ts");
 
   return {

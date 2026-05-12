@@ -11,7 +11,7 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": null,
+  "error": "Command produced a result JSON but exited with return code 1",
   "higher_is_better": true,
   "metrics": {
     "ast_accuracy": 0,
@@ -61,7 +61,7 @@
   "run_group_id": "rg_20260512T020834Z_92a17afc",
   "run_id": "run_bfcl_20260512T020846Z_1_f56e6fbf",
   "score": 0.0,
-  "status": "succeeded",
+  "status": "failed",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
@@ -77,5 +77,5 @@
     "turns": 1
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T02:08:49.189405+00:00"
+  "updated_at": "2026-05-12T02:08:49.188679+00:00"
 }

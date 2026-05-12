@@ -13,6 +13,7 @@ import { generateMasterKey } from "../src/crypto.js";
 import { inMemoryMasterKey } from "../src/master-key.js";
 import { PgliteVaultImpl } from "../src/pglite-vault.js";
 import { VaultMissError } from "../src/vault.js";
+import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
 describe("PgliteVaultImpl", () => {
   let workDir: string;
@@ -131,10 +132,9 @@ describe("PgliteVaultImpl", () => {
   });
 
   it("rejects non-string value", async () => {
-    await expect(
-      // @ts-expect-error exercises runtime validation for invalid callers.
-      vault.set("k", 123),
-    ).rejects.toThrow(/must be a string/);
+    await expect(runtimeVaultCaller(vault).set("k", 123)).rejects.toThrow(
+      /must be a string/,
+    );
   });
 
   it("ciphertext is opaque on disk (decrypt requires the master key)", async () => {

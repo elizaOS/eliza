@@ -1,0 +1,29 @@
+{
+  "agent": "full-sweep",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T152625Z_973eb23f/agentbench__agentbench/run_agentbench_20260505T152627Z_6_49250477/output"
+  ],
+  "benchmark_directory": "agentbench",
+  "benchmark_id": "agentbench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "overall_success_rate": 1.0,
+    "passed_tasks": 1,
+    "return_code": 0,
+    "total_tasks": 1
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T152625Z_973eb23f/agentbench__agentbench/run_agentbench_20260505T152627Z_6_49250477/output/agentbench-results.json",
+  "run_group_id": "rg_20260505T152625Z_973eb23f",
+  "run_id": "run_agentbench_20260505T152627Z_6_49250477",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T15:28:27.474358+00:00"
+}

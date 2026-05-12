@@ -286,10 +286,14 @@ struct FusedAttnPush {
     uint32_t sm_scale_bits;   // float bit pattern of sm_scale
     uint32_t v_use_qjl_or_kv_tile;  // tbq: kv_tile(=0); polar: v_use_qjl
     uint32_t kv_tile;         // polar only (tbq's 6th field is kv_tile already)
+    uint32_t causal;
+    uint32_t q_pos_base;
 };
 
 struct FusedAttnCase {
     int n_heads = 0, n_kv_heads = 0, n_kv = 0;
+    int causal = 0;
+    int q_pos_base = 0;
     std::vector<float>   q_sketch;       // n_heads * 256
     std::vector<uint8_t> k_blocks;       // n_kv_heads * n_kv * 34
     std::vector<uint8_t> v_blocks;       // tbq: *4*14 ; polar: *82
@@ -340,6 +344,8 @@ static std::vector<FusedAttnCase> load_fused_cases(const std::string & s) {
         c.n_heads      = get_int(obj, "n_heads");
         c.n_kv_heads   = get_int(obj, "n_kv_heads");
         c.n_kv         = get_int(obj, "n_kv");
+        c.causal       = get_int(obj, "causal", 0);
+        c.q_pos_base   = get_int(obj, "q_pos_base", 0);
         c.q_sketch     = get_floats(obj, "q_sketch");
         c.k_blocks     = get_bytes(obj, "k_blocks");
         c.v_blocks     = get_bytes(obj, "v_blocks");
@@ -355,9 +361,10 @@ static std::vector<FusedAttnCase> load_fused_cases(const std::string & s) {
 // --- Self-contained Vulkan run for the fused-attention shaders. Re-creates the
 //     pipeline once and per-case buffers/descriptors (the cases are small and
 //     few). Returns 0 iff every case passes within `tol`. The two shaders share
-//     the same 4-SSBO bind set (q_sketch, packed_k, packed_v, out) and a 6/7-uint
-//     push constant; the 6th uint is kv_tile for the TBQ variant and v_use_qjl
-//     for the Polar variant (whose 7th uint is its kv_tile). ---
+//     the same 4-SSBO bind set (q_sketch, packed_k, packed_v, out) and an
+//     8/9-uint push constant; the TBQ variant appends causal/q_pos_base after
+//     kv_tile, while Polar keeps v_use_qjl before kv_tile and then appends the
+//     same causal fields. ---
 static int run_fused_attn(const char * spv_path, const char * fx_path, float tol) {
     const std::string s = slurp(fx_path);
     std::string kernel;
@@ -453,7 +460,7 @@ static int run_fused_attn(const char * spv_path, const char * fx_path, float tol
     for (uint32_t i = 0; i < 4; i++) { dslb[i] = {}; dslb[i].binding = i; dslb[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER; dslb[i].descriptorCount = 1; dslb[i].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; }
     VkDescriptorSetLayoutCreateInfo dslci{}; dslci.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO; dslci.bindingCount = 4; dslci.pBindings = dslb;
     VkDescriptorSetLayout dsl; VK_CHECK(vkCreateDescriptorSetLayout(device, &dslci, nullptr, &dsl));
-    const uint32_t push_size = is_polar ? (uint32_t)(7 * sizeof(uint32_t)) : (uint32_t)(6 * sizeof(uint32_t));
+    const uint32_t push_size = is_polar ? (uint32_t)(9 * sizeof(uint32_t)) : (uint32_t)(8 * sizeof(uint32_t));
     VkPushConstantRange pcr{}; pcr.stageFlags = VK_SHADER_STAGE_COMPUTE_BIT; pcr.offset = 0; pcr.size = push_size;
     VkPipelineLayoutCreateInfo plci{}; plci.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     plci.setLayoutCount = 1; plci.pSetLayouts = &dsl; plci.pushConstantRangeCount = 1; plci.pPushConstantRanges = &pcr;
@@ -505,10 +512,18 @@ static int run_fused_attn(const char * spv_path, const char * fx_path, float tol
         }
         vkUpdateDescriptorSets(device, 4, wds, 0, nullptr);
 
-        uint32_t pc[7] = { n_heads, n_kv_heads, n_kv, 0u, 0u, 0u, 0u };
+        uint32_t pc[9] = { n_heads, n_kv_heads, n_kv, 0u, 0u, 0u, 0u, 0u, 0u };
         std::memcpy(&pc[4], &sm_scale_v, sizeof(uint32_t));
-        if (is_polar) { pc[5] = use_qjl; pc[6] = 0u; /* kv_tile */ }
-        else          { pc[5] = 0u;      /* kv_tile */ }
+        if (is_polar) {
+            pc[5] = use_qjl;
+            pc[6] = 0u; // kv_tile
+            pc[7] = (uint32_t)c.causal;
+            pc[8] = (uint32_t)c.q_pos_base;
+        } else {
+            pc[5] = 0u; // kv_tile
+            pc[6] = (uint32_t)c.causal;
+            pc[7] = (uint32_t)c.q_pos_base;
+        }
 
         VkCommandBufferAllocateInfo cbai{}; cbai.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO; cbai.commandPool = cmdpool; cbai.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY; cbai.commandBufferCount = 1;
         VkCommandBuffer cb; VK_CHECK(vkAllocateCommandBuffers(device, &cbai, &cb));
@@ -534,8 +549,9 @@ static int run_fused_attn(const char * spv_path, const char * fx_path, float tol
                 if (fail <= 8) std::printf("    case %zu i=%d expected=%+.6f got=%+.6f diff=%.3e FAIL\n", ci, i, (double)c.expected_out[i], (double)out[i], (double)diff);
             }
         }
-        std::printf("  case %zu (n_heads=%u n_kv_heads=%u n_kv=%u): %s — %d/%d passed (max_diff=%.3e)\n",
-                    ci, n_heads, n_kv_heads, n_kv, fail == 0 ? "PASS" : "FAIL", n - fail, n, (double)max_diff);
+        std::printf("  case %zu (n_heads=%u n_kv_heads=%u n_kv=%u causal=%d q_pos_base=%d): %s — %d/%d passed (max_diff=%.3e)\n",
+                    ci, n_heads, n_kv_heads, n_kv, c.causal, c.q_pos_base,
+                    fail == 0 ? "PASS" : "FAIL", n - fail, n, (double)max_diff);
         if (max_diff > global_max_diff) global_max_diff = max_diff;
         total_fail += fail; total_n += n;
 

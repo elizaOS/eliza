@@ -113,25 +113,23 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-# component"). The 0_6b/1_7b tiers use the closest publicly-resolvable
-# Qwen3 base (Qwen3.5/3.6 not published yet).
+# component"). Small tiers now use the public Qwen3.5 0.6B/1.7B/4B line.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     LicenseAttestation(
         bundle_file="LICENSE.text",
         component="text backbone",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Qwen/Qwen3-0.6B-GGUF (lineage recorded per tier in the manifest)",
-        upstream_url="https://huggingface.co/Qwen/Qwen3-0.6B-GGUF",
+        upstream_repo="unsloth/Qwen3.5-0.6B-GGUF / unsloth/Qwen3.5-1.7B-GGUF / unsloth/Qwen3.5-4B-GGUF / unsloth/Qwen3.5-9B-GGUF / batiai/Qwen3.6-27B-GGUF (lineage recorded per tier in the manifest)",
+        upstream_url="https://huggingface.co/unsloth/Qwen3.5-1.7B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "The text weights in this bundle are derived from the Qwen3 family "
+            "The text weights in this bundle are derived from the Qwen3.5/3.6 family "
             "(GGUF-converted via the elizaOS/llama.cpp fork and Milady-quantized), "
             "rebranded \"Eliza-1\" in user-facing strings per the project's "
             "branding policy. The upstream lineage and Apache-2.0 terms are "
             "recorded in eliza-1.manifest.json's lineage.text / provenance.sourceModels "
-            "blocks. For the 0_6b / 1_7b tiers the substitute base is the closest "
-            "publicly-resolvable Qwen3 checkpoint (Qwen3.5/3.6 not yet published)."
+            "blocks."
         ),
     ),
     LicenseAttestation(
@@ -217,7 +215,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "no separate embedding/ artifact, and this file is absent on 0_6b. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("1_7b", "9b", "27b", "27b-256k", "27b-1m"),
+        tiers=("1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.vision",

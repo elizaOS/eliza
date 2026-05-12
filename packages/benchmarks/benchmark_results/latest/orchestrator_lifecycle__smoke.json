@@ -1,0 +1,30 @@
+{
+  "agent": "smoke",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T102918Z_0d96e43b/orchestrator_lifecycle__orchestrator_lifecycle/run_orchestrator_lifecycle_20260505T102918Z_1_fc86fa80/output"
+  ],
+  "benchmark_directory": "orchestrator_lifecycle",
+  "benchmark_id": "orchestrator_lifecycle",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "clarification_success_rate": 1.0,
+    "interruption_handling_rate": 0.625,
+    "overall_score": 0.7638888888888888,
+    "return_code": 0,
+    "scenario_pass_rate": 0.6666666666666666
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T102918Z_0d96e43b/orchestrator_lifecycle__orchestrator_lifecycle/run_orchestrator_lifecycle_20260505T102918Z_1_fc86fa80/output/orchestrator-lifecycle-20260505_032918.json",
+  "run_group_id": "rg_20260505T102918Z_0d96e43b",
+  "run_id": "run_orchestrator_lifecycle_20260505T102918Z_1_fc86fa80",
+  "score": 0.7638888888888888,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T10:29:18.989303+00:00"
+}

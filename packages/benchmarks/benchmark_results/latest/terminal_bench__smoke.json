@@ -1,0 +1,29 @@
+{
+  "agent": "smoke",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T100309Z_90fc5170/terminal-bench__terminal_bench/run_terminal_bench_20260505T100309Z_1_0795160b/output"
+  ],
+  "benchmark_directory": "terminal-bench",
+  "benchmark_id": "terminal_bench",
+  "cache_metrics": {},
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "accuracy": 0.0,
+    "passed_tasks": 0,
+    "return_code": 0,
+    "total_tasks": 1
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T100309Z_90fc5170/terminal-bench__terminal_bench/run_terminal_bench_20260505T100309Z_1_0795160b/output/terminal-bench-20260505_030310.json",
+  "run_group_id": "rg_20260505T100309Z_90fc5170",
+  "run_id": "run_terminal_bench_20260505T100309Z_1_0795160b",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T10:03:10.103683+00:00"
+}

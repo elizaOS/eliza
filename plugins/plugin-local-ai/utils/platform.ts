@@ -1,7 +1,3 @@
-// @ts-nocheck — pending migration: @huggingface/transformers 3->4
-// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
-// signature drift (structured-context overload removed), and
-// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import { exec } from "node:child_process";
 import os from "node:os";
 import { promisify } from "node:util";

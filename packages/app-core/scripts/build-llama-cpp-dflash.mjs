@@ -2610,7 +2610,12 @@ function cmakeBuildTargetsFor(target) {
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
     : fused
       ? fusedCmakeBuildTargets()
-      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+      : [
+          "llama-server",
+          "llama-cli",
+          "llama-speculative-simple",
+          "llama-mtmd-cli",
+        ];
 
   // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
   // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
@@ -2789,6 +2794,7 @@ function buildTarget({ target, args, ctx }) {
       "llama-server",
       "llama-cli",
       "llama-speculative-simple",
+      "llama-mtmd-cli",
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.

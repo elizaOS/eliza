@@ -8,21 +8,22 @@
  *            substitutes for Silero — it only decides "is there acoustic
  *            activity right now".
  *
- *   Tier 2 — `SileroVad`. The MIT-licensed Silero VAD v5 ONNX model
+ *   Tier 2 — a model VAD provider. Resolver order is Qwen toolkit adapter
+ *            when supplied, native libelizainference Silero, then the
+ *            MIT-licensed Silero VAD v5 ONNX model
  *            (`vad/silero-vad-int8.onnx` in the Eliza-1 bundle layout). 512-
  *            sample windows at 16 kHz (32 ms hop), one speech probability per
- *            window, an internal LSTM state carried across windows. This is
- *            the *authoritative* speech/no-speech signal — it gates ASR and
- *            drives turn-taking.
+ *            window. This is the *authoritative* speech/no-speech signal — it
+ *            gates ASR and drives turn-taking.
  *
  *   `VadDetector` wires both together and emits the `VadEvent` stream
  *   (`speech-start` / `speech-active` / `speech-pause` / `speech-end` /
  *   `blip`) plus the raw `EnergyGateEvent` stream.
  *
- * No fallback sludge: if `onnxruntime-node` is not installed or the model
- * file is missing, `loadSileroVad()` throws `VadUnavailableError`. The
- * caller surfaces "VAD unavailable — voice features degrade" — there is no
- * silent downgrade to the RMS gate (AGENTS.md §3).
+ * No fallback sludge: if no model VAD provider can be loaded,
+ * `createVadDetector()` throws `VadUnavailableError`. The caller surfaces
+ * "VAD unavailable — voice features degrade" — there is no silent downgrade to
+ * the RMS gate (AGENTS.md §3).
  */
 
 import { existsSync } from "node:fs";
@@ -51,7 +52,11 @@ import type {
  *  `onnxruntime-node`, missing model file, or a corrupt model. There is no
  *  fallback; voice features that depend on VAD must surface this. */
 export class VadUnavailableError extends Error {
-  readonly code: "ort-missing" | "model-missing" | "model-load-failed";
+  readonly code:
+    | "ort-missing"
+    | "model-missing"
+    | "model-load-failed"
+    | "provider-missing";
   constructor(code: VadUnavailableError["code"], message: string) {
     super(message);
     this.name = "VadUnavailableError";
@@ -413,20 +418,102 @@ export interface VadDetectorConfig {
   energyGate?: RmsEnergyGateConfig;
 }
 
-interface SileroLike {
+type SegmentPhase = "idle" | "speaking" | "paused";
+
+export interface VadLike {
   readonly windowSamples: number;
   readonly sampleRate: number;
   process(window: Float32Array): Promise<number>;
   reset(): void;
 }
 
-type SegmentPhase = "idle" | "speaking" | "paused";
+export type VadProviderId = "qwen-toolkit" | "silero-native" | "silero-onnx";
+export type VadProviderPreference = "auto" | VadProviderId;
+
+export interface QwenToolkitVadAdapter {
+  isAvailable?(): boolean | Promise<boolean>;
+  loadVad(opts: { sampleRate: number }): Promise<VadLike>;
+}
+
+export interface ResolvedVadProvider {
+  id: VadProviderId;
+  vad: VadLike;
+}
+
+export interface CreateVadDetectorOptions {
+  modelPath?: string;
+  bundleRoot?: string;
+  ffi?: ElizaInferenceFfi | null;
+  ctx?: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
+  qwenToolkitVad?: QwenToolkitVadAdapter | null;
+  config?: VadDetectorConfig;
+  prefer?: VadProviderPreference;
+}
+
+export function vadProviderOrder(
+  prefer: VadProviderPreference = "auto",
+): VadProviderId[] {
+  if (prefer !== "auto") return [prefer];
+  return ["qwen-toolkit", "silero-native", "silero-onnx"];
+}
+
+export async function resolveVadProvider(
+  opts: CreateVadDetectorOptions = {},
+): Promise<ResolvedVadProvider> {
+  const sampleRate = opts.config?.sampleRate ?? 16_000;
+  const tried: string[] = [];
+
+  for (const provider of vadProviderOrder(opts.prefer)) {
+    switch (provider) {
+      case "qwen-toolkit": {
+        tried.push(provider);
+        if (!opts.qwenToolkitVad) break;
+        const available = (await opts.qwenToolkitVad.isAvailable?.()) ?? true;
+        if (!available) break;
+        return {
+          id: provider,
+          vad: await opts.qwenToolkitVad.loadVad({ sampleRate }),
+        };
+      }
+      case "silero-native": {
+        tried.push(provider);
+        if (!opts.ffi || !opts.ctx || !NativeSileroVad.isSupported(opts.ffi)) {
+          break;
+        }
+        return {
+          id: provider,
+          vad: await NativeSileroVad.load({
+            ffi: opts.ffi,
+            ctx: opts.ctx,
+            sampleRate,
+          }),
+        };
+      }
+      case "silero-onnx": {
+        tried.push(provider);
+        return {
+          id: provider,
+          vad: await SileroVad.load({
+            modelPath: opts.modelPath,
+            bundleRoot: opts.bundleRoot,
+            sampleRate,
+          }),
+        };
+      }
+    }
+  }
+
+  throw new VadUnavailableError(
+    "provider-missing",
+    `[voice] No VAD provider available. Tried: ${tried.join(", ")}.`,
+  );
+}
 
 /**
- * The authoritative VAD. Owns a `SileroVad` (or any `SileroLike` for tests),
+ * The authoritative VAD. Owns a model VAD provider (or any `VadLike` for tests),
  * an `RmsEnergyGate`, and the speech state machine. `pushFrame()` accepts
- * mic frames of any length ≥ 1 sample; internally it re-windows to Silero's
- * fixed 512-sample window. Emits `VadEvent`s on the Silero timeline and
+ * mic frames of any length ≥ 1 sample; internally it re-windows to the
+ * provider's fixed sample window. Emits `VadEvent`s on the VAD timeline and
  * `EnergyGateEvent`s on the fast timeline.
  *
  * Frame ingestion is serialized (`pushFrame` awaits the model forward pass)
@@ -434,7 +521,7 @@ type SegmentPhase = "idle" | "speaking" | "paused";
  * dropped-frame counter (`droppedFrames`) records overruns.
  */
 export class VadDetector {
-  readonly silero: SileroLike;
+  readonly silero: VadLike;
   readonly energyGate: RmsEnergyGate;
   private readonly sampleRate: number;
   private readonly onsetThreshold: number;
@@ -459,7 +546,7 @@ export class VadDetector {
   private lastHeartbeatMs = 0;
   private peakRmsInSegment = 0;
 
-  constructor(silero: SileroLike, config: VadDetectorConfig = {}) {
+  constructor(silero: VadLike, config: VadDetectorConfig = {}) {
     this.silero = silero;
     this.sampleRate = config.sampleRate ?? silero.sampleRate ?? 16_000;
     if (this.sampleRate !== silero.sampleRate) {
@@ -670,30 +757,22 @@ export class VadDetector {
 }
 
 /**
- * Convenience: load the Silero model and wrap it in a `VadDetector`.
- * Throws `VadUnavailableError` if the model or runtime is missing.
+ * Back-compat wrapper for callers that still use the old Silero-specific
+ * helper name. It now goes through the full provider resolver.
  */
 export async function createSileroVadDetector(
-  opts: {
-    modelPath?: string;
-    bundleRoot?: string;
-    ffi?: ElizaInferenceFfi | null;
-    ctx?: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
-    config?: VadDetectorConfig;
-  } = {},
+  opts: CreateVadDetectorOptions = {},
 ): Promise<VadDetector> {
-  if (opts.ffi && opts.ctx && NativeSileroVad.isSupported(opts.ffi)) {
-    const native = await NativeSileroVad.load({
-      ffi: opts.ffi,
-      ctx: opts.ctx,
-      sampleRate: opts.config?.sampleRate,
-    });
-    return new VadDetector(native, opts.config);
-  }
-  const silero = await SileroVad.load({
-    modelPath: opts.modelPath,
-    bundleRoot: opts.bundleRoot,
-    sampleRate: opts.config?.sampleRate,
-  });
-  return new VadDetector(silero, opts.config);
+  return createVadDetector(opts);
+}
+
+/**
+ * Convenience: resolve the best available model VAD provider and wrap it in a
+ * `VadDetector`.
+ */
+export async function createVadDetector(
+  opts: CreateVadDetectorOptions = {},
+): Promise<VadDetector> {
+  const { vad } = await resolveVadProvider(opts);
+  return new VadDetector(vad, opts.config);
 }

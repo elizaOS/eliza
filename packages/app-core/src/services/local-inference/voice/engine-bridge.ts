@@ -993,7 +993,9 @@ export class EngineVoiceBridge {
    * word-confirm gate (W1) listens to. Resolves the adapter chain:
    *   fused `libelizainference` streaming ASR (final path, gated on a
    *   working decoder AND a bundled ASR model) → fused batch ASR over the
-   *   same bundled model → whisper.cpp legacy adapter → `AsrUnavailableError`.
+   *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge
+   *   deliberately disables the standalone whisper.cpp fallback so local
+   *   voice mode never leaves the fused bundle.
    *
    * Pass W1's `vad` event stream to gate decoding to active speech
    * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1009,13 +1011,14 @@ export class EngineVoiceBridge {
       asrBundlePresent: this.asrAvailable,
       vad: opts?.vad,
       whisper: this.whisper,
+      allowWhisperFallback: false,
     });
   }
 
   /**
    * Batch transcription: one-shot over a whole PCM buffer. Drives a
-   * `StreamingTranscriber` (fused streaming ASR → fused-batch interim →
-   * whisper.cpp legacy interim) — feeds the buffer as a single frame,
+   * `StreamingTranscriber` (fused streaming ASR → fused-batch interim) —
+   * feeds the buffer as a single frame,
    * `flush()`es, returns the final transcript. Throws `AsrUnavailableError`
    * when no ASR backend is available — never a silent empty string.
    */
@@ -1088,8 +1091,8 @@ export class EngineVoiceBridge {
   /**
    * Resolve the pipeline's ASR backend: a live `StreamingTranscriber` —
    * the fused `eliza_inference_asr_stream_*` decoder when the loaded build
-   * advertises one and the bundle ships an `asr/` region, else the
-   * whisper.cpp interim adapter. The `VoicePipeline` drives it as a batch
+   * advertises one and the bundle ships an `asr/` region, else the fused
+   * batch ASR adapter. The `VoicePipeline` drives it as a batch
    * (feed the whole utterance, `flush()`, split the transcript into
    * tokens). When no ASR backend is available the failure is surfaced as a
    * `MissingAsrTranscriber` that throws on first use — AGENTS.md §3, no
@@ -1103,6 +1106,7 @@ export class EngineVoiceBridge {
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
         whisper: this.whisper,
+        allowWhisperFallback: false,
       });
     } catch (err) {
       if (err instanceof AsrUnavailableError) {

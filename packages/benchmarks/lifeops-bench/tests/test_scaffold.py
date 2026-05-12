@@ -99,6 +99,29 @@ def test_smoke_scenarios_load() -> None:
     assert Domain.MAIL in SCENARIOS_BY_DOMAIN
 
 
+def test_cli_live_evaluator_detection_respects_filters() -> None:
+    from eliza_lifeops_bench.__main__ import _needs_live_evaluator
+    from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
+    from eliza_lifeops_bench.types import Domain, ScenarioMode
+
+    static = SCENARIOS_BY_ID["smoke_static_calendar_01"]
+    live = SCENARIOS_BY_ID["smoke_live_mail_01"]
+
+    assert _needs_live_evaluator([static, live], domain=None, mode=None) is True
+    assert (
+        _needs_live_evaluator(
+            [static, live], domain=Domain.CALENDAR, mode=ScenarioMode.STATIC
+        )
+        is False
+    )
+    assert (
+        _needs_live_evaluator(
+            [static, live], domain=Domain.MAIL, mode=ScenarioMode.LIVE
+        )
+        is True
+    )
+
+
 def test_runner_instantiates_with_noop_agent_fn() -> None:
     from eliza_lifeops_bench import LifeOpsBenchRunner, MessageTurn
     from eliza_lifeops_bench.scenarios import ALL_SCENARIOS

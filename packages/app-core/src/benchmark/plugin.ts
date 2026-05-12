@@ -51,13 +51,25 @@ export interface CapturedAction {
 }
 
 let _capturedAction: CapturedAction | null = null;
+let _capturedActions: CapturedAction[] = [];
 
 export function getCapturedAction(): CapturedAction | null {
   return _capturedAction;
 }
 
+export function getCapturedActions(): CapturedAction[] {
+  return [..._capturedActions];
+}
+
 export function clearCapturedAction(): void {
   _capturedAction = null;
+  _capturedActions = [];
+}
+
+function recordCapturedAction(action: CapturedAction): CapturedAction {
+  _capturedAction = action;
+  _capturedActions.push(action);
+  return action;
 }
 
 // ---------------------------------------------------------------------------
@@ -247,7 +259,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
         `- CREATE_APP_CHARGE: create a non-settling benchmark charge. Params: amount_usd, provider ("oxapay" or "stripe"), description.\n` +
         `- CHECK_PAYMENT: check the latest benchmark charge status before delivering paid content.\n` +
         `These mirror Eliza Cloud app charge flows but execute against the WooBench mock provider during tests.\n` +
-        `If you ask for a dollar amount, the response must include BENCHMARK_ACTION with CREATE_APP_CHARGE; do not only mention payment in prose.`,
+        `Tool availability does not mean you should charge immediately. Build trust first; if you ask for a dollar amount, the response must include BENCHMARK_ACTION with CREATE_APP_CHARGE; do not only mention payment in prose.`,
     );
   }
 
@@ -399,7 +411,7 @@ function formatContextAsText(ctx: BenchmarkContext): string {
         `For ordinary conversation, respond with actions: REPLY and put only the next conversational message in text.`,
       );
       sections.push(
-        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone.`,
+        `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone, and never check payment before the user says they paid or an active charge exists.`,
       );
     } else {
       sections.push(
@@ -584,18 +596,25 @@ export function createBenchmarkPlugin(): Plugin {
 
         validate: async () => true,
 
-        handler: async (_runtime, _message, _state, options) => {
+        handler: async (
+          _runtime: unknown,
+          _message: unknown,
+          _state: unknown,
+          options: unknown,
+        ) => {
           const params = extractActionParameters(options);
 
           console.log("[BENCHMARK_ACTION] params:", JSON.stringify(params));
 
-          _capturedAction = captureBenchmarkAction(params);
+          const capturedAction = recordCapturedAction(
+            captureBenchmarkAction(params),
+          );
 
           return {
-            text: `Benchmark action captured: ${JSON.stringify(_capturedAction)}`,
+            text: `Benchmark action captured: ${JSON.stringify(capturedAction)}`,
             success: true,
             values: { captured: true },
-            data: { action: _capturedAction },
+            data: { action: capturedAction },
           };
         },
 
@@ -673,12 +692,14 @@ export function createBenchmarkPlugin(): Plugin {
         handler: async (_runtime, _message, _state, options) => {
           const params = extractActionParameters(options);
           console.log(`[${name}] params:`, JSON.stringify(params));
-          _capturedAction = captureLifeOpsBenchmarkToolAction(name, params);
+          const capturedAction = recordCapturedAction(
+            captureLifeOpsBenchmarkToolAction(name, params),
+          );
           return {
             text: `Benchmark LifeOps action captured: ${name}`,
             success: true,
             values: { captured: true },
-            data: { action: _capturedAction },
+            data: { action: capturedAction },
           };
         },
         parameters: [],

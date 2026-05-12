@@ -27,8 +27,8 @@ function eliza1Manifest(overrides: {
     cpu: { status: "pass", atCommit: "t", report: "cpu" },
   };
   return JSON.stringify({
-    id: "eliza-1-0_6b",
-    tier: "0_6b",
+    id: "eliza-1-0_8b",
+    tier: "0_8b",
     version: "1.0.0",
     publishedAt: "2026-05-11T00:00:00.000Z",
     lineage: {
@@ -42,7 +42,7 @@ function eliza1Manifest(overrides: {
     files: {
       text: [
         {
-          path: "text/eliza-1-0_6b-32k.gguf",
+          path: "text/eliza-1-0_8b-32k.gguf",
           sha256: overrides.shaFor("text"),
           ctx: 32768,
         },
@@ -52,7 +52,7 @@ function eliza1Manifest(overrides: {
       vision: [],
       dflash: [
         {
-          path: "dflash/drafter-0_6b.gguf",
+          path: "dflash/drafter-0_8b.gguf",
           sha256: overrides.shaFor("drafter"),
         },
       ],
@@ -74,6 +74,7 @@ function eliza1Manifest(overrides: {
       voiceRtf: { rtf: 0.5, passed: true },
       asrWer: { wer: 0.05, passed: true },
       vadLatencyMs: { median: 16, passed: true },
+      dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -184,7 +185,7 @@ describe("local inference downloader status", () => {
         jobs: [
           {
             jobId: "job-1",
-            modelId: "eliza-1-1_7b",
+            modelId: "eliza-1-2b",
             state: "failed",
             received: 64,
             total: 128,
@@ -201,7 +202,7 @@ describe("local inference downloader status", () => {
 
     const [job] = new Downloader().snapshot();
 
-    expect(job?.modelId).toBe("eliza-1-1_7b");
+    expect(job?.modelId).toBe("eliza-1-2b");
     expect(job?.state).toBe("failed");
     expect(job?.error).toBe("network reset");
   });
@@ -209,7 +210,7 @@ describe("local inference downloader status", () => {
   it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_6b");
+    const model = findCatalogModel("eliza-1-0_8b");
     expect(model).toBeDefined();
     if (!model) throw new Error("missing test catalog model");
 
@@ -220,8 +221,8 @@ describe("local inference downloader status", () => {
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
     const manifest = JSON.stringify({
-      id: "eliza-1-0_6b",
-      tier: "0_6b",
+      id: "eliza-1-0_8b",
+      tier: "0_8b",
       version: "1.0.0",
       publishedAt: "2026-05-11T00:00:00.000Z",
       lineage: {
@@ -235,7 +236,7 @@ describe("local inference downloader status", () => {
       files: {
         text: [
           {
-            path: "text/eliza-1-0_6b-32k.gguf",
+            path: "text/eliza-1-0_8b-32k.gguf",
             sha256: sha256(text),
             ctx: 32768,
           },
@@ -245,7 +246,7 @@ describe("local inference downloader status", () => {
         vision: [],
         dflash: [
           {
-            path: "dflash/drafter-0_6b.gguf",
+            path: "dflash/drafter-0_8b.gguf",
             sha256: sha256(drafter),
           },
         ],
@@ -293,6 +294,7 @@ describe("local inference downloader status", () => {
         voiceRtf: { rtf: 0.5, passed: true },
         asrWer: { wer: 0.05, passed: true },
         vadLatencyMs: { median: 16, passed: true },
+        dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
         e2eLoopOk: true,
         thirtyTurnOk: true,
       },
@@ -301,11 +303,11 @@ describe("local inference downloader status", () => {
     installFetchFixture(
       new Map([
         ["eliza-1.manifest.json", manifest],
-        ["text/eliza-1-0_6b-32k.gguf", text],
+        ["text/eliza-1-0_8b-32k.gguf", text],
         ["tts/voice.gguf", voice],
         ["asr/asr.gguf", asr],
         ["vad/eliza-1-vad.onnx", vad],
-        ["dflash/drafter-0_6b.gguf", drafter],
+        ["dflash/drafter-0_8b.gguf", drafter],
         ["cache/voice-preset-default.bin", cache],
       ]),
     );
@@ -319,7 +321,7 @@ describe("local inference downloader status", () => {
     const installed = await listInstalledModels();
     const main = installed.find((entry) => entry.id === model.id);
     const companion = installed.find(
-      (entry) => entry.id === "eliza-1-0_6b-drafter",
+      (entry) => entry.id === "eliza-1-0_8b-drafter",
     );
     expect(main).toBeDefined();
     expect(companion).toBeDefined();
@@ -330,9 +332,9 @@ describe("local inference downloader status", () => {
     }
 
     expect(job.state).toBe("completed");
-    expect(main.path.endsWith("text/eliza-1-0_6b-32k.gguf")).toBe(true);
+    expect(main.path.endsWith("text/eliza-1-0_8b-32k.gguf")).toBe(true);
     expect(bundleRoot).toBe(
-      path.join(root, "local-inference", "models", "eliza-1-0_6b.bundle"),
+      path.join(root, "local-inference", "models", "eliza-1-0_8b.bundle"),
     );
     expect(main.manifestPath).toBe(
       path.join(bundleRoot, "eliza-1.manifest.json"),
@@ -346,26 +348,63 @@ describe("local inference downloader status", () => {
     );
     expect(companion.runtimeRole).toBe("dflash-drafter");
     expect(companion.companionFor).toBe(model.id);
-    expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
+    expect(companion.path.endsWith("dflash/drafter-0_8b.gguf")).toBe(true);
     expect(companion.bundleRoot).toBe(bundleRoot);
     expect(main.bundleVerifiedAt).toBeUndefined();
     expect(await readAssignments()).toEqual({});
   });
 
+  it("rejects a pinned bundle manifest sha before fetching weights", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
+    process.env.ELIZA_STATE_DIR = root;
+    const model = findCatalogModel("eliza-1-0_8b");
+    if (!model) throw new Error("missing test catalog model");
+
+    const fetchSpy = installManifestOnlyFetch("tampered manifest");
+    const pinnedModel = {
+      ...model,
+      id: "eliza-1-0_8b-manifest-hash-test",
+      companionModelIds: [],
+      bundleManifestSha256: sha256("expected manifest"),
+    };
+    const downloader = new Downloader({
+      probeDeviceCaps: async () => cpuOnlyCaps,
+    });
+    const failed = new Promise<DownloadJob>((resolve) => {
+      const unsub = downloader.subscribe((event) => {
+        if (
+          event.job.modelId === pinnedModel.id &&
+          event.type === "failed"
+        ) {
+          unsub();
+          resolve(event.job);
+        }
+      });
+    });
+
+    await downloader.start(pinnedModel);
+    const job = await failed;
+
+    expect(job.error).toContain(
+      "SHA256 mismatch for bundle file eliza-1.manifest.json",
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
   it("restarts single-file partial downloads when a server ignores Range", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_6b-drafter");
+    const model = findCatalogModel("eliza-1-0_8b-drafter");
     expect(model).toBeDefined();
     if (!model) throw new Error("missing test catalog model");
 
     const body = "complete drafter";
-    installFetchFixture(new Map([["dflash/drafter-0_6b.gguf", body]]));
+    installFetchFixture(new Map([["dflash/drafter-0_8b.gguf", body]]));
 
     const downloadsDir = path.join(root, "local-inference", "downloads");
     fs.mkdirSync(downloadsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(downloadsDir, "eliza-1-0_6b-drafter.part"),
+      path.join(downloadsDir, "eliza-1-0_8b-drafter.part"),
       "stale partial",
     );
 
@@ -472,7 +511,7 @@ describe("local inference downloader status", () => {
   it("aborts before any weight byte when the RAM budget exceeds the device", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_6b");
+    const model = findCatalogModel("eliza-1-0_8b");
     if (!model) throw new Error("missing test catalog model");
 
     const manifest = eliza1Manifest({
@@ -504,7 +543,7 @@ describe("local inference downloader status", () => {
   it("runs the verify-on-device hook before the bundle fills a default slot", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_6b");
+    const model = findCatalogModel("eliza-1-0_8b");
     if (!model) throw new Error("missing test catalog model");
 
     const bytes = {
@@ -521,11 +560,11 @@ describe("local inference downloader status", () => {
     installFetchFixture(
       new Map([
         ["eliza-1.manifest.json", manifest],
-        ["text/eliza-1-0_6b-32k.gguf", bytes.text],
+        ["text/eliza-1-0_8b-32k.gguf", bytes.text],
         ["tts/voice.gguf", bytes.voice],
         ["asr/asr.gguf", bytes.asr],
         ["vad/eliza-1-vad.onnx", bytes.vad],
-        ["dflash/drafter-0_6b.gguf", bytes.drafter],
+        ["dflash/drafter-0_8b.gguf", bytes.drafter],
         ["cache/voice-preset-default.bin", bytes.cache],
       ]),
     );
@@ -544,7 +583,7 @@ describe("local inference downloader status", () => {
     expect(verifyCalls).toHaveLength(1);
     expect(verifyCalls[0]?.modelId).toBe(model.id);
     expect(
-      verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_6b-32k.gguf"),
+      verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_8b-32k.gguf"),
     ).toBe(true);
     const installed = await listInstalledModels();
     const main = installed.find((m) => m.id === model.id);
@@ -554,7 +593,7 @@ describe("local inference downloader status", () => {
   it("fails the download (no install) when the verify-on-device hook rejects", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_6b");
+    const model = findCatalogModel("eliza-1-0_8b");
     if (!model) throw new Error("missing test catalog model");
 
     const bytes = {
@@ -571,11 +610,11 @@ describe("local inference downloader status", () => {
     installFetchFixture(
       new Map([
         ["eliza-1.manifest.json", manifest],
-        ["text/eliza-1-0_6b-32k.gguf", bytes.text],
+        ["text/eliza-1-0_8b-32k.gguf", bytes.text],
         ["tts/voice.gguf", bytes.voice],
         ["asr/asr.gguf", bytes.asr],
         ["vad/eliza-1-vad.onnx", bytes.vad],
-        ["dflash/drafter-0_6b.gguf", bytes.drafter],
+        ["dflash/drafter-0_8b.gguf", bytes.drafter],
         ["cache/voice-preset-default.bin", bytes.cache],
       ]),
     );

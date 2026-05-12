@@ -14,8 +14,11 @@ import type {
   OmniVoiceBackend,
   Phrase,
   SpeakerPreset,
+  StreamingTtsBackend,
   TextToken,
+  TtsPcmChunk,
   VadEvent,
+  VoiceSchedulerTelemetryEvent,
 } from "./types";
 import {
   readVoicePresetFile,
@@ -67,6 +70,99 @@ class StubBackend implements OmniVoiceBackend {
       pcm,
       sampleRate: 24000,
     };
+  }
+}
+
+class StreamingBackend implements OmniVoiceBackend, StreamingTtsBackend {
+  calls = 0;
+  streamCalls = 0;
+  cancelCalls = 0;
+  chunks: Float32Array[] = [
+    new Float32Array([0.11, 0.12]),
+    new Float32Array([0.13, 0.14, 0.15]),
+  ];
+
+  async synthesize(): Promise<AudioChunk> {
+    this.calls++;
+    throw new Error(
+      "batch synthesize should not be used for streaming backend",
+    );
+  }
+
+  async synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }> {
+    this.streamCalls++;
+    for (const pcm of this.chunks) {
+      args.onKernelTick?.();
+      if (args.cancelSignal.cancelled) break;
+      const want = args.onChunk({
+        pcm,
+        sampleRate: 24000,
+        isFinal: false,
+      });
+      if (want === true || args.cancelSignal.cancelled) {
+        args.onChunk({
+          pcm: new Float32Array(0),
+          sampleRate: 24000,
+          isFinal: true,
+        });
+        return { cancelled: true };
+      }
+    }
+    args.onChunk({
+      pcm: new Float32Array(0),
+      sampleRate: 24000,
+      isFinal: true,
+    });
+    return { cancelled: args.cancelSignal.cancelled };
+  }
+
+  cancelTts(): void {
+    this.cancelCalls++;
+  }
+}
+
+class PausingStreamingBackend extends StreamingBackend {
+  private releaseFirstChunk!: () => void;
+  readonly afterFirstChunk = new Promise<void>((resolve) => {
+    this.releaseFirstChunk = resolve;
+  });
+  private releaseFinish!: () => void;
+  private readonly finishGate = new Promise<void>((resolve) => {
+    this.releaseFinish = resolve;
+  });
+
+  async synthesizeStream(args: {
+    phrase: Phrase;
+    preset: SpeakerPreset;
+    cancelSignal: { cancelled: boolean };
+    onChunk: (chunk: TtsPcmChunk) => boolean | undefined;
+    onKernelTick?: () => void;
+  }): Promise<{ cancelled: boolean }> {
+    this.streamCalls++;
+    args.onKernelTick?.();
+    args.onChunk({
+      pcm: new Float32Array([0.21, 0.22, 0.23]),
+      sampleRate: 24000,
+      isFinal: false,
+    });
+    this.releaseFirstChunk();
+    await this.finishGate;
+    args.onChunk({
+      pcm: new Float32Array(0),
+      sampleRate: 24000,
+      isFinal: true,
+    });
+    return { cancelled: args.cancelSignal.cancelled };
+  }
+
+  finish(): void {
+    this.releaseFinish();
   }
 }
 
@@ -322,6 +418,38 @@ describe("VoiceScheduler end-to-end", () => {
     expect(audioEvents).toHaveLength(2);
     expect(backend.calls).toBe(2);
     expect(sink.totalWritten()).toBeGreaterThan(0);
+  });
+
+  it("streams TTS chunks into the ring buffer and caches the assembled phrase", async () => {
+    const backend = new StreamingBackend();
+    const sink = new InMemoryAudioSink();
+    const firstAudioEvents: VoiceSchedulerTelemetryEvent[] = [];
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+      {
+        onTelemetry: (event) => {
+          if (event.type === "tts-first-audio") firstAudioEvents.push(event);
+        },
+      },
+    );
+
+    await sched.accept(tok(0, "Stream"));
+    await sched.accept(tok(1, "."));
+    await sched.waitIdle();
+    await sched.accept(tok(2, " stream"));
+    await sched.accept(tok(3, "."));
+    await sched.waitIdle();
+
+    expect(backend.calls).toBe(0);
+    expect(backend.streamCalls).toBe(1);
+    expect(sink.totalWritten()).toBe(10);
+    expect(firstAudioEvents).toHaveLength(2);
   });
 
   it("drops audio for phrases overlapping rejected token range", async () => {
@@ -598,6 +726,95 @@ describe("VoiceScheduler end-to-end", () => {
     expect(sched.ttsPaused).toBe(false);
     expect(sched.ringBuffer.size()).toBe(0);
     expect(sink.totalWritten()).toBe(0);
+  });
+
+  it("hard-stop calls native TTS cancel for an active streaming backend", async () => {
+    const backend = new PausingStreamingBackend();
+    const sink = new InMemoryAudioSink();
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+    );
+    const listeners = new Set<(e: VadEvent) => void>();
+    sched.bargeIn.bindVad({
+      onVadEvent: (l) => {
+        listeners.add(l);
+        return () => listeners.delete(l);
+      },
+    });
+    sched.bargeIn.setAgentSpeaking(true);
+    const emit = (e: VadEvent) => {
+      for (const l of listeners) l(e);
+    };
+
+    emit({
+      type: "speech-active",
+      timestampMs: 1,
+      probability: 0.9,
+      speechDurationMs: 100,
+    });
+    await sched.accept(tok(0, "Wait"));
+    await sched.accept(tok(1, "."));
+    await backend.afterFirstChunk;
+    expect(sched.ringBuffer.size()).toBeGreaterThan(0);
+
+    sched.bargeIn.onWordsDetected({
+      wordCount: 1,
+      partialText: "stop",
+      timestampMs: 2,
+    });
+    expect(backend.cancelCalls).toBe(1);
+    expect(sched.ringBuffer.size()).toBe(0);
+
+    backend.finish();
+    await sched.waitIdle();
+    expect(sink.totalWritten()).toBe(0);
+  });
+
+  it("rejecting an active streaming phrase calls native cancel before the stream finishes", async () => {
+    const backend = new PausingStreamingBackend();
+    const sink = new InMemoryAudioSink();
+    const rollbacks: number[] = [];
+    const sched = new VoiceScheduler(
+      {
+        chunkerConfig: { maxTokensPerPhrase: 10 },
+        preset: makePreset(),
+        ringBufferCapacity: 4096,
+        sampleRate: 24000,
+      },
+      { backend, sink },
+      { onRollback: (id) => rollbacks.push(id) },
+    );
+
+    await sched.accept(tok(0, "Wait"));
+    await sched.accept(tok(1, "."));
+    await backend.afterFirstChunk;
+
+    expect(sched.rollback.snapshot()).toEqual([
+      {
+        phrase: {
+          id: 0,
+          text: "Wait.",
+          fromIndex: 0,
+          toIndex: 1,
+          terminator: "punctuation",
+        },
+        state: "ringbuffered",
+      },
+    ]);
+
+    await sched.reject({ fromIndex: 1, toIndex: 1 });
+    expect(rollbacks).toEqual([0]);
+    expect(backend.cancelCalls).toBe(1);
+
+    backend.finish();
+    await sched.waitIdle();
+    expect(backend.streamCalls).toBe(1);
   });
 
   it("cancelPendingTts drops not-yet-spoken audio without signalling a barge-in", async () => {

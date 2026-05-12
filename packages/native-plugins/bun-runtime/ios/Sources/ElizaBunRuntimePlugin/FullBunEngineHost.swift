@@ -9,6 +9,7 @@ import Darwin
 /// to this host.
 final class FullBunEngineHost {
     static let shared = FullBunEngineHost()
+    private static let expectedAbiVersion = "1"
 
     private typealias AbiVersionFn = @convention(c) () -> UnsafePointer<CChar>?
     private typealias StartFn = @convention(c) (
@@ -118,15 +119,38 @@ final class FullBunEngineHost {
     private func load() throws {
         if handle != nil { return }
         let binaryPath = try locateFrameworkBinary()
-        guard let handle = dlopen(binaryPath, RTLD_NOW | RTLD_LOCAL) else {
+        guard let openedHandle = dlopen(binaryPath, RTLD_NOW | RTLD_LOCAL) else {
             throw makeError(String(cString: dlerror()))
         }
-        self.handle = handle
-        self.abiVersionFn = try symbol("eliza_bun_engine_abi_version")
-        self.startFn = try symbol("eliza_bun_engine_start")
-        self.stopFn = try symbol("eliza_bun_engine_stop")
-        self.callFn = try symbol("eliza_bun_engine_call")
-        self.freeFn = try symbol("eliza_bun_engine_free")
+        do {
+            let loadedAbiVersionFn: AbiVersionFn = try symbol(
+                "eliza_bun_engine_abi_version",
+                in: openedHandle
+            )
+            let loadedStartFn: StartFn = try symbol("eliza_bun_engine_start", in: openedHandle)
+            let loadedStopFn: StopFn = try symbol("eliza_bun_engine_stop", in: openedHandle)
+            let loadedCallFn: CallFn = try symbol("eliza_bun_engine_call", in: openedHandle)
+            let loadedFreeFn: FreeFn = try symbol("eliza_bun_engine_free", in: openedHandle)
+            guard let abiPointer = loadedAbiVersionFn() else {
+                throw makeError("ElizaBunEngine ABI version returned null")
+            }
+            let loadedAbiVersion = String(cString: abiPointer)
+            guard loadedAbiVersion == Self.expectedAbiVersion else {
+                throw makeError(
+                    "ElizaBunEngine ABI mismatch: expected \(Self.expectedAbiVersion), got \(loadedAbiVersion)"
+                )
+            }
+
+            self.handle = openedHandle
+            self.abiVersionFn = loadedAbiVersionFn
+            self.startFn = loadedStartFn
+            self.stopFn = loadedStopFn
+            self.callFn = loadedCallFn
+            self.freeFn = loadedFreeFn
+        } catch {
+            _ = dlclose(openedHandle)
+            throw error
+        }
     }
 
     private func locateFrameworkBinary() throws -> String {
@@ -146,10 +170,7 @@ final class FullBunEngineHost {
         throw makeError("ElizaBunEngine.framework is not embedded in the app bundle")
     }
 
-    private func symbol<T>(_ name: String) throws -> T {
-        guard let handle else {
-            throw makeError("ElizaBunEngine is not loaded")
-        }
+    private func symbol<T>(_ name: String, in handle: UnsafeMutableRawPointer) throws -> T {
         guard let pointer = dlsym(handle, name) else {
             throw makeError("ElizaBunEngine missing symbol \(name)")
         }

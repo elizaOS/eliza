@@ -1,0 +1,33 @@
+{
+  "agent": "full-sweep",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T145418Z_365d174e/app-eval__app-eval/run_app-eval_20260505T145419Z_2_58bc1c08/output"
+  ],
+  "benchmark_directory": "app-eval",
+  "benchmark_id": "app-eval",
+  "cache_metrics": {},
+  "error": "Command produced a result JSON but exited with return code 1",
+  "higher_is_better": true,
+  "metrics": {
+    "avg_duration_ms": 270.0,
+    "completed": 0,
+    "failed": 1,
+    "nonzero_return_code_with_result": 1,
+    "overall_score": 0.0,
+    "return_code": 1,
+    "timed_out": 0,
+    "total_tasks": 1
+  },
+  "model": "openai/gpt-oss-120b",
+  "performance_metrics": {},
+  "provider": "mock",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260505T145418Z_365d174e/app-eval__app-eval/run_app-eval_20260505T145419Z_2_58bc1c08/output/summary.json",
+  "run_group_id": "rg_20260505T145418Z_365d174e",
+  "run_id": "run_app-eval_20260505T145419Z_2_58bc1c08",
+  "score": 0.0,
+  "status": "failed",
+  "token_metrics": {},
+  "trajectory_summary": {},
+  "unit": "ratio",
+  "updated_at": "2026-05-05T14:56:10.191518+00:00"
+}

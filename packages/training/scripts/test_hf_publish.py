@@ -521,6 +521,9 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
             sha256="a" * 64,
             size_bytes=1234567,
             manifest={"version": 1, "kind": "eliza-1-optimized"},
+            bundle_manifest_file="eliza-1.manifest.json",
+            bundle_manifest_sha256="b" * 64,
+            bundle_size_bytes=2345678,
         ),
     ]
     sync_catalog.write_diff(entries, out, org="elizaos")
@@ -534,4 +537,34 @@ def test_sync_catalog_writes_diff(sync_catalog, tmp_path, monkeypatch):
     assert e["hfRepo"] == "elizaos/qwen3.5-4b-optimized"
     assert e["sha256"] == "a" * 64
     assert e["sizeBytes"] == 1234567
+    assert e["bundleManifestFile"] == "eliza-1.manifest.json"
+    assert e["bundleManifestSha256"] == "b" * 64
+    assert e["bundleSizeBytes"] == 2345678
     assert e["manifest"]["kind"] == "eliza-1-optimized"
+
+
+def test_sync_catalog_selects_manifest_text_file(sync_catalog):
+    manifest = {
+        "files": {
+            "text": [
+                {"path": "text/eliza-1-9b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
+                {"path": "text/eliza-1-9b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
+            ],
+            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "c" * 64}],
+        },
+    }
+    file_index = {
+        "text/eliza-1-9b-32k.gguf": ("a" * 64, 100),
+        "text/eliza-1-9b-64k.gguf": ("b" * 64, 200),
+        "dflash/drafter-9b.gguf": ("c" * 64, 50),
+    }
+
+    selected = sync_catalog._primary_text_file_from_manifest(
+        manifest,
+        file_index,
+        "elizaos/eliza-1-9b",
+    )
+    bundle_size = sync_catalog._bundle_size_from_manifest(manifest, file_index)
+
+    assert selected == ("text/eliza-1-9b-64k.gguf", "b" * 64, 200)
+    assert bundle_size == 350
