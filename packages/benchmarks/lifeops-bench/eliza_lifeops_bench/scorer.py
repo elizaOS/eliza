@@ -378,6 +378,11 @@ _OWNER_SURFACE_ALIASES: dict[str, str] = {
     "OWNER_GOALS": "LIFE",
     "OWNER_ROUTINES": "LIFE",
     "OWNER_FINANCES": "MONEY",
+    # P1-5: CONTACT_* surface (e.g. CONTACT_CREATE) folds into ENTITY.
+    # The TS `contact.ts` action exposes `CONTACT(op='create')` alongside the
+    # canonical `ENTITY(subaction='create')` umbrella; map it here so the scorer
+    # accepts both spellings as equivalent.
+    "CONTACT": "ENTITY",
 }
 
 

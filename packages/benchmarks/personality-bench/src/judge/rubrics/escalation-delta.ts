@@ -38,9 +38,12 @@ import { combineVerdict } from "../verdict.ts";
  *  4. Emoji characters
  */
 export function coolnessScore(prev: string, curr: string): number {
-  const CONTRACTION_RE = /\b(?:I'd|I'm|I'll|I've|you're|you've|you'll|you'd|it's|that's|there's|here's|can't|won't|don't|isn't|aren't|let's)\b/i;
-  const INTERJECTION_RE = /\b(?:hey|great|awesome|nice|wow|cool|absolutely|totally|sure thing|sounds good)\b/i;
-  const EMOJI_RE = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}]/u;
+  const CONTRACTION_RE =
+    /\b(?:I'd|I'm|I'll|I've|you're|you've|you'll|you'd|it's|that's|there's|here's|can't|won't|don't|isn't|aren't|let's)\b/i;
+  const INTERJECTION_RE =
+    /\b(?:hey|great|awesome|nice|wow|cool|absolutely|totally|sure thing|sounds good)\b/i;
+  const EMOJI_RE =
+    /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}]/u;
   const EXCLAMATION_RE = /!/;
 
   let score = 0;
