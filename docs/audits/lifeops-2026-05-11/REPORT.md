@@ -142,23 +142,32 @@ Full per-wave detail in [`INDEX.md`](./INDEX.md). Headline commits:
 
 ## Test grid
 
-| Suite                                  | Count | Result |
-|----------------------------------------|------:|:-------|
-| Cache stability                        |    10 | pass   |
-| Benchmarks lib (TS)                    |    44 | pass   |
-| DSPy primitives (TS)                   |     9 | pass   |
-| Action-retrieval measurement (TS)      |     7 | pass   |
-| Retrieval defaults (TS)                |    10 | pass   |
-| Retrieval funnel script (TS)           |     3 | pass   |
-| Aggregator round-trip (TS + Python)    |     8 | pass   |
-| Eliza-1 bundle gating (TS + Python)    |     6 | pass   |
-| Metrics schema round-trip              |     4 | pass   |
-| Aggregator pre-release banner          |     2 | pass   |
-| Serialization-audit memo regression    |     8 | pass   |
+| Suite                                  | Count | Result | Notes |
+|----------------------------------------|------:|:-------|:------|
+| Cache stability                        |    10 | pass   | 10/10 unchanged hashes |
+| Benchmarks lib (TS)                    |    44 | pass   |  |
+| DSPy primitives (TS)                   |     9 | pass   |  |
+| Action-retrieval measurement (TS)      |     7 | pass   |  |
+| Retrieval defaults (TS)                |    10 | pass   |  |
+| Retrieval funnel script (TS)           |     3 | pass   |  |
+| Aggregator round-trip (TS + Python)    |     8 | pass   |  |
+| Eliza-1 bundle gating (TS + Python)    |     6 | pass   |  |
+| Metrics schema round-trip              |     4 | pass   |  |
+| Aggregator pre-release banner          |     2 | pass   |  |
+| Serialization-audit memo regression    |     8 | pass   |  |
+| Aggregator + delta smoke               |     1 | pass   | `bun scripts/__tests__/aggregate-lifeops-run.test.mjs` |
+| Multi-tier bench dry-run gate          |     1 | pass   | `bun scripts/__tests__/lifeops-multi-tier-bench.test.mjs` |
+| hermes-adapter (Python)                |    69 | pass   | F4 fix — `attach_usage_cache_fields` stub exposure |
+| openclaw-adapter (Python)              |    61 | pass   | 6 dead HTTP retry-loop tests trimmed alongside dead helper deletion |
+| eliza-adapter (Python)                 |     9 | pass   | New `conftest.py` puts `packages/` on `sys.path` |
+| lifeops-bench (Python)                 |  1500+ | pass | exit 0 from `python -m pytest tests/` |
+| plugin-app-training (TS, full)         |    65 | pass   | All 4 prior failures resolved (prompt-compare env fix, training-api defer, plugin-imessage/x402 `dist` rebuild) |
+| packages/core (TS, full)               |  ~700 of ~701 | pass | 1 pre-existing failure documented (tiered-action-surface "night check-in" — design gap, not a regression) |
 
 Per-wave run-logs and failure detail in the individual wave docs
 linked above. The full re-baseline run (W2-9) corpus is preserved at
-`~/.eliza/runs/lifeops/lifeops-multiagent-best`.
+`~/.eliza/runs/lifeops/lifeops-multiagent-best`. Wave 6-G6 sweep
+details in [`known-typecheck-failures.md`](./known-typecheck-failures.md).
 
 ## Verification commands run + outcomes
 
