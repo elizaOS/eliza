@@ -4,8 +4,8 @@
 # flattening Bun's store-backed node_modules, and copying only the cloud runtime.
 ARG NODE_VERSION=22
 ARG BUN_VERSION=1.3.13
-ARG APP_ENTRYPOINT=app.mjs
-ARG APP_CMD_START=""
+ARG APP_ENTRYPOINT=""
+ARG APP_CMD_START="node --import /opt/tsx/node_modules/tsx/dist/loader.mjs node_modules/@elizaos/app-core/src/entry.ts start"
 ARG APP_PORT=2138
 ARG APP_API_BIND=127.0.0.1
 ARG OCI_SOURCE=""
@@ -25,19 +25,19 @@ WORKDIR /src
 
 # Copy only the manifests Bun needs to resolve the production dependency graph.
 COPY package.json bun.lock ./
-COPY eliza/packages/app-core/patches ./eliza/packages/app-core/patches
-COPY eliza/packages/core/package.json ./eliza/packages/core/package.json
-COPY eliza/packages/agent/package.json ./eliza/packages/agent/package.json
-COPY eliza/packages/app-core/package.json ./eliza/packages/app-core/package.json
-COPY eliza/packages/shared/package.json ./eliza/packages/shared/package.json
-COPY eliza/packages/ui/package.json ./eliza/packages/ui/package.json
-COPY eliza/plugins/plugin-sql/package.json ./eliza/plugins/plugin-sql/package.json
-COPY eliza/plugins/plugin-elizacloud/package.json ./eliza/plugins/plugin-elizacloud/package.json
-COPY eliza/plugins/plugin-workflow/package.json ./eliza/plugins/plugin-workflow/package.json
-COPY eliza/packages/workflows/package.json ./eliza/packages/workflows/package.json
+COPY packages/app-core/patches ./packages/app-core/patches
+COPY packages/core/package.json ./packages/core/package.json
+COPY packages/agent/package.json ./packages/agent/package.json
+COPY packages/app-core/package.json ./packages/app-core/package.json
+COPY packages/shared/package.json ./packages/shared/package.json
+COPY packages/ui/package.json ./packages/ui/package.json
+COPY plugins/plugin-sql/package.json ./plugins/plugin-sql/package.json
+COPY plugins/plugin-elizacloud/package.json ./plugins/plugin-elizacloud/package.json
+COPY plugins/plugin-workflow/package.json ./plugins/plugin-workflow/package.json
+COPY packages/workflows/package.json ./packages/workflows/package.json
 COPY packages/app/package.json ./packages/app/package.json
-COPY eliza/packages/app-core/platforms/electrobun/package.json ./eliza/packages/app-core/platforms/electrobun/package.json
-COPY eliza/packages/app-core/deploy/cloud-agent-template/package.json ./eliza/packages/app-core/deploy/cloud-agent-template/package.json
+COPY packages/app-core/platforms/electrobun/package.json ./packages/app-core/platforms/electrobun/package.json
+COPY packages/app-core/deploy/cloud-agent-template/package.json ./packages/app-core/deploy/cloud-agent-template/package.json
 
 ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 # Materialize the standalone cloud-agent template at the Docker deploy
@@ -47,14 +47,14 @@ RUN node <<'EOF'
 const fs = require("fs");
 
 const KEEP = [
-  "eliza/packages/agent",
-  "eliza/packages/app-core",
-  "eliza/packages/shared",
-  "eliza/packages/ui",
-  "eliza/packages/app-core/platforms/electrobun",
-  "eliza/packages/app-core/deploy/cloud-agent-template",
-  "eliza/packages/workflows",
-  "eliza/plugins/plugin-workflow",
+  "packages/agent",
+  "packages/app-core",
+  "packages/shared",
+  "packages/ui",
+  "packages/app-core/platforms/electrobun",
+  "packages/app-core/deploy/cloud-agent-template",
+  "packages/workflows",
+  "plugins/plugin-workflow",
   "packages/app",
 ];
 const ALLOW = new Set([
@@ -78,11 +78,11 @@ const PRUNE_FIELDS = [
 const STRIP_NAMES =
   /^@elizaos\/(app-|capacitor-|plugin-agent-orchestrator|plugin-cli|plugin-imessage|plugin-local-ai|plugin-pdf|plugin-wechat|steward-)/;
 const VERSION_MANIFESTS = [
-  "eliza/packages/core/package.json",
-  "eliza/plugins/plugin-sql/package.json",
-  "eliza/plugins/plugin-elizacloud/package.json",
-  "eliza/plugins/plugin-workflow/package.json",
-  "eliza/packages/workflows/package.json",
+  "packages/core/package.json",
+  "plugins/plugin-sql/package.json",
+  "plugins/plugin-elizacloud/package.json",
+  "plugins/plugin-workflow/package.json",
+  "packages/workflows/package.json",
 ];
 const CLOUD_AGENT_RELEASE_DEPS = [
   "@elizaos/core",
