@@ -299,7 +299,10 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "releaseChannel": { "const": "base-v1" } }, "required": ["releaseChannel"] },
+      "if": {
+        "properties": { "releaseChannel": { "const": "base-v1" } },
+        "required": ["releaseChannel"]
+      },
       "then": { "properties": { "defaultEligible": { "const": false } } }
     }
   ],
