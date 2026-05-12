@@ -1,8 +1,8 @@
 import {
   Button,
+  ContentLayout,
   client,
   confirmDesktopAction,
-  ContentLayout,
   parsePositiveFloat,
   parsePositiveInteger,
   type StartTrainingOptions,
@@ -214,8 +214,7 @@ export function FineTuningView({
           error?: string;
         } | null;
         setActionNotice(
-          detail?.error ??
-            t("finetuningview.HuggingFacePublishNotConfigured"),
+          detail?.error ?? t("finetuningview.HuggingFacePublishNotConfigured"),
           "error",
           5200,
         );

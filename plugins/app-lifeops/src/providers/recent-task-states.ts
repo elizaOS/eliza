@@ -24,11 +24,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+import { asCacheRuntime } from "../lifeops/runtime-cache.js";
 import type {
   ScheduledTaskKind,
   TerminalState,
 } from "../lifeops/wave1-types.js";
-import { asCacheRuntime } from "../lifeops/runtime-cache.js";
 
 export interface RecentTaskStateEntry {
   taskId: string;

@@ -30,8 +30,9 @@ function makeAdapter(): LlmAdapter {
       }
       if (system.startsWith("You are a prompt engineer revising")) {
         const prompt =
-          input.user.split("Current prompt:\n")[1]?.split("\n\nFailure analysis:")[0] ??
-          input.user;
+          input.user
+            .split("Current prompt:\n")[1]
+            ?.split("\n\nFailure analysis:")[0] ?? input.user;
         return `GOOD\n${prompt}`;
       }
       if (system.startsWith("You are a prompt engineer reducing")) {

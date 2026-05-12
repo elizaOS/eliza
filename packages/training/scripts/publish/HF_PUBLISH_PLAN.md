@@ -43,6 +43,22 @@ the DATASETS and FINETUNE workstreams produce them.
 > The fork-built `base-v1` weights for the bundle repos are gated on the
 > hardware-evidence work — the orchestrator `--base-v1 --dry-run` exits at stage
 > 2 today (see "Upload sequence" step 5 and `ELIZA_1_RELEASE_ASSET_STATUS.md`).
+>
+> **Backbone move (2026-05-12 owner decision):** the small tiers move to the
+> Qwen3.5 family — `Qwen/Qwen3.5-0.8B` → new `eliza-1-0_8b` tier (the small
+> default; published Hub base, no "substitute" caveat needed), `Qwen/Qwen3.5-2B`
+> → `eliza-1-2b` (already in the registry). The DFlash drafter for the
+> Qwen3.5/3.6 target tiers (`2b`/`9b`/`27b`/`27b-256k`/`27b-1m`) is distilled
+> DOWN from `Qwen/Qwen3.5-0.8B-Base` to ~0.6B params — it must share the
+> targets' 248320-token Qwen3.5 tokenizer, so the older `Qwen/Qwen3-{0.6B,1.7B}`
+> drafter bases are wrong for those tiers (the legacy Qwen3 `1_7b` tier keeps
+> `Qwen/Qwen3-0.6B`). New bundle repo: `elizaos/eliza-1-0_8b`. **TODO(owner):**
+> keep the legacy Qwen3 `0_6b`/`1_7b`/`4b` tiers as a legacy line, or retire
+> them? Kept additively for now (the `eliza-1-0_6b-sft-weights` test-SFT
+> candidate above is unaffected). The "documented substitute for the
+> not-yet-published `Qwen3.5-0.6B`" framing in the card drafts below is
+> superseded — `Qwen3.5-0.8B` is the published small base; `Qwen3.5-0.6B` does
+> not exist (the ~0.6B drafter is a custom distillation, not an upstream base).
 
 ---
 

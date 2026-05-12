@@ -24,6 +24,19 @@ and the structural ``format_ok`` gate in ``benchmarks/eliza1_gates.yaml``):
   * ``assistant`` — Cerebras-generated general assistant turns (concise, on the
     topics the held-out text-eval corpus probes: capital-of-France-style facts,
     speculative decoding, on-device assistants, quantization, VAD) + refusals.
+  * ``structured_decode`` — Stage-1 response-envelope turns: the W3 flat JSON
+    envelope ``buildResponseGrammar`` constrains (``{"shouldRespond":...,
+    "thought":...,"replyText":...,"contexts":[...],"contextSlices":[...],
+    "candidateActions":[...],"parentActionHints":[...],"requiresTool":...,
+    "extract":{...}}``; ``shouldRespond`` dropped on direct channels). On-wire
+    form is JSON — not "TOON" — matching the runtime model call. Deterministic
+    seed rows + Cerebras augmentation. Teaches the ``format_ok`` gate's target.
+  * ``voice_emotion`` — spoken replies carrying omnivoice-singing inline
+    expressive tags in ``replyText`` (``[happy]`` ``[sad]`` ``[angry]``
+    ``[nervous]`` ``[calm]`` ``[excited]`` ``[whisper]`` ``[singing]`` + the
+    preserved non-verbals ``[laughter]`` ``[sigh]``), scoped until the next tag
+    or end of phrase — the parse/generate/interpret schema the TTS controls
+    consume. Deterministic seed rows + Cerebras augmentation.
 
 All rows carry a ``provenance`` field (``benchmark:<file>`` / ``cerebras:<task>``)
 and a ``task`` field. No real-user trajectory data is consumed by this builder
@@ -417,6 +430,304 @@ def _cerebras_assistant_and_refusals(client, n_batches: int, per_batch: int) -> 
 
 
 # ---------------------------------------------------------------------------
+# Source 4: structured-decode envelope rows (the Stage-1 W3 flat JSON envelope)
+# ---------------------------------------------------------------------------
+# The Stage-1 message-handler call emits the W3 flat JSON envelope that
+# ``@elizaos/core`` ``buildResponseGrammar`` constrains. On the non-direct path:
+#   {"shouldRespond":"RESPOND|IGNORE|STOP","thought":"...","replyText":"...",
+#    "contexts":[...],"contextSlices":[...],"candidateActions":[...],
+#    "parentActionHints":[...],"requiresTool":<bool>,"extract":{...}}
+# On the direct (DM/API/voice) path the same keys minus ``shouldRespond``,
+# starting at ``{"thought":...}``. These rows teach the 0.6b base to emit a
+# well-formed envelope so the ``format_ok`` gate stops measuring 0%. They are
+# shaped to match the runtime grammar's fixed key order and value kinds. (A
+# byte-exact generator that calls ``buildResponseGrammar``+``compilePrefillPlan``
+# from TS would be even tighter; this Python builder mirrors the same fixed key
+# order / span kinds without a TS dependency at corpus-build time. Canonical
+# on-wire form is JSON — not "TOON" — matching the runtime model call.)
+
+# Fixed envelope key order — must match STAGE1_ENVELOPE_KEYS in
+# packages/core/src/runtime/response-grammar.ts.
+_ENVELOPE_KEYS = [
+    "thought", "replyText", "contexts", "contextSlices",
+    "candidateActions", "parentActionHints", "requiresTool", "extract",
+]
+_SHOULD_RESPOND_VALUES = ["RESPOND", "IGNORE", "STOP"]
+_STAGE1_SYSTEM = (
+    "You are Eliza, an on-device personal assistant. Reply with a single JSON "
+    "object — the response envelope — and nothing else. Keys, in order: "
+    "shouldRespond (\"RESPOND\"|\"IGNORE\"|\"STOP\"; omit on direct channels), "
+    "thought (your brief internal reasoning), replyText (what the user sees), "
+    "contexts (string array), contextSlices (string array), candidateActions "
+    "(string array of action names you might run), parentActionHints (string "
+    "array), requiresTool (boolean), extract (object of any structured data you "
+    "pulled out). No prose outside the object."
+)
+
+
+def _envelope_json(
+    *, should_respond: str | None, thought: str, reply_text: str,
+    contexts: list[str], candidate_actions: list[str], requires_tool: bool,
+    extract: dict[str, Any] | None = None,
+) -> str:
+    obj: "dict[str, Any]" = {}
+    if should_respond is not None:
+        obj["shouldRespond"] = should_respond
+    obj["thought"] = thought
+    obj["replyText"] = reply_text
+    obj["contexts"] = list(contexts) if contexts else ["simple", "general"]
+    obj["contextSlices"] = []
+    obj["candidateActions"] = list(candidate_actions)
+    obj["parentActionHints"] = []
+    obj["requiresTool"] = bool(requires_tool)
+    obj["extract"] = dict(extract or {})
+    # Compact, key order preserved (py3.7+ dict insertion order == emit order).
+    return json.dumps(obj, ensure_ascii=False, separators=(",", ":"))
+
+
+_STRUCTURED_SEEDS = [
+    # (user, direct?, shouldRespond, thought, replyText, contexts, candidateActions, requiresTool, extract)
+    ("hey", True, None, "Casual greeting, no action needed.",
+     "Hey! What can I do for you?", ["simple", "general"], ["REPLY"], False, {}),
+    ("remind me to call mom at 6pm", False, "RESPOND",
+     "User wants a reminder for a specific time; route to OWNER_REMINDERS.",
+     "Sure — I'll remind you to call mom at 6pm.", ["simple", "general"],
+     ["OWNER_REMINDERS", "REPLY"], True, {"task": "call mom", "time": "18:00"}),
+    ("what's the capital of France?", True, None,
+     "Simple factual question — answer directly, no tool.",
+     "Paris.", ["simple", "general"], ["REPLY"], False, {}),
+    ("add 'finish the deck' to my todos", False, "RESPOND",
+     "Todo add request; route to OWNER_TODOS with the item text.",
+     "Added 'finish the deck' to your todo list.", ["simple", "general"],
+     ["OWNER_TODOS", "REPLY"], True, {"item": "finish the deck"}),
+    ("ok thanks", False, "IGNORE",
+     "Acknowledgement only; nothing for me to do or say.",
+     "", ["simple", "general"], [], False, {}),
+    ("stop talking", False, "STOP",
+     "User explicitly asked for silence — comply, stop the turn.",
+     "", ["simple", "general"], [], False, {}),
+    ("book a 30 minute meeting with Dana tomorrow morning", False, "RESPOND",
+     "Calendar event request with a person and a rough time; route to CALENDAR.",
+     "Done — a 30-minute meeting with Dana is on your calendar for tomorrow morning.",
+     ["simple", "general"], ["CALENDAR", "REPLY"], True,
+     {"with": "Dana", "duration_minutes": 30, "when": "tomorrow morning"}),
+    ("how does speculative decoding work?", True, None,
+     "Technical explainer; answer concisely, no tool.",
+     "A small draft model proposes several tokens at once; the large model verifies them in one pass and keeps the longest accepted prefix, so you get multiple tokens per large-model step.",
+     ["simple", "general"], ["REPLY"], False, {}),
+    ("text Sam I'm running ten minutes late", False, "RESPOND",
+     "Outgoing message request with a recipient and body; route to MESSAGE.",
+     "On it — texting Sam that you're running ten minutes late.", ["simple", "general"],
+     ["MESSAGE", "REPLY"], True, {"to": "Sam", "body": "I'm running ten minutes late"}),
+    ("what's my screen time looking like this week?", False, "RESPOND",
+     "Screen-time summary request; route to OWNER_SCREENTIME.",
+     "Here's your screen-time breakdown for the week.", ["simple", "general"],
+     ["OWNER_SCREENTIME", "REPLY"], True, {"window": "this week"}),
+]
+
+
+def _build_structured_decode_rows() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for (user, direct, sr, thought, reply, ctx, cand, rtool, extract) in _STRUCTURED_SEEDS:
+        env = _envelope_json(
+            should_respond=None if direct else sr, thought=thought,
+            reply_text=reply, contexts=ctx, candidate_actions=cand,
+            requires_tool=rtool, extract=extract,
+        )
+        rows.append(
+            _row(
+                messages=[
+                    {"role": "system", "content": _STAGE1_SYSTEM},
+                    {"role": "user", "content": user},
+                    {"role": "assistant", "content": env},
+                ],
+                task="structured_decode",
+                provenance=f"synthetic:stage1-envelope#{'direct' if direct else 'full'}",
+                tags=["structured_decode", "direct" if direct else "full"],
+            )
+        )
+    LOG.info("built %d structured-decode envelope rows", len(rows))
+    return rows
+
+
+def _cerebras_structured_decode(client, n_batches: int, per_batch: int) -> list[dict[str, Any]]:
+    """Cerebras-augmented Stage-1 envelope rows — the model is asked for the
+    exact W3 flat JSON envelope, key order pinned, so the training target is the
+    runtime grammar's document."""
+    rows: list[dict[str, Any]] = []
+    sys_prompt = (
+        "You generate supervised fine-tuning data for an on-device assistant "
+        "named Eliza. Output JSONL: one JSON object per line, no prose, no code "
+        "fences. Each line: {\"user\": \"<a realistic single user message>\", "
+        "\"direct\": <true if a DM/voice/API channel, false for a group/feed>, "
+        "\"shouldRespond\": \"RESPOND\"|\"IGNORE\"|\"STOP\" (only when direct is "
+        "false), \"thought\": \"<one-sentence internal reasoning>\", "
+        "\"replyText\": \"<what the user sees; empty string for IGNORE/STOP>\", "
+        "\"candidateActions\": [<0-3 ALL-CAPS action names you might run, or "
+        "\"REPLY\">], \"requiresTool\": <true if an action call is needed>, "
+        "\"extract\": {<small object of structured data pulled from the user "
+        "message, or {}>}}. Action names come from this set only: "
+        + ", ".join(_ACTION_CATALOG) + ". Realistic everyday assistant "
+        "requests; vary the channel and the shouldRespond outcome. Never "
+        "include real names, emails, or phone numbers — use placeholders."
+    )
+    for b in range(n_batches):
+        try:
+            objs = client.chat_json_lines(
+                [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": f"Generate {per_batch} JSONL lines. Batch {b + 1}."},
+                ],
+                temperature=0.85,
+                max_tokens=4096,
+            )
+        except Exception as exc:  # noqa: BLE001 - augmentation is best-effort
+            LOG.warning("cerebras structured-decode batch %d failed: %s", b + 1, exc)
+            continue
+        for o in objs:
+            user = o.get("user")
+            if not isinstance(user, str) or not user.strip():
+                continue
+            direct = bool(o.get("direct"))
+            sr = o.get("shouldRespond") if not direct else None
+            if not direct and sr not in _SHOULD_RESPOND_VALUES:
+                sr = "RESPOND"
+            thought = str(o.get("thought") or "Handling the user's request.")
+            reply = str(o.get("replyText") or "")
+            cand = [c for c in (o.get("candidateActions") or []) if isinstance(c, str)]
+            cand = [c.strip().upper() for c in cand]
+            cand = [c for c in cand if c in _ACTION_CATALOG] or (["REPLY"] if reply else [])
+            rtool = bool(o.get("requiresTool"))
+            extract = o.get("extract") if isinstance(o.get("extract"), dict) else {}
+            env = _envelope_json(
+                should_respond=sr, thought=thought, reply_text=reply,
+                contexts=["simple", "general"], candidate_actions=cand,
+                requires_tool=rtool, extract=extract,
+            )
+            rows.append(
+                _row(
+                    messages=[
+                        {"role": "system", "content": _STAGE1_SYSTEM},
+                        {"role": "user", "content": user.strip()},
+                        {"role": "assistant", "content": env},
+                    ],
+                    task="structured_decode",
+                    provenance="cerebras:stage1-envelope",
+                    tags=["structured_decode", "synthetic", "direct" if direct else "full"],
+                )
+            )
+        LOG.info("cerebras structured-decode batch %d → %d rows (running %d)", b + 1, len(objs), len(rows))
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Source 5: voice-emotion rows (omnivoice-singing inline tags in replyText)
+# ---------------------------------------------------------------------------
+# The voice-output path lets ``replyText`` carry inline expressive tags that the
+# TTS chunker preserves and passes to OmniVoice's emotion/singing controls:
+# [happy] [sad] [angry] [nervous] [calm] [excited] [whisper] [singing] plus the
+# preserved non-verbals [laughter] [sigh]. Tags are inline, scoped until the
+# next tag or end-of-phrase. These rows teach the model to emit that markup
+# when generating spoken replies.
+_EXPRESSIVE_TAGS = [
+    "happy", "sad", "angry", "nervous", "calm", "excited", "whisper", "singing",
+    "laughter", "sigh",
+]
+_VOICE_SYSTEM = (
+    "You are Eliza, speaking out loud through a voice interface. Write your "
+    "spoken reply with inline expressive markup so the text-to-speech engine "
+    "renders the right tone: [happy] [sad] [angry] [nervous] [calm] [excited] "
+    "[whisper] [singing], and the non-verbals [laughter] [sigh]. A tag applies "
+    "from where it appears until the next tag or the end of the phrase. Keep "
+    "replies natural and concise; only use tags where the emotion is real."
+)
+_VOICE_SEEDS = [
+    ("I just got the job!", "[excited] That's amazing — congratulations! [laughter] I knew you'd land it."),
+    ("my flight got cancelled", "[sad] Oh no, that's frustrating. [calm] Want me to find you the next available one?"),
+    ("can you keep it down, the baby's asleep", "[whisper] Of course. I'll keep my voice low."),
+    ("tell me a bedtime line", "[calm] Rest easy. [singing] The stars are out, the night is kind, and morning's not so far behind."),
+    ("I'm really nervous about the interview tomorrow", "[calm] That's normal. Take a slow breath — you've prepared for this, and you'll be fine."),
+    ("ugh this printer again", "[sigh] I know. [calm] Let's try restarting it once more."),
+    ("we won the game!!", "[excited] Yes! [laughter] That last play was unreal."),
+    ("read me the weather", "[calm] It's sixty-eight and clear right now, with a light breeze later this afternoon."),
+    ("I'm so done with today", "[sigh] Long one, huh. [calm] Let's wrap up — I'll handle the rest."),
+    ("sing me happy birthday", "[singing] Happy birthday to you, happy birthday to you. [happy] Make a wish!"),
+]
+
+
+def _build_voice_emotion_rows() -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for user, reply in _VOICE_SEEDS:
+        rows.append(
+            _row(
+                messages=[
+                    {"role": "system", "content": _VOICE_SYSTEM},
+                    {"role": "user", "content": user},
+                    {"role": "assistant", "content": reply},
+                ],
+                task="voice_emotion",
+                provenance="synthetic:voice-emotion-tags",
+                tags=["voice_emotion"],
+            )
+        )
+    LOG.info("built %d voice-emotion rows", len(rows))
+    return rows
+
+
+def _cerebras_voice_emotion(client, n_batches: int, per_batch: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    sys_prompt = (
+        "You generate supervised fine-tuning data for an on-device assistant "
+        "named Eliza speaking through a voice interface. Output JSONL: one JSON "
+        "object per line, no prose, no code fences. Each line: {\"user\": "
+        "\"<a realistic single user utterance>\", \"reply\": \"<Eliza's spoken "
+        "reply WITH inline expressive markup>\"}. Allowed inline tags: [happy] "
+        "[sad] [angry] [nervous] [calm] [excited] [whisper] [singing] and the "
+        "non-verbals [laughter] [sigh]. A tag applies from where it appears "
+        "until the next tag or end of phrase. Natural, concise spoken replies; "
+        "only tag where the emotion is genuine; vary the emotions. Never "
+        "include real names, emails, or phone numbers — use placeholders."
+    )
+    for b in range(n_batches):
+        try:
+            objs = client.chat_json_lines(
+                [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": f"Generate {per_batch} JSONL lines. Batch {b + 1}."},
+                ],
+                temperature=0.9,
+                max_tokens=4096,
+            )
+        except Exception as exc:  # noqa: BLE001 - augmentation is best-effort
+            LOG.warning("cerebras voice-emotion batch %d failed: %s", b + 1, exc)
+            continue
+        for o in objs:
+            user = o.get("user")
+            reply = o.get("reply")
+            if not isinstance(user, str) or not isinstance(reply, str):
+                continue
+            if not user.strip() or not reply.strip():
+                continue
+            tags_found = re.findall(r"\[([a-z]+)\]", reply)
+            if not tags_found or any(t not in _EXPRESSIVE_TAGS for t in tags_found):
+                continue
+            rows.append(
+                _row(
+                    messages=[
+                        {"role": "system", "content": _VOICE_SYSTEM},
+                        {"role": "user", "content": user.strip()},
+                        {"role": "assistant", "content": reply.strip()},
+                    ],
+                    task="voice_emotion",
+                    provenance="cerebras:voice-emotion-tags",
+                    tags=["voice_emotion", "synthetic"],
+                )
+            )
+        LOG.info("cerebras voice-emotion batch %d → %d rows (running %d)", b + 1, len(objs), len(rows))
+    return rows
+
+
+# ---------------------------------------------------------------------------
 # Row construction + validation
 # ---------------------------------------------------------------------------
 def _row(*, messages: list[dict[str, str]], task: str, provenance: str, tags: list[str]) -> dict[str, Any]:
@@ -500,6 +811,10 @@ def main() -> int:
     ap.add_argument("--action-per-batch", type=int, default=20)
     ap.add_argument("--assistant-batches", type=int, default=6)
     ap.add_argument("--assistant-per-batch", type=int, default=15)
+    ap.add_argument("--structured-batches", type=int, default=8)
+    ap.add_argument("--structured-per-batch", type=int, default=20)
+    ap.add_argument("--voice-batches", type=int, default=6)
+    ap.add_argument("--voice-per-batch", type=int, default=20)
     args = ap.parse_args()
 
     random.seed(args.seed)
@@ -509,8 +824,13 @@ def main() -> int:
     rows: list[dict[str, Any]] = []
     rows += _convert_action_cases()
     rows += _convert_personality()
+    # Stage-1 envelope + voice-emotion seed rows are deterministic (no Cerebras
+    # needed) — they ground the structured_decode / voice_emotion buckets even
+    # in a --no-augment build.
+    rows += _build_structured_decode_rows()
+    rows += _build_voice_emotion_rows()
     converted_n = len(rows)
-    LOG.info("converted %d rows from in-repo benchmark sources", converted_n)
+    LOG.info("converted %d rows from in-repo benchmark sources + seed tasks", converted_n)
 
     augmented_n = 0
     if not args.no_augment:
@@ -524,6 +844,8 @@ def main() -> int:
         if client is not None:
             aug = _cerebras_action_variety(client, args.action_batches, args.action_per_batch)
             aug += _cerebras_assistant_and_refusals(client, args.assistant_batches, args.assistant_per_batch)
+            aug += _cerebras_structured_decode(client, args.structured_batches, args.structured_per_batch)
+            aug += _cerebras_voice_emotion(client, args.voice_batches, args.voice_per_batch)
             augmented_n = len(aug)
             rows += aug
 
@@ -598,9 +920,11 @@ def main() -> int:
         "privacy_filter": privacy_stats,
         "benchmark_alignment": {
             "eliza1_eval_suite_text": "general assistant + factual turns mirror the held-out text-eval corpus topics",
-            "format_ok_gate": "action_selection rows teach 'ACTION: NAME {params}' structured output",
+            "format_ok_gate": "action_selection rows teach 'ACTION: NAME {params}' + structured_decode rows teach the W3 flat JSON envelope (shouldRespond/thought/replyText/contexts/.../requiresTool/extract) that buildResponseGrammar constrains",
             "personality_bench": "PASS-graded shut_up/hold_style/note_trait_unrelated/escalation/scope trajectories",
             "action_selection_benchmark": "1:1 with action-selection-cases.ts case ids",
+            "structured_decode": "Stage-1 response envelope rows — JSON (not TOON), key order matches packages/core/src/runtime/response-grammar.ts STAGE1_ENVELOPE_KEYS; direct + non-direct paths",
+            "voice_emotion": "spoken replies with omnivoice-singing inline tags ([happy]/[sad]/[angry]/[nervous]/[calm]/[excited]/[whisper]/[singing] + non-verbals [laughter]/[sigh]) in replyText",
         },
         "sources": {
             "action-selection-cases.ts": str(ACTION_CASES_TS.relative_to(REPO_ROOT)),

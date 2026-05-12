@@ -914,6 +914,14 @@ def _build_messages_record(
     if extra_metadata:
         md.update(extra_metadata)
 
+    # The flat ElizaRecord currentMessage carries one of {user, assistant}.
+    # When the supervised assistant turn is replying to a tool result,
+    # `_split_per_turn` hands us a `tool`-role `current`; surface that result
+    # as a user-side turn (which is exactly how format_for_training renders
+    # currentMessage anyway) so the row matches the runtime message model.
+    if current.get("role") not in ("user", "assistant"):
+        current = {**current, "role": "user", "speaker": "user"}
+
     seed = room_seed or current["content"][:120]
     return build(
         roomName=stable_id(slug, seed),

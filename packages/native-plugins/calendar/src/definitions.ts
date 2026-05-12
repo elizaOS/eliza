@@ -83,7 +83,11 @@ export interface AppleCalendarEventInput {
   endAt?: string;
   timeZone?: string;
   isAllDay?: boolean;
-  attendees?: Array<{ email: string; displayName?: string; optional?: boolean }>;
+  attendees?: Array<{
+    email: string;
+    displayName?: string;
+    optional?: boolean;
+  }>;
 }
 
 export interface AppleCalendarUpdateEventInput extends AppleCalendarEventInput {
@@ -101,7 +105,9 @@ export interface AppleCalendarPlugin {
   listEvents(
     options: AppleCalendarListEventsOptions,
   ): Promise<AppleCalendarEventsResult>;
-  createEvent(input: AppleCalendarEventInput): Promise<AppleCalendarEventResult>;
+  createEvent(
+    input: AppleCalendarEventInput,
+  ): Promise<AppleCalendarEventResult>;
   updateEvent(
     input: AppleCalendarUpdateEventInput,
   ): Promise<AppleCalendarEventResult>;

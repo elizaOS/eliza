@@ -19,12 +19,12 @@ import twitchPlugin, {
   TwitchEventTypes,
   type TwitchMessage,
   type TwitchMessageSendOptions,
-  type TwitchSettings,
   TwitchNotConnectedError,
   TwitchPluginError,
   type TwitchSendResult,
   TwitchService,
   TwitchServiceNotInitializedError,
+  type TwitchSettings,
   type TwitchUserInfo,
 } from "../src/index.ts";
 import { TwitchWorkflowCredentialProvider } from "../src/workflow-credential-provider.ts";
@@ -73,7 +73,7 @@ function makeMockRuntime(overrides: MockRuntimeOverrides = {}): MockRuntime {
   } as MockRuntime;
 }
 
-function makeMemory(
+function _makeMemory(
   source: string = "twitch",
   text: string = "hello",
 ): Partial<Memory> {
@@ -84,7 +84,7 @@ function makeMemory(
   };
 }
 
-function makeState(extra: Record<string, unknown> = {}): Partial<State> {
+function _makeState(extra: Record<string, unknown> = {}): Partial<State> {
   return {
     agentName: "TestBot",
     recentMessages: "",
@@ -119,7 +119,7 @@ function makeTwitchServiceHarness(
   ) as TwitchService & TwitchServiceHarnessFields;
 }
 
-function makeMockTwitchService(overrides: Record<string, unknown> = {}) {
+function _makeMockTwitchService(overrides: Record<string, unknown> = {}) {
   return {
     isConnected: () => overrides.connected ?? true,
     getBotUsername: () => overrides.botUsername ?? "testbot",
@@ -449,7 +449,7 @@ describe("Twitch message connector accounts", () => {
     );
 
     const registration = runtime.registerMessageConnector.mock.calls[0][0];
-    await registration.sendHandler!(
+    await registration.sendHandler?.(
       runtime,
       {
         source: "twitch",

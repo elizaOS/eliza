@@ -256,7 +256,9 @@ async function defaultDispatcher(
 
       const service = getOptimizedPromptService(input.runtime);
       if (!service) {
-        notes.push("OptimizedPromptService unavailable; artifact not persisted");
+        notes.push(
+          "OptimizedPromptService unavailable; artifact not persisted",
+        );
         return { invoked: true, notes };
       }
 
@@ -272,7 +274,6 @@ async function defaultDispatcher(
     }
   }
 }
-
 
 type UseModelLike = (input: {
   prompt: string;

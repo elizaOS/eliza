@@ -162,6 +162,11 @@ def _build_ext_metadata(
             "use_qjl": polar_sidecar.get("recipe", {}).get("use_qjl", True),  # type: ignore[union-attr]
             "n_layers_quantized": polar_sidecar.get("n_layers_quantized"),
             "average_block_mse": polar_sidecar.get("average_block_mse"),
+            # AGENTS.md §3: record the per-block tolerance so a future cross-check
+            # (recipe ↔ kernel reference) has a number to assert against. The
+            # measured average block MSE from the recipe run is that tolerance
+            # bound; null when the recipe sidecar didn't carry it.
+            "tolerance_block_mse": polar_sidecar.get("average_block_mse"),
         }
     if qjl_sidecar is not None:
         out["qjl"] = {

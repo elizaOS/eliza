@@ -22,6 +22,11 @@
  *     bridges a `VadEventSource` onto the tracer without touching `vad.ts`.
  *
  * Hook points (where each checkpoint is meant to be recorded):
+ *   - `peer-utterance-end`       — (DUET ONLY) the producing agent's
+ *                                   scheduler drained its last PCM chunk into
+ *                                   the cross ring — the headline `t0` for a
+ *                                   two-agents-talking run (`voice-duet.mjs`).
+ *                                   Not recorded in the single-agent path.
  *   - `vad-trigger`              — `VadDetector` energy-rise edge / the
  *                                   turn controller's wake instant.
  *   - `vad-speech-start`         — `VadDetector` Silero speech-start.
@@ -33,11 +38,20 @@
  *                                   `onTextChunk` (W4).
  *   - `llm-first-replytext-char` — `StructuredFieldStreamExtractor`'s
  *                                   `onFieldStart("replyText")` (W3).
+ *   - `replyText-first-emotion-tag` — the field extractor / `parseExpressiveTags`
+ *                                   on the first inline expressive tag (`[happy]`
+ *                                   …) in `replyText` — emotion-markup overhead,
+ *                                   measured the way `envelopeToReplyTextMs`
+ *                                   measures envelope overhead.
  *   - `phrase-1-to-tts`          — the scheduler/chunker (W9) on the first
  *                                   phrase handed to the TTS backend.
  *   - `tts-first-audio-chunk`    — the TTS backend's first PCM chunk (W7).
  *   - `audio-first-played`       — the audio sink on the first written
- *                                   sample (W9/W13).
+ *                                   sample (W9/W13) — single-agent path.
+ *   - `audio-first-into-peer-ring` — (DUET ONLY) the responding agent's first
+ *                                   TTS PCM chunk landed in the peer's ring
+ *                                   (the duet replacement for
+ *                                   `audio-first-played` — no speakers).
  *
  * Logger only, `[LatencyTracer]` prefix (AGENTS.md §9).
  */
@@ -56,6 +70,7 @@ import type { VadEvent, VadEventSource } from "./voice/types";
  * recorded as-is and flagged; we never reorder or clamp.
  */
 export const VOICE_CHECKPOINTS = [
+  "peer-utterance-end",
   "vad-trigger",
   "vad-speech-start",
   "prewarm-fired",
@@ -63,9 +78,11 @@ export const VOICE_CHECKPOINTS = [
   "asr-final",
   "llm-first-token",
   "llm-first-replytext-char",
+  "replyText-first-emotion-tag",
   "phrase-1-to-tts",
   "tts-first-audio-chunk",
   "audio-first-played",
+  "audio-first-into-peer-ring",
 ] as const;
 
 export type VoiceCheckpoint = (typeof VOICE_CHECKPOINTS)[number];
@@ -75,6 +92,26 @@ const CHECKPOINT_ORDER: Readonly<Record<VoiceCheckpoint, number>> =
     VoiceCheckpoint,
     number
   >;
+
+/**
+ * Checkpoints that only appear in specific run shapes — `peer-utterance-end`
+ * and `audio-first-into-peer-ring` are recorded only by the two-agents duet
+ * harness; `replyText-first-emotion-tag` only when the model emits an inline
+ * expressive tag. Their absence does NOT make a trace `incomplete` (a
+ * single-agent voice turn is "complete" without them); they are still listed
+ * in `missing` so the duet harness can see which ones it didn't get.
+ */
+const OPTIONAL_CHECKPOINTS: ReadonlySet<VoiceCheckpoint> = new Set([
+  "peer-utterance-end",
+  "replyText-first-emotion-tag",
+  "audio-first-into-peer-ring",
+]);
+
+/** The single-agent "core" checkpoint set — every checkpoint that is NOT
+ *  optional. A trace is `complete` iff every core checkpoint was recorded. */
+export const CORE_VOICE_CHECKPOINTS = VOICE_CHECKPOINTS.filter(
+  (c) => !OPTIONAL_CHECKPOINTS.has(c),
+);
 
 // ---------------------------------------------------------------------------
 // Derived metrics
@@ -108,6 +145,26 @@ export interface LatencyDerived {
   ttsFirstChunkMs: number | null;
   /** tts-first-audio-chunk → audio-first-played (sink/playback lag). */
   audioSinkLatencyMs: number | null;
+  // ── Duet (cross-agent) spans — `null` outside the duet harness. ──────────
+  /**
+   * peer-utterance-end → llm-first-token — **THE headline number** for the
+   * two-agents-talking benchmark: how long after the peer stopped speaking
+   * the responding agent emits its first token (TTFT-from-last-utterance).
+   */
+  ttftFromUtteranceEndMs: number | null;
+  /** peer-utterance-end → llm-first-replytext-char. */
+  replyTextFirstCharFromUtteranceEndMs: number | null;
+  /** peer-utterance-end → tts-first-audio-chunk. */
+  firstTtsPcmFromUtteranceEndMs: number | null;
+  /**
+   * peer-utterance-end → audio-first-into-peer-ring — the **duet round-trip**:
+   * peer stops speaking → responding agent's first audio is back in the
+   * peer's ear (the `duet_round_trip_ms` gate reads `.p50` of this).
+   */
+  firstAudioIntoPeerRingFromUtteranceEndMs: number | null;
+  /** llm-first-token → replyText-first-emotion-tag (emotion-markup overhead);
+   *  `null` when the model emitted no inline expressive tag. */
+  emotionTagOverheadMs: number | null;
 }
 
 /** The derived-metric keys, in display order. */
@@ -123,6 +180,11 @@ export const LATENCY_DERIVED_KEYS = [
   "replyTextToPhrase1Ms",
   "ttsFirstChunkMs",
   "audioSinkLatencyMs",
+  "ttftFromUtteranceEndMs",
+  "replyTextFirstCharFromUtteranceEndMs",
+  "firstTtsPcmFromUtteranceEndMs",
+  "firstAudioIntoPeerRingFromUtteranceEndMs",
+  "emotionTagOverheadMs",
 ] as const satisfies ReadonlyArray<keyof LatencyDerived>;
 
 export type LatencyDerivedKey = (typeof LATENCY_DERIVED_KEYS)[number];
@@ -141,6 +203,20 @@ const DERIVED_SPANS: Readonly<
   replyTextToPhrase1Ms: ["llm-first-replytext-char", "phrase-1-to-tts"],
   ttsFirstChunkMs: ["phrase-1-to-tts", "tts-first-audio-chunk"],
   audioSinkLatencyMs: ["tts-first-audio-chunk", "audio-first-played"],
+  ttftFromUtteranceEndMs: ["peer-utterance-end", "llm-first-token"],
+  replyTextFirstCharFromUtteranceEndMs: [
+    "peer-utterance-end",
+    "llm-first-replytext-char",
+  ],
+  firstTtsPcmFromUtteranceEndMs: [
+    "peer-utterance-end",
+    "tts-first-audio-chunk",
+  ],
+  firstAudioIntoPeerRingFromUtteranceEndMs: [
+    "peer-utterance-end",
+    "audio-first-into-peer-ring",
+  ],
+  emotionTagOverheadMs: ["llm-first-token", "replyText-first-emotion-tag"],
 };
 
 // ---------------------------------------------------------------------------
@@ -488,6 +564,10 @@ export class EndToEndLatencyTracer {
     }
     checkpoints.sort((a, b) => a.atEpochMs - b.atEpochMs);
     const missing = VOICE_CHECKPOINTS.filter((c) => !turn.marks.has(c));
+    // "Complete" = every *core* (non-optional) checkpoint recorded — a
+    // single-agent voice turn is complete without the duet-only / emotion-tag
+    // checkpoints.
+    const coreMissing = CORE_VOICE_CHECKPOINTS.some((c) => !turn.marks.has(c));
     return {
       turnId: turn.turnId,
       roomId: turn.roomId,
@@ -496,7 +576,7 @@ export class EndToEndLatencyTracer {
       checkpoints,
       derived: this.computeDerived(turn.marks),
       missing,
-      complete: missing.length === 0,
+      complete: !coreMissing,
       anomalies: [...turn.anomalies],
     };
   }
@@ -603,4 +683,163 @@ export function buildVoiceLatencyDevPayload(
     traces: tracer.recentTraces(limit),
     histograms: tracer.histogramSummaries(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// VoiceRunMetrics — non-latency accumulator over a long voice run
+// ---------------------------------------------------------------------------
+
+/** A per-turn observation fed to `VoiceRunMetrics.recordTurn`. Every field is
+ *  optional — a turn that couldn't measure a quantity records it as missing,
+ *  never as a fabricated zero (AGENTS.md §3 / §7). */
+export interface VoiceTurnMetrics {
+  /** DFlash drafter token-acceptance rate (n_drafted_accepted / n_drafted)
+   *  for this turn's generation, from the llama-server `/metrics` deltas. */
+  dflashAcceptRate?: number | null;
+  /** Tokens accepted from the drafter this turn (for an aggregate accept-rate
+   *  that weights by token count, not turn count). */
+  dflashAccepted?: number | null;
+  /** Tokens drafted this turn. */
+  dflashDrafted?: number | null;
+  /** Structured-decode token-savings % for this turn — tokens the grammar
+   *  force-filled ÷ tokens that would otherwise have been generated, ×100
+   *  (WS-4's `guided_decode_token_bench.mjs` counter; ≈28% aggregate forced
+   *  on the synthetic action set). */
+  structuredDecodeTokenSavingsPct?: number | null;
+  /** Decode throughput (tokens / second) for this turn's generation. */
+  tokensPerSecond?: number | null;
+  /** Server resident-set high-water mark in MB at the end of this turn
+   *  (`VmHWM` from `/proc/<pid>/status`). */
+  serverRssMb?: number | null;
+}
+
+export interface VoiceRunMetricsSummary {
+  turns: number;
+  /** DFlash accept-rate, token-weighted across the run (Σaccepted / Σdrafted);
+   *  `null` when nothing was drafted / no drafter present. */
+  dflashAcceptRate: number | null;
+  dflashAccepted: number;
+  dflashDrafted: number;
+  /** Per-turn accept-rate histogram (p50/p90/p99 etc. — bounded sample). */
+  dflashAcceptRateHistogram: HistogramSummary;
+  /** Mean / histogram of the structured-decode token-savings %. */
+  structuredDecodeTokenSavingsPct: HistogramSummary;
+  /** Mean / histogram of decode tok/s. */
+  tokensPerSecond: HistogramSummary;
+  /** Server RSS over the run: first / last / max in MB + the `leakSuspected`
+   *  flag (true when RSS is monotone non-decreasing across ≥4 turns and grew
+   *  by more than `leakGrowthMbThreshold`). */
+  rss: {
+    firstMb: number | null;
+    lastMb: number | null;
+    maxMb: number | null;
+    samples: number;
+    leakSuspected: boolean;
+    growthMb: number | null;
+  };
+}
+
+const VOICE_RUN_HISTOGRAM_CAPACITY = 512;
+
+/**
+ * Accumulates the non-latency signals over a long voice run (the duet harness
+ * feeds it per-turn). Sibling to `EndToEndLatencyTracer` (which is per-turn
+ * spans only). The duet bench report (`voice-duet-bench-<model>.json`) writes
+ * `summary()` next to the latency histograms; `eliza1_gates_collect.mjs`
+ * ingests the gate-named fields.
+ */
+export class VoiceRunMetrics {
+  private turns = 0;
+  private dflashAccepted = 0;
+  private dflashDrafted = 0;
+  private readonly acceptRateHist = new BoundedHistogram(
+    VOICE_RUN_HISTOGRAM_CAPACITY,
+  );
+  private readonly savingsHist = new BoundedHistogram(
+    VOICE_RUN_HISTOGRAM_CAPACITY,
+  );
+  private readonly tokSecHist = new BoundedHistogram(
+    VOICE_RUN_HISTOGRAM_CAPACITY,
+  );
+  private readonly rssSamples: number[] = [];
+
+  constructor(private readonly opts: { leakGrowthMbThreshold?: number } = {}) {}
+
+  recordTurn(m: VoiceTurnMetrics): void {
+    this.turns += 1;
+    if (
+      typeof m.dflashAccepted === "number" &&
+      Number.isFinite(m.dflashAccepted)
+    )
+      this.dflashAccepted += m.dflashAccepted;
+    if (typeof m.dflashDrafted === "number" && Number.isFinite(m.dflashDrafted))
+      this.dflashDrafted += m.dflashDrafted;
+    if (
+      typeof m.dflashAcceptRate === "number" &&
+      Number.isFinite(m.dflashAcceptRate)
+    )
+      this.acceptRateHist.add(m.dflashAcceptRate);
+    if (
+      typeof m.structuredDecodeTokenSavingsPct === "number" &&
+      Number.isFinite(m.structuredDecodeTokenSavingsPct)
+    )
+      this.savingsHist.add(m.structuredDecodeTokenSavingsPct);
+    if (
+      typeof m.tokensPerSecond === "number" &&
+      Number.isFinite(m.tokensPerSecond)
+    )
+      this.tokSecHist.add(m.tokensPerSecond);
+    if (typeof m.serverRssMb === "number" && Number.isFinite(m.serverRssMb))
+      this.rssSamples.push(m.serverRssMb);
+  }
+
+  summary(): VoiceRunMetricsSummary {
+    const rssN = this.rssSamples.length;
+    const firstMb = rssN > 0 ? (this.rssSamples[0] as number) : null;
+    const lastMb = rssN > 0 ? (this.rssSamples[rssN - 1] as number) : null;
+    const maxMb = rssN > 0 ? Math.max(...this.rssSamples) : null;
+    // Leak heuristic: ≥4 samples, monotone non-decreasing, and grew by more
+    // than the threshold (default 256 MB). Not a proof — a flag.
+    const threshold = this.opts.leakGrowthMbThreshold ?? 256;
+    let monotone = rssN >= 4;
+    for (let i = 1; i < rssN; i++) {
+      if ((this.rssSamples[i] as number) < (this.rssSamples[i - 1] as number)) {
+        monotone = false;
+        break;
+      }
+    }
+    const growthMb =
+      firstMb !== null && lastMb !== null ? lastMb - firstMb : null;
+    const leakSuspected = monotone && growthMb !== null && growthMb > threshold;
+    return {
+      turns: this.turns,
+      dflashAcceptRate:
+        this.dflashDrafted > 0
+          ? this.dflashAccepted / this.dflashDrafted
+          : null,
+      dflashAccepted: this.dflashAccepted,
+      dflashDrafted: this.dflashDrafted,
+      dflashAcceptRateHistogram: this.acceptRateHist.summary(),
+      structuredDecodeTokenSavingsPct: this.savingsHist.summary(),
+      tokensPerSecond: this.tokSecHist.summary(),
+      rss: {
+        firstMb,
+        lastMb,
+        maxMb,
+        samples: rssN,
+        leakSuspected,
+        growthMb,
+      },
+    };
+  }
+
+  reset(): void {
+    this.turns = 0;
+    this.dflashAccepted = 0;
+    this.dflashDrafted = 0;
+    this.rssSamples.length = 0;
+    // Histograms are not reset-able in place; the caller creates a fresh
+    // VoiceRunMetrics for a new run. (Kept simple — a long run lives one
+    // instance.)
+  }
 }

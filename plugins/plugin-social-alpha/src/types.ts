@@ -2,8 +2,8 @@ import type {
 	Content,
 	UUID as CoreUUID,
 	IAgentRuntime,
-	MetadataValue,
 	Memory,
+	MetadataValue,
 } from "@elizaos/core";
 
 // Re-export UUID type for use in other files

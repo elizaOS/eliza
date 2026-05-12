@@ -16,24 +16,8 @@ import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
 } from "../../contracts/index.js";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../../lifeops/defaults.js";
-import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
-import {
-  addDaysToLocalDate,
-  buildUtcDateFromLocalParts,
-  getWeekdayForLocalDate,
-  getZonedDateParts,
-} from "../../lifeops/time.js";
-import {
-  type CreateEventTravelIntent,
-  computeCreateEventTravelBuffer,
-  resolveCreateEventTravelIntent,
-} from "../../travel-time/calendar-create.js";
-import { TravelTimeUnavailableError } from "../../travel-time/service.js";
-import {
-  hasLifeOpsAccess,
-  INTERNAL_URL,
-} from "../../lifeops/access.js";
 import {
   detailArray,
   detailBoolean,
@@ -48,6 +32,19 @@ import {
   runLifeOpsTextModel,
   toActionData,
 } from "../../lifeops/google/format-helpers.js";
+import { LifeOpsService, LifeOpsServiceError } from "../../lifeops/service.js";
+import {
+  addDaysToLocalDate,
+  buildUtcDateFromLocalParts,
+  getWeekdayForLocalDate,
+  getZonedDateParts,
+} from "../../lifeops/time.js";
+import {
+  type CreateEventTravelIntent,
+  computeCreateEventTravelBuffer,
+  resolveCreateEventTravelIntent,
+} from "../../travel-time/calendar-create.js";
+import { TravelTimeUnavailableError } from "../../travel-time/service.js";
 import { recentConversationTexts as collectRecentConversationTexts } from "./recent-context.js";
 
 type CalendarSubaction =
@@ -831,7 +828,8 @@ function buildAppleCalendarPermissionRequestText(
     "```json",
     JSON.stringify({
       action: "permission_request",
-      reasoning: "native Apple Calendar access is required for this LifeOps calendar action",
+      reasoning:
+        "native Apple Calendar access is required for this LifeOps calendar action",
       permission: "calendar",
       reason,
       feature,

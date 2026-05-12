@@ -244,11 +244,11 @@ PIPELINE="${PIPELINE:-sft}"
 case "$PIPELINE" in
   sft|dpo)
     case "$REGISTRY_KEY" in
-      qwen3.5-2b|qwen3.5-9b)
+      qwen3.5-2b|qwen3.5-4b|qwen3.5-9b)
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
-      qwen3.6-27b)
+      qwen3.5-27b|qwen3.6-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -264,11 +264,11 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="h200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
-      qwen3.5-9b)
+      qwen3.5-4b|qwen3.5-9b)
         DEFAULT_GPU_TARGET="h200-4x"
         DEFAULT_FSDP_WORLD_SIZE=4
         ;;
-      qwen3.6-27b)
+      qwen3.5-27b|qwen3.6-27b)
         DEFAULT_GPU_TARGET="h200-8x"
         DEFAULT_FSDP_WORLD_SIZE=8
         ;;
@@ -295,6 +295,17 @@ case "$VAST_GPU_TARGET" in
   *-8x) FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-8}" ;;
   *)    FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_FSDP_WORLD_SIZE}" ;;
 esac
+
+# The transformer decoder-layer class FSDP's TRANSFORMER_BASED_WRAP policy
+# wraps. Qwen3-0.6B/1.7B/4B are plain Qwen3 (`Qwen3DecoderLayer`); the larger
+# Qwen3.5/Qwen3.6 tiers (qwen3.5-2b/9b, qwen3.6-27b) use `Qwen3_5DecoderLayer`.
+# Wrapping the wrong class name silently degrades FSDP to wrapping the whole
+# model in one unit (huge all-gather peaks → OOM).
+case "$REGISTRY_KEY" in
+  qwen3-0.6b|qwen3-1.7b|qwen3-4b) FSDP_WRAP_CLS="Qwen3DecoderLayer" ;;
+  *)                              FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
+esac
+FSDP_WRAP_CLS="${FSDP_WRAP_CLS_OVERRIDE:-$FSDP_WRAP_CLS}"
 
 case "$PIPELINE" in
   # Preserve the legacy SFT run-name suffix so existing checkpoint dirs
@@ -326,8 +337,8 @@ BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 # 100/bucket for 27B unless caller overrides.
 if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
   case "$REGISTRY_KEY" in
-    qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
-    *)           BENCH_MAX_PER_BUCKET=200 ;;
+    qwen3.5-27b|qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
+    *)                       BENCH_MAX_PER_BUCKET=200 ;;
   esac
 fi
 
@@ -603,10 +614,26 @@ sync_tree() {
     --include='train.jsonl' \
     --include='val.jsonl' \
     --include='test.jsonl' \
+    --include='manifest.json' \
     --include='manifest_final.json' \
     --include='README.md' \
     --include='*/' \
     --exclude='*'
+  # When the run trains on the benchmark-aligned combined corpus
+  # (TRAIN_FILE=data/final-eliza1-fullcorpus/train.jsonl) or the
+  # 0.6b SFT mix-in (datasets/eliza1-sft-0_6b/), ship those too. The
+  # generic --exclude 'data/raw/' above keeps the slim tree small;
+  # these two trees are the canonical fine-tune corpora and must go.
+  if [ "${SYNC_FULLCORPUS_SOURCES:-0}" = "1" ] || [ -d "$ROOT/data/final-eliza1-fullcorpus" ]; then
+    if [ -d "$ROOT/data/final-eliza1-fullcorpus" ]; then
+      echo "[train_vast] [sync] sending data/final-eliza1-fullcorpus/ (combined benchmark-aligned + broad-mix corpus)"
+      rsync_remote to "$ROOT/data/final-eliza1-fullcorpus/" "$REMOTE_TRAIN_DIR/data/final-eliza1-fullcorpus/"
+    fi
+    if [ -d "$ROOT/datasets/eliza1-sft-0_6b" ]; then
+      echo "[train_vast] [sync] sending datasets/eliza1-sft-0_6b/ (the 0.6b SFT corpus)"
+      rsync_remote to "$ROOT/datasets/eliza1-sft-0_6b/" "$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/"
+    fi
+  fi
 }
 
 run_remote() {
@@ -631,7 +658,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
+  if { [ "$REGISTRY_KEY" = "qwen3.5-27b" ] || [ "$REGISTRY_KEY" = "qwen3.6-27b" ]; } \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
@@ -675,7 +702,7 @@ run_remote() {
       --fsdp_sync_module_states true \\
       --fsdp_use_orig_params true \\
       --fsdp_auto_wrap_policy TRANSFORMER_BASED_WRAP \\
-      --fsdp_transformer_layer_cls_to_wrap Qwen3_5DecoderLayer \\
+      --fsdp_transformer_layer_cls_to_wrap $FSDP_WRAP_CLS \\
       --fsdp_backward_prefetch BACKWARD_PRE \\
       scripts/train_local.py \\
         --registry-key $REGISTRY_KEY \\
@@ -924,9 +951,9 @@ provision_and_train() {
         # against the same auto-pick table as the runtime default block.
         local _sft_default
         case "$REGISTRY_KEY" in
-          qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.6-27b)           _sft_default="b200-2x" ;;
-          *)                     _sft_default="blackwell6000-2x" ;;
+          qwen3.5-2b|qwen3.5-4b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
+          qwen3.5-27b|qwen3.6-27b)          _sft_default="b200-2x" ;;
+          *)                                _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
         log "       --registry-key $REGISTRY_KEY \\"

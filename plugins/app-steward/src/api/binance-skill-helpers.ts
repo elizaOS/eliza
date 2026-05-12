@@ -40,8 +40,7 @@ type RuntimeActionLike = Pick<
   "name" | "similes" | "validate" | "handler"
 >;
 
-let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null =
-  null;
+let ownerBlockFallbackPromise: Promise<RuntimeActionLike | null> | null = null;
 
 async function resolveBuiltInFallbackAction(
   actionName: string,
@@ -51,9 +50,7 @@ async function resolveBuiltInFallbackAction(
   }
 
   if (!ownerBlockFallbackPromise) {
-    ownerBlockFallbackPromise = import(
-      "@elizaos/app-lifeops"
-    )
+    ownerBlockFallbackPromise = import("@elizaos/app-lifeops")
       .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);
   }

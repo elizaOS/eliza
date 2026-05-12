@@ -4,12 +4,19 @@
  * between siblings — each registry stands alone.
  */
 
+// Anchor / event-kind / family registries.
 export {
-  __resetBlockerRegistryForTests,
-  createBlockerRegistry,
-  getBlockerRegistry,
-  registerBlockerRegistry,
-} from "./blocker-registry.js";
+  __resetAnchorRegistryForTests,
+  type AnchorContext,
+  type AnchorContribution,
+  type AnchorRegistry,
+  APP_LIFEOPS_ANCHORS,
+  createAnchorRegistry,
+  getAnchorRegistry,
+  registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
+} from "./anchor-registry.js";
+export { appBlockerContribution } from "./app-blocker-contribution.js";
 export type {
   BlockerAvailability,
   BlockerContribution,
@@ -17,25 +24,12 @@ export type {
   BlockerRegistry,
   BlockerStatusSummary,
 } from "./blocker-registry.js";
-
-export { appBlockerContribution } from "./app-blocker-contribution.js";
 export {
-  websiteBlockerContribution,
-  type WebsiteBlockerStartResult,
-} from "./website-blocker-contribution.js";
-
-// Anchor / event-kind / family registries.
-export {
-  __resetAnchorRegistryForTests,
-  APP_LIFEOPS_ANCHORS,
-  type AnchorContext,
-  type AnchorContribution,
-  type AnchorRegistry,
-  createAnchorRegistry,
-  getAnchorRegistry,
-  registerAnchorRegistry,
-  registerAppLifeOpsAnchors,
-} from "./anchor-registry.js";
+  __resetBlockerRegistryForTests,
+  createBlockerRegistry,
+  getBlockerRegistry,
+  registerBlockerRegistry,
+} from "./blocker-registry.js";
 export {
   __resetEventKindRegistryForTests,
   APP_LIFEOPS_EVENT_KINDS,
@@ -58,6 +52,24 @@ export {
   registerFamilyRegistry,
 } from "./family-registry.js";
 export {
+  DEFAULT_FEATURE_FLAG_PACK,
+  LIFEOPS_BUILTIN_FEATURE_KEYS,
+  registerDefaultFeatureFlagPack,
+} from "./feature-flag-default-pack.js";
+export {
+  __resetFeatureFlagRegistryForTests,
+  createFeatureFlagRegistry,
+  type FeatureFlagContribution,
+  type FeatureFlagRegistry,
+  getFeatureFlagRegistry,
+  registerFeatureFlagRegistry,
+  UnknownFeatureFlagError,
+} from "./feature-flag-registry.js";
+export {
+  type WebsiteBlockerStartResult,
+  websiteBlockerContribution,
+} from "./website-blocker-contribution.js";
+export {
   APP_LIFEOPS_WORKFLOW_STEP_CONTRIBUTIONS,
   registerDefaultWorkflowStepPack,
 } from "./workflow-step-default-pack.js";
@@ -73,27 +85,13 @@ export {
   type WorkflowStepExecuteContext,
   type WorkflowStepRegistry,
 } from "./workflow-step-registry.js";
-export {
-  __resetFeatureFlagRegistryForTests,
-  createFeatureFlagRegistry,
-  type FeatureFlagContribution,
-  type FeatureFlagRegistry,
-  getFeatureFlagRegistry,
-  registerFeatureFlagRegistry,
-  UnknownFeatureFlagError,
-} from "./feature-flag-registry.js";
-export {
-  DEFAULT_FEATURE_FLAG_PACK,
-  LIFEOPS_BUILTIN_FEATURE_KEYS,
-  registerDefaultFeatureFlagPack,
-} from "./feature-flag-default-pack.js";
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { appBlockerContribution } from "./app-blocker-contribution.js";
 import {
+  type BlockerRegistry,
   createBlockerRegistry,
   registerBlockerRegistry,
-  type BlockerRegistry,
 } from "./blocker-registry.js";
 import { websiteBlockerContribution } from "./website-blocker-contribution.js";
 

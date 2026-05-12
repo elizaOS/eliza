@@ -12,12 +12,26 @@
     "maxSize": 1048576,
     "includes": [
       "**",
-      "!**/dist/**",
-      "!**/build/**",
-      "!**/.next/**",
-      "!**/node_modules/**",
+      "!**/dist",
+      "!**/build",
+      "!**/.next",
+      "!**/node_modules",
       "!**/public",
-      "!packages/inference/llama.cpp/**",
+      "!packages/inference/llama.cpp",
+      "!packages/inference/reports",
+      "!packages/inference/verify/bench_results",
+      "!packages/inference/verify/hardware-results",
+      "!packages/inference/verify/**/fixtures",
+      "!packages/agent/dist-mobile-ios",
+      "!packages/agent/dist-mobile-ios-jsc",
+      "!packages/training/datasets",
+      "!packages/training/reports",
+      "!packages/training/config/**/*.schema.json",
+      "!packages/training/scripts/publish/templates",
+      "!reports",
+      "!docs/audits",
+      "!docs/**/*.json",
+      "!plugins/app-lifeops/docs/audit",
       "!packages/elizaos/templates",
       "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
       "!packages/benchmarks/evm/metrics",
@@ -25,10 +39,10 @@
       "!packages/benchmarks/solana/solana-gym-env/metrics",
       "!packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
       "!packages/benchmarks/evm/skill_runner/evm_skill.ts",
-      "!packages/benchmarks/OSWorld/**",
-      "!packages/benchmarks/HyperliquidBench/**",
-      "!packages/benchmarks/loca-bench/gem/**",
-      "!packages/benchmarks/loca-bench/vis_traj/**",
+      "!packages/benchmarks/OSWorld",
+      "!packages/benchmarks/HyperliquidBench",
+      "!packages/benchmarks/loca-bench/gem",
+      "!packages/benchmarks/loca-bench/vis_traj",
       "!packages/benchmarks/**/*.html",
       "!packages/examples/app/electron/backend/renderer/assets",
       "!packages/app-core/src/styles"
@@ -68,7 +82,7 @@
       }
     },
     {
-      "includes": ["packages/ui/src/styles/styles.css"],
+      "includes": ["packages/ui/src/styles/styles.css", "packages/docs/style.css"],
       "linter": {
         "rules": {
           "complexity": {
@@ -85,7 +99,10 @@
         "packages/training/src/benchmark/BenchmarkRunner.ts",
         "packages/training/src/benchmark/MetricsVisualizer.ts",
         "packages/training/src/benchmark/ModelBenchmarkService.ts",
-        "packages/training/src/training/ModelUsageVerifier.ts"
+        "packages/training/src/training/ModelUsageVerifier.ts",
+        "packages/app-core/test/stubs/plugin-telegram-module.ts",
+        "packages/agent/scripts/mobile-stubs/onnxruntime-node.cjs",
+        "plugins/plugin-social-alpha/src/clients.ts"
       ],
       "linter": {
         "rules": {

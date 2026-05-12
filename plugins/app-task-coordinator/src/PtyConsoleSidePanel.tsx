@@ -1,6 +1,5 @@
+import { useApp, Z_OVERLAY } from "@elizaos/ui";
 import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
-import { useApp } from "@elizaos/ui";
-import { Z_OVERLAY } from "@elizaos/ui";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 
 export interface PtyConsoleSidePanelProps {

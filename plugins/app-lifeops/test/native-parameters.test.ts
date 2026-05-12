@@ -1,13 +1,13 @@
 import {
-  listSubactionsFromParameters,
   type HandlerOptions,
   type IAgentRuntime,
+  listSubactionsFromParameters,
   type Memory,
 } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { calendarAction } from "../src/actions/calendar.js";
-import { resolveRequestAction } from "../src/actions/resolve-request.js";
 import { resolveActionArgs } from "../src/actions/lib/resolve-action-args.js";
+import { resolveRequestAction } from "../src/actions/resolve-request.js";
 
 const mocks = vi.hoisted(() => ({
   hasOwnerAccess: vi.fn(),

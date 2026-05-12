@@ -14,9 +14,9 @@
 
 import crypto from "node:crypto";
 import type http from "node:http";
-import { logger } from "@elizaos/core";
 import { saveElizaConfig } from "@elizaos/agent";
 import { sendJson, sendJsonError } from "@elizaos/app-core";
+import { logger } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/shared";
 import type {
   VincentStartLoginResponse,

@@ -91,7 +91,10 @@ export function createGoogleConnectorContribution(
         const result = await service.sendGmailMessage(INTERNAL_URL, {
           mode: "local",
           side: meta.side ?? "owner",
-          to: payload.target.split(",").map((t) => t.trim()).filter(Boolean),
+          to: payload.target
+            .split(",")
+            .map((t) => t.trim())
+            .filter(Boolean),
           subject: meta.subject ?? "(no subject)",
           bodyText: payload.message,
           confirmSend: true,

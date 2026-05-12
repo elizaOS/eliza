@@ -26,12 +26,12 @@
  * Driver script: `plugins/app-lifeops/scripts/migrate-seed-routines.mjs`.
  */
 
+import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
+import type { ScheduledTaskSeed } from "../../default-packs/contract-stubs.js";
 import {
   HABIT_STARTER_KEYS,
   HABIT_STARTER_RECORDS,
 } from "../../default-packs/habit-starters.js";
-import type { ScheduledTaskSeed } from "../../default-packs/contract-stubs.js";
-import type { LifeOpsTaskDefinition } from "../../contracts/index.js";
 
 /**
  * The legacy seed-key prefix written by the now-deleted
@@ -151,7 +151,7 @@ export async function buildSeedRoutineMigrationDiff(args: {
 
   for (const definition of definitions) {
     const seedKey = readSeedKey(definition.metadata);
-    if (!seedKey || !seedKey.startsWith(`${LEGACY_SEED_KEY_PREFIX}:`)) {
+    if (!seedKey?.startsWith(`${LEGACY_SEED_KEY_PREFIX}:`)) {
       continue;
     }
     const habitKey = legacySeedKeyToHabitStarterKey(seedKey);

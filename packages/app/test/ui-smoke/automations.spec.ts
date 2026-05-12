@@ -277,9 +277,8 @@ function automationSummary(automations: AutomationItem[]) {
     coordinatorCount: automations.filter(
       (item) => item.type !== "workflow_service",
     ).length,
-    workflowCount: automations.filter(
-      (item) => item.type === "workflow",
-    ).length,
+    workflowCount: automations.filter((item) => item.type === "workflow")
+      .length,
     scheduledCount: automations.reduce(
       (count, item) => count + item.schedules.length,
       0,
@@ -667,14 +666,20 @@ test("automations overview empty state encourages creating tasks and workflows",
   await openAppPath(page, "/automations");
 
   await expect(page.getByTestId("automations-shell")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Automations" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Automations" }),
+  ).toBeVisible();
   await expect(page.getByText("0 tasks · 0 workflows")).toBeVisible();
   await expect(page.getByText("No automations yet.")).toBeVisible();
 
   await page.getByRole("button", { name: "New" }).click();
   await expect(page.getByText("What do you want to create?")).toBeVisible();
-  await expect(page.getByRole("button", { name: /Task \(simple prompt\)/ })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Workflow \(node graph\)/ })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Task \(simple prompt\)/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Workflow \(node graph\)/ }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: /Task \(simple prompt\)/ }).click();
   await expect(page.getByRole("heading", { name: "New task" })).toBeVisible();
@@ -698,11 +703,17 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await openAppPath(page, "/automations");
 
   await expect(page.getByText("1 task · 1 workflow")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Message triage" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Message pipeline" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Message triage" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Message pipeline" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Message pipeline" }).click();
-  await expect(page.getByRole("heading", { name: "Message pipeline" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Message pipeline" }),
+  ).toBeVisible();
   await expect(page.getByTestId("workflow-editor-json")).toHaveValue(
     /Message pipeline/,
   );
@@ -725,16 +736,17 @@ test("automations can list tasks, create a task, and inspect workflow JSON", asy
   await expect(page.getByText("Escalate inbound messages")).toBeVisible();
 });
 
-test("workflow editor generates a workflow from a prompt", async ({
-  page,
-}) => {
+test("workflow editor generates a workflow from a prompt", async ({ page }) => {
   const api = await installAutomationsApi(page, []);
 
   await openAppPath(page, "/automations");
 
   await page.getByRole("button", { name: "New" }).click();
   await page.getByRole("button", { name: /Workflow \(node graph\)/ }).click();
-  await page.getByRole("button", { name: "Generate from prompt" }).first().click();
+  await page
+    .getByRole("button", { name: "Generate from prompt" })
+    .first()
+    .click();
   const workflowPrompt = page.getByPlaceholder(
     "When a new starred email arrives in Gmail, post a summary in #ops on Slack.",
   );

@@ -16,20 +16,19 @@
 
 import type { AnchorConsolidationPolicy } from "./contract-stubs.js";
 
-export const DEFAULT_CONSOLIDATION_POLICIES: ReadonlyArray<
-  AnchorConsolidationPolicy
-> = [
-  {
-    anchorKey: "wake.confirmed",
-    mode: "merge",
-    sortBy: "priority_desc",
-    // No batch-size cap on Wave-1; merge any number of co-firing tasks.
-    // If users see overstuffed morning messages in practice, W3-A's review
-    // pass adds `maxBatchSize` here.
-  },
-  {
-    anchorKey: "bedtime.target",
-    mode: "sequential",
-    staggerMinutes: 5,
-  },
-];
+export const DEFAULT_CONSOLIDATION_POLICIES: ReadonlyArray<AnchorConsolidationPolicy> =
+  [
+    {
+      anchorKey: "wake.confirmed",
+      mode: "merge",
+      sortBy: "priority_desc",
+      // No batch-size cap on Wave-1; merge any number of co-firing tasks.
+      // If users see overstuffed morning messages in practice, W3-A's review
+      // pass adds `maxBatchSize` here.
+    },
+    {
+      anchorKey: "bedtime.target",
+      mode: "sequential",
+      staggerMinutes: 5,
+    },
+  ];

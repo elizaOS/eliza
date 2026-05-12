@@ -1,5 +1,22 @@
 import type { IAgentRuntime } from "@elizaos/core";
 import {
+  type CircadianScorerResult,
+  computeAwakeProbability,
+  computePersonalBaseline,
+  computeSleepRegularity,
+  type LifeOpsActivityWindow,
+  type LifeOpsSleepEpisode,
+  listHistoricalSleepEpisodes,
+  MIN_STABILITY_WINDOW_MS,
+  persistSleepEpisodes,
+  resolveLifeOpsDayBoundary,
+  resolveLifeOpsSleepCycle,
+  SLEEP_ONSET_WINDOW_MS,
+  type SleepRegularityEpisodeLike,
+  scoreCircadianRules,
+  WAKE_CONFIRM_WINDOW_MS,
+} from "@elizaos/plugin-health";
+import {
   LIFEOPS_CIRCADIAN_STATES,
   type LifeOpsActivitySignal,
   type LifeOpsCircadianState,
@@ -12,14 +29,6 @@ import {
 } from "@elizaos/shared";
 import { listActivityEvents } from "../activity-profile/activity-tracker-repo.js";
 import { isSystemInactivityApp } from "../activity-profile/system-inactivity-apps.js";
-import {
-  computeAwakeProbability,
-  type CircadianScorerResult,
-  MIN_STABILITY_WINDOW_MS,
-  SLEEP_ONSET_WINDOW_MS,
-  scoreCircadianRules,
-  WAKE_CONFIRM_WINDOW_MS,
-} from "@elizaos/plugin-health";
 import { probeContinuityDevices } from "./continuity-probe.js";
 import { probeIMessageOutboundActivity } from "./imessage-outbound-probe.js";
 import { resolveLifeOpsRelativeTime } from "./relative-time.js";
@@ -28,17 +37,6 @@ import type {
   LifeOpsRepository,
   LifeOpsScheduleInsightRecord,
 } from "./repository.js";
-import {
-  type LifeOpsActivityWindow,
-  type LifeOpsSleepEpisode,
-  resolveLifeOpsDayBoundary,
-  resolveLifeOpsSleepCycle,
-  listHistoricalSleepEpisodes,
-  persistSleepEpisodes,
-  computePersonalBaseline,
-  computeSleepRegularity,
-  type SleepRegularityEpisodeLike,
-} from "@elizaos/plugin-health";
 import { getZonedDateParts } from "./time.js";
 import { roundConfidence } from "./time-util.js";
 

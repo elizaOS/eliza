@@ -92,7 +92,6 @@ function parseJsonObject<T extends Record<string, unknown>>(
 const messageReceivedHandler = async ({
 	runtime,
 	message,
-	callback,
 	onComplete,
 }: MessageReceivedHandlerParams): Promise<void> => {
 	const {

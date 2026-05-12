@@ -4,10 +4,10 @@
 export {
   type DocumentAddedByRole,
   type DocumentAddedFrom,
+  type DocumentSearchMode,
   type DocumentsLoadFailReason,
   type DocumentsServiceLike,
   type DocumentsServiceResult,
-  type DocumentSearchMode,
   type DocumentVisibilityScope,
   getDocumentsService,
   getDocumentsServiceTimeoutMs,

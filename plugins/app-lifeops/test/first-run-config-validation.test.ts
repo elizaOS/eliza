@@ -7,7 +7,6 @@
  * fallback path produces an in_app channel + warning.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { buildDefaultsPack } from "../src/lifeops/first-run/defaults.ts";
 import {

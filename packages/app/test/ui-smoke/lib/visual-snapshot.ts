@@ -40,8 +40,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -95,7 +94,9 @@ function looksLikePng(buf: Buffer): boolean {
 
 function sanitizeName(name: string): string {
   // Allow letters, digits, dash, underscore, dot. Replace others with dash.
-  const cleaned = name.replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  const cleaned = name
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   if (!cleaned) {
     throw new Error(
       `[visual-snapshot] options.name produced an empty filename: ${JSON.stringify(name)}`,
@@ -150,7 +151,9 @@ export async function captureDesktopScreenshot(
     );
   }
 
-  const contentType = (response.headers.get("content-type") ?? "").toLowerCase();
+  const contentType = (
+    response.headers.get("content-type") ?? ""
+  ).toLowerCase();
   const arrayBuffer = await response.arrayBuffer();
   const buf = Buffer.from(arrayBuffer);
 

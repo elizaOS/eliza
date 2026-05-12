@@ -19,8 +19,6 @@ export {
 export class TrustScoreService {
 	private calculator: BalancedTrustScoreCalculator;
 	private optimizer: TrustScoreOptimizer;
-	private simulationService: SimulationService;
-	private simulationService: SimulationService;
 
 	constructor() {
 		this.calculator = new BalancedTrustScoreCalculator();

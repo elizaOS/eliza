@@ -103,10 +103,6 @@ export class ShopifyService extends Service {
   private clients = new Map<string, ShopifyClientState>();
   private defaultAccountId = DEFAULT_SHOPIFY_ACCOUNT_ID;
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-  }
-
   async stop(): Promise<void> {
     this.clients.clear();
   }

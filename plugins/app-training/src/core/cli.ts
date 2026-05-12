@@ -8,12 +8,12 @@
  * Or: `cd eliza/packages/agent && bun run training:cli` (delegates to this file).
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from "fs";
-import { mkdir, readFile, writeFile } from "fs/promises";
-import { homedir } from "os";
-import { join } from "path";
-import { fileURLToPath } from "url";
-import { parseArgs } from "util";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { AGENT_CONTEXTS, type AgentContext } from "./context-types.js";
 import {
   createAnthropicTeacher,

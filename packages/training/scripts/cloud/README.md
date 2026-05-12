@@ -10,7 +10,7 @@ This wraps existing primitives — it does not duplicate them:
 
 | Provider | What it uses |
 |---|---|
-| `vast` | the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` — implemented here for `kernel-verify` / `bench` |
+| `vast` | the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` — implemented here for `build` / `kernel-verify` / `bench` |
 | `--task train --provider vast` | delegates to [`../train_vast.sh provision-and-train`](../CLOUD_VAST.md) (its GPU mapping, checkpoint pull, teardown) |
 | `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 0.6b/1.7b/9b, `gpu-h200x2` + FSDP for 27b); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
 | `nebius` + `kernel-verify`/`bench` | not wired yet (extend `../lib/backends/nebius.py` + the `kernel-verify`/`bench` branch in `run-on-cloud.sh`) |
@@ -33,6 +33,12 @@ task-oriented front door on top of it.
 ## Literal invocations
 
 ```bash
+# Build the linux-x64-cuda-fused runtime on an H100 (llama-server +
+# libelizainference + ggml-cuda kernels), ldd-self-check, emit a small
+# build-evidence JSON into packages/inference/verify/build-results/.
+bash packages/training/scripts/cloud/run-on-cloud.sh \
+  --provider vast --task build --gpu h100 --yes-i-will-pay
+
 # Kernel verification on an H100 — build linux-x64-cuda, cuda-verify +
 # cuda-verify-fused fixture parity, then (if --smoke-model) cuda_runner.sh
 # --report; pulls JSON into packages/inference/verify/hardware-results/.
@@ -70,7 +76,7 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 | Flag | Values | Default |
 |---|---|---|
 | `--provider` | `vast` \| `nebius` | (required) |
-| `--task` | `kernel-verify` \| `bench` \| `train` | (required) |
+| `--task` | `build` \| `kernel-verify` \| `bench` \| `train` | (required) |
 | `--gpu` | `h100` `h200` `a100` `a100-80` `rtx4090` `rtx5090` `l40s` `b200` `blackwell6000` | `h100` |
 | `--tier` | `0_6b` `1_7b` `9b` `27b` `27b-256k` `27b-1m` | `0_6b` |
 | `--ssh-pubkey` | path | `~/.ssh/id_ed25519.pub` |

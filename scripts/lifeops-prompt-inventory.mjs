@@ -509,15 +509,15 @@ function extractParametersBlock(block) {
   // Track nesting of [ ] and { } while skipping over string contents.
   let depth = 1;
   let inString = null;
-  let escape = false;
+  let escaped = false;
   const arrStart = i;
   for (; i < block.length && depth > 0; i++) {
     const ch = block[i];
     if (inString) {
-      if (escape) {
-        escape = false;
+      if (escaped) {
+        escaped = false;
       } else if (ch === "\\") {
-        escape = true;
+        escaped = true;
       } else if (ch === inString) {
         inString = null;
       }
@@ -557,15 +557,15 @@ function splitTopLevelObjects(content) {
   const out = [];
   let depth = 0;
   let inString = null;
-  let escape = false;
+  let escaped = false;
   let start = -1;
   for (let i = 0; i < content.length; i++) {
     const ch = content[i];
     if (inString) {
-      if (escape) {
-        escape = false;
+      if (escaped) {
+        escaped = false;
       } else if (ch === "\\") {
-        escape = true;
+        escaped = true;
       } else if (ch === inString) {
         inString = null;
       }

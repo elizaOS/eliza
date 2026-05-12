@@ -2,11 +2,18 @@
  * Eliza-curated local model catalog.
  *
  * Eliza-1 is the only default-eligible model line. The user-facing model
- * ids are size-first (`eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-9b`,
- * `eliza-1-27b`, `eliza-1-27b-256k`, `eliza-1-27b-1m`). The recommendation
- * engine picks one of these tiers based on hardware. The long-context 27B
- * variants (`27b-256k`, `27b-1m`) only surface on hosts whose RAM/VRAM can
- * hold the KV cache at that window — `27b-1m` is GH200-class.
+ * ids are size-first (`eliza-1-0_8b`, `eliza-1-0_6b`, `eliza-1-1_7b`,
+ * `eliza-1-9b`, `eliza-1-27b`, `eliza-1-27b-256k`, `eliza-1-27b-1m`). The
+ * recommendation engine picks one of these tiers based on hardware. The
+ * long-context 27B variants (`27b-256k`, `27b-1m`) only surface on hosts
+ * whose RAM/VRAM can hold the KV cache at that window — `27b-1m` is
+ * GH200-class.
+ *
+ * `eliza-1-0_8b` is the new "smallest" tier on the Qwen3.5-0.8B backbone
+ * (the small eliza-1 tiers move to the Qwen3.5 family — owner decision).
+ * It is added additively: the legacy Qwen3 small tiers (`eliza-1-0_6b`,
+ * `eliza-1-1_7b`) are kept until the owner decides whether to drop them —
+ * see the `TODO(owner)` notes below.
  *
  * HF-search results from outside `elizaos/eliza-1-*` MUST never be
  * marked default-eligible (handled by `hf-search.ts`, which produces
@@ -18,8 +25,12 @@
  *
  * Shared-vocabulary note: every text-bearing entry below (the `chat` tier
  * entries AND their `dflash-drafter` companions) carries
- * `tokenizerFamily: "eliza1"` — they are all Qwen-lineage and share the same
- * Qwen2 BPE vocabulary + merges table. The drafter GGUFs ship *without* their
+ * `tokenizerFamily: "eliza1"`. They are all Qwen-lineage; within a tier the
+ * text model and its drafter share the same BPE vocabulary + merges table
+ * (the Qwen3 tiers 0_6b/1_7b: 151936-token Qwen3 vocab; the Qwen3.5/3.6
+ * tiers 0_8b/9b/27b...: 248320-token Qwen3.5 vocab — which is why the
+ * 9b/27b drafter is distilled from a Qwen3.5-0.8B base, not a Qwen3-0.6B
+ * one). The drafter GGUFs ship *without* their
  * own `tokenizer.ggml.merges`; the runtime injects it from the tier's text
  * GGUF at load time (`resolveDflashDrafter` in
  * `packages/app-core/src/services/local-inference/dflash-server.ts`). The same
@@ -42,6 +53,7 @@ import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
  * the recommendation ladders and the default-eligible set.
  */
 export const ELIZA_1_TIER_IDS = [
+  "eliza-1-0_8b",
   "eliza-1-0_6b",
   "eliza-1-1_7b",
   "eliza-1-9b",
@@ -54,10 +66,16 @@ export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
 /**
  * The model id the engine auto-loads on first run when no preference is
- * set. Resolves to the `eliza-1-1_7b` tier - the smallest Eliza-1 tier
- * that fits the broadest range of hardware (modern phone or laptop).
+ * set. Resolves to the `eliza-1-1_7b` tier - the smallest legacy Eliza-1
+ * tier that fits the broadest range of hardware (modern phone or laptop).
  * Hosts that can't fit `eliza-1-1_7b` get the `eliza-1-0_6b` fallback via
  * the recommendation ladder.
+ *
+ * TODO(owner): the small tiers are moving to the Qwen3.5 backbone
+ * (`eliza-1-0_8b` / `eliza-1-2b`). Should the first-run default change to
+ * `eliza-1-0_8b` (and `eliza-1-1_7b` / `eliza-1-0_6b` be retired or kept
+ * as a legacy line)? Left on `eliza-1-1_7b` for now — conservative,
+ * additive — until that call is made.
  */
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-1_7b";
 
@@ -109,15 +127,19 @@ function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
  * `eliza-1.manifest.json`. Fine-tuning lands in v2.
  *
  * Notes:
- * - 0_6b / 1_7b text use the Qwen3 (3.5-family-precursor) base; the Qwen3.5
- *   0.6B/1.7B checkpoints are not published, so the 0.6B/1.7B base weights
- *   are `Qwen/Qwen3-{0.6B,1.7B}` until those land. 9B is `unsloth/Qwen3.5-9B`
+ * - 0_8b text is the new Qwen3.5-0.8B backbone (`Qwen/Qwen3.5-0.8B`). The
+ *   legacy 0_6b / 1_7b tiers use the Qwen3 base (`Qwen/Qwen3-{0.6B,1.7B}`) —
+ *   the Qwen3.5 0.6B/1.7B sizes are not published. 9B is `unsloth/Qwen3.5-9B`
  *   (the available GGUF mirror), 27B is `batiai/Qwen3.6-27B-GGUF` (+ a
  *   3.6 27B-1m variant when it exists in the catalog).
- * - 0_6b has no dedicated `embedding` component — it pools from the text
- *   backbone with `--pooling last` (inference/AGENTS.md §1).
- * - the drafter is distilled (KD, not fine-tuning of the target) FROM the
- *   tier's base text model and published under `elizaos/eliza-1-<tier>`.
+ * - 0_8b / 0_6b have no dedicated `embedding` component — they pool from the
+ *   text backbone with `--pooling last` (inference/AGENTS.md §1).
+ * - the drafter is distilled (KD, not fine-tuning of the target) and
+ *   published under `elizaos/eliza-1-<tier>`. The Qwen3 tiers (1_7b) distill
+ *   from a Qwen3-0.6B base; the Qwen3.5/3.6 tiers (9b/27b...) distill DOWN
+ *   from the `Qwen/Qwen3.5-0.8B-Base` checkpoint (shared 248320 tokenizer —
+ *   a Qwen3-0.6B drafter has the wrong vocab for a Qwen3.5/3.6 target). See
+ *   `DEFAULT_STUDENT_BASE` in `packages/training/scripts/distill_dflash_drafter.py`.
  */
 type SourceComponentMap = NonNullable<
   CatalogModel["sourceModel"]
@@ -131,6 +153,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const asrLarge = { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" } as const;
 
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
+    "eliza-1-0_8b": {
+      repo: "Qwen/Qwen3.5-0.8B",
+    },
     "eliza-1-0_6b": {
       repo: "Qwen/Qwen3-0.6B-GGUF",
       file: "Qwen3-0.6B-Q8_0.gguf",
@@ -180,7 +205,8 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       file: `dflash/drafter-${id.slice("eliza-1-".length)}.gguf`,
     },
   };
-  if (id !== "eliza-1-0_6b") components.embedding = embedding;
+  if (id !== "eliza-1-0_6b" && id !== "eliza-1-0_8b")
+    components.embedding = embedding;
   if (visionByTier[id]) components.vision = visionByTier[id];
   return { finetuned: false, components };
 }
@@ -270,7 +296,41 @@ function drafterCompanion(args: {
 }
 
 export const MODEL_CATALOG: CatalogModel[] = [
-  // eliza-1-0_6b (low-RAM phones, CPU fallback)
+  // eliza-1-0_8b (new smallest tier — Qwen3.5-0.8B backbone; phones, laptops)
+  {
+    id: "eliza-1-0_8b",
+    displayName: "eliza-1-0_8b",
+    hfRepo: "elizaos/eliza-1-0_8b",
+    ggufFile: "text/eliza-1-0_8b-32k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
+    params: "0.8B",
+    quant: "Eliza-1 optimized local runtime",
+    sizeGb: 0.7,
+    minRamGb: 2,
+    category: "chat",
+    bucket: "small",
+    contextLength: 32768,
+    tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-0_8b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-0_8b"),
+    runtime: runtimeFor("eliza-1-0_8b", 32768),
+    blurb:
+      "eliza-1-0_8b - new smallest tier with the optimized local runtime; phones, low-RAM laptops, CPU fallback.",
+  },
+  drafterCompanion({
+    id: "eliza-1-0_8b",
+    displayName: "eliza-1-0_8b",
+    ggufFile: "dflash/drafter-0_8b.gguf",
+    params: "0.8B",
+    sizeGb: 0.3,
+    minRamGb: 2,
+    bucket: "small",
+  }),
+
+  // eliza-1-0_6b (legacy Qwen3 tier; low-RAM phones, CPU fallback)
+  // TODO(owner): keep this legacy Qwen3 tier alongside eliza-1-0_8b, or
+  // retire it now that the small tiers move to the Qwen3.5 backbone? Kept
+  // (additive) until that call is made.
   {
     id: "eliza-1-0_6b",
     displayName: "eliza-1-0_6b",

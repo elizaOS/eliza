@@ -17,12 +17,7 @@ import {
 } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import {
-  decodePathComponent,
-  readJsonBody,
-  sendJson,
-  sendJsonError,
-} from "@elizaos/agent";
+import { sendJson, sendJsonError } from "@elizaos/agent";
 import { ChannelType, stringToUuid, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { itIf } from "../../../test/helpers/conditional-tests.ts";

@@ -119,7 +119,7 @@ describe("factsProvider keyword retrieval", () => {
 		// vi.setSystemTime, so pin Date.now() directly. This is the only
 		// timestamp facts.ts reads when ranking current facts.
 		const fixedNow = Date.parse("2026-05-11T12:00:00.000Z");
-		const nowSpy = vi.spyOn(Date, "now").mockReturnValue(fixedNow);
+		const _nowSpy = vi.spyOn(Date, "now").mockReturnValue(fixedNow);
 		const runtime = makeRuntime({
 			facts: [
 				memory(

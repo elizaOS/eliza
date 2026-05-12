@@ -1,6 +1,5 @@
 import {
   type TrajectoryCacheStatsRecord as CoreTrajectoryCacheStatsRecord,
-  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
   type TrajectoryDetailRecord as CoreTrajectoryDetailRecord,
   type TrajectoryExportFormat as CoreTrajectoryExportFormat,
   type TrajectoryExportOptions as CoreTrajectoryExportOptions,
@@ -18,6 +17,7 @@ import {
   type TrajectoryStepRecord as CoreTrajectoryStepRecord,
   type TrajectorySummaryRecord as CoreTrajectorySummaryRecord,
   type TrajectoryUsageTotalsRecord as CoreTrajectoryUsageTotalsRecord,
+  TRAJECTORY_STEP_SCRIPT_MAX_CHARS,
 } from "@elizaos/core";
 
 export { TRAJECTORY_STEP_SCRIPT_MAX_CHARS };

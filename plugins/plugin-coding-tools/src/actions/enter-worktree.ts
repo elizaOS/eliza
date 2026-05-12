@@ -76,10 +76,7 @@ export async function enterWorktreeHandler(
 
   let worktreePath: string;
   if (explicitPath) {
-    const validation = await sandbox.validatePath(
-      conversationId,
-      explicitPath,
-    );
+    const validation = await sandbox.validatePath(conversationId, explicitPath);
     if (validation.ok === false) {
       const reason =
         validation.reason === "blocked" ? "path_blocked" : "invalid_param";

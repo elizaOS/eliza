@@ -52,26 +52,26 @@ interface Flags {
 }
 
 function parseFlags(argv: string[]): Flags {
-  const valueOf = (flag: string) => {
+  const flagValue = (flag: string) => {
     const i = argv.indexOf(flag);
     return i >= 0 ? argv[i + 1] : undefined;
   };
   return {
     brief:
-      valueOf("--brief") ??
+      flagValue("--brief") ??
       "a tiny memecoin celebrating sentient toasters that achieve enlightenment by burning the perfect bagel — wholesome, brief, internet-native",
-    buySol: Number(valueOf("--buy") ?? "0"),
+    buySol: Number(flagValue("--buy") ?? "0"),
     visitFlap: argv.includes("--visit-flap"),
     headed: argv.includes("--headed") || !process.env.CI,
     rpc:
-      valueOf("--rpc") ??
+      flagValue("--rpc") ??
       process.env.SOLANA_RPC_URL ??
       "https://api.mainnet-beta.solana.com",
     signToken:
       process.env.WALLET_BROWSER_SIGN_TOKEN ??
       `eliza-wallet-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     dryRun: argv.includes("--dry-run"),
-    slow: Number(valueOf("--slow") ?? "0"),
+    slow: Number(flagValue("--slow") ?? "0"),
   };
 }
 

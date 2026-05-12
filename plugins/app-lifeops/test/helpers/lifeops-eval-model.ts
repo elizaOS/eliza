@@ -31,7 +31,9 @@ export interface CerebrasChatResponse {
   raw?: unknown;
 }
 
-export type EvalModelClient = (req: CerebrasChatRequest) => Promise<CerebrasChatResponse>;
+export type EvalModelClient = (
+  req: CerebrasChatRequest,
+) => Promise<CerebrasChatResponse>;
 
 function readEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
@@ -62,7 +64,11 @@ function resolveBaseUrl(): string {
 }
 
 function resolveEvalModel(): string {
-  return readEnv("EVAL_MODEL", "EVAL_MODEL_NAME") ?? readEnv("CEREBRAS_MODEL") ?? "gpt-oss-120b";
+  return (
+    readEnv("EVAL_MODEL", "EVAL_MODEL_NAME") ??
+    readEnv("CEREBRAS_MODEL") ??
+    "gpt-oss-120b"
+  );
 }
 
 function resolveTrainingModel(): string {
@@ -307,10 +313,16 @@ export function getTrainingUseModelAdapter(): (input: {
 
 export function isCerebrasEvalEnabled(): boolean {
   const provider = resolveProvider("eval");
-  return provider === "cerebras" && !!readEnv("CEREBRAS_API_KEY", "EVAL_CEREBRAS_API_KEY");
+  return (
+    provider === "cerebras" &&
+    !!readEnv("CEREBRAS_API_KEY", "EVAL_CEREBRAS_API_KEY")
+  );
 }
 
 export function isCerebrasTrainingEnabled(): boolean {
   const provider = resolveProvider("training");
-  return provider === "cerebras" && !!readEnv("CEREBRAS_API_KEY", "TRAIN_CEREBRAS_API_KEY");
+  return (
+    provider === "cerebras" &&
+    !!readEnv("CEREBRAS_API_KEY", "TRAIN_CEREBRAS_API_KEY")
+  );
 }

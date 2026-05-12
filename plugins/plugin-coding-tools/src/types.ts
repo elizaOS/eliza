@@ -7,7 +7,11 @@ export const SANDBOX_SERVICE = "CODING_TOOLS_SANDBOX";
 export const SESSION_CWD_SERVICE = "CODING_TOOLS_SESSION_CWD";
 export const RIPGREP_SERVICE = "CODING_TOOLS_RIPGREP";
 
-export const CODING_TOOLS_CONTEXTS = ["code", "terminal", "automation"] as const;
+export const CODING_TOOLS_CONTEXTS = [
+  "code",
+  "terminal",
+  "automation",
+] as const;
 export type CodingToolsContext = (typeof CODING_TOOLS_CONTEXTS)[number];
 
 export interface FileMeta {
@@ -48,7 +52,10 @@ export type ActionResultData = NonNullable<ActionResult["data"]>;
 
 export const FAILURE_TEXT_PREFIX = "[CodingTools]";
 
-export function failure<T>(reason: ToolFailureReason, message: string): ToolResult<T> {
+export function failure<T>(
+  reason: ToolFailureReason,
+  message: string,
+): ToolResult<T> {
   return { ok: false, failure: { reason, message } };
 }
 

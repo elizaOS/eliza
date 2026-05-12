@@ -1,5 +1,5 @@
 import type { AgentRuntime } from "@elizaos/core";
-import { OptimizedPromptService, logger } from "@elizaos/core";
+import { logger, OptimizedPromptService } from "@elizaos/core";
 import { registerSkillScoringCron } from "./core/skill-scoring-cron";
 import { registerTrajectoryExportCron } from "./core/trajectory-export-cron";
 import {
@@ -26,13 +26,17 @@ export async function registerTrainingRuntimeHooks(
   try {
     const optimizedPromptService = await OptimizedPromptService.start(runtime);
     runtime.registerService(
-      OptimizedPromptService as unknown as Parameters<typeof runtime.registerService>[0],
+      OptimizedPromptService as unknown as Parameters<
+        typeof runtime.registerService
+      >[0],
     );
     // Mutate the runtime's service map so subsequent getService calls
     // hit our pre-warmed instance instead of going through plugin lifecycle.
-    (runtime as AgentRuntime & {
-      services?: Map<string, unknown>;
-    }).services?.set(OptimizedPromptService.serviceType, optimizedPromptService);
+    (
+      runtime as AgentRuntime & {
+        services?: Map<string, unknown>;
+      }
+    ).services?.set(OptimizedPromptService.serviceType, optimizedPromptService);
     logger.info(
       "[eliza] Registered OptimizedPromptService (action_planner / media_description / etc. will pick up artifacts from ~/.eliza/optimized-prompts/)",
     );

@@ -58,7 +58,8 @@ function localPartsAtTz(
     let weekday = "Sun";
     for (const part of parts) {
       if (part.type === "hour") hours = Number.parseInt(part.value, 10) % 24;
-      else if (part.type === "minute") minutes = Number.parseInt(part.value, 10);
+      else if (part.type === "minute")
+        minutes = Number.parseInt(part.value, 10);
       else if (part.type === "weekday") weekday = part.value;
     }
     const map: Record<string, number> = {
@@ -187,7 +188,8 @@ const quietHoursGate: TaskGateContribution = {
     if (!start || !end) {
       return { kind: "allow" };
     }
-    const local = localPartsAtTz(context.nowIso, quietHours.tz) ??
+    const local =
+      localPartsAtTz(context.nowIso, quietHours.tz) ??
       localPartsForContext(context);
     const nowMinutes = local.hours * 60 + local.minutes;
     const startMinutes = start.hours * 60 + start.minutes;

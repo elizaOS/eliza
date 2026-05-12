@@ -146,7 +146,9 @@ async function inspectActiveOptimizations(args) {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
       "../../shared/src/local-inference/catalog.ts"
     );
-    catalogEntry = findCatalogModel(FIRST_RUN_DEFAULT_MODEL_ID);
+    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_6b`); the
+    // interactive harness leaves it unset → the first-run default.
+    catalogEntry = findCatalogModel(args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID);
     const drafterId = catalogEntry?.runtime?.dflash?.drafterModelId;
     if (drafterId) drafterEntry = findCatalogModel(drafterId);
   } catch (err) {
@@ -1841,12 +1843,25 @@ async function main() {
   });
 }
 
-main().catch(async (err) => {
-  console.error(
-    c(
-      "red",
-      `[voice-interactive] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
-    ),
-  );
-  process.exit(1);
-});
+// Re-used by the two-agents duet harness (`voice-duet.mjs`): the prereq
+// inspector, the bundle-registration helper, and the cross-platform matrix.
+// Guarded so importing this module (instead of running it) doesn't kick off
+// the interactive `main()`.
+export {
+  inspectActiveOptimizations,
+  ensureBundleRegistered,
+  printPlatformReport,
+  PLATFORM_MATRIX,
+};
+
+if (import.meta.main) {
+  main().catch(async (err) => {
+    console.error(
+      c(
+        "red",
+        `[voice-interactive] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+      ),
+    );
+    process.exit(1);
+  });
+}

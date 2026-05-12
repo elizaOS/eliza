@@ -458,8 +458,7 @@ export async function runNativeBackend(
     };
   }
 
-  const holdoutFraction =
-    options.holdoutFraction ?? DEFAULT_HOLDOUT_FRACTION;
+  const holdoutFraction = options.holdoutFraction ?? DEFAULT_HOLDOUT_FRACTION;
   const { trainSet, holdoutSet } = splitTrainHoldout(dataset, holdoutFraction);
 
   const result = await dispatchOptimizer(options.optimizer, {

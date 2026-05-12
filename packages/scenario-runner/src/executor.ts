@@ -12,7 +12,6 @@
 import * as crypto from "node:crypto";
 import * as http from "node:http";
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
-import { isLoopbackUrl, toRecord } from "./utils.js";
 import {
   ChannelType,
   createMessageMemory,
@@ -37,6 +36,7 @@ import type {
   RunnerContext,
   ScenarioReport,
 } from "./types.ts";
+import { isLoopbackUrl, toRecord } from "./utils.js";
 
 export interface ExecutorOptions {
   providerName: string;
@@ -57,10 +57,7 @@ type ScenarioRoomDefinition = {
 };
 
 type ScenarioComputerUseService = {
-  getCapabilities: () => Record<
-    string,
-    { available: boolean; tool: string }
-  >;
+  getCapabilities: () => Record<string, { available: boolean; tool: string }>;
   executeDesktopAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeBrowserAction: (params: Record<string, unknown>) => Promise<unknown>;
   executeFileAction: (params: Record<string, unknown>) => Promise<unknown>;
@@ -1192,9 +1189,7 @@ async function executeTickTurn(args: {
         })
       : undefined;
   const startedAt = Date.now();
-  const { executeLifeOpsSchedulerTask } = await import(
-    "@elizaos/app-lifeops"
-  );
+  const { executeLifeOpsSchedulerTask } = await import("@elizaos/app-lifeops");
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
       ...(toRecord(options) ?? {}),

@@ -1,13 +1,15 @@
 export { detectHealthBackend } from "@elizaos/plugin-health";
-export { blockAction } from "./actions/block.js";
 // External consumers that still import `websiteBlockAction` get the canonical
 // BLOCK umbrella.
-export { blockAction as websiteBlockAction } from "./actions/block.js";
+export {
+  blockAction,
+  blockAction as websiteBlockAction,
+} from "./actions/block.js";
 export { calendarAction } from "./actions/calendar.js";
 export { connectorAction } from "./actions/connector.js";
 export { credentialsAction } from "./actions/credentials.js";
-export { calendlyAction } from "./actions/lib/calendly-handler.js";
 export { entityAction } from "./actions/entity.js";
+export { calendlyAction } from "./actions/lib/calendly-handler.js";
 export {
   ownerAlarmsAction,
   ownerFinancesAction,

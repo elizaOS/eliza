@@ -18,7 +18,7 @@ interface PendingAction {
   timer: ReturnType<typeof setTimeout>;
 }
 
-const TICK_MS = 420;
+const _TICK_MS = 420;
 const ACTION_TIMEOUT_MS = 10_000;
 const RECONNECT_BASE_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
@@ -271,7 +271,7 @@ export class BotSDK {
   /* ---------------------------------------------------------------- */
 
   private rejectAllPending(reason: string): void {
-    for (const [id, p] of this.pending) {
+    for (const [_id, p] of this.pending) {
       clearTimeout(p.timer);
       p.reject(new Error(reason));
     }

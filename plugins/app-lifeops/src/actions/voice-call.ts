@@ -57,13 +57,7 @@ const SUBACTIONS: SubactionsMap<VoiceCallSubaction> = {
     descriptionCompressed:
       "Twilio voice dial: recipientKind=owner|external|e164; draft-confirm; approval-queue",
     required: ["recipientKind"],
-    optional: [
-      "phoneNumber",
-      "recipient",
-      "bodyText",
-      "confirmed",
-      "reason",
-    ],
+    optional: ["phoneNumber", "recipient", "bodyText", "confirmed", "reason"],
   },
 };
 

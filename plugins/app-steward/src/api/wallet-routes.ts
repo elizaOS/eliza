@@ -1,17 +1,19 @@
 import type http from "node:http";
-import { RouteRequestMeta } from "@elizaos/core";
-import { persistConfigEnv } from "@elizaos/agent";
-import type { RouteHelpers } from "@elizaos/core";
 import type { ElizaConfig } from "@elizaos/agent";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
-import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+  createIntegrationTelemetrySpan,
+  persistConfigEnv,
+} from "@elizaos/agent";
 import type {
+  AgentRuntime,
+  RouteHelpers,
   WalletExportRejection as WalletExportRejectionLike,
   WalletExportRequestBody,
 } from "@elizaos/core";
 import {
+  logger,
   normalizeWalletRpcSelections,
+  type RouteRequestMeta,
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/core";
@@ -481,9 +483,7 @@ export async function handleWalletRoutes(
           );
           if (agentRes.ok) {
             agentExists = true;
-            const agent = readStewardAgentWalletPayload(
-              await agentRes.json(),
-            );
+            const agent = readStewardAgentWalletPayload(await agentRes.json());
             agentEvm =
               agent?.walletAddresses?.evm?.trim() ||
               agent?.walletAddress?.trim() ||
@@ -509,9 +509,7 @@ export async function handleWalletRoutes(
             return true;
           }
 
-          const created = readStewardAgentWalletPayload(
-            await createRes.json(),
-          );
+          const created = readStewardAgentWalletPayload(await createRes.json());
           agentEvm =
             created?.walletAddresses?.evm?.trim() ||
             created?.walletAddress?.trim() ||
