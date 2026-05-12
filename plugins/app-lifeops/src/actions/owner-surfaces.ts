@@ -230,7 +230,22 @@ function makeOwnerLifeAction(args: {
   };
 }
 
-export const ownerRemindersAction = makeOwnerLifeAction({
+export const ownerRemindersAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_REMINDERS",
+    similes: [
+      "REMINDER",
+      "REMINDERS",
+      "SET_REMINDER",
+      "REMIND_ME",
+      "REMIND_ME_TO",
+    ],
+    description:
+      "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+    descriptionCompressed:
+      "owner reminders: action=create|update|delete|complete|skip|snooze|review",
+    defaultKind: "definition",
+  }),
   name: "OWNER_REMINDERS",
   similes: [
     "REMINDER",
@@ -243,44 +258,77 @@ export const ownerRemindersAction = makeOwnerLifeAction({
     "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
   descriptionCompressed:
     "owner reminders: action=create|update|delete|complete|skip|snooze|review",
-  defaultKind: "definition",
-});
+};
 
-export const ownerAlarmsAction = makeOwnerLifeAction({
+export const ownerAlarmsAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_ALARMS",
+    similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
+    description:
+      "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+    descriptionCompressed:
+      "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+    defaultKind: "definition",
+  }),
   name: "OWNER_ALARMS",
   similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
   description:
     "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
   descriptionCompressed:
     "owner alarms: action=create|update|delete|complete|skip|snooze|review",
-  defaultKind: "definition",
-});
+};
 
-export const ownerGoalsAction = makeOwnerLifeAction({
+export const ownerGoalsAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_GOALS",
+    similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
+    description:
+      "Owner goals: create, update, delete, or review long-term goals and progress.",
+    descriptionCompressed:
+      "owner goals: action=create|update|delete|review; backing kind=goal",
+    defaultKind: "goal",
+    actions: [...OWNER_GOAL_ACTIONS],
+  }),
   name: "OWNER_GOALS",
   similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
   description:
     "Owner goals: create, update, delete, or review long-term goals and progress.",
   descriptionCompressed:
     "owner goals: action=create|update|delete|review; backing kind=goal",
-  defaultKind: "goal",
-  actions: [...OWNER_GOAL_ACTIONS],
-});
+};
 
 // Owner-store todos surface. Backed by the app-lifeops owner definitions store
 // (with kind=definition occurrence tracking). The general-purpose planner
 // surface — backed by @elizaos/core TodosService — is TODO in
 // plugins/plugin-todos/src/actions/todo.ts. The two surfaces target different
 // stores and must not be merged.
-export const ownerTodosAction = makeOwnerLifeAction({
+export const ownerTodosAction: Action = {
+  ...makeOwnerLifeAction({
+    name: "OWNER_TODOS",
+    similes: [
+      "OWNER_TODO",
+      "PERSONAL_TODO",
+      "PERSONAL_TODOS",
+      "PERSONAL_TASK",
+    ],
+    description:
+      "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+    descriptionCompressed:
+      "owner todos: action=create|update|delete|complete|skip|snooze|review",
+    defaultKind: "definition",
+  }),
   name: "OWNER_TODOS",
-  similes: ["TODO", "TODOS", "TASK", "PERSONAL_TASK"],
+  similes: [
+    "OWNER_TODO",
+    "PERSONAL_TODO",
+    "PERSONAL_TODOS",
+    "PERSONAL_TASK",
+  ],
   description:
     "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
   descriptionCompressed:
     "owner todos: action=create|update|delete|complete|skip|snooze|review",
-  defaultKind: "definition",
-});
+};
 
 const OWNER_ROUTINE_ACTIONS = [
   ...OWNER_LIFE_ACTIONS,
@@ -325,6 +373,19 @@ export const ownerRoutinesAction: Action = {
       "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
     defaultKind: "definition",
   }),
+  name: "OWNER_ROUTINES",
+  similes: [
+    "HABIT",
+    "HABITS",
+    "ROUTINE",
+    "ROUTINES",
+    "DAILY_TASK",
+    "WEEKLY_TASK",
+  ],
+  description:
+    "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+  descriptionCompressed:
+    "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
   parameters: [
     {
       name: "action",
