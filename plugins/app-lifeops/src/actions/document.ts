@@ -718,12 +718,6 @@ export const ownerDocumentsAction: Action & {
         schema: { type: "string" as const, enum: [...SUBACTIONS] },
       },
       {
-        name: "subaction",
-        description:
-          "Legacy alias for action. Prefer action for new planner output.",
-        schema: { type: "string" as const, enum: [...SUBACTIONS] },
-      },
-      {
         name: "documentRequestId",
         description:
           "Existing DocumentRequest id. Required for track_deadline and close_request.",

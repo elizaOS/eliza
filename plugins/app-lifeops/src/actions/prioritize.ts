@@ -315,12 +315,6 @@ export const prioritizeAction: Action & {
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
-      name: "subaction",
-      description:
-        "Legacy alias for action. Prefer action for new planner output.",
-      schema: { type: "string" as const, enum: [...SUBACTIONS] },
-    },
-    {
       name: "subject",
       description:
         "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",

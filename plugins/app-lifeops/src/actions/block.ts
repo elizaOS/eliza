@@ -269,8 +269,8 @@ export const blockAction: Action & {
 } = {
   name: ACTION_NAME,
   similes: [
-    // Scoped to phone-app / desktop-website blocking only — calendar
-    // time-blocking ("block out 2 hours for deep work") routes through
+    // Scoped to phone-app / desktop-website blocking only. Calendar
+    // time-blocking requests route through
     // CALENDAR.create_event, not BLOCK. Names like FOCUS_BLOCK /
     // AUTOMATION_FOCUS_BLOCK / TIME_BLOCK that suggest scheduling a calendar
     // block are intentionally NOT similes here.

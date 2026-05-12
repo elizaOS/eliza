@@ -370,12 +370,6 @@ export const briefAction: Action & {
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
-      name: "subaction",
-      description:
-        "Legacy alias for action. Prefer action for new planner output.",
-      schema: { type: "string" as const, enum: [...SUBACTIONS] },
-    },
-    {
       name: "period",
       description:
         "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",

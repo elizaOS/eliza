@@ -384,12 +384,13 @@ export function EmotePicker() {
     <div
       ref={panelRef}
       data-testid="emote-picker"
-      className={`fixed bottom-4 left-4 z-[${Z_SYSTEM_CRITICAL}] w-[320px] rounded-xl shadow-2xl`}
+      className="fixed bottom-4 left-4 w-[320px] rounded-xl shadow-2xl"
       style={{
         background: "rgba(18, 22, 32, 0.96)",
         border: "1px solid rgba(240, 178, 50, 0.18)",
         backdropFilter: "blur(24px)",
         boxShadow: "0 8px 60px rgba(0,0,0,0.6), 0 0 40px rgba(240,178,50,0.06)",
+        zIndex: Z_SYSTEM_CRITICAL,
       }}
     >
       {/* Header */}

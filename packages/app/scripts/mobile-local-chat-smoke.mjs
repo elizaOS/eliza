@@ -167,14 +167,14 @@ function launchIosSimulatorApp() {
   return { udid, installed: true };
 }
 
-function writeDefaultsString(domainPath, key, value) {
+function writeDefaultsString(plistPath, key, value) {
   // Capacitor Preferences stores the default group as `CapacitorStorage.<key>`
   // in iOS UserDefaults. The JS API strips that prefix; simulator pre-seed has
   // to write the native key directly because the app is not running yet.
   const nativeKey = `CapacitorStorage.${key}`;
   requireExec(
     "defaults",
-    ["write", domainPath, nativeKey, "-string", value],
+    ["write", plistPath, nativeKey, "-string", value],
     `Failed to write iOS preference ${key}.`,
   );
 }
@@ -195,11 +195,11 @@ function preseedIosLocalRuntime(udid, id) {
     ["simctl", "get_app_container", udid, id, "data"],
     `Failed to locate ${id} data container on ${udid}.`,
   );
-  const preferencesDomain = path.join(
+  const preferencesPlist = path.join(
     dataContainer,
     "Library",
     "Preferences",
-    id,
+    `${id}.plist`,
   );
   const activeServer = JSON.stringify({
     id: "local:mobile",
@@ -209,9 +209,9 @@ function preseedIosLocalRuntime(udid, id) {
   });
 
   tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
-  writeDefaultsString(preferencesDomain, "eliza:mobile-runtime-mode", "local");
-  writeDefaultsString(preferencesDomain, "eliza:onboarding-complete", "1");
-  writeDefaultsString(preferencesDomain, "elizaos:active-server", activeServer);
+  writeDefaultsString(preferencesPlist, "eliza:mobile-runtime-mode", "local");
+  writeDefaultsString(preferencesPlist, "eliza:onboarding-complete", "1");
+  writeDefaultsString(preferencesPlist, "elizaos:active-server", activeServer);
   flushIosPreferencesCache(udid);
   console.log(
     `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,

@@ -301,12 +301,6 @@ export const inboxUnifiedAction: Action & {
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
-      name: "subaction",
-      description:
-        "Legacy alias for action. Prefer action for new planner output.",
-      schema: { type: "string" as const, enum: [...SUBACTIONS] },
-    },
-    {
       name: "platforms",
       description:
         "Optional array of platforms to limit fan-out: gmail | slack | discord | telegram | signal | imessage | whatsapp. Default: all.",

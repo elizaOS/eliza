@@ -373,12 +373,6 @@ export const conflictDetectAction: Action & {
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
-      name: "subaction",
-      description:
-        "Legacy alias for action. Prefer action for new planner output.",
-      schema: { type: "string" as const, enum: [...SUBACTIONS] },
-    },
-    {
       name: "range",
       description:
         "Either 'today' | 'week' or an explicit { start, end } ISO window. Defaults to subaction's natural range.",
