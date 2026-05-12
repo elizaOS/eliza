@@ -1,6 +1,6 @@
 {
   "schemaVersion": "lifeops-action-collisions-v1",
-  "generatedAt": "2026-05-12T03:15:27.471Z",
+  "generatedAt": "2026-05-12T03:59:43.581Z",
   "threshold": 0.75,
   "nearMissFloor": 0.5,
   "population": 130,

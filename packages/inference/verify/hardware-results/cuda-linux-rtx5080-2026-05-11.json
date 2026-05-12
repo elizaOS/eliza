@@ -37,7 +37,7 @@
     },
     "graphDispatch": {
       "tool": "llama-bench (the fork's llama-cli is conversation-only and busy-loops on stdin EOF; llama-bench is the non-interactive equivalent and exercises the same prompt-eval + token-gen graph passes)",
-      "binDir": "~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/bin",
+      "binDir": "~/.cache/eliza-dflash/eliza-llama-cpp/build-cuda/bin",
       "model": "eliza-1-0_6b-32k.gguf, -ngl 99",
       "routes": {
         "f16 (baseline)": "backend=CUDA, pp512 6699 t/s, pp4096 2676 t/s, tg128 53.9 t/s",

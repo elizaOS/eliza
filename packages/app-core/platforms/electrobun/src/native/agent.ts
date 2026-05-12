@@ -1076,7 +1076,7 @@ function shouldAutoRecoverPgliteFailure(line: string): boolean {
 /**
  * Opt-in: kill processes listening on `port` (lsof + SIGKILL). Default off so a
  * second desktop instance can coexist on the same machine when ports differ.
- * Set ELIZA_AGENT_RECLAIM_STALE_PORT=1 (legacy: ELIZA_AGENT_RECLAIM_STALE_PORT)
+ * Set ELIZA_AGENT_RECLAIM_STALE_PORT=1 (legacy: MILADY_AGENT_RECLAIM_STALE_PORT)
  * to restore the old “take over default port” behavior.
  */
 async function maybeReclaimPortWithSigkill(port: number): Promise<void> {

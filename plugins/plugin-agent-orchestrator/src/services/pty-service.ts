@@ -377,7 +377,7 @@ function prependWorkspaceLockToTask(
 const SERVER_PORT_SETTING_KEYS = [
   "SERVER_PORT",
   "ELIZA_API_PORT",
-  "ELIZA_API_PORT",
+  "MILADY_API_PORT",
 ] as const;
 
 /** @internal — exported for unit tests in `pty-service-server-port.test.ts`. */

@@ -1,7 +1,7 @@
 # Fork CUDA kernel survey — eliza-1 custom quant types
 
 Survey date 2026-05-11. **READ-ONLY** — the fork (`~/.cache/eliza-dflash/
-milady-llama-cpp/`) is under a concurrent rewrite; this is a punch-list for the
+eliza-llama-cpp/`) is under a concurrent rewrite; this is a punch-list for the
 inference team, not a set of edits. Target hardware: RTX 5080 Laptop
 (16 GB, Blackwell **sm_120**), CUDA 13 runtime, system nvcc 12.0. A working
 CUDA build of the fork is at `build-cuda/`. Current build targets

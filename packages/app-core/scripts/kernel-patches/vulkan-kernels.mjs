@@ -111,7 +111,7 @@ const VULKAN_ALL_STAGED_FILES = [
 ];
 
 const SHADER_SENTINEL = "// ELIZA-VK-DISPATCH-PATCH-V1";
-const PATCH_SENTINEL = "ELIZA-VK-DISPATCH-PATCH-V1";
+const _PATCH_SENTINEL = "ELIZA-VK-DISPATCH-PATCH-V1";
 const RUNTIME_SENTINEL = "// ELIZA-VK-RUNTIME-DISPATCH-V1";
 
 const PATCH_TARGETS = [
@@ -127,12 +127,7 @@ const PATCH_TARGETS = [
   },
   {
     file: "02-ggml-vulkan-pipelines.patch",
-    target: path.posix.join(
-      "ggml",
-      "src",
-      "ggml-vulkan",
-      "ggml-vulkan.cpp",
-    ),
+    target: path.posix.join("ggml", "src", "ggml-vulkan", "ggml-vulkan.cpp"),
   },
 ];
 
@@ -209,15 +204,25 @@ function parsePatchFile(filePath) {
   let injectLines = [];
   for (const line of lines) {
     if (line.startsWith("ANCHOR")) {
-      cur = { anchor: line.replace(/^ANCHOR\s+/, ""), sentinel: null, inject: null };
+      cur = {
+        anchor: line.replace(/^ANCHOR\s+/, ""),
+        sentinel: null,
+        inject: null,
+      };
     } else if (line.startsWith("SENTINEL")) {
-      if (!cur) throw new Error(`[vulkan-kernels] SENTINEL before ANCHOR in ${filePath}`);
+      if (!cur)
+        throw new Error(
+          `[vulkan-kernels] SENTINEL before ANCHOR in ${filePath}`,
+        );
       cur.sentinel = line.replace(/^SENTINEL\s+/, "").trim();
     } else if (line === "---INJECT-BEGIN---") {
       inInject = true;
       injectLines = [];
     } else if (line === "---INJECT-END---") {
-      if (!cur) throw new Error(`[vulkan-kernels] INJECT-END without ANCHOR in ${filePath}`);
+      if (!cur)
+        throw new Error(
+          `[vulkan-kernels] INJECT-END without ANCHOR in ${filePath}`,
+        );
       cur.inject = injectLines.join("\n");
       hunks.push(cur);
       cur = null;
@@ -280,7 +285,13 @@ function applyPatches(cacheDir, { dryRun }) {
       console.log(
         `[vulkan-kernels] (dry-run) would apply ${hunks.length} hunk(s) from ${file} to ${target}`,
       );
-      results.push({ file, target, hunks: hunks.length, applied: 0, skipped: hunks.length });
+      results.push({
+        file,
+        target,
+        hunks: hunks.length,
+        applied: 0,
+        skipped: hunks.length,
+      });
       continue;
     }
     let text = fs.readFileSync(targetPath, "utf8");
@@ -289,7 +300,8 @@ function applyPatches(cacheDir, { dryRun }) {
     for (const hunk of hunks) {
       const r = applyHunk(text, hunk, target);
       text = r.text;
-      if (r.applied) applied++; else skipped++;
+      if (r.applied) applied++;
+      else skipped++;
     }
     fs.writeFileSync(targetPath, text, "utf8");
     results.push({ file, target, hunks: hunks.length, applied, skipped });
@@ -425,7 +437,7 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
     "ggml-vulkan",
     "ggml-vulkan.cpp",
   );
-  let original = fs.readFileSync(vulkanPath, "utf8");
+  const original = fs.readFileSync(vulkanPath, "utf8");
   let patched = original;
 
   // 02-ggml-vulkan-pipelines.patch historically created eliza_polar with a
@@ -436,7 +448,6 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
     `"eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 3 * sizeof(uint32_t),`,
     `"eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t),`,
   );
-
 
   if (!patched.includes(RUNTIME_SENTINEL)) {
     const contextAnchor = `    // for GGML_VK_PERF_LOGGER`;
@@ -880,7 +891,10 @@ ${switchAnchor}`,
 }
 
 // Public entry point used by build-llama-cpp-dflash.mjs.
-export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } = {}) {
+export function patchVulkanKernels(
+  cacheDir,
+  { dryRun = false, target = null } = {},
+) {
   if (!cacheDir || !fs.existsSync(cacheDir)) {
     throw new Error(`[vulkan-kernels] cacheDir does not exist: ${cacheDir}`);
   }
@@ -923,6 +937,7 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
     prehtPipeline,
     runtimeDispatch,
     runtimeReady: "source-patched-pending-smoke",
-    requiredGraphSmoke: "make -C packages/inference/verify vulkan-dispatch-smoke",
+    requiredGraphSmoke:
+      "make -C packages/inference/verify vulkan-dispatch-smoke",
   };
 }

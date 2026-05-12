@@ -238,7 +238,9 @@ function prependLocalToolDirs() {
   ].filter((dir) => fs.existsSync(dir));
 
   if (candidates.length === 0) return;
-  const current = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
+  const current = process.env.PATH
+    ? process.env.PATH.split(path.delimiter)
+    : [];
   const merged = [...candidates, ...current].filter(
     (dir, idx, arr) => dir && arr.indexOf(dir) === idx,
   );
@@ -1264,7 +1266,7 @@ function nodeArchToTripleArch(platform) {
   return process.arch;
 }
 
-function defaultTarget() {
+function _defaultTarget() {
   const backend = detectBackend();
   const platform = process.platform === "win32" ? "windows" : process.platform;
   const arch = nodeArchToTripleArch(platform);
@@ -1581,7 +1583,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // builds are byte-for-byte unchanged; the cmake-graft separately links
   // `omnivoice-core` into `llama-server` and sets that define for fused
   // targets. Idempotent via the route patch's own sentinel.
-  if (isFusedTarget(target) && (!target || !target.startsWith("ios-"))) {
+  if (isFusedTarget(target) && !target?.startsWith("ios-")) {
     patchServerOmnivoiceRouteImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
@@ -2227,7 +2229,7 @@ function buildIosRuntimeSymbolShim({ target, outDir }) {
 //
 // Returns the list of missing-but-required kernels. An empty list means the
 // target satisfies the contract.
-function requiredKernelsMissing(target, kernels) {
+function requiredKernelsMissing(_target, kernels) {
   // Required for every shipped backend.
   const required = [
     "dflash",
@@ -3011,10 +3013,9 @@ function build(args) {
   // Khronos header repos when needed — cheap, but pointless otherwise.
   const willBuildVulkan =
     args.all ||
-    (args.targets &&
-      args.targets.some(
-        (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
-      )) ||
+    args.targets?.some(
+      (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
+    ) ||
     (!args.targets && (args.backend ?? detectBackend()) === "vulkan");
   // Same idea for the Windows cross path — only probe + write the
   // mingw-w64 toolchain file when at least one windows-x64 target is
@@ -3024,7 +3025,7 @@ function build(args) {
   // MINGW_TOOLCHAIN_FILE pointing at clang/LLVM aarch64-w64-mingw32.
   const willBuildWindows =
     args.all ||
-    (args.targets && args.targets.some((t) => t.startsWith("windows-x64-"))) ||
+    args.targets?.some((t) => t.startsWith("windows-x64-")) ||
     (!args.targets &&
       process.platform !== "win32" &&
       (args.backend ?? detectBackend()) === "cpu" &&

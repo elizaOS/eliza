@@ -42,7 +42,7 @@ deb/rpm, and other side-loaded desktop builds.
 - Enables local terminal, coding tools, coding-agent CLIs, local Ollama, and
   other power-user workflows.
 - Uses the normal namespace state directory, such as `~/.eliza`, unless
-  `ELIZA_STATE_DIR` or `ELIZA_STATE_DIR` is explicitly set.
+  `ELIZA_STATE_DIR` or `MILADY_STATE_DIR` is explicitly set.
 
 ## Mobile
 

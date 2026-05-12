@@ -96,7 +96,7 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
   --say "<text>"       skip ASR; inject <text> as a finalized transcript (LLM→TTS half)
   --wav <path>         feed a WAV file through the same path once (non-mic smoke)
   --no-audio           don't play to speakers; write out-<ts>.wav instead
-  --no-dflash          set MILADY_DFLASH_DISABLE=1 (sanity compare; warns loudly)
+  --no-dflash          set ELIZA_DFLASH_DISABLE=1 (sanity compare; warns loudly)
   --room <id>          conversation/room id (default: voice-interactive)
   -h, --help           this help
 `;
@@ -202,7 +202,7 @@ async function inspectActiveOptimizations(args) {
       name: "dflash speculative decoding",
       on: false,
       detail:
-        "DISABLED by --no-dflash (MILADY_DFLASH_DISABLE=1) — sanity-compare only, NOT a product setting (AGENTS.md §4)",
+        "DISABLED by --no-dflash (ELIZA_DFLASH_DISABLE=1) — sanity-compare only, NOT a product setting (AGENTS.md §4)",
     });
   } else {
     try {
@@ -480,7 +480,7 @@ async function inspectActiveOptimizations(args) {
   };
 }
 
-function printActive(report, args) {
+function printActive(report, _args) {
   log("");
   log(c("bold", "Eliza-1 interactive voice — active optimizations"));
   log("");
@@ -500,7 +500,7 @@ function printActive(report, args) {
     log("");
     for (const m of report.missing) {
       log(`  ${c("red", "•")} ${m.what}`);
-      log(`    ${c("dim", "→ " + m.fix)}`);
+      log(`    ${c("dim", `→ ${m.fix}`)}`);
     }
     log("");
   } else {
@@ -848,7 +848,7 @@ async function printPlatformReport() {
 // Auto-download helpers (gated; never faked)
 // ---------------------------------------------------------------------------
 
-async function tryAutoDownloadVad(bundleRoot) {
+async function tryAutoDownloadVad(_bundleRoot) {
   // Silero v5 VAD (MIT, ~2 MB, public).
   try {
     const { localInferenceRoot } = await import(
@@ -1250,7 +1250,7 @@ function fmtMs(v) {
   return v == null ? "—" : `${Math.round(v)}ms`;
 }
 
-async function printTurnLatency(roomId) {
+async function printTurnLatency(_roomId) {
   try {
     const { voiceLatencyTracer } = await import(
       "../src/services/local-inference/latency-trace.ts"
@@ -1324,11 +1324,11 @@ async function main() {
   // AGENTS.md §4: disabling DFlash is a developer-only kill switch and must
   // warn loudly on every generation. Set it up-front so the engine sees it.
   if (args.noDflash) {
-    process.env.MILADY_DFLASH_DISABLE = "1";
+    process.env.ELIZA_DFLASH_DISABLE = "1";
     log(
       c(
         "red",
-        "⚠  --no-dflash: MILADY_DFLASH_DISABLE=1 is set. DFlash speculative decoding is OFF. This is a DEVELOPER-ONLY kill switch, NOT a product setting — the eliza-1 path is designed to run with DFlash always on (packages/inference/AGENTS.md §4). Voice latency will be worse. Unset MILADY_DFLASH_DISABLE to restore the contract.",
+        "⚠  --no-dflash: ELIZA_DFLASH_DISABLE=1 is set. DFlash speculative decoding is OFF. This is a DEVELOPER-ONLY kill switch, NOT a product setting — the eliza-1 path is designed to run with DFlash always on (packages/inference/AGENTS.md §4). Voice latency will be worse. Unset ELIZA_DFLASH_DISABLE to restore the contract.",
       ),
     );
   }
@@ -1563,15 +1563,15 @@ async function main() {
   // logs the structured envelope fields as they close. The actual TTS
   // streaming happens inside `engine.generate` (voiceStreamingArgs wires
   // onStreamChunk → the voice scheduler) via the runtime message handler.
-  let lastReplyText = "";
+  let _lastReplyText = "";
   const wrappedGenerate = async (request) => {
     if (request.final) {
       tag("final", "bold", `"${request.transcript}"`);
     }
-    lastReplyText = "";
+    _lastReplyText = "";
     process.stdout.write(c("cyan", "[agent] "));
     const outcome = await generate(request, async (delta) => {
-      lastReplyText += delta;
+      _lastReplyText += delta;
       process.stdout.write(delta);
     });
     process.stdout.write("\n");

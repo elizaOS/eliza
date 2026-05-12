@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
+
 /**
  * Development script that starts:
  * 1. The Eliza dev server (\[(eliza|eliza)(?:-api)?\]|runtime + API on port 31337) with restart support
@@ -21,10 +22,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import {
-  resolveDesktopApiPort,
-  resolveDesktopUiPort,
-} from "@elizaos/shared";
+import { resolveDesktopApiPort, resolveDesktopUiPort } from "@elizaos/shared";
 import * as JSON5Module from "json5";
 import { createApiSupervisor } from "./lib/api-supervisor.mjs";
 import { relativeAppDir, resolveMainAppDir } from "./lib/app-dir.mjs";
@@ -431,7 +429,7 @@ function readPluginStealthFlag(entries, ids) {
   return null;
 }
 
-function formatRelativeImportPath(relativePath) {
+function _formatRelativeImportPath(relativePath) {
   const normalized = relativePath.split(path.sep).join("/");
   return normalized.startsWith("./") ? normalized : `./${normalized}`;
 }
@@ -976,8 +974,9 @@ function startVite() {
   viteProcess.on("exit", (code, signal) => {
     if (shuttingDown) return;
     viteProcess = null;
-    const exitLabel =
-      signal ? `signal ${signal}` : `code ${code === null ? "null" : code}`;
+    const exitLabel = signal
+      ? `signal ${signal}`
+      : `code ${code === null ? "null" : code}`;
     viteRestartCount += 1;
     if (viteRestartCount > 5) {
       console.error(

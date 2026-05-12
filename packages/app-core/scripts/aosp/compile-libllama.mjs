@@ -201,8 +201,7 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.0.0-eliza";
 export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
-export const LLAMA_CPP_REMOTE =
-  "https://github.com/elizaOS/llama.cpp.git";
+export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
 // The in-repo submodule checkout of the fork (packages/inference/llama.cpp).

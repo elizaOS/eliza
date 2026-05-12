@@ -22,9 +22,7 @@ describe("action selection benchmark scoring helpers", () => {
   it("matches owner task, routine, and goal names to canonical benchmark cases", () => {
     expect(caseMatches("ADD_TODO", "OWNER_TODOS", undefined)).toBe(true);
     expect(caseMatches("ADD_HABIT", "OWNER_ROUTINES", undefined)).toBe(true);
-    expect(caseMatches("CREATE_HABIT", "OWNER_ROUTINES", undefined)).toBe(
-      true,
-    );
+    expect(caseMatches("CREATE_HABIT", "OWNER_ROUTINES", undefined)).toBe(true);
     expect(caseMatches("LIST_TODOS", "OWNER_TODOS", undefined)).toBe(true);
     expect(caseMatches("ADD_GOAL", "OWNER_GOALS", undefined)).toBe(true);
   });
@@ -53,7 +51,9 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("SUMMARIZE_UNREAD_EMAILS", "MESSAGE", undefined)).toBe(
       true,
     );
-    expect(caseMatches("SEND_DISCORD_MESSAGE", "MESSAGE", undefined)).toBe(true);
+    expect(caseMatches("SEND_DISCORD_MESSAGE", "MESSAGE", undefined)).toBe(
+      true,
+    );
     // Post-consolidation: APP_BLOCK and WEBSITE_BLOCK both fold into BLOCK.
     expect(caseMatches("BLOCK_WEBSITE", "BLOCK", undefined)).toBe(true);
     expect(caseMatches("WEBSITE_BLOCK", "BLOCK", undefined)).toBe(true);
@@ -65,9 +65,9 @@ describe("action selection benchmark scoring helpers", () => {
   });
 
   it("matches approval resolution aliases", () => {
-    expect(caseMatches("ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST", undefined)).toBe(
-      true,
-    );
+    expect(
+      caseMatches("ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST", undefined),
+    ).toBe(true);
     expect(caseMatches("DENY_APPROVAL", "RESOLVE_REQUEST", undefined)).toBe(
       true,
     );
@@ -118,9 +118,9 @@ describe("action selection benchmark scoring helpers", () => {
     expect(caseMatches("BOOK_TRAVEL", "PERSONAL_ASSISTANT", undefined)).toBe(
       true,
     );
-    expect(
-      caseMatches("MANAGE_LIFEOPS_BROWSER", "BROWSER", undefined),
-    ).toBe(true);
+    expect(caseMatches("MANAGE_LIFEOPS_BROWSER", "BROWSER", undefined)).toBe(
+      true,
+    );
     expect(caseMatches("MANAGE_BROWSER_BRIDGE", "BROWSER", undefined)).toBe(
       true,
     );

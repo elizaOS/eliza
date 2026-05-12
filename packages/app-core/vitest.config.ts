@@ -46,7 +46,10 @@ const pluginElizaCloudSrc = path.join(
   "src",
 );
 const pluginEdgeTtsSrc = path.join(monorepoRoot, "plugins/plugin-edge-tts");
-const pluginIMessageSrc = path.join(monorepoRoot, "plugins/plugin-imessage/src");
+const pluginIMessageSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-imessage/src",
+);
 const pluginLocalInferenceSrc = path.join(
   monorepoRoot,
   "plugins/plugin-local-inference/src",

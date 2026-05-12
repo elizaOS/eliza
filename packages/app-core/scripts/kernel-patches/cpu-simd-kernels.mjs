@@ -89,13 +89,7 @@ function qjlSourceListBlock() {
 function mirrorQjlSources(cacheDir, { dryRun }) {
   const srcRoot = path.join(QJL_CPU_SRC_DIR, "src");
   const incFile = path.join(QJL_CPU_SRC_DIR, "include", "qjl", "qjl.h");
-  const forkQjlDir = path.join(
-    cacheDir,
-    "ggml",
-    "src",
-    "ggml-cpu",
-    "qjl",
-  );
+  const forkQjlDir = path.join(cacheDir, "ggml", "src", "ggml-cpu", "qjl");
   const forkQjlIncDir = path.join(forkQjlDir, "include", "qjl");
   if (!fs.existsSync(forkQjlDir)) {
     throw new Error(

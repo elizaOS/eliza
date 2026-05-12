@@ -7,8 +7,7 @@ import {
 export const TRAJECTORY_PARENT_STEP_METADATA_KEY = "parentTrajectoryStepId";
 export const TRAJECTORY_CHILD_STEP_METADATA_KEY = "trajectoryChildStepId";
 export const TRAJECTORY_LINK_SOURCE_METADATA_KEY = "trajectoryLinkSource";
-export const TRAJECTORY_PARENT_STEP_ENV_KEY =
-  "ELIZA_PARENT_TRAJECTORY_STEP_ID";
+export const TRAJECTORY_PARENT_STEP_ENV_KEY = "ELIZA_PARENT_TRAJECTORY_STEP_ID";
 export const TRAJECTORY_CHILD_STEP_ENV_KEY = "ELIZA_TRAJECTORY_CHILD_STEP_ID";
 
 export interface LinkedSpawnContext {
