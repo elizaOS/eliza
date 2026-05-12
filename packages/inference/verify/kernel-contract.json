@@ -20,7 +20,8 @@
     "reports/porting/2026-05-10/platform-verification-performance-grid.md",
     "reports/porting/2026-05-11/remaining-work-ledger.md",
     "verify/HARDWARE_VERIFICATION.md",
-    "verify/CUDA_VERIFICATION.md"
+    "verify/CUDA_VERIFICATION.md",
+    "reports/porting/2026-05-11/cuda-kernel-optimization.md"
   ],
   "hardwareEvidence": {
     "schemaVersion": 1,
