@@ -1,5 +1,5 @@
 import http from "node:http";
-import type { AddressInfo } from "node:net";
+import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "../../src/api/compat-route-shared";
 
@@ -15,7 +15,7 @@ vi.doMock("@elizaos/agent", () => ({
   }),
 }));
 
-vi.doMock("../../src/api/auth", () => ({
+vi.doMock("../../src/api/auth.ts", () => ({
   ensureRouteAuthorized: (...args: unknown[]) =>
     ensureRouteAuthorizedMock(...args),
 }));
@@ -26,8 +26,9 @@ import {
 } from "../../src/api/automation-node-contributors";
 
 interface Harness {
-  baseUrl: string;
-  dispose: () => Promise<void>;
+  request: (
+    pathname: string,
+  ) => Promise<{ status: number; text: string; json: () => unknown }>;
 }
 
 let automationsCompatRoutesImport:
@@ -41,35 +42,53 @@ function importAutomationsCompatRoutes(): Promise<AutomationsCompatRoutesModule>
   return automationsCompatRoutesImport;
 }
 
+function buildRequest(pathname: string): http.IncomingMessage {
+  const req = new http.IncomingMessage(new Socket());
+  req.method = "GET";
+  req.url = pathname;
+  req.headers = { host: "127.0.0.1:31337" };
+  Object.defineProperty(req.socket, "remoteAddress", {
+    value: "127.0.0.1",
+    configurable: true,
+  });
+  return req;
+}
+
+function buildResponse(): { res: http.ServerResponse; text: () => string } {
+  let bodyText = "";
+  const req = new http.IncomingMessage(new Socket());
+  const res = new http.ServerResponse(req);
+  res.statusCode = 200;
+  res.setHeader = () => res;
+  res.end = ((chunk?: string | Buffer) => {
+    if (typeof chunk === "string") bodyText += chunk;
+    else if (chunk) bodyText += chunk.toString("utf8");
+    return res;
+  }) as typeof res.end;
+  return { res, text: () => bodyText };
+}
+
 async function startApiHarness(state: CompatRuntimeState): Promise<Harness> {
   const { handleAutomationsCompatRoutes } =
     await importAutomationsCompatRoutes();
-  const server = http.createServer(async (req, res) => {
-    try {
+
+  return {
+    request: async (pathname: string) => {
+      const req = buildRequest(pathname);
+      const { res, text } = buildResponse();
       const handled = await handleAutomationsCompatRoutes(req, res, state);
-      if (!handled && !res.headersSent) {
+      if (!handled) {
         res.statusCode = 404;
         res.setHeader("content-type", "application/json; charset=utf-8");
         res.end(JSON.stringify({ error: "not-found" }));
       }
-    } catch (error) {
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.end("internal-error");
-      }
-      void error;
-    }
-  });
-
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const address = server.address() as AddressInfo;
-
-  return {
-    baseUrl: `http://127.0.0.1:${address.port}`,
-    dispose: () =>
-      new Promise<void>((resolve) => {
-        server.close(() => resolve());
-      }),
+      const bodyText = text();
+      return {
+        status: res.statusCode,
+        text: bodyText,
+        json: () => JSON.parse(bodyText) as unknown,
+      };
+    },
   };
 }
 
@@ -224,7 +243,6 @@ describe("automations compat routes", () => {
     delete process.env.SOLANA_PRIVATE_KEY;
     delete process.env.POLYMARKET_PRIVATE_KEY;
     clearAutomationNodeContributorsForTests();
-    await harness?.dispose?.();
   });
 
   it("does not claim GET /api/automations; plugin-workflow owns the list", async () => {
@@ -234,7 +252,7 @@ describe("automations compat routes", () => {
       pendingRestartReasons: [],
     });
 
-    const response = await fetch(`${harness.baseUrl}/api/automations`);
+    const response = await harness.request("/api/automations");
     expect(response.status).toBe(404);
   });
 
@@ -245,9 +263,9 @@ describe("automations compat routes", () => {
       pendingRestartReasons: [],
     });
 
-    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    const response = await harness.request("/api/automations/nodes");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
+    const body = response.json() as {
       nodes: Array<{
         id: string;
         class: string;
@@ -372,9 +390,9 @@ describe("automations compat routes", () => {
       pendingRestartReasons: [],
     });
 
-    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    const response = await harness.request("/api/automations/nodes");
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
+    const body = response.json() as {
       nodes: Array<{ id: string; availability: string }>;
     };
 
@@ -402,9 +420,9 @@ describe("automations compat routes", () => {
       pendingRestartReasons: [],
     });
 
-    const response = await fetch(`${harness.baseUrl}/api/automations/nodes`);
+    const response = await harness.request("/api/automations/nodes");
     expect(response.status).toBe(200);
-    const payload = await response.text();
+    const payload = response.text;
 
     expect(payload).not.toContain(process.env.EVM_PRIVATE_KEY);
     expect(payload).not.toContain(process.env.SOLANA_PRIVATE_KEY);

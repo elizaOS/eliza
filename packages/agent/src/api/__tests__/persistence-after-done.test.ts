@@ -52,7 +52,7 @@ vi.mock("../chat-routes.ts", async () => {
     persistConversationMemory: vi.fn(async () => undefined),
     persistAssistantConversationMemory: vi.fn(async () => {
       persistCalledAt = Date.now();
-      return new Promise((resolve, reject) => {
+      return new Promise<void>((resolve, reject) => {
         persistResolve = (_value) => {
           persistResolvedAt = Date.now();
           resolve();

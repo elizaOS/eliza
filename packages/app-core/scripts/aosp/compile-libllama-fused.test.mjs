@@ -11,8 +11,8 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { it as test } from "vitest";
 
 import {
   ABI_TARGETS,

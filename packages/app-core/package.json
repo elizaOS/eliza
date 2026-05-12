@@ -174,7 +174,8 @@
     "tailwindcss": "^4.1.18",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "yaml": "^2.8.4"
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts"
