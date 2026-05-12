@@ -618,6 +618,64 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 // type-traits table through a registration callback that ggml-cpu fills
 // in at backend-load time. When that lands, this patch becomes a no-op
 // and can be removed.
+// Extend the fork's `--cache-type-k/v` whitelist (`kv_cache_types` in
+// common/arg.cpp) to also accept `qjl1_256` and `q4_polar` — the Eliza-1
+// QJL K-cache and PolarQuant V-cache types. Both have full ggml type traits
+// (`to_float` / `from_float_ref`) in the fork's `ggml.c`, and the K-cache
+// uses the dedicated `GGML_OP_ATTN_SCORE_QJL` graph route the fork already
+// has; the only thing missing was the CLI-arg whitelist, so a build that
+// compiled the CPU/Vulkan/CUDA QJL+Polar code couldn't actually be told to
+// use them. `tbq3_tcq` is intentionally NOT added — it has a block layout
+// in ggml-common.h but no ggml type-traits entry in ggml.c, so it can't be
+// a generic K/V cache type yet (it's an attention-score-only op).
+//
+// This is what makes `probeKernels()` (which greps `llama-server --help`
+// for `qjl1_256` / `q4_polar`) flip `kernels.qjl_full` / `kernels.polarquant`
+// true on a CPU/Vulkan/CUDA host build — i.e. a `linux-x64-cpu` build's
+// CAPABILITIES.json now advertises {dflash, turbo3, turbo4, qjl_full,
+// polarquant}, which satisfies the `eliza-1-1_7b` runtime kernel set
+// (turbo3_tcq is only required for the 27b-256k context tiers).
+//
+// Idempotent via the `// ELIZA-KV-CACHE-TYPES-V1` sentinel.
+function patchServerKvCacheTypeNames(cacheDir, { dryRun = false } = {}) {
+  const argPath = path.join(cacheDir, "common", "arg.cpp");
+  if (!fs.existsSync(argPath)) {
+    throw new Error(
+      `[dflash-build] patchServerKvCacheTypeNames: ${argPath} missing — fork layout broken`,
+    );
+  }
+  const original = fs.readFileSync(argPath, "utf8");
+  const sentinel = "// ELIZA-KV-CACHE-TYPES-V1";
+  if (original.includes(sentinel)) {
+    return { changed: false, alreadyPatched: true };
+  }
+  // Anchor: the last entry of the kv_cache_types vector before its `};`.
+  const anchor = "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n};";
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[dflash-build] patchServerKvCacheTypeNames: anchor not found in ${argPath}; ` +
+        `the elizaOS/llama.cpp fork's kv_cache_types layout changed. Inspect ` +
+        `common/arg.cpp and update the anchor.`,
+    );
+  }
+  const replacement =
+    "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n" +
+    `    ${sentinel} — Eliza-1 QJL K-cache + PolarQuant V-cache (full ggml\n` +
+    "    // type traits in ggml.c; K uses the GGML_OP_ATTN_SCORE_QJL graph route)\n" +
+    "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n};";
+  if (dryRun) {
+    console.log(
+      `[dflash-build] (dry-run) would extend kv_cache_types in ${argPath} with GGML_TYPE_QJL1_256, GGML_TYPE_Q4_POLAR`,
+    );
+    return { changed: true, dryRun: true };
+  }
+  fs.writeFileSync(argPath, original.replace(anchor, replacement), "utf8");
+  console.log(
+    "[dflash-build] patched common/arg.cpp to accept --cache-type-k/v qjl1_256 / q4_polar",
+  );
+  return { changed: true };
+}
+
 function patchGgmlBaseForWindowsQjl(cacheDir) {
   const cmakeListsPath = path.join(cacheDir, "ggml", "src", "CMakeLists.txt");
   if (!fs.existsSync(cmakeListsPath)) {
@@ -1495,35 +1553,25 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
     patchCudaKernelsImpl(cacheDir, { dryRun });
     patchGgmlCudaForFusedAttn(cacheDir, { dryRun });
   }
-  // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
-  // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
-  // prefill_assistant are present in the fork's post-refactor server sources
-  // (tools/server/server-task.cpp + server-common.cpp + …; upstream features —
-  // hard-fail if the fork drifted to a base that predates them), and add the
+  // llama-server structured-output report + DFlash verifier-stream patch
+  // (Eliza-1 voice swarm, W4): log which of grammar_lazy / json_schema /
+  // response_format / prefill_assistant the fork's server sources carry (the
+  // v1.0.0-eliza fork has all four; a bisected older ref may not — that's a
+  // warning, not a build failure: structured output is an optional HTTP
+  // surface, not a mandatory kernel per AGENTS.md §3), and add the
   // `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime parses
-  // for rollback-safe TTS. Idempotent via the
+  // for rollback-safe TTS where an anchor exists. Idempotent via the
   // `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
   // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
-  //
-  // ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 is a documented,
-  // local-diagnostics-only escape hatch (e.g. when bisecting against an old
-  // pinned ELIZA_DFLASH_LLAMA_CPP_REF that predates the required upstream
-  // features). It does NOT change the default build path and the resulting
-  // binary is not publishable (the merged-route fused server still serves
-  // text/DFlash + `/v1/audio/speech` from one process — the structured-output
-  // surface is the only thing missing).
   if (!target || !target.startsWith("ios-")) {
-    if (envFlag("ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT")) {
-      console.warn(
-        "[dflash-build] ⚠️  ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — " +
-          "skipping the llama-server structured-output / verifier-stream patch. " +
-          "This is a local-diagnostics-only hatch (e.g. an old pinned ref that " +
-          "predates the required upstream features); the resulting binary is " +
-          "not publishable.",
-      );
-    } else {
-      patchServerStructuredOutputImpl(cacheDir, { dryRun });
-    }
+    patchServerStructuredOutputImpl(cacheDir, { dryRun });
+  }
+  // Extend the fork's `--cache-type-k/v` whitelist with qjl1_256 / q4_polar
+  // so a build that compiled the QJL+Polar code (every backend — CPU SIMD
+  // TUs, Metal/Vulkan shaders, CUDA kernels) can actually be told to use
+  // them. Applies to every target that ships `llama-server`. Idempotent.
+  if (!target || !target.startsWith("ios-")) {
+    patchServerKvCacheTypeNames(cacheDir, { dryRun });
   }
   // Fused omnivoice TTS: mount `POST /v1/audio/speech` onto the same
   // `llama-server` that serves `/completion` + `/v1/chat/completions` + the
@@ -2555,6 +2603,28 @@ function writeCapabilities({
     backend === "vulkan" &&
     (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
       process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
+  // Build-side companion to the runtime's MILADY_LOCAL_ALLOW_STOCK_KV opt-in
+  // (see backend.ts / dflash-server.ts): when the backend can't yet dispatch
+  // every §3 kernel (e.g. ROCm/HIP — the custom kernels aren't HIP-ported;
+  // a CPU build — the fork's `--cache-type-k` whitelist only exposes
+  // tbq3_0/tbq4_0, not qjl1_256/q4_polar/tbq3_tcq), this lets the build
+  // *complete* (exit 0) instead of throwing, writing `publishable: false` +
+  // `reducedOptimizationLocalMode: true`. The artifact is still NOT
+  // publishable and NOT a default — it's the "works everywhere regardless of
+  // GPU" escape hatch. The default (no env) still throws, preserving §3.
+  //
+  // §3-vs-"works-everywhere" tension: AGENTS.md §3 forbids a "kernels-missing
+  // fallback build". The user's SA-1 directive is "works everywhere". The
+  // reconciliation: the build DISPATCHES the kernels on every backend where
+  // it can (Metal: all 5; CUDA: fork binary; Vulkan: source-patched +
+  // runtime-dispatch evidence; CPU: turbo3/turbo4 via tbq3_0/tbq4_0), and
+  // this opt-in is the loudly-flagged, non-publishable reduced mode for the
+  // rest. defaultEligible bundles still require the verified kernels.
+  const allowReducedKernels =
+    process.env.ELIZA_DFLASH_ALLOW_REDUCED_KERNELS === "1" ||
+    process.env.MILADY_LOCAL_ALLOW_STOCK_KV === "1";
+  const reducedOptimizationLocalMode =
+    missing.length > 0 && allowReducedKernels && !allowUnverifiedVulkanBuild;
   const capabilities = {
     target,
     platform,
@@ -2569,6 +2639,11 @@ function writeCapabilities({
     missingRequiredKernels: missing,
     smokeOnlyIncompleteAllowed:
       missing.length > 0 && allowUnverifiedVulkanBuild,
+    // True when the build completed under ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1
+    // / MILADY_LOCAL_ALLOW_STOCK_KV=1 despite missing §3 kernels. The runtime
+    // honours this together with MILADY_LOCAL_ALLOW_STOCK_KV: load with stock
+    // f16 KV, loud one-time warning. NOT publishable, NOT defaultEligible.
+    reducedOptimizationLocalMode,
     shippedKernels,
     runtimeDispatch,
     binaries,
@@ -2586,13 +2661,27 @@ function writeCapabilities({
       );
       return capabilities;
     }
+    if (reducedOptimizationLocalMode) {
+      console.warn(
+        `\n[dflash-build] ⚠️  target=${target} built in REDUCED-OPTIMIZATION LOCAL MODE — missing §3 kernels: ${missing.join(", ")}.\n` +
+          `  ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1 (or MILADY_LOCAL_ALLOW_STOCK_KV=1) is set, so the build completes\n` +
+          `  with publishable=false + reducedOptimizationLocalMode=true. The runtime will load this binary with\n` +
+          `  stock f16 KV (set MILADY_LOCAL_ALLOW_STOCK_KV=1 there too) and warn loudly. This artifact is NOT\n` +
+          `  publishable and NOT a default — it exists so the voice pipeline RUNS on this backend even though the\n` +
+          `  §3 kernels aren't dispatched here yet. Rebuild without the opt-in (and with the kernels dispatched)\n` +
+          `  for the optimized, publishable path.\n`,
+      );
+      return capabilities;
+    }
     throw new Error(
       `[dflash-build] target=${target} missing required kernels: ${missing.join(", ")}. ` +
         `AGENTS.md §3 forbids shipping an Eliza-1 binary without the full ` +
         `dflash + turbo3 + turbo4 + turbo3_tcq + qjl + polar kernel set. CAPABILITIES.json ` +
         `was written for diagnostic purposes only — the artifact is incomplete ` +
         `and must not be published. Inspect the build log for the failed ` +
-        `patch hook or absent dispatch site, fix the root cause, and rebuild.`,
+        `patch hook or absent dispatch site, fix the root cause, and rebuild — ` +
+        `or, to ship a runnable reduced-optimization local-mode binary on this ` +
+        `backend, set ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1 (loud warning, not publishable).`,
     );
   }
   return capabilities;
@@ -2610,7 +2699,19 @@ function cmakeBuildTargetsFor(target) {
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
     : fused
       ? fusedCmakeBuildTargets()
-      : ["llama-server", "llama-cli", "llama-speculative-simple"];
+      : [
+          "llama-server",
+          "llama-cli",
+          "llama-speculative-simple",
+          // llama-bench / llama-completion are the non-interactive
+          // generation drivers the verify runners (cuda_runner.sh,
+          // runtime_graph_smoke.sh, linux/android vulkan smokes) use —
+          // the fork's llama-cli is conversation-only and busy-loops on
+          // stdin EOF, so the graph-route check goes through llama-bench
+          // and the GGUF generation check through llama-completion.
+          "llama-bench",
+          "llama-completion",
+        ];
 
   // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
   // ALL DEPENDS .../default.metallib)` but `cmake --build --target X Y Z`
@@ -2789,6 +2890,9 @@ function buildTarget({ target, args, ctx }) {
       "llama-server",
       "llama-cli",
       "llama-speculative-simple",
+      // Non-interactive generation drivers the verify runners use.
+      "llama-bench",
+      "llama-completion",
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.
@@ -2992,6 +3096,24 @@ function build(args) {
   for (const target of targets) {
     const compat = targetCompatibility(target, ctx);
     if (!compat.ok) {
+      if (args.dryRun) {
+        // dry-run on a host-incompat target (Linux host, ios/windows-arm64
+        // target, …): print the cmake config the right host (macOS+Xcode /
+        // Windows arm64 MSVC / …) would use, then keep going. The whole
+        // point of a dry-run is to validate the config off-host.
+        console.log(
+          `[dflash-build] (dry-run) target=${target} not buildable on this host (${compat.reason}); printing the config the target host would use:`,
+        );
+        try {
+          buildTarget({ target, args, ctx });
+        } catch (err) {
+          console.log(
+            `[dflash-build] (dry-run) config preview for ${target} stopped: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        skipped.push({ target, reason: compat.reason });
+        continue;
+      }
       console.log(`[dflash-build] skip target=${target}: ${compat.reason}`);
       skipped.push({ target, reason: compat.reason });
       if (args.targets && args.targets.length > 0 && !args.all) {

@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "backend": "cpu",
+  "platform": "linux",
+  "arch": "x64",
+  "sourceOfTruth": "Runtime-ready means a built llama.cpp fork graph route selects the in-tree CPU op and real graph execution produces a finite, non-zero, deterministic result. For the CPU backend the score/decode arithmetic IS the C reference (packages/inference/reference/ + verify/qjl_polar_ref.c), so the standalone-fixture parity gate is `make reference-test`; this evidence file additionally records that the ops are reachable through ggml graph execution.",
+  "status": "runtime-ready",
+  "runtimeReady": true,
+  "target": "linux-x64-cpu",
+  "device": "Intel Core Ultra 9 275HX (24 cores, AVX2 + AVX-VNNI)",
+  "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+  "smokeTarget": "cpu-dispatch-smoke",
+  "smokeCommand": "make -C packages/inference/verify cpu-dispatch-smoke",
+  "smokeSource": "verify/qjl_mt_check.c",
+  "evidenceDate": "2026-05-11",
+  "kernels": {
+    "qjl": {
+      "runtimeCapabilityKey": "qjl_full",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_QJL",
+      "builder": "ggml_attn_score_qjl",
+      "smokeTarget": "cpu-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify cpu-dispatch-smoke",
+      "smokeOutputs": 24576,
+      "bitMismatchesST_vs_MT": 0,
+      "maxAbsDiffST_vs_MT": 0.0,
+      "anyNaN": false,
+      "refAllZero": false,
+      "evidenceDate": "2026-05-11"
+    },
+    "fused_attn": {
+      "runtimeCapabilityKey": "fused_attn",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ",
+      "builder": "ggml_fused_attn_qjl_tbq",
+      "note": "QJL-K score + online softmax + TBQ3-V mix; covers GGML_TYPE_QJL1_256 (K) and GGML_TYPE_TBQ3_0 (V) on the CPU backend. The standalone TBQ score op (GGML_OP_ATTN_SCORE_TBQ for turbo3/turbo4/turbo3_tcq) and the standalone Polar score op (GGML_OP_ATTN_SCORE_POLAR) are not exposed as public ggml builders in the fork's ggml.h — they are selected via the KV cache-type path; their CPU correctness is `make reference-test` (the C ops are the references) + the fused op above.",
+      "smokeTarget": "cpu-dispatch-smoke",
+      "smokeCommand": "make -C packages/inference/verify cpu-dispatch-smoke",
+      "smokeOutputs": 32768,
+      "bitMismatchesST_vs_MT": 0,
+      "maxAbsDiffST_vs_MT": 0.0,
+      "anyNaN": false,
+      "refAllZero": false,
+      "evidenceDate": "2026-05-11"
+    }
+  },
+  "remaining": [
+    "Wire probeKernels() in packages/app-core/scripts/build-llama-cpp-dflash.mjs to read this file for the CPU backend (mirror vulkanCapabilityRuntimeReady / readVulkanRuntimeDispatchEvidence), so a fresh linux-x64-cpu build's CAPABILITIES.json reports qjl_full / fused_attn runtime-ready instead of false (the current probe scans `llama-server --help` cache-type names + object-file names, neither of which matches the CPU build's inlined ggml-cpu ops). NOTE: this does NOT make the CPU build `publishable` — turbo3_tcq / polarquant remain false on the CPU backend (no CPU graph-dispatch op), and the §3 CPU kernel-completeness gate (build-llama-cpp-dflash.mjs) still fails the build by design.",
+    "Once the probe is wired, flip kernel-contract.json runtimeStatus.cpu from `reference-only` to `runtime-ready` for the kernels covered above (qjl, fused_attn) where this evidence supports it; keep `make kernel-contract` green."
+  ]
+}

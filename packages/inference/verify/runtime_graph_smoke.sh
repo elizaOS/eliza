@@ -5,6 +5,14 @@
 # This is intentionally model-backed. If ELIZA_DFLASH_SMOKE_MODEL is absent,
 # the smoke fails; a graph dispatch pass without a GGUF model would be a
 # symbol check, not runtime verification.
+#
+# Driver: `llama-bench`, not `llama-cli`. The fork's `llama-cli` is
+# conversation-only and busy-loops on stdin EOF (it has filled multi-GB log
+# files in non-interactive use). `llama-bench --cache-type-k <type> -ngl 99`
+# exercises the same prompt-eval + token-gen graph passes — including the
+# Turbo/QJL/Polar KV-cache score+decode ops — and exits cleanly.
+# `--gen-check` additionally runs `llama-completion` for a real GGUF
+# next-token generation step.
 
 set -euo pipefail
 
@@ -15,7 +23,7 @@ Usage:
 
 Required:
   --target            Build target, e.g. linux-x64-cuda, linux-x64-rocm.
-  --backend-pattern   Extended grep regex that must appear in llama-cli logs
+  --backend-pattern   Extended grep regex that must appear in llama-bench logs
                       (CUDA|ggml_cuda, HIP|ROCm|ggml_hip, Vulkan|ggml_vulkan).
 
 Options:
@@ -23,7 +31,9 @@ Options:
   --model <path>      GGUF model path. Defaults to ELIZA_DFLASH_SMOKE_MODEL.
   --report-dir <dir>  Log/report directory. Defaults to verify/hardware-results.
   --cache-types <s>   Space/comma-separated cache type values to run. Defaults
-                      to resolving all five families from llama-cli --help.
+                      to resolving all five families from llama-bench --help.
+  --gen-check         Additionally run llama-completion for one real GGUF
+                      next-token generation pass (default: bench-only).
 
 Environment:
   ELIZA_STATE_DIR                 Defaults to ~/.eliza.
@@ -31,8 +41,9 @@ Environment:
   ELIZA_DFLASH_SMOKE_PROMPT       Defaults to a tiny deterministic prompt.
   ELIZA_DFLASH_SMOKE_TOKENS       Defaults to 4.
   ELIZA_DFLASH_SMOKE_NGL          Defaults to 99.
-  ELIZA_DFLASH_SMOKE_EXTRA_ARGS   Extra llama-cli args, split on spaces.
+  ELIZA_DFLASH_SMOKE_EXTRA_ARGS   Extra llama-bench args, split on spaces.
   ELIZA_DFLASH_SMOKE_CACHE_TYPES  Overrides the default cache-family resolver.
+  ELIZA_DFLASH_SMOKE_GEN_CHECK    Set to 1 to force --gen-check on.
 USAGE
 }
 
@@ -48,6 +59,7 @@ BIN_DIR=""
 MODEL="${ELIZA_DFLASH_SMOKE_MODEL:-}"
 REPORT_DIR="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$HERE/hardware-results}"
 CACHE_TYPES="${ELIZA_DFLASH_SMOKE_CACHE_TYPES:-}"
+GEN_CHECK="${ELIZA_DFLASH_SMOKE_GEN_CHECK:-0}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -63,6 +75,8 @@ while [[ $# -gt 0 ]]; do
             REPORT_DIR="${2:-}"; shift 2 ;;
         --cache-types)
             CACHE_TYPES="${2:-}"; shift 2 ;;
+        --gen-check)
+            GEN_CHECK=1; shift ;;
         -h|--help)
             usage; exit 0 ;;
         *)
@@ -80,11 +94,15 @@ if [[ -z "$BIN_DIR" ]]; then
     BIN_DIR="$STATE_DIR/local-inference/bin/dflash/$TARGET"
 fi
 
-CLI="$BIN_DIR/llama-cli"
-if [[ ! -x "$CLI" && -x "$BIN_DIR/llama-cli.exe" ]]; then
-    CLI="$BIN_DIR/llama-cli.exe"
-fi
-[[ -x "$CLI" ]] || die "missing executable llama-cli in $BIN_DIR; build target $TARGET first"
+resolve_bin() {
+    local name="$1"
+    if [[ -x "$BIN_DIR/$name" ]]; then printf '%s\n' "$BIN_DIR/$name"; return 0; fi
+    if [[ -x "$BIN_DIR/$name.exe" ]]; then printf '%s\n' "$BIN_DIR/$name.exe"; return 0; fi
+    return 1
+}
+
+BENCH="$(resolve_bin llama-bench || true)"
+[[ -n "$BENCH" ]] || die "missing executable llama-bench in $BIN_DIR; rebuild target $TARGET (the build script ships llama-bench + llama-completion alongside llama-server)"
 
 export LD_LIBRARY_PATH="$BIN_DIR:${LD_LIBRARY_PATH:-}"
 export DYLD_LIBRARY_PATH="$BIN_DIR:${DYLD_LIBRARY_PATH:-}"
@@ -92,13 +110,12 @@ export PATH="$BIN_DIR:$PATH"
 
 mkdir -p "$REPORT_DIR"
 
-HELP_LOG="$REPORT_DIR/${TARGET}-llama-cli-help.log"
-if ! "$CLI" --help >"$HELP_LOG" 2>&1; then
-    die "llama-cli --help failed; see $HELP_LOG"
+HELP_LOG="$REPORT_DIR/${TARGET}-llama-bench-help.log"
+if ! "$BENCH" --help >"$HELP_LOG" 2>&1; then
+    die "llama-bench --help failed; see $HELP_LOG"
 fi
-HELP="$(cat "$HELP_LOG")"
 if ! grep -q -- "--cache-type-k" "$HELP_LOG"; then
-    die "llama-cli help does not expose --cache-type-k; graph KV cache smoke cannot verify Turbo/QJL/Polar dispatch"
+    die "llama-bench help does not expose --cache-type-k; graph KV cache smoke cannot verify Turbo/QJL/Polar dispatch"
 fi
 
 resolve_cache_type() {
@@ -132,7 +149,7 @@ else
         if resolved="$(resolve_cache_type "$family" "${parts[@]:1}")"; then
             RUNS+=("$resolved")
         else
-            die "llama-cli help does not advertise any cache-type alias for $family"
+            die "llama-bench help does not advertise any cache-type alias for $family"
         fi
     done
 fi
@@ -152,6 +169,8 @@ SUMMARY="$REPORT_DIR/${TARGET}-graph-smoke.summary"
     echo "ngl=$NGL"
     echo "cache_runs=${RUNS[*]}"
     echo "backend_pattern=$BACKEND_PATTERN"
+    echo "driver=llama-bench"
+    echo "gen_check=$GEN_CHECK"
     echo "started_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "uname=$(uname -a 2>/dev/null || true)"
 } >"$SUMMARY"
@@ -160,13 +179,15 @@ for run in "${RUNS[@]}"; do
     family="${run%%:*}"
     cache="${run#*:}"
     LOG="$REPORT_DIR/${TARGET}-${family}-${cache}.log"
-    echo "[runtime_graph_smoke] target=$TARGET family=$family cache=$cache"
-    if ! "$CLI" \
+    echo "[runtime_graph_smoke] target=$TARGET family=$family cache=$cache (llama-bench)"
+    # llama-bench is non-interactive: it runs the prompt-eval + token-gen
+    # graph passes and exits. -pg 16,8 keeps it tiny; -fa 1 enables the
+    # flash-attn path the Turbo/QJL/Polar KV-cache ops live behind.
+    if ! "$BENCH" \
         -m "$MODEL" \
-        -p "$PROMPT" \
-        -n "$TOKENS" \
         -ngl "$NGL" \
         --cache-type-k "$cache" \
+        -p 16 -n "$TOKENS" -fa 1 -r 1 \
         "${EXTRA_ARGS[@]}" \
         >"$LOG" 2>&1; then
         echo "[runtime_graph_smoke] command log: $LOG" >&2
@@ -178,6 +199,29 @@ for run in "${RUNS[@]}"; do
     fi
     echo "PASS $family cache=$cache log=$LOG" >>"$SUMMARY"
 done
+
+if [[ "$GEN_CHECK" == "1" ]]; then
+    COMPLETION="$(resolve_bin llama-completion || true)"
+    [[ -n "$COMPLETION" ]] || die "--gen-check requested but llama-completion missing in $BIN_DIR; rebuild target $TARGET"
+    GEN_LOG="$REPORT_DIR/${TARGET}-gen-check.log"
+    echo "[runtime_graph_smoke] target=$TARGET GGUF generation (llama-completion)"
+    if ! "$COMPLETION" \
+        -m "$MODEL" \
+        -p "$PROMPT" \
+        -n "$TOKENS" \
+        -ngl "$NGL" \
+        --no-warmup \
+        "${EXTRA_ARGS[@]}" \
+        >"$GEN_LOG" 2>&1; then
+        echo "[runtime_graph_smoke] command log: $GEN_LOG" >&2
+        die "llama-completion GGUF generation failed; see $GEN_LOG"
+    fi
+    if ! grep -Eiq "$BACKEND_PATTERN" "$GEN_LOG"; then
+        echo "[runtime_graph_smoke] command log: $GEN_LOG" >&2
+        die "backend pattern '$BACKEND_PATTERN' not observed during GGUF generation"
+    fi
+    echo "PASS gen-check log=$GEN_LOG" >>"$SUMMARY"
+fi
 
 echo "finished_at=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >>"$SUMMARY"
 echo "[runtime_graph_smoke] PASS target=$TARGET report=$SUMMARY"

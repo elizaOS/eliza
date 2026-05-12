@@ -1,5 +1,19 @@
 # CUDA bring-up — operator steps (this machine, 2026-05-11)
 
+> **Update 2026-05-11 (later):** Steps 1–2 are now DONE — `nvidia-smi` works
+> (driver 580.142, `nvidia.ko` loaded), the RTX 5080 Mobile is live, and
+> `make -C packages/inference/verify cuda-verify cuda-verify-fused` passes
+> 8/8 + 1920/1920 on it. `nvcc` is present but it is the **distro 12.0**
+> toolkit, which has no `sm_120`/`compute_120` — it emits `compute_90` PTX
+> that the 580 driver JIT-compiles to generic `sm_120` SASS at load. That is
+> correct but not the tuned native Blackwell SASS. **The only remaining
+> operator step is Step 3 below — `sudo apt install cuda-toolkit-12-8` from
+> NVIDIA's repo** — then rebuild `linux-x64-cuda` / `linux-x64-cuda-fused`
+> for native `sm_120` SASS (`build-llama-cpp-dflash.mjs` and the verify
+> Makefile both auto-detect the `-arch=sm_120` capability and use it when
+> the toolkit is ≥12.8; until then they fall back to `compute_90` PTX).
+> Steps 1–2 are kept below for the record.
+
 This box has an NVIDIA Blackwell-class mobile dGPU that is **installed but not
 runnable**. The agent could not run `sudo`; this is the exact command list for
 the operator. Everything below is specific to this hardware/OS:
@@ -124,9 +138,9 @@ the installed `nvcc` accepts and appends `sm_100`/`sm_120` only when supported
 cd /home/shaw/eliza/eliza
 
 # Build the CUDA target of the llama.cpp fork (patchCudaKernels + the fused-attn
-# flag are wired in; retry once on a fork-cache clobber):
-ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 \
-  node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
+# flag are wired in; retry once on a fork-cache clobber). No env vars needed —
+# the structured-output patch is now tolerant of fork drift:
+node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
 
 # Fixture parity (8/8 — turbo3/turbo4/turbo3_tcq/qjl/polar/polar_qjl + fused):
 make -C packages/inference/verify cuda-verify

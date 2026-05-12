@@ -47,5 +47,21 @@
     "Token-gen throughput (~40-55 t/s for the 0.6B/1.7B) is lower than native-SASS Blackwell would deliver: the compute_90 PTX is JIT'd to generic sm_120 SASS, not the tuned native sm_120 SASS that nvcc >= 12.8 emits, and the per-token decode is memory-latency-bound at batch 1. Prompt-eval (compute-bound) is healthy (~2.7-6.7k t/s for the 0.6B, ~2.3-4.3k for the 1.7B). The TurboQuant KV-cache path (--cache-type-k tbq3_0/tbq4_0) costs decode throughput vs f16 because the TBQ score/decode op has CPU-side components in this build, but it runs end-to-end on the CUDA backend with flash-attn on.",
     "GGML_OP_ATTN_SCORE_TBQ (turbo3 = tbq3_0, turbo4 = tbq4_0) is verified executing on the CUDA backend via these llama-bench runs. QJL / Polar / TBQ3-TCQ are score-side ops the fork does not register as --cache-type-k storage aliases (same as the Vulkan path, where the QJL/Polar built-fork graph route was verified via the vulkan-dispatch-smoke C++ harness, not llama-cli); the CUDA equivalent numeric op gate is make cuda-verify (fixture-parity __device__ kernels vs the C references, 8/8 PASS on the RTX 5080, max diff < 1e-5)."
   ],
-  "ttsAsr": "OmniVoice / Qwen3-ASR GGUFs were not run through llama-bench on the CUDA backend in this session (out of time after the 6+ rebuilds the doubled concurrent CUDA build on this box forced); the text-backbone runs above and the 8/8 cuda-verify fixture parity are the CUDA hardware evidence."
+  "ttsAsr": {
+    "asr": {
+      "model": "asr/eliza-1-asr.gguf (Qwen3-ASR base substitute; llama.cpp loads it as arch=qwen3vl 1.7B, Q8_0, 761.8 MiB, 751.63M params — same GGUF in both the 0_6b and 1_7b bundles)",
+      "tool": "build-cuda/bin/llama-bench (statically-linked ggml-cuda; the same fork @ 08032d57)",
+      "runs": [
+        { "test": "pp16",  "tokens_per_sec": 1022.70, "stddev": 258.46 },
+        { "test": "pp128", "tokens_per_sec": 4561.05, "stddev": 486.60 },
+        { "test": "tg32",  "tokens_per_sec": 61.93,   "stddev": 0.80 },
+        { "test": "tg16",  "tokens_per_sec": 64.80,   "stddev": 0.70, "note": "0_6b bundle's identical asr gguf" }
+      ],
+      "result": "Qwen3-ASR loads + runs on the CUDA backend (backend=CUDA, ngl=99). pp ~1-4.5k t/s, tg ~62-65 t/s — same ballpark as the text backbones (same param count / quant family); compute_90 PTX JIT to generic sm_120, no native Blackwell SASS yet."
+    },
+    "tts": {
+      "model": "tts/omnivoice-base-Q4_K_M.gguf",
+      "result": "NOT runnable through llama-bench: the GGUF has general.architecture = 'omnivoice-lm' (OmniVoice / Qwen3-TTS MaskGIT lineage), which is NOT a standard llama.cpp model arch — stock llama-bench / llama-cli reject it with 'failed to load model'. The fused build (libelizainference / omnivoice-core, --target linux-x64-cuda-fused) is the only path that loads OmniVoice on the CUDA backend; the fused server's POST /v1/audio/speech route is where the GPU TTS RTF numbers come from once that build exists. The cuda-fused build is the big one (~30 GB peak RAM; this 31 GB box OOM-kills concurrent CUDA builds) — see PLATFORM_MATRIX.md for the exact command + RAM requirement."
+    }
+  }
 }
