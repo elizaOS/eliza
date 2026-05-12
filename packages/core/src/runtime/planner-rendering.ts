@@ -28,7 +28,77 @@ import {
  * planner-loop then iterates until `TrajectoryLimitExceeded` on every
  * shell-tool turn.
  */
-export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
+/**
+ * Options for {@link trajectoryStepsToMessages}.
+ */
+export interface TrajectoryStepsToMessagesOptions {
+	/**
+	 * When set, caps each rendered tool-result string to this many characters.
+	 *
+	 * A single pathologically-large tool result (a 30 KB shell output, a
+	 * full file read, a multi-thousand-line grep) can blow the planner's
+	 * compaction budget single-handedly when it lives inside the
+	 * kept-verbatim window after compaction. This cap renders such results
+	 * as `<head> ... [N chars truncated] ... <tail>` so the planner still
+	 * sees the beginning and end of the result (which is where structure
+	 * lives) without paying for the middle.
+	 *
+	 * **The trajectory itself is unchanged** — the raw `PlannerStep.result`
+	 * still carries the full content for archival, recorder, replay, and
+	 * any downstream consumer that wants the unredacted output. Only the
+	 * wire-shape message that goes to the next planner call is truncated.
+	 *
+	 * Default: undefined (no cap — exact pre-PR behavior).
+	 */
+	maxToolResultChars?: number;
+}
+
+/**
+ * Truncate a tool-result string to fit within `maxChars` by keeping a head
+ * + tail and stitching in a deterministic marker. Pure function — exported
+ * so the evaluator/recorder can mirror the exact rendering rule.
+ *
+ * Returns the input unchanged when it already fits OR when `maxChars` is
+ * unset / non-positive / not finite.
+ */
+export function truncateToolResultText(
+	text: string,
+	maxChars: number | undefined,
+): string {
+	if (
+		typeof maxChars !== "number" ||
+		!Number.isFinite(maxChars) ||
+		maxChars <= 0
+	) {
+		return text;
+	}
+	if (text.length <= maxChars) {
+		return text;
+	}
+	// 60/40 head/tail split — the head usually carries the most signal
+	// (action confirmation, primary output) while the tail catches summary
+	// lines, exit codes, and trailing error context. The marker accounts
+	// for ~50 chars of overhead so we shave from the actual content limit.
+	const markerSuffixSample = " [0 chars truncated] ";
+	const overhead = markerSuffixSample.length;
+	const usable = Math.max(20, maxChars - overhead);
+	const headChars = Math.max(10, Math.floor(usable * 0.6));
+	const tailChars = Math.max(10, usable - headChars);
+	const truncatedCount = text.length - headChars - tailChars;
+	if (truncatedCount <= 0) {
+		// Numeric edge case: marker overhead pushed the budget below the
+		// raw length. Just return the raw text.
+		return text;
+	}
+	const head = text.slice(0, headChars);
+	const tail = text.slice(text.length - tailChars);
+	return `${head} [${truncatedCount} chars truncated] ${tail}`;
+}
+
+export function trajectoryStepsToMessages(
+	steps: PlannerStep[],
+	options: TrajectoryStepsToMessagesOptions = {},
+): ChatMessage[] {
 	const messages: ChatMessage[] = [];
 	for (const step of steps) {
 		if (!step.toolCall || !step.result) {
@@ -52,6 +122,11 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 			content: assistantContent,
 		});
 
+		const rawResultText = toolMessageContent(step.result);
+		const renderedResultText = truncateToolResultText(
+			rawResultText,
+			options.maxToolResultChars,
+		);
 		messages.push({
 			role: "tool",
 			content: [
@@ -59,7 +134,7 @@ export function trajectoryStepsToMessages(steps: PlannerStep[]): ChatMessage[] {
 					type: "tool-result",
 					toolCallId,
 					toolName: step.toolCall.name,
-					output: { type: "text", value: toolMessageContent(step.result) },
+					output: { type: "text", value: renderedResultText },
 				},
 			],
 		});

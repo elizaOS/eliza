@@ -51,6 +51,26 @@ export interface ChainingLoopConfig {
 	 * runaway level — a turn that exceeds it is almost certainly stuck.
 	 */
 	maxTrajectoryPromptTokens: number;
+	/**
+	 * When set, caps each tool-result string rendered into the planner
+	 * input to this many characters (head + `[N chars truncated]` marker
+	 * + tail). The trajectory itself is unchanged — only the wire-shape
+	 * messages are truncated.
+	 *
+	 * Why this exists: the compactor keeps the four newest steps
+	 * verbatim by default (`compactionKeepSteps: 4`). A single
+	 * pathologically-large tool result inside the kept window — a 30 KB
+	 * shell dump, a multi-thousand-line file read, a full grep — can
+	 * blow the model's per-call context budget single-handedly, even
+	 * after compaction has done its job. This cap protects against that
+	 * single-step pathology without touching the trajectory's
+	 * archival/replay fidelity.
+	 *
+	 * Default: undefined (no cap — exact pre-PR behavior). Recommended
+	 * for tight-context models: ~8000 (one tool result still gets
+	 * roughly two pages of head + a half page of tail context).
+	 */
+	compactionMaxKeptStepChars?: number;
 }
 
 export const DEFAULT_CHAINING_LOOP_CONFIG: ChainingLoopConfig = {
