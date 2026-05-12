@@ -24,6 +24,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
+from benchmarks.lib.base_benchmark_client import (
+    CEREBRAS_GPT_OSS_120B_PRICING,
+    BaseBenchmarkClient,
+    ModelPricing,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -39,6 +45,15 @@ DEFAULT_API_KEY_ENV = "CEREBRAS_API_KEY"
 DEFAULT_BASE_URL_ENV = "CEREBRAS_BASE_URL"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
+# Default concurrency. OpenClaw routes to the same Cerebras endpoint as
+# Hermes, so the W2-9 429 ceiling applies here too; callers can raise it.
+_OPENCLAW_DEFAULT_CONCURRENCY = 2
+
+
+def _openclaw_pricing(provider: str, model: str) -> ModelPricing | None:
+    if provider.strip().lower() == "cerebras" and model.strip().lower() == "gpt-oss-120b":
+        return CEREBRAS_GPT_OSS_120B_PRICING
+    return None
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -59,12 +74,16 @@ class MessageResponse:
     params: dict[str, object]
 
 
-class OpenClawClient:
+class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
     """Spawn ``openclaw agent --local --json`` per turn.
 
     The client is stateless. ``reset`` simply records the ``task_id`` and
     ``benchmark`` strings for log correlation; per-turn state belongs to the
     caller (e.g. via ``context['session_id']``).
+
+    Inherits :class:`BaseBenchmarkClient` for shared concurrency / cost /
+    telemetry handling. Default ``concurrency=2`` mirrors hermes-adapter:
+    OpenClaw routes to Cerebras and W2-9 surfaced 429s at higher levels.
     """
 
     def __init__(
@@ -79,11 +98,16 @@ class OpenClawClient:
         base_url_env: str = DEFAULT_BASE_URL_ENV,
         thinking_level: str = DEFAULT_THINKING_LEVEL,
         timeout_s: float = DEFAULT_TIMEOUT_S,
+        concurrency: int = _OPENCLAW_DEFAULT_CONCURRENCY,
     ) -> None:
+        super().__init__(
+            concurrency=concurrency,
+            pricing=_openclaw_pricing(provider, model),
+            model=model,
+            provider=provider,
+        )
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
-        self.provider = provider
-        self.model = model
         self.api_key_env = api_key_env
         self.base_url_env = base_url_env
         self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
@@ -170,7 +194,35 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
-        """Spawn one ``openclaw agent --local --json`` turn and parse it."""
+        """Spawn one ``openclaw agent --local --json`` turn and parse it.
+
+        Captures per-turn telemetry via the base class so callers can read
+        token counts + cost off ``self.telemetry_history``. OpenClaw exposes
+        usage as ``params['usage']`` (mapped from its ``agentMeta.lastCallUsage``
+        block in :func:`_usage_from_meta`).
+        """
+        started = time.time()
+        try:
+            result = self._send(text, context)
+        finally:
+            finished = time.time()
+        usage_obj = result.params.get("usage") if result.params else None
+        usage_map: Mapping[str, object] | None = (
+            usage_obj if isinstance(usage_obj, Mapping) else None
+        )
+        self.record_telemetry(
+            started_at_epoch=started,
+            finished_at_epoch=finished,
+            usage=usage_map,
+        )
+        return result
+
+    def _send(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> MessageResponse:
+        """Transport: spawn the CLI and parse JSON. Required by BaseBenchmarkClient."""
         argv = self.build_argv(text, context)
         env = self.build_env()
         try:

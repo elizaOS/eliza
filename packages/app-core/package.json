@@ -111,7 +111,7 @@
     "@elizaos/plugin-elizacloud": "2.0.0-beta.1",
     "@elizaos/plugin-groq": "2.0.0-beta.1",
     "@elizaos/plugin-openai": "2.0.0-beta.1",
-    "@elizaos/plugin-zai": "2.0.0-beta.1",
+    "@elizaos/plugin-zai": "file:../../plugins/plugin-zai",
     "@elizaos/plugin-sql": "2.0.0-beta.1",
     "@elizaos/plugin-wechat": "2.0.0-beta.1",
     "@elizaos/plugin-workflow": "2.0.0-beta.1",

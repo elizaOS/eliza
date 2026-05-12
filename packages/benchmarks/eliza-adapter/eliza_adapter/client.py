@@ -12,6 +12,12 @@ from dataclasses import dataclass, field
 from typing import Mapping
 from urllib.parse import urlparse
 
+from benchmarks.lib.base_benchmark_client import (
+    CEREBRAS_GPT_OSS_120B_PRICING,
+    BaseBenchmarkClient,
+    ModelPricing,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -25,18 +31,54 @@ class MessageResponse:
     params: dict[str, object]
 
 
-class ElizaClient:
+def _resolve_pricing(provider: str | None, model: str | None) -> ModelPricing | None:
+    """Map (provider, model) to a pricing tuple.
+
+    Currently only Cerebras gpt-oss-120b is wired; other models fall back to
+    ``None`` so cost reporting becomes 0 rather than silently mispriced.
+    """
+    p = (provider or "").strip().lower()
+    m = (model or "").strip().lower()
+    if p == "cerebras" and m == "gpt-oss-120b":
+        return CEREBRAS_GPT_OSS_120B_PRICING
+    return None
+
+
+class ElizaClient(BaseBenchmarkClient[MessageResponse]):
     """HTTP client for the eliza benchmark server.
 
     All communication uses stdlib ``urllib`` so there are no extra
-    dependencies to install.
+    dependencies to install. Inherits :class:`BaseBenchmarkClient` for
+    concurrency limiting, cost computation, and per-turn telemetry capture.
     """
 
     def __init__(
         self,
         base_url: str | None = None,
         token: str | None = None,
+        *,
+        concurrency: int = 4,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> None:
+        resolved_provider = (
+            provider
+            or os.environ.get("BENCHMARK_MODEL_PROVIDER")
+            or "cerebras"
+        ).strip().lower()
+        resolved_model = (
+            model
+            or os.environ.get("BENCHMARK_MODEL_NAME")
+            or os.environ.get("MODEL_NAME")
+            or os.environ.get("CEREBRAS_MODEL")
+            or "gpt-oss-120b"
+        ).strip()
+        super().__init__(
+            concurrency=concurrency,
+            pricing=_resolve_pricing(resolved_provider, resolved_model),
+            model=resolved_model,
+            provider=resolved_provider,
+        )
         self._delegate = _build_delegate_client()
         resolved_url = (
             base_url
@@ -151,20 +193,36 @@ class ElizaClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
-        """POST /api/benchmark/message — send a message and get response."""
+        """POST /api/benchmark/message — send a message and get response.
+
+        Captures per-turn telemetry (latency_ms, prompt/completion tokens,
+        cost_usd) into ``self.telemetry_history`` so callers that want token
+        accounting can read it back; the original delegate-aware path is
+        preserved for the Hermes / OpenClaw harness routing.
+        """
         if self._delegate is not None:
             return self._delegate.send_message(text, context)
+        started = time.time()
         body: dict[str, object] = {"text": text}
         if context is not None:
             body["context"] = dict(context)
-
         raw = self._post("/api/benchmark/message", body)
-        return MessageResponse(
-            text=str(raw.get("text", "")),
-            thought=raw.get("thought") if isinstance(raw.get("thought"), str) else None,
-            actions=list(raw.get("actions", [])),
-            params=dict(raw.get("params", {})),
+        finished = time.time()
+        response = _message_response_from_raw(raw)
+        # The TS bench server emits a top-level ``usage`` field on the JSON
+        # response (added 2026-05 to surface Cerebras token counts). Pull it
+        # into telemetry; if it's missing, record zeros (telemetry still has
+        # latency).
+        raw_usage = raw.get("usage")
+        usage_map: Mapping[str, object] | None = (
+            raw_usage if isinstance(raw_usage, Mapping) else None
         )
+        self.record_telemetry(
+            started_at_epoch=started,
+            finished_at_epoch=finished,
+            usage=usage_map,
+        )
+        return response
 
     def is_ready(self) -> bool:
         if self._delegate is not None:
@@ -222,13 +280,35 @@ class ElizaClient:
         )
 
     # ------------------------------------------------------------------
+    # Subclass override of BaseBenchmarkClient._send.
+    # ------------------------------------------------------------------
+
+    def _send(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> MessageResponse:
+        """Pure-HTTP send_message — used by the base class telemetry wrapper.
+
+        The public ``send_message`` keeps its existing surface (delegate-aware,
+        directly returns a ``MessageResponse``); this ``_send`` exists so
+        callers that want the telemetry-tracked path can use
+        :meth:`send_message_tracked` from the base class.
+        """
+        body: dict[str, object] = {"text": text}
+        if context is not None:
+            body["context"] = dict(context)
+        raw = self._post("/api/benchmark/message", body)
+        return _message_response_from_raw(raw)
+
+    # ------------------------------------------------------------------
     # Internals
     # ------------------------------------------------------------------
 
     def _auth_headers(self) -> dict[str, str]:
-        if self._token:
-            return {"Authorization": f"Bearer {self._token}"}
-        return {}
+        # Delegate to the canonical helper on the base class so all three
+        # adapters build the Bearer header identically.
+        return self.build_auth_headers(self._token)
 
     def _get(self, path: str) -> dict[str, object]:
         url = f"{self.base_url}{path}"
@@ -265,6 +345,29 @@ class ElizaClient:
             raise RuntimeError(
                 f"HTTP {exc.code} from eliza benchmark server: {body}"
             ) from exc
+
+
+def _message_response_from_raw(raw: Mapping[str, object]) -> MessageResponse:
+    """Map a parsed bench server JSON body to :class:`MessageResponse`.
+
+    Centralized so :meth:`ElizaClient.send_message` and :meth:`ElizaClient._send`
+    share the exact same parsing logic.
+    """
+    thought = raw.get("thought") if isinstance(raw.get("thought"), str) else None
+    actions_raw = raw.get("actions") or []
+    actions = (
+        [str(a) for a in actions_raw]
+        if isinstance(actions_raw, list)
+        else []
+    )
+    params_raw = raw.get("params") or {}
+    params = dict(params_raw) if isinstance(params_raw, dict) else {}
+    return MessageResponse(
+        text=str(raw.get("text", "")),
+        thought=thought,
+        actions=actions,
+        params=params,
+    )
 
 
 def _build_delegate_client():

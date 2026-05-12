@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "elizaos-mmau"
+version = "0.1.0"
+description = "MMAU (Massive Multi-task Audio Understanding, ICLR 2025) benchmark for elizaOS"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+authors = [
+    { name = "ElizaOS Team" }
+]
+keywords = ["benchmark", "mmau", "audio", "speech", "music", "elizaos"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "mypy>=1.8",
+    "ruff>=0.5",
+]
+hf = [
+    "datasets>=2.0",
+    "soundfile>=0.12",
+]
+all = [
+    "elizaos-mmau[dev,hf]",
+]
+
+[project.scripts]
+mmau = "benchmarks.mmau.cli:main"
+elizaos-mmau = "benchmarks.mmau.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["benchmarks/mmau", "benchmarks/elizaos_mmau"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM"]
+ignore = ["E501"]

@@ -29,8 +29,25 @@ from ._retry import (
     is_retryable_status,
     parse_retry_after,
 )
+from benchmarks.lib.base_benchmark_client import (
+    CEREBRAS_GPT_OSS_120B_PRICING,
+    BaseBenchmarkClient,
+    ModelPricing,
+)
 
 logger = logging.getLogger(__name__)
+
+
+# Default concurrency for Hermes. W2-9 observed Cerebras 429s at concurrency=4
+# on the hermes suite; lowering to 2 cut the 429 rate to near zero without a
+# material throughput hit. Callers can override via the constructor.
+_HERMES_DEFAULT_CONCURRENCY = 2
+
+
+def _hermes_pricing(provider: str, model: str) -> ModelPricing | None:
+    if provider.strip().lower() == "cerebras" and model.strip().lower() == "gpt-oss-120b":
+        return CEREBRAS_GPT_OSS_120B_PRICING
+    return None
 
 
 def _retry_after_from_openai_exception(exc: object) -> float | None:
@@ -60,7 +77,7 @@ class MessageResponse:
     params: dict[str, object]
 
 
-class HermesClient:
+class HermesClient(BaseBenchmarkClient[MessageResponse]):
     """Client for one-shot turns against hermes-agent.
 
     ``mode='subprocess'`` (default): spawn a one-shot Python script using the
@@ -69,6 +86,11 @@ class HermesClient:
 
     ``mode='in_process'``: import hermes-agent in the current process. Only
     works if the parent Python already has hermes-agent installed.
+
+    Inherits :class:`BaseBenchmarkClient` for shared concurrency / cost /
+    telemetry handling. ``concurrency`` defaults to 2 — W2-9 observed
+    Cerebras 429s at 4 on the hermes suite; the lower cap eliminates them
+    without a material throughput hit.
     """
 
     def __init__(
@@ -82,9 +104,17 @@ class HermesClient:
         base_url: str | None = None,
         mode: str = "subprocess",
         timeout_s: float = 1200.0,
+        concurrency: int = _HERMES_DEFAULT_CONCURRENCY,
     ) -> None:
         if mode not in {"subprocess", "in_process"}:
             raise ValueError(f"Unknown mode {mode!r}; expected 'subprocess' or 'in_process'")
+
+        super().__init__(
+            concurrency=concurrency,
+            pricing=_hermes_pricing(provider, model),
+            model=model,
+            provider=provider,
+        )
 
         self.repo_path = Path(repo_path) if repo_path else DEFAULT_REPO_PATH
         if venv_python is not None:
@@ -92,8 +122,6 @@ class HermesClient:
         else:
             self.venv_python = self.repo_path / ".venv" / "bin" / "python"
 
-        self.provider = provider
-        self.model = model
         self.api_key = api_key if api_key is not None else os.environ.get("CEREBRAS_API_KEY", "")
         self.base_url = (
             base_url
@@ -195,7 +223,36 @@ class HermesClient:
              importable in the venv, drives ``HermesAgentLoop`` for one turn).
           4. Emits a single JSON line on stdout in the shape
              ``{"text", "thought", "actions", "params"}``.
+
+        Captures per-turn telemetry (latency_ms, prompt/completion tokens,
+        cost_usd) via the base class. Cerebras's OpenAI-compatible response
+        carries ``usage`` which we surface in ``params["usage"]`` on both
+        transports — this method reads it back into telemetry.
         """
+        started = time.time()
+        try:
+            result = self._send(text, context)
+        finally:
+            finished = time.time()
+        usage_obj = result.params.get("usage") if result.params else None
+        usage_map: Mapping[str, object] | None = (
+            usage_obj if isinstance(usage_obj, Mapping) else None
+        )
+        self.record_telemetry(
+            started_at_epoch=started,
+            finished_at_epoch=finished,
+            usage=usage_map,
+        )
+        return result
+
+    # Required by BaseBenchmarkClient. The base class' send_message_tracked
+    # path is not used here because send_message above already wraps the
+    # transport call with the (richer) cost/latency capture.
+    def _send(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> MessageResponse:
         if self.mode == "in_process":
             return self._send_in_process(text, context)
         return self._send_subprocess(text, context)
