@@ -211,9 +211,13 @@ From [`rebaseline-report.md`](./rebaseline-report.md) Wave-3 follow-ups:
 - **[P2] Plumb hermes per-turn `cost_usd` and `latency_ms`** into
   `MessageTurn` for granular debugging.
 
-`docs/audits/lifeops-2026-05-11/wave-5a-gap-list.md` lands separately
-as W5-A completes — it will be linked from [`INDEX.md`](./INDEX.md)
-under "Wave 5 follow-ups" once the multi-tier validation run finishes.
+[`wave-5a-gap-list.md`](./wave-5a-gap-list.md) is the post-rebuild gap
+inventory (committed 2026-05-11 after the rate-limit-delayed W5-A run
+resumed). Headline: P0=0, P1=3 real fixes + 4 no-op confirmations,
+P2=5 document-only, P3=6 follow-up tracked. The four items W5-B was
+pre-assigned (`browser.ts`, `plugin-music` test, `test_hermes_agent`,
+`action-retrieval` regex namespace) all confirmed green on `develop`
+under `6ef80720a9`.
 
 Wave 4-B residuals (full text in
 [`known-typecheck-failures.md`](./known-typecheck-failures.md)):
