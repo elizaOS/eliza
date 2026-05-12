@@ -31,21 +31,6 @@
     "draft_p_min": 0.5
   },
   "bundle_recommendations": {
-    "text-1.7b": {
-      "ctx_size": 32768,
-      "max_parallel": 8,
-      "cache_type_k": "q8_0",
-      "cache_type_v": "q4_0"
-    },
-    "text-7b": {
-      "ctx_size": 32768,
-      "max_parallel": 4
-    },
-    "text-27b": {
-      "ctx_size": 16384,
-      "max_parallel": 2,
-      "no_kv_offload": false
-    },
     "voice": {
       "ctx_size": 8192,
       "max_parallel": 4,
@@ -54,7 +39,9 @@
     },
     "eliza-1-2b": {
       "ctx_size": 32768,
-      "max_parallel": 8
+      "max_parallel": 8,
+      "cache_type_k": "q8_0",
+      "cache_type_v": "q4_0"
     },
     "eliza-1-4b": {
       "ctx_size": 65536,

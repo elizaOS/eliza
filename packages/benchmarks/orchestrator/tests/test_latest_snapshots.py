@@ -292,6 +292,42 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
         f"{comparison_signature}::woobench::hermes",
         f"{comparison_signature}::woobench::openclaw",
     }
+    assert index["benchmark_comparability"]["woobench"]["comparable"] is True
+
+
+def test_rebuild_latest_marks_mixed_latest_configs_not_comparable(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    for offset, (agent, scenario) in enumerate(
+        (
+            ("eliza", "friend_supporter_tarot_01"),
+            ("hermes", "friend_supporter_tarot_01"),
+            ("openclaw", "true_believer_tarot_01"),
+        )
+    ):
+        _seed_run(
+            conn,
+            benchmark_id="woobench",
+            agent=agent,
+            run_id=f"run_mixed_{agent}",
+            started_at=f"2026-05-12T00:0{offset}:00+00:00",
+            extra_config={"scenario": scenario},
+        )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert index["benchmark_comparability"]["woobench"]["comparable"] is False
 
 
 def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:
