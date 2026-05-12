@@ -5,6 +5,13 @@ import {
   MODEL_CATALOG,
 } from "./catalog";
 import {
+  canSetAsDefault,
+  type Eliza1Backend,
+  type Eliza1DeviceCaps,
+  type Eliza1Manifest,
+  SUPPORTED_BACKENDS_BY_TIER,
+} from "./manifest";
+import {
   assessRamFit,
   defaultManifestLoader,
   type ManifestLoader,
@@ -410,6 +417,126 @@ function rankLadderByLongContext(ladder: CatalogModel[]): CatalogModel[] {
       return left.idx - right.idx;
     })
     .map((entry) => entry.model);
+}
+
+// ---------------------------------------------------------------------------
+// Default-eligibility on this device — the recommendation-engine gate that
+// consults the bundle's `eliza-1.manifest.json` (`kernels.verifiedBackends`,
+// `evals`, `defaultEligible`) against the device hardware + the bundle's
+// on-device verify state. See `packages/inference/AGENTS.md` §6 + §7.
+// ---------------------------------------------------------------------------
+
+/**
+ * Project a `HardwareProbe` onto the `Eliza1DeviceCaps` shape the manifest
+ * validator's `canSetAsDefault` consumes. CPU is always available; a probed
+ * GPU contributes exactly its one backend (`cuda` / `metal` / `vulkan`). RAM
+ * is the device total, in MB — `canSetAsDefault` compares against the
+ * manifest's `ramBudgetMb.min` floor, not the headroom-discounted figure the
+ * ladder uses, because the floor is "will it boot at all".
+ */
+export function deviceCapsFromProbe(hardware: HardwareProbe): Eliza1DeviceCaps {
+  const backends: Eliza1Backend[] = ["cpu"];
+  if (hardware.gpu) backends.push(hardware.gpu.backend);
+  return {
+    availableBackends: backends,
+    ramMb: Math.round(hardware.totalRamGb * 1024),
+  };
+}
+
+export type BundleDefaultEligibility =
+  | { canBeDefault: true }
+  | {
+      canBeDefault: false;
+      /** Distinct, machine-readable reason — surfaced to the UI alongside
+       * the `BundleIncompatibleError` the downloader raises for the same
+       * conditions. */
+      reason:
+        | "no-manifest"
+        | "not-default-eligible"
+        | "ram-below-floor"
+        | "kernels-unverified-on-device"
+        | "not-verified-on-device";
+      detail: string;
+    };
+
+/**
+ * True iff this installed Eliza-1 bundle may be offered as the recommended
+ * default on this device. The full set of conditions (any one failing →
+ * not default):
+ *
+ *  - the bundle ships a validated `eliza-1.manifest.json`,
+ *  - the manifest is `defaultEligible` AND contract-valid (which in turn
+ *    means every required kernel is verified AND every required eval passed —
+ *    enforced by `canSetAsDefault` → `collectContractErrors`),
+ *  - the device exposes at least one backend the manifest verified `pass` on
+ *    out of the tier's supported set,
+ *  - the device RAM meets the manifest's `ramBudgetMb.min` floor,
+ *  - the bundle has passed the one-time on-device verify pass
+ *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
+ *    bundle is never auto-selected, per AGENTS.md §7.
+ */
+export function canBundleBeDefaultOnDevice(
+  installed: InstalledModel,
+  hardware: HardwareProbe,
+  options: { manifestLoader?: ManifestLoader } = {},
+): BundleDefaultEligibility {
+  const loader = options.manifestLoader ?? defaultManifestLoader;
+  const manifest: Eliza1Manifest | null = loader(installed.id, installed);
+  if (!manifest) {
+    return {
+      canBeDefault: false,
+      reason: "no-manifest",
+      detail: `${installed.id}: no validated eliza-1.manifest.json next to the bundle`,
+    };
+  }
+  if (!installed.bundleVerifiedAt) {
+    return {
+      canBeDefault: false,
+      reason: "not-verified-on-device",
+      detail: `${installed.id}: bundle materialized but the on-device verify pass (load → 1-token text → 1-phrase voice → barge-in) has not run`,
+    };
+  }
+  const caps = deviceCapsFromProbe(hardware);
+  if (canSetAsDefault(manifest, caps)) return { canBeDefault: true };
+
+  // canSetAsDefault returned false — disambiguate why so the UI/log is precise.
+  if (!manifest.defaultEligible) {
+    return {
+      canBeDefault: false,
+      reason: "not-default-eligible",
+      detail: `${installed.id}: manifest defaultEligible is false (evals/kernels not all green at publish time)`,
+    };
+  }
+  if (manifest.ramBudgetMb.min > caps.ramMb) {
+    return {
+      canBeDefault: false,
+      reason: "ram-below-floor",
+      detail: `${installed.id}: device RAM ${caps.ramMb} MB is below the manifest floor ${manifest.ramBudgetMb.min} MB`,
+    };
+  }
+  const supported = new Set<Eliza1Backend>(
+    SUPPORTED_BACKENDS_BY_TIER[manifest.tier],
+  );
+  const verifiedOnDeviceBackend = caps.availableBackends.some(
+    (b) =>
+      supported.has(b) && manifest.kernels.verifiedBackends[b].status === "pass",
+  );
+  if (!verifiedOnDeviceBackend) {
+    const deviceBackends = caps.availableBackends.join(", ");
+    return {
+      canBeDefault: false,
+      reason: "kernels-unverified-on-device",
+      detail: `${installed.id}: no backend the device exposes (${deviceBackends}) has a 'pass' kernel-verify report in the manifest`,
+    };
+  }
+  // Contract-valid manifest, RAM ok, backend ok — but canSetAsDefault still
+  // said no. That can only be a contract-error path (e.g. an eval gate not
+  // passed) the manifest validator caught; surface it as not-default-eligible.
+  return {
+    canBeDefault: false,
+    reason: "not-default-eligible",
+    detail: `${installed.id}: manifest failed the default-eligibility contract check (an eval gate or kernel-coverage rule)`,
+  };
 }
 
 export function selectRecommendedModels(
