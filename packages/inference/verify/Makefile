@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract two-agent-voice-demo vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke android-vulkan-graph-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused metal-upscale-probe metal-upscale-probe-require cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -235,13 +235,19 @@ vulkan-verify-fused: vulkan_verify vulkan-spirv reference-test
 vulkan-native-smoke:
 	./linux_vulkan_smoke.sh
 
-# Android on-device standalone Vulkan smoke. Cross-compiles vulkan_verify with
-# the NDK, pushes the verifier + SPIR-V + fixtures via adb, and runs all eight
-# fixture checks on the physical device. Standalone fixture success is only
-# evidence; the script exits non-zero until Android graph-dispatch evidence is
-# supplied through ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE.
+# Android on-device Vulkan smoke. Cross-compiles vulkan_verify with the NDK,
+# pushes the verifier + SPIR-V + fixtures via adb, runs the standalone fixture
+# checks, then runs the built-fork graph-dispatch smoke unless
+# ELIZA_ANDROID_VULKAN_STANDALONE_ONLY=1 is set.
 android-vulkan-smoke:
 	./android_vulkan_smoke.sh
+
+# Android built-fork graph-dispatch smoke. Builds android-arm64-vulkan through
+# the dflash build script using a standalone cache, cross-compiles
+# vulkan_dispatch_smoke.cpp, pushes it plus libggml-vulkan.so to a physical
+# device, and writes target-specific runtime evidence.
+android-vulkan-graph-smoke:
+	./android_vulkan_graph_smoke.sh
 
 # Metal harness (macOS only). Requires xcrun on PATH.
 metal: metal_verify
