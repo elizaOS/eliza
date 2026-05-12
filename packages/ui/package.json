@@ -45,6 +45,7 @@
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
     "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
     "./config/app-config": "./dist/config/app-config.js",
+    "./events": "./dist/events/index.js",
     "./onboarding-config": "./dist/onboarding-config.js",
     "./api": {
       "import": "./dist/api/index.js",
