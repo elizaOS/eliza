@@ -356,19 +356,34 @@ export const Eliza1RamBudgetSchema = z
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
 // Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
-// but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
-// state; `local-standin` is a non-publishable staging shape;
-// `upload-candidate` / `final` are the historical fine-tuned-v1 publish
-// states retained for forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
+// but NOT fine-tuned (fine-tuning ships in v2). `base-v1-candidate` is the
+// in-progress state of a base-v1 bundle before every release-blocking
+// gate (real fork-built bytes, every supported-backend kernel verify,
+// every required platform-dispatch report, the runnable-on-base evals) is
+// green — it is NOT publishable. `finetuned-v2` is the v2 state;
+// `local-standin` is a non-publishable staging shape; `upload-candidate` /
+// `final` are the historical fine-tuned-v1 publish states retained for
+// forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 export const ELIZA_1_RELEASE_STATES = [
   "local-standin",
+  "base-v1-candidate",
   "base-v1",
   "finetuned-v2",
   "upload-candidate",
   "final",
 ] as const;
 export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
+
+// Release-channel vocabulary recorded on a published manifest. `recommended`
+// is the fine-tuned Eliza-1 (ships in v2) — the one the recommendation
+// engine surfaces as a device default. `base-v1` is the upstream-base +
+// kernel-optimized release: every quant/kernel trick applied, but the text
+// weights are the upstream base GGUFs (not the fine-tuned Eliza-1). A
+// `base-v1`-channel manifest MUST be `defaultEligible: false`. Mirrors
+// `ELIZA_1_RELEASE_CHANNELS` (Python side).
+export const ELIZA_1_RELEASE_CHANNELS = ["recommended", "base-v1"] as const;
+export type Eliza1ReleaseChannel = (typeof ELIZA_1_RELEASE_CHANNELS)[number];
 
 // Provenance slots — the bundle components whose upstream source repo a
 // `base-v1` manifest must record. Mirrors `ELIZA_1_PROVENANCE_SLOTS`
@@ -436,6 +451,12 @@ export const Eliza1ManifestSchema = z
     // per shipped component. The contract validator requires per-component
     // coverage when `releaseState === "base-v1"`.
     provenance: Eliza1ProvenanceSchema.optional(),
+    // Optional. Defaults to `"recommended"` (the fine-tuned Eliza-1 — the
+    // device default). A `"base-v1"`-channel manifest is the upstream-base
+    // + kernel-optimized release; it MUST be `defaultEligible: false` (the
+    // recommendation engine never surfaces it as a default — see
+    // inference/AGENTS.md §6).
+    releaseChannel: z.enum(ELIZA_1_RELEASE_CHANNELS).optional(),
     defaultEligible: z.boolean(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
@@ -447,4 +468,11 @@ export const Eliza1ManifestSchema = z
       message: "id must start with `eliza-1-<tier>`",
       path: ["id"],
     },
-  );
+  )
+  // A `base-v1`-channel manifest is the upstream-base release — never a
+  // device default. Mirrors inference/AGENTS.md §6 and the Python manifest
+  // builder.
+  .refine((m) => m.releaseChannel !== "base-v1" || m.defaultEligible === false, {
+    message: "releaseChannel=base-v1 requires defaultEligible: false",
+    path: ["defaultEligible"],
+  });

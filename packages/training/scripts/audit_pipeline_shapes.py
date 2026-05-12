@@ -549,8 +549,8 @@ def validate_action_specific(task_type: str, decoded: Any) -> list[str]:
 
     Field expectations are derived from the canonical templates in
     ``eliza/packages/core/src/prompts.ts``. When a template is permissive
-    or under-documented, the validator only checks the top-level shape and
-    a TODO comment marks the gap.
+    or under-documented, the validator falls back to checking only the
+    top-level shape (object, non-empty) for that ``task_type``.
     """
     if not isinstance(decoded, dict):
         return [f"top_level_not_object({type(decoded).__name__})"]

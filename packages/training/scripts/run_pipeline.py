@@ -109,21 +109,34 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
 
 def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
     """Find a `llama-bench` binary, preferring the fastest backend available:
-    a CUDA build > the fork's Vulkan build > the stock CPU build > $PATH."""
+    CUDA build > Vulkan build > plain CPU build > $PATH. Globs the per-backend
+    build dirs rather than hard-coding paths so it survives the `milady`↔
+    `eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
+    import glob
     import shutil
-    cands: list[Path] = []
-    vendor = ROOT / "vendor" / "llama.cpp"
-    cands += [vendor / "build-cuda" / "bin" / "llama-bench"]
-    if fork_dir is not None:
-        cands += [
-            fork_dir / "build-cuda" / "bin" / "llama-bench",
-            fork_dir / "build" / "linux-x64-cuda" / "bin" / "llama-bench",
-            fork_dir / "build" / "linux-x64-vulkan" / "bin" / "llama-bench",
+    pats: list[str] = []
+    for base in (ROOT / "vendor" / "llama.cpp", fork_dir):
+        if base is None:
+            continue
+        pats += [
+            f"{base}/build-cuda/bin/llama-bench",
+            f"{base}/build/bin/llama-bench",
+            f"{base}/build/*cuda*/bin/llama-bench",
+            f"{base}/build/*vulkan*/bin/llama-bench",
+            f"{base}/build/*/bin/llama-bench",
         ]
-    cands += [vendor / "build" / "bin" / "llama-bench"]
-    for c in cands:
-        if c.is_file() and os.access(c, os.X_OK):
-            return c
+    home = str(Path.home())
+    pats += [
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build-cuda/bin/llama-bench",
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*cuda*/bin/llama-bench",
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*vulkan*/bin/llama-bench",
+        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/bin/llama-bench",
+    ]
+    for pat in pats:
+        for m in sorted(glob.glob(pat)):
+            p = Path(m)
+            if p.is_file() and os.access(p, os.X_OK):
+                return p
     w = shutil.which("llama-bench")
     return Path(w) if w else None
 
@@ -225,6 +238,26 @@ def main() -> int:
     )
     ap.add_argument("--max-samples", type=int, default=0,
                     help="Cap training samples (0 = full corpus).")
+    ap.add_argument(
+        "--micro-batch", type=int, default=0,
+        help="Per-device micro-batch size for SFT (forwarded to "
+             "train_local.py --batch-size). 0 = use the registry default for "
+             "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
+             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
+             "(same effective batch); validate VRAM with memory_calc.py first.",
+    )
+    ap.add_argument(
+        "--grad-accum", type=int, default=0,
+        help="Gradient-accumulation steps for SFT (forwarded to "
+             "train_local.py --grad-accum). 0 = use the registry default.",
+    )
+    ap.add_argument(
+        "--max-seq-len", type=int, default=0,
+        help="Training sequence length for SFT (forwarded to "
+             "train_local.py --max-seq-len). 0 = use the registry default for "
+             "the tier (8k for 2B, 16k for 9B, 64k for 27B). Validate VRAM "
+             "with memory_calc.py --shape <key> before overriding.",
+    )
     ap.add_argument("--train-file", default=None,
                     help="Training JSONL. Defaults to data/final/train.jsonl "
                          "unless --trajectory-export is provided.")
@@ -467,6 +500,12 @@ def main() -> int:
         ]
         if args.max_samples and not args.trajectory_export:
             cmd += ["--max-samples", str(args.max_samples)]
+        if args.micro_batch:
+            cmd += ["--batch-size", str(args.micro_batch)]
+        if args.grad_accum:
+            cmd += ["--grad-accum", str(args.grad_accum)]
+        if args.max_seq_len:
+            cmd += ["--max-seq-len", str(args.max_seq_len)]
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(finetuned_model)}
         if rc != 0:

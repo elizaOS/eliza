@@ -68,10 +68,14 @@ def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
     return {
         "tier": tier,
         "results": {
+            "format_ok": 0.91,
             "text_eval": 0.71,
             "voice_rtf": 0.32,
             "asr_wer": 0.05,
             "vad_latency_ms": 14.0,
+            "vad_boundary_mae_ms": 22.0,
+            "vad_endpoint_p95_ms": 480.0,
+            "vad_false_bargein_per_hour": 0.05,
             "first_token_latency_ms": 145,
             "first_audio_latency_ms": 280,
             "barge_in_cancel_ms": 55,
@@ -382,6 +386,7 @@ def _ctx(
     metal: Path | None = None,
     dry_run: bool = True,
     training_root: Path | None = None,
+    release_channel: str = "recommended",
 ) -> PublishContext:
     return PublishContext(
         tier=tier,
@@ -394,7 +399,29 @@ def _ctx(
         template_path=(
             Path(__file__).resolve().parent / "templates" / "README.md.j2"
         ),
+        release_channel=release_channel,
     )
+
+
+def _make_base_v1_release_evidence(bundle: Path, tier: str = "9b") -> dict[str, Any]:
+    """Promote the fixture's release evidence to a publishable base-v1 shape."""
+    rel_path = bundle / "evidence" / "release.json"
+    evidence = json.loads(rel_path.read_text())
+    evidence["releaseState"] = "base-v1"
+    # base-v1 ships the upstream base text bytes by design.
+    evidence["final"]["weights"] = False
+    evidence["finetuned"] = False
+    evidence["sourceModels"] = {
+        "text": {"repo": "Qwen/Qwen3-9B-GGUF", "file": "Qwen3-9B-Q4_K_M.gguf"},
+        "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
+        "drafter": {"repo": "elizaos/eliza-1-9b"},
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
+        "vad": {"repo": "snakers4/silero-vad"},
+        "vision": {"repo": "Qwen/Qwen3-9B-GGUF"},
+    }
+    rel_path.write_text(json.dumps(evidence, indent=2))
+    _write_checksums(bundle)
+    return evidence
 
 
 # ---------------------------------------------------------------------------
@@ -878,3 +905,79 @@ def test_cli_help(monkeypatch, capsys) -> None:
     captured = capsys.readouterr()
     assert "--tier" in captured.out
     assert "9b" in captured.out
+
+
+# ---------------------------------------------------------------------------
+# base-v1 release channel
+# ---------------------------------------------------------------------------
+
+
+def test_base_v1_channel_rejects_recommended_release_state(tmp_path: Path) -> None:
+    """A base-v1-channel publish refuses a recommended-channel releaseState."""
+    bundle = _build_fixture_bundle(tmp_path)  # releaseState=upload-candidate
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True, release_channel="base-v1"))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_channel_rejects_missing_provenance(tmp_path: Path) -> None:
+    """base-v1 release evidence must carry a sourceModels map + finetuned=false."""
+    bundle = _build_fixture_bundle(tmp_path)
+    rel_path = bundle / "evidence" / "release.json"
+    evidence = json.loads(rel_path.read_text())
+    evidence["releaseState"] = "base-v1"
+    evidence["final"]["weights"] = False
+    rel_path.write_text(json.dumps(evidence, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True, release_channel="base-v1"))
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_channel_dry_run_succeeds_with_full_evidence(tmp_path: Path) -> None:
+    """A base-v1-channel dry-run passes once every non-text gate + provenance is green."""
+    bundle = _build_fixture_bundle(tmp_path)
+    _make_base_v1_release_evidence(bundle, "9b")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True, release_channel="base-v1"))
+    assert rc == EXIT_OK
+    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
+    assert manifest["releaseChannel"] == "base-v1"
+    assert manifest["defaultEligible"] is False
+    assert manifest["provenance"]["releaseState"] == "base-v1"
+    assert manifest["provenance"]["finetuned"] is False
+    assert manifest["provenance"]["sourceModels"]["text"]["repo"].startswith("Qwen/")
+    readme = (bundle / "README.md").read_text()
+    assert "base-v1" in readme
+    assert "NOT the fine-tuned" in readme or "NOT a recommended" in readme
+
+
+def test_base_v1_channel_relaxes_text_eval_gate(tmp_path: Path) -> None:
+    """Held-out text quality is N/A on base-v1 — a low text_eval does not block."""
+    blob = _passing_eval_blob("9b")
+    blob["results"]["text_eval"] = 0.10  # would fail the recommended-channel gate
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    _make_base_v1_release_evidence(bundle, "9b")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True, release_channel="base-v1"))
+    assert rc == EXIT_OK
+
+
+def test_base_v1_channel_still_enforces_voice_rtf_gate(tmp_path: Path) -> None:
+    """base-v1 does NOT relax the runnable-on-base evals — a bad voice RTF blocks."""
+    blob = _passing_eval_blob("9b")
+    blob["results"]["voice_rtf"] = 9.0  # way over any tier gate
+    bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
+    _make_base_v1_release_evidence(bundle, "9b")
+    metal = _metal_report(tmp_path)
+    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True, release_channel="base-v1"))
+    assert rc == EXIT_EVAL_GATE_FAIL
+
+
+def test_base_v1_cli_flag(monkeypatch, capsys) -> None:
+    from scripts.publish.orchestrator import main, _parse_args  # noqa: PLC0415
+
+    ctx = _parse_args(["--tier", "9b", "--bundle-dir", "/tmp/x", "--base-v1", "--dry-run"])
+    assert ctx.release_channel == "base-v1"
+    ctx2 = _parse_args(["--tier", "9b", "--bundle-dir", "/tmp/x", "--dry-run"])
+    assert ctx2.release_channel == "recommended"

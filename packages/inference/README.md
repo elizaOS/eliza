@@ -605,6 +605,11 @@ before it can satisfy AGENTS.md §3 in this workspace.
 
 ## Build-time environment overrides
 
+`node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>`
+needs **no environment variables** — the bare command builds the in-repo
+submodule fork with all kernel patches and the (tolerant) structured-output
+report applied. The env vars below are operator knobs / debug overrides only.
+
 | Env var                                  | What it does                                              | Default |
 | ---------------------------------------- | --------------------------------------------------------- | ------- |
 | `ELIZA_DFLASH_LLAMA_CPP_REMOTE`          | Build from a standalone clone of this fork remote instead of the in-repo `packages/inference/llama.cpp` submodule (default `https://github.com/elizaOS/llama.cpp.git`). | unset |
@@ -613,20 +618,45 @@ before it can satisfy AGENTS.md §3 in this workspace.
 | `ELIZA_DFLASH_CMAKE_FLAGS`               | Extra cmake flags appended to the per-target list. Wins on conflict (e.g. override `-DCMAKE_CUDA_ARCHITECTURES`). | unset |
 | `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |
 
-The previous `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`
-environment knobs were decorative log toggles for the v0.4.0-eliza-era
-no-op patch hooks. They have been removed; both the Metal and Vulkan
-patch helpers now run unconditionally on every matching target — Metal
-copies the standalone shaders + patches the metallib `add_custom_command`,
-Vulkan copies the standalones into `vulkan-shaders/` + applies the
-available staging patches.
-There is no opt-out, per AGENTS.md §3 ("Required for ALL tiers").
-Symbol-only kernels do not satisfy the post-build audit gate.
+Removed flags (no env var needed; the behaviour is the default now):
+- `ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT` — the llama-server
+  structured-output patch (`kernel-patches/server-structured-output.mjs`) is
+  now *tolerant*: it reports which of `grammar_lazy` / `json_schema` /
+  `response_format` / `prefill_assistant` the fork checkout carries (the
+  `v1.0.0-eliza` fork has all four), warns (does not fail) for any absent on a
+  bisected older ref, and applies the `verifier` SSE extension where an anchor
+  exists. Structured output is an optional HTTP surface, not a mandatory kernel
+  per AGENTS.md §3, so a missing piece is a warning, not a build failure.
+- `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS` — were
+  decorative log toggles for the v0.4.0-eliza-era no-op patch hooks. The Metal
+  and Vulkan patch helpers now run unconditionally on every matching target
+  (Metal copies the standalone shaders + patches the metallib
+  `add_custom_command`; Vulkan copies the standalones into `vulkan-shaders/` +
+  applies the available staging patches). There is no opt-out, per AGENTS.md §3
+  ("Required for ALL tiers"). Symbol-only kernels do not satisfy the post-build
+  audit gate.
 
-Wiring these into `dflash-server.ts` (so `--cache-type-k turbo3_tcq`
-actually runs through the new shader, and so QJL / Polar are reachable
-from the CLI) is owned by another agent and depends on the
-ggml-metal-ops dispatch work flagged above.
+### Runtime env vars (debug overrides — the catalog/manifest is the production path)
+
+These are read by `packages/app-core/src/services/local-inference/dflash-server.ts`
+at `llama-server` launch. None is needed for a normal run — the catalog
+(`runtime.kvCache`, `runtime.optimizations`) and the bundle's
+`eliza-1.manifest.json` already supply the production values; env wins for
+debugging.
+
+| Env var                                   | What it does                                                                                                  | Default |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------- |
+| `ELIZA_DFLASH_DISABLE`                     | Developer-only kill-switch: routes generation through node-llama-cpp instead of the DFlash spec loop, logs a loud per-turn warning. (`MILADY_DFLASH_DISABLE` = back-compat alias.) | unset |
+| `ELIZA_DFLASH_ENABLED`                     | Debug force-on: prefer a PATH/explicit `llama-server` even with no managed binary, and (on Metal) override the target-only auto path. Not needed otherwise — DFlash auto-enables from the managed binary. | unset |
+| `ELIZA_DFLASH_REQUIRED`                    | Operator knob: make the absence of a working DFlash `llama-server` a hard load error instead of a silent fall-through to node-llama-cpp. | unset |
+| `ELIZA_DFLASH_LLAMA_SERVER`               | Explicit path to the `llama-server` binary to launch (wins over the managed/fused auto-discovery).            | unset |
+| `ELIZA_DFLASH_DISABLE_FUSED_SERVER`        | Debug opt-out: force the two-process (`llama-server` + `llama-omnivoice-server`) layout instead of the default fused single-process server. | unset |
+| `ELIZA_DFLASH_CACHE_TYPE_K` / `_V`         | Override `--cache-type-k/v` (the catalog default is `qjl1_256` K + `q4_polar` V on the >8k tiers). The override is still vetted against the installed binary's `CAPABILITIES.json`. | catalog `runtime.kvCache` |
+| `ELIZA_LOCAL_MMPROJ`                       | Override the `--mmproj` projector path. The production path derives it from the bundle manifest's `files.vision[0].path`; vision-capable tiers (9b / 27b / …) load it automatically. | bundle manifest `files.vision[0].path` |
+
+Removed: `ELIZA_DFLASH_DISABLED` — was a silent duplicate of the
+`ELIZA_DFLASH_DISABLE` kill-switch (no loud warning). Use
+`ELIZA_DFLASH_DISABLE` instead.
 
 ## iOS Capacitor build
 

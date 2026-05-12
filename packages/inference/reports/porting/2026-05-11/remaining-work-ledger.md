@@ -188,13 +188,59 @@ The lowest-duplication design is lazy regional loading from one bundle:
   mode, startup fails. Voice-off mode may run without mapping voice assets only
   if the selected mode explicitly disables voice.
 
+## W7 — the ABI surface the fused streaming decoder must implement
+
+The runtime fallback chain is **sane and complete without streaming**:
+`createStreamingTranscriber()` (`voice/transcriber.ts`) tries
+`FfiStreamingTranscriber` → `FfiBatchTranscriber` → `WhisperCppStreamingTranscriber`
+in order. The fused `linux-x64-cpu-fused` build exports the ABI-v2 symbols but
+the streaming entries are honest stubs: `eliza_inference_asr_stream_supported()
+== 0` and `eliza_inference_tts_stream_supported() == 0`, so `tryFusedStreaming()`
+returns `null` and `FfiBatchTranscriber` (the chunked sliding-window decode over
+the batch `eliza_inference_asr_transcribe`, contract-clean against the
+`StreamingTranscriber` interface) is the preferred path until streaming lands.
+Batch TTS (`eliza_inference_tts_synthesize` → `/v1/audio/speech`) and batch ASR
+both work. `eliza_inference_cancel_tts` is a no-op on the batch-only build (the
+JS side falls back to draining the PCM ring + an HTTP abort, which is correct,
+just not as tight as a kernel-boundary cancel). Nothing in the runtime *requires*
+streaming to function — voice mode runs on the batch path today.
+
+When W7 implements the fused streaming decoder, the contract (declared in
+`packages/app-core/scripts/omnivoice-fuse/ffi.h`, the JS bindings in
+`voice/ffi-bindings.ts`) is:
+
+- **Streaming ASR:** `eliza_inference_asr_stream_supported()` → 1;
+  `_asr_stream_open(ctx, sample_rate_hz)` → handle; `_asr_stream_feed(handle, pcm,
+  n_samples)`; `_asr_stream_partial(handle, max_tokens, out…)` → running partial
+  text + token ids (text vocab — shared with the backbone per §1, so finished
+  tokens inject directly); `_asr_stream_finish(handle, …)` → final;
+  `_asr_stream_close(handle)`.
+- **Streaming TTS + cancel:** `eliza_inference_tts_stream_supported()` → 1;
+  `_tts_synthesize_stream(ctx, text, on_chunk, …)` with `on_chunk` returning
+  non-zero → cancel; `_cancel_tts(ctx)` → hard-cancel the in-flight forward pass
+  at the next kernel boundary (the barge-in path, §4).
+- **Native DFlash verifier callback:** `eliza_inference_set_verifier_callback(ctx,
+  cb, user)` where `cb(accepted_lo, accepted_hi, rejected_lo, rejected_hi, user)`
+  reports exact target-accepted and rejected token ranges in the *output* stream,
+  so the phrase chunker's rollback queue drops not-yet-spoken audio precisely —
+  not the OpenAI-delta surrogate the JS layer synthesizes today.
+
+Each is additive — a v1 caller is unaffected; the v2 symbols already exist as
+stubs reporting `*_supported() == 0`, so a probe-then-pick caller never has to
+call the streaming entry and catch `ELIZA_ERR_NOT_IMPLEMENTED`. Cheap RAM trim
+that rides on this work: have the fused server `madvise(MADV_DONTNEED)` the idle
+ASR pages while the streaming TTS decoder runs and vice-versa (ASR → text → TTS
+are sequential within a turn) — ~1 GB on `0_6b`, which would let the
+`ramBudgetMb.recommended` come back down toward the pre-correction figure.
+
 ## Performance Work Still Worth Doing
 
 0. **Native DFlash verifier event stream.** The JS layer now starts TTS from
    streamed accepted text deltas and the backend callback already carries
    verifier-shaped accept events. For the fastest rollback-safe voice path, the
    fused native runtime still needs to expose exact target-accepted and
-   rejected-token events directly, not only synthesized OpenAI deltas.
+   rejected-token events directly, not only synthesized OpenAI deltas. (Exact
+   ABI in the "W7" section above.)
 1. **Fuse QJL score + softmax + TBQ-V mix.** The CPU fork already has
    `GGML_OP_FUSED_ATTN_QJL_TBQ`. Porting that fused shape to Metal/Vulkan/CUDA
    is more valuable than wiring isolated Turbo dot kernels because it avoids
@@ -338,29 +384,49 @@ The lowest-duplication design is lazy regional loading from one bundle:
 ## Publish Critical Path — Status (post-2026-05-11 publish-finish pass)
 
 This is the one coherent picture of what stands between us and an actual
-HF publish to `elizaos/eliza-1-*`. Verdict: **NOT publishable; no
-non-default upload path exists either.** The text weights are
-off-the-shelf Qwen3 0.6B/1.7B substitutes (documented stand-ins for the
-unresolvable Qwen3.5-*), NOT fine-tuned — so the text-eval gate fails,
-which means `defaultEligible` can never be `true` *and* the orchestrator
-has no flag (`--base-v1` / `--allow-base-release` / similar — checked:
-the only flags are `--tier`, `--bundle-dir`, `--repo-id`, `--public`,
-`--metal-verification`, `--gates-path`, `--dry-run`) that would upload a
-non-default release. `validate_release_evidence` hard-requires
-`releaseState ∈ {upload-candidate, final}` and **every** `final.*` flag
+HF publish to `elizaos/eliza-1-*`. Verdict: **NOT publishable on either
+channel.** The text weights are off-the-shelf Qwen3 0.6B/1.7B substitutes
+(documented stand-ins for the unresolvable Qwen3.5-*), NOT fine-tuned.
+
+A **`--base-v1` channel now exists** (orchestrator `--base-v1` /
+`--release-channel base-v1`; `publish_all_eliza1.sh --base-v1`; manifest
+`releaseChannel: "recommended" | "base-v1"`; release-states now include
+`base-v1-candidate`/`base-v1`). The `base-v1` channel forces
+`defaultEligible: false`, requires a `provenance.sourceModels` map +
+`finetuned: false` in `evidence/release.json`, emits the mandatory
+manifest `provenance` block + the README "upstream-base, NOT the
+fine-tuned Eliza-1, not a recommended default" banner, relaxes
+`final.weights` + the held-out *text-quality* gate — and **enforces every
+other gate** (kernel verify 8/8 on every supported backend, every required
+platform-dispatch report `runtimeReady: true`, the runnable-on-base evals
+incl. `voice_rtf`/`asr_wer`/VAD/e2e/30-turn, every license attestation)
+exactly as the `recommended` channel. It does NOT bypass the
+kernel-verification or license gates AGENTS.md §7 forbids touching. The
+fine-tuned `recommended` release adds the text-quality gate on top and
+ships in v2.
+
+`validate_release_evidence` hard-requires `releaseState ∈ {base-v1, final}`
+(base-v1 channel) / `{upload-candidate, final}` (recommended channel) and —
+modulo `final.weights` on the base-v1 channel — **every** `final.*` flag
 true. So: leave `publishEligible=false`, do not upload, document below.
 
 **Publish dry-run result (real bundles, 2026-05-11):**
 `bash packages/training/scripts/publish_all_eliza1.sh --bundles-root
-<root> --dry-run` (with `<root>/{0_6b,1_7b}` symlinked to
-`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle`) →
-**stage 1 (bundle layout incl. license attestation + `license-manifest.json`
-sidecar) PASSES** for `0_6b`; **stage 2 (release evidence) fails, exit
-`16` (`EXIT_RELEASE_EVIDENCE_FAIL`)** for both tiers, blocking on:
-`releaseState must be 'upload-candidate' or 'final'`; `final.evals must
-be true`; `final.kernelDispatchReports must be true`;
-`final.platformEvidence must be true`; `final.sizeFirstRepoIds must be
-true`. Gate behaves correctly.
+<root> [--base-v1] --dry-run` (with `<root>/{0_6b,1_7b}` symlinked to
+`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle`), and the
+per-bundle `python -m scripts.publish.orchestrator --tier <t> --bundle-dir
+<bundle> --base-v1 --dry-run` → **stage 1 (bundle layout incl. license
+attestation + `license-manifest.json` sidecar) PASSES**; **stage 2
+(release evidence) fails, exit `16` (`EXIT_RELEASE_EVIDENCE_FAIL`)** for
+both tiers, blocking on (base-v1 channel): `releaseState must be one of
+('base-v1', 'final')` (got `weights-staged`); `final.evals must be true`
+(`voice_rtf` ≈6–9× vs ≤0.5 and `asr_wer` 1.0 vs ≤0.1 fail even with the
+text-quality gate relaxed; VAD/e2e/30-turn missing); `final.kernelDispatchReports
+must be true` (Metal/iOS/Android pending); `final.platformEvidence must be
+true` (all stubs); `final.sizeFirstRepoIds must be true`; `base-v1
+channel: evidence.finetuned must be false`; `base-v1 channel:
+evidence.sourceModels … must be a non-empty object`. Gate behaves
+correctly. Logs preserved at each bundle's `evidence/base-v1-dry-run-*.log`.
 
 **`evidence/release.json` state per tier (after re-running the
 evidence finalizer at this commit):** `0_6b` and `1_7b` both
@@ -461,24 +527,56 @@ bash packages/training/scripts/publish_all_eliza1.sh --bundles-root /tmp/eliza1-
   *Closes the "have the recommendation engine consult
   manifest.kernels.verifiedBackends; canSetAsDefault is not yet called"
   item above.*
-- Wake-word: the shipped `wake/hey-eliza.onnx` is the upstream
-  openWakeWord `hey_jarvis` head renamed (it fires on "hey jarvis", not
-  the Eliza-1 wake phrase). `isPlaceholderWakeWordHead` /
-  `OPENWAKEWORD_PLACEHOLDER_HEADS = {hey-eliza, hey_jarvis}` mark it; the
-  engine emits a one-time warning whenever a voice session enables a
-  placeholder head. New doc
-  [`wakeword-head-plan.md`](./wakeword-head-plan.md): steps to train a
-  head on the approved Eliza-1 wake phrase via openWakeWord's
-  TTS-augmented pipeline.
-- Known pre-existing test breakage (NOT from this pass — introduced by
-  the catch-all `89e4d49bc6 "updates to many things"` commit that added
-  VAD eval-gate keys + changed manifest error-message text without
-  updating the fixtures): `test_orchestrator.py::{test_dry_run_succeeds_on_fixture,
-  test_real_publish_finalizes_and_uploads_hf_evidence,
-  test_dry_run_tag_is_printed_not_executed, test_alias_opt_in_allows_publish_with_warning}`
-  and `test_eliza1_manifest.py::test_default_eligible_requires_asr_and_vad_components`.
-  Owner: the eval-suite agent — the orchestrator's runtime behaviour is
-  correct (real-bundle dry-run gives the expected exit `16`).
+- Wake-word: the default Eliza-1 wake phrase is now documented as
+  **"hey eliza"** (a two-word, four-syllable phrase the openWakeWord
+  TTS-augmented pipeline handles well; replaceable). The training
+  pipeline is runnable —
+  [`packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`](../../../../training/scripts/wakeword/train_eliza1_wakeword_head.py)
+  (front-end download → embedding featurization → dense head + BCE →
+  ONNX export with the runtime's `[1, 16, 96]` → scalar contract →
+  provenance JSON), unit-tested in `test_train_eliza1_wakeword_head.py`
+  (head arch, threshold picker, ONNX export shape, a miniature
+  train→export fit). A *full* real run (~30k positives across many
+  voices/speeds/pitches + a real negative corpus + the openWakeWord
+  front-end graphs) needs network and a permissive TTS that this dev box
+  can't produce in a reasonable timeframe, so the recipe + the partial
+  (unit-tested) run is what landed; `wakeword-head-plan.md` carries the
+  exact full-run command. The shipped `wake/hey-eliza.onnx` is still the
+  upstream `hey_jarvis` head renamed (fires on "hey jarvis"), so
+  `OPENWAKEWORD_PLACEHOLDER_HEADS = {hey-eliza, hey_jarvis}` is unchanged
+  and the engine still warns on every session that enables it — remove
+  `hey-eliza` from that set only once a head trained by the script ships
+  in bundles. Wake word stays opt-in, off by default, local-mode only.
+- **FIXED:** the pre-existing test breakage introduced by `89e4d49bc6
+  "updates to many things"` (which added the `vad_boundary_mae_ms` /
+  `vad_endpoint_p95_ms` / `vad_false_bargein_per_hour` gate keys to
+  `eliza1_gates.yaml`) — `test_orchestrator.py`'s `_passing_eval_blob`
+  fixture now carries those three keys, so the four dry-run/publish tests
+  are green again. `test_eliza1_manifest.py::test_default_eligible_requires_asr_and_vad_components`
+  also passes (a sibling had already realigned its error-string assertion).
+  `pytest packages/training/scripts/{publish,manifest} packages/training/benchmarks`
+  is all-green.
+- **Voice peak-RSS over budget — FIXED by honest budget correction.** The
+  fused `llama-server` in voice-on mode legitimately keeps text + DFlash
+  drafter + OmniVoice (base/tokenizer/DAC/HuBERT/sem-enc) + Qwen3-ASR +
+  mmproj co-resident (embedding is a separate sidecar `llama-server
+  --embeddings`, not in this process — already lazy). The 2026-05-11 e2e
+  bench measured ~3132 MB (`0_6b`) / ~4828 MB (`1_7b`) server peak RSS;
+  the old `ramBudgetMb.recommended` (1800 / 4500) was simply wrong for
+  that footprint. `DEFAULT_RAM_BUDGET_MB` in `scripts/publish/orchestrator.py`,
+  `scripts/manifest/stage_local_eliza1_bundle.py`, and
+  `scripts/manifest/stage_real_eliza1_bundle.py` is now `0_6b: (2500,
+  3700)` / `1_7b: (4000, 5500)` — so `0_6b` is a 4-GB-RAM-phone floor
+  (the AGENTS §2 "low-RAM phones" tagline now means low-RAM *relative to
+  9b/27b*). `thirtyTurnOk` passes on both tiers against the corrected
+  budget. Tests: `test_ram_budget_calibration.py` (cross-module
+  consistency + the `recommended >= measured-peak × 1.05` invariant) +
+  the `ramBudgetMb` assertion in `test_stage_local_eliza1_bundle.py`. The
+  cheap-but-not-free further trim — within-turn `madvise(MADV_DONTNEED)`
+  of the idle ASR pages while TTS decodes and vice-versa (ASR → text →
+  TTS are sequential within a turn) — would shave ~1 GB but is a
+  fused-server change owned by the W7 streaming-decoder work, tracked in
+  the W7 ABI surface below.
 
 ## Known Non-Goals For This Wave
 

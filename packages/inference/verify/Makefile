@@ -13,7 +13,7 @@ REF_OBJ = turbo_kernels.o
 QJL_POLAR_SRC = qjl_polar_ref.c
 QJL_POLAR_OBJ = qjl_polar_ref.o
 
-.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
+.PHONY: all reference-test kernel-contract vulkan vulkan-spirv vulkan-verify vulkan-verify-multiblock vulkan-verify-fallbacks vulkan-verify-fused vulkan-qjl-polar vulkan-bench vulkan-dispatch-smoke vulkan-native-smoke android-vulkan-smoke metal metal-verify metal-verify-multiblock metal-verify-fused metal-bench metal-bench-batched metal-bench-multiblock metal-bench-fused cpu-bench cpu-dispatch-smoke bench cuda cuda-verify cuda-verify-fused cuda-hardware rocm-hardware gh200-hardware windows-hardware verify-fork dispatch-smoke dispatch-smoke-implemented clean
 
 all: reference-test
 	@echo "[kernels/verify] Built reference test."
@@ -592,6 +592,26 @@ gh200-hardware:
 windows-hardware:
 	@echo "Run on a native Windows host:"
 	@echo "  pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\\\models\\\\eliza-1-smoke.gguf"
+
+# CPU built-fork graph-dispatch smoke. Links qjl_mt_check.c against the
+# linux-x64-cpu fork build (ELIZA_DFLASH_CPU_BIN_DIR overrides; default
+# $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-cpu) and runs a tiny
+# ggml graph that selects GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ
+# on the CPU backend, executes it, and asserts the output is finite, non-zero,
+# and bit-identical between n_threads=1 and n_threads=24 (the thread split is
+# over disjoint output rows -> no reassociation -> exact equality). Proves the
+# fork's CPU ops are reachable through real llama.cpp graph execution, not just
+# linked symbols. Requires a prior `node packages/app-core/scripts/build-llama-cpp-dflash.mjs
+# --target linux-x64-cpu`. The standalone-fixture vs C-reference parity for the
+# CPU score/decode paths is `reference-test` (the C ops ARE the references).
+CPU_BIN_DIR ?= $(or $(ELIZA_DFLASH_CPU_BIN_DIR),$(or $(ELIZA_STATE_DIR),$(HOME)/.eliza)/local-inference/bin/dflash/linux-x64-cpu)
+GGML_INC_DIR ?= $(or $(ELIZA_DFLASH_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/milady-llama-cpp)/ggml/include
+cpu-dispatch-smoke:
+	@test -f "$(CPU_BIN_DIR)/libggml-cpu.so" || { echo "[cpu-dispatch-smoke] missing $(CPU_BIN_DIR)/libggml-cpu.so — build the fork first: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu (or set ELIZA_DFLASH_CPU_BIN_DIR)"; exit 1; }
+	@test -f "$(GGML_INC_DIR)/ggml.h" || { echo "[cpu-dispatch-smoke] missing $(GGML_INC_DIR)/ggml.h — set ELIZA_DFLASH_LLAMA_DIR to the fork checkout, or copy the fork's ggml/include here"; exit 1; }
+	$(CC) -O2 -I"$(GGML_INC_DIR)" qjl_mt_check.c -o qjl_mt_check \
+	  -L"$(CPU_BIN_DIR)" -lggml-cpu -lggml-base -lggml -lm -Wl,-rpath,"$(CPU_BIN_DIR)"
+	LD_LIBRARY_PATH="$(CPU_BIN_DIR)" ./qjl_mt_check
 
 # Drift check between the standalone shaders in packages/inference/{metal,vulkan}/
 # and the fork's in-tree shaders. Both ship the same kernel symbols and decode

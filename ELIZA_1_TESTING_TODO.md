@@ -73,9 +73,18 @@ For each tier (`0_6b`, `1_7b`, `9b`, `27b`, `27b-256k`, `27b-1m`), against the e
 
 ## F. Publish gates (only after every C/D/E gate is green)
 
+Release channel: `--base-v1` (alias `--release-channel base-v1`) publishes the
+upstream-base + kernel-optimized release (manifest `releaseChannel: "base-v1"`,
+forced `defaultEligible: false`, mandatory `provenance` block + the README
+"NOT the fine-tuned Eliza-1, not a recommended default" banner). It relaxes
+`final.weights` + the held-out text-quality gate — and enforces every other
+gate (C/D/E above) exactly as the default `recommended` channel. The fine-tuned
+`recommended` release adds the text-quality gate and ships in v2.
+
+- [x] `python -m scripts.publish.orchestrator --tier <t> --bundle-dir <bundle> --base-v1 --dry-run` and `bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --base-v1 --dry-run` — wired; on the staged bundles they exit `EXIT_RELEASE_EVIDENCE_FAIL` (16) because `releaseState=weights-staged` (substitute bytes, not a real fork build), `final.{evals,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}` are not true, and no `finetuned`/`sourceModels` in the evidence (see each bundle's `evidence/base-v1-dry-run-*.log`). Manifest schema (Zod + JSON Schema) carry `releaseChannel`; covered by `manifest.test.ts` ("releaseChannel" describe) + `test_orchestrator.py` (base-v1 channel tests) + `eliza1_gates`/`eliza1_manifest` test suites.
 - [hw] `evidence/release.json` is `releaseState=base-v1`, `finetuned=false`, the `sourceModels` map present, `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}=true` (`final.weights` need not be true for `base-v1`), `publishEligible=true`. `checksums/SHA256SUMS` derived from the exact shipped bytes; no fabricated hashes.
 - [hw] `licenses/` embeds verbatim SPDX text + `license-manifest.json` sidecar per component (`Serveurperso/OmniVoice-GGUF` non-commercial CC terms, `ggml-org/Qwen3-ASR-*`, Silero MIT, etc.); the publish orchestrator refuses upload otherwise.
-- [hw] `bash packages/training/scripts/publish_all_eliza1.sh` - per-tier publish summary, aborts on first failing tier, propagates the structured exit code. Dry-run first; real upload needs `HF_TOKEN` with write access to `elizaos/*` (operator's, not CI).
+- [hw] `HF_TOKEN=… bash packages/training/scripts/publish_all_eliza1.sh --bundles-root <dir> --base-v1 --public` - per-tier publish summary, aborts on first failing tier, propagates the structured exit code. Real upload needs `HF_TOKEN` with write access to `elizaos/*` (operator's, not CI).
 - [hw] Upload commit/URL preserved in `evidence/release.json` (`hf.uploadEvidence`).
 
 ## G. Local M4 Max evidence and optimization follow-ups

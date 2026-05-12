@@ -12,7 +12,18 @@ tags:
 # {{ manifest.id }}
 
 {{ tagline }}
-
+{% if is_base_v1 %}
+> **Release channel: `base-v1` — upstream base models, fully kernel-optimized.**
+> This bundle's text weights are the **upstream base models**, GGUF-converted
+> via the elizaOS/llama.cpp fork and run through every Milady quant/kernel
+> optimization (TurboQuant Q3/Q4 KV, QJL K-cache, PolarQuant V-cache,
+> fused attention, DFlash speculative decode). **It is NOT the fine-tuned
+> Eliza-1** — the fine-tuned recommended release ships in v2 on the
+> `recommended` channel. **It is NOT a recommended device default** —
+> `defaultEligible: false`; the recommendation engine never surfaces a
+> `base-v1`-channel bundle as a default. See the provenance table below for
+> which upstream HuggingFace repo each shipped component is converted from.
+{% endif %}
 This bundle is the on-device Eliza-1 fused model for the **{{ tier }}** device
 tier. One download, one progress bar, one bundle on disk: text, voice
 (TTS + ASR), drafter, and (where applicable) vision in a single
@@ -24,8 +35,21 @@ manifest-described release.
 {{ manifest.id }}
 version: {{ manifest.version }}
 publishedAt: {{ manifest.publishedAt }}
+releaseChannel: {{ release_channel }}
 defaultEligible: {{ default_eligible_str }}
 ```
+{% if provenance_rows %}
+## Provenance — upstream source models (`base-v1`)
+
+This is the upstream-base release: not fine-tuned (`provenance.finetuned: false`).
+Each shipped component is converted from the upstream HuggingFace repo below.
+
+| Component | Upstream HF repo | File |
+|-----------|------------------|------|
+{% for row in provenance_rows -%}
+| {{ row.slot }} | {{ row.repo }} | {{ row.file or "—" }} |
+{% endfor %}
+{% endif %}
 
 ## Lineage
 

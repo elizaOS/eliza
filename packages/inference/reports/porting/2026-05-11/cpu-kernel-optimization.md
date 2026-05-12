@@ -122,7 +122,9 @@ types. The `cpu_simd_bench` harness times those entrypoints directly via
 the plugin static libs, which is the reproducible CPU evidence here.
 
 **To complete:** once the box is quiet, `node packages/app-core/scripts/build-llama-cpp-dflash.mjs
---target linux-x64-cpu` (with `ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1`),
+--target linux-x64-cpu` (no env vars needed — the structured-output patch is
+now tolerant of fork drift; the CPU target's kernel-completeness gate still
+needs `ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` for a runnable reduced binary),
 then `make -C packages/inference/verify reference-test kernel-contract` (already
 green) and a `llama-bench`/`llama-cli` run on the 0.6B/1.7B bundles with the
 QJL/Polar graph routes active; record the decode + prompt-eval t/s delta and

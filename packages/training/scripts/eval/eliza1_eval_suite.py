@@ -296,6 +296,13 @@ class EvalContext:
     vad_model: Path | None
     drafter_model: Path | None
     text_eval_corpus: tuple[str, ...]
+    # Optional directory of labelled ASR test clips: `<id>.wav` (16 kHz mono
+    # PCM, the format e2e_loop_bench feeds the ASR FFI) + `<id>.txt` (the
+    # ground-truth transcript). When set, the ASR-WER eval transcribes these
+    # real clips instead of doing the TTS round-trip — a *valid* WER, not a
+    # round-trip artefact. None → fall back to the round-trip (recorded with
+    # the publish-blocker caveat below).
+    asr_corpus: Path | None
     threads: int
     timeout_s: int
     peak_rss_mb: float = 0.0
@@ -377,32 +384,43 @@ def _e2e_loop_bench_path() -> Path | None:
     return None
 
 
-def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
+def _run_e2e_loop_bench(
+    ctx: EvalContext,
+    turns: int,
+    *,
+    wav_refs: list[tuple[Path, str]] | None = None,
+    cache_tag: str | None = None,
+) -> dict[str, Any]:
     """Run e2e_loop_bench.mjs for ``turns`` turns; return its parsed JSON report.
 
-    Cached per ``turns`` on ``ctx`` (a 1-turn run feeds voice_rtf / asr_wer /
-    e2e_loop; a 30-turn run feeds the endurance gate). On any failure to even
-    start the bench, returns ``{"status": "not-run", "reason": ...}``.
+    Cached per ``turns`` (and per ``cache_tag`` when given) on ``ctx``: a 1-turn
+    run feeds voice_rtf / asr_wer / e2e_loop; a 30-turn run feeds the endurance
+    gate; a tagged run (e.g. a labelled ASR corpus) gets its own cache slot and
+    report file. ``wav_refs`` overrides the synthesized "mic" WAVs with a list
+    of ``(wav_path, transcript)`` pairs (the bench's ``--wav`` / ``--ref``). On
+    any failure to even start the bench, returns ``{"status": "not-run", ...}``.
     """
-    cache: dict[int, dict[str, Any]] = getattr(ctx, "_e2e_cache", None) or {}
-    if turns in cache:
-        return cache[turns]
+    cache_key = (turns, cache_tag)
+    cache: dict[tuple[int, str | None], dict[str, Any]] = getattr(ctx, "_e2e_cache", None) or {}
+    if cache_key in cache:
+        return cache[cache_key]
     if not hasattr(ctx, "_e2e_cache"):
         ctx._e2e_cache = cache  # type: ignore[attr-defined]
     if _BUN is None:
         result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
-        cache[turns] = result
+        cache[cache_key] = result
         return result
     bench = _e2e_loop_bench_path()
     if bench is None:
         result = {"status": "not-run", "reason": "packages/inference/verify/e2e_loop_bench.mjs not found"}
-        cache[turns] = result
+        cache[cache_key] = result
         return result
     backend = (ctx.engine.backend if ctx.engine else "cpu") or "cpu"
     # strip the "-fused" suffix the CAPABILITIES backend never carries, but the
     # discovered dir name might; e2e_loop_bench resolves the fused dir itself.
     backend = backend.replace("-fused", "")
-    out_json = ctx.bundle_dir / "evals" / f"e2e-loop-bench-{turns}turn.json"
+    report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
+    out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
     args = [
         _BUN, str(bench),
         "--bundle", str(ctx.bundle_dir),
@@ -413,8 +431,13 @@ def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
         "--report", str(out_json),
         "--quiet",
     ]
-    wavs = os.environ.get("ELIZA_EVAL_E2E_WAVS") or os.environ.get("ELIZA_EVAL_E2E_WAV")
-    refs = os.environ.get("ELIZA_EVAL_E2E_REFS") or os.environ.get("ELIZA_EVAL_E2E_REF")
+    if wav_refs:
+        args += ["--wav", ",".join(str(w) for w, _ in wav_refs)]
+        args += ["--ref", "|".join(r for _, r in wav_refs)]
+        wavs = refs = None
+    else:
+        wavs = os.environ.get("ELIZA_EVAL_E2E_WAVS") or os.environ.get("ELIZA_EVAL_E2E_WAV")
+        refs = os.environ.get("ELIZA_EVAL_E2E_REFS") or os.environ.get("ELIZA_EVAL_E2E_REF")
     n_predict = os.environ.get("ELIZA_EVAL_E2E_N_PREDICT")
     endurance_n_predict = os.environ.get("ELIZA_EVAL_E2E_ENDURANCE_N_PREDICT")
     tts_steps = os.environ.get("ELIZA_EVAL_E2E_TTS_STEPS")
@@ -452,21 +475,21 @@ def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
         )
     except subprocess.TimeoutExpired:
         result = {"status": "not-run", "reason": f"e2e_loop_bench.mjs ({turns} turns) exceeded {timeout_s}s on this host"}
-        cache[turns] = result
+        cache[cache_key] = result
         return result
     ctx.track_rss()
     if not out_json.is_file():
         tail = "\n".join(((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-25:])
         result = {"status": "not-run", "reason": f"e2e_loop_bench.mjs produced no report (rc={proc.returncode})", "outputTail": tail}
-        cache[turns] = result
+        cache[cache_key] = result
         return result
     try:
         report = json.loads(out_json.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         result = {"status": "not-run", "reason": f"could not parse e2e_loop_bench report: {exc}"}
-        cache[turns] = result
+        cache[cache_key] = result
         return result
-    cache[turns] = report
+    cache[cache_key] = report
     return report
 
 
@@ -686,14 +709,33 @@ def eval_asr_wer(ctx: EvalContext) -> dict[str, Any]:
                 f"(looked under {_engine_bin_root()})"
             ),
         }
-    # The labelled speech set is *synthesized* from a fixed reference-phrase
-    # set via the bundle's own OmniVoice TTS (the same fused build), then fed
-    # back through the ASR FFI; WER is the normalized word error rate of the
-    # transcript against the phrase that produced the audio. This is a
-    # round-trip eval: it surfaces ASR quality (a stand-in ASR GGUF transcribes
-    # garbage and lands wer≈1.0) without needing an external corpus. Source +
-    # method are recorded on the blob.
-    report = _run_e2e_loop_bench(ctx, turns=1)
+
+    # Two measurement modes:
+    #   1. Labelled corpus (`--asr-corpus` / ELIZA_EVAL_ASR_CORPUS): transcribe
+    #      real `<id>.wav` clips through the ASR FFI, WER against `<id>.txt`.
+    #      This is a *valid* WER — recommended for any publish-blocking run.
+    #   2. Fallback round-trip: synthesize a fixed reference-phrase set via the
+    #      bundle's own OmniVoice TTS, feed it back through the ASR FFI, WER
+    #      against the phrase that produced the audio. Both ref and hyp go
+    #      through the bench's `wordErrorRate` (lowercase, strip punctuation,
+    #      expand contractions, collapse whitespace — applied identically to
+    #      both). The round-trip is informative but NOT a clean ASR WER: it
+    #      chains two stand-in components (the base-v1 OmniVoice TTS at 16 kHz
+    #      and the bundle's stand-in ASR GGUF). The ASR GGUF *does* transcribe
+    #      clean reference speech correctly (the FFI smoke transcribes "Hello
+    #      world." exactly), but the stand-in-TTS → stand-in-ASR round trip at
+    #      16 kHz produces near-garbage → wer ≈ 1.0. That ~1.0 is a *weights*
+    #      publish blocker (the real base-v1 OmniVoice + a real Qwen3-ASR GGUF
+    #      will land it), recorded honestly here — it is not a runner bug.
+    corpus = _load_asr_corpus(ctx.asr_corpus) if ctx.asr_corpus else []
+    if corpus:
+        report = _run_e2e_loop_bench(ctx, turns=len(corpus), wav_refs=corpus, cache_tag="asr-corpus")
+        round_trip = False
+        corpus_desc = f"{len(corpus)} labelled clips from {ctx.asr_corpus} (real audio → ASR FFI; WER vs ground-truth .txt)"
+    else:
+        report = _run_e2e_loop_bench(ctx, turns=1)
+        round_trip = True
+        corpus_desc = "synthesized from a fixed reference-phrase set via the bundle's OmniVoice TTS, transcribed back through the ASR FFI (round-trip WER — pass --asr-corpus for a clean labelled-set WER)"
     summary = _e2e_summary(report)
     if summary is None:
         return {
@@ -713,7 +755,8 @@ def eval_asr_wer(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "e2e bench produced no ASR transcript / reference pair",
         }
-    return {
+    bench_stem = "e2e-loop-bench-asr-corpus" if corpus else "e2e-loop-bench-1turn"
+    blob = {
         **base,
         "status": "ok",
         "wer": round(float(wer), 4),
@@ -721,9 +764,19 @@ def eval_asr_wer(ctx: EvalContext) -> dict[str, Any]:
         "asrLatencyMsMedian": summary.get("asrLatencyMsMedian"),
         "asrArtifact": str(ctx.asr_model),
         "ffiLibrary": str(ctx.engine.eliza_lib),
-        "benchReport": str(ctx.bundle_dir / "evals" / "e2e-loop-bench-1turn.json"),
-        "corpus": "synthesized from a fixed reference-phrase set via the bundle's OmniVoice TTS, transcribed back through the ASR FFI (round-trip WER)",
+        "benchReport": str(ctx.bundle_dir / "evals" / f"{bench_stem}.json"),
+        "roundTrip": round_trip,
+        "corpus": corpus_desc,
     }
+    if round_trip:
+        blob["publishBlocker"] = (
+            "round-trip WER chains the base-v1 OmniVoice TTS (16 kHz) and the "
+            "bundle's stand-in ASR GGUF; the ASR GGUF transcribes clean speech "
+            "correctly but this chain lands wer≈1.0. Resolved by shipping the "
+            "real base-v1 OmniVoice + Qwen3-ASR GGUF, OR by running with a real "
+            "labelled --asr-corpus. This is a weights blocker, not a runner bug."
+        )
+    return blob
 
 
 # ---------------------------------------------------------------------------
@@ -1300,6 +1353,39 @@ def _default_text_corpus(path: Path | None) -> tuple[str, ...]:
     ) or DEFAULT_TEXT_EVAL_CORPUS
 
 
+def _resolve_asr_corpus(arg: Path | None) -> Path | None:
+    """Resolve the labelled ASR corpus dir from --asr-corpus or the env var."""
+    candidate = arg or (
+        Path(os.environ["ELIZA_EVAL_ASR_CORPUS"])
+        if os.environ.get("ELIZA_EVAL_ASR_CORPUS")
+        else None
+    )
+    if candidate is None:
+        return None
+    p = candidate.expanduser().resolve()
+    if not p.is_dir():
+        raise SystemExit(f"--asr-corpus is not a directory: {p}")
+    return p
+
+
+def _load_asr_corpus(corpus_dir: Path) -> list[tuple[Path, str]]:
+    """Read `<id>.wav` + `<id>.txt` pairs from `corpus_dir`.
+
+    Returns a sorted list of `(wav_path, transcript)`; entries with a missing
+    `.txt` or an empty transcript are skipped. The WAVs must already be in the
+    16 kHz mono PCM shape the ASR FFI consumes (use `ffmpeg -ar 16000 -ac 1`).
+    """
+    out: list[tuple[Path, str]] = []
+    for wav in sorted(corpus_dir.glob("*.wav")):
+        txt = wav.with_suffix(".txt")
+        if not txt.is_file():
+            continue
+        ref = txt.read_text(encoding="utf-8").strip()
+        if ref:
+            out.append((wav, ref))
+    return out
+
+
 def build_context(args: argparse.Namespace) -> EvalContext:
     bundle_dir = args.bundle_dir.expanduser().resolve()
     if not bundle_dir.is_dir():
@@ -1326,6 +1412,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         vad_model=_bundle_file(bundle_dir, "vad"),
         drafter_model=_bundle_file(bundle_dir, "dflash", ".gguf"),
         text_eval_corpus=_default_text_corpus(args.text_corpus),
+        asr_corpus=_resolve_asr_corpus(args.asr_corpus),
         threads=args.threads,
         timeout_s=args.timeout,
     )
@@ -1338,6 +1425,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--backend", default=None, help="Prefer this engine backend dir (cpu / vulkan / ...).")
     ap.add_argument("--text-eval-model", type=Path, default=None, help="Override text GGUF used for the perplexity eval (e.g. a small reference Qwen3 GGUF when the bundle text artifact is a stand-in).")
     ap.add_argument("--text-corpus", type=Path, default=None, help="Held-out text-eval corpus (.txt one-per-line or .jsonl with a 'text' field). Defaults to the bundled small set.")
+    ap.add_argument("--asr-corpus", type=Path, default=None, help="Directory of labelled ASR test clips: <id>.wav (16 kHz mono PCM) + <id>.txt (ground-truth transcript). When set, the ASR-WER eval transcribes these real clips (a valid WER) instead of the TTS round-trip. Also picked up from ELIZA_EVAL_ASR_CORPUS.")
     ap.add_argument("--threads", type=int, default=min(os.cpu_count() or 4, 8))
     ap.add_argument("--timeout", type=int, default=int(os.environ.get("ELIZA_EVAL_TIMEOUT", "300")), help="Per-subprocess timeout in seconds.")
     args = ap.parse_args(argv)

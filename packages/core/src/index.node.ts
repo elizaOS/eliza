@@ -292,9 +292,11 @@ export * from "./utils/description-compressed-lint";
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
 export * from "./utils/prompt-compression";
+// Canonical env-var reader with legacy-alias back-compat (ELIZA_* preferred, MILADY_* honored)
+export * from "./utils/read-env";
 // Export Node-specific utilities
 export * from "./utils/server-health";
-// Eliza state-dir resolution (ELIZA_STATE_DIR → ELIZA_STATE_DIR → ~/.${ELIZA_NAMESPACE ?? "eliza"})
+// Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";

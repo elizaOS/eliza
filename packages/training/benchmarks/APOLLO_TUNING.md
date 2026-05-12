@@ -74,14 +74,16 @@ Dev box: RTX 5080 Laptop (16 GB, sm_120). Test model `eliza-1-0_6b`.
   `outputs.loss is not None` branch) and with APOLLO's per-step
   `state["projector"].project(grad, step)` (a Python-side call inside the
   optimizer — that's fine, the optimizer isn't compiled, only the model
-  forward/backward is). Worth an **opt-in env flag with a hard fallback**
-  (`ELIZA_TORCH_COMPILE=1` → `model = torch.compile(model, mode="default")`
-  inside a try/except that logs and continues on any compile error). Not
-  added here: the change interacts with Liger's module-patching (Liger
-  replaces forward methods *after* compile would capture them, so compile
-  must run after `_apply_liger_kernel_to_instance`) and with FSDP wrap order,
-  so it needs a real run to validate, not a blind edit. Flagged high-value /
-  medium-effort.
+  forward/backward is). **Implemented as an opt-in env flag with a hard
+  fallback** — `ELIZA_TORCH_COMPILE=1` → `model = torch.compile(model,
+  mode="default")` inside a try/except that logs and continues uncompiled on
+  any compile error. The call is placed *after* `_apply_liger_kernel_to_instance`
+  (Liger replaces forward methods, so compile must capture the post-patch
+  graph) and *after* gradient checkpointing is enabled, and *before* the
+  trainer is constructed. Default OFF — it's finicky with the
+  `_ElizaSFTTrainer.compute_loss` override and FSDP wrap order, so it still
+  needs a real run to confirm it doesn't graph-break catastrophically; the
+  flag just makes that experiment cheap to run.
 - **`attn_implementation` — `sdpa` (correct).** `lib/attn.py` returns
   `flash_attention_2` only if `flash_attn` is importable, else `sdpa`;
   `flash-attn` isn't installed, so the model loads with `attn_implementation="sdpa"`,
@@ -172,29 +174,40 @@ value cheap tuning knob.
 1. Install `python3.12-dev` on the training box so Liger's Triton backend
    initializes — without it the fp32-logits transient isn't chunked and the
    8k+ seq_len budgets in the registry are not actually achievable. (Box
-   config, not a code change.)
-2. For the `qwen3-0.6b` tier, switch to `micro_batch=2, grad_accum=4` (same
+   config, not a code change. Still pending — needs box access.)
+2. For the `qwen3-0.6b` tier, prefer `micro_batch=2, grad_accum=4` (same
    effective batch). micro_batch=1 starves a 16 GB GPU on a model this small;
-   this is +20–40% samples/sec at no quality cost. Confirm with the
-   THROUGHPUT.md harness, then land in `model_registry.py`.
-3. Add `ELIZA_TORCH_COMPILE=1` opt-in to `train_local.py` that wraps the
-   model in `torch.compile(model, mode="default")` *after* the Liger patch
-   and *before* the trainer is constructed, inside a try/except that logs and
-   falls back. +15–30% step time when it works.
+   this is +20–40% samples/sec at no quality cost. **Done as an overridable
+   knob** rather than a registry-default change: `run_pipeline.py --micro-batch 2
+   --grad-accum 4` (forwarded to `train_local.py`). The registry default is
+   left at `micro_batch=1` because measured peak VRAM at seq 4096 (~12 GB) is
+   tighter than the analytical estimate; bump the registry default only after
+   a confirming THROUGHPUT.md run on the box.
+3. **Done** — `ELIZA_TORCH_COMPILE=1` opt-in in `train_local.py`: wraps the
+   model in `torch.compile(model, mode="default")` *after* the Liger patch and
+   *after* gradient checkpointing, *before* the trainer is constructed, inside
+   a try/except that logs and falls back to uncompiled. +15–30% step time when
+   it works. Default OFF — still needs a real run to confirm no catastrophic
+   graph-break with the `compute_loss` override + FSDP.
 
 **Medium confidence**
-4. Set `optimizer_rank=1` for the apollo_mini tiers in `model_registry.py`
-   (or rename the field comment to "rank used iff this tier is promoted to
-   full APOLLO"). It currently reads as if rank 128/256 is in effect, which
-   it is not.
+4. **Done** — `optimizer_rank=1` set for all `apollo_mini` tiers in
+   `model_registry.py` (was 128/256/512). APOLLO-Mini is rank-1 by
+   definition; both `build_apollo_mini_optimizer*` and `memory_calc.py`'s
+   `APOLLO_MINI` branch ignore the value. `qwen3.5-9b` stays `apollo@512`.
+   Field docstring updated to say the value only matters under full `apollo`.
 5. Default `train_local.py --optimizer` to `apollo_mini` (matches the
-   canonical recipe for ≤16 GB hardware and every registry entry).
+   canonical recipe for ≤16 GB hardware and every registry entry). Not done —
+   the arg-merge already makes `--registry-key` runs use `apollo_mini`; only a
+   bare `--model ...` run with no registry key would change behavior, and that
+   path is documented as "use a registry key". Low value; left as-is.
 
 **Low confidence / needs a run**
 6. After Liger is fixed: bump `qwen3-0.6b` `seq_len` 4096→8192 (and re-check
    `qwen3-1.7b`'s 4096 default — the registry note already says "drop to 2k
    if peak >15 GB", suggesting that one is close to the edge; with Liger on it
-   has room).
+   has room). Today: `run_pipeline.py --max-seq-len 8192` makes this an
+   overridable per-run knob without touching the registry default.
 7. Consider `flash-attn` source build for the bigger (4B+) tiers; skip for
    0.6B/1.7B (sdpa already gets a fused backend; marginal gain, big build
    cost).

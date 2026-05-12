@@ -114,8 +114,10 @@ state-dir + mode):
   mirror (catalog only; doesn't affect local files).
 - `ELIZA_LOCAL_SESSION_POOL_SIZE` — desktop in-process KV-slot pool size.
 
-## C. No eval gate / rollback before activation — TODO
+## C. No eval gate / rollback before activation (runtime-side gap; tracked here)
 
+This is a runtime / `packages/app-core` gap, not a training-package one — it
+is documented here because the offline-side eval gates live in this package.
 There is currently **no eval-gate or automatic-rollback step between
 "GGUF produced" and "model active as `TEXT_LARGE`"** in the runtime.
 `switchTo` loads whatever id you point it at; if generation quality

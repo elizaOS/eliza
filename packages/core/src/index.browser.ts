@@ -85,6 +85,7 @@ export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
+export * from "./utils/read-env";
 export { formatError } from "./utils/format-error";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";

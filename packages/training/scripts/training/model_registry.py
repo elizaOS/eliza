@@ -14,14 +14,11 @@ Two kinds of entries live here:
      - ``qwen3-1.7b`` → ``Qwen/Qwen3-1.7B`` → ``eliza-1-1_7b``  (local tier; full-param SFT on a 16 GB GPU)
      - ``qwen3-4b``   → ``Qwen/Qwen3-4B``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24 GB GPU)
 
-2. UNVERIFIED placeholder entries pointing at base models that have no
-   published checkpoint as of 2026-05 (``qwen3.5-2b`` / ``qwen3.5-9b`` /
-   ``qwen3.6-27b``). They are kept because other scripts/tests still
-   reference the keys, but they will NOT load — every such entry is flagged
-   ``# UNVERIFIED BASE`` and carries ``unverified_base=True``. The runtime
-   catalog's ``eliza-1-9b`` / ``eliza-1-27b`` tiers are aspirational sizes
-   with no real base model behind them yet; do not trust these for a real
-   run.
+2. Larger-tier entries against the next-gen Qwen3.5/3.6 dense checkpoints
+   (``qwen3.5-2b`` → ``Qwen/Qwen3.5-2B`` → ``eliza-1-2b``; ``qwen3.5-9b`` →
+   ``Qwen/Qwen3.5-9B`` → ``eliza-1-9b``; ``qwen3.6-27b`` →
+   ``Qwen/Qwen3.6-27B`` → ``eliza-1-27b``). All three are published on the
+   Hub. The 9b/27b tiers need workstation/cloud-class GPUs (or FSDP).
 
 The numbers below are observed-or-projected memory budgets for full-parameter
 SFT with APOLLO at the listed sequence length. They are *budgets* — the
@@ -67,7 +64,12 @@ class ModelEntry:
     """One of: apollo, apollo_mini."""
 
     optimizer_rank: int
-    """APOLLO low-rank dim."""
+    """APOLLO low-rank projection dim. Only meaningful when ``optimizer ==
+    "apollo"`` (full APOLLO). The ``apollo_mini`` tiers are rank-1 by
+    definition — ``build_apollo_mini_optimizer*`` and ``memory_calc.py``'s
+    ``APOLLO_MINI`` branch both ignore this value — so those entries carry
+    ``optimizer_rank=1`` to stay truthful. Bump to 256/512 here only if a
+    tier is ever promoted from ``apollo_mini`` to full ``apollo``."""
 
     micro_batch: int
     grad_accum: int
@@ -140,11 +142,11 @@ class ModelEntry:
 
     unverified_base: bool = False
     """True for entries whose ``hf_id`` does not resolve to a published
-    HuggingFace checkpoint as of 2026-05. Kept in the registry only because
-    other scripts/tests reference the key. ``train_local.py`` /
-    ``run_pipeline.py`` refuse to run with an unverified entry unless the
-    caller passes an explicit ``--model`` override (or sets
-    ``ELIZA_ALLOW_UNVERIFIED_BASE=1``)."""
+    HuggingFace checkpoint. ``train_local.py`` / ``run_pipeline.py`` refuse
+    to run with an unverified entry unless the caller passes an explicit
+    ``--model`` override (or sets ``ELIZA_ALLOW_UNVERIFIED_BASE=1``). No
+    registry entry currently sets this; the guard remains for future
+    speculative tiers."""
 
     notes: str = ""
     extra: dict[str, str] = field(default_factory=dict)
@@ -240,7 +242,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-0_6b", eliza_repo_id="elizaos/eliza-1-0_6b",
         abliteration_repo_id="elizaos/eliza-1-0_6b-uncensored",
         params_billion=0.6, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=128,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=10.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
@@ -259,7 +261,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-1_7b", eliza_repo_id="elizaos/eliza-1-1_7b",
         abliteration_repo_id="elizaos/eliza-1-1_7b-uncensored",
         params_billion=1.7, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=256,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
@@ -274,7 +276,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1-4b",
         abliteration_repo_id="elizaos/eliza-1-4b-uncensored",
         params_billion=4.0, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=256,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=24.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
@@ -285,64 +287,52 @@ REGISTRY: dict[str, ModelEntry] = {
               "no eliza-1-4b tier exists in catalog.ts yet — add it there "
               "before publishing under this name.",
     ),
-    # ──────────────────── UNVERIFIED PLACEHOLDER ENTRIES ────────────────────
-    # The eliza-1 line was originally specced against next-gen Qwen3.5/3.6
-    # checkpoints. None of these were published as of 2026-05; the keys are
-    # kept only because scripts (train_vast.sh, train_nebius.sh, push_*),
-    # docs, and tests still reference them. Every entry below carries
-    # `unverified_base=True`; train_local.py / run_pipeline.py refuse to run
-    # with one unless `--model` is overridden or ELIZA_ALLOW_UNVERIFIED_BASE=1
-    # is set. Repoint hf_id to a real checkpoint here once one exists.
-    #
-    # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
+    # ──────────────────── LARGER-TIER BASE CHECKPOINTS ────────────────────
+    # The eliza-1 line's mid/workstation/cloud tiers train against the
+    # next-gen Qwen3.5/3.6 dense checkpoints. All three are published on the
+    # Hub (verified via HfApi().model_info — millions of downloads each).
+    # Referenced by scripts (train_vast.sh, train_nebius.sh, push_*), docs,
+    # and tests.
     "qwen3.5-2b": _entry(
         hf_id="Qwen/Qwen3.5-2B", short_name="qwen3.5-2b",
         eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
         abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
-        params_billion=2.27, tier=Tier.LOCAL, unverified_base=True,
-        seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
+        params_billion=2.27, tier=Tier.LOCAL,
+        seq_len=8192, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="UNVERIFIED BASE — Qwen/Qwen3.5-2B has no published checkpoint "
-              "as of 2026-05. Use qwen3-1.7b (real, eliza-1-1_7b) for the "
-              "local tier instead, or repoint hf_id once a 2B checkpoint ships.",
+        notes="Mid local tier (eliza-1-2b). qwen3-1.7b (eliza-1-1_7b) is the "
+              "lighter alternative for 16 GB consumer GPUs.",
     ),
-    # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
     "qwen3.5-9b": _entry(
         hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
         eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1-9b",
         abliteration_repo_id="elizaos/eliza-1-9b-uncensored",
-        params_billion=9.0, tier=Tier.WORKSTATION, unverified_base=True,
+        params_billion=9.0, tier=Tier.WORKSTATION,
         seq_len=16384, optimizer="apollo", optimizer_rank=512,
         micro_batch=2, grad_accum=8, train_mem_gb_budget=80.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="UNVERIFIED BASE — Qwen/Qwen3.5-9B has no published checkpoint "
-              "as of 2026-05 (Qwen3 dense line goes 4B → 8B → 14B → 32B; no 9B). "
-              "The runtime catalog's eliza-1-9b tier is aspirational. Repoint "
-              "hf_id to Qwen/Qwen3-8B (or 14B) if you actually want to build it.",
+        notes="Workstation tier (eliza-1-9b). Full-param APOLLO SFT needs an "
+              "80 GB-class GPU (H100 / A100-80) or FSDP across two.",
     ),
-    # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.
     "qwen3.6-27b": _entry(
         hf_id="Qwen/Qwen3.6-27B", short_name="qwen3.6-27b",
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
         abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
-        params_billion=27.0, tier=Tier.CLOUD, unverified_base=True,
-        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
+        params_billion=27.0, tier=Tier.CLOUD,
+        seq_len=65536, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=("polarquant", "turboquant", "qjl", "fp8", "gguf-q4_k_m"),
-        notes="UNVERIFIED BASE — Qwen/Qwen3.6-27B has no published checkpoint "
-              "as of 2026-05 (Qwen3 dense line has no 27B; closest are 14B / 32B). "
-              "The runtime catalog's eliza-1-27b tier is aspirational. Repoint "
-              "hf_id to Qwen/Qwen3-32B (cloud tier, FSDP) if you want to build it.",
+        notes="Cloud tier (eliza-1-27b). Trains under FSDP across 2× H200.",
         extra={"nebius_machine": "H200-2x", "fsdp_world_size": "2"},
     ),
 }
