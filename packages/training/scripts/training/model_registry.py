@@ -64,7 +64,12 @@ class ModelEntry:
     """One of: apollo, apollo_mini."""
 
     optimizer_rank: int
-    """APOLLO low-rank dim."""
+    """APOLLO low-rank projection dim. Only meaningful when ``optimizer ==
+    "apollo"`` (full APOLLO). The ``apollo_mini`` tiers are rank-1 by
+    definition — ``build_apollo_mini_optimizer*`` and ``memory_calc.py``'s
+    ``APOLLO_MINI`` branch both ignore this value — so those entries carry
+    ``optimizer_rank=1`` to stay truthful. Bump to 256/512 here only if a
+    tier is ever promoted from ``apollo_mini`` to full ``apollo``."""
 
     micro_batch: int
     grad_accum: int
@@ -237,7 +242,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-0_6b", eliza_repo_id="elizaos/eliza-1-0_6b",
         abliteration_repo_id="elizaos/eliza-1-0_6b-uncensored",
         params_billion=0.6, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=128,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=10.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
@@ -256,7 +261,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-1_7b", eliza_repo_id="elizaos/eliza-1-1_7b",
         abliteration_repo_id="elizaos/eliza-1-1_7b-uncensored",
         params_billion=1.7, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=256,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
@@ -271,7 +276,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-4b", eliza_repo_id="elizaos/eliza-1-4b",
         abliteration_repo_id="elizaos/eliza-1-4b-uncensored",
         params_billion=4.0, tier=Tier.LOCAL,
-        seq_len=4096, optimizer="apollo_mini", optimizer_rank=256,
+        seq_len=4096, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=24.0,
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
@@ -293,7 +298,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-2b", eliza_repo_id="elizaos/eliza-1-2b",
         abliteration_repo_id="elizaos/eliza-1-2b-uncensored",
         params_billion=2.27, tier=Tier.LOCAL,
-        seq_len=8192, optimizer="apollo_mini", optimizer_rank=256,
+        seq_len=8192, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=16, train_mem_gb_budget=15.5,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
@@ -321,7 +326,7 @@ REGISTRY: dict[str, ModelEntry] = {
         eliza_short_name="eliza-1-27b", eliza_repo_id="elizaos/eliza-1-27b",
         abliteration_repo_id="elizaos/eliza-1-27b-uncensored",
         params_billion=27.0, tier=Tier.CLOUD,
-        seq_len=65536, optimizer="apollo_mini", optimizer_rank=512,
+        seq_len=65536, optimizer="apollo_mini", optimizer_rank=1,
         micro_batch=1, grad_accum=8, train_mem_gb_budget=190.0,
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,

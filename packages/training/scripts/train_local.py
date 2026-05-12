@@ -19,6 +19,18 @@ Usage:
         --registry-key qwen3-0.6b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
         --run-name eliza-1-0_6b-eliza-native-v1
+
+Environment knobs:
+    ELIZA_TORCH_COMPILE=1   opt in to `torch.compile(model, mode="default")`
+                            (applied after the Liger patch, before the trainer
+                            is built; any compile error falls back to the
+                            uncompiled model). Default OFF — see
+                            benchmarks/APOLLO_TUNING.md §A4. ~+15-30% step time.
+    ELIZA_AC_EVERY=N        activation-checkpoint granularity (1 = uniform,
+                            2 = every other layer, 0 = disabled).
+    ELIZA_FORCE_COL=1       force completion-only loss even when Liger is on
+                            (skips Liger's logits-free CE path).
+    ELIZA_ALLOW_UNVERIFIED_BASE=1   load a registry entry flagged unverified.
 """
 
 from __future__ import annotations
@@ -458,6 +470,27 @@ def main() -> int:
                         "selective AC: checkpoint every %d layer; %d/%d layers running without AC",
                         ac_every, kept, len(layers),
                     )
+
+    # Opt-in `torch.compile` of the model forward/backward. Must run AFTER the
+    # Liger patch (Liger swaps module forward methods, so compile has to capture
+    # the post-patch graph) and AFTER gradient checkpointing is enabled, and
+    # BEFORE the trainer is constructed. Default OFF: compile is finicky with the
+    # `_ElizaSFTTrainer.compute_loss` override (graph break on the
+    # `outputs.loss is not None` branch) and with FSDP wrap order, so any
+    # exception falls back to the uncompiled model. ~+15-30% step time when it
+    # works (see benchmarks/APOLLO_TUNING.md §A4).
+    if (
+        os.environ.get("ELIZA_TORCH_COMPILE", "").lower() in ("1", "true", "yes")
+        and device == "cuda"
+    ):
+        try:
+            model = torch.compile(model, mode="default")
+            log.info("torch.compile(mode='default') applied (ELIZA_TORCH_COMPILE)")
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "ELIZA_TORCH_COMPILE set but torch.compile failed (%s) — "
+                "continuing uncompiled", exc,
+            )
 
     peft_cfg = None
     if not args.full_finetune:

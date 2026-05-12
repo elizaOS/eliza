@@ -238,6 +238,26 @@ def main() -> int:
     )
     ap.add_argument("--max-samples", type=int, default=0,
                     help="Cap training samples (0 = full corpus).")
+    ap.add_argument(
+        "--micro-batch", type=int, default=0,
+        help="Per-device micro-batch size for SFT (forwarded to "
+             "train_local.py --batch-size). 0 = use the registry default for "
+             "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
+             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
+             "(same effective batch); validate VRAM with memory_calc.py first.",
+    )
+    ap.add_argument(
+        "--grad-accum", type=int, default=0,
+        help="Gradient-accumulation steps for SFT (forwarded to "
+             "train_local.py --grad-accum). 0 = use the registry default.",
+    )
+    ap.add_argument(
+        "--max-seq-len", type=int, default=0,
+        help="Training sequence length for SFT (forwarded to "
+             "train_local.py --max-seq-len). 0 = use the registry default for "
+             "the tier (8k for 2B, 16k for 9B, 64k for 27B). Validate VRAM "
+             "with memory_calc.py --shape <key> before overriding.",
+    )
     ap.add_argument("--train-file", default=None,
                     help="Training JSONL. Defaults to data/final/train.jsonl "
                          "unless --trajectory-export is provided.")
@@ -480,6 +500,12 @@ def main() -> int:
         ]
         if args.max_samples and not args.trajectory_export:
             cmd += ["--max-samples", str(args.max_samples)]
+        if args.micro_batch:
+            cmd += ["--batch-size", str(args.micro_batch)]
+        if args.grad_accum:
+            cmd += ["--grad-accum", str(args.grad_accum)]
+        if args.max_seq_len:
+            cmd += ["--max-seq-len", str(args.max_seq_len)]
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(finetuned_model)}
         if rc != 0:
