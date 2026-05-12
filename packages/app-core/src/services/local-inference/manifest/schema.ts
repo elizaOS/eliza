@@ -42,8 +42,11 @@ export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier.
+// GH200-class 1M-context variant of the 27B tier. `0_8b` is the new smallest
+// tier on the Qwen3.5-0.8B backbone (the small tiers move to the Qwen3.5
+// family); `0_6b` / `1_7b` are kept as a legacy Qwen3 line — see catalog.ts.
 export const ELIZA_1_TIERS = [
+  "0_8b",
   "0_6b",
   "1_7b",
   "9b",
@@ -130,11 +133,12 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: 0.6B ships Q3; 1.7B and larger
-// ship Q4.
+// The `q3` vs `q4` choice is tier-driven: the legacy 0.6B tier ships Q3;
+// 0.8B and larger ship Q4.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
+  "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -143,11 +147,12 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
-// Backends each tier is expected to support on shipped hardware. The 0.6B and
-// 1.7B tiers do not need cuda/rocm.
+// Backends each tier is expected to support on shipped hardware. The small
+// tiers (0.8B / 0.6B / 1.7B) do not need cuda/rocm.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
+  "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
