@@ -7,11 +7,6 @@
  * before dispatch. The parent stays registered alongside its virtuals.
  */
 
-import {
-  isPromotedSubactionVirtual,
-  listSubactionsFromParameters,
-  promoteSubactionsToActions,
-} from "@elizaos/core";
 import type {
   Action,
   ActionResult,
@@ -20,6 +15,11 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+} from "@elizaos/core";
+import {
+  isPromotedSubactionVirtual,
+  listSubactionsFromParameters,
+  promoteSubactionsToActions,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { scheduledTaskAction } from "../src/actions/scheduled-task.js";
