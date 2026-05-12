@@ -206,8 +206,8 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v1.1.1-eliza";
-export const LLAMA_CPP_COMMIT = "cb700767";
+export const LLAMA_CPP_TAG = "v1.2.0-eliza";
+export const LLAMA_CPP_COMMIT = "a61c93aa";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
