@@ -46,6 +46,7 @@ import {
   normalizeMouthOpen,
   queueableSpeechPrefix,
   remainderAfter,
+  shouldCacheGeneratedSpeech,
   splitFirstSentence,
   toSpeakableText,
 } from "../voice/voice-chat-playback";
@@ -325,6 +326,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         normalizeCacheText(text),
       ].join("|");
     },
+    [],
+  );
+
+  const makeLocalInferenceCacheKey = useCallback(
+    (text: string) => ["local-inference", normalizeCacheText(text)].join("|"),
     [],
   );
 
@@ -907,8 +913,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
       const modelId = elConfig.modelId ?? DEFAULT_ELEVEN_MODEL;
 
-      const cacheKey = task.cacheKey ?? makeElevenCacheKey(text, elConfig);
-      const cachedBytes = globalAudioCache.get(cacheKey);
+      const cacheKey =
+        task.cacheKey ??
+        (shouldCacheGeneratedSpeech(text, task.segment)
+          ? makeElevenCacheKey(text, elConfig)
+          : undefined);
+      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
@@ -1066,7 +1076,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
         const audioData = await res.arrayBuffer();
         audioBytes = new Uint8Array(audioData);
-        rememberCachedSegment(cacheKey, audioBytes.slice());
+        if (cacheKey) {
+          rememberCachedSegment(cacheKey, audioBytes.slice());
+        }
       }
 
       if (generation !== generationRef.current) return;
@@ -1152,6 +1164,144 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       });
     },
     [clearSpeechTimers, makeElevenCacheKey, rememberCachedSegment],
+  );
+
+  // ── Local inference TTS ───────────────────────────────────────────────
+
+  const speakLocalInference = useCallback(
+    async (text: string, task: SpeakTask, generation: number) => {
+      let ctx = sharedAudioCtx;
+      if (!ctx) {
+        ctx = new AudioContext();
+        sharedAudioCtx = ctx;
+      }
+      if (ctx.state === "suspended") {
+        try {
+          await ctx.resume();
+        } catch {
+          ctx.close().catch((err: unknown) => {
+            console.warn("[useVoiceChat] AudioContext.close() failed", err);
+          });
+          ctx = new AudioContext();
+          sharedAudioCtx = ctx;
+        }
+      }
+
+      const cacheKey =
+        task.cacheKey ??
+        (shouldCacheGeneratedSpeech(text, task.segment)
+          ? makeLocalInferenceCacheKey(text)
+          : undefined);
+      const cachedBytes = cacheKey ? globalAudioCache.get(cacheKey) : undefined;
+      let audioBytes: Uint8Array | null = null;
+      let cached = false;
+
+      if (cacheKey && cachedBytes) {
+        rememberCachedSegment(cacheKey, cachedBytes);
+        audioBytes = cachedBytes.slice();
+        cached = true;
+      }
+
+      if (!audioBytes) {
+        const controller = new AbortController();
+        activeFetchAbortRef.current = controller;
+        let res: Response;
+        try {
+          res = await fetchWithCsrf(resolveApiUrl("/api/tts/local-inference"), {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "audio/wav, audio/*;q=0.9",
+            },
+            body: JSON.stringify({ text }),
+            signal: controller.signal,
+          });
+        } finally {
+          if (activeFetchAbortRef.current === controller) {
+            activeFetchAbortRef.current = null;
+          }
+        }
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(
+            `Local inference TTS ${res.status}: ${body.slice(0, 200)}`,
+          );
+        }
+
+        audioBytes = new Uint8Array(await res.arrayBuffer());
+        if (cacheKey) {
+          rememberCachedSegment(cacheKey, audioBytes.slice());
+        }
+      }
+
+      if (generation !== generationRef.current) return;
+      const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
+      if (generation !== generationRef.current) return;
+
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.8;
+      analyserRef.current = analyser;
+      timeDomainDataRef.current = new Float32Array(
+        new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT),
+      );
+
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(analyser);
+      analyser.connect(ctx.destination);
+      audioSourceRef.current = source;
+
+      await new Promise<void>((resolve) => {
+        let finished = false;
+        const playStartMs = performance.now();
+        let wrappedFinish: (() => void) | null = null;
+
+        const finish = () => {
+          if (finished) return;
+          finished = true;
+          if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) {
+            activeTaskFinishRef.current = null;
+          }
+          if (audioSourceRef.current === source) {
+            audioSourceRef.current = null;
+          }
+          source.onended = null;
+          try {
+            source.disconnect();
+          } catch {
+            /* ok */
+          }
+          try {
+            analyser.disconnect();
+          } catch {
+            /* ok */
+          }
+          clearSpeechTimers();
+          resolve();
+        };
+
+        wrappedFinish = finish;
+        activeTaskFinishRef.current = wrappedFinish;
+        source.onended = wrappedFinish;
+        speechTimeoutRef.current = setTimeout(
+          wrappedFinish,
+          Math.max(2500, Math.ceil(audioBuffer.duration * 1000) + 1200),
+        );
+
+        source.start(0);
+        emitPlaybackStart({
+          text,
+          segment: task.segment,
+          provider: "local-inference",
+          cached,
+          startedAtMs: playStartMs,
+          ...task.telemetry,
+        });
+      });
+    },
+    [clearSpeechTimers, makeLocalInferenceCacheKey, rememberCachedSegment],
   );
 
   // ── Browser SpeechSynthesis TTS ───────────────────────────────────
@@ -1386,9 +1536,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           const config = voiceConfigRef.current;
           const elConfig = config?.elevenlabs;
           const useElevenLabs = config?.provider === "elevenlabs";
+          const useLocalInference = config?.provider === "local-inference";
 
           ttsDebug("processQueue:task", {
             useElevenLabs,
+            useLocalInference,
             hasElConfig: Boolean(elConfig),
             segment: task.segment,
             append: task.append,
@@ -1401,6 +1553,29 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 }
               : {}),
           });
+
+          if (useLocalInference) {
+            usingAudioAnalysisRef.current = true;
+            setUsingAudioAnalysis(true);
+            try {
+              await speakLocalInference(task.text, task, workerGeneration);
+              continue;
+            } catch (error) {
+              if (
+                workerGeneration !== generationRef.current ||
+                isAbortError(error)
+              ) {
+                break;
+              }
+              console.warn(
+                "[useVoiceChat] Local inference TTS failed:",
+                error instanceof Error ? `${error.name}: ${error.message}` : error,
+              );
+              usingAudioAnalysisRef.current = false;
+              setUsingAudioAnalysis(false);
+              throw error;
+            }
+          }
 
           if (useElevenLabs && elConfig) {
             usingAudioAnalysisRef.current = true;
@@ -1465,7 +1640,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       setUsingAudioAnalysis(false);
       setIsSpeaking(false);
     })();
-  }, [speakBrowser, speakElevenLabs]);
+  }, [speakBrowser, speakElevenLabs, speakLocalInference]);
 
   const enqueueSpeech = useCallback(
     (task: SpeakTask) => {

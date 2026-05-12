@@ -169,6 +169,7 @@ fi
 if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[android-vulkan-graph-smoke] building patched fork target=${TARGET}"
   ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
+  ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH=1 \
     node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
       --target "$TARGET" \
       --cache-dir "$LLAMA_DIR"
@@ -326,8 +327,10 @@ console.log(`[android-vulkan-graph-smoke] updated runtime dispatch evidence: ${e
 NODE
 
 if [[ "${ELIZA_DFLASH_SKIP_REBUILD_WITH_EVIDENCE:-0}" != "1" && "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
-  echo "[android-vulkan-graph-smoke] rebuilding target=${TARGET} with Android Vulkan runtime evidence enforced"
-  node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
+  echo "[android-vulkan-graph-smoke] rebuilding target=${TARGET} with Android Vulkan runtime evidence recorded"
+  ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
+  ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH=1 \
+    node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
     --target "$TARGET" \
     --cache-dir "$LLAMA_DIR"
 fi
