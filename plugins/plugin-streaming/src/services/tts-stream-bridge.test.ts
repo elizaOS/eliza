@@ -4,9 +4,27 @@ import { getTtsProviderStatus, resolveTtsConfig } from "./tts-stream-bridge.ts";
 
 function runtimeWithTtsHandler(enabled: boolean) {
   return {
-    getModel: vi.fn((modelType: string) =>
-      enabled && modelType === ModelType.TEXT_TO_SPEECH ? vi.fn() : undefined,
+    models: new Map(
+      enabled
+        ? [
+            [
+              ModelType.TEXT_TO_SPEECH,
+              [{ provider: "eliza-local-inference", handler: vi.fn() }],
+            ],
+          ]
+        : [],
     ),
+  };
+}
+
+function runtimeWithEdgeTtsOnly() {
+  return {
+    models: new Map([
+      [
+        ModelType.TEXT_TO_SPEECH,
+        [{ provider: "edge-tts", handler: vi.fn() }],
+      ],
+    ]),
   };
 }
 
@@ -21,13 +39,21 @@ describe("resolveTtsConfig", () => {
 
     expect(resolved?.provider).toBe("local-inference");
     expect(resolved?.runtime).toBe(runtime);
-    expect(runtime.getModel).toHaveBeenCalledWith(ModelType.TEXT_TO_SPEECH);
   });
 
   it("returns no provider for explicit local-inference when the backend is unavailable", () => {
     const resolved = resolveTtsConfig(
       { enabled: true, provider: "local-inference" },
       runtimeWithTtsHandler(false) as never,
+    );
+
+    expect(resolved).toBeNull();
+  });
+
+  it("does not resolve explicit local-inference to a generic Edge TTS handler", () => {
+    const resolved = resolveTtsConfig(
+      { enabled: true, provider: "local-inference" },
+      runtimeWithEdgeTtsOnly() as never,
     );
 
     expect(resolved).toBeNull();
