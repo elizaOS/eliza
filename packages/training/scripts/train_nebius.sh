@@ -325,6 +325,10 @@ run_remote() {
 set -euo pipefail
 cd $REMOTE_TRAIN_DIR
 export PATH=\$HOME/.local/bin:\$PATH
+# The Nebius mk8s public image leaves CUDA_VISIBLE_DEVICES set to "" in login
+# shells, which makes transformers/accelerate fall back to CPU ("Device 0 seems
+# unavailable"). Pin it so eliza_bench.py / train_local.py use the H200.
+export CUDA_VISIBLE_DEVICES=0
 export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
