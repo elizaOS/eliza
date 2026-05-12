@@ -1,5 +1,5 @@
 // PolarQuant pre-Hadamard-transposed (`_preht`) CPU dot wiring for the
-// v0.4.0-milady fork.
+// elizaOS/llama.cpp fork (v1.0.0-eliza).
 //
 // What this module does (applied after `git reset --hard` on the cached
 // fork checkout, every build):
@@ -116,6 +116,21 @@ extern "C" {
  * fork's conversion (table-lookup or hardware F16C). */
 static inline float polar_fp16_to_fp32(ggml_half h) {
     return GGML_FP16_TO_FP32(h);
+}
+
+/* Memoized +/-1 QJL sign vector. The standalone library ships this in
+ * polar_qjl.c, which we do NOT mirror (the fork already owns
+ * polar_qjl_signs via polar_centroids.h); the \`_preht\` TUs only need a
+ * cached pointer to it. The fill is deterministic, so a benign race
+ * between first callers writing identical bytes is harmless. */
+static inline const float * polar_qjl_signs_cached(void) {
+    static float s_signs[QK_POLAR];
+    static volatile int s_ready = 0;
+    if (!s_ready) {
+        polar_qjl_signs(s_signs);
+        s_ready = 1;
+    }
+    return s_signs;
 }
 
 /* The three pre-Hadamard-transposed dot entry points. \`q_preht\` MUST be

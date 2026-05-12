@@ -1,4 +1,4 @@
-// Real Metal kernel-shipment helpers — replace the v0.4.0-milady decorative
+// Real Metal kernel-shipment helpers — replace the fork's decorative
 // log no-ops in build-llama-cpp-dflash.mjs.
 //
 // What this module does:

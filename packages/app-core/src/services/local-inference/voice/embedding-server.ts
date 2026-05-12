@@ -103,13 +103,17 @@ function extractEmbeddingVectors(json: unknown): number[][] {
   }
   const data = (json as { data?: unknown }).data;
   if (!Array.isArray(data)) {
-    throw new Error("[embedding-server] /v1/embeddings: response.data is not an array");
+    throw new Error(
+      "[embedding-server] /v1/embeddings: response.data is not an array",
+    );
   }
   const out: number[][] = [];
   for (const row of data) {
     const vec = (row as { embedding?: unknown }).embedding;
     if (!Array.isArray(vec) || vec.some((x) => typeof x !== "number")) {
-      throw new Error("[embedding-server] /v1/embeddings: a row has no numeric embedding");
+      throw new Error(
+        "[embedding-server] /v1/embeddings: a row has no numeric embedding",
+      );
     }
     out.push(vec as number[]);
   }
@@ -146,7 +150,10 @@ export class EmbeddingServer {
    * Throws on an invalid `dim` or a server error — no zero-vector fallback
    * (Commandment 8).
    */
-  async embed(texts: string[], dim: number = EMBEDDING_FULL_DIM): Promise<number[][]> {
+  async embed(
+    texts: string[],
+    dim: number = EMBEDDING_FULL_DIM,
+  ): Promise<number[][]> {
     if (!isValidEmbeddingDim(dim)) {
       throw new Error(
         `[embedding-server] dim ${dim} is not a valid Matryoshka width`,
@@ -281,9 +288,12 @@ export class EmbeddingServer {
     this.baseUrl = null;
     if (!child) return;
     child.kill("SIGTERM");
-    const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+    const exited = new Promise<void>((resolve) =>
+      child.once("exit", () => resolve()),
+    );
     await Promise.race([exited, sleep(2000)]);
-    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill("SIGKILL");
   }
 }
 

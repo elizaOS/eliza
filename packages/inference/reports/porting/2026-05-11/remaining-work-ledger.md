@@ -42,9 +42,9 @@ command and remaining blocker — see
 | ROCm hardware runner | Runnable, fail-closed entrypoint now exists for AMD HIP hosts; fixture parity still needs a HIP harness. | `verify/rocm_runner.sh --report <path>` requires `hipcc` + `rocminfo` `gfx*` agent + model-backed graph smoke. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | Windows hardware runner | Runnable, fail-closed PowerShell entrypoint now exists for native Windows CUDA/Vulkan/CPU smoke. | `verify/windows_runner.ps1 -Report <path>` requires native Windows backend hardware/toolchain and a GGUF model; cross-built exe execution is not counted. Skip mode exits non-zero and JSON must show `passRecordable: true` before a pass can be recorded. |
 | iOS | Static archives, embedded metallib, Capacitor bridge symbols, and `eliza_inference_*` ABI v1 symbols package into a verified XCFramework for physical-device and simulator slices. Physical-device XCTest is now PASS; weight-backed Capacitor bundle smoke remains open. | `build-xcframework.mjs --verify` passes kernel-symbol, runtime-symbol, and structure audits. `packages/inference/verify/hardware-results/ios-device-smoke-2026-05-11.json` is `status: passed` on iPhone 15 Pro UDID `00008130-001955E91EF8001C`, with 3/3 XCTest cases passing and `--skip-voice-abi=false`. The old failure was a stale shim archive carrying an earlier TTS ABI shape; `build-xcframework.mjs` now refreshes the runtime shim before packaging. |
-| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. **The merged HTTP route is now real:** the `*-fused` `llama-server` serves `POST /v1/audio/speech` (+ `/audio/speech`) in the same process as `/completion` + `/v1/chat/completions` + the DFlash spec loop, and `dflash-server.ts` prefers spawning that fused binary over the stock + `llama-omnivoice-server` two-process path. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. Merged-route: `linux-x64-cpu-fused` built on Intel x64, `OMNIVOICE_FUSE_VERIFY.json` `ok:true abi:18 omnivoice:10 llamaReexported:true`; the fused `llama-server` serves `/completion` (1-token) AND `/v1/audio/speech` from the same PID against the SmolLM stand-in (503 "not configured" — no `tts/` in the stand-in bundle); covered by `dflash-server-fused.integration.test.ts` + `dflash-server.test.ts` "fused-vs-two-process spawn selection". |
+| Voice fusion | macOS production fused `libelizainference.dylib` now builds, symbol-verifies, lazy-loads real GGUF TTS and ASR assets, and completes real TTS + ASR synthesis/transcription in one fused process. **The merged HTTP route is now real:** the `*-fused` `llama-server` serves `POST /v1/audio/speech` (+ `/audio/speech`) in the same process as `/completion` + `/v1/chat/completions` + the DFlash spec loop, and `dflash-server.ts` prefers spawning that fused binary over the stock + `llama-omnivoice-server` two-process path. | `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10` links `omnivoice-core`, `libelizainference.dylib`, `llama-omnivoice-server`, `libmtmd`, and `default.metallib`; `verify-symbols.mjs` reports `omnivoice=10 abi=8`; Bun FFI smoke against `~/.eliza/local-inference/models/eliza-1-1_7b.bundle` loads real OmniVoice Q4_K_M base/tokenizer GGUFs for TTS and Qwen3-ASR GGUF + qwen3a mmproj for ASR. TTS writes 31,680 samples for `hello`; ASR now normalizes punctuation, stops on sentence completion, and transcribes `/tmp/eliza-asr-hello.wav` to `Hello world.` in the latest smoke. Evidence: `reports/local-e2e/2026-05-11/fused-voice-ffi-smoke.json` and `reports/local-e2e/2026-05-11/asr-ffi-smoke-latest.json`. Merged-route: `linux-x64-cpu-fused` built on Intel x64, `OMNIVOICE_FUSE_VERIFY.json` `ok:true abi:18 omnivoice:10 llamaReexported:true`; the fused `llama-server` serves `/completion` (1-token) AND `/v1/audio/speech` from the same PID against a small dev substitute bundle (503 "not configured" — no `tts/` in the substitute); covered by `dflash-server-fused.integration.test.ts` + `dflash-server.test.ts` "fused-vs-two-process spawn selection". |
 | Text-to-voice streaming handoff | JS runtime now streams accepted text deltas from llama-server into the active voice scheduler, supports explicit phrase prewarm, opportunistically reuses repeated generated phrase audio, and exposes the verifier-event callback shape needed by native DFlash. Native accept/reject event streaming is still open. | `dflash-server.generateWithUsage` switches to OpenAI-compatible SSE when `onTextChunk` or `onVerifierEvent` is supplied and synthesizes accept events from deltas until the native server emits exact verifier ranges. `LocalInferenceEngine.generate()` and `generateInConversation()` forward verifier events/chunks into `EngineVoiceBridge` while generation is still in flight and settle the scheduler at turn end without duplicate text delivery. `PhraseCache` is now an LRU-bounded cache (`128` entries, `8s` PCM cap per entry by default), `VoiceScheduler.prewarmPhrases()` caches common phrase audio, and live successful phrase/direct-TTS synthesis is cached only after it survives cancellation/rollback. Default voice chunks are capped at 8 tokens and `ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES` bounds memory on small devices. The DFlash llama-server path also separates `kvOffload=cpu` from layer offload and exposes cache/batch tuning knobs for small-device profiles. Evidence: local-inference focused tests now pass 86/86 for backend/DFlash/voice streaming, and the iOS transport bridge test/typecheck pass after preserving `fetch.preconnect` through the local-agent fetch bridge. |
-| Eliza-1 bundles | Local release-shaped bundles are complete for all five tiers, but they are explicitly non-publishable stand-ins. No final release bundle is publishable yet. | `stage_eliza1_bundle_assets.py --link-mode hardlink` and `stage_eliza1_source_weights.py` staged non-text assets plus source text/DFlash/vision candidates under `/Users/shawwalters/.eliza/local-inference/models/eliza-1-*.bundle`. `stage_local_eliza1_bundle.py --all-contexts --force` then hardlinked source/candidate bytes into local `text/`, `dflash/`, and `vision/` release-shaped paths, generated `quantization/{turboquant,fused_turboquant,qjl_config,polarquant_config}.json`, `eliza-1.manifest.json`, `checksums/SHA256SUMS`, and `evidence/release.json` for every tier. Full checksum validation is green for all five bundles. Every release evidence file remains `releaseState=local-standin`, `publishEligible=false`, and `final.weights=false`; final Eliza-1 trained weights, passing eval/platform evidence, release-reviewed licenses, and `elizaos` upload evidence remain required before publish. |
+| Eliza-1 bundles | Local release-shaped bundles exist for all five tiers for runtime-layout smoke; they currently carry placeholder/substitute bytes (not yet built from the elizaOS/llama.cpp fork against the upstream base weights) and `releaseState` is not yet `base-v1`. **v1 = the upstream BASE models** (Qwen3.5/3.6 text + OmniVoice TTS + Qwen3-ASR + Silero VAD + Qwen3-Embedding), GGUF-converted via the fork with every §3 kernel optimization — NOT fine-tuned (fine-tuning is v2). The publish path: stage the upstream base weights → convert via the fork's `convert_hf_to_gguf.py` + `gguf_eliza1_apply.py` (Milady-typed GGUF, `--release-state base-v1`) → emit the real `quantization/*.json` sidecars from a real fork build → collect real per-backend `*_dispatch.json` + `*_verify.json` evidence on real hardware → run the base-v1 evals (text perplexity vs the upstream GGUF, voice RTF, ASR WER, VAD latency/boundary/endpoint, dflash acceptance, e2e loop, 30-turn) → write `evidence/release.json` with `releaseState=base-v1`, `finetuned=false`, the `sourceModels` map and `final.{hashes,evals,licenses,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}=true` (`final.weights` need NOT be true for `base-v1` — the bytes are the upstream base GGUFs by design) → publish to `elizaos/eliza-1-*`. See `ELIZA_1_GGUF_READINESS.md` for the per-tier file/evidence checklist. | `stage_eliza1_bundle_assets.py --link-mode hardlink` and `stage_eliza1_source_weights.py` staged non-text assets plus source text/DFlash/vision candidates under `~/.eliza/local-inference/models/eliza-1-*.bundle`. `stage_local_eliza1_bundle.py --all-contexts --force` then hardlinked source/candidate bytes into local `text/`, `dflash/`, and `vision/` release-shaped paths, generated `quantization/{turboquant,fused_turboquant,qjl_config,polarquant_config}.json`, `eliza-1.manifest.json`, `checksums/SHA256SUMS`, and `evidence/release.json` for every tier. Full checksum validation is green for all five bundles. The remaining work is producing the real fork-built GGUF/quant-sidecar bytes, the on-hardware dispatch/verify evidence, the base-v1 evals, the release-reviewed license files, and the `elizaos` upload evidence — never a fabricated hash. |
 
 ## P0 Blockers
 
@@ -151,13 +151,20 @@ command and remaining blocker — see
      phrase audio reaches the sink (the ABI v2 `eliza_inference_set_verifier_callback`
      symbol is present but stubbed — W7).
 
-4. **Real release artifacts**
+4. **Real base-v1 release artifacts**
 
    The repo now has schema/publish machinery plus local release-shaped bundles
-   for runtime-layout smoke. Publishing is still blocked until each tier has
-   final trained text/drafter bytes, eval JSON, release-reviewed license files,
-   platform evidence, and kernel-verification reports derived from the exact
-   final quantized artifact.
+   for runtime-layout smoke. Publishing is blocked until each tier has, for the
+   `base-v1` release state (upstream base models, GGUF-converted via the
+   elizaOS/llama.cpp fork with all §3 kernel optimizations, **not** fine-tuned):
+   real fork-built Milady-typed GGUF bytes (text/vision + the already-GGUF
+   TTS/ASR/embedding at the tier's quant), real `quantization/*.json` sidecars
+   from a real fork build, the base-v1 eval JSON (text perplexity vs the upstream
+   GGUF, voice RTF, ASR WER, VAD, dflash acceptance, e2e loop, 30-turn),
+   release-reviewed license files, per-backend `*_dispatch.json` + `*_verify.json`
+   platform/kernel evidence on real hardware, and the `elizaos/eliza-1-*` upload
+   evidence — all derived from the exact shipped quantized artifact, never a
+   fabricated hash. (Fine-tuned text quality is a separate v2 deliverable.)
 
 ## Voice On/Off Architecture
 
@@ -234,9 +241,12 @@ The lowest-duplication design is lazy regional loading from one bundle:
 - Keep base-lineage names internal to training. Public catalogs, manifests,
   model cards, and default UI must say Eliza-1. Internal registry keys may
   retain upstream lineage until checkpoint conversion is complete.
-- Train/fine-tune the text model and drafter for each tier.
-- Freeze voice weights, generate the speaker preset, and record voice cache
-  format/version in the manifest.
+- For v1 (`base-v1`): convert each tier's upstream base text/vision model to a
+  Milady-typed GGUF via the elizaOS/llama.cpp fork, and distill (KD, not
+  fine-tuning of the target) the DFlash drafter from that tier's base text
+  model. (Fine-tuning the text model ships in v2.)
+- Stage the OmniVoice voice weights at the tier's quant, generate the speaker
+  preset, and record voice cache format/version in the manifest.
 - Generate release fixtures from the final quantized bundles, not synthetic
   reference fixtures.
 - Populate `evidence/release.json` and `checksums/SHA256SUMS` from the exact
@@ -257,13 +267,16 @@ The lowest-duplication design is lazy regional loading from one bundle:
   (e.g. `16` for `EXIT_RELEASE_EVIDENCE_FAIL`) instead of dying before the
   summary under `set -e`. The no-continue-on-error behaviour from §6 is
   unchanged — the matrix walk still aborts at the first failing tier.
-- Dry-run verified against a hand-built `releaseState=upload-candidate`
-  stand-in bundle (`final.weights=false`): the orchestrator rejects it at
-  stage 2 with exit `16` — every tier is still publish-blocked by non-final
-  release evidence. No real or stand-in bundle exists in this checkout's
-  state dir (the staging step is `stage_local_eliza1_bundle.py` /
-  `stage_eliza1_bundle_assets.py`, which need HF network and real text/DFlash
-  weights — not produced here).
+- Dry-run verified against a hand-built dev bundle: the orchestrator rejects it
+  at stage 2 with exit `16` — every tier is still publish-blocked because it has
+  no `releaseState=base-v1` evidence (no real fork-built GGUF/quant-sidecar
+  bytes, no on-hardware dispatch/verify reports, no base-v1 evals). For
+  `base-v1` the publish gate does **not** require `final.weights=true` (the
+  bytes are the upstream base GGUFs by design); it requires the other `final.*`
+  flags + the `sourceModels` map + `finetuned=false`. No release-shaped bundle
+  with real fork-built bytes exists in this checkout's state dir yet (the
+  staging step is `stage_local_eliza1_bundle.py` / `stage_eliza1_bundle_assets.py`,
+  which need HF network and the real text/DFlash/voice bytes — not produced here).
 - §7 device-side downloader contract hardened: `runBundleJob` now reads the
   manifest first, then — **before any weight byte is fetched** — checks the
   RAM budget (`ramBudgetMb.min` vs device RAM) and that at least one of the
@@ -309,14 +322,163 @@ The lowest-duplication design is lazy regional loading from one bundle:
   `patchGgmlCudaForFusedAttn`, and pushes `-DGGML_CUDA_FUSED_ATTN_QJL=ON` in the
   cuda cmake branch. Non-CUDA / no-flag builds unchanged; hardware-verify still
   pending (no NVIDIA host).
-- Eval suite re-run against the staged real bundles (2026-05-11): `0_6b`
-  text_eval=0.2779 (≥0.55 → FAIL), `1_7b` text_eval=0.328 (≥0.60 → FAIL) —
-  expected, off-the-shelf Qwen3 substitutes, not fine-tuned Eliza-1 weights.
-  dispatch eval passes. Voice/ASR/e2e/DFlash-accept gates honestly `not-run`
-  (harness/`llama-speculative-simple` not staged here; not the ABI). `9b` not
-  built (no published `Qwen3.5-9B`; ~8 GB RAM free → would OOM). Publish
-  dry-run against both real bundles exits `16` (`EXIT_RELEASE_EVIDENCE_FAIL`) —
-  gate behaves correctly. No `HF_TOKEN` here — upload is the operator's.
+- Eval suite re-run against the staged dev bundles (2026-05-11): `0_6b`
+  text_eval=0.2779, `1_7b` text_eval=0.328 against the **fine-tuned-quality**
+  thresholds (≥0.55 / ≥0.60). Those thresholds are the v2 fine-tuned gate, not
+  the `base-v1` gate — for `base-v1` the text eval is perplexity-vs-the-upstream
+  GGUF (parity), not a quality floor; the dev bytes here are upstream Qwen base
+  substitutes, exactly what v1 ships (sans the fork conversion). dispatch eval
+  passes. Voice/ASR/e2e/DFlash-accept gates honestly `not-run` (harness /
+  `llama-speculative-simple` not staged here; not the ABI). `9b` not built (no
+  published `Qwen3.5-9B`; ~8 GB RAM free → would OOM). Publish dry-run against
+  both dev bundles exits `16` (`EXIT_RELEASE_EVIDENCE_FAIL`) — gate behaves
+  correctly (no `releaseState=base-v1` evidence yet). No `HF_TOKEN` here —
+  upload is the operator's.
+
+## Publish Critical Path — Status (post-2026-05-11 publish-finish pass)
+
+This is the one coherent picture of what stands between us and an actual
+HF publish to `elizaos/eliza-1-*`. Verdict: **NOT publishable; no
+non-default upload path exists either.** The text weights are
+off-the-shelf Qwen3 0.6B/1.7B substitutes (documented stand-ins for the
+unresolvable Qwen3.5-*), NOT fine-tuned — so the text-eval gate fails,
+which means `defaultEligible` can never be `true` *and* the orchestrator
+has no flag (`--base-v1` / `--allow-base-release` / similar — checked:
+the only flags are `--tier`, `--bundle-dir`, `--repo-id`, `--public`,
+`--metal-verification`, `--gates-path`, `--dry-run`) that would upload a
+non-default release. `validate_release_evidence` hard-requires
+`releaseState ∈ {upload-candidate, final}` and **every** `final.*` flag
+true. So: leave `publishEligible=false`, do not upload, document below.
+
+**Publish dry-run result (real bundles, 2026-05-11):**
+`bash packages/training/scripts/publish_all_eliza1.sh --bundles-root
+<root> --dry-run` (with `<root>/{0_6b,1_7b}` symlinked to
+`~/.eliza/local-inference/models/eliza-1-{0_6b,1_7b}.bundle`) →
+**stage 1 (bundle layout incl. license attestation + `license-manifest.json`
+sidecar) PASSES** for `0_6b`; **stage 2 (release evidence) fails, exit
+`16` (`EXIT_RELEASE_EVIDENCE_FAIL`)** for both tiers, blocking on:
+`releaseState must be 'upload-candidate' or 'final'`; `final.evals must
+be true`; `final.kernelDispatchReports must be true`;
+`final.platformEvidence must be true`; `final.sizeFirstRepoIds must be
+true`. Gate behaves correctly.
+
+**`evidence/release.json` state per tier (after re-running the
+evidence finalizer at this commit):** `0_6b` and `1_7b` both
+`releaseState=weights-staged`, `publishEligible=false`,
+`defaultEligible=false`, `hf.status=blocked-weights-staged`.
+`final = { weights: true, hashes: true, licenses: true, evals: false,
+kernelDispatchReports: false, platformEvidence: false,
+sizeFirstRepoIds: false }`. (Re-run was needed because the licenses
+module changed after the predecessor's finalizer pass — the per-component
+`license-manifest.json` sidecar is now regenerated to match
+`eliza1_licenses.py` HEAD, which is why stage 1 now passes.) The 21
+platform-evidence JSONs are present (`evidence/platform/<target>.json`)
+— `linux-x64-cpu.json` / `linux-x64-vulkan.json` carry real
+`partialEvidence` blocks (CPU reference + AVX-VNNI bench; Intel-ANV
+vulkan-verify 8/8 + multi-block 8/8 + fused 1920/1920 + dispatch-smoke
+7/7) but stay `status: pending` because there is no verify-on-device pass
+against the *staged bundle bytes*; the rest are honest `status: pending`
+stubs with the exact runner command. `evals/{cpu,metal,vulkan}_dispatch.json`
+are likewise `runtimeReady: false` pending stubs (cpu/vulkan carry
+partial-evidence notes). `evidence/platform/linux-x64-cuda.json` does
+not exist yet — the CUDA sibling produced `verify/hardware-results/
+cuda-linux-thismachine-2026-05-11.pending.json` (`status:
+pending-hardware`, RTX 5080 present but `nvidia.ko` not loaded + no
+CUDA Toolkit ≥12.8) — fold in real CUDA evidence once `cuda_runner.sh`
+produces a `passRecordable: true` JSON.
+
+**What's left, who/what unblocks each item, the exact command:**
+
+1. **Real fine-tuned text + drafter weights per tier** — the only thing
+   that clears `final.evals`. *Unblocker:* the GPU/training workstream
+   (bigger box: 9b/27b backbones + GPU training). Off-the-shelf
+   substitutes will always fail the text-eval gate. *Command (after
+   training):* `stage_local_eliza1_bundle.py` → re-run evals →
+   `finalize_eliza1_evidence.py <bundle>`.
+2. **verify-on-device passes against the staged bytes, per backend** —
+   clears `final.kernelDispatchReports`. *Unblocker:* run the engine's
+   verify-on-device (`load → 1-token text → 1-phrase voice → barge-in
+   cancel`) against the actual bundle GGUFs on a CPU host, an
+   Apple-silicon host (Metal), and an Intel/AMD/NVIDIA GPU (Vulkan), and
+   write the result into `evals/<backend>_dispatch.json` +
+   `evidence/platform/<target>.json`. Operator has the boxes (the dev
+   workstation does CPU + Intel-ANV Vulkan; needs a Mac for Metal). The
+   kernel-verify (synthetic-fixture) side is already green on those
+   classes; the missing piece is "against the shipped bytes".
+3. **Platform evidence `status: pass` on every required target** —
+   clears `final.platformEvidence`. Per tier the required set is in
+   `eliza1_platform_plan.REQUIRED_PLATFORM_EVIDENCE_BY_TIER` (10 targets:
+   darwin/ios metal, linux-x64 cpu+vulkan, windows-x64/arm64 cpu+vulkan,
+   android adreno/mali vulkan). Each is `pending` until item 2 runs on
+   that platform class. *Unblocker:* the same hardware passes; the
+   Windows/Android/Mac runners exist and are fail-closed
+   (`windows_runner.ps1`, `android_vulkan_smoke.sh`, the iOS
+   `build-xcframework.mjs --verify` + `run-physical-device-smoke.mjs`).
+4. **`releaseState` → `upload-candidate` / `final`** — set by the
+   staging step that produces real fork-build GGUFs + `provenance.sourceModels`
+   + runnable-on-base evals. Today the bundles are `weights-staged`.
+   *Unblocker:* items 1–3 land, then `finalize_eliza1_evidence.py`
+   promotes it (the finalizer only promotes when every `final.*` is true
+   AND `releaseState=base-v1` + `finetuned: false` + `sourceModels` — or
+   the full `final` set; the runtime/operator does not flip this by hand).
+5. **`final.sizeFirstRepoIds`** — set by the HF-push stage itself, so it
+   only flips on a real (non-dry-run) `orchestrator` run that uploads the
+   size-first repo ids. It is therefore the *last* gate to clear and is
+   not an independent prereq.
+6. **Operator host bring-up:** nothing left except (optionally)
+   `cuda-toolkit-12.8` on the RTX-5080 box (for `sm_120` device code;
+   PTX-JIT via `compute_90` works without it) + loading `nvidia.ko`, so
+   `cuda_runner.sh` can produce real CUDA evidence and a
+   `linux-x64-cuda.json` platform JSON.
+
+**Exact publish command (will still fail at stage 2 today, by design):**
+```
+export HF_TOKEN=$(cat ~/.cache/huggingface/token)
+# layout: <root>/<tier>/ — symlink the real bundles in:
+mkdir -p /tmp/eliza1-bundles-root
+ln -sfn ~/.eliza/local-inference/models/eliza-1-0_6b.bundle /tmp/eliza1-bundles-root/0_6b
+ln -sfn ~/.eliza/local-inference/models/eliza-1-1_7b.bundle /tmp/eliza1-bundles-root/1_7b
+bash packages/training/scripts/publish_all_eliza1.sh --bundles-root /tmp/eliza1-bundles-root --dry-run
+# drop --dry-run only once the dry-run is green; upload only to elizaos/eliza-1-*
+```
+
+### Done in the 2026-05-11 publish-finish pass (this commit's deltas)
+
+- Re-ran `finalize_eliza1_evidence.py` on both real bundles so the
+  `license-manifest.json` sidecar matches `eliza1_licenses.py` HEAD —
+  publish dry-run stage 1 (layout + license attestation) now passes for
+  `0_6b`; stage 2 still (correctly) fails with exit `16`.
+- `recommendation.ts`: `canBundleBeDefaultOnDevice(installed, hardware)`
+  + `deviceCapsFromProbe(probe)` — the recommendation-engine gate now
+  consults the bundle's `eliza-1.manifest.json`
+  (`kernels.verifiedBackends`, `evals`, `defaultEligible`) via the
+  manifest validator's `canSetAsDefault`, against the device's backends +
+  RAM, AND requires `InstalledModel.bundleVerifiedAt` (unverified bundles
+  cannot auto-default). Distinct machine-readable reasons
+  (`no-manifest` / `not-default-eligible` / `ram-below-floor` /
+  `kernels-unverified-on-device` / `not-verified-on-device`) mirror the
+  downloader's `BundleIncompatibleError`. Tests in `recommendation.test.ts`.
+  *Closes the "have the recommendation engine consult
+  manifest.kernels.verifiedBackends; canSetAsDefault is not yet called"
+  item above.*
+- Wake-word: the shipped `wake/hey-eliza.onnx` is the upstream
+  openWakeWord `hey_jarvis` head renamed (it fires on "hey jarvis", not
+  the Eliza-1 wake phrase). `isPlaceholderWakeWordHead` /
+  `OPENWAKEWORD_PLACEHOLDER_HEADS = {hey-eliza, hey_jarvis}` mark it; the
+  engine emits a one-time warning whenever a voice session enables a
+  placeholder head. New doc
+  [`wakeword-head-plan.md`](./wakeword-head-plan.md): steps to train a
+  head on the approved Eliza-1 wake phrase via openWakeWord's
+  TTS-augmented pipeline.
+- Known pre-existing test breakage (NOT from this pass — introduced by
+  the catch-all `89e4d49bc6 "updates to many things"` commit that added
+  VAD eval-gate keys + changed manifest error-message text without
+  updating the fixtures): `test_orchestrator.py::{test_dry_run_succeeds_on_fixture,
+  test_real_publish_finalizes_and_uploads_hf_evidence,
+  test_dry_run_tag_is_printed_not_executed, test_alias_opt_in_allows_publish_with_warning}`
+  and `test_eliza1_manifest.py::test_default_eligible_requires_asr_and_vad_components`.
+  Owner: the eval-suite agent — the orchestrator's runtime behaviour is
+  correct (real-bundle dry-run gives the expected exit `16`).
 
 ## Known Non-Goals For This Wave
 

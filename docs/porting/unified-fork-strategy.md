@@ -28,9 +28,12 @@ retired. Stock desktop still runs `node-llama-cpp@3.18.1` — that's the remaini
 non-unified consumer; see §F for the migration plan. (`v1.0.0-eliza` is the same
 tree as the prior `v0.4.0-milady` / `v0.2.0-milady`-lineage tags, re-tagged on
 the elizaOS rename. A full rebase onto a recent upstream llama.cpp remains a
-follow-up — the conflict-prone surfaces are the quant-slot enums in
+deferred follow-up — **not** a blocker for any shipping feature; the b8198 base
+already carries `grammar_lazy` / `json_schema` / `response_format` /
+`prefill_assistant`. The conflict-prone surfaces are the quant-slot enums in
 `ggml-common.h` / `ggml.h` and upstream's incompatible redefinition of the
-`Q1_0` block layout.)
+`Q1_0` block layout — see [`upstream-rebase-plan.md`](./upstream-rebase-plan.md)
+for the full cost, conflict surface, trigger conditions, and sequencing.)
 
 **Original problem (resolved for the AOSP+host paths, kept for context):**
 Milady previously built against three different llama.cpp trees and a

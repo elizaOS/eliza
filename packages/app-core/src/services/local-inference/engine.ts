@@ -28,7 +28,6 @@ import {
   type Eliza1TierId,
   findCatalogModel,
 } from "./catalog";
-import type { InstalledModel } from "./types";
 import {
   type ConversationHandle,
   conversationRegistry,
@@ -50,6 +49,7 @@ import {
   SessionPool,
 } from "./session-pool";
 import { resolveGrammarForParams } from "./structured-output";
+import type { InstalledModel } from "./types";
 import {
   buildLocalEmbeddingRoute,
   EMBEDDING_FULL_DIM,
@@ -57,7 +57,7 @@ import {
   type LocalEmbeddingRoute,
 } from "./voice/embedding";
 import {
-  EmbeddingServer,
+  type EmbeddingServer,
   embeddingServerForRoute,
 } from "./voice/embedding-server";
 import {
@@ -1412,9 +1412,19 @@ export class LocalInferenceEngine {
       null;
     let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
     if (opts.wakeWord?.enabled) {
-      const { loadBundledWakeWordModel, OpenWakeWordDetector } = await import(
-        "./voice/wake-word"
-      );
+      const {
+        isPlaceholderWakeWordHead,
+        loadBundledWakeWordModel,
+        OPENWAKEWORD_DEFAULT_HEAD,
+        OpenWakeWordDetector,
+      } = await import("./voice/wake-word");
+      const headName =
+        opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+      if (isPlaceholderWakeWordHead(headName)) {
+        console.warn(
+          `[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
+        );
+      }
       const model = await loadBundledWakeWordModel({
         bundleRoot: bridge.bundlePath(),
         ...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),
@@ -1895,6 +1905,7 @@ export class LocalInferenceEngine {
       return null;
     }
 
+    const kvCache = catalog?.runtime?.kvCache;
     return {
       targetModelPath: target.path,
       drafterModelPath: drafter.path,
@@ -1904,6 +1915,8 @@ export class LocalInferenceEngine {
       draftMax: dflash.draftMax,
       gpuLayers: dflash.gpuLayers,
       draftGpuLayers: dflash.draftGpuLayers,
+      cacheTypeK: kvCache?.typeK,
+      cacheTypeV: kvCache?.typeV,
       disableThinking: dflash.disableThinking,
     };
   }

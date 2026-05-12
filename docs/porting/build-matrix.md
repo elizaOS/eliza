@@ -3,10 +3,11 @@
 > Per-cell status of every (platform, ABI, GPU-backend) combination
 > that ships a Milady on-device runtime artifact. The unified fork
 > ([`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) @
-> `v0.3.0-milady`) is the authoritative source; per-cell artifacts
-> live under `~/.eliza/local-inference/bin/<target>/` for host
-> targets and under `apps/app/android/app/src/main/assets/agent/<abi>/`
-> for AOSP. See
+> `v1.0.0-eliza`, commit `08032d57`) is the authoritative source and
+> ships in-tree as the git submodule at `packages/inference/llama.cpp`;
+> per-cell artifacts live under `~/.eliza/local-inference/bin/<target>/`
+> for host targets and under
+> `apps/app/android/app/src/main/assets/agent/<abi>/` for AOSP. See
 > [`docs/porting/unified-fork-strategy.md`](./unified-fork-strategy.md)
 > for the per-technique branching scheme that produces these
 > artifacts,
@@ -35,11 +36,15 @@
 
 The verification commands assume:
 
-- `MILADY_LLAMA_CPP_REMOTE=https://github.com/elizaOS/llama.cpp` and
-  `MILADY_LLAMA_CPP_REF=v0.3.0-milady` (the W3-B fused-CPU release).
-- `~/.cache/milady-llama-cpp/<commit>` is the canonical checkout
-  cache used by `compile-libllama.mjs` (AOSP) and
-  `build-llama-cpp-dflash.mjs` (host).
+- The fork checkout is the in-repo submodule `packages/inference/llama.cpp`
+  (`elizaOS/llama.cpp @ v1.0.0-eliza`, commit `08032d57`) — `bun install`
+  inits it via `scripts/ensure-llama-cpp-submodule.mjs`. Both build scripts
+  (`compile-libllama.mjs` AOSP, `build-llama-cpp-dflash.mjs` host) default to
+  it; `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir` / `--src-dir`)
+  force a standalone clone at `~/.cache/eliza-dflash/eliza-llama-cpp` instead.
+- Older example invocations below using a `~/.cache/...llama-cpp-v0.1.0`
+  directory name are illustrative of a standalone-clone layout; the current
+  default is the submodule path above.
 
 Symbols listed under "Expected exported symbols" are the Milady-side
 additions on top of stock llama.cpp; the upstream `llama_*` /

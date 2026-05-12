@@ -108,6 +108,17 @@ static __device__ __forceinline__ void fused_tbq3_decode_block_uncond(const bloc
 // `kv_tile` (>0) walks the KV range in tiles for cancellation granularity; the
 // running (m, l, acc) state is per-block (registers + shared), so the result is
 // identical to a single-tile pass — the tiling is purely a scheduler hook.
+//
+// Optimizations vs the naive per-lane-decodes-everything form (parity-preserving
+// — the arithmetic and reduction order are unchanged, only *which lane* performs
+// each scalar op moves):
+//   * P1: the 256-element Q sketch row is hoisted into 8 registers per lane at
+//     kernel entry instead of reloaded from global on every KV step.
+//   * P0: the 4 TBQ3 V blocks are decoded ONCE per KV step (one block per lane
+//     0..3) into shared memory; all 32 lanes then read their own element. The
+//     naive form had every lane re-run all 4 block decodes (codebook lookups +
+//     Hadamard-32 + sign uncondition) and keep one element — ~32x wasted V-decode
+//     arithmetic per block, x4 blocks. Cuts that to one decode per block.
 __global__ void fused_attn_qjl_tbq3_kernel(
         const float * __restrict__ q_sketch,
         const block_qjl1_256 * __restrict__ k_blocks,
@@ -127,6 +138,15 @@ __global__ void fused_attn_qjl_tbq3_kernel(
 
     const float qjl_scl = FUSED_QJL_SQRT_PI_OVER_2 / (float) proj_dim;
 
+    // P1: stage this lane's 8 Q sketch elements once (reused across all n_kv).
+    float qreg[8];
+    #pragma unroll
+    for (int b = 0; b < 8; ++b) qreg[b] = qh[lane * 8 + b];
+
+    // P0: one decoded V block (32 real head-dim values) per chunk, written by
+    // lanes 0..3 and read by all 32. 4*32*4 = 512 B of shared memory per warp.
+    __shared__ float sh_dec[FUSED_TBQ_PER_TOKEN][32];
+
     // Each lane keeps acc[c] for chunk c at element (c*32 + lane).
     float acc[FUSED_TBQ_PER_TOKEN];
     #pragma unroll
@@ -141,10 +161,8 @@ __global__ void fused_attn_qjl_tbq3_kernel(
             const uint8_t sb = pk[t].signs[lane];
             float partial = 0.0f;
             #pragma unroll
-            for (int b = 0; b < 8; ++b) {
-                const float qv = qh[lane * 8 + b];
-                partial += ((sb >> b) & 1) ? qv : -qv;
-            }
+            for (int b = 0; b < 8; ++b)
+                partial += ((sb >> b) & 1) ? qreg[b] : -qreg[b];
             #pragma unroll
             for (int off = 16; off > 0; off >>= 1)
                 partial += __shfl_xor_sync(0xFFFFFFFFu, partial, off);
@@ -156,17 +174,15 @@ __global__ void fused_attn_qjl_tbq3_kernel(
             const float w     = __expf(score - m_new);
             l = l * corr + w;
 
-            // --- V decode + mix. Lane decodes block `lane>>3` only if lane<? ---
-            // Simpler & matches the reference: each lane decodes ALL 4 chunks but
-            // only takes its own element. The reference does the same work per
-            // head; head_dim=128 fits in registers. (A future optimization can
-            // split the 4 chunks across 8-lane groups; keep parity simple here.)
+            // --- V decode (lanes 0..3 each decode one chunk) + mix (all lanes). ---
+            if (lane < FUSED_TBQ_PER_TOKEN)
+                fused_tbq3_decode_block_uncond(
+                    pv[(size_t) t * FUSED_TBQ_PER_TOKEN + lane], sh_dec[lane]);
+            __syncwarp();
             #pragma unroll
-            for (int c = 0; c < FUSED_TBQ_PER_TOKEN; ++c) {
-                float dec[32];
-                fused_tbq3_decode_block_uncond(pv[(size_t) t * FUSED_TBQ_PER_TOKEN + c], dec);
-                acc[c] = acc[c] * corr + w * dec[lane];
-            }
+            for (int c = 0; c < FUSED_TBQ_PER_TOKEN; ++c)
+                acc[c] = acc[c] * corr + w * sh_dec[c][lane];
+            __syncwarp();
             m = m_new;
         }
     }

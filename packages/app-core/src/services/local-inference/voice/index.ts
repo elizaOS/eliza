@@ -59,8 +59,8 @@ export {
 } from "./phrase-cache";
 export { chunkTokens, PhraseChunker } from "./phrase-chunker";
 export {
-  type AsrTokenStreamer,
   type DraftProposer,
+  splitTranscriptToTokens,
   type TargetVerifier,
   VoicePipeline,
   type VoicePipelineConfig,
@@ -70,12 +70,9 @@ export {
 export {
   type DflashTextRunner,
   dflashTextRunner,
-  FfiAsrTokenStreamer,
   LlamaServerDraftProposer,
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
-  StreamingTranscriberTokenStreamer,
-  splitTranscriptToTokens,
 } from "./pipeline-impls";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
@@ -110,6 +107,8 @@ export {
   type CreateStreamingTranscriberOptions,
   createStreamingTranscriber,
   downloadWhisperModel,
+  FfiBatchTranscriber,
+  type FfiBatchTranscriberOptions,
   FfiStreamingTranscriber,
   ffiSupportsStreamingAsr,
   makeWhisperCppDecoder,
@@ -155,12 +154,14 @@ export {
   writeVoicePresetFile,
 } from "./voice-preset-format";
 export {
+  isPlaceholderWakeWordHead,
   loadBundledWakeWordModel,
   OPENWAKEWORD_DEFAULT_HEAD,
   OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
   OPENWAKEWORD_DIR_REL_PATH,
   OPENWAKEWORD_EMBEDDING_REL_PATH,
   OPENWAKEWORD_MELSPEC_REL_PATH,
+  OPENWAKEWORD_PLACEHOLDER_HEADS,
   OpenWakeWordDetector,
   OpenWakeWordModel,
   resolveWakeWordModel,

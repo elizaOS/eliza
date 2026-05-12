@@ -121,6 +121,36 @@ const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
  * object — `shouldRespond`, `thought`, `replyText`, `contexts`, then the
  * planning hints, then `extract`. `parseMessageHandlerOutput` still accepts the
  * legacy `{ processMessage, plan:{...} }` nesting for older trajectories.
+ *
+ * Source-of-truth note (two envelope definitions exist — read this):
+ *   The schema actually sent to the Stage-1 LLM in production is composed at
+ *   request time by `ResponseHandlerFieldRegistry.composeSchema()` (see
+ *   `../runtime/response-handler-field-registry.ts`) from the registered
+ *   builtin field evaluators (`../runtime/builtin-field-evaluators.ts`:
+ *   shouldRespond / contexts / intents / replyText / candidateActionNames /
+ *   facts / relationships / addressedTo). `services/message.ts` calls
+ *   `createHandleResponseTool({ parameters: composeSchema() })`, so this
+ *   `HANDLE_RESPONSE_SCHEMA` constant is **not** the bytes the model sees in
+ *   production — it is the W3 flat-envelope shape kept here as (a) the default
+ *   `parameters` for `createHandleResponseTool` when no override is passed,
+ *   (b) the shape `parseMessageHandlerOutput` decodes back-compat trajectories
+ *   into, and (c) a stable reference for tests / `buildResponseGrammar`'s
+ *   no-field fallback. `buildResponseGrammar` (`../runtime/response-grammar.ts`)
+ *   prefers the field-registry envelope when evaluators are registered (always,
+ *   in production) and only falls back to this fixed key order otherwise.
+ *
+ *   The field registry's `composeSchema()` is canonical TODAY.
+ *
+ * TODO(consolidate): derive `HANDLE_RESPONSE_SCHEMA` /
+ *   `HANDLE_RESPONSE_DIRECT_SCHEMA` from `composeSchema()` of the builtin field
+ *   evaluators so there is one source of truth. Not done in this pass: the two
+ *   envelopes have *different field sets* (W3: thought/contextSlices/
+ *   parentActionHints/requiresTool/extract vs. registry: intents/
+ *   candidateActionNames/facts/relationships/addressedTo), so a direct swap
+ *   changes the constant's shape and breaks the W3-envelope tests + the
+ *   back-compat parser path that still reads `plan.*` / `contextSlices` /
+ *   `requiresTool`. The migration needs the W3 fields fully retired from the
+ *   parser and the trajectory corpus first.
  */
 export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 	type: "object",

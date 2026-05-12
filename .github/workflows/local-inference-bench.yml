@@ -32,7 +32,7 @@ on:
       - ".github/workflows/local-inference-bench.yml"
       - "plugins/plugin-local-embedding/**"
       - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
-      - "packages/training/scripts/publish_milady_model.py"
+      - "packages/training/scripts/publish_eliza1_model.py"
       - "packages/training/scripts/sync_catalog_from_hf.py"
       - "scripts/verify-phone-download.mjs"
   workflow_dispatch:
@@ -379,7 +379,7 @@ jobs:
 
       - name: Cross-build windows-x64-cpu
         env:
-          # Override the dflash fork to elizaOS/llama.cpp v0.1.0-milady so
+          # Override the dflash fork to elizaOS/llama.cpp v1.0.0-eliza so
           # CI exercises the symbols downstream consumers actually expect.
           # Operators that want to test against the spiritbuun upstream can
           # leave this unset.
@@ -388,7 +388,7 @@ jobs:
           set -euo pipefail
           node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
             --target windows-x64-cpu \
-            --ref v0.1.0-milady \
+            --ref v1.0.0-eliza \
             --cache-dir "$RUNNER_TEMP/llama-cpp-cross-cache" \
             --out-dir "$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
 
@@ -486,7 +486,7 @@ jobs:
 
   publish-models-nightly:
     # Weekly nightly publish to the elizaos HF org. Walks W5-Pipeline's
-    # output, calls publish_milady_model.py for each fused-kernel GGUF,
+    # output, calls publish_eliza1_model.py for each fused-kernel GGUF,
     # then runs sync_catalog_from_hf.py to produce the catalog diff and
     # opens a PR with the update.
     #
@@ -502,7 +502,7 @@ jobs:
     env:
       # W5-Pipeline drops finished checkpoints under this path. The
       # nightly publish step expects each subdirectory to be a complete
-      # `<base>-milady-optimized` (or `-milady-drafter`) bundle —
+      # `<base>-optimized` (or `-drafter`) bundle —
       # i.e. a single .gguf + manifest.json + README.md.
       W5_PIPELINE_OUTPUT_ROOT: ${{ vars.W5_PIPELINE_OUTPUT_ROOT || '/mnt/w5-pipeline-output' }}
       HF_TOKEN: ${{ secrets.MILADY_HF_TOKEN }}
@@ -568,15 +568,15 @@ jobs:
           FAILURES=0
           for dir in "$W5_PIPELINE_OUTPUT_ROOT"/*/; do
             name=$(basename "$dir")
-            # Bundle naming: <base>-milady-optimized or <base>-milady-drafter.
+            # Bundle naming: <base>-optimized or <base>-drafter.
             # Anything else is rejected — these repos are for fused builds only.
-            if [[ "$name" != *-milady-optimized && "$name" != *-milady-drafter ]]; then
+            if [[ "$name" != *-optimized && "$name" != *-drafter ]]; then
               echo "::warning ::skipping $name (not a fused-kernel bundle name)"
               continue
             fi
             repo_id="elizaos/$name"
             echo "::group::publish $repo_id"
-            if ! python packages/training/scripts/publish_milady_model.py \
+            if ! python packages/training/scripts/publish_eliza1_model.py \
                 --model-dir "$dir" \
                 --repo-id "$repo_id"; then
               echo "::error ::publish failed for $name"

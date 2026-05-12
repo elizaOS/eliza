@@ -4,20 +4,24 @@ Wraps llama.cpp's two-stage GGUF conversion:
 
   1. ``convert_hf_to_gguf.py`` — turns a HuggingFace safetensors checkpoint
      into a single-file f16 GGUF.
-  2. ``llama-quantize`` (the binary built by ``make quantize`` in the
-     llama.cpp tree) — quantizes that f16 GGUF down to Q4_K_M (4-bit
+  2. ``llama-quantize`` — quantizes that f16 GGUF down to Q4_K_M (4-bit
      K-quant, mixed precision).
 
 Output is written to ``<output>/eliza-1-<size>-Q4_K_M.gguf``, matching the
 sibling K-quant levels (``-Q5_K_M``, ``-Q6_K``) so the publish layer can
 upload them to a single ``elizaos/eliza-1-<size>-gguf-q4_k_m`` HF repo.
 
-Both binaries must be on ``PATH`` (or pointed at via ``--llama-cpp-dir``).
-If they are missing the script exits 2 with an actionable diagnostic
-("install llama.cpp + run `make quantize`" or pip install
-``llama-cpp-python``). ``--calibration`` is accepted for CLI parity with
-the rest of the quantization scripts and is forwarded to ``llama-quantize``
-as an importance matrix when present (significantly improves PPL at low
+The converter + binary come from the in-repo llama.cpp fork submodule at
+``packages/inference/llama.cpp`` — the single canonical llama.cpp checkout
+for the whole repo. ``convert_hf_to_gguf.py`` is the fork's own script
+(the fork is itself a llama.cpp fork, so it carries all the standard
+tooling). ``llama-quantize`` is built from that submodule with a one-shot
+CPU-only cmake build (see ``_VENDOR_HINT``). Resolution falls back to
+``--llama-cpp-dir`` / ``$LLAMA_CPP_DIR`` / ``PATH`` if the submodule build
+isn't present. If nothing resolves the script exits 2 with an actionable
+diagnostic. ``--calibration`` is accepted for CLI parity with the rest of
+the quantization scripts and is forwarded to ``llama-quantize`` as an
+importance matrix when present (significantly improves PPL at low
 bit-rates).
 """
 
@@ -50,17 +54,30 @@ log = logging.getLogger("gguf_q4_k_m_apply")
 QUANT_LEVEL = "Q4_K_M"
 
 
-# Vendored stock llama.cpp lives here once scripts/vendor_llama_cpp.sh runs.
-_VENDOR_LLAMA_CPP = _HERE.parent.parent / "vendor" / "llama.cpp"  # training/vendor/llama.cpp
+# The in-repo llama.cpp fork submodule — the single canonical llama.cpp
+# checkout for the whole repo (.gitmodules: packages/inference/llama.cpp,
+# url=https://github.com/elizaOS/llama.cpp.git). `bun install` inits it via
+# scripts/ensure-llama-cpp-submodule.mjs. From this file
+# (packages/training/scripts/quantization/) the repo root is four parents up.
+_REPO_ROOT = _HERE.parents[3]
+_FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
 
 _VENDOR_HINT = (
-    "Run the vendor script first:\n"
-    "  bash scripts/vendor_llama_cpp.sh\n"
-    "(clones stock ggml-org/llama.cpp into vendor/llama.cpp, builds "
-    "llama-quantize, installs the gguf python deps)\n"
-    "Or pass --llama-cpp-dir <path-to-checkout> / set LLAMA_CPP_DIR.\n"
-    "NOTE: custom GGML types (Q4_POLAR/QJL1_256/TurboQuant) need the "
-    "elizaOS/llama.cpp fork — that's a separate track, not this script."
+    "The llama.cpp fork submodule should already be checked out by `bun "
+    "install` (scripts/ensure-llama-cpp-submodule.mjs). If it's missing:\n"
+    "  git submodule update --init packages/inference/llama.cpp\n"
+    "Then build the llama-quantize + llama-cli binaries from it (one-shot, "
+    "CPU-only is enough):\n"
+    "  cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build \\\n"
+    "        -DCMAKE_BUILD_TYPE=Release -DLLAMA_CURL=OFF -DGGML_NATIVE=OFF "
+    "-DBUILD_SHARED_LIBS=OFF\n"
+    "  cmake --build packages/inference/llama.cpp/build --target llama-quantize "
+    "llama-cli -j\"$(nproc)\"\n"
+    "Or pass --llama-cpp-dir <path-to-checkout> / set LLAMA_CPP_DIR / put the "
+    "binaries on PATH.\n"
+    "(convert_hf_to_gguf.py needs the `gguf` + `mistral_common` python deps; "
+    "`uv pip install -r packages/inference/llama.cpp/requirements/"
+    "requirements-convert_hf_to_gguf.txt`.)"
 )
 
 
@@ -68,9 +85,9 @@ def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
     """Locate convert_hf_to_gguf.py.
 
     Resolution order: ``--llama-cpp-dir`` (explicit), ``$LLAMA_CPP_DIR``
-    (env override), the vendored ``vendor/llama.cpp`` checkout (default,
-    populated by ``scripts/vendor_llama_cpp.sh``), then a system PATH
-    install (e.g. the llama-cpp-python wheel).
+    (env override), the in-repo llama.cpp fork submodule
+    (``packages/inference/llama.cpp``, the canonical checkout), then a
+    system PATH install (e.g. the llama-cpp-python wheel).
     """
     candidates: list[Path] = []
     if llama_cpp_dir is not None:
@@ -78,7 +95,7 @@ def _find_convert_script(llama_cpp_dir: Path | None) -> Path:
     env_dir = os.environ.get("LLAMA_CPP_DIR")
     if env_dir:
         candidates.append(Path(env_dir) / "convert_hf_to_gguf.py")
-    candidates.append(_VENDOR_LLAMA_CPP / "convert_hf_to_gguf.py")
+    candidates.append(_FORK_LLAMA_CPP / "convert_hf_to_gguf.py")
     which = shutil.which("convert_hf_to_gguf.py")
     if which:
         candidates.append(Path(which))
@@ -92,8 +109,9 @@ def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
     """Locate the ``llama-quantize`` binary.
 
     Same resolution order as :func:`_find_convert_script`: explicit
-    ``--llama-cpp-dir``, ``$LLAMA_CPP_DIR``, the vendored checkout, then
-    PATH.
+    ``--llama-cpp-dir``, ``$LLAMA_CPP_DIR``, the in-repo fork submodule's
+    ``build/bin`` (a one-shot CPU cmake build — see :data:`_VENDOR_HINT`),
+    then PATH.
     """
     candidates: list[Path] = []
     if llama_cpp_dir is not None:
@@ -113,8 +131,8 @@ def _find_quantize_binary(llama_cpp_dir: Path | None) -> Path:
         )
     candidates.extend(
         [
-            _VENDOR_LLAMA_CPP / "build" / "bin" / "llama-quantize",
-            _VENDOR_LLAMA_CPP / "llama-quantize",
+            _FORK_LLAMA_CPP / "build" / "bin" / "llama-quantize",
+            _FORK_LLAMA_CPP / "llama-quantize",
         ]
     )
     which = shutil.which("llama-quantize")

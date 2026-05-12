@@ -18,7 +18,7 @@
 #   ELIZA_DFLASH_CMAKE_FLAGS   extra target CMake flags passed to the build hook
 #   ELIZA_DFLASH_HARDWARE_REPORT_DIR
 #                              graph-smoke log directory, default verify/hardware-results
-#   ELIZA_DFLASH_LLAMA_DIR     default ~/.cache/eliza-dflash/milady-llama-cpp
+#   ELIZA_DFLASH_LLAMA_DIR     default ~/.cache/eliza-dflash/eliza-llama-cpp
 #   ELIZA_DFLASH_LIBGGML_CUDA  default $ELIZA_DFLASH_LLAMA_DIR/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 #   ELIZA_DFLASH_SMOKE_MODEL   required unless CUDA_SKIP_GRAPH_SMOKE=1
 #   ELIZA_DFLASH_SMOKE_CACHE_TYPES/TOKENS/NGL/PROMPT/EXTRA_ARGS
@@ -159,7 +159,7 @@ host_arch_target() {
 if [[ -n "${CUDA_REMOTE:-}" ]]; then
     REMOTE_DELEGATED="true"
     REMOTE_DIR="${CUDA_REMOTE_DIR:-~/eliza}/packages/inference/verify"
-    REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/milady-llama-cpp}"
+    REMOTE_LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-\$HOME/.cache/eliza-dflash/eliza-llama-cpp}"
     REMOTE_REPORT_PATH="${CUDA_REMOTE_REPORT:-}"
     if [[ -n "$REPORT_PATH" && -z "$REMOTE_REPORT_PATH" ]]; then
         REMOTE_REPORT_PATH="hardware-results/$(basename "$REPORT_PATH")"

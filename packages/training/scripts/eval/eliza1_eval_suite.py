@@ -330,17 +330,124 @@ class EvalContext:
 def _run_llama(
     ctx: EvalContext, bin_path: Path, args: list[str], timeout_s: int | None = None
 ) -> tuple[int, str]:
-    """Run a llama.cpp binary, return ``(returncode, combined output)``."""
+    """Run a llama.cpp binary, return ``(returncode, combined output)``.
+
+    The binary's own dir leads ``LD_LIBRARY_PATH`` so it loads its own
+    ``libllama.so`` etc. — important when ``llama-speculative-simple`` is
+    resolved from a *sibling* (non-fused) build dir whose libllama version
+    differs from the fused build's.
+    """
+    env = ctx.llama_env()
+    own = str(bin_path.parent)
+    for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        env[var] = f"{own}:{env[var]}" if env.get(var) else own
     proc = subprocess.run(  # noqa: S603 - bin_path is a discovered local binary
         [str(bin_path), *args],
         capture_output=True,
         text=True,
-        env=ctx.llama_env(),
+        env=env,
         timeout=timeout_s or ctx.timeout_s,
         cwd=str(bin_path.parent),
     )
     ctx.track_rss()
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
+
+
+# ---------------------------------------------------------------------------
+# e2e voice-loop bench bridge
+#
+# The TTS-RTF / ASR-WER / e2e-loop / 30-turn runners all drive the same
+# real fused runtime (the omnivoice-grafted ``llama-server`` + the ASR FFI),
+# so they share one bench run: ``packages/inference/verify/e2e_loop_bench.mjs``.
+# That harness already does WAV → ASR → DFlash-spec-decode → phrase chunker →
+# OmniVoice TTS → PCM and reports every metric. We invoke it once per
+# (tier, backend, turns) and cache the parsed JSON on the EvalContext.
+# ---------------------------------------------------------------------------
+
+_BUN = shutil.which("bun")
+
+
+def _e2e_loop_bench_path() -> Path | None:
+    for c in (
+        _TRAINING_ROOT.parent / "inference" / "verify" / "e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify" / "e2e_loop_bench.mjs",
+    ):
+        if c.is_file():
+            return c
+    return None
+
+
+def _run_e2e_loop_bench(ctx: EvalContext, turns: int) -> dict[str, Any]:
+    """Run e2e_loop_bench.mjs for ``turns`` turns; return its parsed JSON report.
+
+    Cached per ``turns`` on ``ctx`` (a 1-turn run feeds voice_rtf / asr_wer /
+    e2e_loop; a 30-turn run feeds the endurance gate). On any failure to even
+    start the bench, returns ``{"status": "not-run", "reason": ...}``.
+    """
+    cache: dict[int, dict[str, Any]] = getattr(ctx, "_e2e_cache", None) or {}
+    if turns in cache:
+        return cache[turns]
+    if not hasattr(ctx, "_e2e_cache"):
+        ctx._e2e_cache = cache  # type: ignore[attr-defined]
+    if _BUN is None:
+        result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
+        cache[turns] = result
+        return result
+    bench = _e2e_loop_bench_path()
+    if bench is None:
+        result = {"status": "not-run", "reason": "packages/inference/verify/e2e_loop_bench.mjs not found"}
+        cache[turns] = result
+        return result
+    backend = (ctx.engine.backend if ctx.engine else "cpu") or "cpu"
+    # strip the "-fused" suffix the CAPABILITIES backend never carries, but the
+    # discovered dir name might; e2e_loop_bench resolves the fused dir itself.
+    backend = backend.replace("-fused", "")
+    out_json = ctx.bundle_dir / "evals" / f"e2e-loop-bench-{turns}turn.json"
+    args = [
+        _BUN, str(bench),
+        "--bundle", str(ctx.bundle_dir),
+        "--tier", ctx.tier,
+        "--backend", backend,
+        "--turns", str(turns),
+        "--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3"),
+        "--report", str(out_json),
+        "--quiet",
+    ]
+    if ctx.engine is not None:
+        args += ["--bin-dir", str(ctx.engine.bin_dir)]
+    # An endurance run on CPU is many minutes; give it room (the harness has
+    # its own per-turn timeout, this is just the outer wall-clock cap).
+    timeout_s = max(ctx.timeout_s, 90 * max(1, turns))
+    try:
+        proc = subprocess.run(  # noqa: S603 - bun + a repo-local script
+            args,
+            capture_output=True,
+            text=True,
+            env=ctx.llama_env(),
+            timeout=timeout_s,
+        )
+    except subprocess.TimeoutExpired:
+        result = {"status": "not-run", "reason": f"e2e_loop_bench.mjs ({turns} turns) exceeded {timeout_s}s on this host"}
+        cache[turns] = result
+        return result
+    ctx.track_rss()
+    if not out_json.is_file():
+        tail = "\n".join(((proc.stdout or "") + (proc.stderr or "")).strip().splitlines()[-25:])
+        result = {"status": "not-run", "reason": f"e2e_loop_bench.mjs produced no report (rc={proc.returncode})", "outputTail": tail}
+        cache[turns] = result
+        return result
+    try:
+        report = json.loads(out_json.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        result = {"status": "not-run", "reason": f"could not parse e2e_loop_bench report: {exc}"}
+        cache[turns] = result
+        return result
+    cache[turns] = report
+    return report
+
+
+def _e2e_summary(report: dict[str, Any]) -> dict[str, Any] | None:
+    return report.get("summary") if isinstance(report, dict) and report.get("status") == "ok" else None
 
 
 # ---------------------------------------------------------------------------
@@ -468,52 +575,53 @@ def eval_voice_rtf(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "bundle TTS artifacts are local stand-ins / missing",
         }
-    if ctx.engine is None or ctx.engine.omnivoice_server is None:
+    if ctx.engine is None or not ctx.engine.is_fused or ctx.engine.llama_server is None:
         return {
             **base,
             "status": "not-run",
             "rtf": None,
             "passed": None,
             "reason": (
-                "no fused llama-omnivoice-server binary on this host "
-                f"(looked under {_engine_bin_root()})"
+                "no fused llama-server (omnivoice-grafted, serves /v1/audio/speech) "
+                f"on this host (looked under {_engine_bin_root()})"
             ),
         }
-    # The omnivoice server is an HTTP server; a full RTF measurement spins it
-    # up and POSTs synthesis requests. That harness (server protocol + audio
-    # sink + RTF accounting) is not implemented in this script yet — record it
-    # as not-run with the binary present and the ABI-verify state attached so
-    # the publish runner can wire it once the harness lands. When the fused
-    # build's ABI verify is failing the binary path is not exercisable at all;
-    # when it is ok the only remaining blocker is the harness itself.
-    fuse_report = ctx.engine.bin_dir / "OMNIVOICE_FUSE_VERIFY.json"
-    fuse_ok = False
-    if fuse_report.is_file():
-        try:
-            fuse_ok = bool(json.loads(fuse_report.read_text()).get("ok"))
-        except Exception:  # noqa: BLE001
-            fuse_ok = False
-    reason = (
-        "llama-omnivoice-server present and the fused build's ABI verify is "
-        "ok (OMNIVOICE_FUSE_VERIFY.json); TTS RTF still needs the HTTP "
-        "synthesis + audio-sink harness, which is not implemented in this "
-        "eval script yet"
-        if fuse_ok
-        else (
-            "llama-omnivoice-server present but the fused build's ABI verify "
-            "is failing (OMNIVOICE_FUSE_VERIFY.json); TTS RTF needs an "
-            "ABI-verified fused build first"
-        )
-    )
+    # Drive the real fused runtime: the e2e bench synthesizes a fixed phrase
+    # set through /v1/audio/speech and reports audio-sec / wall-sec per phrase.
+    report = _run_e2e_loop_bench(ctx, turns=1)
+    summary = _e2e_summary(report)
+    if summary is None:
+        return {
+            **base,
+            "status": "not-run",
+            "rtf": None,
+            "passed": None,
+            "reason": report.get("reason") if isinstance(report, dict) else "e2e bench did not complete",
+            "benchStatus": report.get("status") if isinstance(report, dict) else None,
+        }
+    rtf = summary.get("ttsRtfMedian")
+    if rtf is None:
+        return {
+            **base,
+            "status": "not-run",
+            "rtf": None,
+            "passed": None,
+            "reason": "fused TTS synthesized no audio in the e2e bench run",
+        }
     return {
         **base,
-        "status": "not-run",
-        "rtf": None,
-        "passed": None,
-        "reason": reason,
-        "binary": str(ctx.engine.omnivoice_server),
-        "fuseVerifyOk": fuse_ok,
+        "status": "ok",
+        "rtf": round(float(rtf), 4),
+        "rtfMean": summary.get("ttsRtfMean"),
+        "backend": (ctx.engine.backend if ctx.engine else None),
+        "binary": str(ctx.engine.llama_server),
+        "benchReport": str(ctx.bundle_dir / "evals" / "e2e-loop-bench-1turn.json"),
         "phrases": list(_TTS_PHRASES),
+        "note": (
+            "TTS RTF = wall-seconds / audio-seconds over the e2e bench phrase "
+            "set, synthesized through the fused llama-server /v1/audio/speech "
+            "route on this host's backend"
+        ),
     }
 
 
@@ -532,22 +640,54 @@ def eval_asr_wer(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "bundle ASR artifact is a local stand-in / missing",
         }
-    # A real WER measurement transcribes a labelled audio set through the ASR
-    # model and compares against references. That requires the ASR runtime
-    # (fused llama.cpp ASR path or an ONNX whisper runner) plus a labelled
-    # speech corpus; neither is staged on this host. Record not-run with the
-    # artifact present.
+    if ctx.engine is None or ctx.engine.eliza_lib is None:
+        return {
+            **base,
+            "status": "not-run",
+            "wer": None,
+            "passed": None,
+            "reason": (
+                "no fused libelizainference.{so,dylib} (ASR FFI) on this host "
+                f"(looked under {_engine_bin_root()})"
+            ),
+        }
+    # The labelled speech set is *synthesized* from a fixed reference-phrase
+    # set via the bundle's own OmniVoice TTS (the same fused build), then fed
+    # back through the ASR FFI; WER is the normalized word error rate of the
+    # transcript against the phrase that produced the audio. This is a
+    # round-trip eval: it surfaces ASR quality (a stand-in ASR GGUF transcribes
+    # garbage and lands wer≈1.0) without needing an external corpus. Source +
+    # method are recorded on the blob.
+    report = _run_e2e_loop_bench(ctx, turns=1)
+    summary = _e2e_summary(report)
+    if summary is None:
+        return {
+            **base,
+            "status": "not-run",
+            "wer": None,
+            "passed": None,
+            "reason": report.get("reason") if isinstance(report, dict) else "e2e bench did not complete",
+            "benchStatus": report.get("status") if isinstance(report, dict) else None,
+        }
+    wer = summary.get("asrWerMean")
+    if wer is None:
+        return {
+            **base,
+            "status": "not-run",
+            "wer": None,
+            "passed": None,
+            "reason": "e2e bench produced no ASR transcript / reference pair",
+        }
     return {
         **base,
-        "status": "not-run",
-        "wer": None,
-        "passed": None,
-        "reason": (
-            "ASR artifact present and the fused ASR-stream ABI is exported "
-            "(OMNIVOICE_FUSE_VERIFY.json ok), but no labelled speech corpus "
-            "+ WER harness is staged on this host"
-        ),
+        "status": "ok",
+        "wer": round(float(wer), 4),
+        "werByTurn": summary.get("asrWerByTurn"),
+        "asrLatencyMsMedian": summary.get("asrLatencyMsMedian"),
         "asrArtifact": str(ctx.asr_model),
+        "ffiLibrary": str(ctx.engine.eliza_lib),
+        "benchReport": str(ctx.bundle_dir / "evals" / "e2e-loop-bench-1turn.json"),
+        "corpus": "synthesized from a fixed reference-phrase set via the bundle's OmniVoice TTS, transcribed back through the ASR FFI (round-trip WER)",
     }
 
 
@@ -630,38 +770,85 @@ def eval_e2e_and_endurance(ctx: EvalContext) -> tuple[dict[str, Any], dict[str, 
             "reason": reason,
         }
         return e2e, end
-    if ctx.engine is None or ctx.engine.omnivoice_server is None or ctx.engine.llama_cli is None:
-        reason = "no fused llama.cpp build (omnivoice server + llama-cli) on this host"
+    if ctx.engine is None or not ctx.engine.is_fused or ctx.engine.llama_server is None or ctx.engine.eliza_lib is None:
+        reason = "no fused llama.cpp build (omnivoice-grafted llama-server + libelizainference) on this host"
         e2e = {**e2e_base, "status": "not-run", "e2eLoopOk": False, "passed": None, "reason": reason}
         end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason}
         return e2e, end
-    # The full loop (mic-file → ASR → text → TTS → audio) drives the fused
-    # build's ASR-stream + TTS-stream ABI. Those symbols are exported and ABI
-    # verify is ok (OMNIVOICE_FUSE_VERIFY.json), but the in-script harness that
-    # walks a mic-file fixture through the loop and accounts the latency budget
-    # is not implemented yet — record not-run with the binaries present and the
-    # ABI state attached so the publish runner can wire it once it lands.
-    fuse_report = ctx.engine.bin_dir / "OMNIVOICE_FUSE_VERIFY.json"
-    fuse_ok = False
-    if fuse_report.is_file():
-        try:
-            fuse_ok = bool(json.loads(fuse_report.read_text()).get("ok"))
-        except Exception:  # noqa: BLE001
-            fuse_ok = False
-    reason = (
-        "fused build present and its streaming ABI verify is ok "
-        "(OMNIVOICE_FUSE_VERIFY.json); the mic→speech loop harness "
-        "(mic-file fixture → ASR → text → TTS → audio + latency accounting) "
-        "is not implemented in this eval script yet"
-        if fuse_ok
-        else (
-            "fused build present but its streaming ABI verify is failing "
-            "(OMNIVOICE_FUSE_VERIFY.json); the mic→speech loop needs an "
-            "ABI-verified fused build first"
-        )
+
+    # --- one e2e turn: WAV → ASR → DFlash-spec text → phrase chunker → TTS → PCM
+    one = _run_e2e_loop_bench(ctx, turns=1)
+    one_summary = _e2e_summary(one)
+    if one_summary is None:
+        reason = one.get("reason") if isinstance(one, dict) else "e2e bench did not complete"
+        e2e = {**e2e_base, "status": "not-run", "e2eLoopOk": False, "passed": None, "reason": reason}
+        end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason}
+        return e2e, end
+    e2e_ok = bool(one.get("e2eLoopOk"))
+    e2e = {
+        **e2e_base,
+        "status": "ok",
+        "e2eLoopOk": e2e_ok,
+        "passed": e2e_ok,
+        "firstTokenMsMedian": one_summary.get("firstTokenMsMedian"),
+        "firstAudioFromMicMsMedian": one_summary.get("firstAudioFromMicMsMedian"),
+        "firstAudioFromTokenMsMedian": one_summary.get("firstAudioFromTokenMsMedian"),
+        "ttsRtfMedian": one_summary.get("ttsRtfMedian"),
+        "asrLatencyMsMedian": one_summary.get("asrLatencyMsMedian"),
+        "decodeTokPerSecMedian": one_summary.get("decodeTokPerSecMedian"),
+        "totalTurnMsMedian": one_summary.get("totalTurnMsMedian"),
+        "bargeInCancelMs": one_summary.get("bargeInCancelMs"),
+        "serverPeakRssMb": one_summary.get("serverPeakRssMb"),
+        "backend": ctx.engine.backend,
+        "benchReport": str(ctx.bundle_dir / "evals" / "e2e-loop-bench-1turn.json"),
+    }
+
+    # --- 30-turn endurance: loop 30 turns, assert no crash / no leak / peak RSS
+    #     within manifest ramBudgetMb.recommended. Slow on CPU (~minutes/turn for
+    #     the MaskGIT TTS forward); ELIZA_EVAL_ENDURANCE_TURNS can shrink it for
+    #     CI smoke runs (the gate name is thirty_turn_ok — a <30 run is recorded
+    #     honestly as the run length and never as thirty_turn_ok=true).
+    end_turns = int(os.environ.get("ELIZA_EVAL_ENDURANCE_TURNS", "30"))
+    many = _run_e2e_loop_bench(ctx, turns=end_turns)
+    many_summary = _e2e_summary(many)
+    if many_summary is None:
+        end = {
+            **end_base,
+            "status": "not-run",
+            "thirtyTurnOk": False,
+            "turns": 0,
+            "passed": None,
+            "reason": many.get("reason") if isinstance(many, dict) else "endurance bench did not complete",
+        }
+        return e2e, end
+    thirty_ok = bool(many.get("thirtyTurnOk")) if many.get("thirtyTurnOk") is not None else (
+        end_turns >= 30
+        and bool(many.get("e2eLoopOk"))
+        and not many_summary.get("leakSuspected")
+        and many_summary.get("ramWithinBudget") is not False
     )
-    e2e = {**e2e_base, "status": "not-run", "e2eLoopOk": False, "passed": None, "reason": reason, "fuseVerifyOk": fuse_ok}
-    end = {**end_base, "status": "not-run", "thirtyTurnOk": False, "turns": 0, "passed": None, "reason": reason, "fuseVerifyOk": fuse_ok}
+    end = {
+        **end_base,
+        "status": "ok",
+        "thirtyTurnOk": thirty_ok,
+        "passed": thirty_ok,
+        "turns": end_turns,
+        "leakSuspected": many_summary.get("leakSuspected"),
+        "ramWithinBudget": many_summary.get("ramWithinBudget"),
+        "ramBudgetRecommendedMb": many_summary.get("ramBudgetRecommendedMb"),
+        "serverPeakRssMb": many_summary.get("serverPeakRssMb"),
+        "peakRssMb": many_summary.get("serverPeakRssMb"),
+        "e2eLoopOk": many.get("e2eLoopOk"),
+        "backend": ctx.engine.backend,
+        "benchReport": str(ctx.bundle_dir / "evals" / f"e2e-loop-bench-{end_turns}turn.json"),
+        "note": (
+            "30-turn endurance via e2e_loop_bench.mjs --turns 30 (turn 1 full, "
+            "later turns lighter); thirtyTurnOk requires 30 turns completed with "
+            "no crash, no RSS leak, peak RSS within manifest ramBudgetMb.recommended"
+            if end_turns >= 30
+            else f"shortened endurance run ({end_turns} turns) via ELIZA_EVAL_ENDURANCE_TURNS — not a thirty_turn_ok pass"
+        ),
+    }
     return e2e, end
 
 
@@ -947,10 +1134,11 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
     dispatch = eval_dispatch(ctx)
     ctx.track_rss()
 
-    # endurance peak-rss is the suite's own peak (a real 30-turn loop would
-    # measure the runtime's RSS; here we record the harness peak so the field
-    # is populated honestly with the right shape).
-    endurance["peakRssMb"] = round(ctx.peak_rss_mb, 1) if ctx.peak_rss_mb else None
+    # When the endurance runner did not measure the runtime's RSS (bench did
+    # not run), fall back to the suite's own peak so the field is populated
+    # with the right shape; a real run already filled it from the server VmHWM.
+    if endurance.get("peakRssMb") is None:
+        endurance["peakRssMb"] = round(ctx.peak_rss_mb, 1) if ctx.peak_rss_mb else None
 
     evals = {
         "text-eval.json": text,

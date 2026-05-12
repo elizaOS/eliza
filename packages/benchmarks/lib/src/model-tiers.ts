@@ -4,7 +4,7 @@
  *
  * Tiers:
  * - `small`     — Qwen 0.6B GGUF via the dflash local-llama-cpp fork
- *                 (`~/.cache/eliza-dflash/milady-llama-cpp`) or Ollama as
+ *                 (`~/.cache/eliza-dflash/eliza-llama-cpp`) or Ollama as
  *                 fallback. Tier-A smoke lane.
  * - `mid`       — Qwen 1.7B GGUF via the same fork. Tier-B manual /
  *                 scheduled.

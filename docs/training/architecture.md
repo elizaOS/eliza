@@ -20,7 +20,7 @@ this file, this file is the intended source of truth.
 `packages/training/` is the only thing in the repo that actually produces the
 `eliza-1` weights that ship with Milady and get downloaded onto phones.
 
-- Entry point: `packages/training/scripts/optimize_for_milady.py` (full recipe
+- Entry point: `packages/training/scripts/optimize_for_eliza1.py` (full recipe
   in [`optimization-pipeline.md`](optimization-pipeline.md)).
 - Base model: a Qwen3 causal-LM. The **smallest target is `eliza-1-0_6b`,
   derived from `Qwen/Qwen3-0.6B`** (older docs called this `eliza-1-lite-0_6b`
@@ -31,7 +31,7 @@ this file, this file is the intended source of truth.
   spec-decode CLI surface, all of which require the
   `elizaOS/llama.cpp` v0.4.0-milady fork at runtime.
 - Publishes to `elizaos/eliza-1-<tier>` on HuggingFace, then
-  `emit_milady_catalog.py` wires the new repo into
+  `emit_eliza1_catalog.py` wires the new repo into
   `packages/app-core/src/services/local-inference/catalog.ts`.
 - It does **not** mount any HTTP routes. It is a CLI / cron pipeline.
 

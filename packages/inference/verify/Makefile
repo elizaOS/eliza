@@ -346,6 +346,28 @@ cpu-bench: cpu_bench
 cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 	$(CC) $(CFLAGS) -I../reference cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ) -lm -o cpu_bench
 
+# CPU SIMD-path bench: links the qjl-cpu / polarquant-cpu plugin static
+# libraries and times their dispatched SIMD entrypoints (AVX-VNNI / AVX2
+# / NEON-dotprod) at the production attention workload, with a thread
+# sweep. Requires the plugin libs — built here via cmake first.
+QJL_CPU_DIR     = ../../native-plugins/qjl-cpu
+POLAR_CPU_DIR   = ../../native-plugins/polarquant-cpu
+QJL_CPU_LIB     = $(QJL_CPU_DIR)/build/libqjl.a
+POLAR_CPU_LIB   = $(POLAR_CPU_DIR)/build/libpolarquant.a
+
+$(QJL_CPU_LIB):
+	cmake -S $(QJL_CPU_DIR) -B $(QJL_CPU_DIR)/build -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(QJL_CPU_DIR)/build --target qjl >/dev/null
+$(POLAR_CPU_LIB):
+	cmake -S $(POLAR_CPU_DIR) -B $(POLAR_CPU_DIR)/build -DCMAKE_BUILD_TYPE=Release >/dev/null
+	cmake --build $(POLAR_CPU_DIR)/build --target polarquant >/dev/null
+
+cpu-simd-bench: cpu_simd_bench
+cpu_simd_bench: cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB)
+	$(CC) -O3 -march=native -fopenmp -std=c11 \
+	    -I$(QJL_CPU_DIR)/include -I$(QJL_CPU_DIR)/src -I$(POLAR_CPU_DIR)/include \
+	    cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB) -lm -o cpu_simd_bench
+
 # Umbrella: build (and run, into bench_results/) every available bench.
 # CPU bench always runs. Metal bench runs only on macOS with xcrun.
 bench: cpu-bench
@@ -423,7 +445,9 @@ endif
 #   3. ELIZA_DFLASH_LLAMA_DIR / ELIZA_DFLASH_LIBGGML_CUDA — UNUSED by this
 #      harness now; retained as env so cuda_runner.sh's passthrough is inert.
 NVCC ?= $(shell command -v nvcc 2>/dev/null)
-CUDA_HOME ?= /usr/local/cuda
+# Distro CUDA toolkits (Debian/Ubuntu `nvidia-cuda-toolkit`) put the runtime
+# headers in /usr/include, not /usr/local/cuda/include. Probe both.
+CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/cuda,$(if $(wildcard /usr/include/cuda_runtime.h),/usr,/usr/local/cuda))
 ELIZA_DFLASH_LLAMA_DIR ?= $(HOME)/.cache/eliza-dflash/milady-llama-cpp
 ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
@@ -436,13 +460,18 @@ ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-
 #     node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda
 #
 # Compile-time arch list for the harness itself (cheap; one TU). Overridable
-# with CUDA_ARCH_FLAGS. Default covers Ampere..Blackwell.
+# with CUDA_ARCH_FLAGS. Always emits sm_80/86/90 SASS plus compute_90 PTX —
+# the driver JITs the compute_90 PTX for any newer arch (Blackwell sm_120 on
+# RTX 50xx), so the harness runs on every NVIDIA part since Ampere even with a
+# pre-12.8 nvcc that cannot target sm_100/sm_120 directly. nvcc >= 12.8 adds
+# native sm_120 SASS on top (faster JIT-free first launch on Blackwell consumer).
+comma := ,
+CUDA_BLACKWELL_GENCODE := $(shell echo 'int main(){return 0;}' > /tmp/.nvcc_sm120_probe.cu 2>/dev/null && $(NVCC) -arch=sm_120 -c /tmp/.nvcc_sm120_probe.cu -o /dev/null >/dev/null 2>&1 && echo "-gencode arch=compute_120@code=sm_120"; rm -f /tmp/.nvcc_sm120_probe.cu)
 CUDA_ARCH_FLAGS ?= -gencode arch=compute_80,code=sm_80 \
     -gencode arch=compute_86,code=sm_86 \
-    -gencode arch=compute_89,code=sm_89 \
     -gencode arch=compute_90,code=sm_90 \
-    -gencode arch=compute_120,code=sm_120 \
-    -gencode arch=compute_120,code=compute_120
+    -gencode arch=compute_90,code=compute_90 \
+    $(subst @,$(comma),$(CUDA_BLACKWELL_GENCODE))
 
 CUDA_INCLUDES = -I$(CUDA_HOME)/include -I.
 
@@ -729,5 +758,5 @@ vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
 	    -lm -o vulkan_dispatch_smoke
 
 clean:
-	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
+	rm -f $(REF_OBJ) $(QJL_POLAR_OBJ) gen_fixture vulkan_verify metal_verify metal_bench cpu_bench cpu_simd_bench cuda_verify dispatch_smoke vulkan_dispatch_smoke
 	rm -f ../vulkan/*.spv

@@ -18,7 +18,6 @@
 
 import fs from "node:fs/promises";
 import type {
-  AgentModelSlot,
   ProviderEnableState,
   ProviderId,
   ProviderMeta,

@@ -68,6 +68,16 @@ export interface DflashServerPlan {
   gpuLayers: number | "auto";
   draftGpuLayers: number | "auto";
   kvOffload?: DflashKvOffloadMode;
+  /**
+   * Catalog-default `--cache-type-k` / `--cache-type-v` for the target model
+   * (the tier's `runtime.kvCache.typeK/typeV` — `qjl1_256` K + `q4_polar` V
+   * for the >8k tiers, per `packages/inference/AGENTS.md` §3). The
+   * `ELIZA_DFLASH_CACHE_TYPE_K` / `_V` env vars override these. `start()`
+   * still runs `assertCacheTypeSupportedOnBackend` on whichever value wins,
+   * so a binary whose `CAPABILITIES.json` lacks the kernel fails loudly.
+   */
+  cacheTypeK?: string;
+  cacheTypeV?: string;
   disableThinking: boolean;
   /**
    * Target model parameter count (`"1.7B"`, `"27B"`, …). Used only to size
@@ -1751,6 +1761,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
     const kvOffload = resolveDflashKvOffload(overrides);
 
+    // Catalog KV-cache types (`runtime.kvCache.typeK/typeV` — `qjl1_256` K +
+    // `q4_polar` V for the >8k Eliza-1 tiers, per inference/AGENTS.md §3).
+    // A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
+    // `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
+    // and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
+    const kvCache = catalog?.runtime?.kvCache;
+    const cacheTypeK =
+      typeof overrides?.cacheTypeK === "string"
+        ? overrides.cacheTypeK
+        : kvCache?.typeK;
+    const cacheTypeV =
+      typeof overrides?.cacheTypeV === "string"
+        ? overrides.cacheTypeV
+        : kvCache?.typeV;
+
     // KV-cache spill for context > 64k (AGENTS.md §3 item 7). Every Eliza-1
     // bundle ships the voice loop, so a tier-id match means the tighter voice
     // latency gate applies. A `KvSpillUnsupportedError` thrown here propagates
@@ -1783,6 +1808,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         gpuLayers,
         draftGpuLayers: dflash.draftGpuLayers,
         kvOffload: kvOffload ?? undefined,
+        cacheTypeK,
+        cacheTypeV,
         disableThinking: dflash.disableThinking,
         kvSpillPlan,
         params: catalog?.params,
@@ -1829,8 +1856,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       : plan.drafterModelPath;
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
-    const cacheTypeK = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim();
-    const cacheTypeV = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim();
+    const cacheTypeK =
+      process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() || plan.cacheTypeK;
+    const cacheTypeV =
+      process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim() || plan.cacheTypeV;
     const usableRamMb =
       Math.round(os.totalmem() / BYTES_PER_MB_DFLASH) - ramHeadroomReserveMb();
     const parallel = resolveParallel(
@@ -1912,18 +1941,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       args.push("--reasoning", "off");
       args.push("--chat-template-kwargs", '{"enable_thinking":false}');
     }
+    const cacheTypeKSource = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim()
+      ? "ELIZA_DFLASH_CACHE_TYPE_K"
+      : "runtime.kvCache.typeK";
+    const cacheTypeVSource = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim()
+      ? "ELIZA_DFLASH_CACHE_TYPE_V"
+      : "runtime.kvCache.typeV";
     if (cacheTypeK) {
-      assertCacheTypeSupportedOnBackend(
-        "ELIZA_DFLASH_CACHE_TYPE_K",
-        cacheTypeK,
-      );
+      assertCacheTypeSupportedOnBackend(cacheTypeKSource, cacheTypeK);
       args.push("--cache-type-k", cacheTypeK);
     }
     if (cacheTypeV) {
-      assertCacheTypeSupportedOnBackend(
-        "ELIZA_DFLASH_CACHE_TYPE_V",
-        cacheTypeV,
-      );
+      assertCacheTypeSupportedOnBackend(cacheTypeVSource, cacheTypeV);
       args.push("--cache-type-v", cacheTypeV);
     }
 

@@ -8123,6 +8123,13 @@ export class DefaultMessageService implements IMessageService {
 									);
 								}
 
+								// First-sentence cloud-TTS path. The local-inference voice loop
+								// uses VoiceScheduler/PhraseChunker instead
+								// (packages/app-core/src/services/local-inference/voice/scheduler.ts) —
+								// this is not duplicated, it's the cloud-deployment counterpart
+								// (packages/core can't import packages/app-core; the two paths live
+								// at different layers and only one is active per deployment).
+								//
 								// Only run first-sentence TTS detection when `accumulated` is present.
 								// Raw-token streams (no accumulated) may contain partial
 								// structured output that would garble hasFirstSentence() and TTS.

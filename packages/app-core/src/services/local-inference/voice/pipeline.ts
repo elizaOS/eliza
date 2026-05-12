@@ -38,33 +38,53 @@
 
 import type { VoiceScheduler } from "./scheduler";
 import type {
+  PcmFrame,
   RejectedTokenRange,
+  StreamingTranscriber,
   TextToken,
   TranscriptionAudio,
   VerifierStreamEvent,
 } from "./types";
 
 /**
- * ASR token streamer. `transcribeStream` consumes a single audio buffer
- * (already VAD-gated — silent frames dropped upstream) and yields text
- * tokens as the decoder produces them. The async iterator MUST be
- * finite; when it completes, ASR is "done" and the drafter/verifier
- * loop starts. The tokenizer is fused with the text backbone
- * (AGENTS.md §1 — zero re-tokenization between ASR output and text
- * input), so the emitted `TextToken.index` values are contiguous in
- * the text model's token space.
+ * Split a transcript string into contiguous text tokens. The fused ASR
+ * tokenizer is shared with the text backbone (AGENTS.md §1 — zero
+ * re-tokenization), so the pipeline only needs *contiguous* token
+ * indices, not the model's exact subword boundaries; whitespace-aware
+ * word chunking is the closest stable approximation when only surface
+ * text is available. Empty input yields no tokens.
  *
- * Distinct from `StreamingTranscriber` in `voice/types.ts`: that one is
- * the live PCM-frame feed → partial-transcript-event surface (W2's
- * adapters). This one is the batch-buffer → token-iterator surface the
- * `VoicePipeline` scaffold consumes. W9 reconciles which the turn
- * controller uses end-to-end.
+ * `tokenIds`, when supplied, are the text-model vocabulary ids the fused
+ * ASR decoder emitted for `transcript`. When the lengths line up they are
+ * attached as `TextToken.id` so a downstream in-process handoff can skip
+ * re-tokenization; otherwise (mismatch — the surface split disagrees with
+ * the decoder's subword boundaries) the ids are dropped and only the
+ * word-chunk approximation is returned.
  */
-export interface AsrTokenStreamer {
-  transcribeStream(
-    audio: TranscriptionAudio,
-    cancel: { cancelled: boolean },
-  ): AsyncIterable<TextToken>;
+export function splitTranscriptToTokens(
+  transcript: string,
+  startIndex = 0,
+  tokenIds?: ReadonlyArray<number>,
+): TextToken[] {
+  const trimmed = transcript.trim();
+  if (trimmed.length === 0) return [];
+  // Keep leading whitespace attached to each chunk after the first so a
+  // join() round-trips to the original spacing (matches how the chunker
+  // reconstructs phrase text from token.text concatenation).
+  const parts = trimmed.split(/(?<=\S)(?=\s)/).filter((p) => p.length > 0);
+  const tokens: TextToken[] = [];
+  // Pass through real token ids only when the producer's id count matches
+  // the surface-chunk count — anything else means the two disagree on
+  // boundaries and a positional join would mislabel ids.
+  const ids =
+    tokenIds && tokenIds.length === parts.length ? tokenIds : undefined;
+  let i = startIndex;
+  for (let p = 0; p < parts.length; p++) {
+    const token: TextToken = { index: i++, text: parts[p] };
+    if (ids) token.id = ids[p];
+    tokens.push(token);
+  }
+  return tokens;
 }
 
 /**
@@ -103,7 +123,16 @@ export interface TargetVerifier {
 
 export interface VoicePipelineDeps {
   scheduler: VoiceScheduler;
-  transcriber: AsrTokenStreamer;
+  /**
+   * The live frame-fed ASR adapter (`voice/transcriber.ts` — fused
+   * `eliza_inference_asr_stream_*`, the whisper.cpp interim adapter, or
+   * `MissingAsrTranscriber` deferring a hard failure). The pipeline drives
+   * it as a batch: it feeds the whole (VAD-gated) utterance buffer as one
+   * frame, `flush()`es to finalize, then splits the final transcript into
+   * contiguous text tokens (`splitTranscriptToTokens`). One `StreamingTranscriber`
+   * contract — there is no separate batch ASR interface.
+   */
+  transcriber: StreamingTranscriber;
   drafter: DraftProposer;
   verifier: TargetVerifier;
 }
@@ -148,7 +177,7 @@ interface PipelineRun {
  */
 export class VoicePipeline {
   private readonly scheduler: VoiceScheduler;
-  private readonly transcriber: AsrTokenStreamer;
+  private readonly transcriber: StreamingTranscriber;
   private readonly drafter: DraftProposer;
   private readonly verifier: TargetVerifier;
   private readonly maxDraftTokens: number;
@@ -226,14 +255,14 @@ export class VoicePipeline {
     cancel: { cancelled: boolean },
   ): Promise<"done" | "token-cap" | "cancelled"> {
     // --- ASR phase -----------------------------------------------------
-    const asrTokens: TextToken[] = [];
-    for await (const token of this.transcriber.transcribeStream(
-      audio,
-      cancel,
-    )) {
-      if (cancel.cancelled) return this.finish("cancelled");
-      asrTokens.push(token);
-    }
+    // Drive the live `StreamingTranscriber` as a batch: feed the whole
+    // (already VAD-gated) utterance buffer as one frame, `flush()` to
+    // force-finalize, and split the final transcript into contiguous text
+    // tokens. The fused Qwen3-ASR decoder shares the text vocab (AGENTS.md
+    // §1), so when it reports token ids alongside the transcript they ride
+    // along as `TextToken.id` — the whisper.cpp interim adapter omits them
+    // (different tokenizer) and the word-chunk fallback is used.
+    const asrTokens = await this.transcribeAll(audio, cancel);
     if (cancel.cancelled) return this.finish("cancelled");
     // The instant ASR's last token has been emitted: drafter + verifier
     // start. (`onAsrComplete` is the kick-off observability hook.)
@@ -363,6 +392,32 @@ export class VoicePipeline {
           maxDraft: this.maxDraftTokens,
           cancel,
         });
+    }
+  }
+
+  /**
+   * Feed the whole utterance buffer to the live transcriber, finalize,
+   * and return the final transcript as contiguous text tokens. The
+   * transcriber is disposed afterwards (it is one per turn). A barge-in
+   * cancel checked before `flush()` short-circuits to an empty list.
+   */
+  private async transcribeAll(
+    audio: TranscriptionAudio,
+    cancel: { cancelled: boolean },
+  ): Promise<TextToken[]> {
+    try {
+      if (cancel.cancelled) return [];
+      const frame: PcmFrame = {
+        pcm: audio.pcm,
+        sampleRate: audio.sampleRate,
+        timestampMs: 0,
+      };
+      this.transcriber.feed(frame);
+      const final = await this.transcriber.flush();
+      if (cancel.cancelled) return [];
+      return splitTranscriptToTokens(final.partial, 0, final.tokens);
+    } finally {
+      this.transcriber.dispose();
     }
   }
 

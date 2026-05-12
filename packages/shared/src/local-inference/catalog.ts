@@ -185,6 +185,27 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   return { finetuned: false, components };
 }
 
+/**
+ * Default KV-cache quantization types per tier, per `packages/inference/AGENTS.md`
+ * §3 items 1–3. Every Eliza-1 tier runs at a context length > 8k, so the
+ * mandated layout is QJL on the K-cache (`qjl1_256`) and PolarQuant on the
+ * V-cache (`q4_polar`); the TurboQuant K/V types (`turbo3_0` for the 0.6B
+ * Q3 tier, `turbo4_0` for the larger Q4 tiers) are the ≤8k fallback and are
+ * not used by any current tier. These are catalog defaults — the operator's
+ * `ELIZA_DFLASH_CACHE_TYPE_K` / `_V` env vars still override them. The
+ * dflash-server refuses a type the shipped binary's `CAPABILITIES.json`
+ * doesn't advertise, so a build missing the QJL/Polar kernels fails loudly
+ * rather than silently running an f16 cache.
+ */
+function kvCacheForContext(
+  contextLength: number,
+): NonNullable<CatalogModel["runtime"]>["kvCache"] {
+  if (contextLength > 8192) {
+    return { typeK: "qjl1_256", typeV: "q4_polar", requiresFork: "buun-llama-cpp" };
+  }
+  return { typeK: "turbo3_0", typeV: "turbo4_0", requiresFork: "buun-llama-cpp" };
+}
+
 function runtimeFor(
   id: Eliza1TierId,
   contextLength: number,
@@ -197,6 +218,7 @@ function runtimeFor(
       mlock: contextLength >= 131072,
       requiresKernel: requiredKernelsForContext(contextLength),
     },
+    kvCache: kvCacheForContext(contextLength),
     dflash: {
       drafterModelId: drafterId(id),
       specType: "dflash",
