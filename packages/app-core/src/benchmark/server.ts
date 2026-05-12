@@ -26,14 +26,17 @@ import {
   setBenchmarkContext,
 } from "./plugin";
 import {
+  applyRoleSeedPayload,
   type BenchmarkLlmCallUsage,
   type BenchmarkOutboxEntry,
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
   type BenchmarkTurnUsage,
   capturedActionToParams,
+  clearPersonalityStateOnReset,
   coerceActions,
   coerceParams,
+  collectPersonalityAuditLog,
   composeBenchmarkPrompt,
   createSession,
   ensureBenchmarkSessionContext,
@@ -42,8 +45,12 @@ import {
   extractTaskId,
   formatUnknownError,
   normalizeBenchmarkContext,
+  normalizeBenchRoleName,
+  parseRoleSeedPayload,
   resolveHost,
   resolvePort,
+  type RoleSeedPayload,
+  seedBenchUserRole,
   sessionKey,
   toPlugin,
 } from "./server-utils.js";
@@ -1335,6 +1342,7 @@ export async function startBenchmarkServer() {
             ? (JSON.parse(body) as {
                 task_id?: unknown;
                 benchmark?: unknown;
+                roles?: unknown;
               })
             : {};
           const taskId =
@@ -1347,6 +1355,9 @@ export async function startBenchmarkServer() {
             parsed.benchmark.trim().length > 0
               ? parsed.benchmark
               : "unknown";
+          const roleSeed: RoleSeedPayload | undefined = parseRoleSeedPayload(
+            parsed.roles,
+          );
 
           const session = resolveSession(taskId, benchmark, true);
           if (!session) {
@@ -1358,6 +1369,19 @@ export async function startBenchmarkServer() {
 
           await ensureBenchmarkSessionContext(runtime, session);
 
+          // Synthesis P1-14: always drop in-memory personality slots so
+          // state from a prior `scope_global_vs_user` scenario does not
+          // bleed into the next one when both share a runtime process.
+          clearPersonalityStateOnReset(runtime);
+
+          // Synthesis P0-7: when the runner has a role-seed payload (only
+          // `scope_global_vs_user` scenarios do today), pin global + per-user
+          // personality directives + role tags so the runtime's role gate
+          // and the rubric can both observe a real seeded state.
+          const rolesApplied = roleSeed
+            ? applyRoleSeedPayload(runtime, roleSeed)
+            : null;
+
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -1365,6 +1389,17 @@ export async function startBenchmarkServer() {
               room_id: session.roomId,
               task_id: session.taskId,
               benchmark: session.benchmark,
+              ...(rolesApplied
+                ? {
+                    roles: {
+                      applied_global_directive:
+                        rolesApplied.appliedGlobalDirective,
+                      applied_user_directive:
+                        rolesApplied.appliedUserDirective,
+                      scope_mode: rolesApplied.scopeMode,
+                    },
+                  }
+                : {}),
             }),
           );
         } catch (err: unknown) {
@@ -1507,12 +1542,20 @@ export async function startBenchmarkServer() {
             text?: unknown;
             context?: unknown;
             image?: unknown;
+            userId?: unknown;
+            user_id?: unknown;
+            userRole?: unknown;
+            user_role?: unknown;
           };
           try {
             parsed = JSON.parse(body) as {
               text?: unknown;
               context?: unknown;
               image?: unknown;
+              userId?: unknown;
+              user_id?: unknown;
+              userRole?: unknown;
+              user_role?: unknown;
             };
           } catch {
             res.writeHead(400, { "Content-Type": "application/json" });
@@ -1546,6 +1589,44 @@ export async function startBenchmarkServer() {
 
           await ensureBenchmarkSessionContext(runtime, session);
 
+          // P0-7: resolve sender identity + role from body / context.
+          // Either top-level (`userId`, `userRole`) or context-nested
+          // (`user_id`, `user_role`) is accepted. When the runner pins both,
+          // the bench server overrides the session's default user entity id
+          // and writes `world.metadata.roles[<entityId>] = <role>` so the
+          // runtime's role-gate resolves to the right verdict in
+          // `composeState` and PERSONALITY's global-scope check.
+          const rawUserId =
+            (typeof parsed.userId === "string" && parsed.userId.trim()) ||
+            (typeof parsed.user_id === "string" && parsed.user_id.trim()) ||
+            (context && typeof context.user_id === "string"
+              ? context.user_id.trim()
+              : "") ||
+            (context && typeof context.userId === "string"
+              ? context.userId.trim()
+              : "");
+          const rawUserRole =
+            (typeof parsed.userRole === "string" && parsed.userRole.trim()) ||
+            (typeof parsed.user_role === "string" && parsed.user_role.trim()) ||
+            (context && typeof context.user_role === "string"
+              ? context.user_role.trim()
+              : "") ||
+            (context && typeof context.userRole === "string"
+              ? context.userRole.trim()
+              : "");
+          const senderEntityId = rawUserId
+            ? stringToUuid(`benchmark-user:${session.benchmark}:${rawUserId}`)
+            : session.userEntityId;
+          const seededRole = normalizeBenchRoleName(rawUserRole);
+          if (rawUserId) {
+            await seedBenchUserRole(
+              runtime,
+              session,
+              senderEntityId,
+              seededRole ?? "GUEST",
+            );
+          }
+
           const benchmarkContext = normalizeBenchmarkContext(session, context);
           const composedPrompt = composeBenchmarkPrompt({
             text,
@@ -1564,7 +1645,7 @@ export async function startBenchmarkServer() {
                 ...(context ? { contextJson: JSON.stringify(context) } : {}),
               },
             },
-            entityId: session.userEntityId,
+            entityId: senderEntityId,
             agentId: runtime.agentId,
             roomId: session.roomId,
             createdAt: Date.now(),
@@ -1628,6 +1709,16 @@ export async function startBenchmarkServer() {
               : capturedActionToParams(capturedAction);
           const finishedAt = Date.now();
 
+          // P0-7: pull personality audit entries written by the PERSONALITY
+          // action during this turn so the `scope_global_vs_user` rubric can
+          // see real mutation attempts (admin success vs user deny). Bounded
+          // by the turn's startedAt to avoid bleeding rows from previous turns.
+          const personalityAuditLog = await collectPersonalityAuditLog(
+            runtime,
+            session.roomId,
+            startedAt,
+          );
+
           trajectory.push({
             step: trajectory.length + 1,
             startedAt,
@@ -1640,6 +1731,9 @@ export async function startBenchmarkServer() {
             actions,
             params,
             usage: turnUsage,
+            ...(personalityAuditLog.length > 0
+              ? { personality_audit_log: personalityAuditLog }
+              : {}),
           });
           trajectoriesBySession.set(key, trajectory);
 
@@ -1670,6 +1764,9 @@ export async function startBenchmarkServer() {
               task_id: session.taskId,
               room_id: session.roomId,
               trajectory_step: trajectory.length,
+              ...(personalityAuditLog.length > 0
+                ? { personality_audit_log: personalityAuditLog }
+                : {}),
             }),
           );
         } catch (err: unknown) {

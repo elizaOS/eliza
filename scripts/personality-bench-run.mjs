@@ -605,18 +605,28 @@ function openLogFile(path) {
   return openSync(path, "a", 0o644);
 }
 
-async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
+async function postBenchMessage({
+  baseUrl,
+  token,
+  text,
+  taskId,
+  userId,
+  userRole,
+}) {
+  // P0-7: bench server now pins sender identity + role from these fields so
+  // `composeState`-driven role gates see the actual scenario actor (admin vs
+  // member). When only `userId` is present, the server defaults the role to
+  // GUEST. Per-room/user isolation in scope_global_vs_user scenarios still
+  // uses a separate `task_id` per "room" so each room ↔ session is distinct.
   const body = {
     text,
+    userId,
+    userRole,
     context: {
       benchmark: "personality_bench",
       task_id: taskId,
-      // The bench server doesn't currently pin userId from `context` — the
-      // session's `userEntityId` is fixed at reset time — but we still pass
-      // it through for trajectory diagnostics. Per-room/user isolation in
-      // scope_global_vs_user scenarios uses a separate `task_id` per "room"
-      // so each room ↔ session is distinct.
       user_id: userId,
+      user_role: userRole,
     },
   };
   const controller = new AbortController();
@@ -655,20 +665,95 @@ async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
   }
 }
 
-async function resetBenchSession({ baseUrl, token, taskId }) {
+async function resetBenchSession({ baseUrl, token, taskId, roles = null }) {
+  const body = { task_id: taskId, benchmark: "personality_bench" };
+  if (roles && typeof roles === "object") body.roles = roles;
   const res = await fetch(`${baseUrl}/api/benchmark/reset`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ task_id: taskId, benchmark: "personality_bench" }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`bench reset HTTP ${res.status}: ${text.slice(0, 300)}`);
   }
   return res.json();
+}
+
+// Synthesis P0-7: derive a RoleSeedPayload from a scope_global_vs_user
+// scenario so the bench server can pin personality slots + roles before
+// the conversation starts. Returns null for non-scope scenarios.
+function buildScopeRoleSeed(scenario, roomId, roomMeta) {
+  if (scenario.bucket !== "scope_global_vs_user") return null;
+  const kw = scenario.personalityExpect?.judgeKwargs ?? {};
+  const variantKey = typeof kw.variantKey === "string" ? kw.variantKey : "";
+
+  // Authored variant key → scoped seed mode for the new RoleSeedPayload
+  // shape. Multiple authored variants land on the same conceptual mode
+  // because the rubric's check differs by mode, not by variant.
+  let scopeMode = null;
+  if (
+    variantKey === "user_tries_global_should_refuse" ||
+    kw.forbidGlobalChangeFromUser === true
+  ) {
+    scopeMode = "conflict_implicit";
+  } else if (variantKey === "admin_global_then_user_override") {
+    scopeMode = "conflict_explicit";
+  } else if (
+    variantKey === "admin_global_terse_user_verbose" ||
+    variantKey === "admin_global_formal_user_casual" ||
+    variantKey === "global_applies_to_admin_only" ||
+    variantKey === "admin_global_setting_applies_to_all"
+  ) {
+    scopeMode = "global_wins";
+  } else if (
+    variantKey === "user_overrides_persist_across_unrelated_turns" ||
+    variantKey === "per_user_isolation"
+  ) {
+    scopeMode = "user_wins";
+  }
+
+  // Pull the first description-style directive out of the scenario when
+  // present; otherwise leave the directive fields empty (the rubric still
+  // gets a scopeMode tag and the runtime gets cleared slots).
+  const description =
+    typeof scenario.description === "string" ? scenario.description : "";
+  const globalDirective = description.includes("global")
+    ? description.slice(0, 200)
+    : undefined;
+
+  // Pick the regular-user room (non-admin) as the seeded user identity.
+  let userId;
+  for (const [id, meta] of roomMeta.entries()) {
+    if (meta.userRole !== "admin") {
+      userId = id;
+      break;
+    }
+  }
+  // Pick the admin room as the seeded global-role entity, if any.
+  let globalRoleId;
+  for (const [id, meta] of roomMeta.entries()) {
+    if (meta.userRole === "admin") {
+      globalRoleId = id;
+      break;
+    }
+  }
+
+  if (!scopeMode && !globalDirective && !userId && !globalRoleId) {
+    return null;
+  }
+
+  const out = {};
+  if (scopeMode) out.scopeMode = scopeMode;
+  if (globalDirective) out.globalDirective = globalDirective;
+  if (userId) out.userId = userId;
+  if (globalRoleId) out.globalRoleId = globalRoleId;
+  // The runner does not infer a userDirective; that comes from the user's
+  // first message in-scenario. Leaving it empty is intentional.
+  return out;
 }
 
 // PERSONALITY-action smoke. Sends a single canonical "set my verbosity to
@@ -740,9 +825,18 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
   };
 
   // Reset each room's session up front so the personality store starts clean.
+  // For scope_global_vs_user scenarios, send a `roles` payload so the bench
+  // server seeds global + per-user directives + ADMIN/USER role tags before
+  // any conversation begins. Non-scope scenarios reset without seeding.
   for (const r of scenario.rooms ?? []) {
     try {
-      await resetBenchSession({ baseUrl, token, taskId: taskIdFor(r.id) });
+      const roleSeed = buildScopeRoleSeed(scenario, r.id, roomMeta);
+      await resetBenchSession({
+        baseUrl,
+        token,
+        taskId: taskIdFor(r.id),
+        roles: roleSeed,
+      });
     } catch (e) {
       error = `reset ${r.id}: ${e?.message ?? e}`;
       break;
@@ -781,6 +875,7 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
         text: turn.text,
         taskId: taskIdFor(turn.room),
         userId: meta.userId,
+        userRole: meta.userRole,
       });
       assistantText = res.text;
       actions = res.actions;

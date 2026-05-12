@@ -4,6 +4,16 @@
 // the agent under optimization is never used to grade itself. Mirrors the
 // app-lifeops eval-model helper but lives in app-training so production code
 // here never imports across another package's `test/` boundary.
+//
+// Judge-shaped calls (`judgeWithCerebras` / `judgeWithCerebrasShared`)
+// route their transport through the shared `CerebrasJudge` class in
+// scenario-runner so all four Cerebras judges in the repo share retry +
+// parsing logic.
+
+import {
+  CerebrasJudge,
+  type JudgeResponse,
+} from "../../../../packages/scenario-runner/src/cerebras-judge.ts";
 
 interface ResolvedClientConfig {
   apiKey: string;
@@ -276,18 +286,57 @@ export function getTrainingModelClient(): EvalModelClient {
   return (req) => dispatch(config, req);
 }
 
+/**
+ * Cerebras-only judge helper. Routes through the shared `CerebrasJudge`
+ * transport (tolerant parsing, 429/5xx retry, json_object opt-in). The
+ * Cerebras eval provider is the only one configured here; callers that
+ * need Anthropic should use `getEvalModelClient()` directly.
+ *
+ * Returns the raw model text for backward compatibility with existing
+ * callers. New callers should consume `judgeWithCerebrasShared()` (below)
+ * to get the canonical {raw, json, score?, verdict?, reason?} shape.
+ */
 export async function judgeWithCerebras(
   prompt: string,
   options?: { maxTokens?: number; temperature?: number; systemPrompt?: string },
 ): Promise<string> {
-  const client = getEvalModelClient();
-  const result = await client({
-    prompt,
+  const response = await judgeWithCerebrasShared(prompt, options);
+  return response.raw;
+}
+
+/**
+ * New canonical entry: returns the full JudgeResponse for callers that
+ * want the parsed score/verdict/reason without re-parsing the raw text.
+ */
+export async function judgeWithCerebrasShared(
+  prompt: string,
+  options?: { maxTokens?: number; temperature?: number; systemPrompt?: string },
+): Promise<JudgeResponse> {
+  const provider = resolveProvider("eval");
+  if (provider !== "cerebras") {
+    // Caller asked for the eval-as-judge route but the eval provider is
+    // pinned to a non-Cerebras model. Fall back to the eval client so the
+    // judge still runs (cross-grader rule), but skip the shared CerebrasJudge
+    // transport — only Cerebras is supported there today.
+    const client = getEvalModelClient();
+    const result = await client({
+      prompt,
+      systemPrompt: options?.systemPrompt,
+      temperature: options?.temperature ?? 0,
+      maxTokens: options?.maxTokens ?? 700,
+    });
+    return { raw: result.text, json: null };
+  }
+  const judge = new CerebrasJudge({
+    apiKey: resolveCerebrasApiKey("eval"),
+    baseUrl: resolveBaseUrl(),
+    model: resolveEvalModel(),
+  });
+  return judge.judge(prompt, {
     systemPrompt: options?.systemPrompt,
     temperature: options?.temperature ?? 0,
     maxTokens: options?.maxTokens ?? 700,
   });
-  return result.text;
 }
 
 // Adapter shaped like runtime.useModel("TEXT_LARGE", { prompt, ... }) so

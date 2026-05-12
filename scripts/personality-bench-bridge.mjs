@@ -105,11 +105,36 @@ export const DIRECTION_KEY_TO_OPTION = {
   looser: "looser",
 };
 
+// Synthesis P1-15: complete mapping for every scope_global_vs_user variant
+// the corpus emits (24 of 40 scenarios were silently falling to the default
+// `per-user-isolation` mode because their variantKey was unmapped).
+//
+// The corpus uses authored variant keys; the judge uses the rubric mode
+// names from `packages/benchmarks/personality-bench/src/judge/rubrics/scope-isolated.ts`.
+// Each scenario variant declares which side wins; the rubric translates
+// that into a per-turn leakage / denial / refuse-and-offer-alternative
+// check.
 export const SCOPE_VARIANT_TO_MODE = {
+  // Per-user isolation family — a setting in room A must not influence room B.
   per_user_isolation: "per-user-isolation",
   user_overrides_persist_across_unrelated_turns: "per-user-isolation",
+
+  // Global-applies family — admin sets the global slot, the rubric expects
+  // the agent to honour it everywhere (including in the regular user's room).
   global_applies_to_admin_only: "global-applies",
   admin_global_setting_applies_to_all: "global-applies",
+  admin_global_terse_user_verbose: "global-applies",
+  admin_global_formal_user_casual: "global-applies",
+
+  // Admin sets a global, regular user attempts to override — the agent
+  // must keep the global directive while honouring the per-user override
+  // ONLY in the user's own room. Folds onto `per-user-isolation` because
+  // the rubric uses the forbidden/required leakage check, which is exactly
+  // what catches a cross-room leak.
+  admin_global_then_user_override: "per-user-isolation",
+
+  // Refusal family — non-admin tries to apply a global directive, agent
+  // must refuse AND offer a per-user alternative.
   global_rejected_for_non_admin: "global-rejected-for-non-admin",
   user_tries_global_should_refuse: "user-tries-global-should-refuse",
 };
